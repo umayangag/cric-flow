@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -13,6 +14,7 @@ import (
 	"github.com/umayangag/cric-app/go-app/internal/db"
 	"github.com/umayangag/cric-app/go-app/internal/features"
 	"github.com/umayangag/cric-app/go-app/internal/mlclient"
+	"github.com/umayangag/cric-app/go-app/internal/scrape"
 )
 
 func main() {
@@ -48,6 +50,67 @@ func main() {
 		if err := features.UpdatePlayerConsistency(ctx); err != nil { respondErr(w, err); return }
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodPost)
+
+	// POST /scrape {"team":"Sri Lanka","from":"2010-01-01","to":"2010-02-01","limit":5}
+	r.HandleFunc("/scrape", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{
+			Team  string `json:"team"`
+			From  string `json:"from"`
+			To    string `json:"to"`
+			Limit int    `json:"limit"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil { respondBadRequest(w, err); return }
+		if req.Team == "" { req.Team = "Sri Lanka" }
+		if req.From == "" { req.From = "2010-01-01" }
+		if req.To == "" { req.To = "2010-02-01" }
+		if req.Limit <= 0 { req.Limit = 5 }
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			_ = scrape.Run(ctx, req.Team, req.From, req.To, req.Limit)
+		}()
+		respondJSON(w, http.StatusAccepted, map[string]string{"status":"started"})
+	}).Methods(http.MethodPost)
+
+	// GET /players/{id}
+	r.HandleFunc("/players/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		idStr := vars["id"]
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil { respondBadRequest(w, err); return }
+		row := db.Pool.QueryRow(r.Context(), `SELECT id, player_name, is_wicket_keeper, is_retired, batting_consistency, bowling_consistency FROM player WHERE id = $1`, id)
+		var resp struct{
+			ID int64 `json:"id"`
+			Name string `json:"player_name"`
+			IsWicketKeeper int16 `json:"is_wicket_keeper"`
+			IsRetired int16 `json:"is_retired"`
+			BattingConsistency *float32 `json:"batting_consistency"`
+			BowlingConsistency *float32 `json:"bowling_consistency"`
+		}
+		if err := row.Scan(&resp.ID, &resp.Name, &resp.IsWicketKeeper, &resp.IsRetired, &resp.BattingConsistency, &resp.BowlingConsistency); err != nil { respondErr(w, err); return }
+		respondJSON(w, http.StatusOK, resp)
+	}).Methods(http.MethodGet)
+
+	// GET /matches/{id}
+	r.HandleFunc("/matches/{id}", func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		idStr := vars["id"]
+		mid, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil { respondBadRequest(w, err); return }
+		row := db.Pool.QueryRow(r.Context(), `SELECT id, match_id, venue_id, opposition_id, season_id, toss, batting_session, bowling_session FROM match_details WHERE match_id = $1`, mid)
+		var resp struct{
+			ID int64 `json:"id"`
+			MatchID int64 `json:"match_id"`
+			VenueID *int64 `json:"venue_id"`
+			OppositionID *int64 `json:"opposition_id"`
+			SeasonID *int64 `json:"season_id"`
+			Toss *string `json:"toss"`
+			BattingSession *string `json:"batting_session"`
+			BowlingSession *string `json:"bowling_session"`
+		}
+		if err := row.Scan(&resp.ID, &resp.MatchID, &resp.VenueID, &resp.OppositionID, &resp.SeasonID, &resp.Toss, &resp.BattingSession, &resp.BowlingSession); err != nil { respondErr(w, err); return }
+		respondJSON(w, http.StatusOK, resp)
+	}).Methods(http.MethodGet)
 
 	// POST /predict/batting
 	r.HandleFunc("/predict/batting", func(w http.ResponseWriter, r *http.Request) {
