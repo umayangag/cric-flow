@@ -15,6 +15,12 @@ import (
 	"github.com/umayangag/cric-app/go-app/internal/mlclient"
 )
 
+// ranking records (package-scope so helper functions can reference them)
+type bowlRank struct {
+	name string
+	wkts float32
+}
+
 // simple session/toss/viscosity encoders for happy-path numeric features
 func encodeSession(s string) int {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -157,8 +163,15 @@ func main() {
 	}
 
 	// Rank players
-	type batRank struct { name string; runs float32; isBowler bool }
-	type bowlRank struct { name string; wkts float32 }
+	type batRank struct {
+		name     string
+		runs     float32
+		isBowler bool
+	}
+	type bowlRank struct {
+		name string
+		wkts float32
+	}
 	bats := make([]batRank, 0, len(candidates))
 	bowls := make([]bowlRank, 0, len(candidates))
 	for i, p := range candidates {
@@ -172,7 +185,9 @@ func main() {
 	selected := map[string]bool{}
 	pickedBowlers := 0
 	for _, br := range bowls {
-		if pickedBowlers >= wantBowlers { break }
+		if pickedBowlers >= wantBowlers {
+			break
+		}
 		// prefer actual bowlers
 		if !candidatesByName(candidates)[br.name].IsBowler && pickedBowlers < 5 {
 			// allow part-time bowlers only after satisfying minimum? On happy path, we accept top wicket preds.
@@ -183,7 +198,9 @@ func main() {
 	if pickedBowlers < 5 {
 		// If somehow fewer than 5 picked (e.g., too few candidates), fill from top wickets
 		for _, br := range bowls {
-			if pickedBowlers >= 5 { break }
+			if pickedBowlers >= 5 {
+				break
+			}
 			if !selected[br.name] {
 				selected[br.name] = true
 				pickedBowlers++
@@ -194,16 +211,24 @@ func main() {
 	// Pick batters from remaining by runs
 	pickedBatters := 0
 	for _, br := range bats {
-		if pickedBatters >= wantBatters { break }
-		if selected[br.name] { continue }
+		if pickedBatters >= wantBatters {
+			break
+		}
+		if selected[br.name] {
+			continue
+		}
 		selected[br.name] = true
 		pickedBatters++
 	}
 
 	// If still fewer than 11, fill by best remaining runs
 	for _, br := range bats {
-		if len(selected) >= 11 { break }
-		if selected[br.name] { continue }
+		if len(selected) >= 11 {
+			break
+		}
+		if selected[br.name] {
+			continue
+		}
 		selected[br.name] = true
 	}
 
@@ -217,23 +242,39 @@ func main() {
 		if selected[br.name] {
 			fmt.Printf(" - %s (pred wickets: %.2f)\n", br.name, br.wkts)
 			count++
-			if count >= wantBowlers { break }
+			if count >= wantBowlers {
+				break
+			}
 		}
 	}
 	fmt.Println("Batters:")
+	// Build set of top N bowlers by wickets to avoid listing them as batters
+	topBowlers := make(map[string]bool)
+	tcount := 0
+	for _, b := range bowls {
+		if tcount >= wantBowlers {
+			break
+		}
+		if b.name != "" {
+			topBowlers[b.name] = true
+			tcount++
+		}
+	}
 	count = 0
 	for _, br := range bats {
-		if selected[br.name] && !inTop(bowls, br.name, wantBowlers) {
+		if selected[br.name] && !topBowlers[br.name] {
 			fmt.Printf(" - %s (pred runs: %.2f)\n", br.name, br.runs)
 			count++
-			if count >= wantBatters { break }
+			if count >= wantBatters {
+				break
+			}
 		}
 	}
 }
 
 type wx struct {
 	Temp, Wind, Rain, Humidity, Cloud, Pressure int
-	Viscosity string
+	Viscosity                                   string
 }
 
 func weatherRow(ctx context.Context, matchID int64, session string) wx {
@@ -268,13 +309,17 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 	JOIN player p ON p.id = a.player_id
 	GROUP BY p.id, p.player_name`
 	rows, err := db.Pool.Query(ctx, q, matchID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var out []candidate
 	for rows.Next() {
 		var c candidate
 		var isb int32
-		if err := rows.Scan(&c.ID, &c.Name, &isb, &c.BatCons, &c.BowlCons); err != nil { return nil, err }
+		if err := rows.Scan(&c.ID, &c.Name, &isb, &c.BatCons, &c.BowlCons); err != nil {
+			return nil, err
+		}
 		c.IsBowler = isb == 1
 		out = append(out, c)
 	}
@@ -282,52 +327,64 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 }
 
 func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool) float32 {
-	if seasonID == nil { return 0 }
+	if seasonID == nil {
+		return 0
+	}
 	col := "batting_form"
-	if !batting { col = "bowling_form" }
+	if !batting {
+		col = "bowling_form"
+	}
 	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_form_data WHERE player_id=$1 AND season_id=$2`, col), playerID, *seasonID)
 	var v float32
-	if err := row.Scan(&v); err != nil { return 0 }
+	if err := row.Scan(&v); err != nil {
+		return 0
+	}
 	return v
 }
 
 func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool) float32 {
-	if venueID == nil { return 0 }
+	if venueID == nil {
+		return 0
+	}
 	col := "batting_venue"
-	if !batting { col = "bowling_venue" }
+	if !batting {
+		col = "bowling_venue"
+	}
 	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_venue_data WHERE player_id=$1 AND venue_id=$2`, col), playerID, *venueID)
 	var v float32
-	if err := row.Scan(&v); err != nil { return 0 }
+	if err := row.Scan(&v); err != nil {
+		return 0
+	}
 	return v
 }
 
 func loadOpposition(ctx context.Context, playerID int64, oppositionID *int64, batting bool) float32 {
-	if oppositionID == nil { return 0 }
+	if oppositionID == nil {
+		return 0
+	}
 	col := "batting_opposition"
-	if !batting { col = "bowling_opposition" }
+	if !batting {
+		col = "bowling_opposition"
+	}
 	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_opposition_data WHERE player_id=$1 AND opposition_id=$2`, col), playerID, *oppositionID)
 	var v float32
-	if err := row.Scan(&v); err != nil { return 0 }
+	if err := row.Scan(&v); err != nil {
+		return 0
+	}
 	return v
 }
 
 func ptrToInt(p *int64) int {
-	if p == nil { return 0 }
-	return int(*p)
-}
-
-func inTop(b []bowlRank, name string, n int) bool {
-	count := 0
-	for _, x := range b {
-		if count >= n { break }
-		if x.name == name { return true }
-		if x.name != "" { count++ }
+	if p == nil {
+		return 0
 	}
-	return false
+	return int(*p)
 }
 
 func candidatesByName(cs []candidate) map[string]candidate {
 	m := make(map[string]candidate, len(cs))
-	for _, c := range cs { m[c.Name] = c }
+	for _, c := range cs {
+		m[c.Name] = c
+	}
 	return m
 }
