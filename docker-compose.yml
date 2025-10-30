@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cricket-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cricket_data}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  go-api:
+    build:
+      context: ./go-app
+      dockerfile: Dockerfile.api
+    image: umayangag/cric-app-api:latest
+    container_name: cric-go-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-cricket_data}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_SSLMODE: disable
+      MIGRATIONS_DIR: /migrations
+      PORT: 8080
+    ports:
+      - "8080:8080"
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    image: umayangag/cric-app-ml:latest
+    container_name: cric-ml-service
+    environment:
+      PORT: 8000
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
