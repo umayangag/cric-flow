@@ -5,12 +5,12 @@ on:
     paths:
       - 'ml-service/**'
       - '.github/workflows/ml-service-ci.yml'
-      - 'requirements.txt'
+      - 'ml-service/requirements.txt'
   pull_request:
     paths:
       - 'ml-service/**'
       - '.github/workflows/ml-service-ci.yml'
-      - 'requirements.txt'
+      - 'ml-service/requirements.txt'
 
 jobs:
   python:
