@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_match_details_season ON match_details(season_id);
 CREATE TABLE IF NOT EXISTS weather_data (
     id BIGSERIAL PRIMARY KEY,
     match_id BIGINT NOT NULL,
-    session VARCHAR(100),
+    session VARCHAR(100) NOT NULL,
     temp INTEGER,
     feels INTEGER,
     wind INTEGER,
@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS weather_data (
     humidity INTEGER,
     cloud INTEGER,
     pressure INTEGER,
-    viscosity VARCHAR(100)
+    viscosity VARCHAR(100),
+    UNIQUE (match_id, session)
 );
 
 CREATE INDEX IF NOT EXISTS idx_weather_match_id ON weather_data(match_id);
@@ -83,7 +84,8 @@ CREATE TABLE IF NOT EXISTS batting_data (
     fours INTEGER,
     sixes INTEGER,
     strike_rate REAL,
-    batting_position INTEGER
+    batting_position INTEGER,
+    UNIQUE (match_id, player_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_batting_player ON batting_data(player_id);
@@ -103,7 +105,8 @@ CREATE TABLE IF NOT EXISTS bowling_data (
     sixes INTEGER,
     econ REAL,
     wides INTEGER,
-    no_balls INTEGER
+    no_balls INTEGER,
+    UNIQUE (match_id, player_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_bowling_player ON bowling_data(player_id);
@@ -116,7 +119,8 @@ CREATE TABLE IF NOT EXISTS fielding_data (
     catches INTEGER,
     run_outs INTEGER,
     dropped_catches INTEGER,
-    missed_run_outs INTEGER
+    missed_run_outs INTEGER,
+    UNIQUE (match_id, player_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fielding_player ON fielding_data(player_id);

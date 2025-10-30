@@ -70,8 +70,23 @@ func main() {
 			continue
 		}
 
-		// Upsert high-level match info where available (venue/toss/sessions) - TODO when repo ready
-		_ = mi
+		// Upsert high-level match info where available (venue/toss/sessions)
+		var venueID *int64
+		if strings.TrimSpace(mi.Venue) != "" {
+			if id, e := db.GetOrCreateVenue(ctx, mi.Venue); e == nil {
+				venueID = &id
+			} else {
+				log.Printf("warn: get/create venue %q failed: %v", mi.Venue, e)
+			}
+		}
+		upd := &db.MatchInfoUpdate{}
+		if venueID != nil { upd.VenueID = venueID }
+		if v := strings.TrimSpace(mi.Toss); v != "" { upd.Toss = &v }
+		if v := strings.TrimSpace(mi.BattingSession); v != "" { upd.BattingSession = &v }
+		if v := strings.TrimSpace(mi.BowlingSession); v != "" { upd.BowlingSession = &v }
+		if err := db.UpdateMatchDetails(ctx, mid, upd); err != nil {
+			log.Printf("warn: update match_details for match_id=%d failed: %v", mid, err)
+		}
 
 		// Upsert weather
 		for _, w := range weather {

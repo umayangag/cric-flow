@@ -111,17 +111,16 @@ func RunMigrations(ctx context.Context, migrationsDir string) error {
 		if err != nil {
 			return err
 		}
-		sql := string(b)
-		batch := &pgxpool.Batch{}
-		// execute as one Exec (allow multiple statements)
-		// pgx doesn't support multi-statement via Batch directly; use Exec instead.
-		// We'll just run Exec with the whole content.
-		if _, err := Pool.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("migration %s failed: %w", version, err)
-		}
-		if _, err := Pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
-			return err
-		}
+ 	sql := string(b)
+ 	// execute as one Exec (allow multiple statements)
+ 	// pgx doesn't support multi-statement via Batch directly; use Exec instead.
+ 	// We'll just run Exec with the whole content.
+ 	if _, err := Pool.Exec(ctx, sql); err != nil {
+ 		return fmt.Errorf("migration %s failed: %w", version, err)
+ 	}
+ 	if _, err := Pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
+ 		return err
+ 	}
 	}
 	return nil
 }

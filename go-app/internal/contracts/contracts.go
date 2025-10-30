@@ -1,63 +1,60 @@
 package contracts
 
-// BattingFeatures mirrors the input_batting_columns from the Python prototype.
+// BattingFeatures aligns with ml-service BattingFeatures schema.
+// Keep names/types in sync with ml-service/app/main.py.
 type BattingFeatures struct {
 	BattingConsistency float32 `json:"batting_consistency"`
 	BattingForm        float32 `json:"batting_form"`
-	BattingTemp        int32   `json:"batting_temp"`
-	BattingWind        int32   `json:"batting_wind"`
-	BattingRain        int32   `json:"batting_rain"`
-	BattingHumidity    int32   `json:"batting_humidity"`
-	BattingCloud       int32   `json:"batting_cloud"`
-	BattingPressure    int32   `json:"batting_pressure"`
-	BattingViscosity   int32   `json:"batting_viscosity"`
-	BattingInning      int32   `json:"batting_inning"`
-	BattingSession     int32   `json:"batting_session"`
-	Toss               int32   `json:"toss"`
+	BattingTemp        int     `json:"batting_temp"`
+	BattingWind        int     `json:"batting_wind"`
+	BattingRain        int     `json:"batting_rain"`
+	BattingHumidity    int     `json:"batting_humidity"`
+	BattingCloud       int     `json:"batting_cloud"`
+	BattingPressure    int     `json:"batting_pressure"`
+	BattingViscosity   int     `json:"batting_viscosity"`
+	BattingInning      int     `json:"batting_inning"`
+	BattingSession     int     `json:"batting_session"`
+	Toss               int     `json:"toss"`
 	Venue              float32 `json:"venue"`
 	Opposition         float32 `json:"opposition"`
-	Season             int32   `json:"season"`
+	Season             int     `json:"season"`
 	PlayerName         string  `json:"player_name"`
 }
 
-// BowlingFeatures mirrors the input_bowling_columns from the Python prototype.
+// BowlingFeatures aligns with ml-service BowlingFeatures schema.
 type BowlingFeatures struct {
 	BowlingConsistency float32 `json:"bowling_consistency"`
 	BowlingForm        float32 `json:"bowling_form"`
-	BowlingTemp        int32   `json:"bowling_temp"`
-	BowlingWind        int32   `json:"bowling_wind"`
-	BowlingRain        int32   `json:"bowling_rain"`
-	BowlingHumidity    int32   `json:"bowling_humidity"`
-	BowlingCloud       int32   `json:"bowling_cloud"`
-	BowlingPressure    int32   `json:"bowling_pressure"`
-	BowlingViscosity   int32   `json:"bowling_viscosity"`
-	BattingInning      int32   `json:"batting_inning"`
-	BowlingSession     int32   `json:"bowling_session"`
-	Toss               int32   `json:"toss"`
+	BowlingTemp        int     `json:"bowling_temp"`
+	BowlingWind        int     `json:"bowling_wind"`
+	BowlingRain        int     `json:"bowling_rain"`
+	BowlingHumidity    int     `json:"bowling_humidity"`
+	BowlingCloud       int     `json:"bowling_cloud"`
+	BowlingPressure    int     `json:"bowling_pressure"`
+	BowlingViscosity   int     `json:"bowling_viscosity"`
+	BattingInning      int     `json:"batting_inning"`
+	BowlingSession     int     `json:"bowling_session"`
+	Toss               int     `json:"toss"`
 	BowlingVenue       float32 `json:"bowling_venue"`
 	BowlingOpposition  float32 `json:"bowling_opposition"`
-	Season             int32   `json:"season"`
+	Season             int     `json:"season"`
 	PlayerName         string  `json:"player_name"`
 }
 
-// BattingPrediction mirrors output_batting_columns + derived.
+// BattingPrediction mirrors ml-service response.
 type BattingPrediction struct {
-	RunsScored     float32 `json:"runs_scored"`
-	BallsFaced     float32 `json:"balls_faced"`
-	FoursScored    float32 `json:"fours_scored"`
-	SixesScored    float32 `json:"sixes_scored"`
-	BattingPos     float32 `json:"batting_position"`
-	StrikeRate     float32 `json:"strike_rate"`
-	Contribution   float32 `json:"batting_contribution"`
-	PlayerName     string  `json:"player_name"`
+	RunsScored      float32 `json:"runs_scored"`
+	BallsFaced      float32 `json:"balls_faced"`
+	FoursScored     float32 `json:"fours_scored"`
+	SixesScored     float32 `json:"sixes_scored"`
+	BattingPosition float32 `json:"batting_position"`
+	StrikeRate      float32 `json:"strike_rate"`
 }
 
-// BowlingPrediction mirrors output_bowling_columns + derived.
+// BowlingPrediction mirrors ml-service response.
 type BowlingPrediction struct {
-	RunsConceded   float32 `json:"runs_conceded"`
-	Deliveries     float32 `json:"deliveries"`
-	WicketsTaken   float32 `json:"wickets_taken"`
-	Econ           float32 `json:"econ"`
-	Contribution   float32 `json:"bowling_contribution"`
-	PlayerName     string  `json:"player_name"`
+	RunsConceded float32 `json:"runs_conceded"`
+	Deliveries   float32 `json:"deliveries"`
+	WicketsTaken float32 `json:"wickets_taken"`
+	Econ         float32 `json:"econ"`
 }
