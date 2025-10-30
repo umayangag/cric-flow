@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 	"strconv"
@@ -70,6 +71,32 @@ func Run(ctx context.Context, teamName, fromISO, toISO string, limit int) error 
 		if v := strings.TrimSpace(mi.Toss); v != "" { upd.Toss = &v }
 		if v := strings.TrimSpace(mi.BattingSession); v != "" { upd.BattingSession = &v }
 		if v := strings.TrimSpace(mi.BowlingSession); v != "" { upd.BowlingSession = &v }
+		// Opposition (from match list)
+		if oppName := strings.TrimSpace(it.Opposition); oppName != "" {
+			if oid, e := db.GetOrCreateOpposition(ctx, oppName); e == nil {
+				upd.OppositionID = &oid
+			} else {
+				log.Printf("warn: get/create opposition %q failed: %v", oppName, e)
+			}
+		}
+		// Date and Season
+		if d := strings.TrimSpace(it.DateText); d != "" {
+			if dateISO, ok := parseDateToISO(d); ok {
+				upd.Date = &dateISO
+				if season := yearFromISO(dateISO); season != "" {
+					if sid, e := db.GetOrCreateSeason(ctx, season); e == nil {
+						upd.SeasonID = &sid
+					} else {
+						log.Printf("warn: get/create season %q failed: %v", season, e)
+					}
+				}
+			}
+		}
+		// Inning from list if parseable
+		if inVal := parseInningNumber(it.Inning); inVal != 0 {
+			u := int(inVal)
+			upd.Inning = &u
+		}
 		if err := db.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			log.Printf("warn: update match_details for match_id=%d failed: %v", mid, err)
 		}
@@ -144,4 +171,47 @@ func toCricinfoDateImpl(iso string) (string, error) {
 
 func parseInt64(s string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+}
+
+// parseDateToISO tries common Cricinfo date formats and returns YYYY-MM-DD.
+func parseDateToISO(s string) (string, bool) {
+	ss := strings.TrimSpace(s)
+	if ss == "" { return "", false }
+	layouts := []string{
+		"Jan 2, 2006",   // e.g., Jan 5, 2019
+		"2 Jan 2006",    // e.g., 5 Jan 2019
+		"2006-01-02",    // ISO already
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, ss); err == nil {
+			return t.Format("2006-01-02"), true
+		}
+	}
+	// try to extract Year if full parse fails
+	re := regexp.MustCompile(`(\d{4})`)
+	m := re.FindStringSubmatch(ss)
+	if len(m) > 1 {
+		y := m[1]
+		// fallback to Jan 01 of that year
+		return y + "-01-01", true
+	}
+	return "", false
+}
+
+// yearFromISO returns YYYY from YYYY-MM-DD input.
+func yearFromISO(iso string) string {
+	if len(iso) >= 4 { return iso[:4] }
+	return ""
+}
+
+// parseInningNumber extracts the first integer from the inning string.
+// Examples: "1st innings" -> 1, "Inns 2" -> 2.
+func parseInningNumber(s string) int64 {
+	re := regexp.MustCompile(`(\d+)`)
+	m := re.FindStringSubmatch(s)
+	if len(m) > 1 {
+		v, _ := strconv.ParseInt(m[1], 10, 64)
+		return v
+	}
+	return 0
 }

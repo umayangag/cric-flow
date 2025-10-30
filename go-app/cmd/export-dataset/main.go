@@ -47,10 +47,27 @@ func exportBatting(ctx context.Context, path string) error {
 		bd.batting_position,
 		p.batting_consistency,
 		pfd.batting_form,
-		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity,
+		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
+		CASE 
+			WHEN w.viscosity IS NULL THEN 0
+			WHEN lower(w.viscosity) = 'dry' THEN 0
+			WHEN lower(w.viscosity) = 'humid' THEN 1
+			WHEN lower(w.viscosity) = 'windy' THEN 2
+			ELSE 0
+		END AS viscosity,
 		md.inning,
-		md.batting_session,
-		md.toss,
+		CASE 
+			WHEN md.batting_session IS NULL THEN 0
+			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
+			WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
+			WHEN lower(md.batting_session) LIKE '%evening%' THEN 2
+			ELSE 0
+		END AS batting_session,
+		CASE 
+			WHEN md.toss IS NULL THEN 0
+			WHEN lower(md.toss) LIKE '%bat%' THEN 1
+			ELSE 0
+		END AS toss,
 		pvd.batting_venue,
 		pod.batting_opposition,
 		s.id AS season_id,

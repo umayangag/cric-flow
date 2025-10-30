@@ -34,8 +34,19 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+	// Liveness
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}).Methods(http.MethodGet)
+	// Readiness (checks DB connectivity)
+	r.HandleFunc("/readiness", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Pool.Ping(ctx); err != nil {
+			respondJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "db_unavailable", "error": err.Error()})
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}).Methods(http.MethodGet)
 
 	// POST /precompute {"season":"2019"}
