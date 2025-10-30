@@ -92,10 +92,18 @@ make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 - For development speed, this setup targets the happy path first; additional edge cases can be covered by adding more HTML fixtures and selectors later.
 
 ## CI
-GitHub Actions workflow at `.github/workflows/ci.yml`:
-- Spins up Postgres, applies migrations
-- Builds and tests Go modules
-- Sanity-compiles Python ML modules and training scripts
+Two separate GitHub Actions workflows:
+- Go App: `.github/workflows/go-app-ci.yml` — spins up Postgres, applies migrations, checks formatting (gofumpt/golines), builds and tests Go modules.
+- ML Service: `.github/workflows/ml-service-ci.yml` — installs deps, runs isort/black checks, and sanity-compiles the app and training scripts.
+
+### Developer hooks and formatters
+- Install repo git hooks (pre-commit runs gofumpt/golines for go-app and black/isort for ml-service):
+```
+make install-hooks
+```
+- Manual formatters:
+  - Go: `make fmt-go` (uses gofumpt + golines), `make lint-go`
+  - Python: `make fmt-py`, `make lint-py`
 
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.

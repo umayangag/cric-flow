@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Root of repo
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+# ---- Go formatting (gofumpt + golines) ----
+if command -v gofumpt >/dev/null 2>&1; then
+  (cd go-app && gofumpt -w .)
+else
+  echo "[pre-commit] gofumpt not found; install with: go install mvdan.cc/gofumpt@latest" >&2
+fi
+if command -v golines >/dev/null 2>&1; then
+  (cd go-app && golines -w -m 120 .)
+else
+  echo "[pre-commit] golines not found; install with: go install github.com/segmentio/golines@latest" >&2
+fi
+
+# ---- Python formatting (black + isort) ----
+if command -v black >/dev/null 2>&1; then
+  (cd ml-service && black .)
+else
+  echo "[pre-commit] black not found; install with: pip install black" >&2
+fi
+if command -v isort >/dev/null 2>&1; then
+  (cd ml-service && isort .)
+else
+  echo "[pre-commit] isort not found; install with: pip install isort" >&2
+fi
+
+# You can add more checks (e.g., go vet, mypy) here if desired.
+
+echo "[pre-commit] Formatting completed."

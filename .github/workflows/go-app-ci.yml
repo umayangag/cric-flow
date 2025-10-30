@@ -1,0 +1,68 @@
+name: Go App CI
+
+on:
+  push:
+    paths:
+      - 'go-app/**'
+      - '.github/workflows/go-app-ci.yml'
+      - 'go.mod'
+      - 'go.sum'
+  pull_request:
+    paths:
+      - 'go-app/**'
+      - '.github/workflows/go-app-ci.yml'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports: ['5432:5432']
+        env:
+          POSTGRES_DB: cricket_data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cricket_data" 
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Install Go formatters (gofumpt, golines)
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          go install github.com/segmentio/golines@latest
+
+      - name: Check formatting (gofumpt)
+        working-directory: go-app
+        run: |
+          # fail if any file would be modified
+          diff <(git ls-files | grep '^go-app/.*\.go$' | xargs -I{} bash -lc 'cat {}') <(gofumpt -l -w . >/dev/null 2>&1; git ls-files | grep '^go-app/.*\.go$' | xargs -I{} bash -lc 'cat {}') || (echo "Run make fmt-go locally" && exit 1)
+        shell: bash
+
+      - name: Apply migrations
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: cricket_data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_SSLMODE: disable
+        working-directory: go-app
+        run: go run ./cmd/tools/migrate -dir=./migrations
+
+      - name: Build
+        working-directory: go-app
+        run: go build ./...
+
+      - name: Test
+        working-directory: go-app
+        run: go test ./... -v

@@ -1,0 +1,43 @@
+name: ML Service CI
+
+on:
+  push:
+    paths:
+      - 'ml-service/**'
+      - '.github/workflows/ml-service-ci.yml'
+      - 'requirements.txt'
+  pull_request:
+    paths:
+      - 'ml-service/**'
+      - '.github/workflows/ml-service-ci.yml'
+      - 'requirements.txt'
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install black isort
+
+      - name: Lint/format check (black, isort)
+        working-directory: ml-service
+        run: |
+          isort --check-only --diff .
+          black --check --diff .
+
+      - name: Sanity compile
+        working-directory: ml-service
+        run: |
+          python -m py_compile app/main.py
+          python -m py_compile ml/train_batting.py
+          python -m py_compile ml/train_bowling.py

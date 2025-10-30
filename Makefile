@@ -140,3 +140,44 @@ up-all:
 	@echo "[7/7] Restarting ML service to load artifacts..."
 	docker compose restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
+# One-shot bootstrap: spin up stack, migrate, scrape, precompute, export, train, and restart ML service
+up-all:
+	@echo "[1/7] Bringing up Docker stack (Postgres, API, ML)..."
+	docker compose up --build -d
+	@echo "[2/7] Applying DB migrations..."
+	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
+	@echo "[3/7] Scraping a tiny window (idempotent)..."
+	$(MAKE) scraper || (echo "Scraper failed" && exit 1)
+	@echo "[4/7] Precomputing metrics (season=2019)..."
+	$(MAKE) precompute SEASON=2019 || (echo "Precompute failed" && exit 1)
+	@echo "[5/7] Exporting datasets..."
+	$(MAKE) export-dataset || (echo "Export failed" && exit 1)
+	@echo "[6/7] Training ML artifacts..."
+	$(MAKE) train-all || (echo "Training failed" && exit 1)
+	@echo "[7/7] Restarting ML service to load artifacts..."
+	docker compose restart ml-service
+	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
+
+# --- Formatting & hooks ---
+.PHONY: fmt-go fmt-py lint-go lint-py install-hooks
+
+fmt-go:
+	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
+	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
+	cd go-app && gofumpt -w . && golines -w -m 120 .
+
+lint-go:
+	cd go-app && go vet ./...
+
+fmt-py:
+	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
+	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
+	cd ml-service && isort . && black .
+
+lint-py:
+	cd ml-service && isort --check-only . && black --check .
+
+install-hooks:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-commit
+	@echo "Git hooks installed. On commit, gofumpt/golines (Go) and black/isort (Python) will run automatically."
