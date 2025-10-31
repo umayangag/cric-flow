@@ -3,7 +3,7 @@
 This repository contains the Go data pipeline/services and the Python ML inference service, ported from the original `src/` Python prototype (which remains intact for reference).
 
 Directories:
-- go-app/ — Go services (API, scraper, ETL importer, precompute, dataset export, tools, migrations)
+- go-app/ — Go services (API, Cricsheet importer, ETL importer, precompute, dataset export, tools, migrations)
 - ml-service/ — Python FastAPI service for predictions + simple training scripts
 - src/ — Original prototype (reference only)
 
@@ -32,7 +32,7 @@ cd ml-service && source .venv/bin/activate
 ```
 
 ### 1) One-line bootstrap (recommended)
-This single command brings up Docker services, applies migrations, scrapes a tiny window, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
+This single command brings up Docker services, applies migrations, imports Cricsheet JSON data, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
 ```
 make up-all
 ```
@@ -47,12 +47,12 @@ make dev-up
 make migrate
 ```
 
-### 3) Scrape a tiny window (idempotent)
-This fetches Sri Lanka ODI innings over a narrow date window and upserts to Postgres.
+### 3) Import Cricsheet JSON (idempotent)
+This reads local Cricsheet `.json` files under `data/` and upserts into Postgres using the Go importer.
 ```
-make scraper
+make cricsheet-import
 # run again to confirm idempotency
-make scraper
+make cricsheet-import
 ```
 
 ### 4) Precompute player metrics (form/venue/opposition/consistency)
@@ -91,7 +91,7 @@ curl -s http://localhost:8080/readiness
 ```
 
 ### 9) Predict team (happy path CLI)
-Requires a `match_id` that exists in the DB from the scrape step.
+Requires a `match_id` that exists in the DB from the import step.
 ```
 make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 ```
@@ -119,10 +119,11 @@ make install-hooks
   - Python: `make lint-py`
 
 ## Notes
-- The scraper uses polite rate limiting and retries.
+- Data ingestion now uses Cricsheet JSON files (no HTML scraping or external requests during import).
 - Unique constraints and upsert logic ensure idempotent persistence.
+- Optional placeholders can be inserted by the importer: weather rows per innings and zeroed fielding rows (see Makefile target `cricsheet-import` or API `/import/cricsheet`).
 - The ML service returns non-zero predictions only when trained artifacts are present.
-- For development speed, this setup targets the happy path first; additional edge cases can be covered by adding more HTML fixtures and selectors later.
+- For development speed, this setup targets the happy path first; additional edge cases can be covered by enhancing the importer as needed.
 
 ## CI
 Two separate GitHub Actions workflows:
@@ -132,4 +133,4 @@ Two separate GitHub Actions workflows:
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
 - If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
-- If scraper returns no items, try widening the date window in `make scraper` target or in `cmd/scraper` flags.
+- If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).

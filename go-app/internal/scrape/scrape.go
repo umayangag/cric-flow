@@ -1,3 +1,4 @@
+//go:build legacy_cricinfo
 package scrape
 
 import (
