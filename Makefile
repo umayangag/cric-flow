@@ -2,15 +2,15 @@
 
 .PHONY: dev-up dev-down logs api migrate etl-importer export-dataset precompute go-test ml-serve team-predictor train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-ingest cricsheet-import up-all
 
-# Docker Compose stack (Postgres + API + ML service)
+# docker-compose stack (Postgres + API + ML service)
 dev-up:
-	docker compose up --build -d
+	docker-compose up --build -d
 
 dev-down:
-	docker compose down -v
+	docker-compose down -v
 
 logs:
-	docker compose logs -f --tail=200
+	docker-compose logs -f --tail=200
 
 # Run Go unit tests
 go-test:
@@ -63,7 +63,7 @@ train-all: train-batting train-bowling
 # One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
 up-all:
 	@echo "[1/7] Bringing up Docker stack (Postgres, API, ML)..."
-	docker compose up --build -d
+	docker-compose up --build -d
 	@echo "[2/7] Applying DB migrations..."
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
 	@echo "[3/7] Importing Cricsheet JSON (idempotent)..."
@@ -75,7 +75,7 @@ up-all:
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
-	docker compose restart ml-service
+	docker-compose restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
 # --- Formatting & hooks ---
