@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {

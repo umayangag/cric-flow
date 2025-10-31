@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/cricinfo"
-	"github.com/umayangag/cric-app/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricinfo"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // Run scrapes a small window of matches for the given team and date range (YYYY-MM-DD),

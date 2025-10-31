@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/umayangag/cric-app/go-app/internal/contracts"
-	"github.com/umayangag/cric-app/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-app/go-app/internal/db"
-	"github.com/umayangag/cric-app/go-app/internal/features"
-	"github.com/umayangag/cric-app/go-app/internal/mlclient"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
 func main() {

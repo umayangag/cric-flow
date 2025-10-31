@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/contracts"
-	"github.com/umayangag/cric-app/go-app/internal/db"
-	"github.com/umayangag/cric-app/go-app/internal/mlclient"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
 // simple session/toss/viscosity encoders for happy-path numeric features

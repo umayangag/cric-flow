@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/umayangag/cric-app/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // ComputeSeasonalForm computes per-player seasonal form metrics (simple averages)
