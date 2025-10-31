@@ -1,7 +1,13 @@
 name: Go App CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
+    branches:
+      - main
     paths:
       - 'go-app/**'
       - '.github/workflows/go-app-ci.yml'
