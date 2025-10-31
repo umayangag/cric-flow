@@ -12,7 +12,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api run-scraper docker-build docker-run fmt vet test migrate build-migrate
+.PHONY: all build clean run-api run-scraper docker-build docker-run fmt fmt-check vet test migrate build-migrate
 
 all: build
 
@@ -35,8 +35,17 @@ run-api:
 run-scraper:
 	go run ./cmd/scraper --team="Sri Lanka" --from=2010-01-01 --to=2020-01-01
 
+# Format Go code to align with CI (gofumpt + golines)
 fmt:
-	go fmt ./...
+	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
+	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
+	gofumpt -w .
+	golines -w -m 120 .
+
+# Optional: check-only formatting status similar to CI
+fmt-check:
+	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
+	@gofumpt -l . | tee /dev/stderr | awk 'NR>0{exit 1} END{exit 0}'
 
 vet:
 	go vet ./...

@@ -159,7 +159,14 @@ up-all:
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
 # --- Formatting & hooks ---
-.PHONY: fmt-go fmt-py lint-go lint-py install-hooks
+.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks
+
+# Aggregate formatters for both components
+fmt: fmt-go fmt-py
+
+fmt-check:
+	$(MAKE) -C go-app fmt-check
+	$(MAKE) -C ml-service fmt-check
 
 fmt-go:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
@@ -175,7 +182,7 @@ fmt-py:
 	cd ml-service && isort . && black .
 
 lint-py:
-	cd ml-service && isort --check-only . && black --check .
+	cd ml-service && isort --check-only --diff . && black --check --diff .
 
 install-hooks:
 	git config core.hooksPath .githooks
