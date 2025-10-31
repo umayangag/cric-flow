@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/contracts"
-	"github.com/umayangag/cric-app/go-app/internal/db"
-	"github.com/umayangag/cric-app/go-app/internal/mlclient"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
 // simple session/toss/viscosity encoders for happy-path numeric features
@@ -188,7 +188,8 @@ func main() {
 		}
 		// prefer actual bowlers
 		if !candidatesByName(candidates)[br.name].IsBowler && pickedBowlers < 5 {
-			// allow part-time bowlers only after satisfying minimum? On happy path, we accept top wicket preds.
+			// Skip part-time bowlers until we satisfy minimum of 5 specialist bowlers
+			continue
 		}
 		selected[br.name] = true
 		pickedBowlers++

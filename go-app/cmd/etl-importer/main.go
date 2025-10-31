@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {
@@ -329,6 +329,7 @@ func atoiPtr(s string) *int {
 	}
 	return &v
 }
+
 func atof32Ptr(s string) *float32 {
 	if s == "" {
 		return nil
@@ -340,6 +341,7 @@ func atof32Ptr(s string) *float32 {
 	v := float32(f)
 	return &v
 }
+
 func strPtrOrNil(s string) *string {
 	if s == "" {
 		return nil

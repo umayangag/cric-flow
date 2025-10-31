@@ -1,7 +1,13 @@
 name: Go App CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
+    branches:
+      - main
     paths:
       - 'go-app/**'
       - '.github/workflows/go-app-ci.yml'
@@ -37,7 +43,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.24.x'
 
       - name: Install Go formatters (gofumpt, golines)
         run: |

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/umayangag/cric-app/go-app/internal/db"
+	pgx "github.com/jackc/pgx/v5"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {
@@ -98,7 +98,7 @@ func exportBatting(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
-	w.Write(
+	if err := w.Write(
 		[]string{
 			"runs",
 			"balls",
@@ -122,7 +122,9 @@ func exportBatting(ctx context.Context, path string) error {
 			"season_id",
 			"player_name",
 		},
-	)
+	); err != nil {
+		return err
+	}
 	for rows.Next() {
 		vals, err := scanRow(rows, 21)
 		if err != nil {
@@ -176,7 +178,7 @@ func exportBowling(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
-	w.Write(
+	if err := w.Write(
 		[]string{
 			"runs",
 			"balls",
@@ -198,7 +200,9 @@ func exportBowling(ctx context.Context, path string) error {
 			"season_id",
 			"player_name",
 		},
-	)
+	); err != nil {
+		return err
+	}
 	for rows.Next() {
 		vals, err := scanRow(rows, 19)
 		if err != nil {

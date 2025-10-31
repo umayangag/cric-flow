@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/umayangag/cric-app/go-app/internal/contracts"
-	"github.com/umayangag/cric-app/go-app/internal/db"
-	"github.com/umayangag/cric-app/go-app/internal/features"
-	"github.com/umayangag/cric-app/go-app/internal/mlclient"
-	"github.com/umayangag/cric-app/go-app/internal/scrape"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 
 	r := mux.NewRouter()
 	// Liveness
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 	// Readiness (checks DB connectivity)
@@ -80,34 +81,31 @@ func main() {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodPost)
 
-	// POST /scrape {"team":"Sri Lanka","from":"2010-01-01","to":"2010-02-01","limit":5}
-	r.HandleFunc("/scrape", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Team  string `json:"team"`
-			From  string `json:"from"`
-			To    string `json:"to"`
-			Limit int    `json:"limit"`
+	// Cricinfo scraping has been removed.
+
+	// POST /import/cricsheet {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
+	r.HandleFunc("/import/cricsheet", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Dir                  string `json:"dir"`
+			PlaceholdersWeather  bool   `json:"placeholders_weather"`
+			PlaceholdersFielding bool   `json:"placeholders_fielding"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			respondBadRequest(w, err)
-			return
-		}
-		if req.Team == "" {
-			req.Team = "Sri Lanka"
-		}
-		if req.From == "" {
-			req.From = "2010-01-01"
-		}
-		if req.To == "" {
-			req.To = "2010-02-01"
-		}
-		if req.Limit <= 0 {
-			req.Limit = 5
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.Dir) == "" {
+			body.Dir = "../data"
 		}
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			_ = scrape.Run(ctx, req.Team, req.From, req.To, req.Limit)
+			opts := &cricsheet.Options{
+				PlaceholdersWeather:  body.PlaceholdersWeather,
+				PlaceholdersFielding: body.PlaceholdersFielding,
+			}
+			if n, err := cricsheet.ImportDir(ctx, body.Dir, opts); err != nil {
+				log.Printf("cricsheet import failed: %v", err)
+			} else {
+				log.Printf("cricsheet import completed: %d files", n)
+			}
 		}()
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)

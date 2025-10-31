@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-app/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 )
 
 // Client calls the Python ML service.
@@ -29,7 +29,7 @@ func New() *Client {
 	return &Client{
 		BaseURL:   base,
 		HTTP:      &http.Client{Timeout: 20 * time.Second},
-		UserAgent: "cric-app-mlclient (+github.com/umayangag/cric-app)",
+		UserAgent: "cric-app-mlclient (+github.com/umayangag/cric-info-scrapers)",
 		Timeout:   20 * time.Second,
 	}
 }

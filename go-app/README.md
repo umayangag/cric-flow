@@ -1,12 +1,12 @@
-# Go Application (Scraper/ETL/API)
+# Go Application (Importer/ETL/API)
 
-Go services for scraping, preprocessing, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
+Go services for importing Cricsheet JSON, preprocessing, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
 
 Components:
-- `cmd/scraper`: CLI/service to scrape match lists and matches and upsert to DB.
-- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints).
+- `cmd/cricsheet-importer`: CLI to import Cricsheet JSON files into the DB (idempotent; optional placeholders).
+- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints, including `/import/cricsheet`).
 - `cmd/tools/migrate`: DB migration runner.
-- `internal/*`: packages for cricinfo parsing, contracts, repos, features, ML client, etc.
+- `internal/*`: packages for Cricsheet parsing, contracts, repos, features, ML client, etc.
 
 Prerequisites:
 - Go 1.25+
@@ -30,9 +30,11 @@ make build
 ```
 make run-api
 ```
-- Run the scraper with example flags:
+- Import Cricsheet JSON into the DB (from repo root or here):
 ```
-make run-scraper
+make -C .. cricsheet-import
+# or directly
+go run ./cmd/cricsheet-importer -dir=../data --placeholders-weather --placeholders-fielding
 ```
 - Apply DB migrations (uses env vars above):
 ```
