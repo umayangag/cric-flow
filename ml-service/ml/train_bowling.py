@@ -1,11 +1,12 @@
-import os
 import argparse
+import os
+
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.multioutput import MultiOutputRegressor
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.preprocessing import StandardScaler
 
 # Minimal training script to produce placeholder artifacts for bowling
 # It expects the Go export at ../../src/final_data/output/bowling_encoded.csv
@@ -21,7 +22,7 @@ FEATURE_COLS = [
     "cloud",
     "pressure",
     "viscosity",
-    "inning",           # batting_inning in contracts; export column is inning
+    "inning",  # batting_inning in contracts; export column is inning
     "bowling_session",
     "toss",
     "bowling_venue",
@@ -30,9 +31,9 @@ FEATURE_COLS = [
 ]
 
 TARGET_COLS = [
-    "runs",       # runs_conceded
-    "balls",      # deliveries
-    "wickets",    # wickets_taken
+    "runs",  # runs_conceded
+    "balls",  # deliveries
+    "wickets",  # wickets_taken
     # econ may be absent; derive if missing
 ]
 
@@ -96,7 +97,10 @@ def train_and_save(X, Y, out_dir: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=os.path.join("..", "..", "src", "final_data", "output", "bowling_encoded.csv"))
+    parser.add_argument(
+        "--csv",
+        default=os.path.join("..", "..", "src", "final_data", "output", "bowling_encoded.csv"),
+    )
     parser.add_argument("--out", default=os.path.join("..", "models"))
     args = parser.parse_args()
 

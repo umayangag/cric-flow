@@ -1,9 +1,10 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List, Optional
 import os
+from typing import List, Optional
+
 import joblib
 import numpy as np
+from fastapi import FastAPI
+from pydantic import BaseModel
 
 app = FastAPI(title="Cricket ML Service", version="0.2.0")
 
@@ -136,7 +137,17 @@ async def health():
 @app.post("/predict/batting", response_model=List[BattingPrediction])
 async def predict_batting(features: List[BattingFeatures]):
     if _bat_model is None:
-        return [BattingPrediction(runs_scored=0.0, balls_faced=0.0, fours_scored=0.0, sixes_scored=0.0, batting_position=0.0, strike_rate=0.0) for _ in features]
+        return [
+            BattingPrediction(
+                runs_scored=0.0,
+                balls_faced=0.0,
+                fours_scored=0.0,
+                sixes_scored=0.0,
+                batting_position=0.0,
+                strike_rate=0.0,
+            )
+            for _ in features
+        ]
 
     X = np.array([_batting_feature_vector(f) for f in features], dtype=float)
     if _bat_scaler is not None:
@@ -149,23 +160,38 @@ async def predict_batting(features: List[BattingFeatures]):
             # handle both 1D and 2D
             vals = row if np.ndim(row) == 1 else row.ravel()
             vals = list(vals) + [0.0] * max(0, 6 - len(vals))
-            preds.append(BattingPrediction(
-                runs_scored=float(vals[0]),
-                balls_faced=float(vals[1]),
-                fours_scored=float(vals[2]),
-                sixes_scored=float(vals[3]),
-                batting_position=float(vals[4]),
-                strike_rate=float(vals[5]),
-            ))
+            preds.append(
+                BattingPrediction(
+                    runs_scored=float(vals[0]),
+                    balls_faced=float(vals[1]),
+                    fours_scored=float(vals[2]),
+                    sixes_scored=float(vals[3]),
+                    batting_position=float(vals[4]),
+                    strike_rate=float(vals[5]),
+                )
+            )
         return preds
     except Exception:
-        return [BattingPrediction(runs_scored=0.0, balls_faced=0.0, fours_scored=0.0, sixes_scored=0.0, batting_position=0.0, strike_rate=0.0) for _ in features]
+        return [
+            BattingPrediction(
+                runs_scored=0.0,
+                balls_faced=0.0,
+                fours_scored=0.0,
+                sixes_scored=0.0,
+                batting_position=0.0,
+                strike_rate=0.0,
+            )
+            for _ in features
+        ]
 
 
 @app.post("/predict/bowling", response_model=List[BowlingPrediction])
 async def predict_bowling(features: List[BowlingFeatures]):
     if _bow_model is None:
-        return [BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features]
+        return [
+            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
+            for _ in features
+        ]
 
     X = np.array([_bowling_feature_vector(f) for f in features], dtype=float)
     if _bow_scaler is not None:
@@ -176,12 +202,17 @@ async def predict_bowling(features: List[BowlingFeatures]):
         for row in Y:
             vals = row if np.ndim(row) == 1 else row.ravel()
             vals = list(vals) + [0.0] * max(0, 4 - len(vals))
-            preds.append(BowlingPrediction(
-                runs_conceded=float(vals[0]),
-                deliveries=float(vals[1]),
-                wickets_taken=float(vals[2]),
-                econ=float(vals[3]),
-            ))
+            preds.append(
+                BowlingPrediction(
+                    runs_conceded=float(vals[0]),
+                    deliveries=float(vals[1]),
+                    wickets_taken=float(vals[2]),
+                    econ=float(vals[3]),
+                )
+            )
         return preds
     except Exception:
-        return [BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features]
+        return [
+            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
+            for _ in features
+        ]

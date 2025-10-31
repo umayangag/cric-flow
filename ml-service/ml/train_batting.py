@@ -1,11 +1,12 @@
-import os
 import argparse
+import os
+
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.multioutput import MultiOutputRegressor
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.preprocessing import StandardScaler
 
 # Minimal training script to produce placeholder artifacts compatible with app.main
 # It expects the Go export at ../../src/final_data/output/batting_encoded.csv
@@ -30,10 +31,10 @@ FEATURE_COLS = [
 ]
 
 TARGET_COLS = [
-    "runs",          # runs_scored
-    "balls",         # balls_faced
-    "fours",         # fours_scored
-    "sixes",         # sixes_scored
+    "runs",  # runs_scored
+    "balls",  # balls_faced
+    "fours",  # fours_scored
+    "sixes",  # sixes_scored
     "batting_position",
     # strike_rate may be absent; derive if missing
 ]
@@ -102,7 +103,10 @@ def train_and_save(X, Y, out_dir: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=os.path.join("..", "..", "src", "final_data", "output", "batting_encoded.csv"))
+    parser.add_argument(
+        "--csv",
+        default=os.path.join("..", "..", "src", "final_data", "output", "batting_encoded.csv"),
+    )
     parser.add_argument("--out", default=os.path.join("..", "models"))
     args = parser.parse_args()
 
