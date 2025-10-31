@@ -52,7 +52,6 @@ func TestParseMatchPage_MockFixture(t *testing.T) {
 	}
 }
 
-
 func TestParseMatchPage_RealishFixture(t *testing.T) {
 	f := filepath.Join("testdata", "scorecard_realish.html")
 	fh, err := os.Open(f)
@@ -75,7 +74,11 @@ func TestParseMatchPage_RealishFixture(t *testing.T) {
 		t.Errorf("expected venue and toss populated, got venue=%q toss=%q", mi.Venue, mi.Toss)
 	}
 	if mi.BattingSession == "" || mi.BowlingSession == "" {
-		t.Errorf("expected derived sessions from hours-of-play, got batting=%q bowling=%q", mi.BattingSession, mi.BowlingSession)
+		t.Errorf(
+			"expected derived sessions from hours-of-play, got batting=%q bowling=%q",
+			mi.BattingSession,
+			mi.BowlingSession,
+		)
 	}
 
 	if len(batting) < 2 {
@@ -89,7 +92,6 @@ func TestParseMatchPage_RealishFixture(t *testing.T) {
 		t.Fatalf("unexpected bowling: %+v", bowling)
 	}
 }
-
 
 func TestParseMatchPage_DNBFixture(t *testing.T) {
 	f := filepath.Join("testdata", "scorecard_dnb.html")
@@ -120,7 +122,6 @@ func TestParseMatchPage_DNBFixture(t *testing.T) {
 	}
 }
 
-
 func TestParseMatchPage_RainFixture(t *testing.T) {
 	f := filepath.Join("testdata", "scorecard_rain.html")
 	fh, err := os.Open(f)
@@ -134,7 +135,11 @@ func TestParseMatchPage_RainFixture(t *testing.T) {
 		t.Fatalf("ParseMatchPage error: %v", err)
 	}
 	if mi.BattingSession == "" || mi.BowlingSession == "" {
-		t.Errorf("expected sessions derived for rain fixture, got batting=%q bowling=%q", mi.BattingSession, mi.BowlingSession)
+		t.Errorf(
+			"expected sessions derived for rain fixture, got batting=%q bowling=%q",
+			mi.BattingSession,
+			mi.BowlingSession,
+		)
 	}
 	if len(batting) < 1 || len(bowling) < 1 {
 		t.Fatalf("expected some batting and bowling rows, got batting=%d bowling=%d", len(batting), len(bowling))

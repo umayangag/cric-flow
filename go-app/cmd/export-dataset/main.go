@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/csv"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-app/go-app/internal/db"
@@ -86,19 +86,51 @@ func exportBatting(ctx context.Context, path string) error {
 		LEFT JOIN player_form_data pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id`
 
 	rows, err := db.Pool.Query(ctx, q)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer rows.Close()
 	f, err := os.Create(path)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
-	w.Write([]string{"runs","balls","fours","sixes","batting_position","batting_consistency","batting_form","temp","wind","rain","humidity","cloud","pressure","viscosity","inning","batting_session","toss","batting_venue","batting_opposition","season_id","player_name"})
+	w.Write(
+		[]string{
+			"runs",
+			"balls",
+			"fours",
+			"sixes",
+			"batting_position",
+			"batting_consistency",
+			"batting_form",
+			"temp",
+			"wind",
+			"rain",
+			"humidity",
+			"cloud",
+			"pressure",
+			"viscosity",
+			"inning",
+			"batting_session",
+			"toss",
+			"batting_venue",
+			"batting_opposition",
+			"season_id",
+			"player_name",
+		},
+	)
 	for rows.Next() {
 		vals, err := scanRow(rows, 21)
-		if err != nil { return err }
-		if err := w.Write(vals); err != nil { return err }
+		if err != nil {
+			return err
+		}
+		if err := w.Write(vals); err != nil {
+			return err
+		}
 	}
 	return rows.Err()
 }
@@ -132,19 +164,49 @@ func exportBowling(ctx context.Context, path string) error {
 		LEFT JOIN player_form_data pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id`
 
 	rows, err := db.Pool.Query(ctx, q)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer rows.Close()
 	f, err := os.Create(path)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
-	w.Write([]string{"runs","balls","wickets","bowling_consistency","bowling_form","temp","wind","rain","humidity","cloud","pressure","viscosity","inning","bowling_session","toss","bowling_venue","bowling_opposition","season_id","player_name"})
+	w.Write(
+		[]string{
+			"runs",
+			"balls",
+			"wickets",
+			"bowling_consistency",
+			"bowling_form",
+			"temp",
+			"wind",
+			"rain",
+			"humidity",
+			"cloud",
+			"pressure",
+			"viscosity",
+			"inning",
+			"bowling_session",
+			"toss",
+			"bowling_venue",
+			"bowling_opposition",
+			"season_id",
+			"player_name",
+		},
+	)
 	for rows.Next() {
 		vals, err := scanRow(rows, 19)
-		if err != nil { return err }
-		if err := w.Write(vals); err != nil { return err }
+		if err != nil {
+			return err
+		}
+		if err := w.Write(vals); err != nil {
+			return err
+		}
 	}
 	return rows.Err()
 }
@@ -157,10 +219,15 @@ func scanRow(rows pgx.Rows, count int) ([]string, error) {
 		var v any
 		scan[i] = &v
 	}
-	if err := rows.Scan(scan...); err != nil { return nil, err }
+	if err := rows.Scan(scan...); err != nil {
+		return nil, err
+	}
 	for i := 0; i < count; i++ {
 		v := *(scan[i].(*any))
-		if v == nil { buf[i] = "" ; continue }
+		if v == nil {
+			buf[i] = ""
+			continue
+		}
 		switch t := v.(type) {
 		case []byte:
 			buf[i] = string(t)
@@ -186,11 +253,14 @@ func toString(v any) string {
 	case float64:
 		return floatToString(t)
 	case bool:
-		if t { return "1" } ; return "0"
+		if t {
+			return "1"
+		}
+		return "0"
 	default:
 		return ""
 	}
 }
 
-func intToString(i int) string { return fmt.Sprintf("%d", i) }
+func intToString(i int) string       { return fmt.Sprintf("%d", i) }
 func floatToString(f float64) string { return fmt.Sprintf("%g", f) }

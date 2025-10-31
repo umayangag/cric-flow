@@ -11,13 +11,13 @@ import (
 // value cannot be parsed as expected, it returns empty strings.
 //
 // Notes about the original logic:
-// - It expects a comma-separated string with at least 4 segments describing
-//   multiple intervals. In some cases a missing comma before "Interval" is
-//   fixed by inserting one (first occurrence).
-// - For innings 1, the batting and bowling sessions are taken from positions 1
-//   and 3 respectively; for other innings it is the reverse.
-// - The session token is extracted as the fourth whitespace-separated token
-//   within those segments (index 3), e.g., "Session 1: Morning" -> "Morning".
+//   - It expects a comma-separated string with at least 4 segments describing
+//     multiple intervals. In some cases a missing comma before "Interval" is
+//     fixed by inserting one (first occurrence).
+//   - For innings 1, the batting and bowling sessions are taken from positions 1
+//     and 3 respectively; for other innings it is the reverse.
+//   - The session token is extracted as the fourth whitespace-separated token
+//     within those segments (index 3), e.g., "Session 1: Morning" -> "Morning".
 func DeriveSessions(inning int, hours map[string]string) (string, string) {
 	if hours == nil {
 		return "", ""

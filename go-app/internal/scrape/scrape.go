@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"github.com/umayangag/cric-app/go-app/internal/cricinfo"
 	"github.com/umayangag/cric-app/go-app/internal/db"
@@ -26,11 +26,11 @@ func Run(ctx context.Context, teamName, fromISO, toISO string, limit int) error 
 		return err
 	}
 	client := cricinfo.NewClient()
-	max := len(items)
-	if limit > 0 && max > limit {
-		max = limit
+	maximum := len(items)
+	if limit > 0 && maximum > limit {
+		maximum = limit
 	}
-	for i := 0; i < max; i++ {
+	for i := 0; i < maximum; i++ {
 		it := items[i]
 		if it.MatchID == "" {
 			continue
@@ -67,10 +67,18 @@ func Run(ctx context.Context, teamName, fromISO, toISO string, limit int) error 
 			}
 		}
 		upd := &db.MatchInfoUpdate{}
-		if venueID != nil { upd.VenueID = venueID }
-		if v := strings.TrimSpace(mi.Toss); v != "" { upd.Toss = &v }
-		if v := strings.TrimSpace(mi.BattingSession); v != "" { upd.BattingSession = &v }
-		if v := strings.TrimSpace(mi.BowlingSession); v != "" { upd.BowlingSession = &v }
+		if venueID != nil {
+			upd.VenueID = venueID
+		}
+		if v := strings.TrimSpace(mi.Toss); v != "" {
+			upd.Toss = &v
+		}
+		if v := strings.TrimSpace(mi.BattingSession); v != "" {
+			upd.BattingSession = &v
+		}
+		if v := strings.TrimSpace(mi.BowlingSession); v != "" {
+			upd.BowlingSession = &v
+		}
 		// Opposition (from match list)
 		if oppName := strings.TrimSpace(it.Opposition); oppName != "" {
 			if oid, e := db.GetOrCreateOpposition(ctx, oppName); e == nil {
@@ -103,7 +111,19 @@ func Run(ctx context.Context, teamName, fromISO, toISO string, limit int) error 
 
 		// Weather
 		for _, w := range weather {
-			ww := &db.Weather{MatchID: mid, Session: w.Session, Temp: w.Temp, Feels: w.Feels, Wind: w.Wind, Gust: w.Gust, Rain: w.Rain, Humidity: w.Humidity, Cloud: w.Cloud, Pressure: w.Pressure, Viscosity: w.Viscosity}
+			ww := &db.Weather{
+				MatchID:   mid,
+				Session:   w.Session,
+				Temp:      w.Temp,
+				Feels:     w.Feels,
+				Wind:      w.Wind,
+				Gust:      w.Gust,
+				Rain:      w.Rain,
+				Humidity:  w.Humidity,
+				Cloud:     w.Cloud,
+				Pressure:  w.Pressure,
+				Viscosity: w.Viscosity,
+			}
 			if err := db.UpsertWeather(ctx, ww); err != nil {
 				log.Printf("warn: upsert weather failed match_id=%d session=%s: %v", mid, w.Session, err)
 			}
@@ -112,31 +132,95 @@ func Run(ctx context.Context, teamName, fromISO, toISO string, limit int) error 
 		// Batting
 		for idx, br := range batting {
 			pid, e := db.GetOrCreateByName(ctx, br.PlayerName)
-			if e != nil { log.Printf("warn: player get/create %q: %v", br.PlayerName, e); continue }
+			if e != nil {
+				log.Printf("warn: player get/create %q: %v", br.PlayerName, e)
+				continue
+			}
 			pos := idx + 1
 			desc := br.Description
-			runs := br.Runs; balls := br.Balls; mins := br.Minutes; fours := br.Fours; sixes := br.Sixes
+			runs := br.Runs
+			balls := br.Balls
+			mins := br.Minutes
+			fours := br.Fours
+			sixes := br.Sixes
 			sr := br.StrikeRate
-			bb := &db.Batting{MatchID: mid, PlayerID: pid, Description: &desc, Runs: &runs, Balls: &balls, Minutes: &mins, Fours: &fours, Sixes: &sixes, StrikeRate: &sr, BattingPosition: &pos}
-			if err := db.UpsertBatting(ctx, bb); err != nil { log.Printf("warn: upsert batting %q: %v", br.PlayerName, err) }
+			bb := &db.Batting{
+				MatchID:         mid,
+				PlayerID:        pid,
+				Description:     &desc,
+				Runs:            &runs,
+				Balls:           &balls,
+				Minutes:         &mins,
+				Fours:           &fours,
+				Sixes:           &sixes,
+				StrikeRate:      &sr,
+				BattingPosition: &pos,
+			}
+			if err := db.UpsertBatting(ctx, bb); err != nil {
+				log.Printf("warn: upsert batting %q: %v", br.PlayerName, err)
+			}
 		}
 
 		// Bowling
 		for _, bw := range bowling {
 			pid, e := db.GetOrCreateByName(ctx, bw.PlayerName)
-			if e != nil { log.Printf("warn: player get/create %q: %v", bw.PlayerName, e); continue }
-			ov := bw.Overs; bl := bw.Balls; md := bw.Maidens; rn := bw.Runs; wk := bw.Wickets; dt := bw.Dots; fr := bw.Fours; sx := bw.Sixes; ec := bw.Econ; wd := bw.Wides; nb := bw.NoBalls
-			bb := &db.Bowling{MatchID: mid, PlayerID: pid, Overs: &ov, Balls: &bl, Maidens: &md, Runs: &rn, Wickets: &wk, Dots: &dt, Fours: &fr, Sixes: &sx, Econ: &ec, Wides: &wd, NoBalls: &nb}
-			if err := db.UpsertBowling(ctx, bb); err != nil { log.Printf("warn: upsert bowling %q: %v", bw.PlayerName, err) }
+			if e != nil {
+				log.Printf("warn: player get/create %q: %v", bw.PlayerName, e)
+				continue
+			}
+			ov := bw.Overs
+			bl := bw.Balls
+			md := bw.Maidens
+			rn := bw.Runs
+			wk := bw.Wickets
+			dt := bw.Dots
+			fr := bw.Fours
+			sx := bw.Sixes
+			ec := bw.Econ
+			wd := bw.Wides
+			nb := bw.NoBalls
+			bb := &db.Bowling{
+				MatchID:  mid,
+				PlayerID: pid,
+				Overs:    &ov,
+				Balls:    &bl,
+				Maidens:  &md,
+				Runs:     &rn,
+				Wickets:  &wk,
+				Dots:     &dt,
+				Fours:    &fr,
+				Sixes:    &sx,
+				Econ:     &ec,
+				Wides:    &wd,
+				NoBalls:  &nb,
+			}
+			if err := db.UpsertBowling(ctx, bb); err != nil {
+				log.Printf("warn: upsert bowling %q: %v", bw.PlayerName, err)
+			}
 		}
 
 		// Fielding
 		for _, fr := range fielding {
 			pid, e := db.GetOrCreateByName(ctx, fr.PlayerName)
-			if e != nil { log.Printf("warn: player get/create %q: %v", fr.PlayerName, e); continue }
-			ca := fr.Catches; ro := fr.RunOuts; dc := fr.DroppedCatches; mr := fr.MissedRunOuts
-			ff := &db.Fielding{MatchID: mid, PlayerID: pid, Catches: &ca, RunOuts: &ro, DroppedCatches: &dc, MissedRunOuts: &mr}
-			if err := db.UpsertFielding(ctx, ff); err != nil { log.Printf("warn: upsert fielding %q: %v", fr.PlayerName, err) }
+			if e != nil {
+				log.Printf("warn: player get/create %q: %v", fr.PlayerName, e)
+				continue
+			}
+			ca := fr.Catches
+			ro := fr.RunOuts
+			dc := fr.DroppedCatches
+			mr := fr.MissedRunOuts
+			ff := &db.Fielding{
+				MatchID:        mid,
+				PlayerID:       pid,
+				Catches:        &ca,
+				RunOuts:        &ro,
+				DroppedCatches: &dc,
+				MissedRunOuts:  &mr,
+			}
+			if err := db.UpsertFielding(ctx, ff); err != nil {
+				log.Printf("warn: upsert fielding %q: %v", fr.PlayerName, err)
+			}
 		}
 	}
 	return nil
@@ -148,10 +232,19 @@ func buildResultsURL(teamName, from, to string) (string, error) {
 		log.Printf("note: team %q not in map; defaulting to Sri Lanka (id=8)", teamName)
 	}
 	fromStr, err := toCricinfoDate(from)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	toStr, err := toCricinfoDate(to)
-	if err != nil { return "", err }
-	return fmt.Sprintf("https://stats.espncricinfo.com/ci/engine/team/%d.html?class=2;spanmax1=%s;spanmin1=%s;spanval1=span;template=results;type=team;view=innings", teamID, toStr, fromStr), nil
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		"https://stats.espncricinfo.com/ci/engine/team/%d.html?class=2;spanmax1=%s;spanmin1=%s;spanval1=span;template=results;type=team;view=innings",
+		teamID,
+		toStr,
+		fromStr,
+	), nil
 }
 
 func toCricinfoDate(iso string) (string, error) {
@@ -165,7 +258,9 @@ func cricinfoDate(iso string) (string, error) { return toCricinfoDateImpl(iso) }
 func toCricinfoDateImpl(iso string) (string, error) {
 	// input: YYYY-MM-DD -> output: DD+Mon+YYYY (e.g., 2010-01-01 -> 01+Jan+2010)
 	t, err := time.Parse("2006-01-02", iso)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	return t.Format("02+Jan+2006"), nil
 }
 
@@ -176,11 +271,13 @@ func parseInt64(s string) (int64, error) {
 // parseDateToISO tries common Cricinfo date formats and returns YYYY-MM-DD.
 func parseDateToISO(s string) (string, bool) {
 	ss := strings.TrimSpace(s)
-	if ss == "" { return "", false }
+	if ss == "" {
+		return "", false
+	}
 	layouts := []string{
-		"Jan 2, 2006",   // e.g., Jan 5, 2019
-		"2 Jan 2006",    // e.g., 5 Jan 2019
-		"2006-01-02",    // ISO already
+		"Jan 2, 2006", // e.g., Jan 5, 2019
+		"2 Jan 2006",  // e.g., 5 Jan 2019
+		"2006-01-02",  // ISO already
 	}
 	for _, layout := range layouts {
 		if t, err := time.Parse(layout, ss); err == nil {
@@ -200,7 +297,9 @@ func parseDateToISO(s string) (string, bool) {
 
 // yearFromISO returns YYYY from YYYY-MM-DD input.
 func yearFromISO(iso string) string {
-	if len(iso) >= 4 { return iso[:4] }
+	if len(iso) >= 4 {
+		return iso[:4]
+	}
 	return ""
 }
 

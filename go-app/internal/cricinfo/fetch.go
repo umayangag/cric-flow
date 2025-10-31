@@ -29,10 +29,14 @@ func NewClient() *Client {
 		Limiter:  time.Tick(250 * time.Millisecond), // ~4 req/s
 		MaxRetry: 3,
 		Backoff: func(attempt int) time.Duration {
-			if attempt <= 0 { return 0 }
+			if attempt <= 0 {
+				return 0
+			}
 			// exponential backoff with jitter-like floor
 			d := time.Duration(250*attempt) * time.Millisecond
-			if d > 2*time.Second { d = 2*time.Second }
+			if d > 2*time.Second {
+				d = 2 * time.Second
+			}
 			return d
 		},
 		UserAgent: "cric-app-scraper (+github.com/umayangag/cric-app)",
@@ -41,7 +45,9 @@ func NewClient() *Client {
 
 // Get fetches a URL with retry/backoff. It returns the response body as a ReadCloser; caller must Close.
 func (c *Client) Get(url string) (io.ReadCloser, error) {
-	if c.HTTP == nil { c = NewClient() }
+	if c.HTTP == nil {
+		c = NewClient()
+	}
 	var lastErr error
 	for attempt := 0; attempt <= c.MaxRetry; attempt++ {
 		if c.Limiter != nil {

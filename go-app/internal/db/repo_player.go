@@ -20,8 +20,12 @@ func GetByName(ctx context.Context, name string) (*Player, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	row := Pool.QueryRow(ctx, `SELECT id, player_name, is_wicket_keeper, is_retired, batting_consistency, bowling_consistency
-		FROM player WHERE player_name = $1`, name)
+	row := Pool.QueryRow(
+		ctx,
+		`SELECT id, player_name, is_wicket_keeper, is_retired, batting_consistency, bowling_consistency
+		FROM player WHERE player_name = $1`,
+		name,
+	)
 	p := &Player{}
 	if err := row.Scan(&p.ID, &p.Name, &p.IsWicketKeeper, &p.IsRetired, &p.BattingConsistency, &p.BowlingConsistency); err != nil {
 		return nil, err

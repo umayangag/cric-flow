@@ -18,7 +18,9 @@ type Fielding struct {
 
 // UpsertFielding inserts or updates fielding_data by (match_id, player_id).
 func UpsertFielding(ctx context.Context, f *Fielding) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
 	_, err := Pool.Exec(ctx, `INSERT INTO fielding_data(
 		match_id, player_id, catches, run_outs, dropped_catches, missed_run_outs)
 		VALUES($1,$2,$3,$4,$5,$6)

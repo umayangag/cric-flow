@@ -15,12 +15,6 @@ import (
 	"github.com/umayangag/cric-app/go-app/internal/mlclient"
 )
 
-// ranking records (package-scope so helper functions can reference them)
-type bowlRank struct {
-	name string
-	wkts float32
-}
-
 // simple session/toss/viscosity encoders for happy-path numeric features
 func encodeSession(s string) int {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -87,8 +81,12 @@ func main() {
 	var inning int
 	var battingSession, bowlingSession, toss string
 	var seasonID, venueID, oppositionID *int64
-	row := db.Pool.QueryRow(ctx, `SELECT inning, batting_session, bowling_session, toss, season_id, venue_id, opposition_id
-		FROM match_details WHERE match_id = $1`, matchID)
+	row := db.Pool.QueryRow(
+		ctx,
+		`SELECT inning, batting_session, bowling_session, toss, season_id, venue_id, opposition_id
+		FROM match_details WHERE match_id = $1`,
+		matchID,
+	)
 	if err := row.Scan(&inning, &battingSession, &bowlingSession, &toss, &seasonID, &venueID, &oppositionID); err != nil {
 		log.Fatalf("load match_details(%d): %v", matchID, err)
 	}
@@ -278,8 +276,13 @@ type wx struct {
 }
 
 func weatherRow(ctx context.Context, matchID int64, session string) wx {
-	row := db.Pool.QueryRow(ctx, `SELECT COALESCE(temp,0), COALESCE(wind,0), COALESCE(rain,0), COALESCE(humidity,0), COALESCE(cloud,0), COALESCE(pressure,0), COALESCE(viscosity,'')
-		FROM weather_data WHERE match_id = $1 AND session = $2`, matchID, session)
+	row := db.Pool.QueryRow(
+		ctx,
+		`SELECT COALESCE(temp,0), COALESCE(wind,0), COALESCE(rain,0), COALESCE(humidity,0), COALESCE(cloud,0), COALESCE(pressure,0), COALESCE(viscosity,'')
+		FROM weather_data WHERE match_id = $1 AND session = $2`,
+		matchID,
+		session,
+	)
 	var w wx
 	_ = row.Scan(&w.Temp, &w.Wind, &w.Rain, &w.Humidity, &w.Cloud, &w.Pressure, &w.Viscosity)
 	return w
@@ -334,7 +337,12 @@ func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool
 	if !batting {
 		col = "bowling_form"
 	}
-	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_form_data WHERE player_id=$1 AND season_id=$2`, col), playerID, *seasonID)
+	row := db.Pool.QueryRow(
+		ctx,
+		fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_form_data WHERE player_id=$1 AND season_id=$2`, col),
+		playerID,
+		*seasonID,
+	)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0
@@ -350,7 +358,12 @@ func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool
 	if !batting {
 		col = "bowling_venue"
 	}
-	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_venue_data WHERE player_id=$1 AND venue_id=$2`, col), playerID, *venueID)
+	row := db.Pool.QueryRow(
+		ctx,
+		fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_venue_data WHERE player_id=$1 AND venue_id=$2`, col),
+		playerID,
+		*venueID,
+	)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0
@@ -366,7 +379,15 @@ func loadOpposition(ctx context.Context, playerID int64, oppositionID *int64, ba
 	if !batting {
 		col = "bowling_opposition"
 	}
-	row := db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_opposition_data WHERE player_id=$1 AND opposition_id=$2`, col), playerID, *oppositionID)
+	row := db.Pool.QueryRow(
+		ctx,
+		fmt.Sprintf(
+			`SELECT COALESCE(%s,0)::real FROM player_opposition_data WHERE player_id=$1 AND opposition_id=$2`,
+			col,
+		),
+		playerID,
+		*oppositionID,
+	)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0

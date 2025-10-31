@@ -7,25 +7,27 @@ import (
 
 // Bowling represents a bowling_data row.
 type Bowling struct {
-	ID        int64
-	MatchID   int64
-	PlayerID  int64
-	Overs     *float32
-	Balls     *int
-	Maidens   *int
-	Runs      *int
-	Wickets   *int
-	Dots      *int
-	Fours     *int
-	Sixes     *int
-	Econ      *float32
-	Wides     *int
-	NoBalls   *int
+	ID       int64
+	MatchID  int64
+	PlayerID int64
+	Overs    *float32
+	Balls    *int
+	Maidens  *int
+	Runs     *int
+	Wickets  *int
+	Dots     *int
+	Fours    *int
+	Sixes    *int
+	Econ     *float32
+	Wides    *int
+	NoBalls  *int
 }
 
 // UpsertBowling inserts or updates bowling_data by (match_id, player_id).
 func UpsertBowling(ctx context.Context, b *Bowling) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
 	_, err := Pool.Exec(ctx, `INSERT INTO bowling_data(
 		match_id, player_id, overs, balls, maidens, runs, wickets, dots, fours, sixes, econ, wides, no_balls)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)

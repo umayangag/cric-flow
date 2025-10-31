@@ -34,26 +34,26 @@ type BattingRow struct {
 // BowlingRow represents a single bowler line from the scorecard.
 type BowlingRow struct {
 	PlayerName string
-	Overs     float32
-	Balls     int
-	Maidens   int
-	Runs      int
-	Wickets   int
-	Dots      int
-	Fours     int
-	Sixes     int
-	Econ      float32
-	Wides     int
-	NoBalls   int
+	Overs      float32
+	Balls      int
+	Maidens    int
+	Runs       int
+	Wickets    int
+	Dots       int
+	Fours      int
+	Sixes      int
+	Econ       float32
+	Wides      int
+	NoBalls    int
 }
 
 // FieldingRow aggregates per-player fielding stats.
 type FieldingRow struct {
-	PlayerName      string
-	Catches         int
-	RunOuts         int
-	DroppedCatches  int
-	MissedRunOuts   int
+	PlayerName     string
+	Catches        int
+	RunOuts        int
+	DroppedCatches int
+	MissedRunOuts  int
 }
 
 // SessionWeather contains weather-like attributes for a given session label.
@@ -72,19 +72,28 @@ type SessionWeather struct {
 
 // ParseMatchPage parses a Cricinfo match scorecard HTML and returns structured data.
 // It supports both our mock fixture selectors and a best-effort set of selectors for real Cricinfo pages.
-func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []BowlingRow, []FieldingRow, []SessionWeather, error) {
+func ParseMatchPage(
+	r io.Reader,
+	matchID int64,
+) (MatchInfo, []BattingRow, []BowlingRow, []FieldingRow, []SessionWeather, error) {
 	doc, err := goquery.NewDocumentFromReader(r)
-	if err != nil { return MatchInfo{}, nil, nil, nil, nil, err }
+	if err != nil {
+		return MatchInfo{}, nil, nil, nil, nil, err
+	}
 
 	mi := MatchInfo{MatchID: matchID}
 	// 1) Venue & Toss: try mock fixture first, then real-page fallbacks (label-based search)
 	mi.Venue = strings.TrimSpace(doc.Find("#match-meta .venue").First().Text())
 	mi.Toss = strings.TrimSpace(doc.Find("#match-meta .toss").First().Text())
 	if mi.Venue == "" {
-		if v := extractMetaByLabel(doc, "Venue"); v != "" { mi.Venue = v }
+		if v := extractMetaByLabel(doc, "Venue"); v != "" {
+			mi.Venue = v
+		}
 	}
 	if mi.Toss == "" {
-		if v := extractMetaByLabel(doc, "Toss"); v != "" { mi.Toss = v }
+		if v := extractMetaByLabel(doc, "Toss"); v != "" {
+			mi.Toss = v
+		}
 	}
 
 	// 2) Sessions: mock fixture explicit span; otherwise, derive from Hours of play label text
@@ -103,13 +112,19 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 		label, _ := s.Attr("data-label")
 		getInt := func(sel string) *int {
 			v := strings.TrimSpace(s.Find(sel).First().Text())
-			if v == "" { return nil }
-			if n, err := strconv.Atoi(v); err == nil { return &n }
+			if v == "" {
+				return nil
+			}
+			if n, err := strconv.Atoi(v); err == nil {
+				return &n
+			}
 			return nil
 		}
 		getStr := func(sel string) *string {
 			v := strings.TrimSpace(s.Find(sel).First().Text())
-			if v == "" { return nil }
+			if v == "" {
+				return nil
+			}
 			return &v
 		}
 		w := SessionWeather{
@@ -134,10 +149,16 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 		// Fallback 1: class-based realish fixture
 		doc.Find("table.batting-table tbody tr").Each(func(i int, tr *goquery.Selection) {
 			cells := tdTexts(tr)
-			if len(cells) < 6 { return }
+			if len(cells) < 6 {
+				return
+			}
 			name := strings.TrimSpace(firstNonEmpty(tr, "a, .ci-player, .player, span"))
-			if name == "" { name = strings.TrimSpace(cells[0]) }
-			if name == "" { return }
+			if name == "" {
+				name = strings.TrimSpace(cells[0])
+			}
+			if name == "" {
+				return
+			}
 			br := BattingRow{
 				PlayerName:      name,
 				Description:     "",
@@ -169,7 +190,9 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 				StrikeRate:      atof(text(".sr")),
 				BattingPosition: i + 1,
 			}
-			if br.PlayerName != "" { batting = append(batting, br) }
+			if br.PlayerName != "" {
+				batting = append(batting, br)
+			}
 		})
 	}
 
@@ -180,10 +203,16 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 		// Fallback 1: class-based realish fixture
 		doc.Find("table.bowling-table tbody tr").Each(func(_ int, tr *goquery.Selection) {
 			cells := tdTexts(tr)
-			if len(cells) < 6 { return }
+			if len(cells) < 6 {
+				return
+			}
 			name := strings.TrimSpace(firstNonEmpty(tr, "a, .ci-player, .player, span"))
-			if name == "" { name = strings.TrimSpace(cells[0]) }
-			if name == "" { return }
+			if name == "" {
+				name = strings.TrimSpace(cells[0])
+			}
+			if name == "" {
+				return
+			}
 			bw := BowlingRow{
 				PlayerName: name,
 				Overs:      atof32Safe(cells[1]),
@@ -209,19 +238,21 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 			atof := func(s string) float32 { f, _ := strconv.ParseFloat(s, 32); return float32(f) }
 			bw := BowlingRow{
 				PlayerName: text(".player"),
-				Overs:     atof(text(".overs")),
-				Balls:     atoi(text(".balls")),
-				Maidens:   atoi(text(".maidens")),
-				Runs:      atoi(text(".runs")),
-				Wickets:   atoi(text(".wickets")),
-				Dots:      atoi(text(".dots")),
-				Fours:     atoi(text(".fours")),
-				Sixes:     atoi(text(".sixes")),
-				Econ:      atof(text(".econ")),
-				Wides:     atoi(text(".wides")),
-				NoBalls:   atoi(text(".noballs")),
+				Overs:      atof(text(".overs")),
+				Balls:      atoi(text(".balls")),
+				Maidens:    atoi(text(".maidens")),
+				Runs:       atoi(text(".runs")),
+				Wickets:    atoi(text(".wickets")),
+				Dots:       atoi(text(".dots")),
+				Fours:      atoi(text(".fours")),
+				Sixes:      atoi(text(".sixes")),
+				Econ:       atof(text(".econ")),
+				Wides:      atoi(text(".wides")),
+				NoBalls:    atoi(text(".noballs")),
 			}
-			if bw.PlayerName != "" { bowling = append(bowling, bw) }
+			if bw.PlayerName != "" {
+				bowling = append(bowling, bw)
+			}
 		})
 	}
 
@@ -237,7 +268,9 @@ func ParseMatchPage(r io.Reader, matchID int64) (MatchInfo, []BattingRow, []Bowl
 			DroppedCatches: atoi(text(".dropped")),
 			MissedRunOuts:  atoi(text(".missed")),
 		}
-		if fr.PlayerName != "" { fielding = append(fielding, fr) }
+		if fr.PlayerName != "" {
+			fielding = append(fielding, fr)
+		}
 	})
 
 	return mi, batting, bowling, fielding, weather, nil
@@ -263,7 +296,10 @@ func extractMetaByLabel(doc *goquery.Document, label string) string {
 			idx := strings.Index(text, ":")
 			if idx >= 0 && idx+1 < len(text) {
 				val := strings.TrimSpace(text[idx+1:])
-				if val != "" { found = val; return false }
+				if val != "" {
+					found = val
+					return false
+				}
 			}
 		}
 		return true
@@ -291,7 +327,9 @@ func extractHoursMap(doc *goquery.Document) map[string]string {
 		}
 		return true
 	})
-	if hours == "" { return nil }
+	if hours == "" {
+		return nil
+	}
 	return map[string]string{"Hours of play (local time)": hours}
 }
 
@@ -308,10 +346,16 @@ func parseBattingReal(doc *goquery.Document) []BattingRow {
 		tbl.Find("tbody tr").Each(func(_ int, tr *goquery.Selection) {
 			cells := tdTexts(tr)
 			// Real pages often have 6 columns for batting (name + R, B, 4s, 6s, SR)
-			if len(cells) < 6 { return }
+			if len(cells) < 6 {
+				return
+			}
 			name := strings.TrimSpace(firstNonEmpty(tr, "a, .ci-player, .player, span"))
-			if name == "" { name = strings.TrimSpace(cells[0]) }
-			if name == "" { return }
+			if name == "" {
+				name = strings.TrimSpace(cells[0])
+			}
+			if name == "" {
+				return
+			}
 			pos++
 			br := BattingRow{
 				PlayerName:      name,
@@ -340,10 +384,16 @@ func parseBowlingReal(doc *goquery.Document) []BowlingRow {
 		}
 		tbl.Find("tbody tr").Each(func(_ int, tr *goquery.Selection) {
 			cells := tdTexts(tr)
-			if len(cells) < 8 { return }
+			if len(cells) < 8 {
+				return
+			}
 			name := strings.TrimSpace(firstNonEmpty(tr, "a, .ci-player, .player, span"))
-			if name == "" { name = strings.TrimSpace(cells[0]) }
-			if name == "" { return }
+			if name == "" {
+				name = strings.TrimSpace(cells[0])
+			}
+			if name == "" {
+				return
+			}
 			bw := BowlingRow{
 				PlayerName: name,
 				Overs:      atof32Safe(pickByHeader(headers, cells, "o")),
@@ -385,20 +435,38 @@ func tdTexts(tr *goquery.Selection) []string {
 
 func hasAll(hay []string, needles []string) bool {
 	m := map[string]bool{}
-	for _, h := range hay { m[h] = true }
-	for _, n := range needles { if !containsPrefixKey(m, n) { return false } }
+	for _, h := range hay {
+		m[h] = true
+	}
+	for _, n := range needles {
+		if !containsPrefixKey(m, n) {
+			return false
+		}
+	}
 	return true
 }
 
 func containsPrefixKey(m map[string]bool, key string) bool {
 	// consider minor variations like "sr", "s/r", "strike rate"
 	for k := range m {
-		if k == key { return true }
-		if key == "sr" && (strings.Contains(k, "sr") || strings.Contains(k, "strike")) { return true }
-		if key == "o" && (k == "o" || strings.HasPrefix(k, "o")) { return true }
-		if key == "r" && (k == "r" || k == "runs") { return true }
-		if key == "b" && (k == "b" || k == "balls") { return true }
-		if key == "econ" && (strings.Contains(k, "econ") || strings.Contains(k, "economy")) { return true }
+		if k == key {
+			return true
+		}
+		if key == "sr" && (strings.Contains(k, "sr") || strings.Contains(k, "strike")) {
+			return true
+		}
+		if key == "o" && (k == "o" || strings.HasPrefix(k, "o")) {
+			return true
+		}
+		if key == "r" && (k == "r" || k == "runs") {
+			return true
+		}
+		if key == "b" && (k == "b" || k == "balls") {
+			return true
+		}
+		if key == "econ" && (strings.Contains(k, "econ") || strings.Contains(k, "economy")) {
+			return true
+		}
 	}
 	return false
 }
@@ -407,7 +475,9 @@ func pickByHeader(headers, cells []string, key string) string {
 	// find the column index whose header matches the key (loosely)
 	for i, h := range headers {
 		if containsPrefixKey(map[string]bool{h: true}, key) {
-			if i < len(cells) { return cells[i] }
+			if i < len(cells) {
+				return cells[i]
+			}
 		}
 	}
 	return ""
@@ -420,7 +490,9 @@ func pickByHeader(headers, cells []string, key string) string {
 func pickCellByHeaderGuess(cells []string, hints []string) string {
 	for _, c := range cells {
 		cv := strings.TrimSpace(c)
-		if cv == "" { continue }
+		if cv == "" {
+			continue
+		}
 		// accept simple ints (ignore floats here)
 		if _, err := strconv.Atoi(cv); err == nil {
 			return cv
@@ -433,11 +505,17 @@ func firstNonEmpty(s *goquery.Selection, selector string) string {
 	var out string
 	s.Find(selector).EachWithBreak(func(_ int, el *goquery.Selection) bool {
 		v := strings.TrimSpace(el.Text())
-		if v != "" { out = v; return false }
+		if v != "" {
+			out = v
+			return false
+		}
 		return true
 	})
 	return out
 }
 
 func atoiSafe(s string) int { n, _ := strconv.Atoi(strings.TrimSpace(s)); return n }
-func atof32Safe(s string) float32 { f, _ := strconv.ParseFloat(strings.TrimSpace(s), 32); return float32(f) }
+func atof32Safe(s string) float32 {
+	f, _ := strconv.ParseFloat(strings.TrimSpace(s), 32)
+	return float32(f)
+}

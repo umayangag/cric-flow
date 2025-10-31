@@ -8,9 +8,9 @@ import (
 // Weather represents a weather_data row.
 // Nullable numeric/text fields use pointers; nil means unknown/no update on upsert when keeping existing.
 type Weather struct {
-	ID        int64   // not used on upsert
-	MatchID   int64   // required
-	Session   string  // required, composite key with MatchID
+	ID        int64  // not used on upsert
+	MatchID   int64  // required
+	Session   string // required, composite key with MatchID
 	Temp      *int
 	Feels     *int
 	Wind      *int
@@ -24,7 +24,9 @@ type Weather struct {
 
 // UpsertWeather inserts or updates weather_data by (match_id, session).
 func UpsertWeather(ctx context.Context, w *Weather) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
 	// On conflict update only provided fields; if nil, keep existing using COALESCE pattern.
 	_, err := Pool.Exec(ctx, `INSERT INTO weather_data(
 		match_id, session, temp, feels, wind, gust, rain, humidity, cloud, pressure, viscosity)

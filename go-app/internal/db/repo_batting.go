@@ -22,7 +22,9 @@ type Batting struct {
 
 // UpsertBatting inserts or updates batting_data by (match_id, player_id).
 func UpsertBatting(ctx context.Context, b *Batting) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
 	_, err := Pool.Exec(ctx, `INSERT INTO batting_data(
 		match_id, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)

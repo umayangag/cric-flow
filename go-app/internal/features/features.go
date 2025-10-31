@@ -12,13 +12,17 @@ import (
 // seasonal form, using available tables. It is idempotent.
 func ComputeSeasonalForm(ctx context.Context, seasonName string) error {
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil { return err }
+		if _, err := db.Connect(ctx); err != nil {
+			return err
+		}
 	}
 	// Ensure season exists and get its id when provided; if blank, compute for all seasons present in match_details.
 	var seasonIDFilter string
 	if seasonName != "" {
 		sid, err := db.GetOrCreateSeason(ctx, seasonName)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		seasonIDFilter = fmt.Sprintf("AND md.season_id = %d", sid)
 	}
 	// Compute batting_form as AVG(runs) per player x season; bowling_form as AVG(wickets) per player x season.
@@ -55,7 +59,9 @@ func ComputeSeasonalForm(ctx context.Context, seasonName string) error {
 // batting_venue: AVG(runs) for batter at venue; bowling_venue: AVG(wickets) for bowler at venue.
 func ComputeVenueEffects(ctx context.Context) error {
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil { return err }
+		if _, err := db.Connect(ctx); err != nil {
+			return err
+		}
 	}
 	q := `
 	WITH batting AS (
@@ -90,7 +96,9 @@ func ComputeVenueEffects(ctx context.Context) error {
 // batting_opposition: AVG(runs); bowling_opposition: AVG(wickets).
 func ComputeOppositionEffects(ctx context.Context) error {
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil { return err }
+		if _, err := db.Connect(ctx); err != nil {
+			return err
+		}
 	}
 	q := `
 	WITH batting AS (
@@ -125,7 +133,9 @@ func ComputeOppositionEffects(ctx context.Context) error {
 // using population standard deviation of runs/wickets across all matches for the player.
 func UpdatePlayerConsistency(ctx context.Context) error {
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil { return err }
+		if _, err := db.Connect(ctx); err != nil {
+			return err
+		}
 	}
 	// Lower stddev implies more consistency; we can store inverse or keep raw stddev.
 	// Here we keep raw stddev and let downstream consumers transform as needed.
