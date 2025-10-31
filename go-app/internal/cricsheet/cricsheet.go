@@ -11,21 +11,21 @@ import (
 // Structures matching Cricsheet v1.1 JSON (subset we need)
 
 type Match struct {
-	Info    Info       `json:"info"`
-	Innings []Innings  `json:"innings"`
+	Info    Info      `json:"info"`
+	Innings []Innings `json:"innings"`
 }
 
 type Info struct {
-	BallsPerOver int           `json:"balls_per_over"`
-	Dates        []string      `json:"dates"`
-	MatchType    string        `json:"match_type"`
-	Teams        []string      `json:"teams"`
-	Venue        string        `json:"venue"`
-	City         string        `json:"city"`
-	Season       string        `json:"season"`
-	Event        *Event        `json:"event"`
-	Toss         *Toss         `json:"toss"`
-	Outcome      *Outcome      `json:"outcome"`
+	BallsPerOver int      `json:"balls_per_over"`
+	Dates        []string `json:"dates"`
+	MatchType    string   `json:"match_type"`
+	Teams        []string `json:"teams"`
+	Venue        string   `json:"venue"`
+	City         string   `json:"city"`
+	Season       string   `json:"season"`
+	Event        *Event   `json:"event"`
+	Toss         *Toss    `json:"toss"`
+	Outcome      *Outcome `json:"outcome"`
 }
 
 type Event struct {
@@ -41,22 +41,22 @@ type Outcome struct {
 }
 
 type Innings struct {
-	Team  string  `json:"team"`
-	Overs []Over  `json:"overs"`
+	Team  string `json:"team"`
+	Overs []Over `json:"overs"`
 }
 
 type Over struct {
-	Over       int         `json:"over"`
-	Deliveries []Delivery  `json:"deliveries"`
+	Over       int        `json:"over"`
+	Deliveries []Delivery `json:"deliveries"`
 }
 
 type Delivery struct {
-	Batter    string        `json:"batter"`
-	Bowler    string        `json:"bowler"`
-	NonStriker string       `json:"non_striker"`
-	Runs      RunInfo       `json:"runs"`
-	Extras    map[string]int `json:"extras"`
-	Wickets   []Wicket       `json:"wickets"`
+	Batter     string         `json:"batter"`
+	Bowler     string         `json:"bowler"`
+	NonStriker string         `json:"non_striker"`
+	Runs       RunInfo        `json:"runs"`
+	Extras     map[string]int `json:"extras"`
+	Wickets    []Wicket       `json:"wickets"`
 }
 
 type RunInfo struct {

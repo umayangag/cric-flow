@@ -33,8 +33,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("import failed: %v", err)
 	}
- log.Printf("cricsheet-importer finished: %d files imported", n)
+	log.Printf("cricsheet-importer finished: %d files imported", n)
 }
+
 /* stray legacy code removed
         inningNo := i + 1
 		batTeam := strings.TrimSpace(inng.Team)

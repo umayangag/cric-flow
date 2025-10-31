@@ -109,8 +109,18 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
-		_, _ = db.Pool.Exec(ctx, `INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`, mid, "Innings 1")
-		_, _ = db.Pool.Exec(ctx, `INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`, mid, "Innings 2")
+		_, _ = db.Pool.Exec(
+			ctx,
+			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
+			mid,
+			"Innings 1",
+		)
+		_, _ = db.Pool.Exec(
+			ctx,
+			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
+			mid,
+			"Innings 2",
+		)
 	}
 	playersSeen := map[string]bool{}
 	for i, inng := range m.Innings {

@@ -1,4 +1,5 @@
 //go:build legacy_cricinfo
+
 package main
 
 import (

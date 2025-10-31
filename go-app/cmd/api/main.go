@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 	"strings"
-	
+	"time"
+
 	"github.com/gorilla/mux"
 	"github.com/umayangag/cric-app/go-app/internal/contracts"
+	"github.com/umayangag/cric-app/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-app/go-app/internal/db"
 	"github.com/umayangag/cric-app/go-app/internal/features"
 	"github.com/umayangag/cric-app/go-app/internal/mlclient"
-	"github.com/umayangag/cric-app/go-app/internal/cricsheet"
 )
 
 func main() {
@@ -85,24 +85,29 @@ func main() {
 
 	// POST /import/cricsheet {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
 	r.HandleFunc("/import/cricsheet", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ 
-			Dir string `json:"dir"`
-			PlaceholdersWeather bool `json:"placeholders_weather"`
-			PlaceholdersFielding bool `json:"placeholders_fielding"`
+		var body struct {
+			Dir                  string `json:"dir"`
+			PlaceholdersWeather  bool   `json:"placeholders_weather"`
+			PlaceholdersFielding bool   `json:"placeholders_fielding"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if strings.TrimSpace(body.Dir) == "" { body.Dir = "../data" }
+		if strings.TrimSpace(body.Dir) == "" {
+			body.Dir = "../data"
+		}
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			opts := &cricsheet.Options{ PlaceholdersWeather: body.PlaceholdersWeather, PlaceholdersFielding: body.PlaceholdersFielding }
+			opts := &cricsheet.Options{
+				PlaceholdersWeather:  body.PlaceholdersWeather,
+				PlaceholdersFielding: body.PlaceholdersFielding,
+			}
 			if n, err := cricsheet.ImportDir(ctx, body.Dir, opts); err != nil {
 				log.Printf("cricsheet import failed: %v", err)
 			} else {
 				log.Printf("cricsheet import completed: %d files", n)
 			}
 		}()
-		respondJSON(w, http.StatusAccepted, map[string]string{"status":"started"})
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
 
 	// GET /players/{id}
