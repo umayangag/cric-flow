@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: block-src-changes
+        name: Block changes under src/
+        entry: bash -c 'git diff --cached --name-only | grep -E "^src/" && echo "Changes under src/ are not allowed (read-only folder)." && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
