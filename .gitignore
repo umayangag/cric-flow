@@ -4,3 +4,4 @@ __pycache__
 venv
 src/team_selection/cache
 ml-service/.venv
+data
