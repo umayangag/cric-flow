@@ -11,12 +11,25 @@ Directories:
 
 Prerequisites:
 - Docker + Docker Compose
-- Go 1.22+
+- Go 1.25+
 - Python 3.10+ (only needed if training models locally without Docker)
 
 Environment defaults used by Go services/API:
 - POSTGRES_HOST=localhost, POSTGRES_PORT=5432, POSTGRES_DB=cricket_data
 - POSTGRES_USER=postgres, POSTGRES_PASSWORD=postgres, POSTGRES_SSLMODE=disable
+
+### 0) One-time local setup (tools, venv, hooks)
+Initialize dev tooling for both components, aligned with CI formatters/linters.
+```
+make init
+# or per component:
+make -C go-app init
+make -C ml-service init
+```
+- For Python, activate the venv after init:
+```
+cd ml-service && source .venv/bin/activate
+```
 
 ### 1) One-line bootstrap (recommended)
 This single command brings up Docker services, applies migrations, scrapes a tiny window, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
@@ -85,6 +98,26 @@ make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 - Ensures at least 5 bowlers are selected (part-time allowed).
 - Adjust `BAT`/`BOWL` as desired; minimum bowlers enforced is 5.
 
+## Formatting and linting
+- Aggregate format both components:
+```
+make fmt
+```
+- Check formatting only (fails on diff):
+```
+make fmt-check
+```
+- Per component:
+  - Go: `make -C go-app fmt` or `make -C go-app fmt-check`
+  - Python: `make -C ml-service fmt` or `make -C ml-service fmt-check`
+- Developer hooks (pre-commit runs gofumpt/golines for Go and black/isort for Python):
+```
+make install-hooks
+```
+- Additional lint helpers:
+  - Go: `make lint-go`
+  - Python: `make lint-py`
+
 ## Notes
 - The scraper uses polite rate limiting and retries.
 - Unique constraints and upsert logic ensure idempotent persistence.
@@ -95,15 +128,6 @@ make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 Two separate GitHub Actions workflows:
 - Go App: `.github/workflows/go-app-ci.yml` — spins up Postgres, applies migrations, checks formatting (gofumpt/golines), builds and tests Go modules.
 - ML Service: `.github/workflows/ml-service-ci.yml` — installs deps, runs isort/black checks, and sanity-compiles the app and training scripts.
-
-### Developer hooks and formatters
-- Install repo git hooks (pre-commit runs gofumpt/golines for go-app and black/isort for ml-service):
-```
-make install-hooks
-```
-- Manual formatters:
-  - Go: `make fmt-go` (uses gofumpt + golines), `make lint-go`
-  - Python: `make fmt-py`, `make lint-py`
 
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.

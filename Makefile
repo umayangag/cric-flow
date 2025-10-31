@@ -159,7 +159,7 @@ up-all:
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
 # --- Formatting & hooks ---
-.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks
+.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py
 
 # Aggregate formatters for both components
 fmt: fmt-go fmt-py
@@ -188,3 +188,19 @@ install-hooks:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit
 	@echo "Git hooks installed. On commit, gofumpt/golines (Go) and black/isort (Python) will run automatically."
+
+# --- Local environment bootstrap ---
+# Initialize both components for local development
+init: init-go init-py install-hooks
+	@echo "\nLocal dev environment initialized. Next steps:"
+	@echo "- For Python, activate venv: 'cd ml-service && source .venv/bin/activate'"
+	@echo "- Run format checks: 'make fmt-check'"
+	@echo "- Bring up stack: 'make dev-up'"
+
+# Initialize Go tooling and modules
+init-go:
+	$(MAKE) -C go-app init
+
+# Initialize Python venv and dev tools
+init-py:
+	$(MAKE) -C ml-service init

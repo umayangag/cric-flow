@@ -4,7 +4,7 @@ PY:=python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 
-.PHONY: all venv install run docker-build docker-run clean fmt fmt-check
+.PHONY: all venv install run docker-build docker-run clean fmt fmt-check init
 
 all: run
 
@@ -14,6 +14,13 @@ venv:
 install: venv
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
+
+# Initialize local Python development environment (venv + deps + dev tools)
+init: install
+	@echo "Setting up Python dev environment in $(VENV)..."
+	$(PIP) install black isort flake8
+	@echo "Done. Activate the venv: 'source $(VENV)/bin/activate' (or '.\\$(VENV)\\Scripts\\activate' on Windows)"
+	@echo "Then run: 'make fmt-check' or 'make run'"
 
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload

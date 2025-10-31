@@ -1,25 +1,64 @@
 # Go Application (Scraper/ETL/API)
 
-This is the initial scaffold for the Go port of the prototype. It introduces service boundaries and basic commands without changing the original Python code under `src/`.
+Go services for scraping, preprocessing, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
 
-Components (scaffolded):
-- cmd/scraper: CLI/service to scrape match lists and matches and emit structured JSON or write to DB.
-- cmd/api: Minimal HTTP API server (health endpoint) and future orchestration endpoints.
-- internal/cricinfo: Parsers for list and match pages (stubs for now).
-- internal/contracts: Strongly-typed data contracts for matches, players, weather, features.
-- internal/db: DB connection and repositories (stubbed).
-- internal/features: Placeholder for preprocessing logic (form/venue/opposition/consistency).
-- internal/mlclient: HTTP client to the Python ML service (stubbed).
+Components:
+- `cmd/scraper`: CLI/service to scrape match lists and matches and upsert to DB.
+- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints).
+- `cmd/tools/migrate`: DB migration runner.
+- `internal/*`: packages for cricinfo parsing, contracts, repos, features, ML client, etc.
 
-Quick start:
-- Requires Go 1.22+
-- Set environment variables for DB if you plan to connect: `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`.
+Prerequisites:
+- Go 1.25+
+- Postgres reachable using the following defaults (override via env):
+  - `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_DB=cricket_data`
+  - `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=postgres`, `POSTGRES_SSLMODE=disable`
 
-Makefile targets:
-- `make build` — build binaries for `scraper` and `api`.
-- `make run-scraper` — run the scraper CLI with example flags.
-- `make run-api` — run the HTTP API on :8080.
-- `make docker-build` — build docker images.
-- `make docker-run` — run dockerized API.
+## One-time setup
+Install tools and download modules used by CI and local dev:
+```
+make init
+```
+This installs `gofumpt` and `golines` into `$(go env GOPATH)/bin`. Ensure that directory is on your `PATH`.
 
-This is just a starting skeleton; implementations will be filled incrementally while keeping source parity with the Python prototype.
+## Common tasks (Makefile)
+- Build binaries:
+```
+make build
+```
+- Run API locally on :8080:
+```
+make run-api
+```
+- Run the scraper with example flags:
+```
+make run-scraper
+```
+- Apply DB migrations (uses env vars above):
+```
+make migrate
+```
+- Docker images:
+```
+make docker-build
+make docker-run
+```
+
+## Formatting and checks
+- Format Go code (gofumpt + golines):
+```
+make fmt
+```
+- Check formatting only (fails on diff), mirrors CI:
+```
+make fmt-check
+```
+- Vet and tests:
+```
+make vet
+make test
+```
+
+Notes:
+- Formatting/linting conventions match the GitHub Actions workflow.
+- See repo root `README.md` for end-to-end workflows and orchestration commands.

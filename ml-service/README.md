@@ -1,20 +1,46 @@
 # ML Service (Python)
 
-This directory contains a standalone ML microservice that encapsulates the machine learning parts of the prototype. It keeps the original `src/` code intact for reference, while enabling an API-driven deployment for predictions.
+Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. The original `src/` prototype remains for reference.
 
-Components (initial scaffold):
-- `app/main.py`: FastAPI app exposing health and stub prediction endpoints for batting and bowling.
-- `ml/encoders.py`: Copied encoders from the prototype.
-- `ml/dataset_definitions.py`: Copied dataset/feature column contracts.
-- `ml/queries.py`: Copied SQL queries used to assemble datasets (for reference).
+Components:
+- `app/main.py`: FastAPI app exposing health and prediction endpoints for batting and bowling.
+- `ml/*`: encoders, dataset/feature definitions, training scripts.
 
-Makefile targets:
-- `make venv` — create a virtualenv.
-- `make install` — install dependencies into venv.
-- `make run` — run FastAPI with uvicorn on :8000.
-- `make docker-build` — build docker image.
-- `make docker-run` — run dockerized service on :8000.
+Prerequisites:
+- Python 3.10+
+
+## One-time setup
+Create and prepare a local virtualenv, plus dev tools aligned with CI:
+```
+make init
+# then activate it in your shell
+source .venv/bin/activate    # Linux/macOS
+# or on Windows (PowerShell):
+# .\\.venv\\Scripts\\Activate.ps1
+```
+This installs runtime deps from `requirements.txt` and dev tools `black`, `isort`, `flake8`.
+
+## Common tasks (Makefile)
+- Run the service locally on :8000 with auto-reload:
+```
+make run
+```
+- Docker image and container:
+```
+make docker-build
+make docker-run
+```
+
+## Formatting and checks
+- Format code to match CI (reads `pyproject.toml`):
+```
+make fmt
+```
+- Check formatting only (fails on diff), mirrors CI:
+```
+make fmt-check
+```
 
 Notes:
-- Model training code from the prototype can be ported here in future steps; for now, endpoints are stubs ready to be wired with trained artifacts (e.g., `.pkl` and scalers).
-- Keep feature contracts aligned with the Go app via shared schemas.
+- Keep feature contracts in sync with the Go app.
+- See repo root `README.md` for the end-to-end workflow (export datasets, train models, run full stack).

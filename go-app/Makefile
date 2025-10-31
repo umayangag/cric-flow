@@ -12,7 +12,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api run-scraper docker-build docker-run fmt fmt-check vet test migrate build-migrate
+.PHONY: all build clean run-api run-scraper docker-build docker-run fmt fmt-check vet test migrate build-migrate init
 
 all: build
 
@@ -52,6 +52,19 @@ vet:
 
 test:
 	go test ./...
+
+# Initialize local Go development environment (tools + modules)
+init:
+	@echo "Setting up Go dev environment..."
+	@command -v go >/dev/null 2>&1 || (echo "Go toolchain not found. Please install Go 1.25+ first: https://go.dev/dl/" && exit 1)
+	@echo "- Downloading Go module deps"
+	go mod download
+	@echo "- Installing gofumpt and golines to GOPATH/bin"
+	go install mvdan.cc/gofumpt@latest
+	go install github.com/segmentio/golines@latest
+	@echo "- (Optional) Installing golangci-lint"
+	@command -v golangci-lint >/dev/null 2>&1 || (echo "Tip: install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest")
+	@echo "Done. Ensure \"$(shell go env GOPATH)/bin\" is on your PATH. Try: 'make fmt-check' and 'make test'"
 
 docker-build:
 	docker build -t umayangag/cric-app-api:latest -f Dockerfile.api .
