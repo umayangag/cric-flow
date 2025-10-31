@@ -36,7 +36,7 @@ func main() {
 
 	r := mux.NewRouter()
 	// Liveness
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 	// Readiness (checks DB connectivity)

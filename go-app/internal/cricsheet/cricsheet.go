@@ -60,12 +60,14 @@ type Delivery struct {
 	Extras     map[string]int `json:"extras"`
 	Wickets    *Wickets       `json:"wickets,omitempty"`
 }
-type Wickets []Wicket
-type RunInfo struct {
-	Batter int `json:"batter"`
-	Extras int `json:"extras"`
-	Total  int `json:"total"`
-}
+type (
+	Wickets []Wicket
+	RunInfo struct {
+		Batter int `json:"batter"`
+		Extras int `json:"extras"`
+		Total  int `json:"total"`
+	}
+)
 
 type Wicket struct {
 	PlayerOut string      `json:"player_out"`
@@ -202,7 +204,10 @@ func StableMatchID(dateISO, teamA, teamB string) int64 {
 	h := md5.Sum(arr)
 	hex10 := hex.EncodeToString(h[:])[:10]
 	var v uint64
-	fmt.Sscanf(hex10, "%x", &v)
+	if _, err := fmt.Sscanf(hex10, "%x", &v); err != nil {
+		// Fallback to zero if parsing fails; unlikely given fixed hex source
+		v = 0
+	}
 	// bound into 12-digit space, then cast to int64
 	v = (v % 900000000000) + 100000000000
 	return int64(v)
