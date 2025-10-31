@@ -45,6 +45,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 			continue
 		}
 		count++
+		fmt.Printf("import %s\n", filepath.Base(f))
 	}
 	return count, nil
 }
@@ -84,7 +85,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 	}
 	var seasonID *int64
-	if s := strings.TrimSpace(info.Season); s != "" {
+	if s := strings.TrimSpace(string(info.Season)); s != "" {
 		if id, e := db.GetOrCreateSeason(ctx, s); e == nil {
 			seasonID = &id
 		}
@@ -153,12 +154,12 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 					balls++
 					perBowler[d.Bowler] += tr
 				}
-				if len(d.Wickets) > 0 {
-					wkts += len(d.Wickets)
-					for _, w := range d.Wickets {
+				if d.Wickets != nil && len(*d.Wickets) > 0 {
+					wkts += len(*d.Wickets)
+					for _, w := range *d.Wickets {
 						desc := w.Kind
-						if len(w.Fielders) > 0 {
-							desc = desc + " " + strings.Join(w.Fielders, ", ")
+						if w.Fielders != nil && len(*w.Fielders) > 0 {
+							desc = desc + " " + strings.Join(*w.Fielders, ", ")
 						}
 						dismissals[w.PlayerOut] = strings.TrimSpace(desc)
 					}
@@ -198,7 +199,9 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 							b.Sixes++
 						}
 					}
-					b.Wickets += len(d.Wickets)
+					if d.Wickets != nil && len(*d.Wickets) > 0 {
+						b.Wickets += len(*d.Wickets)
+					}
 					b.Wides += d.Extras["wides"]
 					b.NoBalls += d.Extras["noballs"]
 				}
