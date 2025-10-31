@@ -1,7 +1,13 @@
 name: ML Service CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
+    branches:
+      - main
     paths:
       - 'ml-service/**'
       - '.github/workflows/ml-service-ci.yml'
