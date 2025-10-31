@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api docker-build docker-run fmt fmt-check vet test migrate build-migrate init
+.PHONY: all build clean run-api docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
 
 all: build
 
@@ -67,3 +67,8 @@ docker-build:
 
 docker-run:
 	docker run --rm -e POSTGRES_HOST=$${POSTGRES_HOST} -e POSTGRES_PORT=$${POSTGRES_PORT} -e POSTGRES_DB=$${POSTGRES_DB} -e POSTGRES_USER=$${POSTGRES_USER} -e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD} -p 8080:8080 --name $(APP_NAME)-api umayangag/cric-app-api:latest
+
+# Lint Go code using golangci-lint (matches CI config)
+lint:
+	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
+	golangci-lint run -c ../.golangci.yml

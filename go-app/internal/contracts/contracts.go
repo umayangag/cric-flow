@@ -1,3 +1,4 @@
+// Package contracts contains types used by the API.
 package contracts
 
 // BattingFeatures aligns with ml-service BattingFeatures schema.
