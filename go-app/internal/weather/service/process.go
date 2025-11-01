@@ -14,15 +14,14 @@ import (
 
 // ProcessResult describes the outcome of processing a weather job.
 type ProcessResult struct {
-	MatchID     int64
-	VenueNorm   string
-	Lat, Lon    float64
-	Timezone    string
-	Sessions    int
-	Upserts     int
+	MatchID      int64
+	VenueNorm    string
+	Lat, Lon     float64
+	Timezone     string
+	Sessions     int
+	Upserts      int
 	CacheOnlyHit bool
 }
-
 
 // ProcessJob resolves venue coordinates (DB cache or geocode), fetches hourly weather
 // and upserts closest-hour records for each session in the job.
@@ -34,8 +33,12 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 	cfg := config.Load()
 	rate := 1
 	maxRetry := 3
-	if cfg.Weather.RateLimitPerSec > 0 { rate = cfg.Weather.RateLimitPerSec }
-	if cfg.Weather.MaxAttempts > 0 { maxRetry = cfg.Weather.MaxAttempts }
+	if cfg.Weather.RateLimitPerSec > 0 {
+		rate = cfg.Weather.RateLimitPerSec
+	}
+	if cfg.Weather.MaxAttempts > 0 {
+		maxRetry = cfg.Weather.MaxAttempts
+	}
 	cli := openmeteo.NewClient(rate, maxRetry)
 
 	// 1) Lookup venue
@@ -52,15 +55,21 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 	if v != nil && v.Latitude != nil && v.Longitude != nil {
 		lat = *v.Latitude
 		lon = *v.Longitude
-		if v.Timezone != nil { tz = *v.Timezone }
+		if v.Timezone != nil {
+			tz = *v.Timezone
+		}
 	}
 
 	// 2) Geocode if missing and allowed
 	if (lat == 0 && lon == 0) && !(cfg.Weather.GeocodeCacheOnly || noop) {
 		city := ""
 		country := ""
-		if job.City != nil { city = *job.City }
-		if job.Country != nil { country = *job.Country }
+		if job.City != nil {
+			city = *job.City
+		}
+		if job.Country != nil {
+			country = *job.Country
+		}
 		res, err := cli.Resolve(ctx, job.NormalizedVenue, city, country)
 		if err != nil {
 			return nil, fmt.Errorf("geocode failed: %w", err)
@@ -69,15 +78,37 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 		tz = res.Timezone
 		// Upsert venue geocode
 		var disp string
-		if v != nil && v.DisplayName != "" { disp = v.DisplayName } else { disp = job.NormalizedVenue }
-		_, _ = db.UpsertVenueGeocode(ctx, job.NormalizedVenue, disp, job.City, job.Country, lat, lon, tz, "open-meteo-geocoding", res.Confidence)
+		if v != nil && v.DisplayName != "" {
+			disp = v.DisplayName
+		} else {
+			disp = job.NormalizedVenue
+		}
+		_, _ = db.UpsertVenueGeocode(
+			ctx,
+			job.NormalizedVenue,
+			disp,
+			job.City,
+			job.Country,
+			lat,
+			lon,
+			tz,
+			"open-meteo-geocoding",
+			res.Confidence,
+		)
 	}
 
 	if lat == 0 && lon == 0 {
 		// Still no coordinates: reschedule
-		return nil, fmt.Errorf("no coordinates for venue %s (cache-only=%v noop=%v)", job.NormalizedVenue, cfg.Weather.GeocodeCacheOnly, noop)
+		return nil, fmt.Errorf(
+			"no coordinates for venue %s (cache-only=%v noop=%v)",
+			job.NormalizedVenue,
+			cfg.Weather.GeocodeCacheOnly,
+			noop,
+		)
 	}
-	if tz == "" { tz = "auto" }
+	if tz == "" {
+		tz = "auto"
+	}
 
 	// 3) Determine date range
 	from := time.Now()
@@ -134,11 +165,22 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 		upserts++
 	}
 
-	return &ProcessResult{MatchID: job.MatchID, VenueNorm: job.NormalizedVenue, Lat: lat, Lon: lon, Timezone: tz, Sessions: len(sess), Upserts: upserts, CacheOnlyHit: noop || cfg.Weather.GeocodeCacheOnly}, nil
+	return &ProcessResult{
+		MatchID:      job.MatchID,
+		VenueNorm:    job.NormalizedVenue,
+		Lat:          lat,
+		Lon:          lon,
+		Timezone:     tz,
+		Sessions:     len(sess),
+		Upserts:      upserts,
+		CacheOnlyHit: noop || cfg.Weather.GeocodeCacheOnly,
+	}, nil
 }
 
 func nearest(series []openmeteo.HourlyRecord, t time.Time) *openmeteo.HourlyRecord {
-	if len(series) == 0 { return nil }
+	if len(series) == 0 {
+		return nil
+	}
 	bestIdx := 0
 	bestDur := absDuration(series[0].Time.Sub(t))
 	for i := 1; i < len(series); i++ {
@@ -152,6 +194,8 @@ func nearest(series []openmeteo.HourlyRecord, t time.Time) *openmeteo.HourlyReco
 }
 
 func absDuration(d time.Duration) time.Duration {
-	if d < 0 { return -d }
+	if d < 0 {
+		return -d
+	}
 	return d
 }

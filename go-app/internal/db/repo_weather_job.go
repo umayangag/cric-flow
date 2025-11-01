@@ -46,12 +46,18 @@ func DequeueNextWeatherJob(ctx context.Context, now time.Time) (*WeatherJob, err
 		return nil, errors.New("db pool not initialized")
 	}
 	tx, err := Pool.Begin(ctx)
-	if err != nil { return nil, err }
-	defer func(){ _ = tx.Rollback(ctx) }()
-	row := tx.QueryRow(ctx, `SELECT id, match_id, normalized_venue, city, country, start_at_local, end_at_local, sessions, status, attempts, last_error, scheduled_at, updated_at
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	row := tx.QueryRow(
+		ctx,
+		`SELECT id, match_id, normalized_venue, city, country, start_at_local, end_at_local, sessions, status, attempts, last_error, scheduled_at, updated_at
 		FROM weather_job
 		WHERE status = 'queued' AND scheduled_at <= $1
-		FOR UPDATE SKIP LOCKED LIMIT 1`, now)
+		FOR UPDATE SKIP LOCKED LIMIT 1`,
+		now,
+	)
 	var rec WeatherJob
 	var city, country pgtype.Text
 	var startAt, endAt pgtype.Timestamptz
@@ -60,28 +66,56 @@ func DequeueNextWeatherJob(ctx context.Context, now time.Time) (*WeatherJob, err
 	if err := row.Scan(&rec.ID, &rec.MatchID, &rec.NormalizedVenue, &city, &country, &startAt, &endAt, &sessions, &rec.Status, &rec.Attempts, &lastErr, &rec.ScheduledAt, &rec.UpdatedAt); err != nil {
 		return nil, err
 	}
-	if city.Valid { s := city.String; rec.City = &s }
-	if country.Valid { s := country.String; rec.Country = &s }
-	if startAt.Valid { t := startAt.Time; rec.StartAtLocal = &t }
-	if endAt.Valid { t := endAt.Time; rec.EndAtLocal = &t }
-	if lastErr.Valid { s := lastErr.String; rec.LastError = &s }
+	if city.Valid {
+		s := city.String
+		rec.City = &s
+	}
+	if country.Valid {
+		s := country.String
+		rec.Country = &s
+	}
+	if startAt.Valid {
+		t := startAt.Time
+		rec.StartAtLocal = &t
+	}
+	if endAt.Valid {
+		t := endAt.Time
+		rec.EndAtLocal = &t
+	}
+	if lastErr.Valid {
+		s := lastErr.String
+		rec.LastError = &s
+	}
 	rec.SessionsJSON = sessions
 	// mark working
 	if _, err := tx.Exec(ctx, `UPDATE weather_job SET status='working', updated_at=$2 WHERE id=$1`, rec.ID, now); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(ctx); err != nil { return nil, err }
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return &rec, nil
 }
 
 func MarkWeatherJobDone(ctx context.Context, id int64) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
 	_, err := Pool.Exec(ctx, `UPDATE weather_job SET status='done', updated_at=now() WHERE id=$1`, id)
 	return err
 }
 
 func MarkWeatherJobFailed(ctx context.Context, id int64, attempts int, lastError string, nextSchedule time.Time) error {
-	if Pool == nil { return errors.New("db pool not initialized") }
-	_, err := Pool.Exec(ctx, `UPDATE weather_job SET status='queued', attempts=$2, last_error=$3, scheduled_at=$4, updated_at=now() WHERE id=$1`, id, attempts, lastError, nextSchedule)
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	_, err := Pool.Exec(
+		ctx,
+		`UPDATE weather_job SET status='queued', attempts=$2, last_error=$3, scheduled_at=$4, updated_at=now() WHERE id=$1`,
+		id,
+		attempts,
+		lastError,
+		nextSchedule,
+	)
 	return err
 }

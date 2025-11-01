@@ -25,9 +25,13 @@ func LookupVenueByNormalizedName(ctx context.Context, norm string) (*Venue, erro
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	row := Pool.QueryRow(ctx, `SELECT id, venue_name, COALESCE(normalized_name,''), COALESCE(display_name,''), city, country,
+	row := Pool.QueryRow(
+		ctx,
+		`SELECT id, venue_name, COALESCE(normalized_name,''), COALESCE(display_name,''), city, country,
 		latitude, longitude, timezone, source, confidence
-		FROM venue WHERE normalized_name = $1`, norm)
+		FROM venue WHERE normalized_name = $1`,
+		norm,
+	)
 	var v Venue
 	var city, country, tz, src *string
 	var lat, lon *float64
@@ -47,7 +51,15 @@ func LookupVenueByNormalizedName(ctx context.Context, norm string) (*Venue, erro
 
 // UpsertVenueGeocode updates geocode fields for a venue identified by normalized_name,
 // creating a new venue row if needed (using display_name as venue_name).
-func UpsertVenueGeocode(ctx context.Context, norm, display string, city, country *string, lat, lon float64, timezone string, source string, confidence float32) (int64, error) {
+func UpsertVenueGeocode(
+	ctx context.Context,
+	norm, display string,
+	city, country *string,
+	lat, lon float64,
+	timezone string,
+	source string,
+	confidence float32,
+) (int64, error) {
 	if Pool == nil {
 		return 0, errors.New("db pool not initialized")
 	}
@@ -64,6 +76,7 @@ func UpsertVenueGeocode(ctx context.Context, norm, display string, city, country
 			timezone = COALESCE(EXCLUDED.timezone, venue.timezone),
 			source = EXCLUDED.source,
 			confidence = EXCLUDED.confidence
-		RETURNING id`, display, norm, display, city, country, lat, lon, timezone, source, confidence).Scan(&id)
+		RETURNING id`, display, norm, display, city, country, lat, lon, timezone, source, confidence).
+		Scan(&id)
 	return id, err
 }

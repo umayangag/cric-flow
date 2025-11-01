@@ -41,7 +41,11 @@ func main() {
 		log.Fatalf("migrations failed: %v", err)
 	}
 
-	opts := &cricsheet.Options{PlaceholdersWeather: *phWeather, PlaceholdersFielding: *phField, WeatherEnqueue: *wEnqueue}
+	opts := &cricsheet.Options{
+		PlaceholdersWeather:  *phWeather,
+		PlaceholdersFielding: *phField,
+		WeatherEnqueue:       *wEnqueue,
+	}
 	n, err := cricsheet.ImportDir(ctx, *dataDir, opts)
 	if err != nil {
 		log.Fatalf("import failed: %v", err)

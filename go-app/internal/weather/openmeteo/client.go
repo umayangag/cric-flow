@@ -9,11 +9,11 @@ import (
 
 // Client holds shared http client, rate limiting and retry config.
 type Client struct {
-	HTTP      *http.Client
-	Rate      int // requests per second (min 1)
-	MaxRetry  int // max attempts per request (>=1)
-	mu        sync.Mutex
-	lastTick  time.Time
+	HTTP     *http.Client
+	Rate     int // requests per second (min 1)
+	MaxRetry int // max attempts per request (>=1)
+	mu       sync.Mutex
+	lastTick time.Time
 }
 
 func NewClient(ratePerSec, maxRetry int) *Client {

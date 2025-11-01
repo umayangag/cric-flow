@@ -13,7 +13,9 @@ import (
 )
 
 func backoff(attempt int) time.Duration {
-	if attempt < 1 { attempt = 1 }
+	if attempt < 1 {
+		attempt = 1
+	}
 	d := time.Duration(math.Min(float64(1<<uint(attempt)), 300)) * time.Second // cap at 5m
 	return d
 }
@@ -36,7 +38,14 @@ func main() {
 	}
 	cfg := config.Load()
 
-	log.Printf("weather-worker started (batch=%d interval=%ds noop=%v rate_limit=%d max_attempts=%d)", *batchSize, *intervalSec, *noop, cfg.Weather.RateLimitPerSec, cfg.Weather.MaxAttempts)
+	log.Printf(
+		"weather-worker started (batch=%d interval=%ds noop=%v rate_limit=%d max_attempts=%d)",
+		*batchSize,
+		*intervalSec,
+		*noop,
+		cfg.Weather.RateLimitPerSec,
+		cfg.Weather.MaxAttempts,
+	)
 	for {
 		processed := 0
 		for processed < *batchSize {

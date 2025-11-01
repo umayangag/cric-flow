@@ -35,9 +35,14 @@ func EnqueueMissingWeatherJobs(ctx context.Context, limit int) (int64, error) {
 
 func itoa(n int) string {
 	// simple int to string to avoid fmt import
-	if n == 0 { return "0" }
+	if n == 0 {
+		return "0"
+	}
 	sign := ""
-	if n < 0 { sign = "-"; n = -n }
+	if n < 0 {
+		sign = "-"
+		n = -n
+	}
 	var buf [20]byte
 	i := len(buf)
 	for n > 0 {
