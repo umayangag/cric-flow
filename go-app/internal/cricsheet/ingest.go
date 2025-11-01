@@ -326,7 +326,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
-		_ = weatherSvc.EnqueueJob(ctx, mid, info, len(m.Innings))
+		_ = weatherSvc.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
 	}
 	return nil
 }

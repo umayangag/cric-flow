@@ -16,7 +16,7 @@ func backoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
 	}
-	d := time.Duration(math.Min(float64(1<<uint(attempt)), 300)) * time.Second // cap at 5m
+	d := time.Duration(math.Min(float64(attempt), 300)) * time.Second // cap at 5m
 	return d
 }
 
