@@ -12,3 +12,15 @@ line_length = 100
 [tool.flake8]
 max-line-length = 100
 extend-ignore = ["E203", "W503"]
+
+
+[tool.ruff]
+line-length = 100
+# Match project runtime
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable Pyflakes rules (includes F401 unused import)
+select = ["F"]
+# We let Black/Flake8 handle line length/style nuances
+ignore = ["E501"]

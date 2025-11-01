@@ -8,8 +8,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
-import config as svc_config  # loaded from ml-service/config.json if present
-
 # Minimal training script to produce placeholder artifacts for bowling
 # By default consumes the Go export from ../../output/go-app/bowling_encoded.csv
 # Feature order must match ml-service/app/main.py -> _bowling_feature_vector
