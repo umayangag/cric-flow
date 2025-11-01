@@ -20,6 +20,7 @@ type BattingFeatures struct {
 	Opposition         float32 `json:"opposition"`
 	Season             int     `json:"season"`
 	PlayerName         string  `json:"player_name"`
+	Format             string  `json:"format,omitempty"`
 }
 
 // BowlingFeatures aligns with ml-service BowlingFeatures schema.
@@ -40,6 +41,7 @@ type BowlingFeatures struct {
 	BowlingOpposition  float32 `json:"bowling_opposition"`
 	Season             int     `json:"season"`
 	PlayerName         string  `json:"player_name"`
+	Format             string  `json:"format,omitempty"`
 }
 
 // BattingPrediction mirrors ml-service response.

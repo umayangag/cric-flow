@@ -1,97 +1,95 @@
-# Configuration Reference
+### Configuration overview
 
-This document describes how file paths and configurable options are resolved across the monorepo. Both components (go-app and ml-service) use the same precedence rules to resolve directories and options.
+This document lists configuration keys for both the Go application (`go-app`) and the Python ML service (`ml-service`), along with precedence rules and examples.
 
-- Highest precedence to lowest:
-  1. CLI flags/args (e.g., `-dir`, `-out`, `--csv`, `--out`)
-  2. Environment variables (e.g., `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `ML_SERVICE_OUTPUT_DIR`)
-  3. Component config file (`go-app/config.json` or `ml-service/config.json`)
-  4. Built-in defaults (checked into code for resiliency)
+#### Precedence rules
+- Flags/CLI args
+- Environment variables
+- Component `config.json`
+- Built-in defaults in code
 
-- Directory conventions:
-  - Inputs are expected under `data/{package}/...`
-    - Examples: `data/go-app/cricsheet`, `data/go-app/createdb`
-  - Outputs are written under `output/{package}/...`
-    - Examples: `output/go-app`, `output/ml-service`
+---
 
-## Go App (go-app)
+### Go application (go-app)
 
-Config file location search order:
-- `GO_APP_CONFIG` (if set)
-- `./config.json` (inside `go-app/`)
-- `../config.json`
-- `../../config.json`
+Config file: `go-app/config.json`
 
-Schema for `go-app/config.json`:
-```json
-{
-  "inputs": {
-    "cricsheet_dir": "../data/go-app/cricsheet",
-    "etl_dir": "../data/go-app/createdb"
-  },
-  "outputs": {
-    "export_dir": "../output/go-app"
-  }
-}
-```
+Keys:
+- `inputs`
+  - `cricsheet_dir` — default directory containing Cricsheet JSON data. Used by `cmd/cricsheet-importer`.
+  - `etl_dir` — default directory for curated CSVs for the optional `etl-importer` path.
+- `outputs`
+  - `export_dir` — directory where `cmd/export-dataset` writes exported CSVs.
+- `formats`
+  - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
+  - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
+- `features`
+  - `precompute_timeout_ms` (int) — timeout for `cmd/precompute` operations.
+  - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
+  - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
+  - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
+  - `consistency_per_format` (bool) — if true, compute format-aware consistency (table can be introduced later).
+- `export`
+  - `split_by_format` (bool) — when true, `cmd/export-dataset` writes per-format CSVs by default.
+  - `required_format` (string) — when set, exporter writes only this format unless overridden by flags.
 
-Key environment variables:
-- `GO_APP_INPUT_DIR`: Default input directory for importers (`cricsheet-importer`, `etl-importer`).
-- `GO_APP_OUTPUT_DIR`: Default output directory for `export-dataset`.
+Environment variables:
+- `GO_APP_CONFIG` — path to an alternate `config.json`.
+- `GO_APP_INPUT_DIR` — default input dir for cricsheet importer.
+- `GO_APP_OUTPUT_DIR` — default output dir for exporter.
 
-Common CLI flags:
-- `cricsheet-importer`: `-dir` points to a directory with Cricsheet `.json` files.
-- `etl-importer`: `-dir` points to a directory containing curated CSVs.
-- `export-dataset`: `-out` points to the output directory for exported CSVs.
+CLI examples:
+- Precompute for specific formats: `go run ./go-app/cmd/precompute -season=2019 -formats=ODI,T20I`
+- Export per-format datasets: `go run ./go-app/cmd/export-dataset -all-formats`
 
-Examples:
-- Use config defaults (no env/flags):
-  - `make cricsheet-import`
-  - `make etl-importer`
-  - `make export-dataset`
-- Override via env for one run:
-  - `cd go-app && GO_APP_INPUT_DIR=../data/custom go run ./cmd/etl-importer`
-  - `cd go-app && GO_APP_OUTPUT_DIR=../output/go-alt go run ./cmd/export-dataset`
-- Override via flags:
-  - `cd go-app && go run ./cmd/cricsheet-importer -dir=../data/go-app/cricsheet`
-  - `cd go-app && go run ./cmd/export-dataset -out=../output/go-app`
+---
 
-## ML Service (ml-service)
+### Python ML service (ml-service)
 
-Config file location search order:
-- `ML_SERVICE_CONFIG` (if set)
-- `./config.json` (inside `ml-service/`)
-- `../config.json`
+Config file: `ml-service/config.json`
 
-Schema for `ml-service/config.json`:
-```json
-{
-  "inputs": {
-    "go_app_export_dir": "../output/go-app"
-  },
-  "outputs": {
-    "artifacts_dir": "../output/ml-service"
-  }
-}
-```
+Keys:
+- `inputs`
+  - `go_app_export_dir` — directory where Go exports CSVs (read by training scripts).
+- `outputs`
+  - `artifacts_dir` — directory where training scripts write joblib artifacts and where FastAPI loads from.
+- `ml`
+  - `formats` — list of format codes to train/serve (e.g., `["TEST","ODI","T20","T20I"]`).
+  - `random_state`, `cv_splits`, `test_size`, `n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — hyperparameters reserved for use by training scripts (current model uses a subset; others are placeholders for future models).
+  - `artifact_template` — naming template for saved artifacts (informational).
 
-Key environment variables:
-- `GO_APP_OUTPUT_DIR`: Where training scripts look for exported CSV datasets. If not set, the config file value is used.
-- `ML_SERVICE_OUTPUT_DIR`: Where training scripts save artifacts and where the service loads model/scaler files from. If not set, the config file value is used.
-- `MODELS_DIR`: Optional legacy variable checked by the service after `ML_SERVICE_OUTPUT_DIR`.
+Environment variables:
+- `ML_SERVICE_CONFIG` — path to an alternate `config.json`.
+- `ML_SERVICE_OUTPUT_DIR` — artifacts directory override at runtime.
+- `MODELS_DIR` — legacy env var also recognized as an artifacts directory override.
+- `GO_APP_OUTPUT_DIR` — training scripts use this to locate exported CSVs if not specified via `--csv`.
 
-Common CLI args (training scripts):
-- `python -m ml.train_batting --csv <path/to/batting_encoded.csv> --out <artifacts_dir>`
-- `python -m ml.train_bowling --csv <path/to/bowling_encoded.csv> --out <artifacts_dir>`
+CLI examples:
+- Train all configured formats (from `ml-service` directory): `make train-all`
+- Serve FastAPI (hot reload): `make run`
 
-Default resolution in training scripts:
-- CSV input directory: `${GO_APP_OUTPUT_DIR}` if set, otherwise `config.inputs.go_app_export_dir` from `ml-service/config.json`.
-- Artifacts output directory: `${ML_SERVICE_OUTPUT_DIR}` if set, otherwise `config.outputs.artifacts_dir` from `ml-service/config.json`.
+Artifacts naming:
+- Batting: `batting_scaler_<FORMAT>.joblib`, `batting_model_<FORMAT>.joblib`
+- Bowling: `bowling_scaler_<FORMAT>.joblib`, `bowling_model_<FORMAT>.joblib`
+- Legacy (no format provided): `batting_scaler.joblib`, `batting_model.joblib`, `bowling_scaler.joblib`, `bowling_model.joblib`
 
-Default resolution in the FastAPI app (`app/main.py`):
-- Models directory: `${ML_SERVICE_OUTPUT_DIR}` if set, otherwise `${MODELS_DIR}` if set, otherwise `config.outputs.artifacts_dir` from `ml-service/config.json`, and finally a built-in fallback `../../output/ml-service`.
+Request requirements (serving):
+- Prediction endpoints accept a batch of features; when `format` is provided in the feature rows, all rows must share the same format, and a model for that format must be loaded.
+- If `format` is omitted, the service will attempt to use legacy (unsuffixed) artifacts; otherwise returns a clear error.
 
-## Tips
-- Keep paths relative to each component directory to simplify local development.
-- For CI systems, prefer environment variables to avoid editing config files in the repository.
-- The Makefile targets rely on sensible defaults; override with env vars when needed.
+---
+
+### End-to-end per-format run (quickstart)
+1) Migrate and import:
+- `go run ./go-app/cmd/cricsheet-importer -dir ../data/go-app/cricsheet`
+2) Precompute (per format):
+- `go run ./go-app/cmd/precompute -season=2019 -formats=ODI,T20I`
+3) Export (per format):
+- `go run ./go-app/cmd/export-dataset -formats=ODI,T20I`
+4) Train models (per format):
+- `make -C ml-service train-all`
+5) Serve models:
+- `make -C ml-service run`
+6) Predict teams (example):
+- `go run ./go-app/cmd/team-predictor -match=<MATCH_ID> -format=ODI`
+- `go run ./go-app/cmd/team-predictor -match=<MATCH_ID> -format=T20I`

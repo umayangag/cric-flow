@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -73,9 +74,18 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if len(info.Teams) >= 2 {
 		teamB = info.Teams[1]
 	}
-	mid := StableMatchID(dateISO, teamA, teamB)
-	if err := db.EnsureMatchByID(ctx, mid); err != nil {
-		return fmt.Errorf("ensure match: %w", err)
+ mid := StableMatchID(dateISO, teamA, teamB)
+	cfg := config.Load()
+	formatCode := DetectFormat(info.MatchType, info.Teams, cfg)
+	if formatCode == "" {
+		return fmt.Errorf("unsupported match_type: %s", info.MatchType)
+	}
+	formatID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
+	if err != nil {
+		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
+	}
+	if err := db.EnsureMatchWithFormat(ctx, mid, formatID); err != nil {
+		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
 	var venueID *int64
