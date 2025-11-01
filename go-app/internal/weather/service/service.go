@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -28,7 +27,7 @@ type sessionSpec struct {
 // BuildSessions derives session labels and approximate timestamps.
 // If inningsCount > 0, uses inning1..inningN; otherwise defaults to 2 innings.
 // Timestamps are nil for now; worker may enrich later when available.
-func BuildSessions(info cricsheet.Info, inningsCount int) []sessionSpec {
+func BuildSessions(inningsCount int) []sessionSpec {
 	if inningsCount <= 0 {
 		inningsCount = 2
 	}
@@ -41,24 +40,24 @@ func BuildSessions(info cricsheet.Info, inningsCount int) []sessionSpec {
 }
 
 // EnqueueJob creates a weather_job row (idempotent on match_id) and returns nil on success.
-func EnqueueJob(ctx context.Context, matchID int64, info cricsheet.Info, inningsCount int) error {
-	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
+func EnqueueJob(ctx context.Context, matchID int64, city string, venue string, inningsCount int) error {
+	venueName := strings.TrimSpace(firstNonEmpty(venue, city))
 	if venueName == "" {
 		// No venue: nothing to enqueue
 		return nil
 	}
 	norm := NormalizeVenue(venueName)
-	var city *string
-	if strings.TrimSpace(info.City) != "" {
-		c := strings.TrimSpace(info.City)
-		city = &c
+	var cityPtr *string
+	if strings.TrimSpace(city) != "" {
+		c := strings.TrimSpace(city)
+		cityPtr = &c
 	}
-	sessions := BuildSessions(info, inningsCount)
+	sessions := BuildSessions(inningsCount)
 	b, _ := json.Marshal(sessions)
 	job := &db.WeatherJob{
 		MatchID:         matchID,
 		NormalizedVenue: norm,
-		City:            city,
+		City:            cityPtr,
 		Country:         nil,
 		StartAtLocal:    nil,
 		EndAtLocal:      nil,
