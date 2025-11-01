@@ -3,8 +3,9 @@ VENV:=.venv
 PY:=python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
+LINE_LENGTH?=100
 
-.PHONY: all venv install run docker-build docker-run clean fmt fmt-check init
+.PHONY: all venv install run docker-build docker-run clean fmt fmt-check init wrap wrap-check
 
 all: run
 
@@ -25,19 +26,19 @@ init: install
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Format Python code to align with CI (isort + black, reads pyproject.toml)
+# Format Python code with line wrapping (isort + black)
 fmt:
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	isort .
-	black .
+	isort --profile black --line-length $(LINE_LENGTH) .
+	black --line-length $(LINE_LENGTH) .
 
 # Check formatting only (same as CI)
 fmt-check:
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	isort --check-only --diff .
-	black --check --diff .
+	isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
+	black --check --diff --line-length $(LINE_LENGTH) .
 
 docker-build:
 	docker build -t $(APP_NAME):latest .
