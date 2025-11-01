@@ -100,13 +100,25 @@ def train_and_save(X, Y, out_dir: str):
 def main():
     parser = argparse.ArgumentParser()
     # Default input CSV from GO_APP_OUTPUT_DIR or ../../output/go-app
-    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
+    default_csv_dir = os.environ.get(
+        "GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app")
+    )
     default_csv = os.path.join(default_csv_dir, "bowling_encoded.csv")
     # Default output dir from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service
-    default_out_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.path.join("..", "..", "output", "ml-service"))
+    default_out_dir = os.environ.get(
+        "ML_SERVICE_OUTPUT_DIR", os.path.join("..", "..", "output", "ml-service")
+    )
 
-    parser.add_argument("--csv", default=default_csv, help="Path to bowling CSV (default from GO_APP_OUTPUT_DIR or ../../output/go-app)")
-    parser.add_argument("--out", default=default_out_dir, help="Output dir for artifacts (default from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service)")
+    parser.add_argument(
+        "--csv",
+        default=default_csv,
+        help="Path to bowling CSV (default from GO_APP_OUTPUT_DIR or ../../output/go-app)",
+    )
+    parser.add_argument(
+        "--out",
+        default=default_out_dir,
+        help="Output dir for artifacts (default from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service)",
+    )
     args = parser.parse_args()
 
     X, Y = load_dataset(args.csv)

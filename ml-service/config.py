@@ -21,10 +21,12 @@ def _load() -> Dict[str, Any]:
     env_path = os.environ.get("ML_SERVICE_CONFIG")
     if env_path:
         candidates.append(env_path)
-    candidates.extend([
-        os.path.join(os.getcwd(), "config.json"),
-        os.path.abspath(os.path.join(os.getcwd(), "..", "config.json")),
-    ])
+    candidates.extend(
+        [
+            os.path.join(os.getcwd(), "config.json"),
+            os.path.abspath(os.path.join(os.getcwd(), "..", "config.json")),
+        ]
+    )
     for p in candidates:
         try:
             with open(p, "r", encoding="utf-8") as f:

@@ -98,6 +98,10 @@ make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 - Ensures at least 5 bowlers are selected (part-time allowed).
 - Adjust `BAT`/`BOWL` as desired; minimum bowlers enforced is 5.
 
+## System architecture
+For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
+- docs/ARCHITECTURE.md
+
 ## Configuration and paths
 This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.
 
