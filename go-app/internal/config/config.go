@@ -31,9 +31,9 @@ type Config struct {
 		RequiredFormat string `json:"required_format"`
 	} `json:"export"`
 	Team struct {
-		MinBowlers      int `json:"min_bowlers"`
-		DefaultBatters  int `json:"default_batters"`
-		DefaultBowlers  int `json:"default_bowlers"`
+		MinBowlers     int `json:"min_bowlers"`
+		DefaultBatters int `json:"default_batters"`
+		DefaultBowlers int `json:"default_bowlers"`
 	} `json:"team"`
 }
 

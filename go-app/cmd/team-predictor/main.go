@@ -193,15 +193,6 @@ func main() {
 	}
 
 	// Rank players
-	type batRank struct {
-		name     string
-		runs     float32
-		isBowler bool
-	}
-	type bowlRank struct {
-		name string
-		wkts float32
-	}
 	bats := make([]batRank, 0, len(candidates))
 	bowls := make([]bowlRank, 0, len(candidates))
 	for i, p := range candidates {
@@ -211,8 +202,16 @@ func main() {
 	sort.Slice(bats, func(i, j int) bool { return bats[i].runs > bats[j].runs })
 	sort.Slice(bowls, func(i, j int) bool { return bowls[i].wkts > bowls[j].wkts })
 	// Selection rationale (top candidates) for observability
-	log.Printf("Top batting candidates (format=%s): %v", strings.ToUpper(strings.TrimSpace(formatCode)), topNamesBat(bats, 5))
-	log.Printf("Top bowling candidates (format=%s): %v", strings.ToUpper(strings.TrimSpace(formatCode)), topNamesBowl(bowls, 5))
+	log.Printf(
+		"Top batting candidates (format=%s): %v",
+		strings.ToUpper(strings.TrimSpace(formatCode)),
+		topNamesBat(bats, 5),
+	)
+	log.Printf(
+		"Top bowling candidates (format=%s): %v",
+		strings.ToUpper(strings.TrimSpace(formatCode)),
+		topNamesBowl(bowls, 5),
+	)
 
 	// Pick bowlers first to satisfy minimum 5
 	selected := map[string]bool{}
@@ -429,4 +428,53 @@ func candidatesByName(cs []candidate) map[string]candidate {
 		m[c.Name] = c
 	}
 	return m
+}
+
+// --- Helper ranking types and format-agnostic utilities ---
+// batRank and bowlRank are used to sort and report top candidates.
+type batRank struct {
+	name     string
+	runs     float32
+	isBowler bool
+}
+
+type bowlRank struct {
+	name string
+	wkts float32
+}
+
+// topNamesBat returns the top-N batter names from a sorted slice (descending by runs).
+// If n <= 0, it returns up to 5 names by default. It gracefully handles short slices.
+func topNamesBat(in []batRank, n int) []string {
+	if n <= 0 {
+		n = 5
+	}
+	if n > len(in) {
+		n = len(in)
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		if in[i].name != "" {
+			out = append(out, in[i].name)
+		}
+	}
+	return out
+}
+
+// topNamesBowl returns the top-N bowler names from a sorted slice (descending by wickets).
+// If n <= 0, it returns up to 5 names by default. It gracefully handles short slices.
+func topNamesBowl(in []bowlRank, n int) []string {
+	if n <= 0 {
+		n = 5
+	}
+	if n > len(in) {
+		n = len(in)
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		if in[i].name != "" {
+			out = append(out, in[i].name)
+		}
+	}
+	return out
 }
