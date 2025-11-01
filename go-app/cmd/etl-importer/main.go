@@ -23,7 +23,12 @@ func main() {
 	if defDir == "" {
 		defDir = config.DefaultEtlDir()
 	}
-	flag.StringVar(&dir, "dir", defDir, "directory with curated CSVs (default from env GO_APP_INPUT_DIR or config.json)")
+	flag.StringVar(
+		&dir,
+		"dir",
+		defDir,
+		"directory with curated CSVs (default from env GO_APP_INPUT_DIR or config.json)",
+	)
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

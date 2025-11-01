@@ -5,7 +5,7 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=100
 
-.PHONY: all venv install run docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
+.PHONY: all venv install run train-all docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
 
 all: run
 
@@ -25,6 +25,10 @@ init: install
 
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
+
+train-all:
+	$(PY) ml/train_batting.py --all-formats
+	$(PY) ml/train_bowling.py --all-formats
 
 # Format Python code with line wrapping (isort + black)
 fmt:

@@ -15,6 +15,21 @@ type Config struct {
 	Outputs struct {
 		ExportDir string `json:"export_dir"`
 	} `json:"outputs"`
+	Formats struct {
+		TreatT20ISubset    bool     `json:"treat_t20i_as_subset"`
+		InternationalTeams []string `json:"international_teams"`
+	} `json:"formats"`
+	Features struct {
+		PrecomputeTimeoutMs  int     `json:"precompute_timeout_ms"`
+		MinBattingInnings    int     `json:"min_batting_innings"`
+		MinBowlingInnings    int     `json:"min_bowling_innings"`
+		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
+		ConsistencyPerFormat bool    `json:"consistency_per_format"`
+	} `json:"features"`
+	Export struct {
+		SplitByFormat  bool   `json:"split_by_format"`
+		RequiredFormat string `json:"required_format"`
+	} `json:"export"`
 }
 
 var cached *Config

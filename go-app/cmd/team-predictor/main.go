@@ -57,13 +57,15 @@ func main() {
 	var matchID int64
 	var wantBatters int
 	var wantBowlers int
+	var formatCode string
 	flag.Int64Var(&matchID, "match", 0, "match_id to build predictions for")
 	flag.IntVar(&wantBatters, "bat", 6, "number of batters to pick (default 6)")
 	flag.IntVar(&wantBowlers, "bowl", 5, "number of bowlers to pick (default 5, minimum 5)")
+	flag.StringVar(&formatCode, "format", "", "match format code (TEST, ODI, T20, T20I)")
 	flag.Parse()
 
-	if matchID == 0 {
-		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> [-bat=6] [-bowl=5]")
+	if matchID == 0 || strings.TrimSpace(formatCode) == "" {
+		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> [-bat=6] [-bowl=5]")
 		os.Exit(2)
 	}
 	if wantBowlers < 5 {
@@ -75,6 +77,12 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		log.Fatalf("db connect failed: %v", err)
+	}
+
+	// Resolve format_id
+	fid, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(formatCode)))
+	if err != nil {
+		log.Fatalf("resolve format %s: %v", formatCode, err)
 	}
 
 	// Load match context
@@ -110,7 +118,7 @@ func main() {
 	for _, p := range candidates {
 		bf := contracts.BattingFeatures{
 			BattingConsistency: p.BatCons,
-			BattingForm:        loadForm(ctx, p.ID, seasonID, true),
+			BattingForm:        loadFormFmt(ctx, p.ID, seasonID, fid, true),
 			BattingTemp:        batWX.Temp,
 			BattingWind:        batWX.Wind,
 			BattingRain:        batWX.Rain,
@@ -121,16 +129,17 @@ func main() {
 			BattingInning:      inning,
 			BattingSession:     encodeSession(battingSession),
 			Toss:               encodeToss(toss),
-			Venue:              loadVenue(ctx, p.ID, venueID, true),
-			Opposition:         loadOpposition(ctx, p.ID, oppositionID, true),
+			Venue:              loadVenueFmt(ctx, p.ID, venueID, fid, true),
+			Opposition:         loadOppositionFmt(ctx, p.ID, oppositionID, fid, true),
 			Season:             ptrToInt(seasonID),
 			PlayerName:         p.Name,
+			Format:             strings.ToUpper(strings.TrimSpace(formatCode)),
 		}
 		batFeats = append(batFeats, bf)
 
 		wf := contracts.BowlingFeatures{
 			BowlingConsistency: p.BowlCons,
-			BowlingForm:        loadForm(ctx, p.ID, seasonID, false),
+			BowlingForm:        loadFormFmt(ctx, p.ID, seasonID, fid, false),
 			BowlingTemp:        bowlWX.Temp,
 			BowlingWind:        bowlWX.Wind,
 			BowlingRain:        bowlWX.Rain,
@@ -141,10 +150,11 @@ func main() {
 			BattingInning:      inning,
 			BowlingSession:     encodeSession(bowlingSession),
 			Toss:               encodeToss(toss),
-			BowlingVenue:       loadVenue(ctx, p.ID, venueID, false),
-			BowlingOpposition:  loadOpposition(ctx, p.ID, oppositionID, false),
+			BowlingVenue:       loadVenueFmt(ctx, p.ID, venueID, fid, false),
+			BowlingOpposition:  loadOppositionFmt(ctx, p.ID, oppositionID, fid, false),
 			Season:             ptrToInt(seasonID),
 			PlayerName:         p.Name,
+			Format:             strings.ToUpper(strings.TrimSpace(formatCode)),
 		}
 		bowlFeats = append(bowlFeats, wf)
 	}
@@ -330,7 +340,7 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 	return out, rows.Err()
 }
 
-func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool) float32 {
+func loadFormFmt(ctx context.Context, playerID int64, seasonID *int64, formatID int64, batting bool) float32 {
 	if seasonID == nil {
 		return 0
 	}
@@ -338,12 +348,8 @@ func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool
 	if !batting {
 		col = "bowling_form"
 	}
-	row := db.Pool.QueryRow(
-		ctx,
-		fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_form_data WHERE player_id=$1 AND season_id=$2`, col),
-		playerID,
-		*seasonID,
-	)
+	q := `SELECT COALESCE(` + col + `,0)::real FROM player_form_data_fmt WHERE player_id=$1 AND season_id=$2 AND ($3 = 0 OR format_id=$3)`
+	row := db.Pool.QueryRow(ctx, q, playerID, *seasonID, formatID)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0
@@ -351,7 +357,7 @@ func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool
 	return v
 }
 
-func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool) float32 {
+func loadVenueFmt(ctx context.Context, playerID int64, venueID *int64, formatID int64, batting bool) float32 {
 	if venueID == nil {
 		return 0
 	}
@@ -359,12 +365,8 @@ func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool
 	if !batting {
 		col = "bowling_venue"
 	}
-	row := db.Pool.QueryRow(
-		ctx,
-		fmt.Sprintf(`SELECT COALESCE(%s,0)::real FROM player_venue_data WHERE player_id=$1 AND venue_id=$2`, col),
-		playerID,
-		*venueID,
-	)
+	q := `SELECT COALESCE(` + col + `,0)::real FROM player_venue_data_fmt WHERE player_id=$1 AND venue_id=$2 AND ($3 = 0 OR format_id=$3)`
+	row := db.Pool.QueryRow(ctx, q, playerID, *venueID, formatID)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0
@@ -372,7 +374,7 @@ func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool
 	return v
 }
 
-func loadOpposition(ctx context.Context, playerID int64, oppositionID *int64, batting bool) float32 {
+func loadOppositionFmt(ctx context.Context, playerID int64, oppositionID *int64, formatID int64, batting bool) float32 {
 	if oppositionID == nil {
 		return 0
 	}
@@ -380,15 +382,8 @@ func loadOpposition(ctx context.Context, playerID int64, oppositionID *int64, ba
 	if !batting {
 		col = "bowling_opposition"
 	}
-	row := db.Pool.QueryRow(
-		ctx,
-		fmt.Sprintf(
-			`SELECT COALESCE(%s,0)::real FROM player_opposition_data WHERE player_id=$1 AND opposition_id=$2`,
-			col,
-		),
-		playerID,
-		*oppositionID,
-	)
+	q := `SELECT COALESCE(` + col + `,0)::real FROM player_opposition_data_fmt WHERE player_id=$1 AND opposition_id=$2 AND ($3 = 0 OR format_id=$3)`
+	row := db.Pool.QueryRow(ctx, q, playerID, *oppositionID, formatID)
 	var v float32
 	if err := row.Scan(&v); err != nil {
 		return 0

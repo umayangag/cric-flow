@@ -130,3 +130,27 @@ Notes:
   7) `make team-predictor MATCH=<match_id> BAT=6 BOWL=5`
 
 See the root README for detailed usage and the per-component READMEs for flags and configuration.
+
+
+---
+
+### Format-aware pipeline notes (per-format features and models)
+
+- The system computes per-player features separately per match format (`TEST`, `ODI`, `T20`, `T20I`).
+- Schema adds `match_details.format_id` (FK to `match_format`) and feature tables keyed by format: `player_form_data_fmt`, `player_venue_data_fmt`, `player_opposition_data_fmt`.
+- Exporter (`cmd/export-dataset`) produces per‑format CSVs when a format is provided (or when `export.split_by_format` is true):
+  - `output/go-app/batting_encoded_<FORMAT>.csv`
+  - `output/go-app/bowling_encoded_<FORMAT>.csv`
+  - Each CSV includes a `format_code` column for traceability.
+- ML training scripts accept `--format`, `--formats`, and `--all-formats` and save artifacts per format:
+  - `output/ml-service/batting_scaler_<FORMAT>.joblib`, `batting_model_<FORMAT>.joblib`
+  - `output/ml-service/bowling_scaler_<FORMAT>.joblib`, `bowling_model_<FORMAT>.joblib`
+- Serving (FastAPI) loads one model per format into registries at startup and prediction requests must include a `format` (unless legacy artifacts are used). Requests for different formats route to different artifacts.
+- Team predictor (`cmd/team-predictor`) requires `-format=<CODE>` and joins format‑aware feature tables with the same `format_id`. It includes the `format` in the ML request payloads.
+
+Quick commands:
+- Precompute: `go run ./go-app/cmd/precompute -formats=ODI,T20I -season=2019`
+- Export: `go run ./go-app/cmd/export-dataset -formats=ODI,T20I`
+- Train: `make -C ml-service train-all`
+- Serve: `make -C ml-service run`
+- Predict: `go run ./go-app/cmd/team-predictor -match=<id> -format=ODI`
