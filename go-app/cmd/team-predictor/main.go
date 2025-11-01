@@ -340,19 +340,6 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 	return out, rows.Err()
 }
 
-func loadForm(ctx context.Context, playerID int64, seasonID *int64, batting bool) float32 {
-	// Legacy helper retained for compatibility; delegates to format-aware variant with formatID=0 (no filter).
-	return loadFormFmt(ctx, playerID, seasonID, 0, batting)
-}
-
-func loadVenue(ctx context.Context, playerID int64, venueID *int64, batting bool) float32 {
-	return loadVenueFmt(ctx, playerID, venueID, 0, batting)
-}
-
-func loadOpposition(ctx context.Context, playerID int64, oppositionID *int64, batting bool) float32 {
-	return loadOppositionFmt(ctx, playerID, oppositionID, 0, batting)
-}
-
 func loadFormFmt(ctx context.Context, playerID int64, seasonID *int64, formatID int64, batting bool) float32 {
 	if seasonID == nil {
 		return 0
