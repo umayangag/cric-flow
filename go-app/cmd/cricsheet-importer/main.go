@@ -27,6 +27,7 @@ func main() {
 		)
 		phWeather = flag.Bool("placeholders-weather", false, "Insert placeholder weather rows per match")
 		phField   = flag.Bool("placeholders-fielding", false, "Insert zeroed fielding rows for all players seen")
+		wEnqueue  = flag.Bool("weather-enqueue", true, "Enqueue async weather jobs per match (non-blocking)")
 	)
 	flag.Parse()
 
@@ -40,7 +41,11 @@ func main() {
 		log.Fatalf("migrations failed: %v", err)
 	}
 
-	opts := &cricsheet.Options{PlaceholdersWeather: *phWeather, PlaceholdersFielding: *phField}
+	opts := &cricsheet.Options{
+		PlaceholdersWeather:  *phWeather,
+		PlaceholdersFielding: *phField,
+		WeatherEnqueue:       *wEnqueue,
+	}
 	n, err := cricsheet.ImportDir(ctx, *dataDir, opts)
 	if err != nil {
 		log.Fatalf("import failed: %v", err)

@@ -11,12 +11,14 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	weatherSvc "github.com/umayangag/cric-info-scrapers/go-app/internal/weather/service"
 )
 
 // Options controls optional behaviors for Cricsheet import.
 type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
+	WeatherEnqueue       bool
 }
 
 // ImportDir reads all .json files in dir and imports them into the DB.
@@ -124,13 +126,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
-			"Innings 1",
+			"inning1",
 		)
 		_, _ = db.Pool.Exec(
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
-			"Innings 2",
+			"inning2",
 		)
 	}
 	playersSeen := map[string]bool{}
@@ -321,6 +323,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				MissedRunOuts:  &zero,
 			})
 		}
+	}
+	// Enqueue async weather job (non-blocking)
+	if opts != nil && opts.WeatherEnqueue {
+		_ = weatherSvc.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
 	}
 	return nil
 }
