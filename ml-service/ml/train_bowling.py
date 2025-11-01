@@ -88,7 +88,9 @@ def load_dataset(path: str):
     return X, Y
 
 
-def train_and_save(X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None):
+def train_and_save(
+    X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None
+):
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
@@ -102,7 +104,9 @@ def train_and_save(X, Y, out_dir: str, rf_params: dict, suffix: str | None = Non
         except Exception:
             max_depth = None
     model = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+        RandomForestRegressor(
+            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
+        )
     )
     model.fit(Xs, Y)
     if suffix:

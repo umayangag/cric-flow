@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -88,7 +88,9 @@ BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 
 
-def _error_payload(code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None) -> dict:
+def _error_payload(
+    code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None
+) -> dict:
     payload = {"code": code, "message": message}
     if hint:
         payload["hint"] = hint
@@ -144,6 +146,7 @@ def _reload_artifacts() -> dict:
         "legacy_batting": "_LEGACY_" in BAT_MODELS,
         "legacy_bowling": "_LEGACY_" in BOWL_MODELS,
     }
+
 
 # Initial load of artifacts (legacy + per-format)
 try:
@@ -236,11 +239,13 @@ async def health():
                     fpath = os.path.join(MODELS_DIR, fname)
                     try:
                         st = os.stat(fpath)
-                        out.append({
-                            "file": fname,
-                            "size_bytes": st.st_size,
-                            "modified": int(st.st_mtime),
-                        })
+                        out.append(
+                            {
+                                "file": fname,
+                                "size_bytes": st.st_size,
+                                "modified": int(st.st_mtime),
+                            }
+                        )
                     except Exception:
                         out.append({"file": fname})
         except Exception:
@@ -275,19 +280,22 @@ async def health():
         },
         "counters": {
             "batting_formats": len([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
-            "bowling_formats": len([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"])
-        }
+            "bowling_formats": len([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
+        },
     }
 
 
 @app.post("/predict/batting", response_model=List[BattingPrediction])
 async def predict_batting(features: List[BattingFeatures]):
     if not features:
-        raise HTTPException(status_code=400, detail=_error_payload(
-            code="EMPTY_BATCH",
-            message="Empty features list",
-            hint="Send at least one feature row with the required fields."
-        ))
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one feature row with the required fields.",
+            ),
+        )
     # Determine format
     fmt = (features[0].format or "").strip().upper()
     if fmt:
@@ -299,7 +307,7 @@ async def predict_batting(features: List[BattingFeatures]):
                     detail=_error_payload(
                         code="MIXED_FORMATS",
                         message="All feature rows must have the same format",
-                        hint="Ensure every row uses the same 'format' code."
+                        hint="Ensure every row uses the same 'format' code.",
                     ),
                 )
         pair = BAT_MODELS.get(fmt)
@@ -323,7 +331,7 @@ async def predict_batting(features: List[BattingFeatures]):
                 detail=_error_payload(
                     code="MISSING_FORMAT",
                     message="Missing 'format' and no legacy batting model loaded",
-                    hint="Set 'format' in the request or train legacy artifacts."
+                    hint="Set 'format' in the request or train legacy artifacts.",
                 ),
             )
         scaler, model = pair
@@ -365,11 +373,14 @@ async def predict_batting(features: List[BattingFeatures]):
 @app.post("/predict/bowling", response_model=List[BowlingPrediction])
 async def predict_bowling(features: List[BowlingFeatures]):
     if not features:
-        raise HTTPException(status_code=400, detail=_error_payload(
-            code="EMPTY_BATCH",
-            message="Empty features list",
-            hint="Send at least one feature row with the required fields."
-        ))
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one feature row with the required fields.",
+            ),
+        )
     fmt = (features[0].format or "").strip().upper()
     if fmt:
         for f in features:
@@ -379,7 +390,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
                     detail=_error_payload(
                         code="MIXED_FORMATS",
                         message="All feature rows must have the same format",
-                        hint="Ensure every row uses the same 'format' code."
+                        hint="Ensure every row uses the same 'format' code.",
                     ),
                 )
         pair = BOWL_MODELS.get(fmt)
@@ -402,7 +413,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
                 detail=_error_payload(
                     code="MISSING_FORMAT",
                     message="Missing 'format' and no legacy bowling model loaded",
-                    hint="Set 'format' in the request or train legacy artifacts."
+                    hint="Set 'format' in the request or train legacy artifacts.",
                 ),
             )
         scaler, model = pair
@@ -432,17 +443,19 @@ async def predict_bowling(features: List[BowlingFeatures]):
         ]
 
 
-
 @app.post("/admin/reload")
 async def admin_reload():
     """Rescan the models directory and reload artifacts.
     Guarded by ENABLE_HOT_RELOAD env flag to avoid accidental reloads in prod.
     """
     if not ENABLE_HOT_RELOAD:
-        raise HTTPException(status_code=403, detail=_error_payload(
-            code="RELOAD_DISABLED",
-            message="Hot reload is disabled",
-            hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload."
-        ))
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="RELOAD_DISABLED",
+                message="Hot reload is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload.",
+            ),
+        )
     summary = _reload_artifacts()
     return {"status": "reloaded", **summary}
