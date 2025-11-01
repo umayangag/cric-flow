@@ -209,7 +209,27 @@ def main():
         }
         return params
 
-    # Legacy single run (no specific format)
+    # Auto-detect formats when none explicitly provided
+    if not targets and not args.csv:
+        # 1) Prefer formats from config that actually exist on disk
+        cfg_fmts = _config_formats()
+        existing_cfg_fmts = [
+            f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"batting_encoded_{f}.csv"))
+        ]
+        if existing_cfg_fmts:
+            targets = existing_cfg_fmts
+        else:
+            # 2) Otherwise, glob for batting_encoded_*.csv in the export directory
+            try:
+                for name in os.listdir(default_csv_dir):
+                    if name.startswith("batting_encoded_") and name.endswith(".csv"):
+                        suffix = name[len("batting_encoded_") : -len(".csv")]
+                        if suffix:
+                            targets.append(str(suffix).upper())
+            except Exception:
+                pass
+
+    # If still no targets detected, fall back to legacy single CSV path
     if not targets:
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
         X, Y = load_dataset(csv_path)

@@ -9,6 +9,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+import config as svc_config  # loaded from ml-service/config.json if present
+
 # Minimal training script to produce placeholder artifacts for bowling
 # Supports training per-format; artifacts saved with format suffixes when provided.
 # By default consumes the Go export from ../../output/go-app/bowling_encoded.csv
@@ -138,14 +140,10 @@ def _config_formats() -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser()
-    # Default input CSV from GO_APP_OUTPUT_DIR or ../../output/go-app
-    default_csv_dir = os.environ.get(
-        "GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app")
-    )
-    # Default output dir from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service
-    default_out_dir = os.environ.get(
-        "ML_SERVICE_OUTPUT_DIR", os.path.join("..", "..", "output", "ml-service")
-    )
+    # Default input CSV from GO_APP_OUTPUT_DIR or config.json
+    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
+    # Default output dir from ML_SERVICE_OUTPUT_DIR or config.json
+    default_out_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
 
     parser.add_argument(
         "--csv",
@@ -174,6 +172,28 @@ def main():
     )
     args = parser.parse_args()
 
+    # Hyperparameters: read from config.json (ml.*) with env/CLI override hooks
+    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
+    cfg = {}
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+    ml_cfg = cfg.get("ml", {}) if isinstance(cfg, dict) else {}
+    # Allow env overrides
+    env_n_estimators = os.environ.get("ML_N_ESTIMATORS")
+    env_max_depth = os.environ.get("ML_MAX_DEPTH")
+    env_random_state = os.environ.get("ML_RANDOM_STATE")
+
+    def rf_params_from_cfg() -> dict:
+        params = {
+            "n_estimators": env_n_estimators or ml_cfg.get("n_estimators", 100),
+            "max_depth": env_max_depth or ml_cfg.get("max_depth", None),
+            "random_state": env_random_state or ml_cfg.get("random_state", 42),
+        }
+        return params
+
     targets: list[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -182,14 +202,43 @@ def main():
     elif args.format:
         targets = [args.format.strip().upper()]
 
-    # Legacy single run (no specific format)
+    # Auto-detect formats when none explicitly provided
+    if not targets and not args.csv:
+        # 1) Prefer formats from config that actually exist on disk
+        cfg_fmts = _config_formats()
+        existing_cfg_fmts = [
+            f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"bowling_encoded_{f}.csv"))
+        ]
+        if existing_cfg_fmts:
+            targets = existing_cfg_fmts
+        else:
+            # 2) Otherwise, glob for bowling_encoded_*.csv in the export directory
+            try:
+                for name in os.listdir(default_csv_dir):
+                    if name.startswith("bowling_encoded_") and name.endswith(".csv"):
+                        suffix = name[len("bowling_encoded_") : -len(".csv")]
+                        if suffix:
+                            targets.append(str(suffix).upper())
+            except Exception:
+                pass
+
+    # If still no targets detected, fall back to legacy single CSV path
     if not targets:
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
         X, Y = load_dataset(csv_path)
         if X.size == 0 or Y.size == 0:
             print("No data found for training. Exiting.")
             return
-        train_and_save(X, Y, args.out, None)
+        meta = {
+            "csv_path": csv_path,
+            "rows": int(X.shape[0]),
+            "n_features": int(X.shape[1]),
+            "n_targets": int(Y.shape[1]),
+            "format": None,
+            "model": "RandomForestRegressor",
+            "hyperparams": rf_params_from_cfg(),
+        }
+        train_and_save(X, Y, args.out, rf_params_from_cfg(), None, meta)
         print(f"Saved bowling artifacts to {args.out}")
         return
 
@@ -202,7 +251,16 @@ def main():
         if X.size == 0 or Y.size == 0:
             print(f"No data for {fmt}. Skipping.")
             continue
-        train_and_save(X, Y, args.out, fmt)
+        meta = {
+            "csv_path": csv_path,
+            "rows": int(X.shape[0]),
+            "n_features": int(X.shape[1]),
+            "n_targets": int(Y.shape[1]),
+            "format": fmt,
+            "model": "RandomForestRegressor",
+            "hyperparams": rf_params_from_cfg(),
+        }
+        train_and_save(X, Y, args.out, rf_params_from_cfg(), fmt, meta)
         print(f"Saved bowling artifacts for {fmt} to {args.out}")
 
 

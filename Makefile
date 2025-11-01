@@ -1,6 +1,6 @@
 # Convenience targets for local dev
 
-.PHONY: dev-up dev-down logs api migrate etl-importer export-dataset precompute go-test ml-serve team-predictor train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-ingest cricsheet-import up-all
+.PHONY: dev-up dev-down logs api migrate etl-importer export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-ingest cricsheet-import up-all
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -52,11 +52,14 @@ team-predictor:
 	cd go-app && go run ./cmd/team-predictor -match=$(MATCH) -bat=$(BAT) -bowl=$(BOWL)
 
 # Train ML artifacts from exported CSVs
-train-batting:
-	cd ml-service && python -m ml.train_batting
+ml-install:
+	$(MAKE) -C ml-service install
 
-train-bowling:
-	cd ml-service && python -m ml.train_bowling
+train-batting: ml-install
+	cd ml-service && .venv/bin/python -m ml.train_batting
+
+train-bowling: ml-install
+	cd ml-service && .venv/bin/python -m ml.train_bowling
 
 train-all: train-batting train-bowling
 
@@ -76,7 +79,8 @@ e2e:
 	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 	@echo "[5/5] Training ML artifacts for $(FORMAT)..."
-	cd ml-service && python -m ml.train_batting --format $(FORMAT) && python -m ml.train_bowling --format $(FORMAT)
+	$(MAKE) ml-install
+	cd ml-service && .venv/bin/python -m ml.train_batting --format $(FORMAT) && .venv/bin/python -m ml.train_bowling --format $(FORMAT)
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 
 e2e-multi:
@@ -90,7 +94,8 @@ e2e-multi:
 	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
-	cd ml-service && $(PY) ml/train_batting.py --formats $(FORMATS) && $(PY) ml/train_bowling.py --formats $(FORMATS)
+	$(MAKE) ml-install
+	cd ml-service && .venv/bin/python -m ml.train_batting --formats $(FORMATS) && .venv/bin/python -m ml.train_bowling --formats $(FORMATS)
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 
 # One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
