@@ -53,6 +53,15 @@ jobs:
           python -m py_compile ml/train_batting.py
           python -m py_compile ml/train_bowling.py
 
+      - name: Validate exports (if present)
+        working-directory: ml-service
+        run: |
+          if ls ../output/go-app/*encoded*.csv >/dev/null 2>&1; then \
+            make validate-exports; \
+          else \
+            echo "No exported CSVs found; skipping export validation."; \
+          fi
+
 
   gemini-review:
     if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '/gemini review') }}

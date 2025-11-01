@@ -30,6 +30,9 @@ train-all:
 	$(PY) ml/train_batting.py --all-formats
 	$(PY) ml/train_bowling.py --all-formats
 
+validate-exports:
+	$(PY) ml/validate_exports.py --all-formats
+
 # Format Python code with line wrapping (isort + black)
 fmt:
 	make lint

@@ -60,6 +60,39 @@ train-bowling:
 
 train-all: train-batting train-bowling
 
+# --- End-to-end automation (format-aware) ---
+# Usage:
+#  make e2e FORMAT=ODI SEASON=2019
+#  make e2e-multi FORMATS=ODI,T20I SEASON=2019
+
+e2e:
+	@if [ -z "$(FORMAT)" ]; then echo "Please set FORMAT=<CODE> (e.g., ODI)"; exit 2; fi
+	@echo "[1/5] Applying DB migrations..."
+	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
+	@echo "[2/5] Importing Cricsheet JSON..."
+	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
+	@echo "[3/5] Precomputing features for format $(FORMAT) (season=$(SEASON))..."
+	cd go-app && go run ./cmd/precompute -season=$(SEASON) -format=$(FORMAT)
+	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
+	@echo "[5/5] Training ML artifacts for $(FORMAT)..."
+	cd ml-service && python -m ml.train_batting --format $(FORMAT) && python -m ml.train_bowling --format $(FORMAT)
+	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
+
+e2e-multi:
+	@if [ -z "$(FORMATS)" ]; then echo "Please set FORMATS=CSV (e.g., ODI,T20I)"; exit 2; fi
+	@echo "[1/5] Applying DB migrations..."
+	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
+	@echo "[2/5] Importing Cricsheet JSON..."
+	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
+	@echo "[3/5] Precomputing features for formats $(FORMATS) (season=$(SEASON))..."
+	cd go-app && go run ./cmd/precompute -season=$(SEASON) -formats=$(FORMATS)
+	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
+	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
+	cd ml-service && $(PY) ml/train_batting.py --formats $(FORMATS) && $(PY) ml/train_bowling.py --formats $(FORMATS)
+	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
+
 # One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
 up-all:
 	@echo "[1/7] Bringing up Docker stack (Postgres, API, ML)..."
