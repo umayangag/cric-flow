@@ -1,0 +1,18 @@
+BEGIN;
+DO $$
+    DECLARE
+        _stmt text;
+    BEGIN
+        SELECT 'TRUNCATE TABLE '
+                   || string_agg(format('%I.%I', schemaname, tablename), ', ')
+                   || ' RESTART IDENTITY CASCADE'
+        INTO _stmt
+        FROM pg_tables
+        WHERE schemaname = ANY (ARRAY['public'])            -- add more schemas if needed
+          AND tablename NOT IN ('schema_migrations', 'goose_db_version'); -- keep if you use migrations
+
+        IF _stmt IS NOT NULL THEN
+            EXECUTE _stmt;
+        END IF;
+    END $$;
+COMMIT;
