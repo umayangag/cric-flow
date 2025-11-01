@@ -88,11 +88,26 @@ def load_dataset(path: str):
     return X, Y
 
 
-def train_and_save(X, Y, out_dir: str, suffix: str | None = None):
+def train_and_save(
+    X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None
+):
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    model = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
+    # Apply configurable hyperparameters with safe defaults
+    n_estimators = int(rf_params.get("n_estimators", 100))
+    random_state = int(rf_params.get("random_state", 42))
+    max_depth = rf_params.get("max_depth", None)
+    if max_depth is not None:
+        try:
+            max_depth = int(max_depth)
+        except Exception:
+            max_depth = None
+    model = MultiOutputRegressor(
+        RandomForestRegressor(
+            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
+        )
+    )
     model.fit(Xs, Y)
     if suffix:
         joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"))
@@ -100,6 +115,14 @@ def train_and_save(X, Y, out_dir: str, suffix: str | None = None):
     else:
         joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"))
         joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"))
+    # Save training metadata if provided
+    if metadata is not None:
+        meta_path = os.path.join(out_dir, f"bowling_metadata_{suffix or 'LEGACY'}.json")
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+        except Exception:
+            pass
 
 
 def _config_formats() -> list[str]:

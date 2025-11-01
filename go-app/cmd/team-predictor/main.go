@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
@@ -59,18 +60,39 @@ func main() {
 	var wantBowlers int
 	var formatCode string
 	flag.Int64Var(&matchID, "match", 0, "match_id to build predictions for")
-	flag.IntVar(&wantBatters, "bat", 6, "number of batters to pick (default 6)")
-	flag.IntVar(&wantBowlers, "bowl", 5, "number of bowlers to pick (default 5, minimum 5)")
+	// Use 0 defaults to allow config-driven values
+	flag.IntVar(&wantBatters, "bat", 0, "number of batters to pick (defaults from config.team.default_batters)")
+	flag.IntVar(&wantBowlers, "bowl", 0, "number of bowlers to pick (defaults from config.team.default_bowlers)")
 	flag.StringVar(&formatCode, "format", "", "match format code (TEST, ODI, T20, T20I)")
 	flag.Parse()
 
+	cfg := config.Load()
 	if matchID == 0 || strings.TrimSpace(formatCode) == "" {
-		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> [-bat=6] [-bowl=5]")
+		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> [-bat=N] [-bowl=N]")
 		os.Exit(2)
 	}
-	if wantBowlers < 5 {
-		log.Printf("requested bowlers=%d < 5; adjusting to 5 to satisfy minimum", wantBowlers)
-		wantBowlers = 5
+	// Apply config defaults when flags are not provided (0)
+	if wantBatters <= 0 {
+		if cfg.Team.DefaultBatters > 0 {
+			wantBatters = cfg.Team.DefaultBatters
+		} else {
+			wantBatters = 6
+		}
+	}
+	minB := 5
+	if cfg.Team.MinBowlers > 0 {
+		minB = cfg.Team.MinBowlers
+	}
+	if wantBowlers <= 0 {
+		if cfg.Team.DefaultBowlers > 0 {
+			wantBowlers = cfg.Team.DefaultBowlers
+		} else {
+			wantBowlers = minB
+		}
+	}
+	if wantBowlers < minB {
+		log.Printf("requested bowlers=%d < %d; adjusting to satisfy minimum", wantBowlers, minB)
+		wantBowlers = minB
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -171,15 +193,6 @@ func main() {
 	}
 
 	// Rank players
-	type batRank struct {
-		name     string
-		runs     float32
-		isBowler bool
-	}
-	type bowlRank struct {
-		name string
-		wkts float32
-	}
 	bats := make([]batRank, 0, len(candidates))
 	bowls := make([]bowlRank, 0, len(candidates))
 	for i, p := range candidates {
@@ -188,6 +201,17 @@ func main() {
 	}
 	sort.Slice(bats, func(i, j int) bool { return bats[i].runs > bats[j].runs })
 	sort.Slice(bowls, func(i, j int) bool { return bowls[i].wkts > bowls[j].wkts })
+	// Selection rationale (top candidates) for observability
+	log.Printf(
+		"Top batting candidates (format=%s): %v",
+		strings.ToUpper(strings.TrimSpace(formatCode)),
+		topNamesBat(bats, 5),
+	)
+	log.Printf(
+		"Top bowling candidates (format=%s): %v",
+		strings.ToUpper(strings.TrimSpace(formatCode)),
+		topNamesBowl(bowls, 5),
+	)
 
 	// Pick bowlers first to satisfy minimum 5
 	selected := map[string]bool{}
@@ -404,4 +428,53 @@ func candidatesByName(cs []candidate) map[string]candidate {
 		m[c.Name] = c
 	}
 	return m
+}
+
+// --- Helper ranking types and format-agnostic utilities ---
+// batRank and bowlRank are used to sort and report top candidates.
+type batRank struct {
+	name     string
+	runs     float32
+	isBowler bool
+}
+
+type bowlRank struct {
+	name string
+	wkts float32
+}
+
+// topNamesBat returns the top-N batter names from a sorted slice (descending by runs).
+// If n <= 0, it returns up to 5 names by default. It gracefully handles short slices.
+func topNamesBat(in []batRank, n int) []string {
+	if n <= 0 {
+		n = 5
+	}
+	if n > len(in) {
+		n = len(in)
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		if in[i].name != "" {
+			out = append(out, in[i].name)
+		}
+	}
+	return out
+}
+
+// topNamesBowl returns the top-N bowler names from a sorted slice (descending by wickets).
+// If n <= 0, it returns up to 5 names by default. It gracefully handles short slices.
+func topNamesBowl(in []bowlRank, n int) []string {
+	if n <= 0 {
+		n = 5
+	}
+	if n > len(in) {
+		n = len(in)
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		if in[i].name != "" {
+			out = append(out, in[i].name)
+		}
+	}
+	return out
 }

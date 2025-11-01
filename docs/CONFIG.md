@@ -63,6 +63,7 @@ Environment variables:
 - `ML_SERVICE_OUTPUT_DIR` — artifacts directory override at runtime.
 - `MODELS_DIR` — legacy env var also recognized as an artifacts directory override.
 - `GO_APP_OUTPUT_DIR` — training scripts use this to locate exported CSVs if not specified via `--csv`.
+- `ENABLE_HOT_RELOAD` — when set to `1/true/yes`, enables `POST /admin/reload` to rescan and reload artifacts without restarting the server.
 
 CLI examples:
 - Train all configured formats (from `ml-service` directory): `make train-all`
@@ -75,11 +76,26 @@ Artifacts naming:
 
 Request requirements (serving):
 - Prediction endpoints accept a batch of features; when `format` is provided in the feature rows, all rows must share the same format, and a model for that format must be loaded.
-- If `format` is omitted, the service will attempt to use legacy (unsuffixed) artifacts; otherwise returns a clear error.
+- If `format` is omitted, the service will attempt to use legacy (unsuffixed) artifacts; otherwise returns a structured error with a hint.
+
+---
+
+### Team selection configuration (go-app)
+New keys in `go-app/config.json` under `team`:
+- `min_bowlers` — minimum number of bowlers the selector must include (default 5).
+- `default_batters` — default number of batters to pick when `-bat` not provided (default 6).
+- `default_bowlers` — default number of bowlers to pick when `-bowl` not provided (default 5 or `min_bowlers`).
+
+CLI overrides still apply: `go run ./go-app/cmd/team-predictor -match=<id> -format=<CODE> -bat=6 -bowl=5`.
 
 ---
 
 ### End-to-end per-format run (quickstart)
+With one command per format or multiple formats:
+- Single format: `make e2e FORMAT=ODI SEASON=2019`
+- Multiple formats: `make e2e-multi FORMATS=ODI,T20I SEASON=2019`
+
+Or step-by-step:
 1) Migrate and import:
 - `go run ./go-app/cmd/cricsheet-importer -dir ../data/go-app/cricsheet`
 2) Precompute (per format):

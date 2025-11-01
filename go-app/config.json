@@ -23,5 +23,10 @@
   "export": {
     "split_by_format": true,
     "required_format": ""
+  },
+  "team": {
+    "min_bowlers": 5,
+    "default_batters": 6,
+    "default_bowlers": 5
   }
 }

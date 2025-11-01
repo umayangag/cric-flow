@@ -53,97 +53,11 @@ jobs:
           python -m py_compile ml/train_batting.py
           python -m py_compile ml/train_bowling.py
 
-
-  gemini-review:
-    if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '/gemini review') }}
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      issues: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Gemini PR Review
-        uses: actions/github-script@v7
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const prNumber = context.issue.number;
-            if (!prNumber) {
-              core.setFailed('No PR number found in context.');
-            }
-
-            // Fetch changed files with patches
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-              per_page: 100,
-            });
-
-            let totalPatchChars = 0;
-            const maxChars = 120000; // keep within request limits
-            const parts = [];
-            // Only consider changes under ml-service/
-            for (const f of files) {
-              if (!f.filename.startsWith('ml-service/')) continue;
-              const header = `\n--- File: ${f.filename} (${f.status}, +${f.additions} -${f.deletions})`;
-              const patch = f.patch || '';
-              if (patch.length === 0) continue;
-              if (totalPatchChars + header.length + patch.length > maxChars) break;
-              parts.push(header + "\n" + patch);
-              totalPatchChars += header.length + patch.length;
-            }
-
-            if (parts.length === 0) {
-              core.info('No patch data available to review.');
-              return;
-            }
-
-            const diffText = parts.join('\n');
-
-            const systemPrompt = `You are a senior Python engineer reviewing a pull request for the ml-service folder of a monorepo. Provide a concise, actionable review:\n- Identify bugs, edge cases, security issues.\n- Call out style or consistency issues aligned with Black/isort/flake8 when relevant.\n- Point out performance or readability improvements.\n- Suggest tests or docs updates.\n- Keep it focused on changed lines. Use bullet points. Include code snippets when helpful.`;
-
-            const userPrompt = `Repository: ${context.repo.owner}/${context.repo.repo}\nPR #${prNumber}\nChanged patches (unified diff format):\n\n${diffText}`;
-
-            const body = {
-              contents: [
-                { role: 'user', parts: [{ text: systemPrompt }] },
-                { role: 'user', parts: [{ text: userPrompt }] },
-              ],
-            };
-
-            const apiKey = process.env.GOOGLE_API_KEY;
-            if (!apiKey) {
-              core.setFailed('Missing GOOGLE_API_KEY secret. Please add it in repository settings.');
-            }
-
-            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body),
-            });
-
-            if (!res.ok) {
-              const txt = await res.text();
-              core.setFailed(`Gemini API request failed: ${res.status} ${res.statusText} - ${txt}`);
-            }
-
-            const data = await res.json();
-            let review = 'No response.';
-            try {
-              review = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('\n') || review;
-            } catch (e) { /* ignore */ }
-
-            const finalComment = `🤖 Gemini PR Review (ml-service)\n\n${review}`;
-
-            // Post a comment
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: finalComment,
-            });
+      - name: Validate exports (if present)
+        working-directory: ml-service
+        run: |
+          if ls ../output/go-app/*encoded*.csv >/dev/null 2>&1; then \
+            make validate-exports; \
+          else \
+            echo "No exported CSVs found; skipping export validation."; \
+          fi

@@ -30,6 +30,11 @@ type Config struct {
 		SplitByFormat  bool   `json:"split_by_format"`
 		RequiredFormat string `json:"required_format"`
 	} `json:"export"`
+	Team struct {
+		MinBowlers     int `json:"min_bowlers"`
+		DefaultBatters int `json:"default_batters"`
+		DefaultBowlers int `json:"default_bowlers"`
+	} `json:"team"`
 }
 
 var cached *Config
