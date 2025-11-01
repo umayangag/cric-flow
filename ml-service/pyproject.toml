@@ -1,11 +1,26 @@
 [tool.black]
 line-length = 100
-target-version = ['py313']
-include = '\.pyi?$'
+# Optionally, limit to the ml-service package paths
+# include = "(app|ml)/"
 
 [tool.isort]
-profile = 'black'
+profile = "black"
 line_length = 100
-force_single_line = false
-multi_line_output = 3
-include_trailing_comma = true
+# Keep local imports grouping stable; you can tweak as needed
+# src_paths = ["app", "ml"]
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+
+
+[tool.ruff]
+line-length = 100
+# Match project runtime
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable Pyflakes rules (includes F401 unused import)
+select = ["F"]
+# We let Black/Flake8 handle line length/style nuances
+ignore = ["E501"]

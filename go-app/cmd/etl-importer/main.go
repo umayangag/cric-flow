@@ -12,12 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {
 	var dir string
-	flag.StringVar(&dir, "dir", "src/createdb/data", "directory with curated CSVs from prototype")
+	// Resolve default input directory (curated CSVs) with precedence: flag > env > config > built-in
+	defDir := os.Getenv("GO_APP_INPUT_DIR")
+	if defDir == "" {
+		defDir = config.DefaultEtlDir()
+	}
+	flag.StringVar(&dir, "dir", defDir, "directory with curated CSVs (default from env GO_APP_INPUT_DIR or config.json)")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

@@ -1,0 +1,8 @@
+{
+  "inputs": {
+    "go_app_export_dir": "../output/go-app"
+  },
+  "outputs": {
+    "artifacts_dir": "../output/ml-service"
+  }
+}

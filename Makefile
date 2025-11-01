@@ -22,11 +22,11 @@ migrate:
 
 # Import curated CSVs from the Python prototype
 etl-importer:
-	cd go-app && go run ./cmd/etl-importer -dir=../src/createdb/data
+	cd go-app && GO_APP_INPUT_DIR=../data/go-app/createdb go run ./cmd/etl-importer
 
 # Export datasets similar to src/final_data/queries.py
 export-dataset:
-	cd go-app && go run ./cmd/export-dataset -out=../src/final_data/output
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
@@ -53,10 +53,10 @@ team-predictor:
 
 # Train ML artifacts from exported CSVs
 train-batting:
-	cd ml-service && python -m ml.train_batting --csv ../src/final_data/output/batting_encoded.csv --out ./models
+	cd ml-service && python -m ml.train_batting
 
 train-bowling:
-	cd ml-service && python -m ml.train_bowling --csv ../src/final_data/output/bowling_encoded.csv --out ./models
+	cd ml-service && python -m ml.train_bowling
 
 train-all: train-batting train-bowling
 
@@ -130,4 +130,4 @@ cricsheet-ingest:
 
 # Import Cricsheet JSON into DB using Go importer
 cricsheet-import:
-	cd go-app && go run ./cmd/cricsheet-importer -dir=../data
+	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet go run ./cmd/cricsheet-importer

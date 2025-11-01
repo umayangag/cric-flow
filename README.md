@@ -64,7 +64,7 @@ make precompute SEASON=2019
 ### 5) Export model datasets
 ```
 make export-dataset
-# outputs to src/final_data/output/batting_encoded.csv and bowling_encoded.csv
+# outputs to output/go-app/batting_encoded.csv and output/go-app/bowling_encoded.csv
 ```
 
 ### 6) Train ML artifacts (optional but recommended)
@@ -72,7 +72,7 @@ From the exported CSVs, create `joblib` scaler/model files consumed by the ML se
 ```
 make train-all
 ```
-Artifacts will be saved under `ml-service/models/`.
+Artifacts will be saved under `output/ml-service/`.
 
 ### 7) Start ML service and check health
 ```
@@ -97,6 +97,27 @@ make team-predictor MATCH=<match_id> BAT=6 BOWL=5
 ```
 - Ensures at least 5 bowlers are selected (part-time allowed).
 - Adjust `BAT`/`BOWL` as desired; minimum bowlers enforced is 5.
+
+## System architecture
+For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
+- docs/ARCHITECTURE.md
+
+## Configuration and paths
+This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.
+
+- Directory conventions:
+  - Inputs come from `data/{package}/...` (e.g., `data/go-app/cricsheet`, `data/go-app/createdb`)
+  - Outputs go to `output/{package}/...` (e.g., `output/go-app`, `output/ml-service`)
+- Config files:
+  - `go-app/config.json`
+  - `ml-service/config.json`
+- Precedence (highest to lowest):
+  1. CLI flags/args (`-dir`, `-out`, `--csv`, `--out`)
+  2. Environment variables (`GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `ML_SERVICE_OUTPUT_DIR`, etc.)
+  3. Config file (JSON) in the component directory
+  4. Built-in defaults
+
+See `docs/CONFIG.md` for full schema and examples.
 
 ## Formatting and linting
 - Aggregate format both components:

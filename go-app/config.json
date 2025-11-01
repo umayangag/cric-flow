@@ -1,0 +1,9 @@
+{
+  "inputs": {
+    "cricsheet_dir": "../data/go-app/cricsheet",
+    "etl_dir": "../data/go-app/createdb"
+  },
+  "outputs": {
+    "export_dir": "../output/go-app"
+  }
+}

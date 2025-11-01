@@ -4,15 +4,23 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {
+	// Resolve default input directory from env or config fallback
+	defDataDir := os.Getenv("GO_APP_INPUT_DIR")
+	if defDataDir == "" {
+		defDataDir = config.DefaultCricsheetDir()
+	}
+
 	var (
-		dataDir   = flag.String("dir", "../data", "Directory containing Cricsheet .json files")
+		dataDir   = flag.String("dir", defDataDir, "Directory containing Cricsheet .json files (default from GO_APP_INPUT_DIR or ../data/go-app)")
 		phWeather = flag.Bool("placeholders-weather", false, "Insert placeholder weather rows per match")
 		phField   = flag.Bool("placeholders-fielding", false, "Insert zeroed fielding rows for all players seen")
 	)
