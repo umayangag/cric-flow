@@ -11,12 +11,18 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v5"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func main() {
 	var outDir string
-	flag.StringVar(&outDir, "out", "src/final_data/output", "output directory for exported CSVs")
+	// Resolve default output directory with precedence: flag > env > config > built-in
+	defOut := os.Getenv("GO_APP_OUTPUT_DIR")
+	if defOut == "" {
+		defOut = config.DefaultExportDir()
+	}
+	flag.StringVar(&outDir, "out", defOut, "output directory for exported CSVs (default from env GO_APP_OUTPUT_DIR or config.json)")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)

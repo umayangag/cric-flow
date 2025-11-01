@@ -8,8 +8,10 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+import config as svc_config  # loaded from ml-service/config.json if present
+
 # Minimal training script to produce placeholder artifacts compatible with app.main
-# It expects the Go export at ../../src/final_data/output/batting_encoded.csv
+# By default consumes the Go export from ../../output/go-app/batting_encoded.csv
 # Feature order must match ml-service/app/main.py -> _batting_feature_vector
 
 FEATURE_COLS = [
@@ -103,11 +105,14 @@ def train_and_save(X, Y, out_dir: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--csv",
-        default=os.path.join("..", "..", "src", "final_data", "output", "batting_encoded.csv"),
-    )
-    parser.add_argument("--out", default=os.path.join("..", "models"))
+    # Default input CSV from GO_APP_OUTPUT_DIR or ../../output/go-app
+    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
+    default_csv = os.path.join(default_csv_dir, "batting_encoded.csv")
+    # Default output dir from ML_SERVICE_OUTPUT_DIR or config
+    default_out_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
+
+    parser.add_argument("--csv", default=default_csv, help="Path to batting CSV (default from GO_APP_OUTPUT_DIR or ../../output/go-app)")
+    parser.add_argument("--out", default=default_out_dir, help="Output dir for artifacts (default from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service)")
     args = parser.parse_args()
 
     X, Y = load_dataset(args.csv)

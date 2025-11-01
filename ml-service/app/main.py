@@ -64,7 +64,15 @@ class BowlingPrediction(BaseModel):
 
 
 # Load artifacts if present
-MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(os.path.dirname(__file__), "..", "models"))
+# Prefer ML_SERVICE_OUTPUT_DIR, then MODELS_DIR, then config.json default, else ../../output/ml-service
+try:
+    import config as svc_config  # from ml-service/config.py
+    _cfg_default_models_dir = svc_config.default_artifacts_dir()
+except Exception:
+    _cfg_default_models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service"))
+
+_default_models_dir = _cfg_default_models_dir
+MODELS_DIR = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir))
 _bat_scaler = None
 _bat_model = None
 _bow_scaler = None
