@@ -74,7 +74,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if len(info.Teams) >= 2 {
 		teamB = info.Teams[1]
 	}
- mid := StableMatchID(dateISO, teamA, teamB)
+	mid := StableMatchID(dateISO, teamA, teamB)
 	cfg := config.Load()
 	formatCode := DetectFormat(info.MatchType, info.Teams, cfg)
 	if formatCode == "" {

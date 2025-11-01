@@ -26,7 +26,12 @@ func main() {
 	if defOut == "" {
 		defOut = config.DefaultExportDir()
 	}
-	flag.StringVar(&outDir, "out", defOut, "output directory for exported CSVs (default from env GO_APP_OUTPUT_DIR or config.json)")
+	flag.StringVar(
+		&outDir,
+		"out",
+		defOut,
+		"output directory for exported CSVs (default from env GO_APP_OUTPUT_DIR or config.json)",
+	)
 	flag.StringVar(&format, "format", "", "single format code (TEST, ODI, T20, T20I)")
 	flag.StringVar(&formats, "formats", "", "comma-separated list of format codes")
 	flag.BoolVar(&allFormats, "all-formats", false, "export for all formats")
@@ -320,7 +325,6 @@ func toString(v any) string {
 
 func intToString(i int) string       { return fmt.Sprintf("%d", i) }
 func floatToString(f float64) string { return fmt.Sprintf("%g", f) }
-
 
 // exportBattingLegacy is the previous exporter (no format filter).
 func exportBattingLegacy(ctx context.Context, path string) error { return exportBatting(ctx, path) }

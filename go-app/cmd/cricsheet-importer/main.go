@@ -20,7 +20,11 @@ func main() {
 	}
 
 	var (
-		dataDir   = flag.String("dir", defDataDir, "Directory containing Cricsheet .json files (default from GO_APP_INPUT_DIR or ../data/go-app)")
+		dataDir = flag.String(
+			"dir",
+			defDataDir,
+			"Directory containing Cricsheet .json files (default from GO_APP_INPUT_DIR or ../data/go-app)",
+		)
 		phWeather = flag.Bool("placeholders-weather", false, "Insert placeholder weather rows per match")
 		phField   = flag.Bool("placeholders-fielding", false, "Insert zeroed fielding rows for all players seen")
 	)
