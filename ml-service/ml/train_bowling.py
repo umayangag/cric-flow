@@ -207,7 +207,9 @@ def main():
         # 1) Prefer formats from config that actually exist on disk
         cfg_fmts = _config_formats()
         existing_cfg_fmts = [
-            f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"bowling_encoded_{f}.csv"))
+            f
+            for f in cfg_fmts
+            if os.path.exists(os.path.join(default_csv_dir, f"bowling_encoded_{f}.csv"))
         ]
         if existing_cfg_fmts:
             targets = existing_cfg_fmts
