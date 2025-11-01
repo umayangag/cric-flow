@@ -1,6 +1,6 @@
 import argparse
-import os
 import json
+import os
 
 import joblib
 import numpy as np
@@ -116,9 +116,13 @@ def _config_formats() -> list[str]:
 def main():
     parser = argparse.ArgumentParser()
     # Default input CSV from GO_APP_OUTPUT_DIR or ../../output/go-app
-    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
+    default_csv_dir = os.environ.get(
+        "GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app")
+    )
     # Default output dir from ML_SERVICE_OUTPUT_DIR or ../../output/ml-service
-    default_out_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.path.join("..", "..", "output", "ml-service"))
+    default_out_dir = os.environ.get(
+        "ML_SERVICE_OUTPUT_DIR", os.path.join("..", "..", "output", "ml-service")
+    )
 
     parser.add_argument(
         "--csv",

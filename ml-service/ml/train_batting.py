@@ -1,7 +1,6 @@
 import argparse
-import os
 import json
-from typing import List
+import os
 
 import joblib
 import numpy as np

@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -188,16 +188,24 @@ async def predict_batting(features: List[BattingFeatures]):
         # Validate all rows have same format
         for f in features:
             if (f.format or "").strip().upper() != fmt:
-                raise HTTPException(status_code=400, detail="All feature rows must have the same format")
+                raise HTTPException(
+                    status_code=400, detail="All feature rows must have the same format"
+                )
         pair = BAT_MODELS.get(fmt)
         if not pair:
-            raise HTTPException(status_code=404, detail=f"Model for format {fmt} not loaded. Loaded: {sorted([k for k in BAT_MODELS.keys() if k!='_LEGACY_'])}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model for format {fmt} not loaded. Loaded: "
+                f"{sorted([k for k in BAT_MODELS.keys() if k!='_LEGACY_'])}",
+            )
         scaler, model = pair
     else:
         # Legacy fallback
         pair = BAT_MODELS.get("_LEGACY_")
         if not pair:
-            raise HTTPException(status_code=400, detail="Missing 'format' and no legacy batting model loaded")
+            raise HTTPException(
+                status_code=400, detail="Missing 'format' and no legacy batting model loaded"
+            )
         scaler, model = pair
 
     X = np.array([_batting_feature_vector(f) for f in features], dtype=float)
@@ -242,15 +250,23 @@ async def predict_bowling(features: List[BowlingFeatures]):
     if fmt:
         for f in features:
             if (f.format or "").strip().upper() != fmt:
-                raise HTTPException(status_code=400, detail="All feature rows must have the same format")
+                raise HTTPException(
+                    status_code=400, detail="All feature rows must have the same format"
+                )
         pair = BOWL_MODELS.get(fmt)
         if not pair:
-            raise HTTPException(status_code=404, detail=f"Model for format {fmt} not loaded. Loaded: {sorted([k for k in BOWL_MODELS.keys() if k!='_LEGACY_'])}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model for format {fmt} not loaded. Loaded: "
+                f"{sorted([k for k in BOWL_MODELS.keys() if k!='_LEGACY_'])}",
+            )
         scaler, model = pair
     else:
         pair = BOWL_MODELS.get("_LEGACY_")
         if not pair:
-            raise HTTPException(status_code=400, detail="Missing 'format' and no legacy bowling model loaded")
+            raise HTTPException(
+                status_code=400, detail="Missing 'format' and no legacy bowling model loaded"
+            )
         scaler, model = pair
 
     X = np.array([_bowling_feature_vector(f) for f in features], dtype=float)
