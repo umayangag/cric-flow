@@ -35,6 +35,14 @@ type Config struct {
 		DefaultBatters int `json:"default_batters"`
 		DefaultBowlers int `json:"default_bowlers"`
 	} `json:"team"`
+	Weather struct {
+		Enabled           bool     `json:"enabled"`
+		RateLimitPerSec   int      `json:"rate_limit_per_sec"`
+		MaxAttempts       int      `json:"max_attempts"`
+		GeocodeCacheOnly  bool     `json:"geocode_cache_only"`
+		OverwriteExisting bool     `json:"overwrite_existing"`
+		WhitelistVenues   []string `json:"whitelist_venues"`
+	} `json:"weather"`
 }
 
 var cached *Config
