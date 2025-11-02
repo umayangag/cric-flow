@@ -40,3 +40,15 @@ func GetOrCreateSeason(ctx context.Context, name string) (int64, error) {
 		RETURNING id`, name).Scan(&id)
 	return id, err
 }
+
+// GetOrCreateMatchFormat returns match_format.id for a given code, creating it if necessary.
+func GetOrCreateMatchFormat(ctx context.Context, code string) (int64, error) {
+	if Pool == nil {
+		return 0, errors.New("db pool not initialized")
+	}
+	var id int64
+	err := Pool.QueryRow(ctx, `INSERT INTO match_format(code, name) VALUES($1, $1)
+		ON CONFLICT (code) DO UPDATE SET code = EXCLUDED.code
+		RETURNING id`, code).Scan(&id)
+	return id, err
+}

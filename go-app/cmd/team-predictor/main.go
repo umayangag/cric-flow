@@ -59,16 +59,18 @@ func main() {
 	var wantBatters int
 	var wantBowlers int
 	var formatCode string
+	var seasonName string
 	flag.Int64Var(&matchID, "match", 0, "match_id to build predictions for")
 	// Use 0 defaults to allow config-driven values
 	flag.IntVar(&wantBatters, "bat", 0, "number of batters to pick (defaults from config.team.default_batters)")
 	flag.IntVar(&wantBowlers, "bowl", 0, "number of bowlers to pick (defaults from config.team.default_bowlers)")
 	flag.StringVar(&formatCode, "format", "", "match format code (TEST, ODI, T20, T20I)")
+	flag.StringVar(&seasonName, "season", "", "season name (e.g. 2019)")
 	flag.Parse()
 
 	cfg := config.Load()
-	if matchID == 0 || strings.TrimSpace(formatCode) == "" {
-		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> [-bat=N] [-bowl=N]")
+	if matchID == 0 || strings.TrimSpace(formatCode) == "" || strings.TrimSpace(seasonName) == "" {
+		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]")
 		os.Exit(2)
 	}
 	// Apply config defaults when flags are not provided (0)
@@ -138,8 +140,19 @@ func main() {
 	batFeats := make([]contracts.BattingFeatures, 0, len(candidates))
 	bowlFeats := make([]contracts.BowlingFeatures, 0, len(candidates))
 	for _, p := range candidates {
+		consistency, err := db.GetPlayerConsistency(ctx, p.ID, seasonName, formatCode)
+		if err != nil {
+			log.Printf("could not get player consistency for player %d: %v", p.ID, err)
+		}
+
+		var batCons, bowlCons float32
+		if consistency != nil {
+			batCons = consistency.BattingConsistency
+			bowlCons = consistency.BowlingConsistency
+		}
+
 		bf := contracts.BattingFeatures{
-			BattingConsistency: p.BatCons,
+			BattingConsistency: batCons,
 			BattingForm:        loadFormFmt(ctx, p.ID, seasonID, fid, true),
 			BattingTemp:        batWX.Temp,
 			BattingWind:        batWX.Wind,
@@ -160,7 +173,7 @@ func main() {
 		batFeats = append(batFeats, bf)
 
 		wf := contracts.BowlingFeatures{
-			BowlingConsistency: p.BowlCons,
+			BowlingConsistency: bowlCons,
 			BowlingForm:        loadFormFmt(ctx, p.ID, seasonID, fid, false),
 			BowlingTemp:        bowlWX.Temp,
 			BowlingWind:        bowlWX.Wind,
@@ -275,7 +288,7 @@ func main() {
 		if selected[br.name] {
 			fmt.Printf(" - %s (pred wickets: %.2f)\n", br.name, br.wkts)
 			count++
-			if count >= wantBowlers {
+		if count >= wantBowlers {
 				break
 			}
 		}
@@ -327,8 +340,6 @@ type candidate struct {
 	ID       int64
 	Name     string
 	IsBowler bool
-	BatCons  float32
-	BowlCons float32
 }
 
 func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
@@ -337,12 +348,11 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 	), bowl AS (
 		SELECT DISTINCT bw.player_id FROM bowling_data bw WHERE bw.match_id = $1
 	), allp AS (
-		SELECT player_id, TRUE AS is_bowler FROM bowl
+		SELECT player_id, TRUE AS is__bowler FROM bowl
 		UNION
 		SELECT player_id, FALSE AS is_bowler FROM bat
 	)
-	SELECT p.id, p.player_name, MAX(CASE WHEN a.is_bowler THEN 1 ELSE 0 END) AS is_bowler,
-		COALESCE(p.batting_consistency, 0)::real, COALESCE(p.bowling_consistency, 0)::real
+	SELECT p.id, p.player_name, MAX(CASE WHEN a.is_bowler THEN 1 ELSE 0 END) AS is_bowler
 	FROM allp a
 	JOIN player p ON p.id = a.player_id
 	GROUP BY p.id, p.player_name`
@@ -355,7 +365,7 @@ func loadCandidates(ctx context.Context, matchID int64) ([]candidate, error) {
 	for rows.Next() {
 		var c candidate
 		var isb int32
-		if err := rows.Scan(&c.ID, &c.Name, &isb, &c.BatCons, &c.BowlCons); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &isb); err != nil {
 			return nil, err
 		}
 		c.IsBowler = isb == 1
