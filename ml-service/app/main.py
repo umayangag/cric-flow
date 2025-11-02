@@ -7,9 +7,9 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from ml.match_win_predict import predict_for_team
 from ml.calculate_features import calculate_features
 from ml.db import get_db_connection
+from ml.match_win_predict import predict_for_team
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
