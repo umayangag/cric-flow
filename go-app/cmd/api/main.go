@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -59,10 +58,8 @@ func main() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "python3", "../ml-service/ml/calculate_features.py")
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			mlClient := mlclient.New()
+			if err := mlClient.Precompute(ctx); err != nil {
 				log.Printf("precompute failed: %v", err)
 			}
 		}()
