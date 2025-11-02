@@ -1,12 +1,15 @@
 import json
 import os
 
+
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), "../config.json")
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         return json.load(f)
 
+
 config = load_config()
+
 
 def calculate_overall_performance(input_df, match_id):
     team_df = input_df.copy()
