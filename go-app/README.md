@@ -1,14 +1,14 @@
 # Go Application (Importer/ETL/API)
 
-Go services for importing Cricsheet JSON, preprocessing, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
+Go services for importing Cricsheet JSON, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
 
 Components:
 - `cmd/cricsheet-importer`: CLI to import Cricsheet JSON files into the DB (idempotent; optional placeholders).
-- `cmd/etl-importer`: CLI to import curated CSVs into normalized tables.
 - `cmd/export-dataset`: CLI to export model-ready CSVs for ML training.
-- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints, including `/import/cricsheet`).
+- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints, including `/import/cricsheet` and `/precompute`).
+- `cmd/team-predictor`: CLI to select a cricket team based on ML predictions, reading from a pre-generated player pool.
 - `cmd/tools/migrate`: DB migration runner.
-- `internal/*`: packages for Cricsheet parsing, contracts, repos, features, ML client, etc.
+- `internal/*`: packages for Cricsheet parsing, contracts, repos, ML client, etc. (Note: Feature calculation logic has moved to the ML service).
 
 Prerequisites:
 - Go 1.25+
@@ -30,12 +30,11 @@ The Go app reads defaults from `go-app/config.json`, environment variables, and 
 3. Config file `go-app/config.json`
 4. Built-in defaults
 
-Schema for `go-app/config.json`:
+Schema for `go-app/config.json` (Note: `etl_dir` is no longer used as ETL is handled by the ML service):
 ```json
 {
   "inputs": {
-    "cricsheet_dir": "../data/go-app/cricsheet",
-    "etl_dir": "../data/go-app/createdb"
+    "cricsheet_dir": "../data/go-app/cricsheet"
   },
   "outputs": {
     "export_dir": "../output/go-app"
@@ -59,13 +58,6 @@ make -C .. cricsheet-import
 # or directly (uses GO_APP_INPUT_DIR or config.json default)
 GO_APP_INPUT_DIR=../data/go-app/cricsheet \
   go run ./cmd/cricsheet-importer -dir=$GO_APP_INPUT_DIR --placeholders-weather --placeholders-fielding
-```
-- Import curated CSVs:
-```
-make -C .. etl-importer
-# or directly (uses GO_APP_INPUT_DIR or config.json default)
-GO_APP_INPUT_DIR=../data/go-app/createdb \
-  go run ./cmd/etl-importer -dir=$GO_APP_INPUT_DIR
 ```
 - Export model datasets (writes to output/go-app by default):
 ```
@@ -103,3 +95,4 @@ Notes:
 - File IO conventions: inputs under `data/go-app/...`, outputs under `output/go-app`.
 - Formatting/linting conventions match the GitHub Actions workflow.
 - See repo root `README.md` for end-to-end workflows and orchestration commands.
+```

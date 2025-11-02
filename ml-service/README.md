@@ -1,10 +1,14 @@
 # ML Service (Python)
 
-Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. The original `src/` prototype remains for reference.
+Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. It now also handles feature precomputation. The original `src/` prototype remains for reference.
 
 Components:
-- `app/main.py`: FastAPI app exposing health and prediction endpoints for batting and bowling.
-- `ml/*`: encoders, dataset/feature definitions, training scripts.
+- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and a `/precompute` endpoint for feature calculation.
+- `ml/calculate_features.py`: Script to calculate and store player features (form, consistency, venue, opposition) in the database.
+- `ml/export_pool.py`: Script to generate `pool.csv` for team prediction.
+- `ml/train_batting_model.py`: Script to train the batting prediction model.
+- `ml/train_bowling_model.py`: Script to train the bowling prediction model.
+- `ml/*`: encoders, dataset/feature definitions, and other utility scripts.
 
 Prerequisites:
 - Python 3.10+
@@ -41,13 +45,16 @@ See `../docs/CONFIG.md` for full details and examples.
 ```
 make run
 ```
+- Precompute features (calls the `/precompute` endpoint of the ML service):
+```
+make precompute
+```
 - Train artifacts from exported CSVs (uses defaults above):
 ```
-make -C .. train-batting
-make -C .. train-bowling
+make train-all
 # or directly
-python -m ml.train_batting --csv $(GO_APP_OUTPUT_DIR)/batting_encoded.csv --out $(ML_SERVICE_OUTPUT_DIR)
-python -m ml.train_bowling --csv $(GO_APP_OUTPUT_DIR)/bowling_encoded.csv --out $(ML_SERVICE_OUTPUT_DIR)
+python -m ml.train_batting_model
+python -m ml.train_bowling_model
 ```
 - Docker image and container:
 ```
@@ -62,9 +69,9 @@ At startup the service looks for artifacts in this order:
 3. `config.outputs.artifacts_dir` from `ml-service/config.json`
 4. Built-in fallback: `../../output/ml-service`
 
-Expected files:
-- `batting_scaler.joblib`, `batting_model.joblib`
-- `bowling_scaler.joblib`, `bowling_model.joblib`
+Expected files (can be format-specific, e.g., `batting_model_ODI.joblib`):
+- `batting_scaler.joblib`, `batting_model.joblib`, `batting_output_scaler.joblib`
+- `bowling_scaler.joblib`, `bowling_model.joblib`, `bowling_output_scaler.joblib`
 
 ## Formatting and checks
 - Format code to match CI (reads `pyproject.toml`):
