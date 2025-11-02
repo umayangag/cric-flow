@@ -63,15 +63,15 @@ func main() {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 		defer cancel()
-		if err := features.ComputeSeasonalForm(ctx, body.Season); err != nil {
+		if err := features.ComputeSeasonalFormFmt(ctx, body.Season, body.Format); err != nil {
 			respondErr(w, err)
 			return
 		}
-		if err := features.ComputeVenueEffects(ctx); err != nil {
+		if err := features.ComputeVenueEffectsFmt(ctx, body.Format); err != nil {
 			respondErr(w, err)
 			return
 		}
-		if err := features.ComputeOppositionEffects(ctx); err != nil {
+		if err := features.ComputeOppositionEffectsFmt(ctx, body.Format); err != nil {
 			respondErr(w, err)
 			return
 		}
