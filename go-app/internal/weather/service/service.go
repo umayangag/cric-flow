@@ -24,10 +24,10 @@ type sessionSpec struct {
 	At    *time.Time `json:"at,omitempty"`
 }
 
-// BuildSessions derives session labels and approximate timestamps.
+// buildSessions derives session labels and approximate timestamps.
 // If inningsCount > 0, uses inning1..inningN; otherwise defaults to 2 innings.
 // Timestamps are nil for now; worker may enrich later when available.
-func BuildSessions(inningsCount int) []sessionSpec {
+func buildSessions(inningsCount int) []sessionSpec {
 	if inningsCount <= 0 {
 		inningsCount = 2
 	}
@@ -52,7 +52,7 @@ func EnqueueJob(ctx context.Context, matchID int64, city string, venue string, i
 		c := strings.TrimSpace(city)
 		cityPtr = &c
 	}
-	sessions := BuildSessions(inningsCount)
+	sessions := buildSessions(inningsCount)
 	b, _ := json.Marshal(sessions)
 	job := &db.WeatherJob{
 		MatchID:         matchID,
