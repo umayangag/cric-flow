@@ -3,8 +3,11 @@ from typing import Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from ml.match_win_predict import predict_for_team
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
@@ -65,6 +68,21 @@ class BowlingPrediction(BaseModel):
     deliveries: float
     wickets_taken: float
     econ: float
+
+
+class PlayerPrediction(BaseModel):
+    player_name: str
+    runs_scored: float
+    balls_faced: float
+    fours_scored: float
+    sixes_scored: float
+    batting_position: float
+    strike_rate: float
+    runs_conceded: float
+    deliveries: float
+    wickets_taken: float
+    econ: float
+    winning_probability: Optional[float] = None
 
 
 # Load artifacts (per-format if available)
@@ -441,6 +459,23 @@ async def predict_bowling(features: List[BowlingFeatures]):
             BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
             for _ in features
         ]
+
+
+@app.post("/predict-win", response_model=List[PlayerPrediction])
+async def predict_win(players: List[PlayerPrediction]):
+    if not players:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty players list",
+                hint="Send at least one player with the required fields.",
+            ),
+        )
+
+    df = pd.DataFrame([p.dict() for p in players])
+    predictions, _ = predict_for_team(df)
+    return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
 
 
 @app.post("/admin/reload")

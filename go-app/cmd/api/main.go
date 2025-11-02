@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
@@ -54,32 +54,19 @@ func main() {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}).Methods(http.MethodGet)
 
-	// POST /precompute {"season":"2019", "format":"T20"}
+	// POST /precompute
 	r.HandleFunc("/precompute", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Season string `json:"season"`
-			Format string `json:"format"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-		defer cancel()
-		if err := features.ComputeSeasonalFormFmt(ctx, body.Season, body.Format); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.ComputeVenueEffectsFmt(ctx, body.Format); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.ComputeOppositionEffectsFmt(ctx, body.Format); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.ComputePlayerConsistencyFmt(ctx, body.Season, body.Format); err != nil {
-			respondErr(w, err)
-			return
-		}
-		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "python3", "../ml-service/ml/calculate_features.py")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Printf("precompute failed: %v", err)
+			}
+		}()
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
 
 	// Cricinfo scraping has been removed.
