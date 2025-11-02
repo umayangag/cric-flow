@@ -71,7 +71,7 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 			country = *job.Country
 		}
 		res, err := cli.Resolve(ctx, job.NormalizedVenue, city, country)
-		if err != nil {
+		if err != nil || res == nil {
 			return nil, fmt.Errorf("geocode failed: %w", err)
 		}
 		lat, lon = res.Latitude, res.Longitude
@@ -127,11 +127,11 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 	}
 
 	// 5) Decode sessions and select nearest hour
-	var sess []sessionSpec
+	var sess []SessionSpec
 	_ = json.Unmarshal(job.SessionsJSON, &sess)
 	if len(sess) == 0 {
 		// default to two innings
-		sess = []sessionSpec{{Label: "inning1"}, {Label: "inning2"}}
+		sess = []SessionSpec{{Label: "inning1"}, {Label: "inning2"}}
 	}
 	upserts := 0
 	for _, s := range sess {
