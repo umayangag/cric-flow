@@ -18,23 +18,23 @@ func NormalizeVenue(name string) string {
 	return s
 }
 
-// SessionSpec is a minimal struct stored in JSONB sessions field for a job.
-type SessionSpec struct {
+// sessionSpec is a minimal struct stored in JSONB sessions field for a job.
+type sessionSpec struct {
 	Label string     `json:"label"`
 	At    *time.Time `json:"at,omitempty"`
 }
 
-// BuildSessions derives session labels and approximate timestamps.
+// buildSessions derives session labels and approximate timestamps.
 // If inningsCount > 0, uses inning1..inningN; otherwise defaults to 2 innings.
 // Timestamps are nil for now; worker may enrich later when available.
-func BuildSessions(inningsCount int) []SessionSpec {
+func buildSessions(inningsCount int) []sessionSpec {
 	if inningsCount <= 0 {
 		inningsCount = 2
 	}
-	sess := make([]SessionSpec, 0, inningsCount)
+	sess := make([]sessionSpec, 0, inningsCount)
 	for i := 1; i <= inningsCount; i++ {
 		label := "inning" + strconv.Itoa(i)
-		sess = append(sess, SessionSpec{Label: label})
+		sess = append(sess, sessionSpec{Label: label})
 	}
 	return sess
 }
@@ -52,7 +52,7 @@ func EnqueueJob(ctx context.Context, matchID int64, city string, venue string, i
 		c := strings.TrimSpace(city)
 		cityPtr = &c
 	}
-	sessions := BuildSessions(inningsCount)
+	sessions := buildSessions(inningsCount)
 	b, _ := json.Marshal(sessions)
 	job := &db.WeatherJob{
 		MatchID:         matchID,
