@@ -27,5 +27,9 @@
     "min_bowlers": 5,
     "default_batters": 6,
     "default_bowlers": 5
+  },
+  "predictor": {
+    "team_size": 11,
+    "default_extras": 14.26
   }
 }

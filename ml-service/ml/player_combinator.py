@@ -1,7 +1,20 @@
+import json
+import os
+
+def load_config():
+    config_path = os.path.join(os.path.dirname(__file__), "../config.json")
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+config = load_config()
+
 def calculate_overall_performance(input_df, match_id):
     team_df = input_df.copy()
-    magic_number = 11 / len(team_df)  # this is to compensate players missing from actual 11
-    extras = 14.26
+    team_size = config["team_prediction"]["team_size"]
+    default_extras = config["team_prediction"]["default_extras"]
+
+    magic_number = team_size / len(team_df)  # this is to compensate players missing from actual 11
+    extras = default_extras
     total_score = team_df["runs_scored"].sum() * magic_number + extras
     target = team_df["runs_conceded"].sum() * magic_number
     total_balls_faced = team_df["balls_faced"].sum() * magic_number

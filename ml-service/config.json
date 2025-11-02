@@ -20,5 +20,9 @@
     "early_stopping_rounds": 50,
     "max_iter": 1000,
     "artifact_template": "{kind}_{name}_{format}.joblib"
+  },
+  "team_prediction": {
+    "team_size": 11,
+    "default_extras": 14.26
   }
 }

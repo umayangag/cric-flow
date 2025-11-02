@@ -2,6 +2,8 @@ package predictor
 
 import (
 	"math"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 type PlayerPrediction struct {
@@ -30,8 +32,10 @@ type Team struct {
 }
 
 func CalculateOverallPerformance(players []PlayerPrediction, matchID int64) Team {
-	magicNumber := 11.0 / float64(len(players))
-	extras := 14.26
+	cfg := config.Load()
+
+	magicNumber := float64(cfg.Predictor.TeamSize) / float64(len(players))
+	extras := cfg.Predictor.DefaultExtras
 
 	var totalRunsScored, totalBallsFaced, totalRunsConceded, totalDeliveries, totalWicketsTaken float64
 	for _, p := range players {
