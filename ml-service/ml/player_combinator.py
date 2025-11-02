@@ -3,7 +3,7 @@ from create_final_dataset import get_actual_players_who_played
 
 def actual_team_players(pool_df, match_id):
     actual_player_df, wicket_keepers, bowlers = get_actual_players_who_played(match_id)
-    return pool_df[pool_df['player_name'].isin(actual_player_df["player_name"].to_numpy())]
+    return pool_df[pool_df["player_name"].isin(actual_player_df["player_name"].to_numpy())]
 
 
 def calculate_overall_performance(input_df, match_id):
@@ -28,16 +28,26 @@ def calculate_overall_performance(input_df, match_id):
     def calculate_bowling_contribution(row, key):
         return row[key] / target
 
-    team_df["bowling_contribution"] = team_df.apply(lambda row: calculate_bowling_contribution(row, "runs_conceded"),
-                                                    axis=1)
-    team_df["batting_contribution"] = team_df.apply(lambda row: calculate_batting_contribution(row, "runs_scored"),
-                                                    axis=1)
+    team_df["bowling_contribution"] = team_df.apply(
+        lambda row: calculate_bowling_contribution(row, "runs_conceded"), axis=1
+    )
+    team_df["batting_contribution"] = team_df.apply(
+        lambda row: calculate_batting_contribution(row, "runs_scored"), axis=1
+    )
 
     print(magic_number, team_df["runs_scored"].sum(), team_df["balls_faced"].sum(), extras)
-    print(magic_number, team_df["runs_conceded"].sum(), team_df["deliveries"].sum(), team_df["wickets_taken"].sum())
+    print(
+        magic_number,
+        team_df["runs_conceded"].sum(),
+        team_df["deliveries"].sum(),
+        team_df["wickets_taken"].sum(),
+    )
 
     if team_df["balls_faced"].sum() > 300:
-        print("Total Score:", (team_df["runs_scored"].sum() * 300 / team_df["balls_faced"].sum()) + extras)
+        print(
+            "Total Score:",
+            (team_df["runs_scored"].sum() * 300 / team_df["balls_faced"].sum()) + extras,
+        )
     else:
         print("Total Score:", (team_df["runs_scored"].sum() * magic_number) + extras)
 
@@ -54,5 +64,3 @@ def calculate_overall_performance(input_df, match_id):
     # need to compare predicted score with score for 50 overs. because the predicted score will always be high
 
     return team_df
-
-

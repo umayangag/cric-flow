@@ -1,31 +1,32 @@
-import pandas as pd
 import os
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.neural_network import MLPClassifier
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.naive_bayes import GaussianNB
-from sklearn import metrics
-from sklearn.metrics import confusion_matrix
-from imblearn.over_sampling import SMOTE
-from sklearn.model_selection import cross_val_score
-from sklearn import svm
-import numpy as np
-from dataset_definitions import *
-from sklearn import preprocessing
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from dataset_definitions import *
+from imblearn.over_sampling import SMOTE
+from sklearn import metrics, preprocessing, svm
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neural_network import MLPClassifier
 
 # from sklearn import preprocessing
 
-RF = RandomForestClassifier(n_estimators=100, criterion='entropy', bootstrap=False, max_depth=100,
-                            class_weight={0: 4, 1: 1, 2: 2})
+RF = RandomForestClassifier(
+    n_estimators=100,
+    criterion="entropy",
+    bootstrap=False,
+    max_depth=100,
+    class_weight={0: 4, 1: 1, 2: 2},
+)
 gnb = GaussianNB()
-clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(4, 3), random_state=1)
-SVM = svm.SVC(kernel='linear', C=1)
-regr = RandomForestRegressor(max_depth=100, n_estimators=100, max_features='auto', random_state=0)
+clf = MLPClassifier(solver="lbfgs", alpha=1e-5, hidden_layer_sizes=(4, 3), random_state=1)
+SVM = svm.SVC(kernel="linear", C=1)
+regr = RandomForestRegressor(max_depth=100, n_estimators=100, max_features="auto", random_state=0)
 reg = LinearRegression()
 mltreg = MultiOutputRegressor(regr)
 predictor = mltreg
@@ -51,9 +52,9 @@ y = pd.DataFrame(data=output_data_scaled, columns=y.columns)
 # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
 train_set = 2107
 X_train = X.iloc[:train_set, :]
-X_test = X.iloc[train_set + 1:, :]
+X_test = X.iloc[train_set + 1 :, :]
 y_train = y.iloc[:train_set]
-y_test = y.iloc[train_set + 1:]
+y_test = y.iloc[train_set + 1 :]
 predictor.fit(X_train, y_train)
 
 
@@ -66,7 +67,9 @@ def calculate_strike_rate(row):
 def predict_batting(dataset):
     scaled_dataset = input_scaler.transform(dataset)
     predicted = predictor.predict(scaled_dataset)
-    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_batting_columns)
+    result = pd.DataFrame(
+        output_scaler.inverse_transform(predicted), columns=output_batting_columns
+    )
     print(result)
     for column in y.columns:
         dataset[column] = result[column]
