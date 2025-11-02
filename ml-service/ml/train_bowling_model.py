@@ -1,10 +1,11 @@
-import pandas as pd
 import os
+
+import joblib
+import pandas as pd
+from dataset_definitions import *
+from sklearn import preprocessing
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
-from sklearn import preprocessing
-import joblib
-from dataset_definitions import *
 
 regr = RandomForestRegressor(max_depth=100, random_state=0)
 mltreg = MultiOutputRegressor(regr)
