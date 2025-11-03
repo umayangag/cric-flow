@@ -1,5 +1,3 @@
-import pandas as pd
-
 from ml.db import get_db_connection
 
 db_connection = get_db_connection()

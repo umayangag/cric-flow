@@ -2,7 +2,7 @@ import os
 
 import joblib
 import pandas as pd
-from dataset_definitions import *
+from dataset_definitions import output_bowling_columns
 
 dirname = os.path.dirname(__file__)
 output_dir = os.path.join(dirname, "../../output/ml-service")
@@ -24,7 +24,7 @@ def predict_bowling(dataset):
     result = pd.DataFrame(
         output_scaler.inverse_transform(predicted), columns=output_bowling_columns
     )
-    for column in y.columns:
+    for column in output_bowling_columns:
         dataset[column] = result[column]
     dataset["econ"] = dataset.apply(lambda row: calculate_econ(row), axis=1)
     return dataset

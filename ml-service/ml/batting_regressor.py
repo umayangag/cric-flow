@@ -2,7 +2,7 @@ import os
 
 import joblib
 import pandas as pd
-from dataset_definitions import *
+from dataset_definitions import output_batting_columns
 
 dirname = os.path.dirname(__file__)
 output_dir = os.path.join(dirname, "../../output/ml-service")
@@ -24,7 +24,7 @@ def predict_batting(dataset):
     result = pd.DataFrame(
         output_scaler.inverse_transform(predicted), columns=output_batting_columns
     )
-    for column in y.columns:
+    for column in output_batting_columns:
         dataset[column] = result[column]
     dataset["strike_rate"] = dataset.apply(lambda row: calculate_strike_rate(row), axis=1)
     return dataset

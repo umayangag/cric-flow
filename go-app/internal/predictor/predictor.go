@@ -1,8 +1,6 @@
 package predictor
 
 import (
-	"math"
-
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 

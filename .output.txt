@@ -1,0 +1,558 @@
+.venv/bin/isort --check-only --diff --profile black --line-length 300 .
+Skipped 1 files
+.venv/bin/black --check --diff --line-length 300 .
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/bowling_regressor.py2025-11-03 20:58:44.326176+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/bowling_regressor.py2025-11-03 21:05:17.551874+00:00
+@@ -19,12 +19,10 @@
+
+
+ def predict_bowling(dataset):
+     scaled_dataset = input_scaler.transform(dataset)
+     predicted = predictor.predict(scaled_dataset)
+-    result = pd.DataFrame(
+-        output_scaler.inverse_transform(predicted), columns=output_bowling_columns
+-    )
++    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_bowling_columns)
+     for column in output_bowling_columns:
+         dataset[column] = result[column]
+     dataset["econ"] = dataset.apply(lambda row: calculate_econ(row), axis=1)
+     return dataset
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/bowling_regressor.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/batting_regressor.py2025-11-03 20:55:12.752000+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/batting_regressor.py2025-11-03 21:05:17.556371+00:00
+@@ -19,12 +19,10 @@
+
+
+ def predict_batting(dataset):
+     scaled_dataset = input_scaler.transform(dataset)
+     predicted = predictor.predict(scaled_dataset)
+-    result = pd.DataFrame(
+-        output_scaler.inverse_transform(predicted), columns=output_batting_columns
+-    )
++    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_batting_columns)
+     for column in output_batting_columns:
+         dataset[column] = result[column]
+     dataset["strike_rate"] = dataset.apply(lambda row: calculate_strike_rate(row), axis=1)
+     return dataset
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/batting_regressor.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/dataset_definitions.py      2025-11-02 21:37:52.474262+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/dataset_definitions.py      2025-11-03 21:05:17.558445+00:00
+@@ -64,11 +64,7 @@
+     "extras",
+     "match_number",
+     "result",
+ ]
+
+-all_batting_columns = np.concatenate(
+-    (input_batting_columns, output_batting_columns, derived_batting_columns)
+-)
+-all_bowling_columns = np.concatenate(
+-    (input_bowling_columns, output_bowling_columns, derived_bowling_columns)
+-)
++all_batting_columns = np.concatenate((input_batting_columns, output_batting_columns, derived_batting_columns))
++all_bowling_columns = np.concatenate((input_bowling_columns, output_bowling_columns, derived_bowling_columns))
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/dataset_definitions.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/player_combinator.py2025-11-02 22:19:33.976372+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/player_combinator.py2025-11-03 21:05:17.582140+00:00
+@@ -34,13 +34,9 @@
+         return row[key] / total_score
+
+     def calculate_bowling_contribution(row, key):
+         return row[key] / target
+
+-    team_df["bowling_contribution"] = team_df.apply(
+-        lambda row: calculate_bowling_contribution(row, "runs_conceded"), axis=1
+-    )
+-    team_df["batting_contribution"] = team_df.apply(
+-        lambda row: calculate_batting_contribution(row, "runs_scored"), axis=1
+-    )
++    team_df["bowling_contribution"] = team_df.apply(lambda row: calculate_bowling_contribution(row, "runs_conceded"), axis=1)
++    team_df["batting_contribution"] = team_df.apply(lambda row: calculate_batting_contribution(row, "runs_scored"), axis=1)
+
+     return team_df
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/player_combinator.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/shared/match_data.py2025-11-03 20:29:48.521249+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/shared/match_data.py2025-11-03 21:05:17.602516+00:00
+@@ -3,13 +3,11 @@
+ db_connection = get_db_connection()
+ db_cursor = db_connection.cursor()
+
+
+ def get_match_data(match_id, session):
+-    db_cursor.execute(
+-        f"SELECT inning, {session}_session, toss, venue_id, opposition_id, season_id, score, wickets, balls, target, extras, match_number, result FROM match_details where match_id={match_id}"
+-    )
++    db_cursor.execute(f"SELECT inning, {session}_session, toss, venue_id, opposition_id, season_id, score, wickets, balls, target, extras, match_number, result FROM match_details where match_id={match_id}")
+     (
+         inning,
+         session,
+         toss,
+         venue_id,
+@@ -39,31 +37,23 @@
+         result,
+     )
+
+
+ def get_weather_data(match_id, session):
+-    db_cursor.execute(
+-        f'SELECT temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data where match_id={match_id} and session="{session}"'
+-    )
++    db_cursor.execute(f'SELECT temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data where match_id={match_id} and session="{session}"')
+     temp, wind, rain, humidity, cloud, pressure, viscosity = db_cursor.fetchall()[0]
+     return temp, wind, rain, humidity, cloud, pressure, viscosity
+
+
+ def get_player_metric(match_id, type, player, metric, metric_type, metric_id):
+     if metric_id is not None:
+         if metric == "form":
+-            db_cursor.execute(
+-                f"SELECT {type}_form FROM player_form_data_fmt where player_id={player[0]} and season_id={metric_id} and format_id={player[1]}"
+-            )
++            db_cursor.execute(f"SELECT {type}_form FROM player_form_data_fmt where player_id={player[0]} and season_id={metric_id} and format_id={player[1]}")
+         elif metric == "venue":
+-            db_cursor.execute(
+-                f"SELECT {type}_venue FROM player_venue_data_fmt where player_id={player[0]} and venue_id={metric_id} and format_id={player[1]}"
+-            )
++            db_cursor.execute(f"SELECT {type}_venue FROM player_venue_data_fmt where player_id={player[0]} and venue_id={metric_id} and format_id={player[1]}")
+         elif metric == "opposition":
+-            db_cursor.execute(
+-                f"SELECT {type}_opposition FROM player_opposition_data_fmt where player_id={player[0]} and opposition_id={metric_id} and format_id={player[1]}"
+-            )
++            db_cursor.execute(f"SELECT {type}_opposition FROM player_opposition_data_fmt where player_id={player[0]} and opposition_id={metric_id} and format_id={player[1]}")
+
+         metric_val = db_cursor.fetchall()
+         if len(metric_val) > 0:
+             return metric_val[0][0]
+     return 0
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/shared/match_data.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/export_pool.py     2025-11-03 21:04:07.193704+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/export_pool.py     2025-11-03 21:05:17.610726+00:00
+@@ -41,19 +41,13 @@
+
+     for player in player_list.iterrows():
+         player_obj = player[1]
+         player_id = player_obj[0]
+         player_name = player_obj[1]
+-        player_form = get_player_metric(
+-            match_id, "bowling", player_obj, "form", "season", season_id - 1
+-        )
+-        player_venue = get_player_metric(
+-            match_id, "bowling", player_obj, "venue", "venue", venue_id
+-        )
+-        player_opposition = get_player_metric(
+-            match_id, "bowling", player_obj, "opposition", "opposition", opposition_id
+-        )
++        player_form = get_player_metric(match_id, "bowling", player_obj, "form", "season", season_id - 1)
++        player_venue = get_player_metric(match_id, "bowling", player_obj, "venue", "venue", venue_id)
++        player_opposition = get_player_metric(match_id, "bowling", player_obj, "opposition", "opposition", opposition_id)
+         data_array.append(
+             [
+                 player[1]["bowling_consistency"],
+                 player_form,
+                 temp,
+@@ -100,19 +94,13 @@
+
+     for player in player_list.iterrows():
+         player_obj = player[1]
+         player_id = player_obj[0]
+         player_name = player_obj[1]
+-        player_form = get_player_metric(
+-            match_id, "batting", player_obj, "form", "season", season_id - 1
+-        )
+-        player_venue = get_player_metric(
+-            match_id, "batting", player_obj, "venue", "venue", venue_id
+-        )
+-        player_opposition = get_player_metric(
+-            match_id, "batting", player_obj, "opposition", "opposition", opposition_id
+-        )
++        player_form = get_player_metric(match_id, "batting", player_obj, "form", "season", season_id - 1)
++        player_venue = get_player_metric(match_id, "batting", player_obj, "venue", "venue", venue_id)
++        player_opposition = get_player_metric(match_id, "batting", player_obj, "opposition", "opposition", opposition_id)
+
+         data_array.append(
+             [
+                 player[1]["batting_consistency"],
+                 player_form,
+@@ -139,13 +127,11 @@
+
+
+ def get_player_pool():
+     db_connection = get_db_connection()
+     db_cursor = db_connection.cursor()
+-    db_cursor.execute(
+-        f"SELECT * FROM player WHERE is_retired=0 and (batting_consistency !=0 or bowling_consistency!=0)"
+-    )
++    db_cursor.execute(f"SELECT * FROM player WHERE is_retired=0 and (batting_consistency !=0 or bowling_consistency!=0)")
+     player_list = db_cursor.fetchall()
+     player_df = pd.DataFrame(player_list, columns=player_columns)
+     return player_df
+
+
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/export_pool.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/validate_exports.py2025-11-01 10:14:43.260678+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/validate_exports.py2025-11-03 21:05:17.650336+00:00
+@@ -72,26 +72,20 @@
+
+ def load_csv(path: str) -> pd.DataFrame:
+     return pd.read_csv(path)
+
+
+-def validate_df(
+-    df: pd.DataFrame, required_cols: List[str], null_threshold: float = 0.2
+-) -> Tuple[bool, List[str]]:
++def validate_df(df: pd.DataFrame, required_cols: List[str], null_threshold: float = 0.2) -> Tuple[bool, List[str]]:
+     problems: List[str] = []
+     # Column presence
+     missing = [c for c in required_cols if c not in df.columns]
+     if missing:
+         problems.append(f"missing columns: {missing}")
+     # NaN rate
+     if len(df) > 0:
+         frac_null = df[required_cols].isna().mean(numeric_only=False)
+-        bad = {
+-            k: float(v)
+-            for k, v in frac_null.items()
+-            if k in required_cols and float(v) > null_threshold
+-        }
++        bad = {k: float(v) for k, v in frac_null.items() if k in required_cols and float(v) > null_threshold}
+         if bad:
+             problems.append(f"high NaN rates: {bad}")
+     ok = len(problems) == 0
+     return ok, problems
+
+@@ -100,16 +94,12 @@
+     parser = argparse.ArgumentParser()
+     default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
+     parser.add_argument("--dir", default=default_dir, help="Directory containing exported CSVs")
+     parser.add_argument("--format", default="", help="Single format code")
+     parser.add_argument("--formats", default="", help="Comma-separated formats list")
+-    parser.add_argument(
+-        "--all-formats", action="store_true", help="Read formats from config.json (ml.formats)"
+-    )
+-    parser.add_argument(
+-        "--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column"
+-    )
++    parser.add_argument("--all-formats", action="store_true", help="Read formats from config.json (ml.formats)")
++    parser.add_argument("--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column")
+     args = parser.parse_args()
+
+     targets: List[str] = []
+     if args.all_formats:
+         targets = _config_formats()
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/validate_exports.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/calculate_features.py       2025-11-02 22:04:27.843859+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/calculate_features.py       2025-11-03 21:05:17.658490+00:00
+@@ -37,18 +37,11 @@
+
+                     centuries = len(df[df[1] >= 100])
+                     fifties = len(df[df[1] >= 50]) - centuries
+                     zeros = len(df[df[1] == 0])
+
+-                    form = (
+-                        0.4262 * average_score
+-                        + 0.2566 * inning_count
+-                        + 0.1510 * average_strike_rate
+-                        + 0.0787 * centuries
+-                        + 0.0556 * fifties
+-                        - 0.0328 * zeros
+-                    )
++                    form = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties - 0.0328 * zeros
+                     db_cursor.execute(
+                         "INSERT INTO player_form_data_fmt (player_id, season_id, format_id, batting_form, bowling_form) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, season_id, format_id) DO UPDATE SET batting_form = %s",
+                         (player[0], season[0], format[0], form, form),
+                     )
+
+@@ -64,17 +57,11 @@
+                     total_overs = df[0].sum() / 6
+                     strike_rate = df[0].sum() / df[2].sum()
+                     average = df[1].sum() / df[2].sum()
+                     ff = len(df[df[2] >= 5])
+
+-                    form = (
+-                        0.4174 * total_overs
+-                        + 0.2634 * inning_count
+-                        + 0.1602 * strike_rate
+-                        + 0.0975 * average
+-                        + 0.0615 * ff
+-                    )
++                    form = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                     db_cursor.execute(
+                         "UPDATE player_form_data_fmt SET bowling_form = %s WHERE player_id = %s AND season_id = %s AND format_id = %s",
+                         (form, player[0], season[0], format[0]),
+                     )
+
+@@ -100,18 +87,11 @@
+
+                     centuries = len(df[df[1] >= 100])
+                     fifties = len(df[df[1] >= 50]) - centuries
+                     highest_score = df[1].max()
+
+-                    venue_performance = (
+-                        0.4262 * average_score
+-                        + 0.2566 * inning_count
+-                        + 0.1510 * average_strike_rate
+-                        + 0.0787 * centuries
+-                        + 0.0556 * fifties
+-                        + 0.0328 * highest_score
+-                    )
++                    venue_performance = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties + 0.0328 * highest_score
+                     db_cursor.execute(
+                         "INSERT INTO player_venue_data_fmt (player_id, venue_id, format_id, batting_venue, bowling_venue) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, venue_id, format_id) DO UPDATE SET batting_venue = %s",
+                         (player[0], venue[0], format[0], venue_performance, venue_performance),
+                     )
+
+@@ -127,17 +107,11 @@
+                     total_overs = df[0].sum() / 6
+                     strike_rate = df[0].sum() / df[2].sum()
+                     average = df[1].sum() / df[2].sum()
+                     ff = len(df[df[2] >= 5])
+
+-                    venue_performance = (
+-                        0.4174 * total_overs
+-                        + 0.2634 * inning_count
+-                        + 0.1602 * strike_rate
+-                        + 0.0975 * average
+-                        + 0.0615 * ff
+-                    )
++                    venue_performance = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                     db_cursor.execute(
+                         "UPDATE player_venue_data_fmt SET bowling_venue = %s WHERE player_id = %s AND venue_id = %s AND format_id = %s",
+                         (venue_performance, player[0], venue[0], format[0]),
+                     )
+
+@@ -163,18 +137,11 @@
+
+                     centuries = len(df[df[1] >= 100])
+                     fifties = len(df[df[1] >= 50]) - centuries
+                     highest_score = df[1].max()
+
+-                    opposition_performance = (
+-                        0.4262 * average_score
+-                        + 0.2566 * inning_count
+-                        + 0.1510 * average_strike_rate
+-                        + 0.0787 * centuries
+-                        + 0.0556 * fifties
+-                        + 0.0328 * highest_score
+-                    )
++                    opposition_performance = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties + 0.0328 * highest_score
+                     db_cursor.execute(
+                         "INSERT INTO player_opposition_data_fmt (player_id, opposition_id, format_id, batting_opposition, bowling_opposition) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, opposition_id, format_id) DO UPDATE SET batting_opposition = %s",
+                         (
+                             player[0],
+                             opposition[0],
+@@ -196,17 +163,11 @@
+                     total_overs = df[0].sum() / 6
+                     strike_rate = df[0].sum() / df[2].sum()
+                     average = df[1].sum() / df[2].sum()
+                     ff = len(df[df[2] >= 5])
+
+-                    opposition_performance = (
+-                        0.4174 * total_overs
+-                        + 0.2634 * inning_count
+-                        + 0.1602 * strike_rate
+-                        + 0.0975 * average
+-                        + 0.0615 * ff
+-                    )
++                    opposition_performance = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                     db_cursor.execute(
+                         "UPDATE player_opposition_data_fmt SET bowling_opposition = %s WHERE player_id = %s AND opposition_id = %s AND format_id = %s",
+                         (opposition_performance, player[0], opposition[0], format[0]),
+                     )
+
+@@ -229,18 +190,11 @@
+
+                     centuries = len(df[df[1] >= 100])
+                     fifties = len(df[df[1] >= 50]) - centuries
+                     zeros = len(df[df[1] == 0])
+
+-                    consistency = (
+-                        0.4262 * average_score
+-                        + 0.2566 * inning_count
+-                        + 0.1510 * average_strike_rate
+-                        + 0.0787 * centuries
+-                        + 0.0556 * fifties
+-                        - 0.0328 * zeros
+-                    )
++                    consistency = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties - 0.0328 * zeros
+                     db_cursor.execute(
+                         "INSERT INTO player_consistency_data_fmt (player_id, season_id, format_id, batting_consistency, bowling_consistency) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, season_id, format_id) DO UPDATE SET batting_consistency = %s",
+                         (player[0], season[0], format[0], consistency, consistency),
+                     )
+
+@@ -256,17 +210,11 @@
+                     total_overs = df[0].sum() / 6
+                     strike_rate = df[0].sum() / df[2].sum()
+                     average = df[1].sum() / df[2].sum()
+                     ff = len(df[df[2] >= 5])
+
+-                    consistency = (
+-                        0.4174 * total_overs
+-                        + 0.2634 * inning_count
+-                        + 0.1602 * strike_rate
+-                        + 0.0975 * average
+-                        + 0.0615 * ff
+-                    )
++                    consistency = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                     db_cursor.execute(
+                         "UPDATE player_consistency_data_fmt SET bowling_consistency = %s WHERE player_id = %s AND season_id = %s AND format_id = %s",
+                         (consistency, player[0], season[0], format[0]),
+                     )
+
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/calculate_features.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_bowling.py   2025-11-01 17:38:22.990604+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_bowling.py   2025-11-03 21:05:17.672310+00:00
+@@ -88,13 +88,11 @@
+     # Append econ to make 4 outputs
+     Y = np.concatenate([Y, econ], axis=1)
+     return X, Y
+
+
+-def train_and_save(
+-    X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None
+-):
++def train_and_save(X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None):
+     os.makedirs(out_dir, exist_ok=True)
+     scaler = StandardScaler()
+     Xs = scaler.fit_transform(X)
+     # Apply configurable hyperparameters with safe defaults
+     n_estimators = int(rf_params.get("n_estimators", 100))
+@@ -103,15 +101,11 @@
+     if max_depth is not None:
+         try:
+             max_depth = int(max_depth)
+         except Exception:
+             max_depth = None
+-    model = MultiOutputRegressor(
+-        RandomForestRegressor(
+-            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
+-        )
+-    )
++    model = MultiOutputRegressor(RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth))
+     model.fit(Xs, Y)
+     if suffix:
+         joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"))
+         joblib.dump(model, os.path.join(out_dir, f"bowling_model_{suffix}.joblib"))
+     else:
+@@ -204,15 +198,11 @@
+
+     # Auto-detect formats when none explicitly provided
+     if not targets and not args.csv:
+         # 1) Prefer formats from config that actually exist on disk
+         cfg_fmts = _config_formats()
+-        existing_cfg_fmts = [
+-            f
+-            for f in cfg_fmts
+-            if os.path.exists(os.path.join(default_csv_dir, f"bowling_encoded_{f}.csv"))
+-        ]
++        existing_cfg_fmts = [f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"bowling_encoded_{f}.csv"))]
+         if existing_cfg_fmts:
+             targets = existing_cfg_fmts
+         else:
+             # 2) Otherwise, glob for bowling_encoded_*.csv in the export directory
+             try:
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_bowling.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_batting.py   2025-11-01 17:38:22.990602+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_batting.py   2025-11-03 21:05:17.676436+00:00
+@@ -94,13 +94,11 @@
+         Y = np.concatenate([Y, pad], axis=1)
+     Y = np.concatenate([Y, sr], axis=1)
+     return X, Y
+
+
+-def train_and_save(
+-    X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None
+-):
++def train_and_save(X, Y, out_dir: str, rf_params: dict, suffix: str | None = None, metadata: dict | None = None):
+     os.makedirs(out_dir, exist_ok=True)
+     scaler = StandardScaler()
+     Xs = scaler.fit_transform(X)
+     # Apply configurable hyperparameters with safe defaults
+     n_estimators = int(rf_params.get("n_estimators", 100))
+@@ -109,15 +107,11 @@
+     if max_depth is not None:
+         try:
+             max_depth = int(max_depth)
+         except Exception:
+             max_depth = None
+-    model = MultiOutputRegressor(
+-        RandomForestRegressor(
+-            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
+-        )
+-    )
++    model = MultiOutputRegressor(RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth))
+     model.fit(Xs, Y)
+     # Save artifacts
+     if suffix:
+         joblib.dump(scaler, os.path.join(out_dir, f"batting_scaler_{suffix}.joblib"))
+         joblib.dump(model, os.path.join(out_dir, f"batting_model_{suffix}.joblib"))
+@@ -211,15 +205,11 @@
+
+     # Auto-detect formats when none explicitly provided
+     if not targets and not args.csv:
+         # 1) Prefer formats from config that actually exist on disk
+         cfg_fmts = _config_formats()
+-        existing_cfg_fmts = [
+-            f
+-            for f in cfg_fmts
+-            if os.path.exists(os.path.join(default_csv_dir, f"batting_encoded_{f}.csv"))
+-        ]
++        existing_cfg_fmts = [f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"batting_encoded_{f}.csv"))]
+         if existing_cfg_fmts:
+             targets = existing_cfg_fmts
+         else:
+             # 2) Otherwise, glob for batting_encoded_*.csv in the export directory
+             try:
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/ml/train_batting.py
+--- /Users/umayanga/go/src/cric-info-scrapers/ml-service/app/main.py    2025-11-02 22:04:27.825600+00:00
++++ /Users/umayanga/go/src/cric-info-scrapers/ml-service/app/main.py    2025-11-03 21:05:17.713430+00:00
+@@ -92,27 +92,21 @@
+ try:
+     import config as svc_config  # from ml-service/config.py
+
+     _cfg_default_models_dir = svc_config.default_artifacts_dir()
+ except Exception:
+-    _cfg_default_models_dir = os.path.abspath(
+-        os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service")
+-    )
++    _cfg_default_models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service"))
+
+ _default_models_dir = _cfg_default_models_dir
+-MODELS_DIR = os.environ.get(
+-    "ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir)
+-)
++MODELS_DIR = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir))
+
+ # Registries: map format code -> (scaler, model). Legacy unsuffixed artifacts are stored under key "_LEGACY_".
+ BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+ BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+
+
+-def _error_payload(
+-    code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None
+-) -> dict:
++def _error_payload(code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None) -> dict:
+     payload = {"code": code, "message": message}
+     if hint:
+         payload["hint"] = hint
+     if available is not None:
+         payload["available_formats"] = sorted([x for x in available if x != "_LEGACY_"])
+@@ -455,14 +449,11 @@
+                     econ=float(vals[3]),
+                 )
+             )
+         return preds
+     except Exception:
+-        return [
+-            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
+-            for _ in features
+-        ]
++        return [BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features]
+
+
+ @app.post("/predict-win", response_model=List[PlayerPrediction])
+ async def predict_win(players: List[PlayerPrediction]):
+     if not players:
+would reformat /Users/umayanga/go/src/cric-info-scrapers/ml-service/app/main.py
+Oh no! 💥 💔 💥
+11 files would be reformatted, 8 files would be left unchanged.
+make: *** [fmt-check] Error 1

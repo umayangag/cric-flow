@@ -1,0 +1,18 @@
+[
+  "bowling_consistency",
+  "bowling_form",
+  "bowling_temp",
+  "bowling_wind",
+  "bowling_rain",
+  "bowling_humidity",
+  "bowling_cloud",
+  "bowling_pressure",
+  "bowling_viscosity",
+  "batting_inning",
+  "bowling_session",
+  "toss",
+  "bowling_venue",
+  "bowling_opposition",
+  "season",
+  "player_name"
+]

@@ -3,7 +3,7 @@ VENV:=.venv
 PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
-LINE_LENGTH?=100
+LINE_LENGTH?=300
 
 .PHONY: all venv install run train-all docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
 
@@ -40,7 +40,7 @@ fmt:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
 	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
-	flake8 --max-line-length=120 --extend-ignore=E203,W503
+	flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
 
 # Auto-fix lint: remove unused imports via ruff (F401)
 lint:
@@ -58,7 +58,7 @@ fmt-check:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
 	$(VENV)/bin/isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --check --diff --line-length $(LINE_LENGTH) .
-	flake8 --max-line-length=120 --extend-ignore=E203,W503
+	flake8 --max-line-length=120 --extend-ignore=E203,W503 --exclude=.venv
 
 docker-build:
 	docker build -t $(APP_NAME):latest .

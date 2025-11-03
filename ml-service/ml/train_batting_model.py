@@ -2,7 +2,7 @@ import os
 
 import joblib
 import pandas as pd
-from dataset_definitions import *
+from dataset_definitions import input_batting_columns, output_batting_columns
 from sklearn import preprocessing
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
