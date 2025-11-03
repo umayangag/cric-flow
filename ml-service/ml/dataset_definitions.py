@@ -66,9 +66,5 @@ match_summary_columns = [
     "result",
 ]
 
-all_batting_columns = np.concatenate(
-    (input_batting_columns, output_batting_columns, derived_batting_columns)
-)
-all_bowling_columns = np.concatenate(
-    (input_bowling_columns, output_bowling_columns, derived_bowling_columns)
-)
+all_batting_columns = np.concatenate((input_batting_columns, output_batting_columns, derived_batting_columns))
+all_bowling_columns = np.concatenate((input_bowling_columns, output_bowling_columns, derived_bowling_columns))

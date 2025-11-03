@@ -94,23 +94,17 @@ try:
 
     _cfg_default_models_dir = svc_config.default_artifacts_dir()
 except Exception:
-    _cfg_default_models_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service")
-    )
+    _cfg_default_models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service"))
 
 _default_models_dir = _cfg_default_models_dir
-MODELS_DIR = os.environ.get(
-    "ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir)
-)
+MODELS_DIR = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir))
 
 # Registries: map format code -> (scaler, model). Legacy unsuffixed artifacts are stored under key "_LEGACY_".
 BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 
 
-def _error_payload(
-    code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None
-) -> dict:
+def _error_payload(code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None) -> dict:
     payload = {"code": code, "message": message}
     if hint:
         payload["hint"] = hint
@@ -457,10 +451,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
             )
         return preds
     except Exception:
-        return [
-            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
-            for _ in features
-        ]
+        return [BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features]
 
 
 @app.post("/predict-win", response_model=List[PlayerPrediction])

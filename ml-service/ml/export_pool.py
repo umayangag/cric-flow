@@ -41,7 +41,7 @@ def get_bowling_performance(player_list, match_id):
 
     for player in player_list.iterrows():
         player_obj = player[1]
-        player_id = player_obj[0]
+        _ = player_obj[0]
         player_name = player_obj[1]
         player_form = get_player_metric(
             match_id, "bowling", player_obj, "form", "season", season_id - 1
@@ -142,7 +142,7 @@ def get_player_pool():
     db_connection = get_db_connection()
     db_cursor = db_connection.cursor()
     db_cursor.execute(
-        f"SELECT * FROM player WHERE is_retired=0 and (batting_consistency !=0 or bowling_consistency!=0)"
+        "SELECT * FROM player WHERE is_retired=0 and (batting_consistency != 0 or bowling_consistency != 0)"
     )
     player_list = db_cursor.fetchall()
     player_df = pd.DataFrame(player_list, columns=player_columns)

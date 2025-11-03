@@ -21,9 +21,7 @@ def calculate_strike_rate(row):
 def predict_batting(dataset):
     scaled_dataset = input_scaler.transform(dataset)
     predicted = predictor.predict(scaled_dataset)
-    result = pd.DataFrame(
-        output_scaler.inverse_transform(predicted), columns=output_batting_columns
-    )
+    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_batting_columns)
     for column in output_batting_columns:
         dataset[column] = result[column]
     dataset["strike_rate"] = dataset.apply(lambda row: calculate_strike_rate(row), axis=1)

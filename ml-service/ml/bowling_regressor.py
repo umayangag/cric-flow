@@ -21,9 +21,7 @@ def calculate_econ(row):
 def predict_bowling(dataset):
     scaled_dataset = input_scaler.transform(dataset)
     predicted = predictor.predict(scaled_dataset)
-    result = pd.DataFrame(
-        output_scaler.inverse_transform(predicted), columns=output_bowling_columns
-    )
+    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_bowling_columns)
     for column in output_bowling_columns:
         dataset[column] = result[column]
     dataset["econ"] = dataset.apply(lambda row: calculate_econ(row), axis=1)
