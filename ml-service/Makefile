@@ -1,6 +1,6 @@
 APP_NAME:=ml-service
 VENV:=.venv
-PY:=python3
+PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=100
@@ -31,7 +31,7 @@ train-all:
 	$(PY) ml/train_bowling_model.py
 
 validate-exports:
-	$(PY) ml/validate_exports.py --all-formats
+	(cd ml && ../$(PY) validate_exports.py --all-formats)
 
 # Format Python code with line wrapping (isort + black)
 fmt:
