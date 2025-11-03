@@ -39,8 +39,12 @@ func GetPlayerByID(ctx context.Context, id int64) (*Player, error) {
 	return p, nil
 }
 
-// GetPlayerConsistency returns a player'''s consistency data for a given season and format.
-func GetPlayerConsistency(ctx context.Context, playerID int64, seasonName, formatCode string) (*PlayerConsistency, error) {
+// GetPlayerConsistency returns a player”'s consistency data for a given season and format.
+func GetPlayerConsistency(
+	ctx context.Context,
+	playerID int64,
+	seasonName, formatCode string,
+) (*PlayerConsistency, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
@@ -101,7 +105,7 @@ func GetOrCreateByName(ctx context.Context, name string) (int64, error) {
 	return id, nil
 }
 
-// UpsertConsistencyFmt inserts or updates a player'''s consistency scores for a
+// UpsertConsistencyFmt inserts or updates a player”'s consistency scores for a
 // given season and match format.
 func UpsertConsistencyFmt(ctx context.Context, data *PlayerConsistency) error {
 	if Pool == nil {

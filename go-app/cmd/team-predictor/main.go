@@ -34,7 +34,10 @@ func main() {
 
 	cfg := config.Load()
 	if matchID == 0 || strings.TrimSpace(formatCode) == "" || strings.TrimSpace(seasonName) == "" {
-		fmt.Fprintln(os.Stderr, "usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]")
+		fmt.Fprintln(
+			os.Stderr,
+			"usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]",
+		)
 		os.Exit(2)
 	}
 	// Apply config defaults when flags are not provided (0)
@@ -115,6 +118,8 @@ func main() {
 				player.WicketsTaken = floatValue
 			case "econ":
 				player.Econ = floatValue
+			case "winning_probability":
+				player.WinningProbability = floatValue
 			}
 		}
 		players = append(players, player)
@@ -125,7 +130,7 @@ func main() {
 
 	// Predict winning probability
 	mlClient := mlclient.New()
-	predictions, err := mlClient.PredictWin(ctx, team.Players)
+	predictions, err := mlClient.PredictWin(ctx, players)
 	if err != nil {
 		log.Fatalf("failed to predict win: %v", err)
 	}
@@ -136,7 +141,7 @@ func main() {
 	})
 
 	// Select top 11 players
-	selectedPlayers := predictions[:11]
+	selectedPlayers := predictions[:cfg.Predictor.TeamSize]
 
 	// Print the selected team
 	fmt.Printf("Team for match %d (bat=%d, bowl=%d)\n", matchID, wantBatters, wantBowlers)

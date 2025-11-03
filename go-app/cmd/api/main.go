@@ -118,18 +118,20 @@ func main() {
 		// Get consistency data
 		consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
 		if err != nil {
-			// It'''s okay for consistency data to be missing, so just log the error
+			// It's okay for consistency data to be missing, so just log the error
 			log.Printf("could not get player consistency: %v", err)
 		}
 
-		var resp struct {
+		type respStruct struct {
 			ID                 int64    `json:"id"`
 			Name               string   `json:"player_name"`
 			IsWicketKeeper     int16    `json:"is_wicket_keeper"`
 			IsRetired          int16    `json:"is_retired"`
 			BattingConsistency *float32 `json:"batting_consistency,omitempty"`
 			BowlingConsistency *float32 `json:"bowling_consistency,omitempty"`
-		}{
+		}
+
+		resp := respStruct{
 			ID:             player.ID,
 			Name:           player.Name,
 			IsWicketKeeper: player.IsWicketKeeper,

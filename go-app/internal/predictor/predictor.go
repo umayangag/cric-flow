@@ -7,17 +7,18 @@ import (
 )
 
 type PlayerPrediction struct {
-	PlayerName      string
-	RunsScored      float64
-	BallsFaced      float64
-	FoursScored     float64
-	SixesScored     float64
-	BattingPosition float64
-	StrikeRate      float64
-	RunsConceded    float64
-	Deliveries      float64
-	WicketsTaken    float64
-	Econ            float64
+	PlayerName         string
+	RunsScored         float64
+	BallsFaced         float64
+	FoursScored        float64
+	SixesScored        float64
+	BattingPosition    float64
+	StrikeRate         float64
+	RunsConceded       float64
+	Deliveries         float64
+	WicketsTaken       float64
+	Econ               float64
+	WinningProbability float64 // Added this field
 }
 
 type Team struct {

@@ -25,6 +25,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      ml-service:
+        condition: service_started
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -34,6 +36,7 @@ services:
       POSTGRES_SSLMODE: disable
       MIGRATIONS_DIR: /migrations
       PORT: 8080
+      ML_SERVICE_URL: http://ml-service:8000
     ports:
       - "8080:8080"
 
@@ -43,10 +46,22 @@ services:
       dockerfile: Dockerfile
     image: umayangag/cric-app-ml:latest
     container_name: cric-ml-service
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-cricket_data}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_SSLMODE: disable
       PORT: 8000
+      MODELS_DIR: /app/output/ml-service
     ports:
       - "8000:8000"
+    volumes:
+      - ./output:/app/output
 
 volumes:
   pgdata:
