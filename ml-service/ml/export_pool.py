@@ -94,7 +94,7 @@ def get_batting_performance(player_list, match_id):
 
     for player in player_list.iterrows():
         player_obj = player[1]
-        player_id = player_obj[0]
+        _ = player_obj[0]
         player_name = player_obj[1]
         player_form = get_player_metric(match_id, "batting", player_obj, "form", "season", season_id - 1)
         player_venue = get_player_metric(match_id, "batting", player_obj, "venue", "venue", venue_id)

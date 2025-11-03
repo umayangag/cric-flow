@@ -21,7 +21,6 @@ def calculate_overall_performance(input_df, match_id):
     total_score = team_df["runs_scored"].sum() * magic_number + extras
     target = team_df["runs_conceded"].sum() * magic_number
     total_balls_faced = team_df["balls_faced"].sum() * magic_number
-    total_wickets_taken = team_df["wickets_taken"].sum() * magic_number
 
     team_df["total_score"] = total_score * magic_number
     team_df["total_wickets"] = 10
