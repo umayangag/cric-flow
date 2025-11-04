@@ -17,17 +17,39 @@ else
   echo "[pre-commit] golines not found; install with: go install github.com/segmentio/golines@latest" >&2
 fi
 
-# ---- Python formatting (black + isort) ----
-if command -v black >/dev/null 2>&1; then
-  (cd ml-service && black .)
-else
-  echo "[pre-commit] black not found; install with: pip install black" >&2
-fi
-if command -v isort >/dev/null 2>&1; then
-  (cd ml-service && isort .)
-else
-  echo "[pre-commit] isort not found; install with: pip install isort" >&2
-fi
+# ---- Python lint + formatting (ruff F401 + isort + black + flake8) ----
+(
+  set -e
+  cd ml-service
+
+  # Remove unused imports first (matches `make lint`)
+  if command -v ruff >/dev/null 2>&1; then
+    ruff check --fix --select F401 .
+  else
+    echo "[pre-commit] ruff not found; install with: pip install ruff" >&2
+  fi
+
+  # isort with Black profile and line length 300 (matches `make fmt` defaults)
+  if command -v isort >/dev/null 2>&1; then
+    isort --profile black --line-length 300 .
+  else
+    echo "[pre-commit] isort not found; install with: pip install isort" >&2
+  fi
+
+  # black with line length 300 (matches `make fmt` defaults)
+  if command -v black >/dev/null 2>&1; then
+    black --line-length 300 .
+  else
+    echo "[pre-commit] black not found; install with: pip install black" >&2
+  fi
+
+  # flake8 checks consistent with Makefile fmt (ignore E203,W503; max-line-length 300; exclude .venv)
+  if command -v flake8 >/dev/null 2>&1; then
+    flake8 --max-line-length=300 --extend-ignore=E203,W503 --exclude=.venv
+  else
+    echo "[pre-commit] flake8 not found; install with: pip install flake8" >&2
+  fi
+)
 
 # You can add more checks (e.g., go vet, mypy) here if desired.
 
