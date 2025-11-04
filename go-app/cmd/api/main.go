@@ -76,7 +76,7 @@ func main() {
 	}).Methods(http.MethodPost)
 
 	// GET /precompute/status — returns in-memory status of the last run (resets on restart)
-	r.HandleFunc("/precompute/status", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/precompute/status", func(w http.ResponseWriter, _ *http.Request) {
 		respondJSON(w, http.StatusOK, precompute.GetStatus())
 	}).Methods(http.MethodGet)
 
