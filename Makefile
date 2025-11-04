@@ -128,7 +128,7 @@ fmt-check:
 fmt-go:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	cd go-app && gofumpt -w . && golines -w -m 120 .
+	cd go-app && make fmt-check
 
 lint-go:
 	cd go-app && go vet ./...
