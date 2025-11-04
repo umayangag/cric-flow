@@ -34,7 +34,7 @@ migrate:
 
 # Export datasets similar to src/final_data/queries.py
 export-dataset:
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
