@@ -1,4 +1,7 @@
 # Convenience targets for local dev
+VENV:=.venv
+PY:=$(VENV)/bin/python3
+PIP:=$(VENV)/bin/pip
 
 .PHONY: dev-up dev-down logs api migrate export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all
 
@@ -58,10 +61,10 @@ ml-install:
 	$(MAKE) -C ml-service install
 
 train-batting: ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting_model
+	cd ml-service && $(PY) ml/train_batting_model.py
 
 train-bowling: ml-install
-	cd ml-service && .venv/bin/python -m ml.train_bowling_model
+	cd ml-service && $(PY) ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
 
