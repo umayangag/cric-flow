@@ -11,6 +11,7 @@ import (
 	"strings"
 )
 
+// GeocodeResult is a simplified location record returned by the geocoding API.
 type GeocodeResult struct {
 	Name       string
 	Country    string
@@ -66,7 +67,7 @@ func (c *Client) Resolve(ctx context.Context, name, city, country string) (*Geoc
 			continue
 		}
 		func() {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode >= 500 {
 				lastErr = fmt.Errorf("geocode 5xx: %d", resp.StatusCode)
 				return

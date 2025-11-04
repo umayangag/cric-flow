@@ -1,3 +1,4 @@
+// Command etl-importer imports encoded CSV features into the database.
 package main
 
 import (
@@ -56,7 +57,11 @@ func importWeather(ctx context.Context, path string, defaultSession string) {
 		log.Printf("open %s: %v", path, err)
 		return
 	}
-	defer fh.Close()
+	defer func() {
+		if err := fh.Close(); err != nil {
+			log.Printf("close %s: %v", path, err)
+		}
+	}()
 	log.Printf("importing weather from %s", path)
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
@@ -118,7 +123,11 @@ func importBatting(ctx context.Context, path string) {
 		log.Printf("open %s: %v", path, err)
 		return
 	}
-	defer fh.Close()
+	defer func() {
+		if err := fh.Close(); err != nil {
+			log.Printf("close %s: %v", path, err)
+		}
+	}()
 	log.Printf("importing batting from %s", path)
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
@@ -190,7 +199,11 @@ func importBowling(ctx context.Context, path string) {
 		log.Printf("open %s: %v", path, err)
 		return
 	}
-	defer fh.Close()
+	defer func() {
+		if err := fh.Close(); err != nil {
+			log.Printf("close %s: %v", path, err)
+		}
+	}()
 	log.Printf("importing bowling from %s", path)
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
@@ -267,7 +280,11 @@ func importFielding(ctx context.Context, path string) {
 		log.Printf("open %s: %v", path, err)
 		return
 	}
-	defer fh.Close()
+	defer func() {
+		if err := fh.Close(); err != nil {
+			log.Printf("close %s: %v", path, err)
+		}
+	}()
 	log.Printf("importing fielding from %s", path)
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1

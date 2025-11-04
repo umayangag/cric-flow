@@ -1,3 +1,4 @@
+// Command team-predictor builds a team and queries the ML service for win probability.
 package main
 
 import (
@@ -75,7 +76,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open pool.csv: %v", err)
 	}
-	defer poolFile.Close()
+	defer func() {
+		if err := poolFile.Close(); err != nil {
+			log.Printf("close pool.csv: %v", err)
+		}
+	}()
 
 	reader := csv.NewReader(poolFile)
 	records, err := reader.ReadAll()
@@ -125,8 +130,8 @@ func main() {
 		players = append(players, player)
 	}
 
-	// Calculate overall performance
-	team := predictor.CalculateOverallPerformance(players, matchID)
+	// Calculate overall performance (currently not used directly; kept for future metrics)
+	_ = predictor.CalculateOverallPerformance(players, matchID)
 
 	// Predict winning probability
 	mlClient := mlclient.New()

@@ -6,28 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
-
-// Client is a client for the ML service.
-type Client struct {
-	BaseURL string
-	HTTP    *http.Client
-}
-
-// New returns a new ML service client.
-func New() *Client {
-	baseURL := os.Getenv("ML_SERVICE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8000"
-	}
-	return &Client{
-		BaseURL: baseURL,
-		HTTP:    http.DefaultClient,
-	}
-}
 
 // PredictWin calls the /predict-win endpoint of the ML service.
 func (c *Client) PredictWin(
@@ -49,7 +30,7 @@ func (c *Client) PredictWin(
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -72,12 +53,12 @@ func (c *Client) Precompute(ctx context.Context) error {
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	return nil

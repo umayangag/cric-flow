@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// HourlyRecord holds a single hourly weather sample parsed from the API response.
 type HourlyRecord struct {
 	Time     time.Time
 	TempC    *int
@@ -63,7 +64,7 @@ func (c *Client) Hourly(ctx context.Context, lat, lon float64, from, to time.Tim
 			continue
 		}
 		func() {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode >= 500 {
 				lastErr = fmt.Errorf("hourly 5xx: %d", resp.StatusCode)
 				return

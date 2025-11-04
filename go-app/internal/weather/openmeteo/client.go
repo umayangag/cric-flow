@@ -1,3 +1,4 @@
+// Package openmeteo provides a client and helpers for the Open-Meteo weather API.
 package openmeteo
 
 import (
@@ -16,6 +17,7 @@ type Client struct {
 	lastTick time.Time
 }
 
+// NewClient constructs an Open-Meteo client with rate limiting and retry configuration.
 func NewClient(ratePerSec, maxRetry int) *Client {
 	if ratePerSec <= 0 {
 		ratePerSec = 1

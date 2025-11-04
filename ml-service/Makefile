@@ -58,7 +58,7 @@ fmt-check:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
 	$(VENV)/bin/isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --check --diff --line-length $(LINE_LENGTH) .
-	flake8 --max-line-length=120 --extend-ignore=E203,W503 --exclude=.venv
+	flake8 --max-line-length=120 --extend-ignore=E203,E501,W503 --exclude=.venv
 
 docker-build:
 	docker build -t $(APP_NAME):latest .

@@ -1,3 +1,4 @@
+// Command validate-fmt checks coverage of per-format feature tables against matches.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package features contains helpers for computing per-player features.
 package features
 
 import (

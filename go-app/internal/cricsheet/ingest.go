@@ -59,7 +59,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return err
 	}
-	defer fh.Close()
+	defer func() { _ = fh.Close() }()
 	m, err := Parse(fh)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)

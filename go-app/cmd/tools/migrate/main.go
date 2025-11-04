@@ -1,3 +1,4 @@
+// Command migrate runs database schema migrations.
 package main
 
 import (

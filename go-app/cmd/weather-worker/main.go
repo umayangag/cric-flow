@@ -1,3 +1,4 @@
+// Command weather-worker dequeues weather jobs and fetches weather information.
 package main
 
 import (

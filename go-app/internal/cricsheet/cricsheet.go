@@ -1,3 +1,4 @@
+// Package cricsheet defines types and helpers for parsing Cricsheet v1.1 match JSON.
 package cricsheet
 
 import (
@@ -12,11 +13,13 @@ import (
 
 // Structures matching Cricsheet v1.1 JSON (subset we need)
 
+// Match represents a single CricSheet match with summary Info and Innings.
 type Match struct {
 	Info    Info      `json:"info"`
 	Innings []Innings `json:"innings"`
 }
 
+// Info contains general match metadata such as teams, venue, and season.
 type Info struct {
 	BallsPerOver int      `json:"balls_per_over"`
 	Dates        []string `json:"dates"`
@@ -30,28 +33,34 @@ type Info struct {
 	Outcome      *Outcome `json:"outcome"`
 }
 
+// Event contains optional tournament information like match number.
 type Event struct {
 	MatchNumber *int `json:"match_number"`
 }
 
+// Toss records which team won the toss.
 type Toss struct {
 	Winner string `json:"winner"`
 }
 
+// Outcome records the match winner when available.
 type Outcome struct {
 	Winner string `json:"winner"`
 }
 
+// Innings represents a team's innings containing overs and deliveries.
 type Innings struct {
 	Team  string `json:"team"`
 	Overs []Over `json:"overs"`
 }
 
+// Over groups deliveries and indicates the over number.
 type Over struct {
 	Over       int        `json:"over"`
 	Deliveries []Delivery `json:"deliveries"`
 }
 
+// Delivery represents a single ball with runs, extras and optional wicket info.
 type Delivery struct {
 	Batter     string         `json:"batter"`
 	Bowler     string         `json:"bowler"`
@@ -61,7 +70,9 @@ type Delivery struct {
 	Wickets    *Wickets       `json:"wickets,omitempty"`
 }
 type (
+	// Wickets is a list of wicket events for a delivery.
 	Wickets []Wicket
+	// RunInfo holds per-delivery run breakdown (batter, extras, total).
 	RunInfo struct {
 		Batter int `json:"batter"`
 		Extras int `json:"extras"`
@@ -69,14 +80,17 @@ type (
 	}
 )
 
+// Wicket represents a dismissal event with player out, kind and optional fielders.
 type Wicket struct {
 	PlayerOut string      `json:"player_out"`
 	Kind      string      `json:"kind"`
 	Fielders  *Collection `json:"fielders,omitempty"`
 }
 
+// Collection is a flexible list of names (e.g., fielders) parsed from Cricsheet.
 type Collection []string
 
+// Season is a normalized season identifier (e.g., "2012" or "2007/08").
 type Season string
 
 // UnmarshalJSON allows Season to decode from string, number, or null.

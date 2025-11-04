@@ -1,3 +1,4 @@
+// Command api starts the HTTP API server for the cricket data service.
 package main
 
 import (
@@ -54,7 +55,7 @@ func main() {
 	}).Methods(http.MethodGet)
 
 	// POST /precompute
-	r.HandleFunc("/precompute", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/precompute", func(w http.ResponseWriter, _ *http.Request) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()

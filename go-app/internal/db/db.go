@@ -1,3 +1,4 @@
+// Package db contains PostgreSQL connection pool and query helpers.
 package db
 
 import (

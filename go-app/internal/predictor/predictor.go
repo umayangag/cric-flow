@@ -1,9 +1,11 @@
+// Package predictor defines types and helpers for computing team performance and predictions.
 package predictor
 
 import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
+// PlayerPrediction aggregates player features and predicted metrics.
 type PlayerPrediction struct {
 	PlayerName         string
 	RunsScored         float64
@@ -19,6 +21,7 @@ type PlayerPrediction struct {
 	WinningProbability float64 // Added this field
 }
 
+// Team summarises team-level aggregates computed from player predictions.
 type Team struct {
 	Players            []PlayerPrediction
 	TotalScore         float64
@@ -30,6 +33,7 @@ type Team struct {
 	WinningProbability float64
 }
 
+// CalculateOverallPerformance aggregates player predictions into a team summary for a match.
 func CalculateOverallPerformance(players []PlayerPrediction, matchID int64) Team {
 	cfg := config.Load()
 
