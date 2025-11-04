@@ -41,9 +41,7 @@ jobs:
       - name: Lint/format check (isort, black, flake8, ruff)
         working-directory: ml-service
         run: |
-          isort --check-only --diff .
-          black --check --diff .
-          flake8 --max-line-length=110 --extend-ignore=E203,W503
+          make fmt-check
           make lint-check
 
       - name: Sanity compile

@@ -128,7 +128,7 @@ fmt-check:
 fmt-go:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	cd go-app && gofumpt -w . && golines -w -m 120 .
+	cd go-app && make fmt-check
 
 lint-go:
 	cd go-app && go vet ./...
@@ -136,10 +136,10 @@ lint-go:
 fmt-py:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
-	cd ml-service && .venv/bin/isort . && .venv/bin/black .
+	cd ml-service && make fmt-check
 
 lint-py:
-	cd ml-service && .venv/bin/isort --check-only --diff . && .venv/bin/black --check --diff .
+	cd ml-service && make lint-check
 
 install-hooks:
 	git config core.hooksPath .githooks
