@@ -33,6 +33,9 @@ train-all:
 validate-exports:
 	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)
 
+validate-exports-infer:
+	(cd ml && ../$(PY) validate_exports.py --all-formats --schema inference)
+
 # Format Python code with line wrapping (isort + black)
 fmt:
 	make lint

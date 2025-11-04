@@ -61,3 +61,12 @@ jobs:
           else \
             echo "No exported CSVs found; skipping export validation."; \
           fi
+
+      - name: Validate inference exports (if present)
+        working-directory: ml-service
+        run: |
+          if ls ../output/go-app/batting_infer_*.csv >/dev/null 2>&1; then \
+            make validate-exports-infer; \
+          else \
+            echo "No inference CSVs found; skipping inference export validation."; \
+          fi
