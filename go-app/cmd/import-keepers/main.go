@@ -1,14 +1,17 @@
 // Command import-keepers updates the is_wicket_keeper flag for players from a CSV.
 //
 // CSV schema (minimal):
-//   Name[,IsWicketKeeper]
+//
+//	Name[,IsWicketKeeper]
+//
 // - Name: player name string (matched case-insensitively against player.player_name)
 // - IsWicketKeeper: optional boolean/int; if omitted, defaults to 1 for all listed names
 //
 // Usage examples:
-//   go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --dry-run
-//   go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --apply
-//   go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --apply --others-zero
+//
+//	go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --dry-run
+//	go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --apply
+//	go run ./go-app/cmd/import-keepers --file ./data/keepers.csv --apply --others-zero
 //
 // Notes:
 // - By default, this tool runs in dry-run mode. Use --apply to persist changes.
@@ -83,8 +86,12 @@ func parseCSV(path string) ([]KeeperRow, error) {
 					}
 				} else {
 					lv := strings.ToLower(v)
-					if lv == "true" || lv == "yes" || lv == "y" { val = 1 }
-					if lv == "false" || lv == "no" || lv == "n" { val = 0 }
+					if lv == "true" || lv == "yes" || lv == "y" {
+						val = 1
+					}
+					if lv == "false" || lv == "no" || lv == "n" {
+						val = 0
+					}
 				}
 			}
 		}
@@ -167,7 +174,10 @@ func main() {
 				args = append(args, name)
 				i++
 			}
-			q := "UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (" + strings.Join(placeholders, ",") + ")"
+			q := "UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (" + strings.Join(
+				placeholders,
+				",",
+			) + ")"
 			if _, err := db.Pool.Exec(ctx, q, args...); err != nil {
 				return fmt.Errorf("zero others: %w", err)
 			}

@@ -3,19 +3,21 @@
 // CSV schema (minimum):
 //   - Name (string)            required; matched case-insensitively against player.player_name
 //   - Retired (bool/int)       optional; if present, rows with truthy Retired will be marked retired (1).
-//                               If absent, all listed names will be marked retired (1).
+//     If absent, all listed names will be marked retired (1).
 //
 // Usage examples:
-//   go run ./go-app/cmd/import-retired --file ./data/retired.csv --dry-run
-//   go run ./go-app/cmd/import-retired --file ./data/retired.csv --apply
-//   go run ./go-app/cmd/import-retired --file ./data/retired.csv --apply --others-zero
+//
+//	go run ./go-app/cmd/import-retired --file ./data/retired.csv --dry-run
+//	go run ./go-app/cmd/import-retired --file ./data/retired.csv --apply
+//	go run ./go-app/cmd/import-retired --file ./data/retired.csv --apply --others-zero
 //
 // Flags:
-//   --file         path to CSV file (required)
-//   --dry-run      do not write to DB; print intended changes (default true)
-//   --apply        apply changes (sets dry-run=false)
-//   --others-zero  set is_retired=0 for players not listed (use with caution)
-//   --timeout      operation timeout (default 60s)
+//
+//	--file         path to CSV file (required)
+//	--dry-run      do not write to DB; print intended changes (default true)
+//	--apply        apply changes (sets dry-run=false)
+//	--others-zero  set is_retired=0 for players not listed (use with caution)
+//	--timeout      operation timeout (default 60s)
 package main
 
 import (
@@ -86,9 +88,7 @@ func parseCSV(path string) ([]row, error) {
 		ret := true // default: if no Retired column, treat listed names as retired
 		if retIdx >= 0 && retIdx < len(rec) {
 			val := strings.TrimSpace(strings.ToLower(rec[retIdx]))
-			if val == "" {
-				// empty -> skip? default to true per above behavior
-			} else if val == "1" || val == "true" || val == "yes" || val == "y" {
+			if val == "1" || val == "true" || val == "yes" || val == "y" {
 				ret = true
 			} else if val == "0" || val == "false" || val == "no" || val == "n" {
 				ret = false
