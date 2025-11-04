@@ -35,6 +35,7 @@ jobs:
       - name: Install dependencies
         working-directory: ml-service
         run: |
+          make venv
           make init
 
       - name: Lint/format check (isort, black, flake8, ruff)
