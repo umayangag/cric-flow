@@ -74,7 +74,11 @@ def load_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def validate_df(df: pd.DataFrame, required_cols: List[str], null_threshold: float = 0.2) -> Tuple[bool, List[str]]:
+def validate_df(
+    df: pd.DataFrame,
+    required_cols: List[str],
+    null_threshold: float = 0.2,
+) -> Tuple[bool, List[str]]:
     problems: List[str] = []
     # Column presence
     missing = [c for c in required_cols if c not in df.columns]
@@ -93,11 +97,32 @@ def validate_df(df: pd.DataFrame, required_cols: List[str], null_threshold: floa
 def main():
     parser = argparse.ArgumentParser()
     default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
-    parser.add_argument("--dir", default=default_dir, help="Directory containing exported CSVs")
-    parser.add_argument("--format", default="", help="Single format code")
-    parser.add_argument("--formats", default="", help="Comma-separated formats list")
-    parser.add_argument("--all-formats", action="store_true", help="Read formats from config.json (ml.formats)")
-    parser.add_argument("--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column")
+    parser.add_argument(
+        "--dir",
+        default=default_dir,
+        help="Directory containing exported CSVs",
+    )
+    parser.add_argument(
+        "--format",
+        default="",
+        help="Single format code",
+    )
+    parser.add_argument(
+        "--formats",
+        default="",
+        help="Comma-separated formats list",
+    )
+    parser.add_argument(
+        "--all-formats",
+        action="store_true",
+        help="Read formats from config.json (ml.formats)",
+    )
+    parser.add_argument(
+        "--null-threshold",
+        type=float,
+        default=0.2,
+        help="Max allowed NaN fraction per column",
+    )
     args = parser.parse_args()
 
     targets: List[str] = []
