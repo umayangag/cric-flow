@@ -35,7 +35,10 @@ func main() {
 	flag.Parse()
 
 	if matchID == 0 || season == "" {
-		fmt.Fprintln(os.Stderr, "usage: team-select -match=<id> -season=<name> [-format=CODE] [-pool=path] [-size=N] [-min-bowlers=M] [--require-keeper] [--from-db=true|false]")
+		fmt.Fprintln(
+			os.Stderr,
+			"usage: team-select -match=<id> -season=<name> [-format=CODE] [-pool=path] [-size=N] [-min-bowlers=M] [--require-keeper] [--from-db=true|false]",
+		)
 		os.Exit(2)
 	}
 
@@ -49,8 +52,8 @@ func main() {
 		}
 	}
 
-	opts := selection.SelectionOptions{TeamSize: teamSize, MinBowlers: minBowl, RequireKeeper: reqKeeper}
-	var res selection.SelectionResult
+	opts := selection.Options{TeamSize: teamSize, MinBowlers: minBowl, RequireKeeper: reqKeeper}
+	var res selection.Result
 	var err error
 	if fromDB {
 		res, err = selection.SelectTeam(ctx, matchID, format, season, opts)

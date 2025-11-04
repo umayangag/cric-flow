@@ -86,7 +86,13 @@ type InnVal struct {
 }
 
 // ListBattingBefore returns batting values (runs as Value) for a player strictly before cutoff date, filtered by optional format/opposition/venue.
-func ListBattingBefore(ctx context.Context, playerID int64, cutoff time.Time, formatID int64, oppID, venueID *int64) ([]InnVal, error) {
+func ListBattingBefore(
+	ctx context.Context,
+	playerID int64,
+	cutoff time.Time,
+	formatID int64,
+	oppID, venueID *int64,
+) ([]InnVal, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
@@ -125,7 +131,13 @@ func ListBattingBefore(ctx context.Context, playerID int64, cutoff time.Time, fo
 }
 
 // ListBowlingBefore returns bowling values (wickets as Value) for a player strictly before cutoff date, filtered by optional format/opposition/venue.
-func ListBowlingBefore(ctx context.Context, playerID int64, cutoff time.Time, formatID int64, oppID, venueID *int64) ([]InnVal, error) {
+func ListBowlingBefore(
+	ctx context.Context,
+	playerID int64,
+	cutoff time.Time,
+	formatID int64,
+	oppID, venueID *int64,
+) ([]InnVal, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
@@ -165,34 +177,114 @@ func ListBowlingBefore(ctx context.Context, playerID int64, cutoff time.Time, fo
 
 // UpsertPlayerFormAsOf inserts or updates a form snapshot.
 func UpsertPlayerFormAsOf(ctx context.Context, playerID int64, asOf time.Time, formatID int64,
-	batForm, bowlForm, nBat, nBowl float64, windowSpec string) error {
+	batForm, bowlForm, nBat, nBowl float64, windowSpec string,
+) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `INSERT INTO player_form_asof(player_id, as_of_date, format_id, bat_form, bowl_form, n_samples_bat, n_samples_bowl, window_spec)
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO player_form_asof(player_id, as_of_date, format_id, bat_form, bowl_form, n_samples_bat, n_samples_bowl, window_spec)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (player_id, as_of_date, format_id)
 		DO UPDATE SET bat_form = EXCLUDED.bat_form,
 			bowl_form = EXCLUDED.bowl_form,
 			n_samples_bat = EXCLUDED.n_samples_bat,
 			n_samples_bowl = EXCLUDED.n_samples_bowl,
-			window_spec = EXCLUDED.window_spec`, playerID, asOf, formatID, batForm, bowlForm, nBat, nBowl, windowSpec)
+			window_spec = EXCLUDED.window_spec`,
+		playerID,
+		asOf,
+		formatID,
+		batForm,
+		bowlForm,
+		nBat,
+		nBowl,
+		windowSpec,
+	)
 	return err
 }
 
 // UpsertPlayerConsistencyAsOf inserts or updates a consistency snapshot.
 func UpsertPlayerConsistencyAsOf(ctx context.Context, playerID int64, asOf time.Time, formatID int64,
-	batCons, bowlCons float64, nBat, nBowl int, windowSpec string) error {
+	batCons, bowlCons float64, nBat, nBowl int, windowSpec string,
+) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `INSERT INTO player_consistency_asof(player_id, as_of_date, format_id, bat_consistency, bowl_consistency, n_samples_bat, n_samples_bowl, window_spec)
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO player_consistency_asof(player_id, as_of_date, format_id, bat_consistency, bowl_consistency, n_samples_bat, n_samples_bowl, window_spec)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (player_id, as_of_date, format_id)
 		DO UPDATE SET bat_consistency = EXCLUDED.bat_consistency,
 			bowl_consistency = EXCLUDED.bowl_consistency,
 			n_samples_bat = EXCLUDED.n_samples_bat,
 			n_samples_bowl = EXCLUDED.n_samples_bowl,
-			window_spec = EXCLUDED.window_spec`, playerID, asOf, formatID, batCons, bowlCons, nBat, nBowl, windowSpec)
+			window_spec = EXCLUDED.window_spec`,
+		playerID,
+		asOf,
+		formatID,
+		batCons,
+		bowlCons,
+		nBat,
+		nBowl,
+		windowSpec,
+	)
+	return err
+}
+
+// UpsertPlayerVsOppAsOf inserts or updates a vs-opposition snapshot.
+func UpsertPlayerVsOppAsOf(ctx context.Context, playerID int64, oppositionID int64, asOf time.Time, formatID int64,
+	batValue, bowlValue float64, nSamples int, windowSpec string,
+) error {
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO player_vs_opposition_asof(player_id, opposition_id, as_of_date, format_id, bat_value, bowl_value, n_samples, window_spec)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (player_id, opposition_id, as_of_date, format_id)
+		DO UPDATE SET bat_value = EXCLUDED.bat_value,
+			bowl_value = EXCLUDED.bowl_value,
+			n_samples = EXCLUDED.n_samples,
+			window_spec = EXCLUDED.window_spec`,
+		playerID,
+		oppositionID,
+		asOf,
+		formatID,
+		batValue,
+		bowlValue,
+		nSamples,
+		windowSpec,
+	)
+	return err
+}
+
+// UpsertPlayerAtVenueAsOf inserts or updates an at-venue snapshot.
+func UpsertPlayerAtVenueAsOf(ctx context.Context, playerID int64, venueID int64, asOf time.Time, formatID int64,
+	batValue, bowlValue float64, nSamples int, windowSpec string,
+) error {
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO player_at_venue_asof(player_id, venue_id, as_of_date, format_id, bat_value, bowl_value, n_samples, window_spec)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (player_id, venue_id, as_of_date, format_id)
+		DO UPDATE SET bat_value = EXCLUDED.bat_value,
+			bowl_value = EXCLUDED.bowl_value,
+			n_samples = EXCLUDED.n_samples,
+			window_spec = EXCLUDED.window_spec`,
+		playerID,
+		venueID,
+		asOf,
+		formatID,
+		batValue,
+		bowlValue,
+		nSamples,
+		windowSpec,
+	)
 	return err
 }

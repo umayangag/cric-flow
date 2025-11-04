@@ -22,6 +22,7 @@ func main() {
 	var format string
 	var formats string
 	var allFormats bool
+	var unified bool
 	var inferenceOnly bool
 	// Resolve default output directory with precedence: flag > env > config > built-in
 	defOut := os.Getenv("GO_APP_OUTPUT_DIR")
@@ -37,6 +38,12 @@ func main() {
 	flag.StringVar(&format, "format", "", "single format code (TEST, ODI, T20, T20I)")
 	flag.StringVar(&formats, "formats", "", "comma-separated list of format codes")
 	flag.BoolVar(&allFormats, "all-formats", false, "export for all formats")
+	flag.BoolVar(
+		&unified,
+		"unified",
+		false,
+		"export single merged CSV per task (batting/bowling) across all formats with as-of per-format features",
+	)
 	flag.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference (separate files)")
 	flag.Parse()
 
@@ -73,6 +80,19 @@ func main() {
 			// Backward-compat: single unsuffixed files using all formats combined (legacy)
 			list = []string{""}
 		}
+	}
+
+	if unified {
+		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
+		bowAll := filepath.Join(outDir, "bowling_encoded_all.csv")
+		if err := exportBattingUnified(ctx, batAll); err != nil {
+			log.Fatalf("export unified batting: %v", err)
+		}
+		if err := exportBowlingUnified(ctx, bowAll); err != nil {
+			log.Fatalf("export unified bowling: %v", err)
+		}
+		log.Printf("unified exports written to %s", outDir)
+		return
 	}
 
 	for _, fcode := range list {
@@ -351,6 +371,398 @@ func exportBattingLegacy(ctx context.Context, path string) error { return export
 
 // exportBowlingLegacy is the previous exporter (no format filter).
 func exportBowlingLegacy(ctx context.Context, path string) error { return exportBowling(ctx, path) }
+
+// exportBattingUnified writes a single batting CSV across all formats and includes per-format as-of features
+func exportBattingUnified(ctx context.Context, path string) error {
+	// Resolve known format ids (some may be missing depending on data)
+	fmtIDs := map[string]*int64{}
+	for _, code := range []string{"TEST", "ODI", "T20I", "T20"} {
+		id, err := db.GetMatchFormatIDByCode(ctx, code)
+		if err == nil && id > 0 {
+			fmtIDs[code] = &id
+		}
+	}
+	// Build SQL selecting base batting row + as-of features per available format code
+	// We use LATERAL subqueries to fetch latest snapshot <= match date.
+	q := `
+	SELECT 
+	  bd.runs, bd.balls, bd.fours, bd.sixes, bd.batting_position,
+	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
+	  CASE WHEN w.viscosity IS NULL THEN 0
+	       WHEN lower(w.viscosity)='dry' THEN 0
+	       WHEN lower(w.viscosity)='humid' THEN 1
+	       WHEN lower(w.viscosity)='windy' THEN 2
+	       ELSE 0 END AS viscosity,
+	  md.inning,
+	  CASE WHEN md.batting_session IS NULL THEN 0
+	       WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
+	       WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
+	       WHEN lower(md.batting_session) LIKE '%evening%' THEN 2 ELSE 0 END AS batting_session,
+	  CASE WHEN md.toss IS NULL THEN 0 WHEN lower(md.toss) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
+	  s.id AS season_id,
+	  p.player_name,
+	  mf.code AS format_code,
+	  -- TEST as-of
+	  tf.bat_form   AS bat_form_TEST_asof,
+	  tf.n_samples_bat AS n_samples_bat_form_TEST,
+	  tc.bat_consistency AS bat_consistency_TEST_asof,
+	  tc.n_samples_bat   AS n_samples_bat_cons_TEST,
+	  tvo.bat_value AS bat_vs_opp_TEST_asof,
+	  tvo.n_samples AS n_samples_bat_vs_opp_TEST,
+	  tvv.bat_value AS bat_at_venue_TEST_asof,
+	  tvv.n_samples AS n_samples_bat_at_venue_TEST,
+	  -- ODI as-of
+	  of.bat_form   AS bat_form_ODI_asof,
+	  of.n_samples_bat AS n_samples_bat_form_ODI,
+	  oc.bat_consistency AS bat_consistency_ODI_asof,
+	  oc.n_samples_bat   AS n_samples_bat_cons_ODI,
+	  ovo.bat_value AS bat_vs_opp_ODI_asof,
+	  ovo.n_samples AS n_samples_bat_vs_opp_ODI,
+	  ovv.bat_value AS bat_at_venue_ODI_asof,
+	  ovv.n_samples AS n_samples_bat_at_venue_ODI,
+	  -- T20I as-of
+	  iif.bat_form   AS bat_form_T20I_asof,
+	  iif.n_samples_bat AS n_samples_bat_form_T20I,
+	  iic.bat_consistency AS bat_consistency_T20I_asof,
+	  iic.n_samples_bat   AS n_samples_bat_cons_T20I,
+	  iivo.bat_value AS bat_vs_opp_T20I_asof,
+	  iivo.n_samples AS n_samples_bat_vs_opp_T20I,
+	  iivv.bat_value AS bat_at_venue_T20I_asof,
+	  iivv.n_samples AS n_samples_bat_at_venue_T20I,
+	  -- T20 as-of
+	  t20f.bat_form   AS bat_form_T20_asof,
+	  t20f.n_samples_bat AS n_samples_bat_form_T20,
+	  t20c.bat_consistency AS bat_consistency_T20_asof,
+	  t20c.n_samples_bat   AS n_samples_bat_cons_T20,
+	  t20vo.bat_value AS bat_vs_opp_T20_asof,
+	  t20vo.n_samples AS n_samples_bat_vs_opp_T20,
+	  t20vv.bat_value AS bat_at_venue_T20_asof,
+	  t20vv.n_samples AS n_samples_bat_at_venue_T20
+	FROM batting_data bd
+	JOIN match_details md ON md.match_id = bd.match_id
+	LEFT JOIN match_format mf ON mf.id = md.format_id
+	LEFT JOIN player p ON p.id = bd.player_id
+	LEFT JOIN season s ON s.id = md.season_id
+	LEFT JOIN (
+	  SELECT * FROM weather_data WHERE session='batting'
+	) w ON w.match_id = bd.match_id
+	-- TEST lateral joins
+	LEFT JOIN LATERAL (
+	  SELECT bat_form, n_samples_bat FROM player_form_asof
+	  WHERE player_id=bd.player_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tf ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_consistency, n_samples_bat FROM player_consistency_asof
+	  WHERE player_id=bd.player_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tc ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bd.player_id AND opposition_id = md.opposition_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tvo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bd.player_id AND venue_id = md.venue_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tvv ON TRUE
+	-- ODI lateral joins
+	LEFT JOIN LATERAL (
+	  SELECT bat_form, n_samples_bat FROM player_form_asof
+	  WHERE player_id=bd.player_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) of ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_consistency, n_samples_bat FROM player_consistency_asof
+	  WHERE player_id=bd.player_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) oc ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bd.player_id AND opposition_id = md.opposition_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) ovo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bd.player_id AND venue_id = md.venue_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) ovv ON TRUE
+	-- T20I lateral joins
+	LEFT JOIN LATERAL (
+	  SELECT bat_form, n_samples_bat FROM player_form_asof
+	  WHERE player_id=bd.player_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iif ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_consistency, n_samples_bat FROM player_consistency_asof
+	  WHERE player_id=bd.player_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iic ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bd.player_id AND opposition_id = md.opposition_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iivo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bd.player_id AND venue_id = md.venue_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iivv ON TRUE
+	-- T20 lateral joins
+	LEFT JOIN LATERAL (
+	  SELECT bat_form, n_samples_bat FROM player_form_asof
+	  WHERE player_id=bd.player_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20f ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_consistency, n_samples_bat FROM player_consistency_asof
+	  WHERE player_id=bd.player_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20c ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bd.player_id AND opposition_id = md.opposition_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20vo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bat_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bd.player_id AND venue_id = md.venue_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20vv ON TRUE
+	ORDER BY md.date ASC, bd.id ASC`
+
+	args := []any{nil, nil, nil, nil}
+	// Parameter order: TEST, ODI, T20I, T20
+	idx := 0
+	set := func(code string) {
+		if v, ok := fmtIDs[code]; ok && v != nil {
+			args[idx] = *v
+		} else {
+			args[idx] = int64(0) // no matches will appear for format_id=0 (since none equals 0)
+		}
+		idx++
+	}
+	set("TEST")
+	set("ODI")
+	set("T20I")
+	set("T20")
+
+	rows, err := db.Pool.Query(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	header := []string{
+		"runs", "balls", "fours", "sixes", "batting_position",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+		"bat_form_TEST_asof", "n_samples_bat_form_TEST", "bat_consistency_TEST_asof", "n_samples_bat_cons_TEST", "bat_vs_opp_TEST_asof", "n_samples_bat_vs_opp_TEST", "bat_at_venue_TEST_asof", "n_samples_bat_at_venue_TEST",
+		"bat_form_ODI_asof", "n_samples_bat_form_ODI", "bat_consistency_ODI_asof", "n_samples_bat_cons_ODI", "bat_vs_opp_ODI_asof", "n_samples_bat_vs_opp_ODI", "bat_at_venue_ODI_asof", "n_samples_bat_at_venue_ODI",
+		"bat_form_T20I_asof", "n_samples_bat_form_T20I", "bat_consistency_T20I_asof", "n_samples_bat_cons_T20I", "bat_vs_opp_T20I_asof", "n_samples_bat_vs_opp_T20I", "bat_at_venue_T20I_asof", "n_samples_bat_at_venue_T20I",
+		"bat_form_T20_asof", "n_samples_bat_form_T20", "bat_consistency_T20_asof", "n_samples_bat_cons_T20", "bat_vs_opp_T20_asof", "n_samples_bat_vs_opp_T20", "bat_at_venue_T20_asof", "n_samples_bat_at_venue_T20",
+	}
+	if err := w.Write(header); err != nil {
+		return err
+	}
+
+	// total columns expected from query
+	expected := len(header)
+	for rows.Next() {
+		vals, err := scanRow(rows, expected)
+		if err != nil {
+			return err
+		}
+		if err := w.Write(vals); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// exportBowlingUnified writes a single bowling CSV across all formats and includes per-format as-of features
+func exportBowlingUnified(ctx context.Context, path string) error {
+	fmtIDs := map[string]*int64{}
+	for _, code := range []string{"TEST", "ODI", "T20I", "T20"} {
+		id, err := db.GetMatchFormatIDByCode(ctx, code)
+		if err == nil && id > 0 {
+			fmtIDs[code] = &id
+		}
+	}
+	q := `
+	SELECT 
+	  bw.overs, bw.balls, bw.maidens, bw.runs, bw.wickets, bw.dots, bw.fours, bw.sixes, bw.econ, bw.wides, bw.no_balls,
+	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
+	  CASE WHEN w.viscosity IS NULL THEN 0
+	       WHEN lower(w.viscosity)='dry' THEN 0
+	       WHEN lower(w.viscosity)='humid' THEN 1
+	       WHEN lower(w.viscosity)='windy' THEN 2
+	       ELSE 0 END AS viscosity,
+	  md.inning,
+	  CASE WHEN md.bowling_session IS NULL THEN 0
+	       WHEN lower(md.bowling_session) LIKE '%morning%' THEN 0
+	       WHEN lower(md.bowling_session) LIKE '%afternoon%' THEN 1
+	       WHEN lower(md.bowling_session) LIKE '%evening%' THEN 2 ELSE 0 END AS bowling_session,
+	  CASE WHEN md.toss IS NULL THEN 0 WHEN lower(md.toss) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
+	  s.id AS season_id,
+	  p.player_name,
+	  mf.code AS format_code,
+	  -- TEST
+	  tf.bowl_form   AS bowl_form_TEST_asof,
+	  tf.n_samples_bowl AS n_samples_bowl_form_TEST,
+	  tc.bowl_consistency AS bowl_consistency_TEST_asof,
+	  tc.n_samples_bowl   AS n_samples_bowl_cons_TEST,
+	  tvo.bowl_value AS bowl_vs_opp_TEST_asof,
+	  tvo.n_samples AS n_samples_bowl_vs_opp_TEST,
+	  tvv.bowl_value AS bowl_at_venue_TEST_asof,
+	  tvv.n_samples AS n_samples_bowl_at_venue_TEST,
+	  -- ODI
+	  of.bowl_form   AS bowl_form_ODI_asof,
+	  of.n_samples_bowl AS n_samples_bowl_form_ODI,
+	  oc.bowl_consistency AS bowl_consistency_ODI_asof,
+	  oc.n_samples_bowl   AS n_samples_bowl_cons_ODI,
+	  ovo.bowl_value AS bowl_vs_opp_ODI_asof,
+	  ovo.n_samples AS n_samples_bowl_vs_opp_ODI,
+	  ovv.bowl_value AS bowl_at_venue_ODI_asof,
+	  ovv.n_samples AS n_samples_bowl_at_venue_ODI,
+	  -- T20I
+	  iif.bowl_form   AS bowl_form_T20I_asof,
+	  iif.n_samples_bowl AS n_samples_bowl_form_T20I,
+	  iic.bowl_consistency AS bowl_consistency_T20I_asof,
+	  iic.n_samples_bowl   AS n_samples_bowl_cons_T20I,
+	  iivo.bowl_value AS bowl_vs_opp_T20I_asof,
+	  iivo.n_samples AS n_samples_bowl_vs_opp_T20I,
+	  iivv.bowl_value AS bowl_at_venue_T20I_asof,
+	  iivv.n_samples AS n_samples_bowl_at_venue_T20I,
+	  -- T20
+	  t20f.bowl_form   AS bowl_form_T20_asof,
+	  t20f.n_samples_bowl AS n_samples_bowl_form_T20,
+	  t20c.bowl_consistency AS bowl_consistency_T20_asof,
+	  t20c.n_samples_bowl   AS n_samples_bowl_cons_T20,
+	  t20vo.bowl_value AS bowl_vs_opp_T20_asof,
+	  t20vo.n_samples AS n_samples_bowl_vs_opp_T20,
+	  t20vv.bowl_value AS bowl_at_venue_T20_asof,
+	  t20vv.n_samples AS n_samples_bowl_at_venue_T20
+	FROM bowling_data bw
+	JOIN match_details md ON md.match_id = bw.match_id
+	LEFT JOIN match_format mf ON mf.id = md.format_id
+	LEFT JOIN player p ON p.id = bw.player_id
+	LEFT JOIN season s ON s.id = md.season_id
+	LEFT JOIN (
+	  SELECT * FROM weather_data WHERE session='bowling'
+	) w ON w.match_id = bw.match_id
+	-- TEST laterals
+	LEFT JOIN LATERAL (
+	  SELECT bowl_form, n_samples_bowl FROM player_form_asof
+	  WHERE player_id=bw.player_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tf ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_consistency, n_samples_bowl FROM player_consistency_asof
+	  WHERE player_id=bw.player_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tc ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bw.player_id AND opposition_id = md.opposition_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tvo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bw.player_id AND venue_id = md.venue_id AND format_id = $1 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) tvv ON TRUE
+	-- ODI laterals
+	LEFT JOIN LATERAL (
+	  SELECT bowl_form, n_samples_bowl FROM player_form_asof
+	  WHERE player_id=bw.player_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) of ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_consistency, n_samples_bowl FROM player_consistency_asof
+	  WHERE player_id=bw.player_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) oc ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bw.player_id AND opposition_id = md.opposition_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) ovo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bw.player_id AND venue_id = md.venue_id AND format_id = $2 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) ovv ON TRUE
+	-- T20I laterals
+	LEFT JOIN LATERAL (
+	  SELECT bowl_form, n_samples_bowl FROM player_form_asof
+	  WHERE player_id=bw.player_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iif ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_consistency, n_samples_bowl FROM player_consistency_asof
+	  WHERE player_id=bw.player_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iic ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bw.player_id AND opposition_id = md.opposition_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iivo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bw.player_id AND venue_id = md.venue_id AND format_id = $3 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) iivv ON TRUE
+	-- T20 laterals
+	LEFT JOIN LATERAL (
+	  SELECT bowl_form, n_samples_bowl FROM player_form_asof
+	  WHERE player_id=bw.player_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20f ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_consistency, n_samples_bowl FROM player_consistency_asof
+	  WHERE player_id=bw.player_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20c ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_vs_opposition_asof
+	  WHERE player_id=bw.player_id AND opposition_id = md.opposition_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20vo ON TRUE
+	LEFT JOIN LATERAL (
+	  SELECT bowl_value, n_samples FROM player_at_venue_asof
+	  WHERE player_id=bw.player_id AND venue_id = md.venue_id AND format_id = $4 AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+	) t20vv ON TRUE
+	ORDER BY md.date ASC, bw.id ASC`
+
+	args := []any{nil, nil, nil, nil}
+	idx := 0
+	for _, code := range []string{"TEST", "ODI", "T20I", "T20"} {
+		if v, ok := fmtIDs[code]; ok && v != nil {
+			args[idx] = *v
+		} else {
+			args[idx] = int64(0)
+		}
+		idx++
+	}
+	rows, err := db.Pool.Query(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	header := []string{
+		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+		"bowl_form_TEST_asof", "n_samples_bowl_form_TEST", "bowl_consistency_TEST_asof", "n_samples_bowl_cons_TEST", "bowl_vs_opp_TEST_asof", "n_samples_bowl_vs_opp_TEST", "bowl_at_venue_TEST_asof", "n_samples_bowl_at_venue_TEST",
+		"bowl_form_ODI_asof", "n_samples_bowl_form_ODI", "bowl_consistency_ODI_asof", "n_samples_bowl_cons_ODI", "bowl_vs_opp_ODI_asof", "n_samples_bowl_vs_opp_ODI", "bowl_at_venue_ODI_asof", "n_samples_bowl_at_venue_ODI",
+		"bowl_form_T20I_asof", "n_samples_bowl_form_T20I", "bowl_consistency_T20I_asof", "n_samples_bowl_cons_T20I", "bowl_vs_opp_T20I_asof", "n_samples_bowl_vs_opp_T20I", "bowl_at_venue_T20I_asof", "n_samples_bowl_at_venue_T20I",
+		"bowl_form_T20_asof", "n_samples_bowl_form_T20", "bowl_consistency_T20_asof", "n_samples_bowl_cons_T20", "bowl_vs_opp_T20_asof", "n_samples_bowl_vs_opp_T20", "bowl_at_venue_T20_asof", "n_samples_bowl_at_venue_T20",
+	}
+	if err := w.Write(header); err != nil {
+		return err
+	}
+
+	expected := len(header)
+	for rows.Next() {
+		vals, err := scanRow(rows, expected)
+		if err != nil {
+			return err
+		}
+		if err := w.Write(vals); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
 
 // exportBattingFormat writes a batting CSV filtered by a specific match format code using *_fmt tables.
 func exportBattingFormat(ctx context.Context, formatCode string, path string) error {

@@ -23,8 +23,8 @@ func SelectTeam(
 	matchID int64,
 	format string,
 	season string,
-	opts SelectionOptions,
-) (SelectionResult, error) {
+	opts Options,
+) (Result, error) {
 	if opts.TeamSize <= 0 {
 		opts.TeamSize = 11
 	}
@@ -32,27 +32,27 @@ func SelectTeam(
 	// Fetch match context
 	mc, err := db.GetMatchContext(ctx, matchID)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("get match context: %w", err)
+		return Result{}, fmt.Errorf("get match context: %w", err)
 	}
 	// Resolve IDs
 	fmtCode := strings.ToUpper(strings.TrimSpace(format))
 	fmtID, err := db.GetOrCreateMatchFormat(ctx, fmtCode)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("format id: %w", err)
+		return Result{}, fmt.Errorf("format id: %w", err)
 	}
 	// Previous season for form
 	prevSeasonName := prevSeasonName(season)
 	prevSeasonID, err := db.GetOrCreateSeason(ctx, prevSeasonName)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("prev season id: %w", err)
+		return Result{}, fmt.Errorf("prev season id: %w", err)
 	}
 	// Player pool
 	pool, err := db.ListPlayerPoolConsistency(ctx, season, fmtCode)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("list player pool: %w", err)
+		return Result{}, fmt.Errorf("list player pool: %w", err)
 	}
 	if len(pool) == 0 {
-		return SelectionResult{}, fmt.Errorf("no eligible players for season=%s format=%s", season, fmtCode)
+		return Result{}, fmt.Errorf("no eligible players for season=%s format=%s", season, fmtCode)
 	}
 
 	// Build features
@@ -130,14 +130,19 @@ func SelectTeam(
 	cli := mlclient.New()
 	batPreds, err := cli.PredictBatting(ctx, batFeats)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("predict batting: %w", err)
+		return Result{}, fmt.Errorf("predict batting: %w", err)
 	}
 	bowlPreds, err := cli.PredictBowling(ctx, bowlFeats)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("predict bowling: %w", err)
+		return Result{}, fmt.Errorf("predict bowling: %w", err)
 	}
 	if len(batPreds) != len(pool) || len(bowlPreds) != len(pool) {
-		return SelectionResult{}, fmt.Errorf("prediction size mismatch: bat=%d bowl=%d pool=%d", len(batPreds), len(bowlPreds), len(pool))
+		return Result{}, fmt.Errorf(
+			"prediction size mismatch: bat=%d bowl=%d pool=%d",
+			len(batPreds),
+			len(bowlPreds),
+			len(pool),
+		)
 	}
 
 	players := make([]predictor.PlayerPrediction, 0, len(pool))
@@ -170,10 +175,13 @@ func SelectTeam(
 	// Call win predictor
 	winPlayers, err := cli.PredictWin(ctx, players)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("predict win: %w", err)
+		return Result{}, fmt.Errorf("predict win: %w", err)
 	}
 	// Sort by per-player probability desc
-	sort.Slice(winPlayers, func(i, j int) bool { return winPlayers[i].WinningProbability > winPlayers[j].WinningProbability })
+	sort.Slice(
+		winPlayers,
+		func(i, j int) bool { return winPlayers[i].WinningProbability > winPlayers[j].WinningProbability },
+	)
 
 	// Enforce MinBowlers and optional RequireKeeper
 	selected := make([]predictor.PlayerPrediction, 0, opts.TeamSize)
@@ -256,7 +264,7 @@ func SelectTeam(
 					if !curIsKeeper {
 						selected[j] = cand
 						replaced = true
-						keeperCount = 1
+						// keeperCount = 1
 						break
 					}
 				}
@@ -279,13 +287,14 @@ func SelectTeam(
 	// Keep selected sorted
 	sort.Slice(selected, func(i, j int) bool { return selected[i].WinningProbability > selected[j].WinningProbability })
 
-	return SelectionResult{Players: selected, TeamWinProbability: avg}, nil
+	return Result{Players: selected, TeamWinProbability: avg}, nil
 }
 
 func nz64(v struct {
 	Int64 int64
 	Valid bool
-}) int64 {
+},
+) int64 {
 	if v.Valid {
 		return v.Int64
 	}

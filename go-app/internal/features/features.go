@@ -9,8 +9,8 @@ import (
 
 // Innings represents a single batting or bowling performance with a timestamp.
 type Innings struct {
-	Date   time.Time
-	Value  float64 // generic scalar performance measure (e.g., runs for batting, wickets for bowling)
+	Date  time.Time
+	Value float64 // generic scalar performance measure (e.g., runs for batting, wickets for bowling)
 }
 
 // ByDateAsc sorts innings by date ascending.

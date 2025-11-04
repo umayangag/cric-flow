@@ -43,7 +43,7 @@ type Config struct {
 		GeocodeCacheOnly  bool     `json:"geocode_cache_only"`
 		OverwriteExisting bool     `json:"overwrite_existing"`
 		WhitelistVenues   []string `json:"whitelist_venues"`
-		Mocks struct {
+		Mocks             struct {
 			Temp      int `json:"temp"`
 			Wind      int `json:"wind"`
 			Rain      int `json:"rain"`

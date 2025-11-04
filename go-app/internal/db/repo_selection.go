@@ -105,7 +105,10 @@ func GetPlayerFormFmt(ctx context.Context, playerID, seasonID, formatID int64) (
 }
 
 // GetPlayerVenueEffectFmt returns batting_venue and bowling_venue for player at venue/format.
-func GetPlayerVenueEffectFmt(ctx context.Context, playerID, venueID, formatID int64) (bat float64, bowl float64, err error) {
+func GetPlayerVenueEffectFmt(
+	ctx context.Context,
+	playerID, venueID, formatID int64,
+) (bat float64, bowl float64, err error) {
 	if Pool == nil {
 		return 0, 0, errors.New("db pool not initialized")
 	}
@@ -130,7 +133,10 @@ func GetPlayerVenueEffectFmt(ctx context.Context, playerID, venueID, formatID in
 }
 
 // GetPlayerOppositionEffectFmt returns batting_opposition and bowling_opposition for player vs opposition/format.
-func GetPlayerOppositionEffectFmt(ctx context.Context, playerID, oppositionID, formatID int64) (bat float64, bowl float64, err error) {
+func GetPlayerOppositionEffectFmt(
+	ctx context.Context,
+	playerID, oppositionID, formatID int64,
+) (bat float64, bowl float64, err error) {
 	if Pool == nil {
 		return 0, 0, errors.New("db pool not initialized")
 	}

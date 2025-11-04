@@ -6,7 +6,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -15,15 +14,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
-// SelectionOptions controls constraints for picking the final XI.
-type SelectionOptions struct {
+// Options controls constraints for picking the final XI.
+type Options struct {
 	TeamSize      int  // number of players to pick (default 11 if <=0)
 	MinBowlers    int  // minimum number of bowlers to include (heuristic: deliveries>0 or econ>0)
 	RequireKeeper bool // require at least one wicket-keeper (not enforced in CSV mode; placeholder)
 }
 
-// SelectionResult is the outcome from the selection pipeline.
-type SelectionResult struct {
+// Result is the outcome from the selection pipeline.
+type Result struct {
 	Players            []predictor.PlayerPrediction // selected XI, sorted by winning probability desc
 	TeamWinProbability float64                      // mean of per-player winning_probability
 }
@@ -35,7 +34,13 @@ type SelectionResult struct {
 // poolCSV schema is expected to include columns like: player_name, runs_scored, balls_faced,
 // fours_scored, sixes_scored, batting_position, strike_rate, runs_conceded, deliveries,
 // wickets_taken, econ. Extra columns are ignored.
-func SelectTeamFromCSV(ctx context.Context, poolCSV string, matchID int64, format, season string, opts SelectionOptions) (SelectionResult, error) {
+func SelectTeamFromCSV(
+	ctx context.Context,
+	poolCSV string,
+	_ int64,
+	_, _ string,
+	opts Options,
+) (Result, error) {
 	if opts.TeamSize <= 0 {
 		opts.TeamSize = 11
 	}
@@ -45,17 +50,17 @@ func SelectTeamFromCSV(ctx context.Context, poolCSV string, matchID int64, forma
 
 	file, err := os.Open(poolCSV)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("open pool csv: %w", err)
+		return Result{}, fmt.Errorf("open pool csv: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("read pool csv: %w", err)
+		return Result{}, fmt.Errorf("read pool csv: %w", err)
 	}
 	if len(records) == 0 {
-		return SelectionResult{}, errors.New("pool csv is empty")
+		return Result{}, errors.New("pool csv is empty")
 	}
 	header := records[0]
 
@@ -100,16 +105,16 @@ func SelectTeamFromCSV(ctx context.Context, poolCSV string, matchID int64, forma
 		players = append(players, p)
 	}
 	if len(players) == 0 {
-		return SelectionResult{}, errors.New("no players parsed from CSV")
+		return Result{}, errors.New("no players parsed from CSV")
 	}
 
 	cli := mlclient.New()
 	preds, err := cli.PredictWin(ctx, players)
 	if err != nil {
-		return SelectionResult{}, fmt.Errorf("predict win: %w", err)
+		return Result{}, fmt.Errorf("predict win: %w", err)
 	}
 	if len(preds) < opts.TeamSize {
-		return SelectionResult{}, fmt.Errorf("pool too small: have %d players, need %d", len(preds), opts.TeamSize)
+		return Result{}, fmt.Errorf("pool too small: have %d players, need %d", len(preds), opts.TeamSize)
 	}
 
 	// Sort by winning probability desc
@@ -167,7 +172,7 @@ func SelectTeamFromCSV(ctx context.Context, poolCSV string, matchID int64, forma
 	// Keep selected sorted by prob desc
 	sort.Slice(selected, func(i, j int) bool { return selected[i].WinningProbability > selected[j].WinningProbability })
 
-	return SelectionResult{Players: selected, TeamWinProbability: avg}, nil
+	return Result{Players: selected, TeamWinProbability: avg}, nil
 }
 
 func parseF64(s string) float64 {

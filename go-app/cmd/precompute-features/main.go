@@ -7,9 +7,9 @@ import (
 	"flag"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
@@ -51,12 +51,16 @@ func main() {
 	var fromPtr, toPtr *time.Time
 	if *fromStr != "" {
 		v, err := time.Parse("2006-01-02", *fromStr)
-		if err != nil { log.Fatalf("parse -from: %v", err) }
+		if err != nil {
+			log.Fatalf("parse -from: %v", err)
+		}
 		fromPtr = &v
 	}
 	if *toStr != "" {
 		v, err := time.Parse("2006-01-02", *toStr)
-		if err != nil { log.Fatalf("parse -to: %v", err) }
+		if err != nil {
+			log.Fatalf("parse -to: %v", err)
+		}
 		toPtr = &v
 	}
 
@@ -75,16 +79,24 @@ func main() {
 		for _, pid := range players {
 			// Batting history strictly before match date
 			batHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, nil, nil)
-			if err != nil { log.Fatalf("bat hist p=%d m=%d: %v", pid, m.MatchID, err) }
+			if err != nil {
+				log.Fatalf("bat hist p=%d m=%d: %v", pid, m.MatchID, err)
+			}
 			// Bowling history strictly before match date
 			bowlHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, nil, nil)
-			if err != nil { log.Fatalf("bowl hist p=%d m=%d: %v", pid, m.MatchID, err) }
+			if err != nil {
+				log.Fatalf("bowl hist p=%d m=%d: %v", pid, m.MatchID, err)
+			}
 
 			// Convert to features.Innings and sort/clip (safety)
 			batInn := make([]features.Innings, 0, len(batHist))
-			for _, iv := range batHist { batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+			for _, iv := range batHist {
+				batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
+			}
 			bowlInn := make([]features.Innings, 0, len(bowlHist))
-			for _, iv := range bowlHist { bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+			for _, iv := range bowlHist {
+				bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+			}
 			batInn = features.SortAndClip(batInn, m.Date)
 			bowlInn = features.SortAndClip(bowlInn, m.Date)
 
@@ -99,6 +111,64 @@ func main() {
 			}
 			if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, m.Date, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
 				log.Fatalf("upsert consistency asof p=%d m=%d: %v", pid, m.MatchID, err)
+			}
+
+			// Vs-opposition snapshots (if opposition known)
+			if m.OppositionID != 0 {
+				op := m.OppositionID
+				batOppHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, &op, nil)
+				if err != nil {
+					log.Fatalf("bat vs-opp hist p=%d m=%d: %v", pid, m.MatchID, err)
+				}
+				bowlOppHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, &op, nil)
+				if err != nil {
+					log.Fatalf("bowl vs-opp hist p=%d m=%d: %v", pid, m.MatchID, err)
+				}
+				bo := make([]features.Innings, 0, len(batOppHist))
+				for _, iv := range batOppHist {
+					bo = append(bo, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
+				wo := make([]features.Innings, 0, len(bowlOppHist))
+				for _, iv := range bowlOppHist {
+					wo = append(wo, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
+				bo = features.SortAndClip(bo, m.Date)
+				wo = features.SortAndClip(wo, m.Date)
+				batOpp, _ := features.EWM(bo, *alpha)
+				bowlOpp, _ := features.EWM(wo, *alpha)
+				nOpp := len(bo) + len(wo)
+				if err := db.UpsertPlayerVsOppAsOf(ctx, pid, op, m.Date, formatID, batOpp, bowlOpp, nOpp, specEWM(*alpha)); err != nil {
+					log.Fatalf("upsert vs-opp asof p=%d m=%d: %v", pid, m.MatchID, err)
+				}
+			}
+
+			// At-venue snapshots (if venue known)
+			if m.VenueID != 0 {
+				vn := m.VenueID
+				batVenHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, nil, &vn)
+				if err != nil {
+					log.Fatalf("bat at-venue hist p=%d m=%d: %v", pid, m.MatchID, err)
+				}
+				bowlVenHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, nil, &vn)
+				if err != nil {
+					log.Fatalf("bowl at-venue hist p=%d m=%d: %v", pid, m.MatchID, err)
+				}
+				bv := make([]features.Innings, 0, len(batVenHist))
+				for _, iv := range batVenHist {
+					bv = append(bv, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
+				wv := make([]features.Innings, 0, len(bowlVenHist))
+				for _, iv := range bowlVenHist {
+					wv = append(wv, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
+				bv = features.SortAndClip(bv, m.Date)
+				wv = features.SortAndClip(wv, m.Date)
+				batVen, _ := features.EWM(bv, *alpha)
+				bowlVen, _ := features.EWM(wv, *alpha)
+				nVen := len(bv) + len(wv)
+				if err := db.UpsertPlayerAtVenueAsOf(ctx, pid, vn, m.Date, formatID, batVen, bowlVen, nVen, specEWM(*alpha)); err != nil {
+					log.Fatalf("upsert at-venue asof p=%d m=%d: %v", pid, m.MatchID, err)
+				}
 			}
 		}
 		processed++
@@ -122,8 +192,12 @@ func trimFloat(f float64) string {
 	// Simple trim for logging/spec
 	s := fmtFloat(f)
 	// remove trailing zeros and dot
-	for len(s) > 0 && s[len(s)-1] == '0' { s = s[:len(s)-1] }
-	if len(s) > 0 && s[len(s)-1] == '.' { s = s[:len(s)-1] }
+	for len(s) > 0 && s[len(s)-1] == '0' {
+		s = s[:len(s)-1]
+	}
+	if len(s) > 0 && s[len(s)-1] == '.' {
+		s = s[:len(s)-1]
+	}
 	return s
 }
 
