@@ -7,8 +7,6 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, validator
 
-from ml.calculate_features import calculate_features
-from ml.db import get_db_connection
 from ml.match_win_predict import predict_for_team
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -499,11 +497,6 @@ async def predict_win(players: List[PlayerPrediction]):
     return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
 
 
-@app.post("/precompute")
-async def precompute():
-    db_connection = get_db_connection()
-    calculate_features(db_connection)
-    return {"status": "ok"}
 
 
 @app.post("/admin/reload")

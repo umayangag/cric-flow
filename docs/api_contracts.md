@@ -28,9 +28,6 @@ Base: `http://localhost:8000`
 ### GET /health
 - 200 OK: `{ "status": "ok" }`
 
-### POST /precompute
-- 202 Accepted: `{ "status": "started" }`
-
 ### POST /predict/batting
 Request body (`BattingFeatures`):
 ```json
@@ -155,7 +152,11 @@ Base: `http://localhost:8080`
 
 ### POST /precompute
 - 202 Accepted: `{ "status": "started" }`
-- Triggers ML service precompute async
+- Triggers internal precompute in go-app asynchronously (no ML dependency)
+- Optional JSON body to filter scope:
+```json
+{ "season": "2019", "formats": ["ODI", "T20I"] }
+```
 
 ### POST /import/cricsheet
 Body:

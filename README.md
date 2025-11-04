@@ -4,7 +4,7 @@ This repository contains the Go data pipeline/services and the Python ML inferen
 
 Directories:
 - go-app/ — Go services (API, Cricsheet importer, dataset export, tools, migrations, team predictor CLI)
-- ml-service/ — Python FastAPI service for predictions, feature precomputation, and training scripts
+- ml-service/ — Python FastAPI service for predictions and training scripts (precomputation now lives in go-app)
 - src/ — Original prototype (reference only)
 
 ## Quick start (happy-path)
@@ -56,9 +56,11 @@ make cricsheet-import
 ```
 
 ### 4) Precompute player metrics (form/venue/opposition/consistency)
-This triggers the ML service to calculate and store features in the database.
+This triggers the Go API to compute and store features in Postgres (no ML dependency).
 ```
 make precompute
+# or with filters
+curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json' -d '{"season":"2019","formats":["ODI","T20I"]}'
 ```
 
 ### 5) Export model datasets

@@ -1,3 +1,7 @@
+# DEPRECATED: This script is no longer used. Precomputation of features has moved to the Go app
+# (go-app/internal/features/*) and is triggered via the Go API /precompute endpoint on port 8080.
+# Keeping this file temporarily for historical reference; it can be safely removed once consumers are updated.
+
 import pandas as pd
 
 from ml.db import get_db_connection

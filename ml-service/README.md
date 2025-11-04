@@ -1,10 +1,9 @@
 # ML Service (Python)
 
-Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. It now also handles feature precomputation. The original `src/` prototype remains for reference.
+Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. Precomputation of features is now owned by the Go app; this service no longer exposes a /precompute endpoint. The original `src/` prototype remains for reference.
 
 Components:
-- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and a `/precompute` endpoint for feature calculation.
-- `ml/calculate_features.py`: Script to calculate and store player features (form, consistency, venue, opposition) in the database.
+- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and team win probability.
 - `ml/export_pool.py`: Script to generate `pool.csv` for team prediction.
 - `ml/train_batting_model.py`: Script to train the batting prediction model.
 - `ml/train_bowling_model.py`: Script to train the bowling prediction model.
@@ -44,10 +43,6 @@ See `../docs/CONFIG.md` for full details and examples.
 - Run the service locally on :8000 with auto-reload:
 ```
 make run
-```
-- Precompute features (calls the `/precompute` endpoint of the ML service):
-```
-make precompute
 ```
 - Train artifacts from exported CSVs (uses defaults above):
 ```
