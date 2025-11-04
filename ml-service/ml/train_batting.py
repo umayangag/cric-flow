@@ -109,7 +109,9 @@ def train_and_save(X, Y, out_dir: str, rf_params: dict, suffix: str | None = Non
             max_depth = int(max_depth)
         except Exception:
             max_depth = None
-    model = MultiOutputRegressor(RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth))
+    model = MultiOutputRegressor(
+        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+    )
     model.fit(Xs, Y)
     # Save artifacts
     if suffix:
@@ -207,7 +209,9 @@ def main():
     if not targets and not args.csv:
         # 1) Prefer formats from config that actually exist on disk
         cfg_fmts = _config_formats()
-        existing_cfg_fmts = [f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"batting_encoded_{f}.csv"))]
+        existing_cfg_fmts = [
+            f for f in cfg_fmts if os.path.exists(os.path.join(default_csv_dir, f"batting_encoded_{f}.csv"))
+        ]
         if existing_cfg_fmts:
             targets = existing_cfg_fmts
         else:

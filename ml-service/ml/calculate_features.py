@@ -39,7 +39,14 @@ def calculate_features(db_connection):
                     fifties = len(df[df[1] >= 50]) - centuries
                     zeros = len(df[df[1] == 0])
 
-                    form = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties - 0.0328 * zeros
+                    form = (
+                        0.4262 * average_score
+                        + 0.2566 * inning_count
+                        + 0.1510 * average_strike_rate
+                        + 0.0787 * centuries
+                        + 0.0556 * fifties
+                        - 0.0328 * zeros
+                    )
                     db_cursor.execute(
                         "INSERT INTO player_form_data_fmt (player_id, season_id, format_id, batting_form, bowling_form) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, season_id, format_id) DO UPDATE SET batting_form = %s",
                         (player[0], season[0], format[0], form, form),
@@ -59,7 +66,13 @@ def calculate_features(db_connection):
                     average = df[1].sum() / df[2].sum()
                     ff = len(df[df[2] >= 5])
 
-                    form = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                    form = (
+                        0.4174 * total_overs
+                        + 0.2634 * inning_count
+                        + 0.1602 * strike_rate
+                        + 0.0975 * average
+                        + 0.0615 * ff
+                    )
                     db_cursor.execute(
                         "UPDATE player_form_data_fmt SET bowling_form = %s WHERE player_id = %s AND season_id = %s AND format_id = %s",
                         (form, player[0], season[0], format[0]),
@@ -89,7 +102,14 @@ def calculate_features(db_connection):
                     fifties = len(df[df[1] >= 50]) - centuries
                     highest_score = df[1].max()
 
-                    venue_performance = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties + 0.0328 * highest_score
+                    venue_performance = (
+                        0.4262 * average_score
+                        + 0.2566 * inning_count
+                        + 0.1510 * average_strike_rate
+                        + 0.0787 * centuries
+                        + 0.0556 * fifties
+                        + 0.0328 * highest_score
+                    )
                     db_cursor.execute(
                         "INSERT INTO player_venue_data_fmt (player_id, venue_id, format_id, batting_venue, bowling_venue) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, venue_id, format_id) DO UPDATE SET batting_venue = %s",
                         (player[0], venue[0], format[0], venue_performance, venue_performance),
@@ -109,7 +129,13 @@ def calculate_features(db_connection):
                     average = df[1].sum() / df[2].sum()
                     ff = len(df[df[2] >= 5])
 
-                    venue_performance = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                    venue_performance = (
+                        0.4174 * total_overs
+                        + 0.2634 * inning_count
+                        + 0.1602 * strike_rate
+                        + 0.0975 * average
+                        + 0.0615 * ff
+                    )
                     db_cursor.execute(
                         "UPDATE player_venue_data_fmt SET bowling_venue = %s WHERE player_id = %s AND venue_id = %s AND format_id = %s",
                         (venue_performance, player[0], venue[0], format[0]),
@@ -139,7 +165,14 @@ def calculate_features(db_connection):
                     fifties = len(df[df[1] >= 50]) - centuries
                     highest_score = df[1].max()
 
-                    opposition_performance = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties + 0.0328 * highest_score
+                    opposition_performance = (
+                        0.4262 * average_score
+                        + 0.2566 * inning_count
+                        + 0.1510 * average_strike_rate
+                        + 0.0787 * centuries
+                        + 0.0556 * fifties
+                        + 0.0328 * highest_score
+                    )
                     db_cursor.execute(
                         "INSERT INTO player_opposition_data_fmt (player_id, opposition_id, format_id, batting_opposition, bowling_opposition) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, opposition_id, format_id) DO UPDATE SET batting_opposition = %s",
                         (
@@ -165,7 +198,13 @@ def calculate_features(db_connection):
                     average = df[1].sum() / df[2].sum()
                     ff = len(df[df[2] >= 5])
 
-                    opposition_performance = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                    opposition_performance = (
+                        0.4174 * total_overs
+                        + 0.2634 * inning_count
+                        + 0.1602 * strike_rate
+                        + 0.0975 * average
+                        + 0.0615 * ff
+                    )
                     db_cursor.execute(
                         "UPDATE player_opposition_data_fmt SET bowling_opposition = %s WHERE player_id = %s AND opposition_id = %s AND format_id = %s",
                         (opposition_performance, player[0], opposition[0], format[0]),
@@ -192,7 +231,14 @@ def calculate_features(db_connection):
                     fifties = len(df[df[1] >= 50]) - centuries
                     zeros = len(df[df[1] == 0])
 
-                    consistency = 0.4262 * average_score + 0.2566 * inning_count + 0.1510 * average_strike_rate + 0.0787 * centuries + 0.0556 * fifties - 0.0328 * zeros
+                    consistency = (
+                        0.4262 * average_score
+                        + 0.2566 * inning_count
+                        + 0.1510 * average_strike_rate
+                        + 0.0787 * centuries
+                        + 0.0556 * fifties
+                        - 0.0328 * zeros
+                    )
                     db_cursor.execute(
                         "INSERT INTO player_consistency_data_fmt (player_id, season_id, format_id, batting_consistency, bowling_consistency) VALUES (%s, %s, %s, %s, 0) ON CONFLICT (player_id, season_id, format_id) DO UPDATE SET batting_consistency = %s",
                         (player[0], season[0], format[0], consistency, consistency),
@@ -212,7 +258,13 @@ def calculate_features(db_connection):
                     average = df[1].sum() / df[2].sum()
                     ff = len(df[df[2] >= 5])
 
-                    consistency = 0.4174 * total_overs + 0.2634 * inning_count + 0.1602 * strike_rate + 0.0975 * average + 0.0615 * ff
+                    consistency = (
+                        0.4174 * total_overs
+                        + 0.2634 * inning_count
+                        + 0.1602 * strike_rate
+                        + 0.0975 * average
+                        + 0.0615 * ff
+                    )
                     db_cursor.execute(
                         "UPDATE player_consistency_data_fmt SET bowling_consistency = %s WHERE player_id = %s AND season_id = %s AND format_id = %s",
                         (consistency, player[0], season[0], format[0]),
