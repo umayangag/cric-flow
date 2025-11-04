@@ -497,8 +497,6 @@ async def predict_win(players: List[PlayerPrediction]):
     return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
 
 
-
-
 @app.post("/admin/reload")
 async def admin_reload():
     """Rescan the models directory and reload artifacts.
