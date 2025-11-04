@@ -282,7 +282,10 @@ func SelectTeam(
 	return SelectionResult{Players: selected, TeamWinProbability: avg}, nil
 }
 
-func nz64(v interface{ Int64 int64; Valid bool }) int64 {
+func nz64(v struct {
+	Int64 int64
+	Valid bool
+}) int64 {
 	if v.Valid {
 		return v.Int64
 	}
