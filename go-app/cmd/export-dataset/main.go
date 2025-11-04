@@ -569,20 +569,20 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
 	const q = `SELECT  
-		pcd.batting_consistency,
-		pfd.batting_form,
-		w.temp,
-		w.wind,
-		w.rain,
-		w.humidity,
-		w.cloud,
-		w.pressure,
+		COALESCE(pcd.batting_consistency, 0) AS batting_consistency,
+		COALESCE(pfd.batting_form, 0) AS batting_form,
+		COALESCE(w.temp, 0) AS batting_temp,
+		COALESCE(w.wind, 0) AS batting_wind,
+		COALESCE(w.rain, 0) AS batting_rain,
+		COALESCE(w.humidity, 0) AS batting_humidity,
+		COALESCE(w.cloud, 0) AS batting_cloud,
+		COALESCE(w.pressure, 0) AS batting_pressure,
 		CASE 
 			WHEN w.viscosity IS NULL THEN 0
 			WHEN lower(w.viscosity) = 'humid' THEN 1
 			ELSE 0
 		END AS batting_viscosity,
-		md.inning AS batting_inning,
+		COALESCE(md.inning, 1) AS batting_inning,
 		CASE 
 			WHEN md.batting_session IS NULL THEN 0
 			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
@@ -595,9 +595,9 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 			WHEN lower(md.toss) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
-		pvd.batting_venue AS venue,
-		pod.batting_opposition AS opposition,
-		s.id AS season,
+		COALESCE(pvd.batting_venue, 0) AS venue,
+		COALESCE(pod.batting_opposition, 0) AS opposition,
+		COALESCE(s.id, 0) AS season,
 		p.player_name
 		FROM batting_data bd
 		LEFT JOIN player p ON bd.player_id = p.id
@@ -664,22 +664,20 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
 	const q = `SELECT  
-		pcd.bowling_consistency,
-		pfd.bowling_form,
-		w.temp,
-		w.wind,
-		w.rain,
-		w.humidity,
-		w.cloud,
-		w.pressure,
+		COALESCE(pcd.bowling_consistency, 0) AS bowling_consistency,
+		COALESCE(pfd.bowling_form, 0) AS bowling_form,
+		COALESCE(w.temp, 0) AS bowling_temp,
+		COALESCE(w.wind, 0) AS bowling_wind,
+		COALESCE(w.rain, 0) AS bowling_rain,
+		COALESCE(w.humidity, 0) AS bowling_humidity,
+		COALESCE(w.cloud, 0) AS bowling_cloud,
+		COALESCE(w.pressure, 0) AS bowling_pressure,
 		CASE 
 			WHEN w.viscosity IS NULL THEN 0
-			WHEN lower(w.viscosity) = 'dry' THEN 0
 			WHEN lower(w.viscosity) = 'humid' THEN 1
-			WHEN lower(w.viscosity) = 'windy' THEN 2
 			ELSE 0
 		END AS bowling_viscosity,
-		md.inning AS batting_inning,
+		COALESCE(md.inning, 1) AS batting_inning,
 		CASE 
 			WHEN md.bowling_session IS NULL THEN 0
 			WHEN lower(md.bowling_session) LIKE '%morning%' THEN 0
@@ -692,9 +690,9 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 			WHEN lower(md.toss) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
-		pvd.bowling_venue,
-		pod.bowling_opposition,
-		s.id AS season,
+		COALESCE(pvd.bowling_venue, 0) AS bowling_venue,
+		COALESCE(pod.bowling_opposition, 0) AS bowling_opposition,
+		COALESCE(s.id, 0) AS season,
 		p.player_name
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id

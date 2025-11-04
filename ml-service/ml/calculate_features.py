@@ -1,5 +1,5 @@
 import pandas as pd
-from db import get_db_connection
+from ml.db import get_db_connection
 
 
 def calculate_features(db_connection):
