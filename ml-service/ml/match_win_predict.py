@@ -24,11 +24,14 @@ _candidates = [
 dataset_source = next((p for p in _candidates if os.path.exists(p)), None)
 X_cols = None
 
+
 class _DummyPredictor:
     def predict_proba(self, X):
         import numpy as _np
+
         n = getattr(X, "shape", [len(X) if hasattr(X, "__len__") else 1])[0]
         return _np.tile(_np.array([[0.5, 0.5]]), (n, 1))
+
 
 # Train win predictor if dataset present; otherwise use a dummy baseline to keep the service runnable.
 if dataset_source is not None:
