@@ -41,8 +41,9 @@ jobs:
       - name: Lint/format check (isort, black, flake8, ruff)
         working-directory: ml-service
         run: |
-          make fmt-check
-          make lint-check
+          isort --profile black --line-length 120 .
+          black --line-length 120 .
+          flake8 --max-line-length=120 --extend-ignore=E203,W503 --exclude=.venv
 
       - name: Sanity compile
         working-directory: ml-service

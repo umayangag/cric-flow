@@ -152,8 +152,12 @@ def main():
     parser.add_argument("--format", default="", help="Single format code")
     parser.add_argument("--formats", default="", help="Comma-separated formats list")
     parser.add_argument("--all-formats", action="store_true", help="Validate TEST,ODI,T20,T20I (or from config)")
-    parser.add_argument("--schema", default="training", choices=["training", "inference"], help="Schema mode for header checks")
-    parser.add_argument("--use-golden", action="store_true", help="Use golden header validator for strict header checks")
+    parser.add_argument(
+        "--schema", default="training", choices=["training", "inference"], help="Schema mode for header checks"
+    )
+    parser.add_argument(
+        "--use-golden", action="store_true", help="Use golden header validator for strict header checks"
+    )
     parser.add_argument("--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column")
     args = parser.parse_args()
 

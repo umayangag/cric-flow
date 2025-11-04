@@ -3,7 +3,7 @@ VENV:=.venv
 PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
-LINE_LENGTH?=300
+LINE_LENGTH?=120
 
 .PHONY: all venv install run train-all docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
 
