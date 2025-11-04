@@ -1,3 +1,4 @@
+// Package service orchestrates weather job processing against external providers.
 package service
 
 import (
@@ -61,7 +62,7 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 	}
 
 	// 2) Geocode if missing and allowed
-	if (lat == 0 && lon == 0) && !(cfg.Weather.GeocodeCacheOnly || noop) {
+	if lat == 0 && lon == 0 && !cfg.Weather.GeocodeCacheOnly && !noop {
 		city := ""
 		country := ""
 		if job.City != nil {

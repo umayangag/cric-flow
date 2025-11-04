@@ -1,3 +1,4 @@
+// Command api starts the HTTP API server for the cricket data service.
 package main
 
 import (
@@ -14,7 +15,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
@@ -54,31 +54,17 @@ func main() {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}).Methods(http.MethodGet)
 
-	// POST /precompute {"season":"2019"}
-	r.HandleFunc("/precompute", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Season string `json:"season"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-		defer cancel()
-		if err := features.ComputeSeasonalForm(ctx, body.Season); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.ComputeVenueEffects(ctx); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.ComputeOppositionEffects(ctx); err != nil {
-			respondErr(w, err)
-			return
-		}
-		if err := features.UpdatePlayerConsistency(ctx); err != nil {
-			respondErr(w, err)
-			return
-		}
-		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	// POST /precompute
+	r.HandleFunc("/precompute", func(w http.ResponseWriter, _ *http.Request) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			mlClient := mlclient.New()
+			if err := mlClient.Precompute(ctx); err != nil {
+				log.Printf("precompute failed: %v", err)
+			}
+		}()
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
 
 	// Cricinfo scraping has been removed.
@@ -110,7 +96,7 @@ func main() {
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
 
-	// GET /players/{id}
+	// GET /players/{id}?season=2019&format=T20
 	r.HandleFunc("/players/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		idStr := vars["id"]
@@ -119,23 +105,45 @@ func main() {
 			respondBadRequest(w, err)
 			return
 		}
-		row := db.Pool.QueryRow(
-			r.Context(),
-			`SELECT id, player_name, is_wicket_keeper, is_retired, batting_consistency, bowling_consistency FROM player WHERE id = $1`,
-			id,
-		)
-		var resp struct {
+
+		season := r.URL.Query().Get("season")
+		format := r.URL.Query().Get("format")
+
+		// Get base player data
+		player, err := db.GetPlayerByID(r.Context(), id)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+
+		// Get consistency data
+		consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
+		if err != nil {
+			// It's okay for consistency data to be missing, so just log the error
+			log.Printf("could not get player consistency: %v", err)
+		}
+
+		type respStruct struct {
 			ID                 int64    `json:"id"`
 			Name               string   `json:"player_name"`
 			IsWicketKeeper     int16    `json:"is_wicket_keeper"`
 			IsRetired          int16    `json:"is_retired"`
-			BattingConsistency *float32 `json:"batting_consistency"`
-			BowlingConsistency *float32 `json:"bowling_consistency"`
+			BattingConsistency *float32 `json:"batting_consistency,omitempty"`
+			BowlingConsistency *float32 `json:"bowling_consistency,omitempty"`
 		}
-		if err := row.Scan(&resp.ID, &resp.Name, &resp.IsWicketKeeper, &resp.IsRetired, &resp.BattingConsistency, &resp.BowlingConsistency); err != nil {
-			respondErr(w, err)
-			return
+
+		resp := respStruct{
+			ID:             player.ID,
+			Name:           player.Name,
+			IsWicketKeeper: player.IsWicketKeeper,
+			IsRetired:      player.IsRetired,
 		}
+
+		if consistency != nil {
+			resp.BattingConsistency = &consistency.BattingConsistency
+			resp.BowlingConsistency = &consistency.BowlingConsistency
+		}
+
 		respondJSON(w, http.StatusOK, resp)
 	}).Methods(http.MethodGet)
 

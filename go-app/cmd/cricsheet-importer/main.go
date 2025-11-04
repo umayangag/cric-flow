@@ -1,3 +1,4 @@
+// Command cricsheet-importer imports Cricsheet JSON files into the database.
 package main
 
 import (

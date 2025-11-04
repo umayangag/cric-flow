@@ -97,6 +97,7 @@ func DequeueNextWeatherJob(ctx context.Context, now time.Time) (*WeatherJob, err
 	return &rec, nil
 }
 
+// MarkWeatherJobDone marks a weather_job row as done by id.
 func MarkWeatherJobDone(ctx context.Context, id int64) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
@@ -105,6 +106,7 @@ func MarkWeatherJobDone(ctx context.Context, id int64) error {
 	return err
 }
 
+// MarkWeatherJobFailed re-queues a weather_job with updated attempts, error, and next schedule.
 func MarkWeatherJobFailed(ctx context.Context, id int64, attempts int, lastError string, nextSchedule time.Time) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")

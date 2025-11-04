@@ -3,8 +3,8 @@
 This repository contains the Go data pipeline/services and the Python ML inference service, ported from the original `src/` Python prototype (which remains intact for reference).
 
 Directories:
-- go-app/ — Go services (API, Cricsheet importer, ETL importer, precompute, dataset export, tools, migrations)
-- ml-service/ — Python FastAPI service for predictions + simple training scripts
+- go-app/ — Go services (API, Cricsheet importer, dataset export, tools, migrations, team predictor CLI)
+- ml-service/ — Python FastAPI service for predictions, feature precomputation, and training scripts
 - src/ — Original prototype (reference only)
 
 ## Quick start (happy-path)
@@ -56,10 +56,10 @@ make cricsheet-import
 ```
 
 ### 4) Precompute player metrics (form/venue/opposition/consistency)
+This triggers the ML service to calculate and store features in the database.
 ```
-make precompute SEASON=2019
+make precompute
 ```
-(You can omit SEASON to compute for all seasons present.)
 
 ### 5) Export model datasets
 ```
@@ -91,12 +91,11 @@ curl -s http://localhost:8080/readiness
 ```
 
 ### 9) Predict team (happy path CLI)
-Requires a `match_id` that exists in the DB from the import step.
+Requires a `match_id` that exists in the DB from the import step. This will first generate `pool.csv` via the ML service and then run the Go team predictor.
 ```
-make team-predictor MATCH=<match_id> BAT=6 BOWL=5
+make team-predictor MATCH=<match_id>
 ```
-- Ensures at least 5 bowlers are selected (part-time allowed).
-- Adjust `BAT`/`BOWL` as desired; minimum bowlers enforced is 5.
+- The number of batters and bowlers, and other team selection parameters, are now configured in `go-app/config.json` (under the `team` and `predictor` sections) or can be overridden via CLI flags to `go-app/cmd/team-predictor`.
 
 ## System architecture
 For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
@@ -106,11 +105,11 @@ For a high-level diagram of how components connect and the order of execution fr
 This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.
 
 - Directory conventions:
-  - Inputs come from `data/{package}/...` (e.g., `data/go-app/cricsheet`, `data/go-app/createdb`)
+  - Inputs come from `data/{package}/...` (e.g., `data/go-app/cricsheet`)
   - Outputs go to `output/{package}/...` (e.g., `output/go-app`, `output/ml-service`)
 - Config files:
-  - `go-app/config.json`
-  - `ml-service/config.json`
+  - `go-app/config.json` (for Go application settings, including team selection parameters)
+  - `ml-service/config.json` (for ML service settings, including team prediction parameters)
 - Precedence (highest to lowest):
   1. CLI flags/args (`-dir`, `-out`, `--csv`, `--out`)
   2. Environment variables (`GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `ML_SERVICE_OUTPUT_DIR`, etc.)

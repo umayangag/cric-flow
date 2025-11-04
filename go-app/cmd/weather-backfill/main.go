@@ -1,3 +1,4 @@
+// Command weather-backfill backfills weather data for matches based on the queue.
 package main
 
 import (

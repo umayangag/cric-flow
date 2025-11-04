@@ -4,11 +4,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 # Install build tools required by some Python packages (e.g., numpy uses Meson)
+# Also install libpq-dev for PostgreSQL client libraries needed by psycopg2-binary
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        build-essential \
        pkg-config \
        ninja-build \
+       libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r ./requirements.txt

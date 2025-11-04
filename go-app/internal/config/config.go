@@ -1,3 +1,4 @@
+// Package config provides application configuration loading and access helpers.
 package config
 
 import (
@@ -43,6 +44,10 @@ type Config struct {
 		OverwriteExisting bool     `json:"overwrite_existing"`
 		WhitelistVenues   []string `json:"whitelist_venues"`
 	} `json:"weather"`
+	Predictor struct {
+		TeamSize      int     `json:"team_size"`
+		DefaultExtras float64 `json:"default_extras"`
+	} `json:"predictor"`
 }
 
 var cached *Config

@@ -1,0 +1,18 @@
+[
+  "batting_consistency",
+  "batting_form",
+  "batting_temp",
+  "batting_wind",
+  "batting_rain",
+  "batting_humidity",
+  "batting_cloud",
+  "batting_pressure",
+  "batting_viscosity",
+  "batting_inning",
+  "batting_session",
+  "toss",
+  "venue",
+  "opposition",
+  "season",
+  "player_name"
+]

@@ -3,8 +3,13 @@ from typing import Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from ml.calculate_features import calculate_features
+from ml.db import get_db_connection
+from ml.match_win_predict import predict_for_team
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
@@ -67,6 +72,21 @@ class BowlingPrediction(BaseModel):
     econ: float
 
 
+class PlayerPrediction(BaseModel):
+    player_name: str
+    runs_scored: float
+    balls_faced: float
+    fours_scored: float
+    sixes_scored: float
+    batting_position: float
+    strike_rate: float
+    runs_conceded: float
+    deliveries: float
+    wickets_taken: float
+    econ: float
+    winning_probability: Optional[float] = None
+
+
 # Load artifacts (per-format if available)
 # Prefer ML_SERVICE_OUTPUT_DIR, then MODELS_DIR, then config.json default, else ../../output/ml-service
 try:
@@ -74,14 +94,10 @@ try:
 
     _cfg_default_models_dir = svc_config.default_artifacts_dir()
 except Exception:
-    _cfg_default_models_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service")
-    )
+    _cfg_default_models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service"))
 
 _default_models_dir = _cfg_default_models_dir
-MODELS_DIR = os.environ.get(
-    "ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir)
-)
+MODELS_DIR = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir))
 
 # Registries: map format code -> (scaler, model). Legacy unsuffixed artifacts are stored under key "_LEGACY_".
 BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
@@ -89,7 +105,10 @@ BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 
 
 def _error_payload(
-    code: str, message: str, hint: Optional[str] = None, available: Optional[List[str]] = None
+    code: str,
+    message: str,
+    hint: Optional[str] = None,
+    available: Optional[List[str]] = None,
 ) -> dict:
     payload = {"code": code, "message": message}
     if hint:
@@ -437,10 +456,31 @@ async def predict_bowling(features: List[BowlingFeatures]):
             )
         return preds
     except Exception:
-        return [
-            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0)
-            for _ in features
-        ]
+        return [BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features]  # noqa: E501
+
+
+@app.post("/predict-win", response_model=List[PlayerPrediction])
+async def predict_win(players: List[PlayerPrediction]):
+    if not players:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty players list",
+                hint="Send at least one player with the required fields.",
+            ),
+        )
+
+    df = pd.DataFrame([p.dict() for p in players])
+    predictions, _ = predict_for_team(df)
+    return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
+
+
+@app.post("/precompute")
+async def precompute():
+    db_connection = get_db_connection()
+    calculate_features(db_connection)
+    return {"status": "ok"}
 
 
 @app.post("/admin/reload")

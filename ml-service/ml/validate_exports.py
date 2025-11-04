@@ -75,7 +75,9 @@ def load_csv(path: str) -> pd.DataFrame:
 
 
 def validate_df(
-    df: pd.DataFrame, required_cols: List[str], null_threshold: float = 0.2
+    df: pd.DataFrame,
+    required_cols: List[str],
+    null_threshold: float = 0.2,
 ) -> Tuple[bool, List[str]]:
     problems: List[str] = []
     # Column presence
@@ -85,11 +87,7 @@ def validate_df(
     # NaN rate
     if len(df) > 0:
         frac_null = df[required_cols].isna().mean(numeric_only=False)
-        bad = {
-            k: float(v)
-            for k, v in frac_null.items()
-            if k in required_cols and float(v) > null_threshold
-        }
+        bad = {k: float(v) for k, v in frac_null.items() if k in required_cols and float(v) > null_threshold}
         if bad:
             problems.append(f"high NaN rates: {bad}")
     ok = len(problems) == 0
@@ -99,14 +97,31 @@ def validate_df(
 def main():
     parser = argparse.ArgumentParser()
     default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
-    parser.add_argument("--dir", default=default_dir, help="Directory containing exported CSVs")
-    parser.add_argument("--format", default="", help="Single format code")
-    parser.add_argument("--formats", default="", help="Comma-separated formats list")
     parser.add_argument(
-        "--all-formats", action="store_true", help="Read formats from config.json (ml.formats)"
+        "--dir",
+        default=default_dir,
+        help="Directory containing exported CSVs",
     )
     parser.add_argument(
-        "--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column"
+        "--format",
+        default="",
+        help="Single format code",
+    )
+    parser.add_argument(
+        "--formats",
+        default="",
+        help="Comma-separated formats list",
+    )
+    parser.add_argument(
+        "--all-formats",
+        action="store_true",
+        help="Read formats from config.json (ml.formats)",
+    )
+    parser.add_argument(
+        "--null-threshold",
+        type=float,
+        default=0.2,
+        help="Max allowed NaN fraction per column",
     )
     args = parser.parse_args()
 

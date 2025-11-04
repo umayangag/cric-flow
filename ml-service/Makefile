@@ -1,9 +1,9 @@
 APP_NAME:=ml-service
 VENV:=.venv
-PY:=python3
+PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
-LINE_LENGTH?=100
+LINE_LENGTH?=300
 
 .PHONY: all venv install run train-all docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
 
@@ -27,38 +27,38 @@ run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
 train-all:
-	$(PY) ml/train_batting.py --all-formats
-	$(PY) ml/train_bowling.py --all-formats
+	$(PY) ml/train_batting_model.py
+	$(PY) ml/train_bowling_model.py
 
 validate-exports:
-	$(PY) ml/validate_exports.py --all-formats
+	(cd ml && ../$(PY) validate_exports.py --all-formats)
 
 # Format Python code with line wrapping (isort + black)
 fmt:
 	make lint
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	isort --profile black --line-length $(LINE_LENGTH) .
-	black --line-length $(LINE_LENGTH) .
-	flake8 --max-line-length=120 --extend-ignore=E203,W503
+	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
+	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
+	flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
 
 # Auto-fix lint: remove unused imports via ruff (F401)
 lint:
 	@command -v ruff >/dev/null 2>&1 || (echo "Install ruff: pip install ruff" && exit 1)
-	ruff check --fix --select F401 .
+	$(VENV)/bin/ruff check --fix --select F401 .
 
 # Lint check only (CI-safe)
 lint-check:
 	@command -v ruff >/dev/null 2>&1 || (echo "Install ruff: pip install ruff" && exit 1)
-	ruff check --select F401 .
+	$(VENV)/bin/ruff check --select F401 .
 
 # Check formatting only (same as CI)
 fmt-check:
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
-	black --check --diff --line-length $(LINE_LENGTH) .
-	flake8 --max-line-length=120 --extend-ignore=E203,W503
+	$(VENV)/bin/isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
+	$(VENV)/bin/black --check --diff --line-length $(LINE_LENGTH) .
+	flake8 --max-line-length=120 --extend-ignore=E203,E501,W503 --exclude=.venv
 
 docker-build:
 	docker build -t $(APP_NAME):latest .

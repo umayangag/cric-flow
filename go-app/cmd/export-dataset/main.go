@@ -1,3 +1,4 @@
+// Command export-dataset exports training CSV datasets from the database.
 package main
 
 import (
@@ -102,7 +103,7 @@ func exportBatting(ctx context.Context, path string) error {
 		bd.fours,
 		bd.sixes,
 		bd.batting_position,
-		p.batting_consistency,
+		pcd.batting_consistency,
 		pfd.batting_form,
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
 		CASE 
@@ -140,7 +141,8 @@ func exportBatting(ctx context.Context, path string) error {
 		LEFT JOIN season s ON s.id = md.season_id
 		LEFT JOIN player_venue_data pvd ON bd.player_id = pvd.player_id AND md.venue_id = pvd.venue_id
 		LEFT JOIN player_opposition_data pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id
-		LEFT JOIN player_form_data pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id`
+		LEFT JOIN player_form_data pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id
+		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id`
 
 	rows, err := db.Pool.Query(ctx, q)
 	if err != nil {
@@ -151,7 +153,7 @@ func exportBatting(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
@@ -199,7 +201,7 @@ func exportBowling(ctx context.Context, path string) error {
 		b.runs,
 		b.balls,
 		b.wickets,
-		p.bowling_consistency,
+		pcd.bowling_consistency,
 		pfd.bowling_form,
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity,
 		md.inning,
@@ -220,7 +222,8 @@ func exportBowling(ctx context.Context, path string) error {
 		LEFT JOIN season s ON s.id = md.season_id
 		LEFT JOIN player_venue_data pvd ON b.player_id = pvd.player_id AND md.venue_id = pvd.venue_id
 		LEFT JOIN player_opposition_data pod ON b.player_id = pod.player_id AND md.opposition_id = pod.opposition_id
-		LEFT JOIN player_form_data pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id`
+		LEFT JOIN player_form_data pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id
+		LEFT JOIN player_consistency_data_fmt pcd ON b.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id`
 
 	rows, err := db.Pool.Query(ctx, q)
 	if err != nil {
@@ -231,7 +234,7 @@ func exportBowling(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
@@ -345,7 +348,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		bd.fours,
 		bd.sixes,
 		bd.batting_position,
-		p.batting_consistency,
+		pcd.batting_consistency,
 		pfd.batting_form,
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
 		CASE 
@@ -382,6 +385,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		LEFT JOIN player_venue_data_fmt pvd ON bd.player_id = pvd.player_id AND md.venue_id = pvd.venue_id AND md.format_id = pvd.format_id
 		LEFT JOIN player_opposition_data_fmt pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
+		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -393,7 +397,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header
@@ -449,7 +453,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		b.runs,
 		b.balls,
 		b.wickets,
-		p.bowling_consistency,
+		pcd.bowling_consistency,
 		pfd.bowling_form,
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
 		CASE 
@@ -486,6 +490,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		LEFT JOIN player_venue_data_fmt pvd ON b.player_id = pvd.player_id AND md.venue_id = pvd.venue_id AND md.format_id = pvd.format_id
 		LEFT JOIN player_opposition_data_fmt pod ON b.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
+		LEFT JOIN player_consistency_data_fmt pcd ON b.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -497,7 +502,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	// header

@@ -1,0 +1,22 @@
+[
+  "runs",
+  "balls",
+  "wickets",
+  "bowling_consistency",
+  "bowling_form",
+  "temp",
+  "wind",
+  "rain",
+  "humidity",
+  "cloud",
+  "pressure",
+  "viscosity",
+  "inning",
+  "bowling_session",
+  "toss",
+  "bowling_venue",
+  "bowling_opposition",
+  "season_id",
+  "player_name",
+  "format_code"
+]

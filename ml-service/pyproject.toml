@@ -1,23 +1,27 @@
 [tool.black]
-line-length = 100
+line-length = 120
 # Optionally, limit to the ml-service package paths
 # include = "(app|ml)/"
+extend-exclude = "\\.venv"
 
 [tool.isort]
 profile = "black"
-line_length = 100
+line_length = 120
 # Keep local imports grouping stable; you can tweak as needed
 # src_paths = ["app", "ml"]
+skip = [".venv"]
 
 [tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
+max-line-length = 120
+extend-ignore = ["E203","E501", "W503"]
+exclude = [".venv"]
 
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 # Match project runtime
 target-version = "py310"
+extend-exclude = [".venv"]
 
 [tool.ruff.lint]
 # Enable Pyflakes rules (includes F401 unused import)

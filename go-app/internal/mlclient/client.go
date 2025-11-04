@@ -1,3 +1,4 @@
+// Package mlclient provides a typed HTTP client for the Python ML service.
 package mlclient
 
 import (
@@ -51,13 +52,14 @@ func (c *Client) postJSON(ctx context.Context, path string, in any, out any) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("ml-service status: %s", resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// PredictBatting sends batting feature rows to the ML service and returns predictions.
 func (c *Client) PredictBatting(
 	ctx context.Context,
 	feats []contracts.BattingFeatures,
@@ -69,6 +71,7 @@ func (c *Client) PredictBatting(
 	return preds, nil
 }
 
+// PredictBowling sends bowling feature rows to the ML service and returns predictions.
 func (c *Client) PredictBowling(
 	ctx context.Context,
 	feats []contracts.BowlingFeatures,

@@ -1,6 +1,6 @@
 # Convenience targets for local dev
 
-.PHONY: dev-up dev-down logs api migrate etl-importer export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-ingest cricsheet-import up-all
+.PHONY: dev-up dev-down logs api migrate export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -19,10 +19,6 @@ go-test:
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
 	cd go-app && go run ./cmd/tools/migrate -dir=./migrations
-
-# Import curated CSVs from the Python prototype
-etl-importer:
-	cd go-app && GO_APP_INPUT_DIR=../data/go-app/createdb go run ./cmd/etl-importer
 
 # Export datasets similar to src/final_data/queries.py
 export-dataset:
@@ -44,11 +40,12 @@ BOWL ?= 5
 
 # Run preprocessing computations (happy path)
 precompute:
-	cd go-app && go run ./cmd/precompute -season=$(SEASON)
+	curl -X POST http://localhost:8080/precompute
 
 # Team predictor (happy path): requires MATCH to be provided
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
+	cd ml-service && .venv/bin/python -m ml.export_pool $(MATCH)
 	cd go-app && go run ./cmd/team-predictor -match=$(MATCH) -bat=$(BAT) -bowl=$(BOWL)
 
 # Train ML artifacts from exported CSVs
@@ -56,10 +53,10 @@ ml-install:
 	$(MAKE) -C ml-service install
 
 train-batting: ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting
+	cd ml-service && .venv/bin/python -m ml.train_batting_model
 
 train-bowling: ml-install
-	cd ml-service && .venv/bin/python -m ml.train_bowling
+	cd ml-service && .venv/bin/python -m ml.train_bowling_model
 
 train-all: train-batting train-bowling
 
@@ -74,13 +71,13 @@ e2e:
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
 	@echo "[2/5] Importing Cricsheet JSON..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[3/5] Precomputing features for format $(FORMAT) (season=$(SEASON))..."
-	cd go-app && go run ./cmd/precompute -season=$(SEASON) -format=$(FORMAT)
+	@echo "[3/5] Precomputing features..."
+	curl -X POST http://localhost:8080/precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
-	@echo "[5/5] Training ML artifacts for $(FORMAT)..."
+	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
 	$(MAKE) ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting --format $(FORMAT) && .venv/bin/python -m ml.train_bowling --format $(FORMAT)
+	cd ml-service && .venv/bin/python -m ml.train_batting_model --format $(FORMAT) && .venv/bin/python -m ml.train_bowling_model --format $(FORMAT)
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 
 e2e-multi:
@@ -89,13 +86,16 @@ e2e-multi:
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
 	@echo "[2/5] Importing Cricsheet JSON..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[3/5] Precomputing features for formats $(FORMATS) (season=$(SEASON))..."
-	cd go-app && go run ./cmd/precompute -season=$(SEASON) -formats=$(FORMATS)
+	@echo "[3/5] Precomputing features..."
+	curl -X POST http://localhost:8080/precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
 	$(MAKE) ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting --formats $(FORMATS) && .venv/bin/python -m ml.train_bowling --formats $(FORMATS)
+	@for f in $(subst ,,$(FORMATS)); do \
+		echo "  Training for format $$f..."; \
+		cd ml-service && .venv/bin/python -m ml.train_batting_model --format $$f && .venv/bin/python -m ml.train_bowling_model --format $$f; \
+	done
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 
 # One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
@@ -106,8 +106,8 @@ up-all:
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
 	@echo "[3/7] Importing Cricsheet JSON (idempotent)..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[4/7] Precomputing metrics (season=2019)..."
-	$(MAKE) precompute SEASON=2019 || (echo "Precompute failed" && exit 1)
+	@echo "[4/7] Precomputing metrics..."
+	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[5/7] Exporting datasets..."
 	$(MAKE) export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
@@ -136,10 +136,10 @@ lint-go:
 fmt-py:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
-	cd ml-service && isort . && black .
+	cd ml-service && .venv/bin/isort . && .venv/bin/black .
 
 lint-py:
-	cd ml-service && isort --check-only --diff . && black --check --diff .
+	cd ml-service && .venv/bin/isort --check-only --diff . && .venv/bin/black --check --diff .
 
 install-hooks:
 	git config core.hooksPath .githooks
@@ -161,10 +161,6 @@ init-go:
 # Initialize Python venv and dev tools
 init-py:
 	$(MAKE) -C ml-service init
-
-# Generate curated CSVs from Cricsheet JSON and people.csv
-cricsheet-ingest:
-	python -m src.cricsheet.ingest --data-dir=data --out-dir=src/createdb/data
 
 # Import Cricsheet JSON into DB using Go importer
 cricsheet-import:
