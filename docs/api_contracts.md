@@ -126,7 +126,7 @@ Request body (array of `PlayerPrediction` minus `winning_probability`):
   }
 ]
 ```
-Response (current implementation):
+Response (array):
 ```json
 [
   {
@@ -146,8 +146,35 @@ Response (current implementation):
 ]
 ```
 Notes:
-- The service returns a per-player list enriched with `winning_probability` only. The team-level average can be computed client-side as the mean of `winning_probability`.
-- If you need a response wrapper with `team_win_probability`, consider adding it at the client layer or extend the service in a backward-compatible way.
+- This route remains unchanged for backward compatibility and returns an array only. The team-level average can be computed client-side as the mean of `winning_probability`.
+
+### POST /predict/win (alias; preferred for new clients)
+Request body: same as `/predict-win` (array of `PlayerPrediction` minus `winning_probability`).
+
+Response (wrapper object):
+```json
+{
+  "players": [
+    {
+      "player_name": "Player A",
+      "runs_scored": 35.7,
+      "balls_faced": 25.2,
+      "fours_scored": 4.1,
+      "sixes_scored": 1.2,
+      "batting_position": 3.0,
+      "strike_rate": 142.0,
+      "runs_conceded": 0,
+      "deliveries": 0,
+      "wickets_taken": 0,
+      "econ": 0,
+      "winning_probability": 0.62
+    }
+  ],
+  "team_win_probability": 0.62
+}
+```
+- `team_win_probability` equals the mean of `players[*].winning_probability`.
+- Both routes use the same model and features; `/predict/win` is easier for UIs/consumers that need the team-level number.
 
 ## Go API (mux)
 

@@ -104,6 +104,11 @@ class PlayerPrediction(BaseModel):
     winning_probability: Optional[float] = None
 
 
+class TeamWinResponse(BaseModel):
+    players: List[PlayerPrediction]
+    team_win_probability: float
+
+
 # Load artifacts (per-format if available)
 # Prefer ML_SERVICE_OUTPUT_DIR, then MODELS_DIR, then config.json default, else ../../output/ml-service
 try:
@@ -495,6 +500,27 @@ async def predict_win(players: List[PlayerPrediction]):
     df = pd.DataFrame([p.dict() for p in players])
     predictions, _ = predict_for_team(df)
     return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
+
+
+@app.post("/predict/win", response_model=TeamWinResponse)
+async def predict_win_wrapped(players: List[PlayerPrediction]):
+    if not players:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty players list",
+                hint="Send at least one player with the required fields.",
+            ),
+        )
+
+    df = pd.DataFrame([p.dict() for p in players])
+    predictions, team_mean = predict_for_team(df)
+    wrapped = TeamWinResponse(
+        players=[PlayerPrediction(**p) for p in predictions.to_dict("records")],
+        team_win_probability=float(team_mean),
+    )
+    return wrapped
 
 
 @app.post("/admin/reload")
