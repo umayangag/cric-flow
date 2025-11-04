@@ -3,17 +3,21 @@ VENV:=.venv
 PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 
-.PHONY: dev-up dev-down logs api migrate export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all
+# Common variables
+DC:=docker-compose
+APP_SERVICES:=go-api ml-service
+
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
-	docker-compose up --build -d
+	$(DC) up --build -d
 
 dev-down:
-	docker-compose down -v
+	$(DC) down -v
 
 logs:
-	docker-compose logs -f --tail=200
+	$(DC) logs -f --tail=200
 
 # Run Go unit tests
 go-test:
@@ -80,7 +84,7 @@ e2e:
 	@echo "[2/5] Importing Cricsheet JSON..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
 	@echo "[3/5] Precomputing features..."
-	curl -X POST http://localhost:8080/precompute || (echo "Precompute failed" && exit 1)
+	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
@@ -95,7 +99,7 @@ e2e-multi:
 	@echo "[2/5] Importing Cricsheet JSON..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
 	@echo "[3/5] Precomputing features..."
-	curl -X POST http://localhost:8080/precompute || (echo "Precompute failed" && exit 1)
+	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
@@ -109,7 +113,7 @@ e2e-multi:
 # One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
 up-all:
 	@echo "[1/7] Bringing up Docker stack (Postgres, API, ML)..."
-	docker-compose up --build -d
+	$(MAKE) dev-up
 	@echo "[2/7] Applying DB migrations..."
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
 	@echo "[3/7] Importing Cricsheet JSON (idempotent)..."
@@ -121,7 +125,7 @@ up-all:
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
-	docker-compose restart ml-service
+	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
 # --- Formatting & hooks ---
@@ -173,3 +177,24 @@ init-py:
 # Import Cricsheet JSON into DB using Go importer
 cricsheet-import:
 	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet go run ./cmd/cricsheet-importer
+
+
+# Helper targets to avoid duplication
+build-apps:
+	$(DC) build --pull $(APP_SERVICES)
+
+build-apps-nocache:
+	$(DC) build --no-cache --pull $(APP_SERVICES)
+
+recreate-apps:
+	$(DC) up -d --no-deps --force-recreate $(APP_SERVICES)
+
+# Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
+dev-rebuild:
+	$(MAKE) build-apps
+	$(MAKE) recreate-apps
+
+# Same as above but ignore build cache
+dev-rebuild-nocache:
+	$(MAKE) build-apps-nocache
+	$(MAKE) recreate-apps
