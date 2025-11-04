@@ -86,9 +86,9 @@ Sources reviewed
 
 - Team win model
   - Prototype: `final_data/match_win_predict.py::predict_for_team`
-  - Implementation: `ml-service/ml/match_win_predict.py` and endpoint `/predict/win`
-  - Inputs: array of `PlayerPrediction` minus `winning_probability`; optional `format`
-  - Outputs: `players[*].winning_probability`, `team_win_probability`
+  - Implementation: `ml-service/ml/match_win_predict.py` and endpoint `/predict-win`
+  - Inputs: array of `PlayerPrediction` minus `winning_probability`
+  - Outputs: per-player list enriched with `winning_probability` (team average can be computed client-side)
 
 - Validation: For golden dataset, compare prototype vs ML service outputs; set small tolerance if model artifacts differ; otherwise expect identical values
 

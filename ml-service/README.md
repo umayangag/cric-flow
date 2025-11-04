@@ -57,6 +57,14 @@ make docker-build
 make docker-run
 ```
 
+## Endpoints
+- `GET /health` → service status and whether artifacts are loaded
+- `POST /predict/batting` → array of `BattingFeatures` rows → array of `BattingPrediction`
+- `POST /predict/bowling` → array of `BowlingFeatures` rows → array of `BowlingPrediction`
+- `POST /predict-win` → array of `PlayerPrediction` → array of `PlayerPrediction` (enriched with `winning_probability`)
+  - Note: team-level win probability is the mean of `winning_probability` on the client side.
+- `POST /admin/reload` → reload artifacts (enable with `ENABLE_HOT_RELOAD=1`)
+
 ## Model loading
 At startup the service looks for artifacts in this order:
 1. `ML_SERVICE_OUTPUT_DIR`

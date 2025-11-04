@@ -43,11 +43,25 @@ type Config struct {
 		GeocodeCacheOnly  bool     `json:"geocode_cache_only"`
 		OverwriteExisting bool     `json:"overwrite_existing"`
 		WhitelistVenues   []string `json:"whitelist_venues"`
+		Mocks struct {
+			Temp      int `json:"temp"`
+			Wind      int `json:"wind"`
+			Rain      int `json:"rain"`
+			Humidity  int `json:"humidity"`
+			Cloud     int `json:"cloud"`
+			Pressure  int `json:"pressure"`
+			Viscosity int `json:"viscosity"`
+			Session   int `json:"session"`
+		} `json:"mocks"`
 	} `json:"weather"`
 	Predictor struct {
 		TeamSize      int     `json:"team_size"`
 		DefaultExtras float64 `json:"default_extras"`
 	} `json:"predictor"`
+	Selection struct {
+		DefaultPoolCSV string `json:"default_pool_csv"`
+		RequireKeeper  bool   `json:"require_keeper"`
+	} `json:"selection"`
 }
 
 var cached *Config

@@ -28,8 +28,30 @@
     "default_batters": 6,
     "default_bowlers": 5
   },
+  "weather": {
+    "enabled": false,
+    "rate_limit_per_sec": 0,
+    "max_attempts": 0,
+    "geocode_cache_only": true,
+    "overwrite_existing": false,
+    "whitelist_venues": [],
+    "mocks": {
+      "temp": 28,
+      "wind": 12,
+      "rain": 0,
+      "humidity": 62,
+      "cloud": 30,
+      "pressure": 1012,
+      "viscosity": 1,
+      "session": 2
+    }
+  },
   "predictor": {
     "team_size": 11,
     "default_extras": 14.26
+  },
+  "selection": {
+    "default_pool_csv": "../ml-service/ml/pool.csv",
+    "require_keeper": false
   }
 }
