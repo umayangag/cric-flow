@@ -5,7 +5,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 from ml.calculate_features import calculate_features
 from ml.db import get_db_connection
@@ -17,43 +17,62 @@ ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {
 
 
 class BattingFeatures(BaseModel):
-    batting_consistency: float
-    batting_form: float
+    batting_consistency: float = Field(..., ge=0)
+    batting_form: float = Field(..., ge=0)
     batting_temp: int
-    batting_wind: int
-    batting_rain: int
-    batting_humidity: int
-    batting_cloud: int
-    batting_pressure: int
-    batting_viscosity: int
-    batting_inning: int
-    batting_session: int
-    toss: int
+    batting_wind: int = Field(..., ge=0)
+    batting_rain: int = Field(..., ge=0)
+    batting_humidity: int = Field(..., ge=0)
+    batting_cloud: int = Field(..., ge=0)
+    batting_pressure: int = Field(..., ge=0)
+    batting_viscosity: int = Field(..., ge=0, le=1)
+    batting_inning: int = Field(..., ge=1, le=2)
+    batting_session: int = Field(..., ge=1, le=3)
+    toss: int = Field(..., ge=0, le=1)
     venue: float
     opposition: float
-    season: int
+    season: int = Field(..., ge=0)
     player_name: str
     format: Optional[str] = None
+
+    @validator("format")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v2 = v.strip().upper()
+        if v2 not in {"TEST", "ODI", "T20", "T20I"}:
+            # allow empty/unknown formats by returning original; the route enforces when required
+            return v2
+        return v2
 
 
 class BowlingFeatures(BaseModel):
-    bowling_consistency: float
-    bowling_form: float
+    bowling_consistency: float = Field(..., ge=0)
+    bowling_form: float = Field(..., ge=0)
     bowling_temp: int
-    bowling_wind: int
-    bowling_rain: int
-    bowling_humidity: int
-    bowling_cloud: int
-    bowling_pressure: int
-    bowling_viscosity: int
-    batting_inning: int
-    bowling_session: int
-    toss: int
+    bowling_wind: int = Field(..., ge=0)
+    bowling_rain: int = Field(..., ge=0)
+    bowling_humidity: int = Field(..., ge=0)
+    bowling_cloud: int = Field(..., ge=0)
+    bowling_pressure: int = Field(..., ge=0)
+    bowling_viscosity: int = Field(..., ge=0, le=1)
+    batting_inning: int = Field(..., ge=1, le=2)
+    bowling_session: int = Field(..., ge=1, le=3)
+    toss: int = Field(..., ge=0, le=1)
     bowling_venue: float
     bowling_opposition: float
-    season: int
+    season: int = Field(..., ge=0)
     player_name: str
     format: Optional[str] = None
+
+    @validator("format")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v2 = v.strip().upper()
+        if v2 not in {"TEST", "ODI", "T20", "T20I"}:
+            return v2
+        return v2
 
 
 class BattingPrediction(BaseModel):

@@ -117,3 +117,78 @@ make -C ml-service validate-exports
 - Confirm any additional categorical encodings (e.g., format-specific adjustments) match prototype semantics.
 - Confirm `venue/opposition` aggregates align with prototype’s feature engineering.
 - Decide whether `season` should be shifted (e.g., form based on `season-1`) at export time or in ML precompute; keep responsibilities modular.
+
+
+---
+
+## Inference schema (explicit header orders)
+
+These headers are used when emitting inputs-only CSVs for inference or when constructing inference payloads. They intentionally exclude training outputs.
+
+- Batting inference headers (matches `tests/golden/expected_headers_batting.json`):
+```
+batting_consistency,
+batting_form,
+batting_temp,
+batting_wind,
+batting_rain,
+batting_humidity,
+batting_cloud,
+batting_pressure,
+batting_viscosity,
+batting_inning,
+batting_session,
+toss,
+venue,
+opposition,
+season,
+player_name
+```
+
+- Bowling inference headers (matches `tests/golden/expected_headers_bowling.json`):
+```
+bowling_consistency,
+bowling_form,
+bowling_temp,
+bowling_wind,
+bowling_rain,
+bowling_humidity,
+bowling_cloud,
+bowling_pressure,
+bowling_viscosity,
+batting_inning,
+bowling_session,
+toss,
+bowling_venue,
+bowling_opposition,
+season,
+player_name
+```
+
+Notes:
+- Encodings must match exporter semantics: `session ∈ {1,2,3}`, `viscosity ∈ {0,1}` with NULL→0, and `toss ∈ {0,1}`.
+- `venue`/`opposition` are numeric aggregates (AVG/normalized) and must be non-null. Use `COALESCE` in SQL.
+
+## Training schema (explicit header orders)
+
+These are the training CSV headers written by the exporter, with outputs leading, followed by features and identifiers. They match the golden training headers:
+- Batting training headers (matches `tests/golden/expected_headers_batting_training.json`)
+- Bowling training headers (matches `tests/golden/expected_headers_bowling_training.json`)
+
+For convenience, the ordered lists are maintained in the golden JSON files and enforced by `tests/golden/compare_features.py`.
+
+## Validation in CI
+
+- The CI job invokes `make -C ml-service validate-exports`, which runs:
+  - `ml-service/ml/validate_exports.py --all-formats --schema training --use-golden`
+- This enforces exact header order for all present per-format exports and checks basic nullability.
+- If you add an inference-only export mode, validate with:
+```
+(cd ml-service/ml && ../.venv/bin/python3 validate_exports.py --all-formats --schema inference --use-golden)
+```
+
+## Producer responsibilities (exporter)
+
+- Maintain exact column order as documented above.
+- Ensure all numeric feature columns are non-null: apply `COALESCE`/`CASE` where necessary.
+- Keep categorical encodings stable and documented (session/toss/viscosity).
