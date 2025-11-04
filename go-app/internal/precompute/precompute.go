@@ -45,21 +45,33 @@ func Run(parent context.Context, season string, formats []string) error {
 		}
 	}
 
+	// Update status tracker
+	setStart(season, codes)
+	defer setDone()
+
 	for _, code := range codes {
 		// 1) Seasonal form (weighted formulas)
+		setPhase("form")
 		if err := features.ComputeSeasonalFormFmt(ctx, season, code); err != nil {
+			setError(err)
 			return fmt.Errorf("compute seasonal form (%s): %w", code, err)
 		}
 		// 2) Venue effects (weighted formulas)
+		setPhase("venue")
 		if err := features.ComputeVenueEffectsFmt(ctx, code); err != nil {
+			setError(err)
 			return fmt.Errorf("compute venue effects (%s): %w", code, err)
 		}
 		// 3) Opposition effects (weighted formulas)
+		setPhase("opposition")
 		if err := features.ComputeOppositionEffectsFmt(ctx, code); err != nil {
+			setError(err)
 			return fmt.Errorf("compute opposition effects (%s): %w", code, err)
 		}
 		// 4) Consistency (mirrors Python semantics)
+		setPhase("consistency")
 		if err := features.ComputeConsistencyFmt(ctx, season, code); err != nil {
+			setError(err)
 			return fmt.Errorf("compute consistency (%s): %w", code, err)
 		}
 	}

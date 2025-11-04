@@ -16,6 +16,11 @@ logs:
 go-test:
 	cd go-app && go test ./...
 
+# Run Go integration tests (requires Postgres). Usage: make go-test-int
+# Spins are expected to be running via docker-compose or externally.
+go-test-int:
+	cd go-app && INTEGRATION=1 go test -tags=integration ./...
+
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
 	cd go-app && go run ./cmd/tools/migrate -dir=./migrations

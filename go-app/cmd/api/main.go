@@ -75,6 +75,11 @@ func main() {
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
 
+	// GET /precompute/status — returns in-memory status of the last run (resets on restart)
+	r.HandleFunc("/precompute/status", func(w http.ResponseWriter, r *http.Request) {
+		respondJSON(w, http.StatusOK, precompute.GetStatus())
+	}).Methods(http.MethodGet)
+
 	// Cricinfo scraping has been removed.
 
 	// POST /import/cricsheet {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}

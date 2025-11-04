@@ -7,3 +7,4 @@ ml-service/.venv
 data
 output
 tests
+go-app/api

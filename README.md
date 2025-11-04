@@ -61,6 +61,8 @@ This triggers the Go API to compute and store features in Postgres (no ML depend
 make precompute
 # or with filters
 curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json' -d '{"season":"2019","formats":["ODI","T20I"]}'
+# check status (in-memory, resets on restart)
+curl -s http://localhost:8080/precompute/status | jq
 ```
 
 ### 5) Export model datasets

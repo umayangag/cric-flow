@@ -111,7 +111,7 @@ Sources reviewed
 
 - ML service
   - `app/main.py` Pydantic models: `BattingFeatures`, `BowlingFeatures`, `PlayerPrediction`
-  - Endpoints: `/health`, `/precompute`, `/predict/batting`, `/predict/bowling`, `/predict/win`, `/admin_reload`
+  - Endpoints: `/health`, `/predict/batting`, `/predict/bowling`, `/predict/win`, `/admin/reload`
   - Contract examples: `docs/api_contracts.md`
 
 - Go app

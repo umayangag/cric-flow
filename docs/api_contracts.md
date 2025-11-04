@@ -158,6 +158,22 @@ Base: `http://localhost:8080`
 { "season": "2019", "formats": ["ODI", "T20I"] }
 ```
 
+### GET /precompute/status
+- 200 OK: returns the in-memory status of the last run (resets on process restart)
+```json
+{
+  "running": true,
+  "started_at": "2025-11-04T16:40:00Z",
+  "finished_at": "",
+  "season": "2019",
+  "formats": ["ODI","T20I"],
+  "phase": "venue",
+  "last_error": ""
+}
+```
+- Notes:
+  - `phase` is one of: `starting`, `form`, `venue`, `opposition`, `consistency`, `done`.
+
 ### POST /import/cricsheet
 Body:
 ```json
@@ -166,12 +182,15 @@ Body:
 - 202 Accepted: `{ "status": "started" }`
 
 ### GET /players/{id}?season=2019&format=T20
-Response (excerpt; see `internal/contracts` for full shape):
+Response (excerpt based on current handler):
 ```json
 {
-  "player": { "id": 123, "name": "..." },
-  "batting": { /* aggregates */ },
-  "bowling": { /* aggregates */ }
+  "id": 123,
+  "player_name": "Player A",
+  "is_wicket_keeper": 0,
+  "is_retired": 0,
+  "batting_consistency": 12.34,
+  "bowling_consistency": 8.9
 }
 ```
 
