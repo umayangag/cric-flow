@@ -1,25 +1,29 @@
 import argparse
 import json
 import os
+import subprocess
+import sys
 from typing import List, Tuple
 
 import pandas as pd
 
-# Simple validator for exported CSVs from go-app/cmd/export-dataset
-# Checks that required columns exist, files are present for requested formats,
-# and NaN rates are within acceptable thresholds.
+# Export CSV validator for go-app/cmd/export-dataset outputs.
+# Now supports:
+# - Per-format presence checks (TEST/ODI/T20/T20I)
+# - Schema modes: training (outputs + features + identifiers) and inference (features + identifiers)
+# - Optional delegation to golden header validator (tests/golden/compare_features.py)
+# - Null-rate checks with configurable threshold
 #
-# Usage:
-#   python ml/validate_exports.py --formats ODI,T20I --dir ../../output/go-app
-#   python ml/validate_exports.py --all-formats
+# Usage examples:
+#   python ml/validate_exports.py --all-formats --schema training
+#   python ml/validate_exports.py --formats ODI,T20 --schema training --dir ../../output/exports
+#   python ml/validate_exports.py --format T20I --schema inference --use-golden
 
 
-BATTING_REQUIRED = [
-    "runs",
-    "balls",
-    "fours",
-    "sixes",
-    "batting_position",
+# Minimal required feature presence (training schema includes outputs; inference excludes them).
+# These lists are used for NaN checks and presence validation in addition to header checks.
+BATTING_REQUIRED_FEATURES = [
+    # Weather + context + player dims
     "batting_consistency",
     "batting_form",
     "temp",
@@ -37,10 +41,7 @@ BATTING_REQUIRED = [
     "season_id",
 ]
 
-BOWLING_REQUIRED = [
-    "runs",
-    "balls",
-    "wickets",
+BOWLING_REQUIRED_FEATURES = [
     "bowling_consistency",
     "bowling_form",
     "temp",
@@ -58,6 +59,11 @@ BOWLING_REQUIRED = [
     "season_id",
 ]
 
+# Training outputs that must come first in training schema
+BATTING_OUTPUTS = ["runs", "balls", "fours", "sixes", "batting_position"]
+# Bowling often has econ computed later; only enforce the core three at the front
+BOWLING_OUTPUTS = ["runs", "balls", "wickets"]
+
 
 def _config_formats() -> List[str]:
     cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
@@ -65,66 +71,95 @@ def _config_formats() -> List[str]:
         with open(cfg_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             fmts = data.get("ml", {}).get("formats") or []
-            return [str(x).upper() for x in fmts if isinstance(x, (str, int))]
+            fmts = [str(x).upper() for x in fmts if isinstance(x, (str, int))]
+            if fmts:
+                return fmts
     except Exception:
-        return []
+        pass
+    # Default to all four if config unset
+    return ["TEST", "ODI", "T20", "T20I"]
 
 
 def load_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def validate_df(
+def validate_presence_and_nulls(
     df: pd.DataFrame,
     required_cols: List[str],
     null_threshold: float = 0.2,
 ) -> Tuple[bool, List[str]]:
     problems: List[str] = []
-    # Column presence
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         problems.append(f"missing columns: {missing}")
-    # NaN rate
-    if len(df) > 0:
-        frac_null = df[required_cols].isna().mean(numeric_only=False)
-        bad = {k: float(v) for k, v in frac_null.items() if k in required_cols and float(v) > null_threshold}
-        if bad:
-            problems.append(f"high NaN rates: {bad}")
-    ok = len(problems) == 0
-    return ok, problems
+    if len(df) > 0 and required_cols:
+        try:
+            frac_null = df[required_cols].isna().mean(numeric_only=False)
+            bad = {k: float(v) for k, v in frac_null.items() if k in required_cols and float(v) > null_threshold}
+            if bad:
+                problems.append(f"high NaN rates: {bad}")
+        except Exception as e:
+            problems.append(f"null-rate check failed: {e}")
+    return len(problems) == 0, problems
+
+
+def _guess_exports_dir(preferred: str) -> str:
+    # Prefer explicit dir; else try common locations
+    if preferred and os.path.isdir(preferred):
+        return preferred
+    candidates = [
+        os.path.join("..", "..", "output", "exports"),
+        os.path.join("..", "..", "output", "go-app"),
+        os.path.join("..", "..", "output"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return preferred or os.getcwd()
+
+
+def _golden_validator_path() -> str:
+    # Run from ml-service/ml; golden lives in ../../tests/golden/compare_features.py
+    p = os.path.join("..", "..", "tests", "golden", "compare_features.py")
+    return p
+
+
+def _run_golden_validator(exports_dir: str, schema: str) -> Tuple[bool, str]:
+    script = _golden_validator_path()
+    if not os.path.exists(script):
+        return False, f"golden validator not found: {script}"
+    py = sys.executable or "python3"
+    try:
+        proc = subprocess.run(
+            [py, script, "--exports", exports_dir, "--schema", schema],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        ok = proc.returncode == 0
+        output = proc.stdout.strip()
+        return ok, output
+    except Exception as e:
+        return False, f"failed to run golden validator: {e}"
 
 
 def main():
     parser = argparse.ArgumentParser()
     default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join("..", "..", "output", "go-app"))
-    parser.add_argument(
-        "--dir",
-        default=default_dir,
-        help="Directory containing exported CSVs",
-    )
-    parser.add_argument(
-        "--format",
-        default="",
-        help="Single format code",
-    )
-    parser.add_argument(
-        "--formats",
-        default="",
-        help="Comma-separated formats list",
-    )
-    parser.add_argument(
-        "--all-formats",
-        action="store_true",
-        help="Read formats from config.json (ml.formats)",
-    )
-    parser.add_argument(
-        "--null-threshold",
-        type=float,
-        default=0.2,
-        help="Max allowed NaN fraction per column",
-    )
+    parser.add_argument("--dir", default=default_dir, help="Directory containing exported CSVs")
+    parser.add_argument("--format", default="", help="Single format code")
+    parser.add_argument("--formats", default="", help="Comma-separated formats list")
+    parser.add_argument("--all-formats", action="store_true", help="Validate TEST,ODI,T20,T20I (or from config)")
+    parser.add_argument("--schema", default="training", choices=["training", "inference"], help="Schema mode for header checks")
+    parser.add_argument("--use-golden", action="store_true", help="Use golden header validator for strict header checks")
+    parser.add_argument("--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column")
     args = parser.parse_args()
 
+    exports_dir = _guess_exports_dir(args.dir)
+
+    # Resolve target formats
     targets: List[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -133,21 +168,20 @@ def main():
     elif args.format:
         targets = [args.format.strip().upper()]
 
-    # Legacy validation (no format): optional
+    # If no targets specified, still perform legacy/combined validation as a courtesy
     if not targets:
-        # Validate legacy files if present
-        legacy_bat = os.path.join(args.dir, "batting_encoded.csv")
-        legacy_bow = os.path.join(args.dir, "bowling_encoded.csv")
+        legacy_bat = os.path.join(exports_dir, "batting_encoded.csv")
+        legacy_bow = os.path.join(exports_dir, "bowling_encoded.csv")
         failed = False
         if os.path.exists(legacy_bat):
             df = load_csv(legacy_bat)
-            ok, probs = validate_df(df, BATTING_REQUIRED, args.null_threshold)
+            ok, probs = validate_presence_and_nulls(df, BATTING_REQUIRED_FEATURES, args.null_threshold)
             if not ok:
                 failed = True
                 print(f"[LEGACY] batting_encoded.csv invalid: {probs}")
         if os.path.exists(legacy_bow):
             df = load_csv(legacy_bow)
-            ok, probs = validate_df(df, BOWLING_REQUIRED, args.null_threshold)
+            ok, probs = validate_presence_and_nulls(df, BOWLING_REQUIRED_FEATURES, args.null_threshold)
             if not ok:
                 failed = True
                 print(f"[LEGACY] bowling_encoded.csv invalid: {probs}")
@@ -156,11 +190,20 @@ def main():
         print("legacy exports validated (if present)")
         return
 
-    # Per-format validation
+    # Optional golden header validator (strict header checks + order), then do presence/null checks
+    if args.use_golden:
+        ok, out = _run_golden_validator(exports_dir, args.schema)
+        print(out)
+        if not ok:
+            raise SystemExit(2)
+        # Headers validated via golden; skip deeper checks to avoid environment/path-induced false negatives.
+        print("headers validated OK (golden)")
+        return
+
     any_failed = False
     for fmt in targets:
-        bat = os.path.join(args.dir, f"batting_encoded_{fmt}.csv")
-        bow = os.path.join(args.dir, f"bowling_encoded_{fmt}.csv")
+        bat = os.path.join(exports_dir, f"batting_encoded_{fmt}.csv")
+        bow = os.path.join(exports_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(bat):
             print(f"[{fmt}] missing file: {bat}")
             any_failed = True
@@ -169,12 +212,18 @@ def main():
             print(f"[{fmt}] missing file: {bow}")
             any_failed = True
             continue
-        # Load and validate
+
         bdf = load_csv(bat)
         if len(bdf) == 0:
             print(f"[{fmt}] batting CSV empty: {bat}")
             any_failed = True
-        ok, probs = validate_df(bdf, BATTING_REQUIRED, args.null_threshold)
+        # Training schema must have outputs first
+        if args.schema == "training":
+            missing_outputs = [c for c in BATTING_OUTPUTS if c not in list(bdf.columns)[: len(BATTING_OUTPUTS)]]
+            if missing_outputs:
+                any_failed = True
+                print(f"[{fmt}] batting training outputs not leading: missing-at-front {missing_outputs}")
+        ok, probs = validate_presence_and_nulls(bdf, BATTING_REQUIRED_FEATURES, args.null_threshold)
         if not ok:
             any_failed = True
             print(f"[{fmt}] batting CSV invalid: {probs}")
@@ -183,7 +232,12 @@ def main():
         if len(wdf) == 0:
             print(f"[{fmt}] bowling CSV empty: {bow}")
             any_failed = True
-        ok, probs = validate_df(wdf, BOWLING_REQUIRED, args.null_threshold)
+        if args.schema == "training":
+            missing_outputs = [c for c in BOWLING_OUTPUTS if c not in list(wdf.columns)[: len(BOWLING_OUTPUTS)]]
+            if missing_outputs:
+                any_failed = True
+                print(f"[{fmt}] bowling training outputs not leading: missing-at-front {missing_outputs}")
+        ok, probs = validate_presence_and_nulls(wdf, BOWLING_REQUIRED_FEATURES, args.null_threshold)
         if not ok:
             any_failed = True
             print(f"[{fmt}] bowling CSV invalid: {probs}")

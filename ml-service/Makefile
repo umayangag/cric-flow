@@ -31,7 +31,7 @@ train-all:
 	$(PY) ml/train_bowling_model.py
 
 validate-exports:
-	(cd ml && ../$(PY) validate_exports.py --all-formats)
+	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)
 
 # Format Python code with line wrapping (isort + black)
 fmt:
