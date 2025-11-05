@@ -7,9 +7,10 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strconv"
 	"time"
+	"strconv"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
@@ -17,8 +18,7 @@ import (
 func main() {
 	var (
 		formatCode = flag.String("format", "ODI", "Match format code: TEST|ODI|T20|T20I")
-		fromStr    = flag.String("from", "", "Start date (YYYY-MM-DD), optional")
-		toStr      = flag.String("to", "", "End date (YYYY-MM-DD), optional")
+		asOfStr    = flag.String("as-of", "", "Cutoff date (YYYY-MM-DD). Snapshots are computed using only matches strictly before this date.")
 		alpha      = flag.Float64("ewm-alpha", 0.3, "Alpha for exponentially weighted mean (0,1]")
 		lastN      = flag.Int("lastN", 10, "Last-N window size for consistency")
 		migrations = flag.String("migrations", "./migrations", "Directory with SQL migrations")
@@ -48,136 +48,89 @@ func main() {
 		log.Fatalf("resolve format '%s': %v", *formatCode, err)
 	}
 
-	var fromPtr, toPtr *time.Time
-	if *fromStr != "" {
-		v, err := time.Parse("2006-01-02", *fromStr)
+	var asOf time.Time
+	if asOfStr == nil || *asOfStr == "" {
+		// Default to today's date in UTC when -as-of is not provided
+		asOf = time.Now().UTC()
+		log.Printf("no -as-of provided; defaulting to today's date (UTC): %s", asOf.Format("2006-01-02"))
+	} else {
+		var err error
+		asOf, err = time.Parse("2006-01-02", *asOfStr)
 		if err != nil {
-			log.Fatalf("parse -from: %v", err)
+			log.Fatalf("parse -as-of: %v", err)
 		}
-		fromPtr = &v
-	}
-	if *toStr != "" {
-		v, err := time.Parse("2006-01-02", *toStr)
-		if err != nil {
-			log.Fatalf("parse -to: %v", err)
-		}
-		toPtr = &v
 	}
 
-	matches, err := db.ListMatchesByFormatDate(ctx, formatID, fromPtr, toPtr)
+	// Determine players who have any history before the cutoff in this format
+	players, err := db.ListPlayersWithHistoryBefore(ctx, formatID, asOf)
 	if err != nil {
-		log.Fatalf("list matches: %v", err)
+		log.Fatalf("list players with history: %v", err)
 	}
-	log.Printf("precompute-features: %d matches to process for format %s", len(matches), *formatCode)
+	log.Printf("precompute-features(as-of): %d players to process for format %s at %s", len(players), *formatCode, asOf.Format("2006-01-02"))
+
+	// Read optional history window from config
+	cfg := config.Load()
+	windowN := 0
+	if cfg != nil && cfg.Features.HistoryWindowMatches > 0 {
+		windowN = cfg.Features.HistoryWindowMatches
+	}
 
 	processed := 0
-	for _, m := range matches {
-		players, err := db.ListPlayersInMatch(ctx, m.MatchID)
+	for _, pid := range players {
+		// Batting history strictly before as-of
+		batHist, err := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, nil)
 		if err != nil {
-			log.Fatalf("list players for match %d: %v", m.MatchID, err)
+			log.Fatalf("bat hist p=%d: %v", pid, err)
 		}
-		for _, pid := range players {
-			// Batting history strictly before match date
-			batHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, nil, nil)
-			if err != nil {
-				log.Fatalf("bat hist p=%d m=%d: %v", pid, m.MatchID, err)
-			}
-			// Bowling history strictly before match date
-			bowlHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, nil, nil)
-			if err != nil {
-				log.Fatalf("bowl hist p=%d m=%d: %v", pid, m.MatchID, err)
-			}
+		// Bowling history strictly before as-of
+		bowlHist, err := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, nil)
+		if err != nil {
+			log.Fatalf("bowl hist p=%d: %v", pid, err)
+		}
 
-			// Convert to features.Innings and sort/clip (safety)
-			batInn := make([]features.Innings, 0, len(batHist))
-			for _, iv := range batHist {
-				batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
-			}
-			bowlInn := make([]features.Innings, 0, len(bowlHist))
-			for _, iv := range bowlHist {
-				bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
-			}
-			batInn = features.SortAndClip(batInn, m.Date)
-			bowlInn = features.SortAndClip(bowlInn, m.Date)
+		// Convert to features.Innings and sort/clip
+		batInn := make([]features.Innings, 0, len(batHist))
+		for _, iv := range batHist {
+			batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
+		}
+		bowlInn := make([]features.Innings, 0, len(bowlHist))
+		for _, iv := range bowlHist {
+			bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+		}
+		batInn = features.SortAndClip(batInn, asOf)
+		bowlInn = features.SortAndClip(bowlInn, asOf)
 
-			batForm, effNbat := features.EWM(batInn, *alpha)
-			bowlForm, effNbowl := features.EWM(bowlInn, *alpha)
-			batCons, nCbat := features.Consistency(batInn, *lastN)
-			bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
-
-			// Persist snapshots (idempotent)
-			if err := db.UpsertPlayerFormAsOf(ctx, pid, m.Date, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
-				log.Fatalf("upsert form asof p=%d m=%d: %v", pid, m.MatchID, err)
+		// Apply optional window from config (last K matches)
+		if windowN > 0 {
+			if len(batInn) > windowN {
+				batInn = batInn[len(batInn)-windowN:]
 			}
-			if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, m.Date, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
-				log.Fatalf("upsert consistency asof p=%d m=%d: %v", pid, m.MatchID, err)
-			}
-
-			// Vs-opposition snapshots (if opposition known)
-			if m.OppositionID != 0 {
-				op := m.OppositionID
-				batOppHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, &op, nil)
-				if err != nil {
-					log.Fatalf("bat vs-opp hist p=%d m=%d: %v", pid, m.MatchID, err)
-				}
-				bowlOppHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, &op, nil)
-				if err != nil {
-					log.Fatalf("bowl vs-opp hist p=%d m=%d: %v", pid, m.MatchID, err)
-				}
-				bo := make([]features.Innings, 0, len(batOppHist))
-				for _, iv := range batOppHist {
-					bo = append(bo, features.Innings{Date: iv.Date, Value: iv.Value})
-				}
-				wo := make([]features.Innings, 0, len(bowlOppHist))
-				for _, iv := range bowlOppHist {
-					wo = append(wo, features.Innings{Date: iv.Date, Value: iv.Value})
-				}
-				bo = features.SortAndClip(bo, m.Date)
-				wo = features.SortAndClip(wo, m.Date)
-				batOpp, _ := features.EWM(bo, *alpha)
-				bowlOpp, _ := features.EWM(wo, *alpha)
-				nOpp := len(bo) + len(wo)
-				if err := db.UpsertPlayerVsOppAsOf(ctx, pid, op, m.Date, formatID, batOpp, bowlOpp, nOpp, specEWM(*alpha)); err != nil {
-					log.Fatalf("upsert vs-opp asof p=%d m=%d: %v", pid, m.MatchID, err)
-				}
-			}
-
-			// At-venue snapshots (if venue known)
-			if m.VenueID != 0 {
-				vn := m.VenueID
-				batVenHist, err := db.ListBattingBefore(ctx, pid, m.Date, formatID, nil, &vn)
-				if err != nil {
-					log.Fatalf("bat at-venue hist p=%d m=%d: %v", pid, m.MatchID, err)
-				}
-				bowlVenHist, err := db.ListBowlingBefore(ctx, pid, m.Date, formatID, nil, &vn)
-				if err != nil {
-					log.Fatalf("bowl at-venue hist p=%d m=%d: %v", pid, m.MatchID, err)
-				}
-				bv := make([]features.Innings, 0, len(batVenHist))
-				for _, iv := range batVenHist {
-					bv = append(bv, features.Innings{Date: iv.Date, Value: iv.Value})
-				}
-				wv := make([]features.Innings, 0, len(bowlVenHist))
-				for _, iv := range bowlVenHist {
-					wv = append(wv, features.Innings{Date: iv.Date, Value: iv.Value})
-				}
-				bv = features.SortAndClip(bv, m.Date)
-				wv = features.SortAndClip(wv, m.Date)
-				batVen, _ := features.EWM(bv, *alpha)
-				bowlVen, _ := features.EWM(wv, *alpha)
-				nVen := len(bv) + len(wv)
-				if err := db.UpsertPlayerAtVenueAsOf(ctx, pid, vn, m.Date, formatID, batVen, bowlVen, nVen, specEWM(*alpha)); err != nil {
-					log.Fatalf("upsert at-venue asof p=%d m=%d: %v", pid, m.MatchID, err)
-				}
+			if len(bowlInn) > windowN {
+				bowlInn = bowlInn[len(bowlInn)-windowN:]
 			}
 		}
+
+		batForm, effNbat := features.EWM(batInn, *alpha)
+		bowlForm, effNbowl := features.EWM(bowlInn, *alpha)
+		batCons, nCbat := features.Consistency(batInn, *lastN)
+		bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
+
+		// Persist snapshots (idempotent)
+		if err := db.UpsertPlayerFormAsOf(ctx, pid, asOf, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
+			log.Fatalf("upsert form asof p=%d: %v", pid, err)
+		}
+		if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, asOf, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
+			log.Fatalf("upsert consistency asof p=%d: %v", pid, err)
+		}
+
 		processed++
-		if processed%50 == 0 {
-			log.Printf("processed %d/%d matches...", processed, len(matches))
+		if processed%1000 == 0 {
+			log.Printf("processed %d/%d players for %s", processed, len(players), *formatCode)
 		}
 	}
+	log.Printf("done: %d player snapshots upserted for %s at %s", processed, *formatCode, asOf.Format("2006-01-02"))
 
-	log.Printf("done. processed %d matches. snapshots written.", processed)
+	return
 }
 
 func specEWM(alpha float64) string {

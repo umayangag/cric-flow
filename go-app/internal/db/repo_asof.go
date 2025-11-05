@@ -16,6 +16,41 @@ type MatchLite struct {
 	VenueID      int64
 }
 
+// ListPlayersWithHistoryBefore returns distinct player IDs who have batting or bowling
+// records in the given format strictly before the cutoff date.
+func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff time.Time) ([]int64, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT player_id
+		FROM (
+		  SELECT b.player_id
+		  FROM batting_data b
+		  JOIN match_details md ON md.match_id = b.match_id
+		  WHERE md.format_id = $1 AND md.date < $2
+		  UNION
+		  SELECT w.player_id
+		  FROM bowling_data w
+		  JOIN match_details md ON md.match_id = w.match_id
+		  WHERE md.format_id = $1 AND md.date < $2
+		) t
+		ORDER BY player_id ASC` , formatID, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ListMatchesByFormatDate returns matches filtered by format and date range inclusive, ordered by date asc, id asc.
 func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time.Time) ([]MatchLite, error) {
 	if Pool == nil {
