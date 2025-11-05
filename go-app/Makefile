@@ -31,9 +31,9 @@ run-api:
 	go run ./cmd/api
 
 # Convenience variables and targets to run CLIs
-MATCH ?= 0
+MATCH ?= 262039498036
 FORMAT ?= T20
-SEASON ?=
+SEASON ?= 2025
 SIZE ?= 11
 MIN_BOWLERS ?= 5
 REQUIRE_KEEPER ?= 0
