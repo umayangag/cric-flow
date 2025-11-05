@@ -7,12 +7,16 @@ from sklearn import preprocessing
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
+# Load config defaults (with env override support)
+import config as svc_config
+
 regr = RandomForestRegressor(max_depth=100, n_estimators=100, max_features="auto", random_state=0)
 mltreg = MultiOutputRegressor(regr)
 predictor = mltreg
 
-dirname = os.path.dirname(__file__)
-dataset_source = os.path.join(dirname, "../../output/go-app/batting_encoded.csv")
+# Resolve dataset and artifacts dirs
+default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
+dataset_source = os.path.join(default_csv_dir, "batting_encoded.csv")
 
 input_data = pd.read_csv(dataset_source)
 training_input_columns = input_batting_columns.copy()
@@ -32,7 +36,7 @@ y = pd.DataFrame(data=output_data_scaled, columns=y.columns)
 predictor.fit(X, y)
 
 # Save the trained model and scalers
-output_dir = os.path.join(dirname, "../../output/ml-service")
+output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
 os.makedirs(output_dir, exist_ok=True)
 joblib.dump(predictor, os.path.join(output_dir, "batting_model.joblib"))
 joblib.dump(input_scaler, os.path.join(output_dir, "batting_scaler.joblib"))

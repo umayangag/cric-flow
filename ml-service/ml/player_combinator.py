@@ -3,9 +3,13 @@ import os
 
 
 def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), "../config.json")
-    with open(config_path, "r") as f:
-        return json.load(f)
+    # Resolve config path: prefer ML_SERVICE_CONFIG env var; else try ./config.json
+    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 config = load_config()
