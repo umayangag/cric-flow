@@ -87,18 +87,18 @@ Prerequisites:
 Using the Makefile convenience target (recommended):
 ```
 # DB-backed selection (build features from DB)
-make team-select MATCH=1193505 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
+make team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
 
 # CSV-backed selection (use pre-generated ml-service/ml/pool.csv)
-make team-select MATCH=1193505 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+make team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
 ```
 Direct invocation of the CLI:
 ```
 # DB-backed
-go run ./cmd/team-select -match 1193505 -format T20 -season 2025 -size 11 -min-bowlers 5 -require-keeper --from-db=true
+go run ./cmd/team-select -match 262039498036 -format T20 -season 2025 -size 11 -min-bowlers 5 -require-keeper --from-db=true
 
 # CSV-backed
-go run ./cmd/team-select -match 1193505 -format T20 -season 2025 -pool ../ml-service/ml/pool.csv --from-db=false
+go run ./cmd/team-select -match 262039498036 -format T20 -season 2025 -pool ../ml-service/ml/pool.csv --from-db=false
 ```
 Flags:
 - `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
