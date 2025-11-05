@@ -530,7 +530,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
- header := []string{
+	header := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
@@ -706,7 +706,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
- header := []string{
+	header := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",

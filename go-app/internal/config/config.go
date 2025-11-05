@@ -21,12 +21,12 @@ type Config struct {
 		InternationalTeams []string `json:"international_teams"`
 	} `json:"formats"`
 	Features struct {
-		PrecomputeTimeoutMs   int     `json:"precompute_timeout_ms"`
-		MinBattingInnings     int     `json:"min_batting_innings"`
-		MinBowlingInnings     int     `json:"min_bowling_innings"`
-		FormShrinkageAlpha    float32 `json:"form_shrinkage_alpha"`
-		ConsistencyPerFormat  bool    `json:"consistency_per_format"`
-		HistoryWindowMatches  int     `json:"history_window_matches"`
+		PrecomputeTimeoutMs  int     `json:"precompute_timeout_ms"`
+		MinBattingInnings    int     `json:"min_batting_innings"`
+		MinBowlingInnings    int     `json:"min_bowling_innings"`
+		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
+		ConsistencyPerFormat bool    `json:"consistency_per_format"`
+		HistoryWindowMatches int     `json:"history_window_matches"`
 	} `json:"features"`
 	Export struct {
 		SplitByFormat  bool   `json:"split_by_format"`

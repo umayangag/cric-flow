@@ -7,8 +7,8 @@ import (
 	"flag"
 	"log"
 	"os"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -18,8 +18,16 @@ import (
 func main() {
 	var (
 		formatCode = flag.String("format", "ODI", "Match format code: TEST|ODI|T20|T20I")
-		asOfStr    = flag.String("as-of", "", "Cutoff date (YYYY-MM-DD). Snapshots are computed using only matches strictly before this date.")
-		replay     = flag.Bool("replay", false, "Replay mode: iterate matches chronologically and write snapshots as of each match date (ignores -as-of)")
+		asOfStr    = flag.String(
+			"as-of",
+			"",
+			"Cutoff date (YYYY-MM-DD). Snapshots are computed using only matches strictly before this date.",
+		)
+		replay = flag.Bool(
+			"replay",
+			false,
+			"Replay mode: iterate matches chronologically and write snapshots as of each match date (ignores -as-of)",
+		)
 		alpha      = flag.Float64("ewm-alpha", 0.3, "Alpha for exponentially weighted mean (0,1]")
 		lastN      = flag.Int("lastN", 10, "Last-N window size for consistency")
 		migrations = flag.String("migrations", "./migrations", "Directory with SQL migrations")
@@ -73,19 +81,31 @@ func main() {
 			for _, pid := range players {
 				// Base histories strictly before match date
 				batHist, err := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, nil)
-				if err != nil { log.Fatalf("bat hist p=%d: %v", pid, err) }
+				if err != nil {
+					log.Fatalf("bat hist p=%d: %v", pid, err)
+				}
 				bowlHist, err := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, nil)
-				if err != nil { log.Fatalf("bowl hist p=%d: %v", pid, err) }
+				if err != nil {
+					log.Fatalf("bowl hist p=%d: %v", pid, err)
+				}
 
 				batInn := make([]features.Innings, 0, len(batHist))
-				for _, iv := range batHist { batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+				for _, iv := range batHist {
+					batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
 				bowlInn := make([]features.Innings, 0, len(bowlHist))
-				for _, iv := range bowlHist { bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+				for _, iv := range bowlHist {
+					bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+				}
 				batInn = features.SortAndClip(batInn, asOf)
 				bowlInn = features.SortAndClip(bowlInn, asOf)
 				if windowN > 0 {
-					if len(batInn) > windowN { batInn = batInn[len(batInn)-windowN:] }
-					if len(bowlInn) > windowN { bowlInn = bowlInn[len(bowlInn)-windowN:] }
+					if len(batInn) > windowN {
+						batInn = batInn[len(batInn)-windowN:]
+					}
+					if len(bowlInn) > windowN {
+						bowlInn = bowlInn[len(bowlInn)-windowN:]
+					}
 				}
 
 				batForm, effNbat := features.EWM(batInn, *alpha)
@@ -106,14 +126,22 @@ func main() {
 					oppBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, &oppID, nil)
 					oppBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, &oppID, nil)
 					oppBatInn := make([]features.Innings, 0, len(oppBat))
-					for _, iv := range oppBat { oppBatInn = append(oppBatInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+					for _, iv := range oppBat {
+						oppBatInn = append(oppBatInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					}
 					oppBowlInn := make([]features.Innings, 0, len(oppBowl))
-					for _, iv := range oppBowl { oppBowlInn = append(oppBowlInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+					for _, iv := range oppBowl {
+						oppBowlInn = append(oppBowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					}
 					oppBatInn = features.SortAndClip(oppBatInn, asOf)
 					oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
 					if windowN > 0 {
-						if len(oppBatInn) > windowN { oppBatInn = oppBatInn[len(oppBatInn)-windowN:] }
-						if len(oppBowlInn) > windowN { oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:] }
+						if len(oppBatInn) > windowN {
+							oppBatInn = oppBatInn[len(oppBatInn)-windowN:]
+						}
+						if len(oppBowlInn) > windowN {
+							oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
+						}
 					}
 					oppBatForm, nOppBat := features.EWM(oppBatInn, *alpha)
 					oppBowlForm, nOppBowl := features.EWM(oppBowlInn, *alpha)
@@ -126,14 +154,22 @@ func main() {
 					venBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, &venueID)
 					venBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, &venueID)
 					venBatInn := make([]features.Innings, 0, len(venBat))
-					for _, iv := range venBat { venBatInn = append(venBatInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+					for _, iv := range venBat {
+						venBatInn = append(venBatInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					}
 					venBowlInn := make([]features.Innings, 0, len(venBowl))
-					for _, iv := range venBowl { venBowlInn = append(venBowlInn, features.Innings{Date: iv.Date, Value: iv.Value}) }
+					for _, iv := range venBowl {
+						venBowlInn = append(venBowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					}
 					venBatInn = features.SortAndClip(venBatInn, asOf)
 					venBowlInn = features.SortAndClip(venBowlInn, asOf)
 					if windowN > 0 {
-						if len(venBatInn) > windowN { venBatInn = venBatInn[len(venBatInn)-windowN:] }
-						if len(venBowlInn) > windowN { venBowlInn = venBowlInn[len(venBowlInn)-windowN:] }
+						if len(venBatInn) > windowN {
+							venBatInn = venBatInn[len(venBatInn)-windowN:]
+						}
+						if len(venBowlInn) > windowN {
+							venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
+						}
 					}
 					venBatForm, nVenBat := features.EWM(venBatInn, *alpha)
 					venBowlForm, nVenBowl := features.EWM(venBowlInn, *alpha)
@@ -170,7 +206,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("list players with history: %v", err)
 	}
-	log.Printf("precompute-features(as-of): %d players to process for format %s at %s", len(players), *formatCode, asOf.Format("2006-01-02"))
+	log.Printf(
+		"precompute-features(as-of): %d players to process for format %s at %s",
+		len(players),
+		*formatCode,
+		asOf.Format("2006-01-02"),
+	)
 
 	processed := 0
 	for _, pid := range players {
@@ -226,8 +267,6 @@ func main() {
 		}
 	}
 	log.Printf("done: %d player snapshots upserted for %s at %s", processed, *formatCode, asOf.Format("2006-01-02"))
-
-	return
 }
 
 func specEWM(alpha float64) string {

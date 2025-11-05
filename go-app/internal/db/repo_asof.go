@@ -35,7 +35,7 @@ func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff ti
 		  JOIN match_details md ON md.match_id = w.match_id
 		  WHERE md.format_id = $1 AND md.date < $2
 		) t
-		ORDER BY player_id ASC` , formatID, cutoff)
+		ORDER BY player_id ASC`, formatID, cutoff)
 	if err != nil {
 		return nil, err
 	}
