@@ -95,10 +95,10 @@ make team-select MATCH=1193505 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-servi
 Direct invocation of the CLI:
 ```
 # DB-backed
-go run ./cmd/team-select -match 1193505 -format T20 -season 2019 -size 11 -min-bowlers 5 -require-keeper --from-db=true
+go run ./cmd/team-select -match 1193505 -format T20 -season 2025 -size 11 -min-bowlers 5 -require-keeper --from-db=true
 
 # CSV-backed
-go run ./cmd/team-select -match 1193505 -format T20 -season 2019 -pool ../ml-service/ml/pool.csv --from-db=false
+go run ./cmd/team-select -match 1193505 -format T20 -season 2025 -pool ../ml-service/ml/pool.csv --from-db=false
 ```
 Flags:
 - `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
@@ -110,12 +110,12 @@ Prerequisites:
 
 Using the Makefile convenience target:
 ```
-make team-predictor MATCH=1193505 SEASON=2019 FORMAT=T20 BAT=6 BOWL=5
+make team-predictor MATCH=1193505 SEASON=2025 FORMAT=T20 BAT=6 BOWL=5
 ```
 Direct invocation of the CLI:
 ```
 GO_APP_CONFIG=./config.json \
-  go run ./cmd/team-predictor -match 1193505 -format T20 -season 2019 -bat 6 -bowl 5
+  go run ./cmd/team-predictor -match 1193505 -format T20 -season 2025 -bat 6 -bowl 5
 ```
 Notes:
 - Default counts for batters/bowlers fall back to `go-app/config.json` if not provided.
