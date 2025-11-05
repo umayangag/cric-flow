@@ -48,7 +48,7 @@ def get_weather_data(match_id, session):
     db_cursor.execute(
         (
             f"SELECT temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data "
-            f'where match_id={match_id} and session="{session}"'
+            f"where match_id={match_id} and session='{session}'"
         )
     )
     temp, wind, rain, humidity, cloud, pressure, viscosity = db_cursor.fetchall()[0]

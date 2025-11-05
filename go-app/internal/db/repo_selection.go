@@ -24,7 +24,21 @@ func GetMatchContext(ctx context.Context, matchID int64) (*MatchContext, error) 
 	}
 	mc := &MatchContext{}
 	err := Pool.QueryRow(ctx, `
-		SELECT batting_inning, session, toss, venue_id, opposition_id, season_id, match_number
+		SELECT 
+			inning,
+			CASE 
+				WHEN batting_session IS NULL THEN 0
+				WHEN lower(batting_session) LIKE '%morning%' THEN 0
+				WHEN lower(batting_session) LIKE '%afternoon%' THEN 1
+				WHEN lower(batting_session) LIKE '%evening%' THEN 2
+				ELSE 0
+			END AS session,
+			CASE 
+				WHEN toss IS NULL THEN 0
+				WHEN lower(toss) LIKE '%bat%' THEN 1
+				ELSE 0
+			END AS toss,
+			venue_id, opposition_id, season_id, match_number
 		FROM match_details WHERE match_id = $1
 	`, matchID).Scan(&mc.Inning, &mc.Session, &mc.Toss, &mc.VenueID, &mc.OppositionID, &mc.SeasonID, &mc.MatchNumber)
 	if err != nil {
