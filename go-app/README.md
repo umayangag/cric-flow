@@ -87,10 +87,10 @@ Prerequisites:
 Using the Makefile convenience target (recommended):
 ```
 # DB-backed selection (build features from DB)
-make team-select MATCH=1193505 SEASON=2019 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
+make team-select MATCH=1193505 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
 
 # CSV-backed selection (use pre-generated ml-service/ml/pool.csv)
-make team-select MATCH=1193505 SEASON=2019 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+make team-select MATCH=1193505 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
 ```
 Direct invocation of the CLI:
 ```
