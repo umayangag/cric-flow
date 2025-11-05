@@ -72,3 +72,26 @@ docker-run:
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
 	golangci-lint run -c ../.golangci.yml
+
+
+# Import retired players from CSV
+# Usage: make import-retired FILE=./data/retired.csv [APPLY=1] [OTHERS_ZERO=1]
+import-retired:
+	@[ -n "$(FILE)" ] || (echo "Usage: make import-retired FILE=path/to/retired.csv [APPLY=1] [OTHERS_ZERO=1]" && exit 1)
+	@echo "Running import-retired with FILE=$(FILE), APPLY=$(APPLY), OTHERS_ZERO=$(OTHERS_ZERO)"
+	@APPLY_FLAG=""; \
+	if [ "$(APPLY)" = "1" ]; then APPLY_FLAG="--apply"; fi; \
+	OZ_FLAG=""; \
+	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
+	go run ./cmd/import-retired --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG
+
+# Import wicket keepers from CSV
+# Usage: make import-keepers FILE=./data/keepers.csv [APPLY=1] [OTHERS_ZERO=1]
+import-keepers:
+	@[ -n "$(FILE)" ] || (echo "Usage: make import-keepers FILE=path/to/keepers.csv [APPLY=1] [OTHERS_ZERO=1]" && exit 1)
+	@echo "Running import-keepers with FILE=$(FILE), APPLY=$(APPLY), OTHERS_ZERO=$(OTHERS_ZERO)"
+	@APPLY_FLAG=""; \
+	if [ "$(APPLY)" = "1" ]; then APPLY_FLAG="--apply"; fi; \
+	OZ_FLAG=""; \
+	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
+	go run ./cmd/import-keepers --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG

@@ -28,9 +28,6 @@ Base: `http://localhost:8000`
 ### GET /health
 - 200 OK: `{ "status": "ok" }`
 
-### POST /precompute
-- 202 Accepted: `{ "status": "started" }`
-
 ### POST /predict/batting
 Request body (`BattingFeatures`):
 ```json
@@ -110,8 +107,51 @@ Response (`BowlingPrediction`):
 }
 ```
 
-### POST /predict/win
+### POST /predict-win
 Request body (array of `PlayerPrediction` minus `winning_probability`):
+```json
+[
+  {
+    "player_name": "Player A",
+    "runs_scored": 35.7,
+    "balls_faced": 25.2,
+    "fours_scored": 4.1,
+    "sixes_scored": 1.2,
+    "batting_position": 3.0,
+    "strike_rate": 142.0,
+    "runs_conceded": 0,
+    "deliveries": 0,
+    "wickets_taken": 0,
+    "econ": 0
+  }
+]
+```
+Response (array):
+```json
+[
+  {
+    "player_name": "Player A",
+    "runs_scored": 35.7,
+    "balls_faced": 25.2,
+    "fours_scored": 4.1,
+    "sixes_scored": 1.2,
+    "batting_position": 3.0,
+    "strike_rate": 142.0,
+    "runs_conceded": 0,
+    "deliveries": 0,
+    "wickets_taken": 0,
+    "econ": 0,
+    "winning_probability": 0.62
+  }
+]
+```
+Notes:
+- This route remains unchanged for backward compatibility and returns an array only. The team-level average can be computed client-side as the mean of `winning_probability`.
+
+### POST /predict/win (alias; preferred for new clients)
+Request body: same as `/predict-win` (array of `PlayerPrediction` minus `winning_probability`).
+
+Response (wrapper object):
 ```json
 {
   "players": [
@@ -126,21 +166,15 @@ Request body (array of `PlayerPrediction` minus `winning_probability`):
       "runs_conceded": 0,
       "deliveries": 0,
       "wickets_taken": 0,
-      "econ": 0
+      "econ": 0,
+      "winning_probability": 0.62
     }
   ],
-  "format": "T20"
+  "team_win_probability": 0.62
 }
 ```
-Response:
-```json
-{
-  "players": [
-    { "player_name": "Player A", "winning_probability": 0.62 }
-  ],
-  "team_win_probability": 0.58
-}
-```
+- `team_win_probability` equals the mean of `players[*].winning_probability`.
+- Both routes use the same model and features; `/predict/win` is easier for UIs/consumers that need the team-level number.
 
 ## Go API (mux)
 
@@ -155,7 +189,27 @@ Base: `http://localhost:8080`
 
 ### POST /precompute
 - 202 Accepted: `{ "status": "started" }`
-- Triggers ML service precompute async
+- Triggers internal precompute in go-app asynchronously (no ML dependency)
+- Optional JSON body to filter scope:
+```json
+{ "season": "2019", "formats": ["ODI", "T20I"] }
+```
+
+### GET /precompute/status
+- 200 OK: returns the in-memory status of the last run (resets on process restart)
+```json
+{
+  "running": true,
+  "started_at": "2025-11-04T16:40:00Z",
+  "finished_at": "",
+  "season": "2019",
+  "formats": ["ODI","T20I"],
+  "phase": "venue",
+  "last_error": ""
+}
+```
+- Notes:
+  - `phase` is one of: `starting`, `form`, `venue`, `opposition`, `consistency`, `done`.
 
 ### POST /import/cricsheet
 Body:
@@ -165,12 +219,15 @@ Body:
 - 202 Accepted: `{ "status": "started" }`
 
 ### GET /players/{id}?season=2019&format=T20
-Response (excerpt; see `internal/contracts` for full shape):
+Response (excerpt based on current handler):
 ```json
 {
-  "player": { "id": 123, "name": "..." },
-  "batting": { /* aggregates */ },
-  "bowling": { /* aggregates */ }
+  "id": 123,
+  "player_name": "Player A",
+  "is_wicket_keeper": 0,
+  "is_retired": 0,
+  "batting_consistency": 12.34,
+  "bowling_consistency": 8.9
 }
 ```
 

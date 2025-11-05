@@ -35,21 +35,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ml-service/requirements.txt
+          if [ -f ml-service/requirements.txt ]; then pip install -r ml-service/requirements.txt; else pip install -e ml-service; fi
           pip install black isort flake8 ruff
 
       - name: Lint/format check (isort, black, flake8, ruff)
         working-directory: ml-service
         run: |
-          make fmt-check
-          make lint-check
+          isort --check-only --diff --profile black --line-length 120 .
+          black --check --diff --line-length 120 .
+          flake8 --max-line-length=120 --extend-ignore=E203,W503 --exclude=.venv
+          ruff check --select F401 .
 
       - name: Sanity compile
         working-directory: ml-service
         run: |
           python -m py_compile app/main.py
-          python -m py_compile ml/train_batting.py
-          python -m py_compile ml/train_bowling.py
+          python -m py_compile ml/train_batting_model.py
+          python -m py_compile ml/train_bowling_model.py
 
       - name: Validate exports (if present)
         working-directory: ml-service
@@ -58,4 +60,13 @@ jobs:
             make validate-exports; \
           else \
             echo "No exported CSVs found; skipping export validation."; \
+          fi
+
+      - name: Validate inference exports (if present)
+        working-directory: ml-service
+        run: |
+          if ls ../output/go-app/batting_infer_*.csv >/dev/null 2>&1; then \
+            make validate-exports-infer; \
+          else \
+            echo "No inference CSVs found; skipping inference export validation."; \
           fi

@@ -4,7 +4,7 @@ This repository contains the Go data pipeline/services and the Python ML inferen
 
 Directories:
 - go-app/ — Go services (API, Cricsheet importer, dataset export, tools, migrations, team predictor CLI)
-- ml-service/ — Python FastAPI service for predictions, feature precomputation, and training scripts
+- ml-service/ — Python FastAPI service for predictions and training scripts (precomputation now lives in go-app)
 - src/ — Original prototype (reference only)
 
 ## Quick start (happy-path)
@@ -56,9 +56,13 @@ make cricsheet-import
 ```
 
 ### 4) Precompute player metrics (form/venue/opposition/consistency)
-This triggers the ML service to calculate and store features in the database.
+This triggers the Go API to compute and store features in Postgres (no ML dependency).
 ```
 make precompute
+# or with filters
+curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json' -d '{"season":"2019","formats":["ODI","T20I"]}'
+# check status (in-memory, resets on restart)
+curl -s http://localhost:8080/precompute/status | jq
 ```
 
 ### 5) Export model datasets
@@ -90,12 +94,22 @@ curl -s http://localhost:8080/health
 curl -s http://localhost:8080/readiness
 ```
 
-### 9) Predict team (happy path CLI)
-Requires a `match_id` that exists in the DB from the import step. This will first generate `pool.csv` via the ML service and then run the Go team predictor.
+### 9) Predict team (DB-backed, end-to-end)
+Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
 ```
+cd go-app
+GO_APP_CONFIG=./config.json \
+POSTGRES_HOST=localhost POSTGRES_DB=cricket_data POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres \
+go run ./cmd/team-select -match <match_id> -format T20 -season 2019 -size 11 -min-bowlers 5 --require-keeper --from-db=true
+```
+Output shows the ranked XI and the team average winning probability.
+
+Alternative (CSV pool path, prototype-style):
+```
+# generate pool.csv with the Python helper and then call the win model via service
 make team-predictor MATCH=<match_id>
 ```
-- The number of batters and bowlers, and other team selection parameters, are now configured in `go-app/config.json` (under the `team` and `predictor` sections) or can be overridden via CLI flags to `go-app/cmd/team-predictor`.
+- Team selection parameters can be configured in `go-app/config.json` (sections `team`, `predictor`, and `selection`) or overridden via CLI flags to `go-app/cmd/team-select`. 
 
 ## System architecture
 For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:

@@ -6,3 +6,5 @@ src/team_selection/cache
 ml-service/.venv
 data
 output
+tests
+go-app/api

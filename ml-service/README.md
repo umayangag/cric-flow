@@ -1,10 +1,9 @@
 # ML Service (Python)
 
-Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. It now also handles feature precomputation. The original `src/` prototype remains for reference.
+Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. Precomputation of features is now owned by the Go app; this service no longer exposes a /precompute endpoint. The original `src/` prototype remains for reference.
 
 Components:
-- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and a `/precompute` endpoint for feature calculation.
-- `ml/calculate_features.py`: Script to calculate and store player features (form, consistency, venue, opposition) in the database.
+- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and team win probability.
 - `ml/export_pool.py`: Script to generate `pool.csv` for team prediction.
 - `ml/train_batting_model.py`: Script to train the batting prediction model.
 - `ml/train_bowling_model.py`: Script to train the bowling prediction model.
@@ -45,10 +44,6 @@ See `../docs/CONFIG.md` for full details and examples.
 ```
 make run
 ```
-- Precompute features (calls the `/precompute` endpoint of the ML service):
-```
-make precompute
-```
 - Train artifacts from exported CSVs (uses defaults above):
 ```
 make train-all
@@ -61,6 +56,14 @@ python -m ml.train_bowling_model
 make docker-build
 make docker-run
 ```
+
+## Endpoints
+- `GET /health` → service status and whether artifacts are loaded
+- `POST /predict/batting` → array of `BattingFeatures` rows → array of `BattingPrediction`
+- `POST /predict/bowling` → array of `BowlingFeatures` rows → array of `BowlingPrediction`
+- `POST /predict-win` → array of `PlayerPrediction` → array of `PlayerPrediction` (enriched with `winning_probability`)
+  - Note: team-level win probability is the mean of `winning_probability` on the client side.
+- `POST /admin/reload` → reload artifacts (enable with `ENABLE_HOT_RELOAD=1`)
 
 ## Model loading
 At startup the service looks for artifacts in this order:

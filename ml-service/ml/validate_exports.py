@@ -64,6 +64,44 @@ BATTING_OUTPUTS = ["runs", "balls", "fours", "sixes", "batting_position"]
 # Bowling often has econ computed later; only enforce the core three at the front
 BOWLING_OUTPUTS = ["runs", "balls", "wickets"]
 
+# Inference required features (strict header names)
+BATTING_INFER_HEADERS = [
+    "batting_consistency",
+    "batting_form",
+    "batting_temp",
+    "batting_wind",
+    "batting_rain",
+    "batting_humidity",
+    "batting_cloud",
+    "batting_pressure",
+    "batting_viscosity",
+    "batting_inning",
+    "batting_session",
+    "toss",
+    "venue",
+    "opposition",
+    "season",
+    "player_name",
+]
+BOWLING_INFER_HEADERS = [
+    "bowling_consistency",
+    "bowling_form",
+    "bowling_temp",
+    "bowling_wind",
+    "bowling_rain",
+    "bowling_humidity",
+    "bowling_cloud",
+    "bowling_pressure",
+    "bowling_viscosity",
+    "batting_inning",
+    "bowling_session",
+    "toss",
+    "bowling_venue",
+    "bowling_opposition",
+    "season",
+    "player_name",
+]
+
 
 def _config_formats() -> List[str]:
     cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
@@ -82,6 +120,23 @@ def _config_formats() -> List[str]:
 
 def load_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
+
+
+def read_header(path: str) -> list[str]:
+    try:
+        # use pandas to read only header
+        df = pd.read_csv(path, nrows=0)
+        return list(df.columns)
+    except Exception:
+        # fallback: simple csv read
+        import csv  # local import
+
+        with open(path, "r", newline="") as f:
+            r = csv.reader(f)
+            try:
+                return next(r)
+            except StopIteration:
+                return []
 
 
 def validate_presence_and_nulls(
@@ -152,8 +207,12 @@ def main():
     parser.add_argument("--format", default="", help="Single format code")
     parser.add_argument("--formats", default="", help="Comma-separated formats list")
     parser.add_argument("--all-formats", action="store_true", help="Validate TEST,ODI,T20,T20I (or from config)")
-    parser.add_argument("--schema", default="training", choices=["training", "inference"], help="Schema mode for header checks")
-    parser.add_argument("--use-golden", action="store_true", help="Use golden header validator for strict header checks")
+    parser.add_argument(
+        "--schema", default="training", choices=["training", "inference"], help="Schema mode for header checks"
+    )
+    parser.add_argument(
+        "--use-golden", action="store_true", help="Use golden header validator for strict header checks"
+    )
     parser.add_argument("--null-threshold", type=float, default=0.2, help="Max allowed NaN fraction per column")
     args = parser.parse_args()
 
@@ -202,6 +261,44 @@ def main():
 
     any_failed = False
     for fmt in targets:
+        if args.schema == "inference":
+            bat = os.path.join(exports_dir, f"batting_infer_{fmt}.csv")
+            bow = os.path.join(exports_dir, f"bowling_infer_{fmt}.csv")
+            if not os.path.exists(bat):
+                print(f"[{fmt}] missing inference file: {bat}")
+                any_failed = True
+                continue
+            if not os.path.exists(bow):
+                print(f"[{fmt}] missing inference file: {bow}")
+                any_failed = True
+                continue
+            # Strict header equality for inference
+            b_hdr = read_header(bat)
+            if b_hdr != BATTING_INFER_HEADERS:
+                any_failed = True
+                print(
+                    f"[{fmt}] batting_infer header mismatch.\n  expected: {BATTING_INFER_HEADERS}\n  actual:   {b_hdr}"
+                )
+            w_hdr = read_header(bow)
+            if w_hdr != BOWLING_INFER_HEADERS:
+                any_failed = True
+                print(
+                    f"[{fmt}] bowling_infer header mismatch.\n  expected: {BOWLING_INFER_HEADERS}\n  actual:   {w_hdr}"
+                )
+            # Basic null checks
+            bdf = load_csv(bat)
+            ok, probs = validate_presence_and_nulls(bdf, BATTING_INFER_HEADERS, args.null_threshold)
+            if not ok:
+                any_failed = True
+                print(f"[{fmt}] batting_infer CSV invalid: {probs}")
+            wdf = load_csv(bow)
+            ok, probs = validate_presence_and_nulls(wdf, BOWLING_INFER_HEADERS, args.null_threshold)
+            if not ok:
+                any_failed = True
+                print(f"[{fmt}] bowling_infer CSV invalid: {probs}")
+            continue
+
+        # training schema (default)
         bat = os.path.join(exports_dir, f"batting_encoded_{fmt}.csv")
         bow = os.path.join(exports_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(bat):
@@ -218,11 +315,10 @@ def main():
             print(f"[{fmt}] batting CSV empty: {bat}")
             any_failed = True
         # Training schema must have outputs first
-        if args.schema == "training":
-            missing_outputs = [c for c in BATTING_OUTPUTS if c not in list(bdf.columns)[: len(BATTING_OUTPUTS)]]
-            if missing_outputs:
-                any_failed = True
-                print(f"[{fmt}] batting training outputs not leading: missing-at-front {missing_outputs}")
+        missing_outputs = [c for c in BATTING_OUTPUTS if c not in list(bdf.columns)[: len(BATTING_OUTPUTS)]]
+        if missing_outputs:
+            any_failed = True
+            print(f"[{fmt}] batting training outputs not leading: missing-at-front {missing_outputs}")
         ok, probs = validate_presence_and_nulls(bdf, BATTING_REQUIRED_FEATURES, args.null_threshold)
         if not ok:
             any_failed = True
@@ -232,11 +328,10 @@ def main():
         if len(wdf) == 0:
             print(f"[{fmt}] bowling CSV empty: {bow}")
             any_failed = True
-        if args.schema == "training":
-            missing_outputs = [c for c in BOWLING_OUTPUTS if c not in list(wdf.columns)[: len(BOWLING_OUTPUTS)]]
-            if missing_outputs:
-                any_failed = True
-                print(f"[{fmt}] bowling training outputs not leading: missing-at-front {missing_outputs}")
+        missing_outputs = [c for c in BOWLING_OUTPUTS if c not in list(wdf.columns)[: len(BOWLING_OUTPUTS)]]
+        if missing_outputs:
+            any_failed = True
+            print(f"[{fmt}] bowling training outputs not leading: missing-at-front {missing_outputs}")
         ok, probs = validate_presence_and_nulls(wdf, BOWLING_REQUIRED_FEATURES, args.null_threshold)
         if not ok:
             any_failed = True
@@ -244,7 +339,12 @@ def main():
 
     if any_failed:
         raise SystemExit(2)
-    print("per-format exports validated OK")
+    msg = (
+        "per-format inference exports validated OK"
+        if args.schema == "inference"
+        else "per-format training exports validated OK"
+    )
+    print(msg)
 
 
 if __name__ == "__main__":

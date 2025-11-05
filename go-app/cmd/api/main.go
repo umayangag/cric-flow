@@ -16,6 +16,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
 )
 
 func main() {
@@ -55,17 +56,29 @@ func main() {
 	}).Methods(http.MethodGet)
 
 	// POST /precompute
-	r.HandleFunc("/precompute", func(w http.ResponseWriter, _ *http.Request) {
-		go func() {
+	// Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}
+	r.HandleFunc("/precompute", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Season  string   `json:"season"`
+			Formats []string `json:"formats"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		go func(season string, formats []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			mlClient := mlclient.New()
-			if err := mlClient.Precompute(ctx); err != nil {
+			if err := precompute.Run(ctx, season, formats); err != nil {
 				log.Printf("precompute failed: %v", err)
+			} else {
+				log.Printf("precompute completed: season=%s formats=%v", season, formats)
 			}
-		}()
+		}(body.Season, body.Formats)
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 	}).Methods(http.MethodPost)
+
+	// GET /precompute/status — returns in-memory status of the last run (resets on restart)
+	r.HandleFunc("/precompute/status", func(w http.ResponseWriter, _ *http.Request) {
+		respondJSON(w, http.StatusOK, precompute.GetStatus())
+	}).Methods(http.MethodGet)
 
 	// Cricinfo scraping has been removed.
 
