@@ -1,4 +1,5 @@
 import os
+import sys
 
 import joblib
 import pandas as pd
@@ -10,29 +11,76 @@ from sklearn.multioutput import MultiOutputRegressor
 # Load config defaults (with env override support)
 import config as svc_config
 
-regr = RandomForestRegressor(max_depth=100, n_estimators=100, max_features="auto", random_state=0)
-mltreg = MultiOutputRegressor(regr)
-predictor = mltreg
+# Add parent directory to path to allow importing config
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # Resolve dataset and artifacts dirs
-default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
-dataset_source = os.path.join(default_csv_dir, "batting_encoded.csv")
+export_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
+# Prefer unified merged dataset if present; fall back to legacy
+unified = os.path.join(export_dir, "batting_encoded_all.csv")
+legacy = os.path.join(export_dir, "batting_encoded.csv")
+dataset_source = unified if os.path.exists(unified) else legacy
 
 input_data = pd.read_csv(dataset_source)
-training_input_columns = input_batting_columns.copy()
-training_input_columns.remove("player_name")
 
-X = input_data[training_input_columns]
-y = input_data[output_batting_columns]  # Labels
+# Decide columns dynamically based on dataset flavor
+using_unified = os.path.basename(dataset_source) == "batting_encoded_all.csv"
 
+if using_unified:
+    # Labels available in unified export
+    y_cols = [c for c in ["runs", "balls", "fours", "sixes", "batting_position"] if c in input_data.columns]
+    # Base context inputs
+    base_cols = [
+        "temp",
+        "wind",
+        "rain",
+        "humidity",
+        "cloud",
+        "pressure",
+        "viscosity",
+        "inning",
+        "batting_session",
+        "toss",
+        "season_id",
+    ]
+    # Per-format as-of features for batting (no manual weights)
+    asof_cols = [c for c in input_data.columns if c.startswith("bat_") and c.endswith("_asof")]
+    # One-hot encode format_code inline by expanding columns (keep training script simple)
+    fmt_cols = []
+    if "format_code" in input_data.columns:
+        dummies = pd.get_dummies(input_data["format_code"], prefix="fmt", dummy_na=False)
+        fmt_cols = list(dummies.columns)
+        input_data = pd.concat([input_data.drop(columns=["format_code"]), dummies], axis=1)
+    x_cols = [c for c in (base_cols + asof_cols + fmt_cols) if c in input_data.columns]
+else:
+    # Legacy dataset path retains old contracts
+    train_inp = input_batting_columns.copy()
+    if "player_name" in train_inp:
+        train_inp.remove("player_name")
+    x_cols = train_inp
+    y_cols = output_batting_columns
+
+# Assemble matrices
+X = input_data[x_cols].copy()
+y = input_data[y_cols].copy()
+
+# Impute/normalize: fill missing numeric values (expected for as-of columns when no history)
+X = X.fillna(0.0)
+
+# Scale inputs/labels (to keep API parity)
 input_scaler = preprocessing.StandardScaler().fit(X)
-input_data_scaled = input_scaler.transform(X)
-X = pd.DataFrame(data=input_data_scaled, columns=X.columns)
+X_scaled = input_scaler.transform(X)
+X = pd.DataFrame(data=X_scaled, columns=X.columns)
 
 output_scaler = preprocessing.StandardScaler().fit(y)
-output_data_scaled = output_scaler.transform(y)
-y = pd.DataFrame(data=output_data_scaled, columns=y.columns)
+y_scaled = output_scaler.transform(y)
+y = pd.DataFrame(data=y_scaled, columns=y.columns)
 
+# Model (trees cope with expanded inputs well)
+regr = RandomForestRegressor(max_depth=100, n_estimators=200, random_state=0)
+predictor = MultiOutputRegressor(regr)
 predictor.fit(X, y)
 
 # Save the trained model and scalers
