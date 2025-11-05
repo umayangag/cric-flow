@@ -404,40 +404,24 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	  mf.code AS format_code,
 	  -- TEST as-of
 	  tf.bat_form   AS bat_form_TEST_asof,
-	  tf.n_samples_bat AS n_samples_bat_form_TEST,
 	  tc.bat_consistency AS bat_consistency_TEST_asof,
-	  tc.n_samples_bat   AS n_samples_bat_cons_TEST,
 	  tvo.bat_value AS bat_vs_opp_TEST_asof,
-	  tvo.n_samples AS n_samples_bat_vs_opp_TEST,
 	  tvv.bat_value AS bat_at_venue_TEST_asof,
-	  tvv.n_samples AS n_samples_bat_at_venue_TEST,
 	  -- ODI as-of
 	  of.bat_form   AS bat_form_ODI_asof,
-	  of.n_samples_bat AS n_samples_bat_form_ODI,
 	  oc.bat_consistency AS bat_consistency_ODI_asof,
-	  oc.n_samples_bat   AS n_samples_bat_cons_ODI,
 	  ovo.bat_value AS bat_vs_opp_ODI_asof,
-	  ovo.n_samples AS n_samples_bat_vs_opp_ODI,
 	  ovv.bat_value AS bat_at_venue_ODI_asof,
-	  ovv.n_samples AS n_samples_bat_at_venue_ODI,
 	  -- T20I as-of
 	  iif.bat_form   AS bat_form_T20I_asof,
-	  iif.n_samples_bat AS n_samples_bat_form_T20I,
 	  iic.bat_consistency AS bat_consistency_T20I_asof,
-	  iic.n_samples_bat   AS n_samples_bat_cons_T20I,
 	  iivo.bat_value AS bat_vs_opp_T20I_asof,
-	  iivo.n_samples AS n_samples_bat_vs_opp_T20I,
 	  iivv.bat_value AS bat_at_venue_T20I_asof,
-	  iivv.n_samples AS n_samples_bat_at_venue_T20I,
 	  -- T20 as-of
 	  t20f.bat_form   AS bat_form_T20_asof,
-	  t20f.n_samples_bat AS n_samples_bat_form_T20,
 	  t20c.bat_consistency AS bat_consistency_T20_asof,
-	  t20c.n_samples_bat   AS n_samples_bat_cons_T20,
 	  t20vo.bat_value AS bat_vs_opp_T20_asof,
-	  t20vo.n_samples AS n_samples_bat_vs_opp_T20,
-	  t20vv.bat_value AS bat_at_venue_T20_asof,
-	  t20vv.n_samples AS n_samples_bat_at_venue_T20
+	  t20vv.bat_value AS bat_at_venue_T20_asof
 	FROM batting_data bd
 	JOIN match_details md ON md.match_id = bd.match_id
 	LEFT JOIN match_format mf ON mf.id = md.format_id
@@ -546,14 +530,14 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	header := []string{
+ header := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
-		"bat_form_TEST_asof", "n_samples_bat_form_TEST", "bat_consistency_TEST_asof", "n_samples_bat_cons_TEST", "bat_vs_opp_TEST_asof", "n_samples_bat_vs_opp_TEST", "bat_at_venue_TEST_asof", "n_samples_bat_at_venue_TEST",
-		"bat_form_ODI_asof", "n_samples_bat_form_ODI", "bat_consistency_ODI_asof", "n_samples_bat_cons_ODI", "bat_vs_opp_ODI_asof", "n_samples_bat_vs_opp_ODI", "bat_at_venue_ODI_asof", "n_samples_bat_at_venue_ODI",
-		"bat_form_T20I_asof", "n_samples_bat_form_T20I", "bat_consistency_T20I_asof", "n_samples_bat_cons_T20I", "bat_vs_opp_T20I_asof", "n_samples_bat_vs_opp_T20I", "bat_at_venue_T20I_asof", "n_samples_bat_at_venue_T20I",
-		"bat_form_T20_asof", "n_samples_bat_form_T20", "bat_consistency_T20_asof", "n_samples_bat_cons_T20", "bat_vs_opp_T20_asof", "n_samples_bat_vs_opp_T20", "bat_at_venue_T20_asof", "n_samples_bat_at_venue_T20",
+		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
+		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
+		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
+		"bat_form_T20_asof", "bat_consistency_T20_asof", "bat_vs_opp_T20_asof", "bat_at_venue_T20_asof",
 	}
 	if err := w.Write(header); err != nil {
 		return err
@@ -600,42 +584,26 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	  s.id AS season_id,
 	  p.player_name,
 	  mf.code AS format_code,
-	  -- TEST
-	  tf.bowl_form   AS bowl_form_TEST_asof,
-	  tf.n_samples_bowl AS n_samples_bowl_form_TEST,
-	  tc.bowl_consistency AS bowl_consistency_TEST_asof,
-	  tc.n_samples_bowl   AS n_samples_bowl_cons_TEST,
-	  tvo.bowl_value AS bowl_vs_opp_TEST_asof,
-	  tvo.n_samples AS n_samples_bowl_vs_opp_TEST,
-	  tvv.bowl_value AS bowl_at_venue_TEST_asof,
-	  tvv.n_samples AS n_samples_bowl_at_venue_TEST,
-	  -- ODI
-	  of.bowl_form   AS bowl_form_ODI_asof,
-	  of.n_samples_bowl AS n_samples_bowl_form_ODI,
-	  oc.bowl_consistency AS bowl_consistency_ODI_asof,
-	  oc.n_samples_bowl   AS n_samples_bowl_cons_ODI,
-	  ovo.bowl_value AS bowl_vs_opp_ODI_asof,
-	  ovo.n_samples AS n_samples_bowl_vs_opp_ODI,
-	  ovv.bowl_value AS bowl_at_venue_ODI_asof,
-	  ovv.n_samples AS n_samples_bowl_at_venue_ODI,
-	  -- T20I
-	  iif.bowl_form   AS bowl_form_T20I_asof,
-	  iif.n_samples_bowl AS n_samples_bowl_form_T20I,
-	  iic.bowl_consistency AS bowl_consistency_T20I_asof,
-	  iic.n_samples_bowl   AS n_samples_bowl_cons_T20I,
-	  iivo.bowl_value AS bowl_vs_opp_T20I_asof,
-	  iivo.n_samples AS n_samples_bowl_vs_opp_T20I,
-	  iivv.bowl_value AS bowl_at_venue_T20I_asof,
-	  iivv.n_samples AS n_samples_bowl_at_venue_T20I,
-	  -- T20
-	  t20f.bowl_form   AS bowl_form_T20_asof,
-	  t20f.n_samples_bowl AS n_samples_bowl_form_T20,
-	  t20c.bowl_consistency AS bowl_consistency_T20_asof,
-	  t20c.n_samples_bowl   AS n_samples_bowl_cons_T20,
-	  t20vo.bowl_value AS bowl_vs_opp_T20_asof,
-	  t20vo.n_samples AS n_samples_bowl_vs_opp_T20,
-	  t20vv.bowl_value AS bowl_at_venue_T20_asof,
-	  t20vv.n_samples AS n_samples_bowl_at_venue_T20
+   -- TEST
+   tf.bowl_form   AS bowl_form_TEST_asof,
+   tc.bowl_consistency AS bowl_consistency_TEST_asof,
+   tvo.bowl_value AS bowl_vs_opp_TEST_asof,
+   tvv.bowl_value AS bowl_at_venue_TEST_asof,
+   -- ODI
+   of.bowl_form   AS bowl_form_ODI_asof,
+   oc.bowl_consistency AS bowl_consistency_ODI_asof,
+   ovo.bowl_value AS bowl_vs_opp_ODI_asof,
+   ovv.bowl_value AS bowl_at_venue_ODI_asof,
+   -- T20I
+   iif.bowl_form   AS bowl_form_T20I_asof,
+   iic.bowl_consistency AS bowl_consistency_T20I_asof,
+   iivo.bowl_value AS bowl_vs_opp_T20I_asof,
+   iivv.bowl_value AS bowl_at_venue_T20I_asof,
+   -- T20
+   t20f.bowl_form   AS bowl_form_T20_asof,
+   t20c.bowl_consistency AS bowl_consistency_T20_asof,
+   t20vo.bowl_value AS bowl_vs_opp_T20_asof,
+   t20vv.bowl_value AS bowl_at_venue_T20_asof
 	FROM bowling_data bw
 	JOIN match_details md ON md.match_id = bw.match_id
 	LEFT JOIN match_format mf ON mf.id = md.format_id
@@ -738,14 +706,14 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	header := []string{
+ header := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
-		"bowl_form_TEST_asof", "n_samples_bowl_form_TEST", "bowl_consistency_TEST_asof", "n_samples_bowl_cons_TEST", "bowl_vs_opp_TEST_asof", "n_samples_bowl_vs_opp_TEST", "bowl_at_venue_TEST_asof", "n_samples_bowl_at_venue_TEST",
-		"bowl_form_ODI_asof", "n_samples_bowl_form_ODI", "bowl_consistency_ODI_asof", "n_samples_bowl_cons_ODI", "bowl_vs_opp_ODI_asof", "n_samples_bowl_vs_opp_ODI", "bowl_at_venue_ODI_asof", "n_samples_bowl_at_venue_ODI",
-		"bowl_form_T20I_asof", "n_samples_bowl_form_T20I", "bowl_consistency_T20I_asof", "n_samples_bowl_cons_T20I", "bowl_vs_opp_T20I_asof", "n_samples_bowl_vs_opp_T20I", "bowl_at_venue_T20I_asof", "n_samples_bowl_at_venue_T20I",
-		"bowl_form_T20_asof", "n_samples_bowl_form_T20", "bowl_consistency_T20_asof", "n_samples_bowl_cons_T20", "bowl_vs_opp_T20_asof", "n_samples_bowl_vs_opp_T20", "bowl_at_venue_T20_asof", "n_samples_bowl_at_venue_T20",
+		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
+		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
+		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
+		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
 	}
 	if err := w.Write(header); err != nil {
 		return err

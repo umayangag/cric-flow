@@ -72,8 +72,8 @@ precompute-asof:
 	if [ -n "$(ALPHA)" ]; then ALPHA_FLAG="-ewm-alpha=$(ALPHA)"; fi; \
 	if [ -n "$(LASTN)" ]; then LASTN_FLAG="-lastN=$(LASTN)"; fi; \
 	for F in TEST ODI T20I T20; do \
-		echo "[as-of] Precomputing for $$F as-of $$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG"; \
-		go run ./cmd/precompute-features -format=$$F -as-of=$$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG || exit 1; \
+		echo "[as-of] Precomputing (replay) for $$F as-of $$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG"; \
+		go run ./cmd/precompute-features -format=$$F -replay=1 -as-of=$$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG || exit 1; \
 	done
 
 # Team predictor (happy path): requires MATCH to be provided
