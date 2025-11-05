@@ -2,13 +2,13 @@ import os
 
 import joblib
 import pandas as pd
+
+# Load config defaults (with env override support)
+from config import default_artifacts_dir, default_go_app_export_dir
 from dataset_definitions import input_bowling_columns, output_bowling_columns
 from sklearn import preprocessing
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
-
-# Load config defaults (with env override support)
-from config import default_go_app_export_dir,default_artifacts_dir
 
 # Resolve dataset and artifacts dirs
 export_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
