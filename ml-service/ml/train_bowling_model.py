@@ -1,5 +1,4 @@
 import os
-import sys
 
 import joblib
 import pandas as pd
@@ -9,15 +8,10 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
 # Load config defaults (with env override support)
-import config as svc_config
-
-# Add parent directory to path to allow importing config
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+from config import default_go_app_export_dir,default_artifacts_dir
 
 # Resolve dataset and artifacts dirs
-export_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
+export_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
 unified = os.path.join(export_dir, "bowling_encoded_all.csv")
 legacy = os.path.join(export_dir, "bowling_encoded.csv")
 dataset_source = unified if os.path.exists(unified) else legacy
@@ -78,7 +72,7 @@ predictor = MultiOutputRegressor(regr)
 predictor.fit(X, y)
 
 # Save the trained model and scalers
-output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
+output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", default_artifacts_dir())
 os.makedirs(output_dir, exist_ok=True)
 joblib.dump(predictor, os.path.join(output_dir, "bowling_model.joblib"))
 joblib.dump(input_scaler, os.path.join(output_dir, "bowling_scaler.joblib"))

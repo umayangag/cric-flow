@@ -86,10 +86,10 @@ team-predictor:
 ml-install:
 	$(MAKE) -C ml-service install
 
-train-batting: ml-install
+train-batting:
 	cd ml-service && $(PY) ml/train_batting_model.py
 
-train-bowling: ml-install
+train-bowling:
 	cd ml-service && $(PY) ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
