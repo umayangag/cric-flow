@@ -5,7 +5,7 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 
-.PHONY: all venv install run train-all docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
+.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
 
 all: run
 
@@ -29,6 +29,13 @@ run:
 train-all:
 	$(PY) ml/train_batting_model.py
 	$(PY) ml/train_bowling_model.py
+
+# Generate ml/pool.csv for a given match id
+# Usage: make export-pool MATCH=<match_id>
+MATCH ?= 0
+export-pool:
+	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make export-pool MATCH=1193505"; exit 1; fi
+	$(PY) ml/export_pool.py $(MATCH)
 
 validate-exports:
 	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)

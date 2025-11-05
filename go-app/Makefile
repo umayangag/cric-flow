@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
+.PHONY: all build clean run-api team-select team-predictor docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
 
 all: build
 
@@ -29,6 +29,36 @@ migrate: build-migrate
 
 run-api:
 	go run ./cmd/api
+
+# Convenience variables and targets to run CLIs
+MATCH ?= 0
+FORMAT ?= T20
+SEASON ?=
+SIZE ?= 11
+MIN_BOWLERS ?= 5
+REQUIRE_KEEPER ?= 0
+FROM_DB ?= 1
+POOL ?= ../ml-service/ml/pool.csv
+BAT ?= 0
+BOWL ?= 0
+
+# Run team selection pipeline
+# Examples:
+#  make team-select MATCH=1193505 SEASON=2019 FORMAT=T20
+#  make team-select MATCH=1193505 SEASON=2019 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+team-select:
+	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ]; then echo "Please set MATCH=<id> and SEASON=<name> (e.g., 2019)"; exit 2; fi
+	REQ_FLAG=""; if [ "$(REQUIRE_KEEPER)" = "1" ]; then REQ_FLAG="-require-keeper"; fi; \
+	FROM_FLAG="-from-db=true"; if [ "$(FROM_DB)" = "0" ]; then FROM_FLAG="-from-db=false -pool=$(POOL)"; fi; \
+	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG $$FROM_FLAG
+
+# Run team predictor (requires ml-service running and ml/pool.csv present)
+# Generate the pool first: `make -C ../ml-service export-pool MATCH=<id>`
+# Examples:
+#  make team-predictor MATCH=1193505 SEASON=2019 FORMAT=T20 BAT=6 BOWL=5
+team-predictor:
+	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
+	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
 
 
 # Format Go code to align with CI (gofumpt + golines)

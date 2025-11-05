@@ -63,6 +63,13 @@ make train-all
 python -m ml.train_batting_model
 python -m ml.train_bowling_model
 ```
+- Generate a player pool CSV for team prediction (writes to `ml/pool.csv`):
+```
+# requires DB to be populated and accessible via env (POSTGRES_*)
+make export-pool MATCH=1193505
+# or directly
+python -m ml.export_pool 1193505
+```
 - Docker image and container:
 ```
 make docker-build
