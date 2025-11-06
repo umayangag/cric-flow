@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -127,4 +128,36 @@ func DefaultExportDir() string {
 		return cfg.Outputs.ExportDir
 	}
 	return filepath.Join("..", "output", "go-app")
+}
+
+// ValidateTeamSettings validates a subset of team/predictor settings for sanity.
+// It is a pure helper and does not perform any I/O. It does not modify cfg.
+// Only non-zero values are validated for cross-field constraints to avoid
+// over-constraining partially-specified configs. Callers may enforce stricter
+// policies as needed at the edges (e.g., in main).
+func ValidateTeamSettings(cfg *Config) error {
+	if cfg == nil {
+		return nil
+	}
+	// Min bowlers must be at least 1.
+	if cfg.Team.MinBowlers < 1 {
+		return fmt.Errorf("min bowlers must be >= 1")
+	}
+	// Default extras cannot be negative when provided.
+	if cfg.Predictor.DefaultExtras < 0 {
+		return fmt.Errorf("extras must be non-negative")
+	}
+	// Default batters cannot be negative.
+	if cfg.Team.DefaultBatters < 0 {
+		return fmt.Errorf("default batters must be >= 0")
+	}
+	// If both TeamSize and MinBowlers are provided, TeamSize must be >= MinBowlers.
+	if cfg.Predictor.TeamSize > 0 && cfg.Team.MinBowlers > 0 && cfg.Predictor.TeamSize < cfg.Team.MinBowlers {
+		return fmt.Errorf("team size must be >= min bowlers")
+	}
+	// If DefaultBowlers is set, it must be >= MinBowlers.
+	if cfg.Team.DefaultBowlers > 0 && cfg.Team.MinBowlers > 0 && cfg.Team.DefaultBowlers < cfg.Team.MinBowlers {
+		return fmt.Errorf("default bowlers must be >= min bowlers")
+	}
+	return nil
 }

@@ -3,12 +3,9 @@ package main
 
 import (
 	"context"
-	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
-	"sort"
-	"strconv"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -36,7 +33,7 @@ func main() {
 		log.Fatalf("db connect failed: %v", err)
 	}
 
-	// Read the pool.csv file
+	// Read the pool.csv file and parse players via pure helper
 	poolFile, err := os.Open("../ml-service/ml/pool.csv")
 	if err != nil {
 		log.Fatalf("failed to open pool.csv: %v", err)
@@ -47,52 +44,9 @@ func main() {
 		}
 	}()
 
-	reader := csv.NewReader(poolFile)
-	records, err := reader.ReadAll()
+	players, err := parsePlayersCSV(poolFile)
 	if err != nil {
-		log.Fatalf("failed to read pool.csv: %v", err)
-	}
-
-	// Parse the CSV data into a slice of PlayerPrediction structs
-	var players []predictor.PlayerPrediction
-	header := records[0]
-	for _, record := range records[1:] {
-		player := predictor.PlayerPrediction{}
-		for i, value := range record {
-			floatValue, err := strconv.ParseFloat(value, 64)
-			if err != nil {
-				// Handle non-numeric values (like player_name)
-				if header[i] == "player_name" {
-					player.PlayerName = value
-				}
-				continue
-			}
-			switch header[i] {
-			case "runs_scored":
-				player.RunsScored = floatValue
-			case "balls_faced":
-				player.BallsFaced = floatValue
-			case "fours_scored":
-				player.FoursScored = floatValue
-			case "sixes_scored":
-				player.SixesScored = floatValue
-			case "batting_position":
-				player.BattingPosition = floatValue
-			case "strike_rate":
-				player.StrikeRate = floatValue
-			case "runs_conceded":
-				player.RunsConceded = floatValue
-			case "deliveries":
-				player.Deliveries = floatValue
-			case "wickets_taken":
-				player.WicketsTaken = floatValue
-			case "econ":
-				player.Econ = floatValue
-			case "winning_probability":
-				player.WinningProbability = floatValue
-			}
-		}
-		players = append(players, player)
+		log.Fatalf("failed to parse pool.csv: %v", err)
 	}
 
 	// Calculate overall performance (currently not used directly; kept for future metrics)
@@ -105,13 +59,8 @@ func main() {
 		log.Fatalf("failed to predict win: %v", err)
 	}
 
-	// Sort players by winning probability
-	sort.Slice(predictions, func(i, j int) bool {
-		return predictions[i].WinningProbability > predictions[j].WinningProbability
-	})
-
-	// Select top 11 players
-	selectedPlayers := predictions[:cfg.Predictor.TeamSize]
+	// Select top players deterministically using helper (also sorts by probability and tie-breaks by name)
+	selectedPlayers := selectTop(predictions, cfg.Predictor.TeamSize)
 
 	// Print the selected team
 	fmt.Printf("Team for match %d (bat=%d, bowl=%d)\n", matchID, wantBatters, wantBowlers)

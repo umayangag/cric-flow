@@ -141,3 +141,31 @@ Notes:
 - Formatting/linting conventions match the GitHub Actions workflow.
 - See repo root `README.md` for end-to-end workflows and orchestration commands.
 ```
+
+---
+
+### CLI quick reference (team-select, team-predictor)
+- team-select flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
+- team-predictor flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-bat`, `-bowl`
+
+Examples:
+```
+# DB-backed selection
+make -C go-app team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
+
+# CSV-backed selection
+make -C go-app team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+
+# Team predictor using ml-service predictions
+make -C go-app team-predictor MATCH=1193505 SEASON=2025 FORMAT=T20 BAT=6 BOWL=5
+```
+
+### Make targets (hygiene)
+- Format: `make -C go-app fmt` (writes) | Check-only: `make -C go-app fmt-check`
+- Vet: `make -C go-app vet`
+- Tests: `make -C go-app test`
+- Lint (optional if installed): `make -C go-app lint`
+
+Troubleshooting:
+- Install tools once via `make -C go-app init` (adds gofumpt/golines; suggests golangci-lint).
+- Ensure Go 1.25+ and `$(go env GOPATH)/bin` on PATH.
