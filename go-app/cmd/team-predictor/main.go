@@ -4,13 +4,11 @@ package main
 import (
 	"context"
 	"encoding/csv"
-	"flag"
 	"fmt"
 	"log"
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -20,50 +18,17 @@ import (
 )
 
 func main() {
-	var matchID int64
-	var wantBatters int
-	var wantBowlers int
-	var formatCode string
-	var seasonName string
-	flag.Int64Var(&matchID, "match", 0, "match_id to build predictions for")
-	// Use 0 defaults to allow config-driven values
-	flag.IntVar(&wantBatters, "bat", 0, "number of batters to pick (defaults from config.team.default_batters)")
-	flag.IntVar(&wantBowlers, "bowl", 0, "number of bowlers to pick (defaults from config.team.default_bowlers)")
-	flag.StringVar(&formatCode, "format", "", "match format code (TEST, ODI, T20, T20I)")
-	flag.StringVar(&seasonName, "season", "", "season name (e.g. 2019)")
-	flag.Parse()
-
 	cfg := config.Load()
-	if matchID == 0 || strings.TrimSpace(formatCode) == "" || strings.TrimSpace(seasonName) == "" {
-		fmt.Fprintln(
-			os.Stderr,
-			"usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]",
-		)
+
+	opts, err := parseFlags(os.Args[1:], cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
 	}
-	// Apply config defaults when flags are not provided (0)
-	if wantBatters <= 0 {
-		if cfg.Team.DefaultBatters > 0 {
-			wantBatters = cfg.Team.DefaultBatters
-		} else {
-			wantBatters = 6
-		}
-	}
-	minB := 5
-	if cfg.Team.MinBowlers > 0 {
-		minB = cfg.Team.MinBowlers
-	}
-	if wantBowlers <= 0 {
-		if cfg.Team.DefaultBowlers > 0 {
-			wantBowlers = cfg.Team.DefaultBowlers
-		} else {
-			wantBowlers = minB
-		}
-	}
-	if wantBowlers < minB {
-		log.Printf("requested bowlers=%d < %d; adjusting to satisfy minimum", wantBowlers, minB)
-		wantBowlers = minB
-	}
+
+	matchID := opts.matchID
+	wantBatters := opts.batters
+	wantBowlers := opts.bowlers
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
