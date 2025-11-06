@@ -16,6 +16,11 @@ import (
 // Pool is a global connection pool reference returned by Connect.
 var Pool *pgxpool.Pool
 
+// BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
+func BuildDSN(user, pass, host, port, database, ssl string) string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, database, ssl)
+}
+
 // Connect initializes a pgx connection pool using environment variables:
 // POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_SSLMODE
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
@@ -26,7 +31,7 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	pass := getenv("POSTGRES_PASSWORD", "postgres")
 	ssl := getenv("POSTGRES_SSLMODE", "disable")
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, db, ssl)
+	dsn := BuildDSN(user, pass, host, port, db, ssl)
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err

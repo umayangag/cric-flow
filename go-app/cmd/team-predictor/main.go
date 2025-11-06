@@ -52,15 +52,12 @@ func main() {
 	// Calculate overall performance (currently not used directly; kept for future metrics)
 	_ = predictor.CalculateOverallPerformance(players, matchID)
 
-	// Predict winning probability
+	// Predict winning probability and build team using pure helper
 	mlClient := mlclient.New()
-	predictions, err := mlClient.PredictWin(ctx, players)
+	selectedPlayers, err := buildTeam(ctx, mlClient, players, cfg.Predictor.TeamSize)
 	if err != nil {
 		log.Fatalf("failed to predict win: %v", err)
 	}
-
-	// Select top players deterministically using helper (also sorts by probability and tie-breaks by name)
-	selectedPlayers := selectTop(predictions, cfg.Predictor.TeamSize)
 
 	// Print the selected team
 	fmt.Printf("Team for match %d (bat=%d, bowl=%d)\n", matchID, wantBatters, wantBowlers)

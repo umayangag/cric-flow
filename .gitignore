@@ -8,3 +8,4 @@ data
 output
 tests
 go-app/api
+go-app/coverage.out

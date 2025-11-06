@@ -125,3 +125,29 @@ import-keepers:
 	OZ_FLAG=""; \
 	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
 	go run ./cmd/import-keepers --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG
+
+
+# Coverage targets
+.PHONY: coverage coverage-html coverage-func coverage-check
+
+# Generate coverage profile for all packages
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out ./...
+
+# Generate an HTML coverage report (requires a prior coverage run)
+coverage-html:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Wrote coverage.html"
+
+# Print the total coverage summary line
+coverage-func:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	@go tool cover -func=coverage.out | tail -1
+
+# Fail if total coverage is below 90%
+coverage-check:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	@total=$$(go tool cover -func=coverage.out | grep total: | awk '{print $$3}' | tr -d '%'); \
+	awk 'BEGIN{ if ('"$$total"' + 0 >= 90.0) exit 0; else exit 1 }' /dev/null || (echo "Coverage $$total% is below required 90%" && exit 1); \
+	echo "Coverage $$total% meets threshold."
