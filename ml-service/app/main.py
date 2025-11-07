@@ -4,7 +4,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from ml.match_win_predict import predict_for_team
 
@@ -39,7 +39,7 @@ class BattingFeatures(BaseModel):
     player_name: str
     format: Optional[str] = None
 
-    @validator("format")
+    @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
@@ -69,7 +69,7 @@ class BowlingFeatures(BaseModel):
     player_name: str
     format: Optional[str] = None
 
-    @validator("format")
+    @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
