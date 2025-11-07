@@ -7,7 +7,7 @@ PIP:=$(VENV)/bin/pip
 DC:=docker-compose
 APP_SERVICES:=go-api ml-service
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset precompute go-test ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset precompute go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -220,3 +220,80 @@ dev-rebuild:
 dev-rebuild-nocache:
 	$(MAKE) build-apps-nocache
 	$(MAKE) recreate-apps
+
+
+# --- CI aggregate helpers ---
+COV_MIN_GO ?= 90
+COV_MIN_ML ?= 80
+
+# Run ml-service CI pipeline (fmt, lint, coverage + threshold)
+ci-ml:
+	$(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
+
+# Run go-app CI: vet, format check, coverage and enforce threshold
+ci-go:
+	$(MAKE) -C go-app vet
+	$(MAKE) -C go-app fmt-check
+	$(MAKE) -C go-app coverage
+	COV_MIN=$(COV_MIN_GO) $(MAKE) -C go-app coverage-check
+
+# Run both components' CI
+ci: ci-go ci-ml
+
+
+# --- Help & navigation ---
+help:
+	@echo "\nProject — Make targets (grouped)"
+	@echo "--------------------------------"
+	@echo "[Orchestration]"
+	@echo "  up-all             One-shot: docker up → migrate → import → precompute → export → train → restart ML"
+	@echo "  e2e                Run pipeline for a single FORMAT (requires FORMAT)"
+	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
+	@echo
+	@echo "[Services & Logs]"
+	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
+	@echo "  dev-down           Stop and remove stack (volumes)"
+	@echo "  logs               Tail docker-compose logs"
+	@echo "  api                Run Go API locally (outside Docker)"
+	@echo "  ml-serve           Run ML service locally (uvicorn)"
+	@echo
+	@echo "[Data & Pipeline]"
+	@echo "  migrate            Run DB migrations"
+	@echo "  cricsheet-import   Import Cricsheet JSON into DB"
+	@echo "  precompute         Trigger precompute (via API)"
+	@echo "  export-dataset     Export training datasets"
+	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"
+	@echo
+	@echo "[Testing & CI]"
+	@echo "  go-test            Run Go unit tests"
+	@echo "  go-test-int        Run Go integration tests (requires DB)"
+	@echo "  ci-go              Go CI aggregate (vet, fmt-check, coverage gate)"
+	@echo "  ci-ml              ML service CI aggregate"
+	@echo "  ci                 Run both CI aggregates"
+	@echo
+	@echo "[Formatting & Lint]"
+	@echo "  fmt / fmt-check    Run formatters across Go and Python"
+	@echo "  lint-go / lint-py  Lint Go / Python"
+	@echo
+	@echo "[Bootstrap]"
+	@echo "  init               Initialize both components (tools, venv, hooks)"
+	@echo "  init-go / init-py  Initialize only Go / Python"
+	@echo "  install-hooks      Install git pre-commit hooks"
+	@echo
+	@echo "[Docker compose maintenance]"
+	@echo "  dev-rebuild        Rebuild app images and restart services"
+	@echo "  dev-rebuild-nocache Rebuild without cache and restart services"
+	@echo
+	@echo "Variables (commonly used):"
+	@echo "  FORMAT=$(FORMAT)  FORMATS=$(FORMATS)  MATCH=$(MATCH)  BAT=$(BAT)  BOWL=$(BOWL)  SEASON=$(SEASON)"
+	@echo "\nTips:"
+	@echo "  - Run 'make help-all' to see component-level helps"
+	@echo "  - Run 'make list' to see all phony targets"
+
+help-all:
+	@echo "\n[Root]" && $(MAKE) help --no-print-directory || true
+	@echo "\n[Go App]" && $(MAKE) -C go-app help --no-print-directory || true
+	@echo "\n[ML Service]" && $(MAKE) -C ml-service help --no-print-directory || true
+
+list:
+	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u

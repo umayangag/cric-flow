@@ -77,6 +77,8 @@ Code Quality
 * Modularity: Break systems into smaller, independent modules.
 * Error Handling: Implement robust error handling.
 * Comments: Use comments to explain the why, not the what.
+* Do not suppress or ignore errors. Always handle the errors.
+* Use a singleton logger for each project and make sure to log descriptive messages that helps with debugging.
 ⸻
 6. Defaults & Operating Standards
 

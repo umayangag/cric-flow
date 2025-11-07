@@ -1,13 +1,19 @@
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
-import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
-from ..ml.match_win_predict import predict_for_team
+from ml.match_win_predict import predict_for_team
+
+from . import settings as app_settings
+from .artifacts import BAT_MODELS, BOWL_MODELS
+from .artifacts import reload as reload_artifacts
+from .artifacts import summary as artifacts_summary
+from .errors import error_payload
+from .features import batting_feature_vector
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
@@ -33,7 +39,7 @@ class BattingFeatures(BaseModel):
     player_name: str
     format: Optional[str] = None
 
-    @validator("format")
+    @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
@@ -63,7 +69,7 @@ class BowlingFeatures(BaseModel):
     player_name: str
     format: Optional[str] = None
 
-    @validator("format")
+    @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
@@ -112,121 +118,28 @@ class TeamWinResponse(BaseModel):
 # Load artifacts (per-format if available)
 # Prefer ML_SERVICE_OUTPUT_DIR, then MODELS_DIR, then config.json default, else ../../output/ml-service
 try:
-    import config as svc_config  # from ml-service/config.py
-
-    _cfg_default_models_dir = svc_config.default_artifacts_dir()
+    import config as svc_config  # from ml-service/ml/config.py or project root
 except Exception:
-    _cfg_default_models_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "output", "ml-service")
-    )
+    svc_config = None  # type: ignore
 
-_default_models_dir = _cfg_default_models_dir
-MODELS_DIR = os.environ.get("ML_SERVICE_OUTPUT_DIR", os.environ.get("MODELS_DIR", _default_models_dir))
+MODELS_DIR = app_settings.get_models_dir(svc_config)
 
-# Registries: map format code -> (scaler, model). Legacy unsuffixed artifacts are stored under key "_LEGACY_".
-BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+# Registries provided by app.artifacts module (imported above)
 
 
-def _error_payload(
-    code: str,
-    message: str,
-    hint: Optional[str] = None,
-    available: Optional[List[str]] = None,
-) -> dict:
-    payload = {"code": code, "message": message}
-    if hint:
-        payload["hint"] = hint
-    if available is not None:
-        payload["available_formats"] = sorted([x for x in available if x != "_LEGACY_"])
-    return payload
+# Delegate to centralized error helper
+_error_payload = error_payload
 
 
 def _reload_artifacts() -> dict:
-    """Rescan MODELS_DIR and reload registries.
-    Returns a summary dict with loaded formats for batting and bowling.
-    """
-    BAT_MODELS.clear()
-    BOWL_MODELS.clear()
-    # Legacy
-    try:
-        bat_scaler = joblib.load(os.path.join(MODELS_DIR, "batting_scaler.joblib"))
-        bat_model = joblib.load(os.path.join(MODELS_DIR, "batting_model.joblib"))
-        BAT_MODELS["_LEGACY_"] = (bat_scaler, bat_model)
-    except Exception:
-        pass
-    try:
-        bowl_scaler = joblib.load(os.path.join(MODELS_DIR, "bowling_scaler.joblib"))
-        bowl_model = joblib.load(os.path.join(MODELS_DIR, "bowling_model.joblib"))
-        BOWL_MODELS["_LEGACY_"] = (bowl_scaler, bowl_model)
-    except Exception:
-        pass
-    # Per-format
-    try:
-        for fname in os.listdir(MODELS_DIR):
-            lf = fname.lower()
-            if lf.startswith("batting_scaler_") and lf.endswith(".joblib"):
-                code = fname[len("batting_scaler_") : -len(".joblib")].upper()
-                scaler = joblib.load(os.path.join(MODELS_DIR, fname))
-                mname = f"batting_model_{code}.joblib"
-                mpath = os.path.join(MODELS_DIR, mname)
-                if os.path.exists(mpath):
-                    model = joblib.load(mpath)
-                    BAT_MODELS[code] = (scaler, model)
-            if lf.startswith("bowling_scaler_") and lf.endswith(".joblib"):
-                code = fname[len("bowling_scaler_") : -len(".joblib")].upper()
-                scaler = joblib.load(os.path.join(MODELS_DIR, fname))
-                mname = f"bowling_model_{code}.joblib"
-                mpath = os.path.join(MODELS_DIR, mname)
-                if os.path.exists(mpath):
-                    model = joblib.load(mpath)
-                    BOWL_MODELS[code] = (scaler, model)
-    except Exception:
-        pass
-    return {
-        "loaded_batting_formats": sorted([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_bowling_formats": sorted([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
-        "legacy_batting": "_LEGACY_" in BAT_MODELS,
-        "legacy_bowling": "_LEGACY_" in BOWL_MODELS,
-    }
+    """Rescan MODELS_DIR and reload registries using artifacts module."""
+    reload_artifacts(MODELS_DIR)
+    return artifacts_summary()
 
 
-# Initial load of artifacts (legacy + per-format)
+# Initial load of artifacts (legacy + per-format) via artifacts module
 try:
-    bat_scaler = joblib.load(os.path.join(MODELS_DIR, "batting_scaler.joblib"))
-    bat_model = joblib.load(os.path.join(MODELS_DIR, "batting_model.joblib"))
-    BAT_MODELS["_LEGACY_"] = (bat_scaler, bat_model)
-except Exception:
-    pass
-
-try:
-    bowl_scaler = joblib.load(os.path.join(MODELS_DIR, "bowling_scaler.joblib"))
-    bowl_model = joblib.load(os.path.join(MODELS_DIR, "bowling_model.joblib"))
-    BOWL_MODELS["_LEGACY_"] = (bowl_scaler, bowl_model)
-except Exception:
-    pass
-
-# Load per-format artifacts (files named *_{FORMAT}.joblib)
-try:
-    for fname in os.listdir(MODELS_DIR):
-        lf = fname.lower()
-        if lf.startswith("batting_scaler_") and lf.endswith(".joblib"):
-            code = fname[len("batting_scaler_") : -len(".joblib")].upper()
-            scaler = joblib.load(os.path.join(MODELS_DIR, fname))
-            # find model counterpart
-            mname = f"batting_model_{code}.joblib"
-            mpath = os.path.join(MODELS_DIR, mname)
-            if os.path.exists(mpath):
-                model = joblib.load(mpath)
-                BAT_MODELS[code] = (scaler, model)
-        if lf.startswith("bowling_scaler_") and lf.endswith(".joblib"):
-            code = fname[len("bowling_scaler_") : -len(".joblib")].upper()
-            scaler = joblib.load(os.path.join(MODELS_DIR, fname))
-            mname = f"bowling_model_{code}.joblib"
-            mpath = os.path.join(MODELS_DIR, mname)
-            if os.path.exists(mpath):
-                model = joblib.load(mpath)
-                BOWL_MODELS[code] = (scaler, model)
+    reload_artifacts(MODELS_DIR)
 except Exception:
     # Don't crash on load errors; endpoints will fall back to zeros or return helpful errors
     pass
@@ -379,7 +292,7 @@ async def predict_batting(features: List[BattingFeatures]):
             )
         scaler, model = pair
 
-    X = np.array([_batting_feature_vector(f) for f in features], dtype=float)
+    X = np.array([batting_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
     try:

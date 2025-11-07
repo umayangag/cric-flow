@@ -88,11 +88,12 @@ func parseCSV(path string) ([]row, error) {
 		ret := true // default: if no Retired column, treat listed names as retired
 		if retIdx >= 0 && retIdx < len(rec) {
 			val := strings.TrimSpace(strings.ToLower(rec[retIdx]))
-			if val == "1" || val == "true" || val == "yes" || val == "y" {
+			switch val {
+			case "1", "true", "yes", "y":
 				ret = true
-			} else if val == "0" || val == "false" || val == "no" || val == "n" {
+			case "0", "false", "no", "n":
 				ret = false
-			} else {
+			default:
 				// try parse int fallback
 				ret = val != "0"
 			}
