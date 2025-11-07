@@ -63,7 +63,7 @@ lint:
 # Lint check only (CI-safe)
 lint-check:
 	@command -v ruff >/dev/null 2>&1 || (echo "Install ruff: pip install ruff" && exit 1)
-	$(VENV)/bin/ruff check --select F401 .
+	ruff check --select F401 .
 
 # Check formatting only (same as CI)
 fmt-check:
