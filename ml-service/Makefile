@@ -86,14 +86,14 @@ test:
 # Generate coverage reports (xml + term)
 coverage:
 	python -m pytest -q \
-		--cov=app --cov=ml \
+		--cov \
 		--cov-report=xml:coverage.xml \
 		--cov-report=term
 
 # Enforce minimum coverage threshold (may re-run tests)
 coverage-check:
 	python -m pytest -q \
-		--cov=app --cov=ml \
+		--cov \
 		--cov-report=term \
 		--cov-fail-under=$(COV_MIN)
 
