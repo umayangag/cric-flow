@@ -32,26 +32,13 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f ml-service/requirements.txt ]; then pip install -r ml-service/requirements.txt; else pip install -e ml-service; fi
-          pip install black isort flake8 ruff
+      - name: Install deps via Make (venv + runtime + dev tools)
+        run: make -C ml-service init
 
-      - name: Lint/format check (isort, black, flake8, ruff)
-        working-directory: ml-service
-        run: |
-          isort --check-only --diff --profile black --line-length 120 .
-          black --check --diff --line-length 120 .
-          flake8 --max-line-length=120 --extend-ignore=E203,W503 --exclude=.venv
-          ruff check --select F401 .
-
-      - name: Sanity compile
-        working-directory: ml-service
-        run: |
-          python -m py_compile app/main.py
-          python -m py_compile ml/train_batting_model.py
-          python -m py_compile ml/train_bowling_model.py
+      - name: CI (fmt, lint, tests with coverage and threshold)
+        env:
+          COV_MIN: "80"
+        run: make -C ml-service ci
 
       - name: Validate exports (if present)
         working-directory: ml-service
@@ -70,3 +57,10 @@ jobs:
           else \
             echo "No inference CSVs found; skipping inference export validation."; \
           fi
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-service-coverage
+          path: ml-service/coverage.xml

@@ -44,18 +44,16 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
+          check-latest: true
 
-      - name: Install Go formatters (gofumpt, golines)
-        run: |
-          go install mvdan.cc/gofumpt@latest
-          go install github.com/segmentio/golines@latest
+      - name: Init via Make (tools + modules)
+        run: make -C go-app init
 
-      - name: Check formatting (gofumpt)
-        working-directory: go-app
-        run: |
-          # fail if any file would be modified
-          diff <(git ls-files | grep '^go-app/.*\.go$' | xargs -I{} bash -lc 'cat {}') <(gofumpt -l -w . >/dev/null 2>&1; git ls-files | grep '^go-app/.*\.go$' | xargs -I{} bash -lc 'cat {}') || (echo "Run make fmt-go locally" && exit 1)
-        shell: bash
+      - name: Vet
+        run: make -C go-app vet
+
+      - name: Format check
+        run: make -C go-app fmt-check
 
       - name: Apply migrations
         env:
@@ -65,12 +63,10 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_SSLMODE: disable
-        working-directory: go-app
-        run: go run ./cmd/tools/migrate -dir=./migrations
+        run: make -C go-app migrate
 
       - name: Build
-        working-directory: go-app
-        run: go build ./...
+        run: make -C go-app build
 
       - name: Lint (golangci-lint)
         uses: golangci/golangci-lint-action@v6
@@ -79,6 +75,17 @@ jobs:
           working-directory: go-app
           args: -c ../.golangci.yml
 
-      - name: Test
-        working-directory: go-app
-        run: go test ./... -v
+      - name: Coverage (generate)
+        run: make -C go-app coverage
+
+      - name: Coverage (enforce >= 90%)
+        env:
+          COV_MIN: "90"
+        run: make -C go-app coverage-check
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-app-coverage
+          path: go-app/coverage.out

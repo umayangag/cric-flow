@@ -30,31 +30,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Install dependencies (runtime + dev via Makefile)
+        run: make init
 
-      - name: Install dev tools (black, isort, flake8, ruff, pytest, pytest-cov)
-        run: |
-          pip install black isort flake8 ruff pytest pytest-cov
-
-      - name: Format check (isort + black)
-        run: make fmt-check
-
-      - name: Lint check (ruff minimal + flake8)
-        run: make lint-check
-
-      - name: Run tests with coverage (fail under 80%)
+      - name: CI (fmt, lint, tests with coverage and threshold)
         env:
-          # Ensure tests don't access network or external paths inadvertently
-          PYTHONWARNINGS: default
-        run: |
-          python -m pytest -q \
-            --cov=app --cov=ml \
-            --cov-report=xml:coverage.xml \
-            --cov-report=term \
-            --cov-fail-under=80
+          COV_MIN: "80"
+        run: make ci
 
       - name: Upload coverage artifact
         if: always()

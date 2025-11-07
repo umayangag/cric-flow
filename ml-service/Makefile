@@ -1,11 +1,14 @@
+
+# Variables
 APP_NAME:=ml-service
 VENV:=.venv
 PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
+COV_MIN?=80
 
-.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check
+.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup
 
 all: run
 
@@ -19,7 +22,7 @@ install: venv
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install
 	@echo "Setting up Python dev environment in $(VENV)..."
-	$(PIP) install black isort flake8 ruff pytest
+	$(PIP) install black isort flake8 ruff pytest pytest-cov
 	@echo "Done. Activate the venv: 'source $(VENV)/bin/activate' (or '.\\$(VENV)\\Scripts\\activate' on Windows)"
 	@echo "Then run: 'make fmt-check' or 'make run'"
 
@@ -48,8 +51,8 @@ fmt:
 	make lint
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
-	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
+	isort --profile black --line-length $(LINE_LENGTH) .
+	black --line-length $(LINE_LENGTH) .
 	flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
 
 # Auto-fix lint: remove unused imports via ruff (F401)
@@ -66,9 +69,37 @@ lint-check:
 fmt-check:
 	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	$(VENV)/bin/isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
-	$(VENV)/bin/black --check --diff --line-length $(LINE_LENGTH) .
+	isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
+	black --check --diff --line-length $(LINE_LENGTH) .
 	flake8 --max-line-length=120 --extend-ignore=E203,E501,W503 --exclude=.venv
+
+# --- CI convenience targets ---
+# Install dev tools needed in CI (system pip is fine on runners)
+ci-setup:
+	python -m pip install --upgrade pip
+	pip install black isort flake8 ruff pytest pytest-cov
+
+# Run tests (quiet)
+test:
+	python -m pytest -q
+
+# Generate coverage reports (xml + term)
+coverage:
+	python -m pytest -q \
+		--cov=app --cov=ml \
+		--cov-report=xml:coverage.xml \
+		--cov-report=term
+
+# Enforce minimum coverage threshold (may re-run tests)
+coverage-check:
+	python -m pytest -q \
+		--cov=app --cov=ml \
+		--cov-report=term \
+		--cov-fail-under=$(COV_MIN)
+
+# Full CI pipeline for ml-service
+ci: fmt-check lint-check coverage coverage-check
+
 
 docker-build:
 	docker build -t $(APP_NAME):latest .

@@ -220,3 +220,22 @@ dev-rebuild:
 dev-rebuild-nocache:
 	$(MAKE) build-apps-nocache
 	$(MAKE) recreate-apps
+
+
+# --- CI aggregate helpers ---
+COV_MIN_GO ?= 90
+COV_MIN_ML ?= 80
+
+# Run ml-service CI pipeline (fmt, lint, coverage + threshold)
+ci-ml:
+	$(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
+
+# Run go-app CI: vet, format check, coverage and enforce threshold
+ci-go:
+	$(MAKE) -C go-app vet
+	$(MAKE) -C go-app fmt-check
+	$(MAKE) -C go-app coverage
+	COV_MIN=$(COV_MIN_GO) $(MAKE) -C go-app coverage-check
+
+# Run both components' CI
+ci: ci-go ci-ml
