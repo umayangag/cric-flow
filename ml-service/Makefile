@@ -8,7 +8,7 @@ UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 COV_MIN?=80
 
-.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup
+.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list
 
 all: run
 
@@ -110,3 +110,44 @@ docker-run:
 
 clean:
 	rm -rf $(VENV)
+
+
+# Grouped help and target listing
+help:
+	@echo "\nML Service — Make targets (grouped)"
+	@echo "-----------------------------------"
+	@echo "[Setup]"
+	@echo "  venv               Create local virtualenv (.venv)"
+	@echo "  install            Install runtime dependencies into venv"
+	@echo "  init               Install dev tools (black, isort, ruff, pytest, etc.)"
+	@echo
+	@echo "[Run & Train]"
+	@echo "  run                Start FastAPI with uvicorn (reload)"
+	@echo "  export-pool        Generate ml/pool.csv for a match (MATCH=<id>)"
+	@echo "  train-all          Train batting and bowling models"
+	@echo
+	@echo "[Validate & Test]"
+	@echo "  validate-exports   Validate training exports (all formats, golden)"
+	@echo "  validate-exports-infer  Validate inference schemas"
+	@echo "  test               Run pytest"
+	@echo "  coverage           Run pytest with coverage (xml + term)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
+	@echo "  ci                 Run fmt-check, lint-check, and coverage gates"
+	@echo
+	@echo "[Quality]"
+	@echo "  fmt / fmt-check    Format / check formatting (isort, black, flake8)"
+	@echo "  lint / lint-check  Lint (ruff) and check-only"
+	@echo
+	@echo "[Docker]"
+	@echo "  docker-build       Build Docker image ($(APP_NAME):latest)"
+	@echo "  docker-run         Run Docker image exposing :8000"
+	@echo
+	@echo "[Maintenance]"
+	@echo "  clean              Remove virtualenv (.venv)"
+	@echo
+	@echo "Variables (with defaults):"
+	@echo "  MATCH=$(MATCH)  LINE_LENGTH=$(LINE_LENGTH)  COV_MIN=$(COV_MIN)"
+	@echo "\nTip: use 'make list' to see all phony targets."
+
+list:
+	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u

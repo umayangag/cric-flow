@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api team-select team-predictor docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
+.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
 
 all: build
 
@@ -59,6 +59,18 @@ team-select:
 team-predictor:
 	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
 	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
+
+# Weather import (scaffold)
+# Example: make weather-import MATCH=1193505 PROVIDER=dummy APPLY=1
+weather-import:
+	@if [ "$(MATCH)" = "0" ]; then echo "Please set MATCH=<id>"; exit 2; fi
+	PROVIDER?=dummy; APPLY?=0; \
+	go run ./cmd/weather-import -match=$(MATCH) -provider=$$PROVIDER -apply=$$APPLY
+
+# Evaluate (scaffold)
+# Example: make evaluate SEASON=2019 FORMAT=T20
+evaluate:
+	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
 # Format Go code to align with CI (gofumpt + golines)
@@ -170,25 +182,51 @@ mocks-clean:
 
 
 # Developer convenience: CI-like coverage runner and help
-.PHONY: help coverage-ci
+.PHONY: help coverage-ci list
 
-# Print commonly used targets and variables
+# Print grouped targets and common variables for the Go app
 help:
-	@echo "Go App Make targets"
-	@echo "  build            - Build API binary (cmd/api)"
-	@echo "  run-api          - Run API locally"
-	@echo "  migrate          - Build and run the migration tool against POSTGRES_* envs"
-	@echo "  team-select      - Orchestrate team selection (see variables: MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
-	@echo "  team-predictor   - Run team predictor CLI using ml-service"
-	@echo "  fmt / fmt-check  - Format code or check formatting (uses gofumpt/golines)"
-	@echo "  vet              - Run go vet"
-	@echo "  test             - Run unit tests"
-	@echo "  coverage         - Run tests with coverage for selected packages (COVERAGE_PACKAGES)"
-	@echo "  coverage-check   - Enforce coverage threshold (COV_MIN, default: $(COV_MIN))"
-	@echo "  coverage-html    - Render HTML coverage report (coverage.html)"
-	@echo "\nVariables:"
-	@echo "  COV_MIN             - Minimum coverage percentage for coverage-check (default: $(COV_MIN))"
-	@echo "  COVERAGE_PACKAGES   - Package scope for coverage run (default scoped to unit-testable internal packages)"
+	@echo "\nGo App — Make targets (grouped)"
+	@echo "--------------------------------"
+	@echo "[Setup]"
+	@echo "  init               Setup Go dev env (modules + tools)"
+	@echo "  fmt / fmt-check    Format code / check formatting (gofumpt, golines)"
+	@echo "  lint               Run golangci-lint"
+	@echo "  vet                Run go vet"
+	@echo "  test               Run unit tests"
+	@echo "  coverage           Run coverage for selected packages"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
+	@echo "  coverage-html      Render HTML coverage report"
+	@echo
+	@echo "[Build & Run]"
+	@echo "  build              Build API binary (cmd/api)"
+	@echo "  run-api            Run API locally"
+	@echo "  migrate            Build + run DB migrator against POSTGRES_* envs"
+	@echo
+	@echo "[Data & CLIs]"
+	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
+	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
+	@echo "  weather-import     Import weather (scaffold)"
+	@echo "  evaluate           Compute basic metrics (scaffold)"
+	@echo
+	@echo "[Docker]"
+	@echo "  docker-build       Build API Docker image"
+	@echo "  docker-run         Run API Docker container"
+	@echo
+	@echo "[Mocks/Codegen]"
+	@echo "  mocks              Generate interface mocks via mockery"
+	@echo "  mocks-clean        Remove generated mocks"
+	@echo
+	@echo "Variables (with defaults):"
+	@echo "  MATCH=$(MATCH)  SEASON=$(SEASON)  FORMAT=$(FORMAT)  SIZE=$(SIZE)  MIN_BOWLERS=$(MIN_BOWLERS)  REQUIRE_KEEPER=$(REQUIRE_KEEPER)"
+	@echo "  FROM_DB=$(FROM_DB)  POOL=$(POOL)  BAT=$(BAT)  BOWL=$(BOWL)"
+	@echo "  COV_MIN=$(COV_MIN)"
+	@echo "  COVERAGE_PACKAGES=$(COVERAGE_PACKAGES)"
+	@echo "\nTip: use 'make list' to see all phony targets."
+
+# List all .PHONY targets (best-effort)
+list:
+	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u
 
 # CI-like coverage run (respects COV_MIN and COVERAGE_PACKAGES). Useful locally.
 coverage-ci:
