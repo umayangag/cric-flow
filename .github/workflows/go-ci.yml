@@ -48,7 +48,7 @@ jobs:
 
       - name: Enforce coverage ≥ 90%
         working-directory: go-app
-        run: make coverage-check
+        run: COV_MIN=90 make coverage-check
 
       - name: Upload coverage artifact
         if: always()

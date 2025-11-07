@@ -130,6 +130,9 @@ import-keepers:
 # Coverage targets
 .PHONY: coverage coverage-html coverage-func coverage-check
 
+# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=80 make coverage-check`
+COV_MIN ?= 90
+
 # Generate coverage profile for all packages
 coverage:
 	go test -covermode=atomic -coverprofile=coverage.out ./...
@@ -145,9 +148,10 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below 90%
+# Fail if total coverage is below COV_MIN (default 90)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@total=$$(go tool cover -func=coverage.out | grep total: | awk '{print $$3}' | tr -d '%'); \
-	awk 'BEGIN{ if ('"$$total"' + 0 >= 90.0) exit 0; else exit 1 }' /dev/null || (echo "Coverage $$total% is below required 90%" && exit 1); \
-	echo "Coverage $$total% meets threshold."
+	min=$${COV_MIN}; \
+	awk -v total="$$total" -v min="$$min" 'BEGIN{ if ((total+0) >= (min+0)) exit 0; else exit 1 }' /dev/null || (echo "Coverage $$total% is below required $${min}%" && exit 1); \
+	echo "Coverage $$total% meets threshold (>= $${min}%)."
