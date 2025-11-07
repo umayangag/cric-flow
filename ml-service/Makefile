@@ -77,7 +77,8 @@ fmt-check:
 # Install dev tools needed in CI (system pip is fine on runners)
 ci-setup:
 	python -m pip install --upgrade pip
-	pip install black isort flake8 ruff pytest pytest-cov
+	python -m pip install -r requirements.txt
+	python -m pip install black isort flake8 ruff pytest pytest-cov
 
 # Run tests (quiet)
 test:
