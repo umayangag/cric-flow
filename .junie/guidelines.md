@@ -70,7 +70,9 @@ Core Philosophies
 
 Code Quality
 * Readability: Prefer clarity to cleverness.
-* Naming: Use descriptive and unambiguous names.
+* Naming: Use descriptive and unambiguous names. Do not use abbreviations.
+* If you see restructuring opportunities that helps to streamline the flow without complicating, do it.
+* Reusability: Reuse existing code where possible.
 * Function Size: Keep functions small and single‑purpose.
 * Modularity: Break systems into smaller, independent modules.
 * Error Handling: Implement robust error handling.
@@ -131,7 +133,7 @@ Code Quality
 12) Linting & Formatting
 - Go: `gofmt -s`, `go vet`, and `golangci-lint` if configured.
 - Python: `black`, `isort`, and `ruff` or `flake8` if present.
-- Prefer `make lint` if available; otherwise run tools directly.
+- Prefer `make lint` and `make fmt` if available; otherwise run tools directly.
 
 13) CI Integration
 - Align with existing CI (e.g., GitHub Actions) if present. If none exists and the task requires CI, propose a minimal workflow in the plan.

@@ -62,71 +62,8 @@ func getenv(key, def string) string {
 
 // RunMigrations executes .sql files in the given directory in lexical order.
 // It creates a table schema_migrations(version text primary key, applied_at timestamptz) to track applied files.
+// Implementation delegates to RunMigrationsFS for testability (behavior-preserving).
 func RunMigrations(ctx context.Context, migrationsDir string) error {
-	if Pool == nil {
-		if _, err := Connect(ctx); err != nil {
-			return err
-		}
-	}
-	// ensure table
-	_, err := Pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version TEXT PRIMARY KEY,
-		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`)
-	if err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		return err
-	}
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(strings.ToLower(name), ".sql") {
-			files = append(files, filepath.Join(migrationsDir, name))
-		}
-	}
-	sort.Strings(files)
-
-	// get applied versions
-	applied := map[string]bool{}
-	rows, err := Pool.Query(ctx, `SELECT version FROM schema_migrations`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var v string
-		if err := rows.Scan(&v); err != nil {
-			return err
-		}
-		applied[v] = true
-	}
-
-	for _, f := range files {
-		version := filepath.Base(f)
-		if applied[version] {
-			continue
-		}
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return err
-		}
-		sql := string(b)
-		// execute as one Exec (allow multiple statements)
-		// pgx doesn't support multi-statement via Batch directly; use Exec instead.
-		// We'll just run Exec with the whole content.
-		if _, err := Pool.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("migration %s failed: %w", version, err)
-		}
-		if _, err := Pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
-			return err
-		}
-	}
-	return nil
+	// Use an os-backed fs for the given directory and delegate to the FS-based runner.
+	return RunMigrationsFS(ctx, os.DirFS(migrationsDir), ".")
 }
