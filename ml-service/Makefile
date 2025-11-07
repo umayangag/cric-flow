@@ -78,7 +78,7 @@ fmt-check:
 ci-setup:
 	python -m pip install --upgrade pip
 	python -m pip install -r requirements.txt
-	python -m pip install black isort flake8 ruff pytest pytest-cov
+	python -m pip install black isort flake8 ruff pytest pytest-cov httpx
 
 # Run tests (quiet)
 test:
