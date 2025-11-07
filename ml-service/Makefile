@@ -19,7 +19,7 @@ install: venv
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install
 	@echo "Setting up Python dev environment in $(VENV)..."
-	$(PIP) install black isort flake8 ruff
+	$(PIP) install black isort flake8 ruff pytest
 	@echo "Done. Activate the venv: 'source $(VENV)/bin/activate' (or '.\\$(VENV)\\Scripts\\activate' on Windows)"
 	@echo "Then run: 'make fmt-check' or 'make run'"
 
