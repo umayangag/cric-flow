@@ -4,6 +4,8 @@ __pycache__
 venv
 src/team_selection/cache
 ml-service/.venv
+ml-service/.coverage
+ml-service/coverage.xml
 data
 output
 tests
