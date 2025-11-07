@@ -6,4 +6,4 @@ import "context"
 // It always succeeds, allowing offline orchestration tests.
 type Connector struct{}
 
-func (Connector) Connect(ctx context.Context) error { return nil }
+func (Connector) Connect(_ context.Context) error { return nil }

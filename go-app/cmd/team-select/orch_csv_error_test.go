@@ -12,20 +12,20 @@ import (
 type csvErrorSelector struct{}
 
 func (csvErrorSelector) SelectTeam(
-	ctx context.Context,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return selection.Result{}, nil
 }
 
 func (csvErrorSelector) SelectTeamFromCSV(
-	ctx context.Context,
-	poolPath string,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ string,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return selection.Result{}, errors.New("csv failed")
 }

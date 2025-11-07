@@ -21,6 +21,7 @@ func (r *fakeRows) Next() bool {
 	}
 	return false
 }
+
 func (r *fakeRows) Scan(dest ...any) error {
 	if r.i == 0 || r.i > len(r.vals) {
 		return errors.New("scan out of range")
@@ -40,7 +41,7 @@ type fakeDB struct {
 	failOn  string // substring that triggers failure on Exec
 }
 
-func (f *fakeDB) Exec(ctx context.Context, sql string, args ...any) error {
+func (f *fakeDB) Exec(_ context.Context, sql string, args ...any) error {
 	// record sql
 	f.execs = append(f.execs, sql)
 	// simulate failure
@@ -61,7 +62,7 @@ func (f *fakeDB) Exec(ctx context.Context, sql string, args ...any) error {
 	return nil
 }
 
-func (f *fakeDB) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (Rows, error) {
 	// only query we support in migrations
 	if !strings.Contains(strings.ToLower(sql), "select version from schema_migrations") {
 		return nil, errors.New("unexpected query")

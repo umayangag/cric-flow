@@ -32,16 +32,18 @@ func newFakeDB() *fakeDB {
 	}
 }
 
-func (f *fakeDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error) {
+func (f *fakeDB) GetMatchFormatIDByCode(_ context.Context, code string) (int64, error) {
 	if id, ok := f.formatsByCode[code]; ok {
 		return id, nil
 	}
 	return 0, nil
 }
-func (f *fakeDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error {
+
+func (f *fakeDB) EnsureMatchWithFormat(_ context.Context, _ int64, _ int64) error {
 	return nil
 }
-func (f *fakeDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {
+
+func (f *fakeDB) GetOrCreateVenue(_ context.Context, name string) (int64, error) {
 	if id, ok := f.venues[name]; ok {
 		return id, nil
 	}
@@ -50,7 +52,7 @@ func (f *fakeDB) GetOrCreateVenue(ctx context.Context, name string) (int64, erro
 	return id, nil
 }
 
-func (f *fakeDB) GetOrCreateSeason(ctx context.Context, name string) (int64, error) {
+func (f *fakeDB) GetOrCreateSeason(_ context.Context, name string) (int64, error) {
 	if id, ok := f.seasons[name]; ok {
 		return id, nil
 	}
@@ -59,7 +61,7 @@ func (f *fakeDB) GetOrCreateSeason(ctx context.Context, name string) (int64, err
 	return id, nil
 }
 
-func (f *fakeDB) GetOrCreateOpposition(ctx context.Context, name string) (int64, error) {
+func (f *fakeDB) GetOrCreateOpposition(_ context.Context, name string) (int64, error) {
 	if id, ok := f.oppos[name]; ok {
 		return id, nil
 	}
@@ -68,14 +70,14 @@ func (f *fakeDB) GetOrCreateOpposition(ctx context.Context, name string) (int64,
 	return id, nil
 }
 
-func (f *fakeDB) UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error {
+func (f *fakeDB) UpdateMatchDetails(_ context.Context, _ int64, upd *db.MatchInfoUpdate) error {
 	// Copy values to avoid mutation surprises
 	u := *upd
 	f.updates = append(f.updates, &u)
 	return nil
 }
 
-func (f *fakeDB) GetOrCreateByName(ctx context.Context, name string) (int64, error) {
+func (f *fakeDB) GetOrCreateByName(_ context.Context, name string) (int64, error) {
 	if id, ok := f.players[name]; ok {
 		return id, nil
 	}
@@ -84,25 +86,25 @@ func (f *fakeDB) GetOrCreateByName(ctx context.Context, name string) (int64, err
 	return id, nil
 }
 
-func (f *fakeDB) UpsertBatting(ctx context.Context, b *db.Batting) error {
+func (f *fakeDB) UpsertBatting(_ context.Context, b *db.Batting) error {
 	bb := *b
 	f.batting = append(f.batting, &bb)
 	return nil
 }
 
-func (f *fakeDB) UpsertBowling(ctx context.Context, b *db.Bowling) error {
+func (f *fakeDB) UpsertBowling(_ context.Context, b *db.Bowling) error {
 	bb := *b
 	f.bowling = append(f.bowling, &bb)
 	return nil
 }
 
-func (f *fakeDB) UpsertFielding(ctx context.Context, ff *db.Fielding) error {
+func (f *fakeDB) UpsertFielding(_ context.Context, ff *db.Fielding) error {
 	cop := *ff
 	f.fielding = append(f.fielding, &cop)
 	return nil
 }
 
-func (f *fakeDB) Exec(ctx context.Context, sql string, args ...any) error {
+func (f *fakeDB) Exec(_ context.Context, sql string, _ ...any) error {
 	f.execs = append(f.execs, sql)
 	return nil
 }
@@ -116,7 +118,7 @@ type fakeWeather struct {
 	}
 }
 
-func (f *fakeWeather) EnqueueJob(ctx context.Context, matchID int64, city, venue string, innings int) error {
+func (f *fakeWeather) EnqueueJob(_ context.Context, matchID int64, city, venue string, innings int) error {
 	f.calls++
 	f.last.matchID = matchID
 	f.last.city = city

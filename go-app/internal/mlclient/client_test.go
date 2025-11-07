@@ -67,7 +67,7 @@ func TestPredictBowling_Success(t *testing.T) {
 }
 
 func TestPredictBatting_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 		_, _ = w.Write([]byte(`{"error":"nope"}`))
 	}))
@@ -82,7 +82,7 @@ func TestPredictBatting_Non200(t *testing.T) {
 }
 
 func TestPredictBowling_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
 	}))

@@ -30,6 +30,9 @@ type TeamSelector interface {
 // realSelector delegates to selection package functions.
 type realSelector struct{}
 
+// Ensure realSelector implements TeamSelector.
+var _ TeamSelector = (*realSelector)(nil)
+
 func (realSelector) SelectTeam(
 	ctx context.Context,
 	matchID int64,

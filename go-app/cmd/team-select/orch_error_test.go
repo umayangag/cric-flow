@@ -11,25 +11,25 @@ import (
 
 type failingConnector struct{}
 
-func (failingConnector) Connect(ctx context.Context) error { return errors.New("connect failed") }
+func (failingConnector) Connect(_ context.Context) error { return errors.New("connect failed") }
 
 type noOpSelector struct{}
 
 func (noOpSelector) SelectTeam(
-	ctx context.Context,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return selection.Result{}, nil
 }
 
 func (noOpSelector) SelectTeamFromCSV(
-	ctx context.Context,
-	poolPath string,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ string,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return selection.Result{}, nil
 }

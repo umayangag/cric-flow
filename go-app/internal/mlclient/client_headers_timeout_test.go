@@ -35,7 +35,7 @@ func TestPredictBatting_SetsUserAgentHeader(t *testing.T) {
 
 // Ensures client timeout/cancel surfaces as an error path from postJSON callers.
 func TestPredictBowling_Timeout(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate a slow server exceeding client timeout
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)

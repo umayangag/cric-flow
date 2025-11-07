@@ -39,7 +39,7 @@ func TestPredictWin_Success_New(t *testing.T) {
 }
 
 func TestPredictWin_Non200_New(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer srv.Close()
@@ -52,7 +52,7 @@ func TestPredictWin_Non200_New(t *testing.T) {
 }
 
 func TestPredictWin_MalformedJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
 	}))
@@ -66,7 +66,7 @@ func TestPredictWin_MalformedJSON(t *testing.T) {
 }
 
 func TestPredictWin_ContextTimeout(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("[]"))

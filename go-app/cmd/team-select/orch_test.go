@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
 
@@ -15,7 +16,7 @@ type fakeConnector struct {
 	called int
 }
 
-func (f *fakeConnector) Connect(ctx context.Context) error {
+func (f *fakeConnector) Connect(_ context.Context) error {
 	f.called++
 	return f.err
 }
@@ -26,27 +27,27 @@ type fakeSelector struct {
 }
 
 func (f fakeSelector) SelectTeam(
-	ctx context.Context,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return f.res, f.err
 }
 
 func (f fakeSelector) SelectTeamFromCSV(
-	ctx context.Context,
-	poolPath string,
-	matchID int64,
-	format, season string,
-	opts selection.Options,
+	_ context.Context,
+	_ string,
+	_ int64,
+	_, _ string,
+	_ selection.Options,
 ) (selection.Result, error) {
 	return f.res, f.err
 }
 
 func sampleResult() selection.Result {
 	return selection.Result{
-		Players: []selection.Player{
+		Players: []predictor.PlayerPrediction{
 			{PlayerName: "A", WinningProbability: 0.9},
 			{PlayerName: "B", WinningProbability: 0.8},
 		},

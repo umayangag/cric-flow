@@ -23,7 +23,7 @@ type options struct {
 // parseFlags parses CLI args into options, applying sensible defaults.
 // This function is pure and does not read environment variables or files
 // (aside from using provided cfg for any future defaults; currently not required).
-func parseFlags(args []string, cfg *config.Config) (options, error) {
+func parseFlags(args []string, _ *config.Config) (options, error) {
 	var (
 		matchID int64
 		format  string

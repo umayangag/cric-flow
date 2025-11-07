@@ -11,7 +11,7 @@ import (
 )
 
 func TestPredictBatting_Non2xx_New(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	defer srv.Close()
@@ -24,7 +24,7 @@ func TestPredictBatting_Non2xx_New(t *testing.T) {
 }
 
 func TestPredictBowling_InvalidJSON_New(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
 	}))

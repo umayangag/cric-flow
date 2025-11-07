@@ -17,7 +17,10 @@ type Client struct {
 
 var _ mlclient.Predictor = (*Client)(nil)
 
-func (f *Client) PredictWin(ctx context.Context, players []predictor.PlayerPrediction) ([]predictor.PlayerPrediction, error) {
+func (f *Client) PredictWin(
+	_ context.Context,
+	players []predictor.PlayerPrediction,
+) ([]predictor.PlayerPrediction, error) {
 	if f.Err != nil {
 		return nil, f.Err
 	}

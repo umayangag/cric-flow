@@ -16,9 +16,9 @@ type capturingSelector struct {
 }
 
 func (c *capturingSelector) SelectTeam(
-	ctx context.Context,
-	matchID int64,
-	format, season string,
+	_ context.Context,
+	_ int64,
+	_, _ string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	c.lastFromDB = true
@@ -27,10 +27,10 @@ func (c *capturingSelector) SelectTeam(
 }
 
 func (c *capturingSelector) SelectTeamFromCSV(
-	ctx context.Context,
-	poolPath string,
-	matchID int64,
-	format, season string,
+	_ context.Context,
+	_ string,
+	_ int64,
+	_, _ string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	c.lastFromDB = false

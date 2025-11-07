@@ -8,6 +8,7 @@ import (
 )
 
 // CricsheetDB abstracts DB operations used by ingest for testability.
+// nolint:revive // name stutter is intentional to match package domain terms
 type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
 	EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error
@@ -70,15 +71,19 @@ func (realDB) UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.Mat
 func (realDB) GetOrCreateByName(ctx context.Context, name string) (int64, error) {
 	return db.GetOrCreateByName(ctx, name)
 }
+
 func (realDB) UpsertBatting(ctx context.Context, b *db.Batting) error {
 	return db.UpsertBatting(ctx, b)
 }
+
 func (realDB) UpsertBowling(ctx context.Context, b *db.Bowling) error {
 	return db.UpsertBowling(ctx, b)
 }
+
 func (realDB) UpsertFielding(ctx context.Context, f *db.Fielding) error {
 	return db.UpsertFielding(ctx, f)
 }
+
 func (realDB) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := db.Pool.Exec(ctx, sql, args...)
 	return err

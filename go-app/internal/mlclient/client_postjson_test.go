@@ -45,7 +45,7 @@ func TestPostJSON_SuccessAndUserAgent(t *testing.T) {
 }
 
 func TestPostJSON_Non2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":"boom"}`))
 	}))
@@ -60,7 +60,7 @@ func TestPostJSON_Non2xx(t *testing.T) {
 }
 
 func TestPostJSON_InvalidJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
 	}))
@@ -76,7 +76,7 @@ func TestPostJSON_InvalidJSON(t *testing.T) {
 
 func TestPostJSON_ContextCanceled(t *testing.T) {
 	done := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		<-done // block until test signals
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
