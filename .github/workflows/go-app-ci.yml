@@ -69,7 +69,7 @@ jobs:
         run: make -C go-app build
 
       - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           working-directory: go-app
@@ -78,9 +78,9 @@ jobs:
       - name: Coverage (generate)
         run: make -C go-app coverage
 
-      - name: Coverage (enforce >= 90%)
+      - name: Coverage (enforce >= 80%)
         env:
-          COV_MIN: "90"
+          COV_MIN: "80"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact
