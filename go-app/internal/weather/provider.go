@@ -16,7 +16,7 @@ import (
 // Values may be zero when unknown; providers should document semantics.
 type Forecast struct {
 	MatchID   int64
-	Innings   int    // 1 or 2 (batting/bowling innings)
+	Innings   int // 1 or 2 (batting/bowling innings)
 	Timestamp time.Time
 	// Core features (extend as needed)
 	TemperatureC float64

@@ -30,6 +30,6 @@ type Client interface {
 // NoopClient is a development stub that returns a neutral probability.
 type NoopClient struct{}
 
-func (NoopClient) Predict(ctx context.Context, f Features) (Response, error) {
+func (NoopClient) Predict(_ context.Context, _ Features) (Response, error) {
 	return Response{WinProbability: 0.5}, nil
 }

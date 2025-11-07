@@ -14,10 +14,18 @@ import (
 // simpleUpserter is a placeholder that prints what would be upserted.
 type simpleUpserter struct{}
 
-func (simpleUpserter) UpsertForecasts(ctx context.Context, f []weather.Forecast) error {
+func (simpleUpserter) UpsertForecasts(_ context.Context, f []weather.Forecast) error {
 	for _, x := range f {
-		log.Printf("[dry-run] upsert match=%d innings=%d at=%s T=%.1fC H=%.0f%% W=%.1fkph P=%.1fmm",
-			x.MatchID, x.Innings, x.Timestamp.Format("2006-01-02T15:04Z"), x.TemperatureC, x.HumidityPct, x.WindKph, x.PrecipMM)
+		log.Printf(
+			"[dry-run] upsert match=%d innings=%d at=%s T=%.1fC H=%.0f%% W=%.1fkph P=%.1fmm",
+			x.MatchID,
+			x.Innings,
+			x.Timestamp.Format("2006-01-02T15:04Z"),
+			x.TemperatureC,
+			x.HumidityPct,
+			x.WindKph,
+			x.PrecipMM,
+		)
 	}
 	return nil
 }
