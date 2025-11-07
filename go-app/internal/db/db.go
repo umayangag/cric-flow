@@ -5,16 +5,53 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Pool is a global connection pool reference returned by Connect.
 var Pool *pgxpool.Pool
+
+// DB is a minimal database interface to enable offline tests.
+type DB interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+}
+
+// Rows is a minimal row iterator abstraction for tests.
+type Rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Close()
+}
+
+// defaultDB is the package-level DB used by helpers; set by Connect or tests.
+var defaultDB DB
+
+// SetDB allows tests to inject a fake DB implementation.
+func SetDB(d DB) { defaultDB = d }
+
+// poolDB adapts pgxpool.Pool to the DB interface.
+type poolDB struct{ p *pgxpool.Pool }
+
+func (w poolDB) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := w.p.Exec(ctx, sql, args...)
+	return err
+}
+
+func (w poolDB) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	r, err := w.p.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rowsAdapter{r}, nil
+}
+
+type rowsAdapter struct{ pgx.Rows }
+
+func (r rowsAdapter) Close() { r.Rows.Close() }
 
 // BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
 func BuildDSN(user, pass, host, port, database, ssl string) string {
@@ -50,6 +87,7 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	Pool = pool
+	defaultDB = poolDB{p: pool}
 	return pool, nil
 }
 

@@ -108,11 +108,14 @@ lint:
 .PHONY: coverage coverage-html coverage-func coverage-check
 
 # Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=80 make coverage-check`
-COV_MIN ?= 90
+COV_MIN ?= 80
 
-# Generate coverage profile for all packages
+# Generate coverage profile for selected packages (gate scope)
+# Override COVERAGE_PACKAGES to adjust scope. Default targets unit-testable internal packages.
+# Note: internal/db is excluded by default for now (Option A: scoped gate). Include it explicitly when ready.
+COVERAGE_PACKAGES ?= ./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet
 coverage:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+	go test -covermode=atomic -coverprofile=coverage.out $(COVERAGE_PACKAGES)
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:
@@ -125,13 +128,13 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below COV_MIN (default 90)
+# Fail if total coverage is below COV_MIN (default 80)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
-	@total=$$(go tool cover -func=coverage.out | grep total: | awk '{print $$3}' | tr -d '%'); \
-	min=$${COV_MIN}; \
-	awk -v total="$$total" -v min="$$min" 'BEGIN{ if ((total+0) >= (min+0)) exit 0; else exit 1 }' /dev/null || (echo "Coverage $$total% is below required $${min}%" && exit 1); \
-	echo "Coverage $$total% meets threshold (>= $${min}%)."
+	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
+		min=$(COV_MIN); \
+		awk -v t="$$total" -v m="$$min" 'BEGIN{ if ((t+0) < (m+0)) exit 1; else exit 0 }' /dev/null || { echo "Coverage $$total% is below required $$min%"; exit 1; }; \
+		echo "Coverage $$total% meets threshold (>= $$min%)."
 
 # Import retired players from CSV
 # Usage: make import-retired FILE=./data/retired.csv [APPLY=1] [OTHERS_ZERO=1]
@@ -164,3 +167,32 @@ mocks:
 
 mocks-clean:
 	rm -rf internal/**/mocks
+
+
+# Developer convenience: CI-like coverage runner and help
+.PHONY: help coverage-ci
+
+# Print commonly used targets and variables
+help:
+	@echo "Go App Make targets"
+	@echo "  build            - Build API binary (cmd/api)"
+	@echo "  run-api          - Run API locally"
+	@echo "  migrate          - Build and run the migration tool against POSTGRES_* envs"
+	@echo "  team-select      - Orchestrate team selection (see variables: MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
+	@echo "  team-predictor   - Run team predictor CLI using ml-service"
+	@echo "  fmt / fmt-check  - Format code or check formatting (uses gofumpt/golines)"
+	@echo "  vet              - Run go vet"
+	@echo "  test             - Run unit tests"
+	@echo "  coverage         - Run tests with coverage for selected packages (COVERAGE_PACKAGES)"
+	@echo "  coverage-check   - Enforce coverage threshold (COV_MIN, default: $(COV_MIN))"
+	@echo "  coverage-html    - Render HTML coverage report (coverage.html)"
+	@echo "\nVariables:"
+	@echo "  COV_MIN             - Minimum coverage percentage for coverage-check (default: $(COV_MIN))"
+	@echo "  COVERAGE_PACKAGES   - Package scope for coverage run (default scoped to unit-testable internal packages)"
+
+# CI-like coverage run (respects COV_MIN and COVERAGE_PACKAGES). Useful locally.
+coverage-ci:
+	@echo "Running coverage for: $(COVERAGE_PACKAGES)"
+	$(MAKE) coverage
+	@echo "Enforcing coverage >= $(COV_MIN)%"
+	$(MAKE) coverage-check

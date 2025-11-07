@@ -10,11 +10,11 @@ import (
 
 // options represents parsed CLI inputs for team-predictor.
 type options struct {
-	matchID     int64
-	batters     int
-	bowlers     int
-	formatCode  string
-	seasonName  string
+	matchID    int64
+	batters    int
+	bowlers    int
+	formatCode string
+	seasonName string
 }
 
 // parseFlags parses CLI args into options, applying defaults from cfg when values are zero.
@@ -38,7 +38,9 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 	}
 
 	if matchID == 0 || strings.TrimSpace(formatCode) == "" || strings.TrimSpace(season) == "" {
-		return options{}, errors.New("usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]")
+		return options{}, errors.New(
+			"usage: team-predictor -match=<match_id> -format=<CODE> -season=<season> [-bat=N] [-bowl=N]",
+		)
 	}
 
 	// Apply defaults from cfg

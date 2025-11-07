@@ -15,13 +15,24 @@ type capturingSelector struct {
 	lastOpts   selection.Options
 }
 
-func (c *capturingSelector) SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (c *capturingSelector) SelectTeam(
+	ctx context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	c.lastFromDB = true
 	c.lastOpts = opts
 	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "X", WinningProbability: 0.1}}}, nil
 }
 
-func (c *capturingSelector) SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (c *capturingSelector) SelectTeamFromCSV(
+	ctx context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	c.lastFromDB = false
 	c.lastOpts = opts
 	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "Y", WinningProbability: 0.2}}}, nil
@@ -32,7 +43,15 @@ func TestRunSelection_PassesRequireKeeperAndMinBowlers_DB(t *testing.T) {
 	conn := dbfake.Connector{}
 	sel := &capturingSelector{}
 	var buf bytes.Buffer
-	opts := options{matchID: 1, formatCode: "T20", seasonName: "2025", fromDB: true, teamSize: 11, minBowlers: 6, requireKeeper: true}
+	opts := options{
+		matchID:       1,
+		formatCode:    "T20",
+		seasonName:    "2025",
+		fromDB:        true,
+		teamSize:      11,
+		minBowlers:    6,
+		requireKeeper: true,
+	}
 	if err := runSelection(ctx, conn, sel, &buf, opts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +68,16 @@ func TestRunSelection_PassesRequireKeeperAndMinBowlers_CSV(t *testing.T) {
 	conn := dbfake.Connector{}
 	sel := &capturingSelector{}
 	var buf bytes.Buffer
-	opts := options{matchID: 1, formatCode: "T20", seasonName: "2025", fromDB: false, poolPath: "/tmp/pool.csv", teamSize: 9, minBowlers: 4, requireKeeper: false}
+	opts := options{
+		matchID:       1,
+		formatCode:    "T20",
+		seasonName:    "2025",
+		fromDB:        false,
+		poolPath:      "/tmp/pool.csv",
+		teamSize:      9,
+		minBowlers:    4,
+		requireKeeper: false,
+	}
 	if err := runSelection(ctx, conn, sel, &buf, opts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -169,3 +169,75 @@ make -C go-app team-predictor MATCH=1193505 SEASON=2025 FORMAT=T20 BAT=6 BOWL=5
 Troubleshooting:
 - Install tools once via `make -C go-app init` (adds gofumpt/golines; suggests golangci-lint).
 - Ensure Go 1.25+ and `$(go env GOPATH)/bin` on PATH.
+
+
+---
+
+## Testing & Coverage
+
+This project enforces a coverage gate in CI and provides Makefile targets to run coverage locally.
+
+Quick start:
+```
+# One-time (local): install gofumpt/golines like CI does
+make -C go-app init
+
+# Run vet + tests with coverage on the default scoped packages
+make -C go-app vet
+make -C go-app coverage
+
+# Enforce a minimum coverage threshold (CI uses 90%)
+COV_MIN=90 make -C go-app coverage-check
+
+# View the total coverage line
+make -C go-app coverage-func
+
+# Generate an HTML report at go-app/coverage.html
+make -C go-app coverage-html
+```
+
+Notes:
+- Scope: By default, coverage is calculated over unit-testable internal packages:
+  - `./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet`
+  You can override the scope:
+  ```
+  make -C go-app coverage COVERAGE_PACKAGES="./internal/cricsheet ./internal/db"
+  ```
+- Gate: The Makefile’s `COV_MIN` default is 80 for flexibility locally; CI enforces 90%:
+  - See `.github/workflows/go-ci.yml` which runs:
+    ```
+    make -C go-app coverage
+    COV_MIN=90 make -C go-app coverage-check
+    ```
+- Convenience: Run a CI-like local check in one go:
+  ```
+  make -C go-app coverage-ci
+  ```
+
+## Cricsheet adapter seams (offline tests)
+
+To keep tests offline and deterministic, `internal/cricsheet/ingest.go` depends on small interfaces:
+- `CricsheetDB` for DB operations
+- `WeatherClient` for enqueueing async weather jobs
+
+The default adapters delegate to real packages. In tests, swap them with fakes:
+```go
+prevDB := cricsheet.SetCricsheetDB(fakeDB)
+prevW  := cricsheet.SetWeatherClient(fakeWeather)
+// ... run tests ...
+cricsheet.SetCricsheetDB(prevDB)
+cricsheet.SetWeatherClient(prevW)
+```
+
+The integration-style tests under `internal/cricsheet` use in-memory fakes and temporary files only—no network or DB connections.
+
+## Local formatting
+
+CI installs `gofumpt` automatically. Locally, run once:
+```
+make -C go-app init
+```
+Then you can check formatting just like CI:
+```
+make -C go-app fmt-check
+```

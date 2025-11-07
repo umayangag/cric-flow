@@ -32,7 +32,7 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 		size    int
 		minB    int
 		reqK    bool
-		fromDB bool
+		fromDB  bool
 	)
 
 	fs := flag.NewFlagSet("team-select", flag.ContinueOnError)
@@ -49,7 +49,9 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 	}
 
 	if matchID == 0 || strings.TrimSpace(season) == "" {
-		return options{}, errors.New("usage: team-select -match=<id> -season=<name> [-format=CODE] [-pool=path] [-size=N] [-min-bowlers=M] [--require-keeper] [--from-db=true|false]")
+		return options{}, errors.New(
+			"usage: team-select -match=<id> -season=<name> [-format=CODE] [-pool=path] [-size=N] [-min-bowlers=M] [--require-keeper] [--from-db=true|false]",
+		)
 	}
 
 	// Future: apply cfg-based defaults/validation if needed. For now we honor flags and built-ins above.

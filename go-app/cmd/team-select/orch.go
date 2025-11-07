@@ -12,18 +12,40 @@ import (
 // TeamSelector abstracts selection operations to enable offline tests.
 // The real implementation is the selection package via its functions.
 type TeamSelector interface {
-	SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error)
-	SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error)
+	SelectTeam(
+		ctx context.Context,
+		matchID int64,
+		format, season string,
+		opts selection.Options,
+	) (selection.Result, error)
+	SelectTeamFromCSV(
+		ctx context.Context,
+		poolPath string,
+		matchID int64,
+		format, season string,
+		opts selection.Options,
+	) (selection.Result, error)
 }
 
 // realSelector delegates to selection package functions.
 type realSelector struct{}
 
-func (realSelector) SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (realSelector) SelectTeam(
+	ctx context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return selection.SelectTeam(ctx, matchID, format, season, opts)
 }
 
-func (realSelector) SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (realSelector) SelectTeamFromCSV(
+	ctx context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return selection.SelectTeamFromCSV(ctx, poolPath, matchID, format, season, opts)
 }
 
@@ -45,11 +67,18 @@ func runSelection(ctx context.Context, connector db.Connector, sel TeamSelector,
 		printResult(w, res)
 		return nil
 	}
-	res, err := sel.SelectTeamFromCSV(ctx, opts.poolPath, opts.matchID, opts.formatCode, opts.seasonName, selection.Options{
-		TeamSize:      opts.teamSize,
-		MinBowlers:    opts.minBowlers,
-		RequireKeeper: opts.requireKeeper,
-	})
+	res, err := sel.SelectTeamFromCSV(
+		ctx,
+		opts.poolPath,
+		opts.matchID,
+		opts.formatCode,
+		opts.seasonName,
+		selection.Options{
+			TeamSize:      opts.teamSize,
+			MinBowlers:    opts.minBowlers,
+			RequireKeeper: opts.requireKeeper,
+		},
+	)
 	if err != nil {
 		return err
 	}

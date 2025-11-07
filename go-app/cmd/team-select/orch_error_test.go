@@ -15,11 +15,22 @@ func (failingConnector) Connect(ctx context.Context) error { return errors.New("
 
 type noOpSelector struct{}
 
-func (noOpSelector) SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (noOpSelector) SelectTeam(
+	ctx context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return selection.Result{}, nil
 }
 
-func (noOpSelector) SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (noOpSelector) SelectTeamFromCSV(
+	ctx context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return selection.Result{}, nil
 }
 

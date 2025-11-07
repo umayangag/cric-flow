@@ -32,7 +32,11 @@ func main() {
 		}
 	}
 
-	selOpts := selection.Options{TeamSize: opts.teamSize, MinBowlers: opts.minBowlers, RequireKeeper: opts.requireKeeper}
+	selOpts := selection.Options{
+		TeamSize:      opts.teamSize,
+		MinBowlers:    opts.minBowlers,
+		RequireKeeper: opts.requireKeeper,
+	}
 	var res selection.Result
 	if opts.fromDB {
 		res, err = selection.SelectTeam(ctx, opts.matchID, opts.formatCode, opts.seasonName, selOpts)

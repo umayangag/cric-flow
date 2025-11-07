@@ -14,6 +14,7 @@ import (
 //   - player_name (string)
 //   - runs_scored, balls_faced, fours_scored, sixes_scored, batting_position, strike_rate
 //   - runs_conceded, deliveries, wickets_taken, econ, winning_probability
+//
 // Unknown columns are ignored. Non-numeric values in numeric columns are skipped.
 func parsePlayersCSV(r io.Reader) ([]predictor.PlayerPrediction, error) {
 	cr := csv.NewReader(r)

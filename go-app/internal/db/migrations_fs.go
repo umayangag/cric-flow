@@ -12,17 +12,17 @@ import (
 // RunMigrationsFS executes .sql files available via the provided fs.FS under the given dir.
 // Behavior mirrors RunMigrations but uses an abstract filesystem for testability.
 func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
-	if Pool == nil {
+	// Ensure a DB adapter is available
+	if defaultDB == nil {
 		if _, err := Connect(ctx); err != nil {
 			return err
 		}
 	}
 	// ensure table exists
-	_, err := Pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	if err := defaultDB.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version TEXT PRIMARY KEY,
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`)
-	if err != nil {
+	)`); err != nil {
 		return err
 	}
 
@@ -44,7 +44,7 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 
 	// get applied versions
 	applied := map[string]bool{}
-	rows, err := Pool.Query(ctx, `SELECT version FROM schema_migrations`)
+	rows, err := defaultDB.Query(ctx, `SELECT version FROM schema_migrations`)
 	if err != nil {
 		return err
 	}
@@ -67,10 +67,10 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 			return err
 		}
 		sql := string(b)
-		if _, err := Pool.Exec(ctx, sql); err != nil {
+		if err := defaultDB.Exec(ctx, sql); err != nil {
 			return fmt.Errorf("migration %s failed: %w", version, err)
 		}
-		if _, err := Pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
+		if err := defaultDB.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
 			return err
 		}
 	}

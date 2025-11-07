@@ -7,95 +7,103 @@ import (
 	"strings"
 	"testing"
 
-	dbfake "github.com/umayangag/cric-info-scrapers/go-app/internal/db/fake"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
+
+type fakeConnector struct {
+	err    error
+	called int
+}
+
+func (f *fakeConnector) Connect(ctx context.Context) error {
+	f.called++
+	return f.err
+}
 
 type fakeSelector struct {
 	res selection.Result
 	err error
 }
 
-func (f fakeSelector) SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (f fakeSelector) SelectTeam(
+	ctx context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return f.res, f.err
 }
 
-func (f fakeSelector) SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (f fakeSelector) SelectTeamFromCSV(
+	ctx context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	return f.res, f.err
 }
 
-func TestRunSelection_DBMode_Success(t *testing.T) {
-	ctx := context.Background()
-	connector := dbfake.Connector{}
-	players := []predictor.PlayerPrediction{{PlayerName: "Alice", WinningProbability: 0.9}}
-	res := selection.Result{Players: players, TeamWinProbability: 0.77}
-	sel := fakeSelector{res: res}
-
-	opts := options{
-		matchID:       1,
-		formatCode:    "T20",
-		seasonName:    "2025",
-		poolPath:      "unused.csv",
-		teamSize:      11,
-		minBowlers:    5,
-		requireKeeper: false,
-		fromDB:        true,
-	}
-	var buf bytes.Buffer
-	if err := runSelection(ctx, connector, sel, &buf, opts); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "Selected Team (size=1)") {
-		t.Fatalf("unexpected output: %s", out)
-	}
-	if !strings.Contains(out, "Alice 0.9000") {
-		t.Fatalf("expected player line with prob, got: %s", out)
+func sampleResult() selection.Result {
+	return selection.Result{
+		Players: []selection.Player{
+			{PlayerName: "A", WinningProbability: 0.9},
+			{PlayerName: "B", WinningProbability: 0.8},
+		},
+		TeamWinProbability: 0.7777,
 	}
 }
 
-func TestRunSelection_CSVMode_Success(t *testing.T) {
-	ctx := context.Background()
-	connector := dbfake.Connector{}
-	players := []predictor.PlayerPrediction{{PlayerName: "Bob", WinningProbability: 0.5}}
-	res := selection.Result{Players: players, TeamWinProbability: 0.55}
-	sel := fakeSelector{res: res}
+func TestRunSelection_FromDB_Success(t *testing.T) {
+	fc := &fakeConnector{}
+	fs := fakeSelector{res: sampleResult()}
+	w := &bytes.Buffer{}
+	opts := options{fromDB: true, matchID: 1, formatCode: "T20", seasonName: "2025", teamSize: 11, minBowlers: 5}
 
-	opts := options{
-		matchID:       2,
-		formatCode:    "ODI",
-		seasonName:    "2019",
-		poolPath:      "/tmp/pool.csv",
-		teamSize:      9,
-		minBowlers:    4,
-		requireKeeper: true,
-		fromDB:        false,
-	}
-	var buf bytes.Buffer
-	if err := runSelection(ctx, connector, sel, &buf, opts); err != nil {
+	if err := runSelection(context.Background(), fc, fs, w, opts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	out := buf.String()
-	if !strings.Contains(out, "Selected Team (size=1)") || !strings.Contains(out, "Bob 0.5000") {
-		t.Fatalf("unexpected output: %s", out)
+	if fc.called != 1 {
+		t.Fatalf("expected Connect called once, got %d", fc.called)
+	}
+	out := w.String()
+	if !strings.Contains(out, "Selected Team (size=2)") { // two players in sample
+		t.Fatalf("output missing header, got: %s", out)
+	}
+	if !strings.Contains(out, "1. A") || !strings.Contains(out, "2. B") {
+		t.Fatalf("output missing players list, got: %s", out)
 	}
 }
 
-func TestRunSelection_SelectorError(t *testing.T) {
-	ctx := context.Background()
-	connector := dbfake.Connector{}
-	sel := fakeSelector{err: errors.New("boom")}
+func TestRunSelection_FromDB_ConnectError(t *testing.T) {
+	fc := &fakeConnector{err: errors.New("boom")}
+	fs := fakeSelector{res: sampleResult()}
+	w := &bytes.Buffer{}
+	opts := options{fromDB: true, matchID: 1, formatCode: "T20", seasonName: "2025"}
 
-	opts := options{
-		matchID:    3,
-		formatCode: "T20",
-		seasonName: "2024",
-		fromDB:     true,
-		teamSize:   11,
+	err := runSelection(context.Background(), fc, fs, w, opts)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
-	var buf bytes.Buffer
-	if err := runSelection(ctx, connector, sel, &buf, opts); err == nil {
-		t.Fatalf("expected error from selector")
+	if !strings.Contains(err.Error(), "db connect failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunSelection_FromCSV_Success(t *testing.T) {
+	fc := &fakeConnector{}
+	fs := fakeSelector{res: sampleResult()}
+	w := &bytes.Buffer{}
+	opts := options{fromDB: false, poolPath: "pool.csv", matchID: 1, formatCode: "T20", seasonName: "2025"}
+
+	if err := runSelection(context.Background(), fc, fs, w, opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fc.called != 0 {
+		t.Fatalf("Connect should not be called for CSV path, got %d", fc.called)
+	}
+	out := w.String()
+	if !strings.Contains(out, "Selected Team (size=2)") {
+		t.Fatalf("output missing header, got: %s", out)
 	}
 }

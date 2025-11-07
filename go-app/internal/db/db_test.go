@@ -6,25 +6,26 @@ import (
 )
 
 func TestBuildDSN(t *testing.T) {
-	got := BuildDSN("user", "pass", "host", "5432", "dbname", "disable")
-	want := "postgres://user:pass@host:5432/dbname?sslmode=disable"
+	got := BuildDSN("u", "p", "h", "5432", "d", "disable")
+	want := "postgres://u:p@h:5432/d?sslmode=disable"
 	if got != want {
-		t.Fatalf("BuildDSN mismatch\n got: %s\nwant: %s", got, want)
+		t.Fatalf("dsn mismatch: got %q want %q", got, want)
 	}
 }
 
-func TestGetenv_DefaultWhenUnset(t *testing.T) {
-	const key = "DB_TEST_UNSET"
-	_ = os.Unsetenv(key)
-	if v := getenv(key, "fallback"); v != "fallback" {
-		t.Fatalf("getenv want fallback, got %q", v)
+func TestGetenv_DefaultAndOverride(t *testing.T) {
+	// When env is not set, returns default
+	if v := getenv("NON_EXISTENT_ENV_XYZ", "def"); v != "def" {
+		t.Fatalf("expected default, got %q", v)
 	}
-}
-
-func TestGetenv_ValueWhenSet(t *testing.T) {
-	const key = "DB_TEST_SET"
-	t.Setenv(key, "value")
-	if v := getenv(key, "fallback"); v != "value" {
-		t.Fatalf("getenv want value, got %q", v)
+	// When env is set, returns env value
+	t.Setenv("FOO_BAR", "hello")
+	if v := getenv("FOO_BAR", "def"); v != "hello" {
+		t.Fatalf("expected env override, got %q", v)
+	}
+	// Ensure empty string falls back to default
+	os.Unsetenv("BAZ_QUX")
+	if v := getenv("BAZ_QUX", "zzz"); v != "zzz" {
+		t.Fatalf("expected default on empty, got %q", v)
 	}
 }
