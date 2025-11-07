@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, validator
 
-from ..ml.match_win_predict import predict_for_team
+from ml.match_win_predict import predict_for_team
 from . import settings as app_settings
 from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
