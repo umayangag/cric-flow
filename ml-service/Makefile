@@ -13,7 +13,7 @@ COV_MIN?=80
 all: run
 
 venv:
-	@test -d $(VENV) || $(PY) -m venv $(VENV)
+	@test -d $(VENV) || python3 -m venv $(VENV)
 
 install: venv
 	$(PIP) install --upgrade pip
