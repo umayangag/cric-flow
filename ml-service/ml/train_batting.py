@@ -2,14 +2,13 @@ import argparse
 import json
 import os
 
+import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
-
-import config as svc_config  # loaded from ml-service/config.json if present
 
 # Minimal training script to produce placeholder artifacts compatible with app.main
 # Supports training per-format; artifacts saved with format suffixes when provided.

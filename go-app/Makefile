@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
+.PHONY: all build clean run-api team-select team-predictor docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
 
 all: build
 
@@ -29,6 +29,36 @@ migrate: build-migrate
 
 run-api:
 	go run ./cmd/api
+
+# Convenience variables and targets to run CLIs
+MATCH ?= 262039498036
+FORMAT ?= T20
+SEASON ?= 2025
+SIZE ?= 11
+MIN_BOWLERS ?= 5
+REQUIRE_KEEPER ?= 0
+FROM_DB ?= 1
+POOL ?= ../ml-service/ml/pool.csv
+BAT ?= 0
+BOWL ?= 0
+
+# Run team selection pipeline
+# Examples:
+#  make team-select MATCH=1193505 SEASON=2019 FORMAT=T20
+#  make team-select MATCH=1193505 SEASON=2019 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+team-select:
+	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ]; then echo "Please set MATCH=<id> and SEASON=<name> (e.g., 2019)"; exit 2; fi
+	REQ_FLAG=""; if [ "$(REQUIRE_KEEPER)" = "1" ]; then REQ_FLAG="-require-keeper"; fi; \
+	FROM_FLAG="-from-db=true"; if [ "$(FROM_DB)" = "0" ]; then FROM_FLAG="-from-db=false -pool=$(POOL)"; fi; \
+	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG $$FROM_FLAG
+
+# Run team predictor (requires ml-service running and ml/pool.csv present)
+# Generate the pool first: `make -C ../ml-service export-pool MATCH=<id>`
+# Examples:
+#  make team-predictor MATCH=1193505 SEASON=2019 FORMAT=T20 BAT=6 BOWL=5
+team-predictor:
+	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
+	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
 
 
 # Format Go code to align with CI (gofumpt + golines)
@@ -74,6 +104,38 @@ lint:
 	golangci-lint run -c ../.golangci.yml
 
 
+# Coverage targets
+.PHONY: coverage coverage-html coverage-func coverage-check
+
+# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=80 make coverage-check`
+COV_MIN ?= 80
+
+# Generate coverage profile for selected packages (gate scope)
+# Override COVERAGE_PACKAGES to adjust scope. Default targets unit-testable internal packages.
+# Note: internal/db is excluded by default for now (Option A: scoped gate). Include it explicitly when ready.
+COVERAGE_PACKAGES ?= ./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out $(COVERAGE_PACKAGES)
+
+# Generate an HTML coverage report (requires a prior coverage run)
+coverage-html:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Wrote coverage.html"
+
+# Print the total coverage summary line
+coverage-func:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	@go tool cover -func=coverage.out | tail -1
+
+# Fail if total coverage is below COV_MIN (default 80)
+coverage-check:
+	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
+	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
+		min=$(COV_MIN); \
+		awk -v t="$$total" -v m="$$min" 'BEGIN{ if ((t+0) < (m+0)) exit 1; else exit 0 }' /dev/null || { echo "Coverage $$total% is below required $$min%"; exit 1; }; \
+		echo "Coverage $$total% meets threshold (>= $$min%)."
+
 # Import retired players from CSV
 # Usage: make import-retired FILE=./data/retired.csv [APPLY=1] [OTHERS_ZERO=1]
 import-retired:
@@ -95,3 +157,42 @@ import-keepers:
 	OZ_FLAG=""; \
 	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
 	go run ./cmd/import-keepers --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG
+
+# Mockery targets for generating interface mocks
+.PHONY: mocks mocks-clean
+
+mocks:
+	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v2@latest" && exit 1)
+	mockery --config .mockery.yaml
+
+mocks-clean:
+	rm -rf internal/**/mocks
+
+
+# Developer convenience: CI-like coverage runner and help
+.PHONY: help coverage-ci
+
+# Print commonly used targets and variables
+help:
+	@echo "Go App Make targets"
+	@echo "  build            - Build API binary (cmd/api)"
+	@echo "  run-api          - Run API locally"
+	@echo "  migrate          - Build and run the migration tool against POSTGRES_* envs"
+	@echo "  team-select      - Orchestrate team selection (see variables: MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
+	@echo "  team-predictor   - Run team predictor CLI using ml-service"
+	@echo "  fmt / fmt-check  - Format code or check formatting (uses gofumpt/golines)"
+	@echo "  vet              - Run go vet"
+	@echo "  test             - Run unit tests"
+	@echo "  coverage         - Run tests with coverage for selected packages (COVERAGE_PACKAGES)"
+	@echo "  coverage-check   - Enforce coverage threshold (COV_MIN, default: $(COV_MIN))"
+	@echo "  coverage-html    - Render HTML coverage report (coverage.html)"
+	@echo "\nVariables:"
+	@echo "  COV_MIN             - Minimum coverage percentage for coverage-check (default: $(COV_MIN))"
+	@echo "  COVERAGE_PACKAGES   - Package scope for coverage run (default scoped to unit-testable internal packages)"
+
+# CI-like coverage run (respects COV_MIN and COVERAGE_PACKAGES). Useful locally.
+coverage-ci:
+	@echo "Running coverage for: $(COVERAGE_PACKAGES)"
+	$(MAKE) coverage
+	@echo "Enforcing coverage >= $(COV_MIN)%"
+	$(MAKE) coverage-check

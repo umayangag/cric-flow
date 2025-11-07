@@ -10,7 +10,7 @@ from dataset_definitions import (
 )
 from db import get_db_connection
 from fill_missing_attributes import fill_missing_attributes
-from shared.match_data import (
+from match_data import (
     encode_session,
     encode_viscosity,
     get_match_data,

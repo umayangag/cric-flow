@@ -34,8 +34,31 @@ type Team struct {
 }
 
 // CalculateOverallPerformance aggregates player predictions into a team summary for a match.
+// It delegates to CalculateOverallPerformanceWithConfig using the loaded config.
 func CalculateOverallPerformance(players []PlayerPrediction, matchID int64) Team {
 	cfg := config.Load()
+	return CalculateOverallPerformanceWithConfig(cfg, players, matchID)
+}
+
+// CalculateOverallPerformanceWithConfig is a pure variant that accepts configuration explicitly.
+// This improves testability by avoiding implicit I/O or environment reads inside the function.
+func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerPrediction, matchID int64) Team {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+
+	// Guard against division by zero; return a zero-valued team with extras applied.
+	if len(players) == 0 {
+		return Team{
+			Players:      players,
+			TotalScore:   cfg.Predictor.DefaultExtras,
+			TotalWickets: 10,
+			TotalBalls:   0,
+			Target:       0,
+			Extras:       cfg.Predictor.DefaultExtras,
+			MatchNumber:  matchID,
+		}
+	}
 
 	magicNumber := float64(cfg.Predictor.TeamSize) / float64(len(players))
 	extras := cfg.Predictor.DefaultExtras

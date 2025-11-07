@@ -11,7 +11,6 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	weatherSvc "github.com/umayangag/cric-info-scrapers/go-app/internal/weather/service"
 )
 
 // Options controls optional behaviors for Cricsheet import.
@@ -82,23 +81,23 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if formatCode == "" {
 		return fmt.Errorf("unsupported match_type: %s", info.MatchType)
 	}
-	formatID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
+	formatID, err := cricDB.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := db.EnsureMatchWithFormat(ctx, mid, formatID); err != nil {
+	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID); err != nil {
 		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
 	var venueID *int64
 	if venueName != "" {
-		if id, e := db.GetOrCreateVenue(ctx, venueName); e == nil {
+		if id, e := cricDB.GetOrCreateVenue(ctx, venueName); e == nil {
 			venueID = &id
 		}
 	}
 	var seasonID *int64
 	if s := strings.TrimSpace(string(info.Season)); s != "" {
-		if id, e := db.GetOrCreateSeason(ctx, s); e == nil {
+		if id, e := cricDB.GetOrCreateSeason(ctx, s); e == nil {
 			seasonID = &id
 		}
 	}
@@ -122,13 +121,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
-		_, _ = db.Pool.Exec(
+		_ = cricDB.Exec(
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
 			"inning1",
 		)
-		_, _ = db.Pool.Exec(
+		_ = cricDB.Exec(
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
@@ -142,7 +141,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		oppTeam := otherTeam(batTeam, teamA, teamB)
 		var oppositionID *int64
 		if oppTeam != "" {
-			if id, e := db.GetOrCreateOpposition(ctx, oppTeam); e == nil {
+			if id, e := cricDB.GetOrCreateOpposition(ctx, oppTeam); e == nil {
 				oppositionID = &id
 			}
 		}
@@ -251,7 +250,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			SeasonID:     seasonID,
 			MatchNumber:  matchNumber,
 		}
-		if err := db.UpdateMatchDetails(ctx, mid, upd); err != nil {
+		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			log.Printf("warn: update match_details failed for match_id=%d: %v", mid, err)
 		}
 		order := make([]string, 0, len(batAgg))
@@ -263,14 +262,14 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		pos := 1
 		for _, name := range order {
 			b := batAgg[name]
-			pid, _ := db.GetOrCreateByName(ctx, name)
+			pid, _ := cricDB.GetOrCreateByName(ctx, name)
 			sr := strikeRate(b.Runs, b.Balls)
 			desc := dismissals[name]
 			if desc == "" {
 				desc = "not out"
 			}
 			mins := 0
-			_ = db.UpsertBatting(ctx, &db.Batting{
+			_ = cricDB.UpsertBatting(ctx, &db.Batting{
 				MatchID:         mid,
 				PlayerID:        pid,
 				Description:     strPtr(desc),
@@ -291,8 +290,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			if s.Balls > 0 {
 				econ = float32(float64(s.Runs) / float64(s.Balls) * float64(ballsPerOver))
 			}
-			pid, _ := db.GetOrCreateByName(ctx, name)
-			_ = db.UpsertBowling(ctx, &db.Bowling{
+			pid, _ := cricDB.GetOrCreateByName(ctx, name)
+			_ = cricDB.UpsertBowling(ctx, &db.Bowling{
 				MatchID:  mid,
 				PlayerID: pid,
 				Overs:    &o,
@@ -313,8 +312,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if opts != nil && opts.PlaceholdersFielding {
 		zero := 0
 		for name := range playersSeen {
-			pid, _ := db.GetOrCreateByName(ctx, name)
-			_ = db.UpsertFielding(ctx, &db.Fielding{
+			pid, _ := cricDB.GetOrCreateByName(ctx, name)
+			_ = cricDB.UpsertFielding(ctx, &db.Fielding{
 				MatchID:        mid,
 				PlayerID:       pid,
 				Catches:        &zero,
@@ -326,7 +325,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
-		_ = weatherSvc.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
+		_ = weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
 	}
 	return nil
 }

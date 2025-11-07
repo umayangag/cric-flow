@@ -1,11 +1,12 @@
 import os
 
+# Load config defaults (with env override support)
+import config as svc_config
 import joblib
 import pandas as pd
 from dataset_definitions import output_bowling_columns
 
-dirname = os.path.dirname(__file__)
-output_dir = os.path.join(dirname, "../../output/ml-service")
+output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
 
 predictor = joblib.load(os.path.join(output_dir, "bowling_model.joblib"))
 input_scaler = joblib.load(os.path.join(output_dir, "bowling_scaler.joblib"))

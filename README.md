@@ -65,11 +65,34 @@ curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json
 curl -s http://localhost:8080/precompute/status | jq
 ```
 
-### 5) Export model datasets
+### 5) Export model datasets (now includes unified cross-format files)
+The exporter now has a unified mode that writes a single merged CSV per task (batting/bowling) across all formats, and includes leakage-free, date-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
+
+Recommended (Makefile runs both unified and legacy for compatibility):
 ```
 make export-dataset
-# outputs to output/go-app/batting_encoded.csv and output/go-app/bowling_encoded.csv
 ```
+Outputs:
+- Unified (new):
+  - `output/go-app/batting_encoded_all.csv`
+  - `output/go-app/bowling_encoded_all.csv`
+- Legacy (still produced for current training scripts):
+  - `output/go-app/batting_encoded.csv`
+  - `output/go-app/bowling_encoded.csv`
+
+To call the exporter directly:
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -unified=1
+# and (legacy unsuffixed files) without flags
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset
+```
+
+Column naming (examples):
+- Batting unified columns: `bat_form_TEST_asof`, `bat_form_ODI_asof`, `bat_form_T20I_asof`, `bat_form_T20_asof`, with matching `n_samples_*` reliability columns.
+- Opposition/Venue: `bat_vs_opp_FMT_asof`, `bat_at_venue_FMT_asof` (and `bowl_*` analogues for bowling).
+- Each row also includes `format_code` for the match.
 
 ### 6) Train ML artifacts (optional but recommended)
 From the exported CSVs, create `joblib` scaler/model files consumed by the ML service.
@@ -168,3 +191,32 @@ Two separate GitHub Actions workflows:
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
 - If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
 - If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).
+
+
+
+## As-of (time-indexed) precompute — single command for all formats (new)
+The legacy `make precompute` triggers the API’s seasonal/aggregate metrics and does not populate the new `*_asof` tables. To fill the date-indexed snapshot tables (`player_form_asof`, `player_consistency_asof`, `player_vs_opposition_asof`, `player_at_venue_asof`), run the as-of precompute across all formats. If you don’t pass a date, it defaults to today (UTC):
+
+```
+make precompute-asof
+```
+
+Notes and parameters:
+- `ASOF` — optional cutoff date (YYYY-MM-DD). Defaults to today (UTC). Features are computed using only matches strictly BEFORE this date.
+- `ALPHA` — EWM alpha (default 0.3)
+- `LASTN` — window N for consistency (default 10)
+- History window (how many past matches to consider) is controlled by `features.history_window_matches` in `go-app/config.json` (0 = unlimited).
+
+Examples:
+```
+# Snapshots as of today (UTC) for all formats (TEST, ODI, T20I, T20)
+make precompute-asof
+
+# Snapshots as of a specific date
+make precompute-asof ASOF=2020-12-31
+
+# With tuned parameters
+make precompute-asof ASOF=2020-12-31 ALPHA=0.35 LASTN=12
+```
+
+Behind the scenes this runs the Go CLI `go-app/cmd/precompute-features` once per format with `-as-of`, applying DB migrations automatically. Ensure you have already imported data (e.g., via `make cricsheet-import`).

@@ -39,6 +39,18 @@ Schema for `ml-service/config.json`:
 ```
 See `../docs/CONFIG.md` for full details and examples.
 
+## Unified cross-format datasets (new)
+The Go exporter now emits unified, cross-format CSVs that include leakage-free, time-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
+
+Export them from the repo root:
+```
+make export-dataset
+# writes to output/go-app/batting_encoded_all.csv and bowling_encoded_all.csv
+```
+Notes:
+- For backward compatibility, the Makefile also generates legacy files `batting_encoded.csv` and `bowling_encoded.csv` which current training scripts read by default.
+- If you switch training to the unified files, update the dataset path arguments or scripts accordingly.
+
 ## Common tasks (Makefile)
 - Run the service locally on :8000 with auto-reload:
 ```
@@ -50,6 +62,13 @@ make train-all
 # or directly
 python -m ml.train_batting_model
 python -m ml.train_bowling_model
+```
+- Generate a player pool CSV for team prediction (writes to `ml/pool.csv`):
+```
+# requires DB to be populated and accessible via env (POSTGRES_*)
+make export-pool MATCH=1193505
+# or directly
+python -m ml.export_pool 1193505
 ```
 - Docker image and container:
 ```

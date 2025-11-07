@@ -48,7 +48,7 @@ def default_go_app_export_dir() -> str:
     except Exception:
         pass
     # built-in fallback
-    return os.path.join("..", "..", "output", "go-app")
+    return os.path.join("../..", "..", "output", "go-app")
 
 
 def default_artifacts_dir() -> str:
@@ -60,4 +60,4 @@ def default_artifacts_dir() -> str:
     except Exception:
         pass
     # built-in fallback
-    return os.path.join("..", "..", "output", "ml-service")
+    return os.path.join("../..", "..", "output", "ml-service")

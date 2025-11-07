@@ -32,9 +32,12 @@ go-test-int:
 migrate:
 	cd go-app && go run ./cmd/tools/migrate -dir=./migrations
 
-# Export datasets similar to src/final_data/queries.py
+# Export datasets (new unified files + legacy for training compatibility)
 export-dataset:
+	# 1) New unified, cross-format CSVs with as-of per-format features
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
+	# 2) Legacy unsuffixed CSVs (batting_encoded.csv, bowling_encoded.csv) used by current training scripts
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
@@ -54,6 +57,25 @@ BOWL ?= 5
 precompute:
 	curl -X POST http://localhost:8080/precompute
 
+# Precompute time-indexed (as-of) features for ALL formats with one command
+# ASOF is optional (defaults to today's date in UTC). You can override:
+#   ASOF=YYYY-MM-DD
+# Optional env overrides:
+#   ALPHA=0.3   LASTN=10
+# Examples:
+#   make precompute-asof
+#   make precompute-asof ASOF=2020-12-31 ALPHA=0.35 LASTN=12
+precompute-asof:
+	cd go-app; \
+	ASOF_VAL=$${ASOF:-$$(date -u +%F)}; \
+	ALPHA_FLAG=""; LASTN_FLAG=""; \
+	if [ -n "$(ALPHA)" ]; then ALPHA_FLAG="-ewm-alpha=$(ALPHA)"; fi; \
+	if [ -n "$(LASTN)" ]; then LASTN_FLAG="-lastN=$(LASTN)"; fi; \
+	for F in TEST ODI T20I T20; do \
+		echo "[as-of] Precomputing (replay) for $$F as-of $$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG"; \
+		go run ./cmd/precompute-features -format=$$F -replay=1 -as-of=$$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG || exit 1; \
+	done
+
 # Team predictor (happy path): requires MATCH to be provided
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
@@ -64,10 +86,10 @@ team-predictor:
 ml-install:
 	$(MAKE) -C ml-service install
 
-train-batting: ml-install
+train-batting:
 	cd ml-service && $(PY) ml/train_batting_model.py
 
-train-bowling: ml-install
+train-bowling:
 	cd ml-service && $(PY) ml/train_bowling_model.py
 
 train-all: train-batting train-bowling

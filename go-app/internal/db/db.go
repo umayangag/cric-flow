@@ -5,16 +5,58 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Pool is a global connection pool reference returned by Connect.
 var Pool *pgxpool.Pool
+
+// DB is a minimal database interface to enable offline tests.
+type DB interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+}
+
+// Rows is a minimal row iterator abstraction for tests.
+type Rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Close()
+}
+
+// defaultDB is the package-level DB used by helpers; set by Connect or tests.
+var defaultDB DB
+
+// SetDB allows tests to inject a fake DB implementation.
+func SetDB(d DB) { defaultDB = d }
+
+// poolDB adapts pgxpool.Pool to the DB interface.
+type poolDB struct{ p *pgxpool.Pool }
+
+func (w poolDB) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := w.p.Exec(ctx, sql, args...)
+	return err
+}
+
+func (w poolDB) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	r, err := w.p.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rowsAdapter{r}, nil
+}
+
+type rowsAdapter struct{ pgx.Rows }
+
+func (r rowsAdapter) Close() { r.Rows.Close() }
+
+// BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
+func BuildDSN(user, pass, host, port, database, ssl string) string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, database, ssl)
+}
 
 // Connect initializes a pgx connection pool using environment variables:
 // POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_SSLMODE
@@ -26,7 +68,7 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	pass := getenv("POSTGRES_PASSWORD", "postgres")
 	ssl := getenv("POSTGRES_SSLMODE", "disable")
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, db, ssl)
+	dsn := BuildDSN(user, pass, host, port, db, ssl)
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
@@ -45,6 +87,7 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	Pool = pool
+	defaultDB = poolDB{p: pool}
 	return pool, nil
 }
 
@@ -57,71 +100,8 @@ func getenv(key, def string) string {
 
 // RunMigrations executes .sql files in the given directory in lexical order.
 // It creates a table schema_migrations(version text primary key, applied_at timestamptz) to track applied files.
+// Implementation delegates to RunMigrationsFS for testability (behavior-preserving).
 func RunMigrations(ctx context.Context, migrationsDir string) error {
-	if Pool == nil {
-		if _, err := Connect(ctx); err != nil {
-			return err
-		}
-	}
-	// ensure table
-	_, err := Pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version TEXT PRIMARY KEY,
-		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-	)`)
-	if err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		return err
-	}
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(strings.ToLower(name), ".sql") {
-			files = append(files, filepath.Join(migrationsDir, name))
-		}
-	}
-	sort.Strings(files)
-
-	// get applied versions
-	applied := map[string]bool{}
-	rows, err := Pool.Query(ctx, `SELECT version FROM schema_migrations`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var v string
-		if err := rows.Scan(&v); err != nil {
-			return err
-		}
-		applied[v] = true
-	}
-
-	for _, f := range files {
-		version := filepath.Base(f)
-		if applied[version] {
-			continue
-		}
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return err
-		}
-		sql := string(b)
-		// execute as one Exec (allow multiple statements)
-		// pgx doesn't support multi-statement via Batch directly; use Exec instead.
-		// We'll just run Exec with the whole content.
-		if _, err := Pool.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("migration %s failed: %w", version, err)
-		}
-		if _, err := Pool.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
-			return err
-		}
-	}
-	return nil
+	// Use an os-backed fs for the given directory and delegate to the FS-based runner.
+	return RunMigrationsFS(ctx, os.DirFS(migrationsDir), ".")
 }
