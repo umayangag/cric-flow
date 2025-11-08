@@ -8,17 +8,17 @@ import (
 // FieldingEvent represents a row in fielding_event.
 // Optional player references are pointers; nil means unresolved.
 type FieldingEvent struct {
-	MatchID      int64
-	Innings      int
-	Over         int
-	Ball         int
-	BatterOutID  *int64
-	FielderID    *int64
-	BowlerID     *int64
-	Kind         string
-	AssistRole   string // "", "assist", "keeper", or "primary" (reserved)
-	IsDirectHit  bool
-	Notes        *string
+	MatchID     int64
+	Innings     int
+	Over        int
+	Ball        int
+	BatterOutID *int64
+	FielderID   *int64
+	BowlerID    *int64
+	Kind        string
+	AssistRole  string // "", "assist", "keeper", or "primary" (reserved)
+	IsDirectHit bool
+	Notes       *string
 }
 
 // InsertFieldingEvent inserts a fielding_event row idempotently using the natural
@@ -71,17 +71,17 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 			return err
 		}
 		// Upsert aggregates into fielding_data. Ensure zero/NULL safety using pointers.
-		c, r, s, dh, z := catches, runOuts, stumpings, directHits, 0
+		c, r, s, dh := catches, runOuts, stumpings, directHits
 		// Keep existing dropped/missed as-is by passing nils; UpsertFielding handles COALESCE
 		if err := UpsertFielding(ctx, &Fielding{
-			MatchID:            matchID,
-			PlayerID:           playerID,
-			Catches:            &c,
-			RunOuts:            &r,
-			DroppedCatches:     nil,
-			MissedRunOuts:      nil,
-			Stumpings:          &s,
-			RunoutsDirectHits:  &dh,
+			MatchID:           matchID,
+			PlayerID:          playerID,
+			Catches:           &c,
+			RunOuts:           &r,
+			DroppedCatches:    nil,
+			MissedRunOuts:     nil,
+			Stumpings:         &s,
+			RunoutsDirectHits: &dh,
 		}); err != nil {
 			return err
 		}
