@@ -202,16 +202,28 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						}
 
 						if len(fNames) > 0 {
-							batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							batterID, err := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							if err != nil {
+								log.Printf("warn: get or create player failed for %s: %v", w.PlayerOut, err)
+								continue
+							}
 							var bowlerID *int64
 							// Bowler is only associated with 'caught' dismissals.
 							if isCaught && d.Bowler != "" {
-								bid, _ := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								bid, err := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								if err != nil {
+									log.Printf("warn: get or create player failed for %s: %v", d.Bowler, err)
+									continue
+								}
 								bowlerID = &bid
 							}
 							for _, fn := range fNames {
-								fid, _ := cricDB.GetOrCreateByName(ctx, fn)
-								_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+								fid, err := cricDB.GetOrCreateByName(ctx, fn)
+								if err != nil {
+									log.Printf("warn: get or create player failed for %s: %v", fn, err)
+									continue
+								}
+								err = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
 									MatchID:     mid,
 									Innings:     inningNo,
 									Over:        overNo,
@@ -224,6 +236,9 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 									IsDirectHit: false,
 									Notes:       nil,
 								})
+								if err != nil {
+									log.Printf("warn: insert fielding_event failed for match_id=%d: %v", mid, err)
+								}
 							}
 						}
 					}
@@ -366,24 +381,32 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		zero := 0
 		for name := range playersSeen {
 			pid, _ := cricDB.GetOrCreateByName(ctx, name)
-			_ = cricDB.UpsertFielding(ctx, &db.Fielding{
+			if err = cricDB.UpsertFielding(ctx, &db.Fielding{
 				MatchID:        mid,
 				PlayerID:       pid,
 				Catches:        &zero,
 				RunOuts:        &zero,
 				DroppedCatches: &zero,
 				MissedRunOuts:  &zero,
-			})
+			}); err != nil {
+				log.Fatalf("error: failed to insert placeholder fielding row for player %s: %v", name, err)
+				return err
+			}
 		}
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
 		if err := weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings)); err != nil {
 			log.Fatalf("error: failed to enqueue weather job: %v", err)
+			return err
 		}
 	}
 	// Recompute fielding aggregates from emitted events for this match
-	_ = db.RecomputeFieldingAggregates(ctx, mid)
+	if err = db.RecomputeFieldingAggregates(ctx, mid); err != nil {
+		log.Fatalf("error: failed to recompute fielding aggregates: %v", err)
+		return err
+	}
+
 	return nil
 }
 
