@@ -113,14 +113,17 @@ func main() {
 				batCons, nCbat := features.Consistency(batInn, *lastN)
 				bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
 
-				if err := db.UpsertPlayerFormAsOf(ctx, pid, asOf, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
-					log.Fatalf("upsert form asof p=%d: %v", pid, err)
+				// Write overall snapshots (form + consistency)
+				if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "overall", nil,
+					batForm, bowlForm, *alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+					log.Fatalf("upsert feature_form overall p=%d: %v", pid, err)
 				}
-				if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, asOf, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
-					log.Fatalf("upsert consistency asof p=%d: %v", pid, err)
+				if err := db.UpsertFeatureConsistencySnapshot(ctx, pid, asOf, formatID, "overall", nil,
+					batCons, bowlCons, *lastN, nCbat, nCbowl, "v1"); err != nil {
+					log.Fatalf("upsert feature_consistency overall p=%d: %v", pid, err)
 				}
 
-				// Vs-opposition and at-venue filtered histories
+				// Vs-opposition and at-venue filtered histories (form only, to preserve current behavior)
 				if m.OppositionID != 0 {
 					oppID := m.OppositionID
 					oppBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, &oppID, nil)
@@ -145,8 +148,9 @@ func main() {
 					}
 					oppBatForm, nOppBat := features.EWM(oppBatInn, *alpha)
 					oppBowlForm, nOppBowl := features.EWM(oppBowlInn, *alpha)
-					if err := db.UpsertPlayerVsOppAsOf(ctx, pid, oppID, asOf, formatID, oppBatForm, oppBowlForm, int(nOppBat+nOppBowl), specEWM(*alpha)); err != nil {
-						log.Fatalf("upsert vs_opp asof p=%d: %v", pid, err)
+					if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "opposition", &oppID,
+						oppBatForm, oppBowlForm, *alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
+						log.Fatalf("upsert feature_form opposition p=%d: %v", pid, err)
 					}
 				}
 				if m.VenueID != 0 {
@@ -173,8 +177,9 @@ func main() {
 					}
 					venBatForm, nVenBat := features.EWM(venBatInn, *alpha)
 					venBowlForm, nVenBowl := features.EWM(venBowlInn, *alpha)
-					if err := db.UpsertPlayerAtVenueAsOf(ctx, pid, venueID, asOf, formatID, venBatForm, venBowlForm, int(nVenBat+nVenBowl), specEWM(*alpha)); err != nil {
-						log.Fatalf("upsert at_venue asof p=%d: %v", pid, err)
+					if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "venue", &venueID,
+						venBatForm, venBowlForm, *alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
+						log.Fatalf("upsert feature_form venue p=%d: %v", pid, err)
 					}
 				}
 			}
@@ -220,13 +225,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("bat hist p=%d: %v", pid, err)
 		}
-		// Bowling history strictly before as-of
 		bowlHist, err := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, nil)
 		if err != nil {
 			log.Fatalf("bowl hist p=%d: %v", pid, err)
 		}
 
-		// Convert to features.Innings and sort/clip
 		batInn := make([]features.Innings, 0, len(batHist))
 		for _, iv := range batHist {
 			batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
@@ -237,8 +240,6 @@ func main() {
 		}
 		batInn = features.SortAndClip(batInn, asOf)
 		bowlInn = features.SortAndClip(bowlInn, asOf)
-
-		// Apply optional window from config (last K matches)
 		if windowN > 0 {
 			if len(batInn) > windowN {
 				batInn = batInn[len(batInn)-windowN:]
@@ -253,20 +254,21 @@ func main() {
 		batCons, nCbat := features.Consistency(batInn, *lastN)
 		bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
 
-		// Persist snapshots (idempotent)
-		if err := db.UpsertPlayerFormAsOf(ctx, pid, asOf, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
-			log.Fatalf("upsert form asof p=%d: %v", pid, err)
+		if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "overall", nil,
+			batForm, bowlForm, *alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+			log.Fatalf("upsert feature_form overall p=%d: %v", pid, err)
 		}
-		if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, asOf, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
-			log.Fatalf("upsert consistency asof p=%d: %v", pid, err)
+		if err := db.UpsertFeatureConsistencySnapshot(ctx, pid, asOf, formatID, "overall", nil,
+			batCons, bowlCons, *lastN, nCbat, nCbowl, "v1"); err != nil {
+			log.Fatalf("upsert feature_consistency overall p=%d: %v", pid, err)
 		}
 
 		processed++
 		if processed%1000 == 0 {
-			log.Printf("processed %d/%d players for %s", processed, len(players), *formatCode)
+			log.Printf("processed %d players so far for %s", processed, *formatCode)
 		}
 	}
-	log.Printf("done: %d player snapshots upserted for %s at %s", processed, *formatCode, asOf.Format("2006-01-02"))
+	log.Printf("done: snapshots computed for %d players (%s) as of %s", len(players), *formatCode, asOf.Format("2006-01-02"))
 }
 
 func specEWM(alpha float64) string {

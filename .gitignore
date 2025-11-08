@@ -3,11 +3,14 @@
 __pycache__
 venv
 src/team_selection/cache
+
+go-app/api
+go-app/coverage.out
+
 ml-service/.venv
 ml-service/.coverage
 ml-service/coverage.xml
+
 data
 output
-tests
-go-app/api
-go-app/coverage.out
+.output.txt

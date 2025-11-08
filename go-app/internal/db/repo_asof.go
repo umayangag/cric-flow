@@ -217,24 +217,34 @@ func UpsertPlayerFormAsOf(ctx context.Context, playerID int64, asOf time.Time, f
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
+	// Backward compatible no-op: write into the new consolidated table as overall scope
+	scope := "overall"
+	var scopeID *int64
 	_, err := Pool.Exec(
 		ctx,
-		`INSERT INTO player_form_asof(player_id, as_of_date, format_id, bat_form, bowl_form, n_samples_bat, n_samples_bowl, window_spec)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (player_id, as_of_date, format_id)
-		DO UPDATE SET bat_form = EXCLUDED.bat_form,
-			bowl_form = EXCLUDED.bowl_form,
+		`INSERT INTO feature_form_snapshots(
+			player_id, as_of_date, format_id, scope, scope_id,
+			batting_value, bowling_value, alpha, n_samples_bat, n_samples_bowl, effective_n, source_version
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'v1')
+		ON CONFLICT (player_id, as_of_date, format_id, scope, scope_id)
+		DO UPDATE SET batting_value = EXCLUDED.batting_value,
+			bowling_value = EXCLUDED.bowling_value,
+			alpha = EXCLUDED.alpha,
 			n_samples_bat = EXCLUDED.n_samples_bat,
 			n_samples_bowl = EXCLUDED.n_samples_bowl,
-			window_spec = EXCLUDED.window_spec`,
+			effective_n = EXCLUDED.effective_n`,
 		playerID,
 		asOf,
 		formatID,
+		scope,
+		scopeID,
 		batForm,
 		bowlForm,
+		// Derive alpha from windowSpec if possible later; for now use 0 as placeholder when unknown
+		0.0,
 		nBat,
 		nBowl,
-		windowSpec,
+		(nBat + nBowl),
 	)
 	return err
 }
@@ -320,6 +330,101 @@ func UpsertPlayerAtVenueAsOf(ctx context.Context, playerID int64, venueID int64,
 		bowlValue,
 		nSamples,
 		windowSpec,
+	)
+	return err
+}
+
+// UpsertFeatureFormSnapshot inserts or updates a consolidated form snapshot row for the given scope.
+func UpsertFeatureFormSnapshot(
+	ctx context.Context,
+	playerID int64,
+	asOf time.Time,
+	formatID int64,
+	scope string, // 'overall' | 'venue' | 'opposition'
+	scopeID *int64, // nil when scope == 'overall'
+	battingValue float64,
+	bowlingValue float64,
+	alpha float64,
+	nSamplesBat float64,
+	nSamplesBowl float64,
+	effectiveN float64,
+	sourceVersion string,
+) error {
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO feature_form_snapshots(
+			player_id, as_of_date, format_id, scope, scope_id,
+			batting_value, bowling_value, alpha, n_samples_bat, n_samples_bowl, effective_n, source_version
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		ON CONFLICT (player_id, as_of_date, format_id, scope, scope_id)
+		DO UPDATE SET batting_value = EXCLUDED.batting_value,
+			bowling_value = EXCLUDED.bowling_value,
+			alpha = EXCLUDED.alpha,
+			n_samples_bat = EXCLUDED.n_samples_bat,
+			n_samples_bowl = EXCLUDED.n_samples_bowl,
+			effective_n = EXCLUDED.effective_n,
+			source_version = EXCLUDED.source_version`,
+		playerID,
+		asOf,
+		formatID,
+		scope,
+		scopeID,
+		battingValue,
+		bowlingValue,
+		alpha,
+		nSamplesBat,
+		nSamplesBowl,
+		effectiveN,
+		sourceVersion,
+	)
+	return err
+}
+
+// UpsertFeatureConsistencySnapshot inserts or updates a consolidated consistency snapshot row for the given scope.
+func UpsertFeatureConsistencySnapshot(
+	ctx context.Context,
+	playerID int64,
+	asOf time.Time,
+	formatID int64,
+	scope string, // 'overall' | 'venue' | 'opposition'
+	scopeID *int64, // nil when scope == 'overall'
+	battingValue float64,
+	bowlingValue float64,
+	windowN int,
+	nSamplesBat int,
+	nSamplesBowl int,
+	sourceVersion string,
+) error {
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	_, err := Pool.Exec(
+		ctx,
+		`INSERT INTO feature_consistency_snapshots(
+			player_id, as_of_date, format_id, scope, scope_id,
+			batting_value, bowling_value, window_n, n_samples_bat, n_samples_bowl, source_version
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (player_id, as_of_date, format_id, scope, scope_id)
+		DO UPDATE SET batting_value = EXCLUDED.batting_value,
+			bowling_value = EXCLUDED.bowling_value,
+			window_n = EXCLUDED.window_n,
+			n_samples_bat = EXCLUDED.n_samples_bat,
+			n_samples_bowl = EXCLUDED.n_samples_bowl,
+			source_version = EXCLUDED.source_version`,
+		playerID,
+		asOf,
+		formatID,
+		scope,
+		scopeID,
+		battingValue,
+		bowlingValue,
+		windowN,
+		nSamplesBat,
+		nSamplesBowl,
+		sourceVersion,
 	)
 	return err
 }
