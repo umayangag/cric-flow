@@ -26,6 +26,12 @@ input_batting_columns = [
     "opposition",
     "season",
     "player_name",
+    # Fielding aggregates appended (must match go-app exporters' order)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 
 output_batting_columns = [
@@ -53,6 +59,12 @@ input_bowling_columns = [
     "bowling_opposition",
     "season",
     "player_name",
+    # Fielding aggregates appended (must match go-app exporters' order)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 output_bowling_columns = ["runs_conceded", "deliveries", "wickets_taken"]
 derived_bowling_columns = ["bowling_contribution", "econ"]

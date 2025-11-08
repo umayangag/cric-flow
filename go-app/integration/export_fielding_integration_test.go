@@ -49,25 +49,49 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	if err := row.Scan(&caught, &runOut, &stumped); err != nil {
 		t.Fatalf("scan fielding_event counts: %v", err)
 	}
-	if caught != 1 { t.Fatalf("expected 1 caught, got %d", caught) }
-	if runOut != 2 { t.Fatalf("expected 2 run_out events (two fielders credited), got %d", runOut) }
-	if stumped != 1 { t.Fatalf("expected 1 stumped, got %d", stumped) }
+	if caught != 1 {
+		t.Fatalf("expected 1 caught, got %d", caught)
+	}
+	if runOut != 2 {
+		t.Fatalf("expected 2 run_out events (two fielders credited), got %d", runOut)
+	}
+	if stumped != 1 {
+		t.Fatalf("expected 1 stumped, got %d", stumped)
+	}
 
 	// Recompute aggregates explicitly (ingest already calls it, but repeat to be safe)
 	if err := db.RecomputeFieldingAggregates(ctx, mid); err != nil {
 		t.Fatalf("recompute aggregates: %v", err)
 	}
 
-	rows, err := db.Pool.Query(ctx, `SELECT COALESCE(SUM(catches),0), COALESCE(SUM(run_outs),0), COALESCE(SUM(stumpings),0), COALESCE(SUM(runouts_direct_hits),0) FROM fielding_data WHERE match_id=$1`, mid)
-	if err != nil { t.Fatalf("query fielding_data sums: %v", err) }
+	rows, err := db.Pool.Query(
+		ctx,
+		`SELECT COALESCE(SUM(catches),0), COALESCE(SUM(run_outs),0), COALESCE(SUM(stumpings),0), COALESCE(SUM(runouts_direct_hits),0) FROM fielding_data WHERE match_id=$1`,
+		mid,
+	)
+	if err != nil {
+		t.Fatalf("query fielding_data sums: %v", err)
+	}
 	defer rows.Close()
-	if !rows.Next() { t.Fatalf("no aggregate row returned") }
+	if !rows.Next() {
+		t.Fatalf("no aggregate row returned")
+	}
 	var sumC, sumR, sumS, sumDH int
-	if err := rows.Scan(&sumC, &sumR, &sumS, &sumDH); err != nil { t.Fatalf("scan aggregates: %v", err) }
-	if sumC != 1 { t.Fatalf("expected total catches=1, got %d", sumC) }
-	if sumR != 2 { t.Fatalf("expected total run_outs=2, got %d", sumR) }
-	if sumS != 1 { t.Fatalf("expected total stumpings=1, got %d", sumS) }
-	if sumDH != 0 { t.Fatalf("expected total runouts_direct_hits=0 by default, got %d", sumDH) }
+	if err := rows.Scan(&sumC, &sumR, &sumS, &sumDH); err != nil {
+		t.Fatalf("scan aggregates: %v", err)
+	}
+	if sumC != 1 {
+		t.Fatalf("expected total catches=1, got %d", sumC)
+	}
+	if sumR != 2 {
+		t.Fatalf("expected total run_outs=2, got %d", sumR)
+	}
+	if sumS != 1 {
+		t.Fatalf("expected total stumpings=1, got %d", sumS)
+	}
+	if sumDH != 0 {
+		t.Fatalf("expected total runouts_direct_hits=0 by default, got %d", sumDH)
+	}
 
 	// Invoke unified exporter to generate CSVs
 	outDir := t.TempDir()
@@ -83,11 +107,15 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 		t.Fatalf("expected unified batting csv not found: %v", err)
 	}
 	f, err := os.Open(batCSV)
-	if err != nil { t.Fatalf("open csv: %v", err) }
+	if err != nil {
+		t.Fatalf("open csv: %v", err)
+	}
 	defer f.Close()
 	cr := csv.NewReader(f)
 	rec, err := cr.Read()
-	if err != nil { t.Fatalf("read header: %v", err) }
+	if err != nil {
+		t.Fatalf("read header: %v", err)
+	}
 	// Verify header contains fielding columns in order
 	want := []string{"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements"}
 	idxs := make([]int, len(want))
@@ -97,23 +125,33 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 			t.Fatalf("missing column %q in header: %v", col, rec)
 		}
 		// ensure order
-		if i > 0 && !(idxs[i] > idxs[i-1]) {
+		if i > 0 && (idxs[i] <= idxs[i-1]) {
 			t.Fatalf("columns out of order for %q, got indexes %v in header %v", col, idxs, rec)
 		}
 	}
 	// Locate player_name column
 	pidx := indexOf(rec, "player_name")
-	if pidx < 0 { t.Fatalf("missing player_name in header") }
+	if pidx < 0 {
+		t.Fatalf("missing player_name in header")
+	}
 
 	// Read rows and find any with non-zero fielding_involvements; cross-check against DB for that player
 	// Collect DB expected counts per player_name for this match
-	dbRows, err := db.Pool.Query(ctx, `SELECT p.player_name, fd.catches, fd.run_outs, fd.stumpings, fd.runouts_direct_hits FROM fielding_data fd JOIN player p ON p.id = fd.player_id WHERE fd.match_id=$1`, mid)
-	if err != nil { t.Fatalf("query per-player aggregates: %v", err) }
+	dbRows, err := db.Pool.Query(
+		ctx,
+		`SELECT p.player_name, fd.catches, fd.run_outs, fd.stumpings, fd.runouts_direct_hits FROM fielding_data fd JOIN player p ON p.id = fd.player_id WHERE fd.match_id=$1`,
+		mid,
+	)
+	if err != nil {
+		t.Fatalf("query per-player aggregates: %v", err)
+	}
 	expects := map[string][4]int{}
 	for dbRows.Next() {
 		var name string
 		var c, r, s, dh int
-		if err := dbRows.Scan(&name, &c, &r, &s, &dh); err != nil { t.Fatalf("scan per-player: %v", err) }
+		if err := dbRows.Scan(&name, &c, &r, &s, &dh); err != nil {
+			t.Fatalf("scan per-player: %v", err)
+		}
 		expects[name] = [4]int{c, r, s, dh}
 	}
 	dbRows.Close()
@@ -121,10 +159,14 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	matched := 0
 	for {
 		rec, err = cr.Read()
-		if err != nil { break }
+		if err != nil {
+			break
+		}
 		name := rec[pidx]
 		exp, ok := expects[name]
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		c := mustAtoi(rec[idxs[0]])
 		r := mustAtoi(rec[idxs[1]])
 		s := mustAtoi(rec[idxs[2]])
@@ -162,11 +204,15 @@ func indexOf(sl []string, s string) int {
 
 func mustAtoi(s string) int {
 	s = strings.TrimSpace(s)
-	if s == "" { return 0 }
+	if s == "" {
+		return 0
+	}
 	n := 0
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
-		if ch < '0' || ch > '9' { return 0 }
+		if ch < '0' || ch > '9' {
+			return 0
+		}
 		n = n*10 + int(ch-'0')
 	}
 	return n

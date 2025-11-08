@@ -23,8 +23,7 @@ func main() {
 	)
 	flag.BoolVar(&all, "all", false, "process all matches found in match_details")
 	flag.Int64Var(&matchID, "match", 0, "specific match_id to process (overrides --all if >0)")
-	flag.BoolVar(&force, "force", false, "force rebuild (reserved; future: purge/re-derive events)"
-	)
+	flag.BoolVar(&force, "force", false, "force rebuild (reserved; future: purge/re-derive events)")
 	flag.IntVar(&batchSize, "batch-size", 500, "number of matches to process per batch")
 	flag.Parse()
 
@@ -72,7 +71,12 @@ func main() {
 }
 
 func listMatchIDs(ctx context.Context, limit, offset int) ([]int64, error) {
-	rows, err := db.Pool.Query(ctx, `SELECT match_id FROM match_details WHERE match_id IS NOT NULL ORDER BY match_id LIMIT $1 OFFSET $2`, limit, offset)
+	rows, err := db.Pool.Query(
+		ctx,
+		`SELECT match_id FROM match_details WHERE match_id IS NOT NULL ORDER BY match_id LIMIT $1 OFFSET $2`,
+		limit,
+		offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +92,7 @@ func listMatchIDs(ctx context.Context, limit, offset int) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func backfillOne(ctx context.Context, matchID int64, force bool) error {
+func backfillOne(ctx context.Context, matchID int64, _ bool) error {
 	// Phase 2: We recompute aggregates from existing fielding_event rows.
 	// Future: if force is true, we may purge and re-derive fielding_event from sources.
 	if err := db.RecomputeFieldingAggregates(ctx, matchID); err != nil {

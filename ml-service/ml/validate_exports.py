@@ -39,6 +39,12 @@ BATTING_REQUIRED_FEATURES = [
     "batting_venue",
     "batting_opposition",
     "season_id",
+    # Fielding aggregates (strict mode requires presence)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 
 BOWLING_REQUIRED_FEATURES = [
@@ -57,6 +63,12 @@ BOWLING_REQUIRED_FEATURES = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
+    # Fielding aggregates (strict mode requires presence)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 
 # Training outputs that must come first in training schema
@@ -82,6 +94,12 @@ BATTING_INFER_HEADERS = [
     "opposition",
     "season",
     "player_name",
+    # Fielding aggregates appended (must match go-app inference exporters' order)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 BOWLING_INFER_HEADERS = [
     "bowling_consistency",
@@ -100,6 +118,12 @@ BOWLING_INFER_HEADERS = [
     "bowling_opposition",
     "season",
     "player_name",
+    # Fielding aggregates appended (must match go-app inference exporters' order)
+    "catches",
+    "run_outs",
+    "stumpings",
+    "runouts_direct_hits",
+    "fielding_involvements",
 ]
 
 

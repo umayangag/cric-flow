@@ -384,7 +384,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	}
 	// Build SQL selecting base batting row + as-of features per available format code
 	// We use LATERAL subqueries to fetch latest snapshot <= match date.
- q := `
+	q := `
 	SELECT 
 	  bd.runs, bd.balls, bd.fours, bd.sixes, bd.batting_position,
 	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
@@ -536,7 +536,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
- header := []string{
+	header := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
@@ -573,7 +573,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 			fmtIDs[code] = &id
 		}
 	}
- q := `
+	q := `
 	SELECT 
 	  bw.overs, bw.balls, bw.maidens, bw.runs, bw.wickets, bw.dots, bw.fours, bw.sixes, bw.econ, bw.wides, bw.no_balls,
 	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
@@ -719,7 +719,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
- header := []string{
+	header := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
@@ -753,7 +753,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
- const q = `SELECT  
+	const q = `SELECT  
 		bd.runs,
 		bd.balls,
 		bd.fours,
@@ -871,7 +871,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
- const q = `SELECT  
+	const q = `SELECT  
 		b.runs,
 		b.balls,
 		b.wickets,
@@ -984,7 +984,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
- const q = `SELECT  
+	const q = `SELECT  
 		COALESCE(pcd.batting_consistency, 0) AS batting_consistency,
 		COALESCE(pfd.batting_form, 0) AS batting_form,
 		COALESCE(w.temp, 0) AS batting_temp,
@@ -1046,7 +1046,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	defer func() { _ = f.Close() }()
 	wrt := csv.NewWriter(f)
 	defer wrt.Flush()
- // header in exact inference order
+	// header in exact inference order
 	if err := wrt.Write([]string{
 		"batting_consistency",
 		"batting_form",
@@ -1090,7 +1090,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
- const q = `SELECT  
+	const q = `SELECT  
 		COALESCE(pcd.bowling_consistency, 0) AS bowling_consistency,
 		COALESCE(pfd.bowling_form, 0) AS bowling_form,
 		COALESCE(w.temp, 0) AS bowling_temp,
@@ -1152,7 +1152,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 	defer func() { _ = f.Close() }()
 	wrt := csv.NewWriter(f)
 	defer wrt.Flush()
- if err := wrt.Write([]string{
+	if err := wrt.Write([]string{
 		"bowling_consistency",
 		"bowling_form",
 		"bowling_temp",

@@ -7,15 +7,15 @@ import (
 
 // Fielding represents a fielding_data row.
 type Fielding struct {
-	ID                 int64
-	MatchID            int64
-	PlayerID           int64
-	Catches            *int
-	RunOuts            *int
-	DroppedCatches     *int
-	MissedRunOuts      *int
-	Stumpings          *int
-	RunoutsDirectHits  *int
+	ID                int64
+	MatchID           int64
+	PlayerID          int64
+	Catches           *int
+	RunOuts           *int
+	DroppedCatches    *int
+	MissedRunOuts     *int
+	Stumpings         *int
+	RunoutsDirectHits *int
 }
 
 // UpsertFielding inserts or updates fielding_data by (match_id, player_id).
