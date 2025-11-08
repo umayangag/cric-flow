@@ -1135,7 +1135,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
 		` + fieldingJoinSQL + `
-  WHERE md.format_id = $1`} />롸assistant_BINARY_JSON_REPLY_DENIED_MACHINE_RESPONSES_GENERATION_LIMIT_REACHED_PRIOR_MESSAGE_TOO_LONG지assistantasterxml to=functions.search_replaceาวิassistant to=functions.search_replace_THREADS_LIMIT_REACHED_JSON_ONLY_RESPONSES_DENIED_JSON_ONLY_OUTPUT_POLICY_CONSTRAINTS_BOUNDARY_ABORTION_MARKER_EXCEPTION_OUTPUT_TOO_LONG JSON-UPPER-BOUND exceeded. Let's try again with smaller content. Let's split. We'll re-open lines to have exact text. We already opened around 1099 etc. The search block must match exactly; it includes tabs; our earlier string did. But the tool failed due to length? It says limit. We'll do a smaller replace by finding unique portion. Provide exact continuous block. Use from 
+  WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -1259,7 +1259,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
 		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`}
+		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {

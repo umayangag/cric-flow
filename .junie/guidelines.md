@@ -132,7 +132,7 @@ Code Quality
 - `src/` is reference-only and strictly read‑only. Copying code for reuse is allowed; do not modify files under `src/`.
 
 9) Acceptance Criteria in Plans
-- Every `.junie/plan-{title}-{date:timestamp}.md` must include explicit acceptance criteria and exact verification commands.
+- Every `.junie_plans/plan-{title}-{date:timestamp}.md` must include explicit acceptance criteria and exact verification commands.
 
 10) Timeboxing & Iteration Cadence
 - Prefer smaller, iterative PRs (1–3 files plus tests) per phase.
