@@ -176,87 +176,54 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						dismissals[w.PlayerOut] = strings.TrimSpace(desc)
 						// Emit fielding_event rows for fielding-related dismissals
 						kindLower := strings.ToLower(strings.TrimSpace(w.Kind))
+						var eventKind, assistRole string
+						isCaught := false
 						switch kindLower {
 						case "caught":
-							// Use listed fielder if present; else credit bowler (c&b)
-							var fNames []string
-							if w.Fielders != nil {
-								fNames = append(fNames, *w.Fielders...)
-							}
-							if len(fNames) == 0 && d.Bowler != "" {
-								fNames = []string{d.Bowler}
-							}
-							if len(fNames) > 0 {
-								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
-								var bowlerID *int64
-								if d.Bowler != "" {
-									bid, _ := cricDB.GetOrCreateByName(ctx, d.Bowler)
-									bowlerID = &bid
-								}
-								for _, fn := range fNames {
-									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
-									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
-										MatchID:     mid,
-										Innings:     inningNo,
-										Over:        overNo,
-										Ball:        bi + 1,
-										BatterOutID: &batterID,
-										FielderID:   &fid,
-										BowlerID:    bowlerID,
-										Kind:        "caught",
-										AssistRole:  "",
-										IsDirectHit: false,
-										Notes:       nil,
-									})
-								}
-							}
+							eventKind = "caught"
+							isCaught = true
 						case "run out", "runout", "run_out":
-							var fNames []string
-							if w.Fielders != nil {
-								fNames = append(fNames, *w.Fielders...)
-							}
-							if len(fNames) > 0 {
-								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
-								for _, fn := range fNames {
-									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
-									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
-										MatchID:     mid,
-										Innings:     inningNo,
-										Over:        overNo,
-										Ball:        bi + 1,
-										BatterOutID: &batterID,
-										FielderID:   &fid,
-										BowlerID:    nil,
-										Kind:        "run_out",
-										AssistRole:  "assist",
-										IsDirectHit: false,
-										Notes:       nil,
-									})
-								}
-							}
+							eventKind = "run_out"
+							assistRole = "assist"
 						case "stumped":
-							var fNames []string
-							if w.Fielders != nil {
-								fNames = append(fNames, *w.Fielders...)
+							eventKind = "stumped"
+							assistRole = "keeper"
+						default:
+							continue // Not a fielding dismissal we are tracking
+						}
+
+						var fNames []string
+						if w.Fielders != nil {
+							fNames = append(fNames, *w.Fielders...)
+						}
+						// Special case for caught and bowled: fielder is the bowler.
+						if isCaught && len(fNames) == 0 && d.Bowler != "" {
+							fNames = []string{d.Bowler}
+						}
+
+						if len(fNames) > 0 {
+							batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							var bowlerID *int64
+							// Bowler is only associated with 'caught' dismissals.
+							if isCaught && d.Bowler != "" {
+								bid, _ := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								bowlerID = &bid
 							}
-							if len(fNames) > 0 {
-								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
-								for _, fn := range fNames {
-									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
-									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
-										MatchID:     mid,
-										Innings:     inningNo,
-										Over:        overNo,
-										Ball:        bi + 1,
-										BatterOutID: &batterID,
-										FielderID:   &fid,
-										BowlerID:    nil,
-										Kind:        "stumped",
-										AssistRole:  "keeper",
-										IsDirectHit: false,
-										Notes:       nil,
-									})
-								}
+							for _, fn := range fNames {
+								fid, _ := cricDB.GetOrCreateByName(ctx, fn)
+								_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+									MatchID:     mid,
+									Innings:     inningNo,
+									Over:        overNo,
+									Ball:        bi + 1,
+									BatterOutID: &batterID,
+									FielderID:   &fid,
+									BowlerID:    bowlerID,
+									Kind:        eventKind,
+									AssistRole:  assistRole,
+									IsDirectHit: false,
+									Notes:       nil,
+								})
 							}
 						}
 					}
