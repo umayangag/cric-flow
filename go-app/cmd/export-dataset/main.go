@@ -384,7 +384,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	}
 	// Build SQL selecting base batting row + as-of features per available format code
 	// We use LATERAL subqueries to fetch latest snapshot <= match date.
-	q := `
+ q := `
 	SELECT 
 	  bd.runs, bd.balls, bd.fours, bd.sixes, bd.batting_position,
 	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
@@ -402,6 +402,11 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	  s.id AS season_id,
 	  p.player_name,
 	  mf.code AS format_code,
+	  COALESCE(fd.catches,0) AS catches,
+	  COALESCE(fd.run_outs,0) AS run_outs,
+	  COALESCE(fd.stumpings,0) AS stumpings,
+	  COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+	  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 	  -- TEST as-of
 	  tf.bat_form   AS bat_form_TEST_asof,
 	  tc.bat_consistency AS bat_consistency_TEST_asof,
@@ -422,7 +427,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	  t20c.bat_consistency AS bat_consistency_T20_asof,
 	  t20vo.bat_value AS bat_vs_opp_T20_asof,
 	  t20vv.bat_value AS bat_at_venue_T20_asof
-	FROM batting_data bd
+ FROM batting_data bd
 	JOIN match_details md ON md.match_id = bd.match_id
 	LEFT JOIN match_format mf ON mf.id = md.format_id
 	LEFT JOIN player p ON p.id = bd.player_id
@@ -430,6 +435,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
 	-- TEST lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT bat_form, n_samples_bat FROM player_form_asof
@@ -530,10 +536,11 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	header := []string{
+ header := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
 		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
 		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
@@ -566,7 +573,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 			fmtIDs[code] = &id
 		}
 	}
-	q := `
+ q := `
 	SELECT 
 	  bw.overs, bw.balls, bw.maidens, bw.runs, bw.wickets, bw.dots, bw.fours, bw.sixes, bw.econ, bw.wides, bw.no_balls,
 	  w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
@@ -584,7 +591,12 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	  s.id AS season_id,
 	  p.player_name,
 	  mf.code AS format_code,
-   -- TEST
+	  COALESCE(fd.catches,0) AS catches,
+	  COALESCE(fd.run_outs,0) AS run_outs,
+	  COALESCE(fd.stumpings,0) AS stumpings,
+	  COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+	  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
+	   -- TEST
    tf.bowl_form   AS bowl_form_TEST_asof,
    tc.bowl_consistency AS bowl_consistency_TEST_asof,
    tvo.bowl_value AS bowl_vs_opp_TEST_asof,
@@ -604,7 +616,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
    t20c.bowl_consistency AS bowl_consistency_T20_asof,
    t20vo.bowl_value AS bowl_vs_opp_T20_asof,
    t20vv.bowl_value AS bowl_at_venue_T20_asof
-	FROM bowling_data bw
+ FROM bowling_data bw
 	JOIN match_details md ON md.match_id = bw.match_id
 	LEFT JOIN match_format mf ON mf.id = md.format_id
 	LEFT JOIN player p ON p.id = bw.player_id
@@ -612,6 +624,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='bowling'
 	) w ON w.match_id = bw.match_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bw.match_id AND fd.player_id = bw.player_id
 	-- TEST laterals
 	LEFT JOIN LATERAL (
 	  SELECT bowl_form, n_samples_bowl FROM player_form_asof
@@ -706,10 +719,11 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
-	header := []string{
+ header := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
 		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
 		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
@@ -739,7 +753,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+ const q = `SELECT  
 		bd.runs,
 		bd.balls,
 		bd.fours,
@@ -771,7 +785,12 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		pvd.batting_venue,
 		pod.batting_opposition,
 		s.id AS season_id,
-		p.player_name
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0) AS fielding_involvements
 		FROM batting_data bd
 		LEFT JOIN player p ON bd.player_id = p.id
 		LEFT JOIN (
@@ -783,6 +802,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		LEFT JOIN player_opposition_data_fmt pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
 		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -821,13 +841,18 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 			"batting_opposition",
 			"season_id",
 			"player_name",
+			"catches",
+			"run_outs",
+			"stumpings",
+			"runouts_direct_hits",
+			"fielding_involvements",
 			"format_code",
 		},
 	); err != nil {
 		return err
 	}
 	for rows.Next() {
-		vals, err := scanRow(rows, 21)
+		vals, err := scanRow(rows, 26)
 		if err != nil {
 			return err
 		}
@@ -846,7 +871,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+ const q = `SELECT  
 		b.runs,
 		b.balls,
 		b.wickets,
@@ -876,7 +901,12 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		pvd.bowling_venue,
 		pod.bowling_opposition,
 		s.id AS season_id,
-		p.player_name
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
 		LEFT JOIN (
@@ -888,6 +918,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		LEFT JOIN player_opposition_data_fmt pod ON b.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
 		LEFT JOIN player_consistency_data_fmt pcd ON b.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -924,13 +955,18 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 			"bowling_opposition",
 			"season_id",
 			"player_name",
+			"catches",
+			"run_outs",
+			"stumpings",
+			"runouts_direct_hits",
+			"fielding_involvements",
 			"format_code",
 		},
 	); err != nil {
 		return err
 	}
 	for rows.Next() {
-		vals, err := scanRow(rows, 19)
+		vals, err := scanRow(rows, 24)
 		if err != nil {
 			return err
 		}
@@ -948,7 +984,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+ const q = `SELECT  
 		COALESCE(pcd.batting_consistency, 0) AS batting_consistency,
 		COALESCE(pfd.batting_form, 0) AS batting_form,
 		COALESCE(w.temp, 0) AS batting_temp,
@@ -978,7 +1014,12 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		COALESCE(pvd.batting_venue, 0) AS venue,
 		COALESCE(pod.batting_opposition, 0) AS opposition,
 		COALESCE(s.id, 0) AS season,
-		p.player_name
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0) AS fielding_involvements
 		FROM batting_data bd
 		LEFT JOIN player p ON bd.player_id = p.id
 		LEFT JOIN (
@@ -990,7 +1031,8 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		LEFT JOIN player_opposition_data_fmt pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
 		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
-		WHERE md.format_id = $1`
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+  WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -1004,7 +1046,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	defer func() { _ = f.Close() }()
 	wrt := csv.NewWriter(f)
 	defer wrt.Flush()
-	// header in exact inference order
+ // header in exact inference order
 	if err := wrt.Write([]string{
 		"batting_consistency",
 		"batting_form",
@@ -1022,11 +1064,16 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		"opposition",
 		"season",
 		"player_name",
+		"catches",
+		"run_outs",
+		"stumpings",
+		"runouts_direct_hits",
+		"fielding_involvements",
 	}); err != nil {
 		return err
 	}
 	for rows.Next() {
-		vals, err := scanRow(rows, 16)
+		vals, err := scanRow(rows, 21)
 		if err != nil {
 			return err
 		}
@@ -1043,7 +1090,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+ const q = `SELECT  
 		COALESCE(pcd.bowling_consistency, 0) AS bowling_consistency,
 		COALESCE(pfd.bowling_form, 0) AS bowling_form,
 		COALESCE(w.temp, 0) AS bowling_temp,
@@ -1073,7 +1120,12 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		COALESCE(pvd.bowling_venue, 0) AS bowling_venue,
 		COALESCE(pod.bowling_opposition, 0) AS bowling_opposition,
 		COALESCE(s.id, 0) AS season,
-		p.player_name
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
 		LEFT JOIN (
@@ -1085,6 +1137,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		LEFT JOIN player_opposition_data_fmt pod ON b.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
 		LEFT JOIN player_form_data_fmt pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
 		LEFT JOIN player_consistency_data_fmt pcd ON b.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -1099,7 +1152,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 	defer func() { _ = f.Close() }()
 	wrt := csv.NewWriter(f)
 	defer wrt.Flush()
-	if err := wrt.Write([]string{
+ if err := wrt.Write([]string{
 		"bowling_consistency",
 		"bowling_form",
 		"bowling_temp",
@@ -1116,11 +1169,16 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		"bowling_opposition",
 		"season",
 		"player_name",
+		"catches",
+		"run_outs",
+		"stumpings",
+		"runouts_direct_hits",
+		"fielding_involvements",
 	}); err != nil {
 		return err
 	}
 	for rows.Next() {
-		vals, err := scanRow(rows, 16)
+		vals, err := scanRow(rows, 21)
 		if err != nil {
 			return err
 		}

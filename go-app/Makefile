@@ -110,6 +110,24 @@ docker-build:
 docker-run:
 	docker run --rm -e POSTGRES_HOST=$${POSTGRES_HOST} -e POSTGRES_PORT=$${POSTGRES_PORT} -e POSTGRES_DB=$${POSTGRES_DB} -e POSTGRES_USER=$${POSTGRES_USER} -e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD} -p 8080:8080 --name $(APP_NAME)-api umayangag/cric-app-api:latest
 
+# --- Convenience targets for fielding pipeline (Phase 2) ---
+# Run only integration tests in go-app/integration
+.PHONY: test-int
+test-int:
+	go test ./integration -v
+
+# Export datasets for all formats to the default output directory
+.PHONY: export-dataset
+export-dataset:
+	OUT=$${GO_APP_OUTPUT_DIR:-../output/go-app}; \
+	mkdir -p $$OUT; \
+	go run ./cmd/export-dataset --all-formats --out $$OUT
+
+# Backfill fielding aggregates from fielding_event for all matches
+.PHONY: backfill-fielding
+backfill-fielding:
+	go run ./cmd/backfill-fielding --all
+
 # Lint Go code using golangci-lint (matches CI config)
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
