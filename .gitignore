@@ -6,6 +6,7 @@ src/team_selection/cache
 
 go-app/api
 go-app/coverage.out
+go-app/bin
 
 ml-service/.venv
 ml-service/.coverage
