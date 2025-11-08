@@ -31,7 +31,7 @@ Step 2: Analysis & Planning
 2. Gather Information:
     * Use the serena MCP for code search, file reads, and edits. Prefer serena’s tools over any alternatives.
     * For third‑party documentation, use context7 when needed.
-3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `GEMINI_PLAN.md`. The plan must outline:
+3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `.junie/{title}{timestamp}.md`. The plan must outline:
     * Files to create or modify.
     * High‑level changes per file.
     * Tests to add or update.
@@ -61,12 +61,18 @@ Step 4: Commit & PR
 Core Philosophies
 * KISS (Keep It Simple, Stupid): Prefer the simplest solution. Avoid over‑engineering.
 * DRY (Don't Repeat Yourself): Extract common logic into reusable components.
+* Adhere to OOP Principles:
+    * Encapsulation
+    * Abstraction
+    * Inheritance
+    * Polymorphism
 * SOLID Principles:
     * Single Responsibility Principle
     * Open/Closed Principle
     * Liskov Substitution Principle
     * Interface Segregation Principle
     * Dependency Inversion Principle
+* Keep the code simple, readable, and minimalistic. Easy flow of code and packages for humans.
 
 Code Quality
 * Readability: Prefer clarity to cleverness.
@@ -78,7 +84,8 @@ Code Quality
 * Error Handling: Implement robust error handling.
 * Comments: Use comments to explain the why, not the what.
 * Do not suppress or ignore errors. Always handle the errors.
-* Use a singleton logger for each project and make sure to log descriptive messages that helps with debugging.
+* Use a singleton logger for each project and make sure to log descriptive messages that help with debugging.
+* Log happy and success paths as well to help with debugging.
 ⸻
 6. Defaults & Operating Standards
 

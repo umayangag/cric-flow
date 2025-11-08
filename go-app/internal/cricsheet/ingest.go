@@ -167,12 +167,97 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				}
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
 					wkts += len(*d.Wickets)
-					for _, w := range *d.Wickets {
+					for bi, w := range *d.Wickets {
 						desc := w.Kind
 						if w.Fielders != nil && len(*w.Fielders) > 0 {
 							desc = desc + " " + strings.Join(*w.Fielders, ", ")
 						}
 						dismissals[w.PlayerOut] = strings.TrimSpace(desc)
+						// Emit fielding_event rows for fielding-related dismissals
+						kindLower := strings.ToLower(strings.TrimSpace(w.Kind))
+						switch kindLower {
+						case "caught":
+							// Use listed fielder if present; else credit bowler (c&b)
+							var fNames []string
+							if w.Fielders != nil {
+								fNames = append(fNames, *w.Fielders...)
+							}
+							if len(fNames) == 0 && d.Bowler != "" {
+								fNames = []string{d.Bowler}
+							}
+							if len(fNames) > 0 {
+								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+								var bowlerID *int64
+								if d.Bowler != "" {
+									bid, _ := cricDB.GetOrCreateByName(ctx, d.Bowler)
+									bowlerID = &bid
+								}
+								for _, fn := range fNames {
+									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
+									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+										MatchID:     mid,
+										Innings:     inningNo,
+										Over:        overNo,
+										Ball:        bi + 1,
+										BatterOutID: &batterID,
+										FielderID:   &fid,
+										BowlerID:    bowlerID,
+										Kind:        "caught",
+										AssistRole:  "",
+										IsDirectHit: false,
+										Notes:       nil,
+									})
+								}
+							}
+						case "run out", "runout", "run_out":
+							var fNames []string
+							if w.Fielders != nil {
+								fNames = append(fNames, *w.Fielders...)
+							}
+							if len(fNames) > 0 {
+								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+								for _, fn := range fNames {
+									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
+									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+										MatchID:     mid,
+										Innings:     inningNo,
+										Over:        overNo,
+										Ball:        bi + 1,
+										BatterOutID: &batterID,
+										FielderID:   &fid,
+										BowlerID:    nil,
+										Kind:        "run_out",
+										AssistRole:  "assist",
+										IsDirectHit: false,
+										Notes:       nil,
+									})
+								}
+							}
+						case "stumped":
+							var fNames []string
+							if w.Fielders != nil {
+								fNames = append(fNames, *w.Fielders...)
+							}
+							if len(fNames) > 0 {
+								batterID, _ := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+								for _, fn := range fNames {
+									fid, _ := cricDB.GetOrCreateByName(ctx, fn)
+									_ = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+										MatchID:     mid,
+										Innings:     inningNo,
+										Over:        overNo,
+										Ball:        bi + 1,
+										BatterOutID: &batterID,
+										FielderID:   &fid,
+										BowlerID:    nil,
+										Kind:        "stumped",
+										AssistRole:  "keeper",
+										IsDirectHit: false,
+										Notes:       nil,
+									})
+								}
+							}
+						}
 					}
 				}
 				if d.Batter != "" {
@@ -327,6 +412,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if opts != nil && opts.WeatherEnqueue {
 		_ = weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
 	}
+	// Recompute fielding aggregates from emitted events for this match
+	_ = db.RecomputeFieldingAggregates(ctx, mid)
 	return nil
 }
 
