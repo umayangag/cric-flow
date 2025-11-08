@@ -168,7 +168,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
 					wkts += len(*d.Wickets)
 					for _, w := range *d.Wickets {
-						bi := ballIndex + 1
+						bowlNumber := ballIndex + 1
 						desc := w.Kind
 						if w.Fielders != nil && len(*w.Fielders) > 0 {
 							desc = desc + " " + strings.Join(*w.Fielders, ", ")
@@ -227,7 +227,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 									MatchID:     mid,
 									Innings:     inningNo,
 									Over:        overNo,
-									Ball:        bi + 1,
+									Ball:        bowlNumber,
 									BatterOutID: &batterID,
 									FielderID:   &fid,
 									BowlerID:    bowlerID,
