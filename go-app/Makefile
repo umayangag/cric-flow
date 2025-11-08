@@ -141,11 +141,8 @@ lint:
 COV_MIN ?= 80
 
 # Generate coverage profile for selected packages (gate scope)
-# Override COVERAGE_PACKAGES to adjust scope. Default targets unit-testable internal packages.
-# Note: internal/db is excluded by default for now (Option A: scoped gate). Include it explicitly when ready.
-COVERAGE_PACKAGES ?= ./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet
 coverage:
-	go test -covermode=atomic -coverprofile=coverage.out $(COVERAGE_PACKAGES)
+	go test -covermode=atomic -coverprofile=coverage.out ./...
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:

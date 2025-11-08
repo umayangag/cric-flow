@@ -402,7 +402,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 	}
 	// Recompute fielding aggregates from emitted events for this match
-	if err = db.RecomputeFieldingAggregates(ctx, mid); err != nil {
+	if err = recomputeFn(ctx, mid); err != nil {
 		log.Fatalf("error: failed to recompute fielding aggregates: %v", err)
 		return err
 	}

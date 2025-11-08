@@ -1,13 +1,14 @@
-package cricsheet
+package cricsheet_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
 func TestParse_FullShapes(t *testing.T) {
-	// Construct a cricsheet-like JSON with overs, deliveries, extras, and wickets
 	payload := map[string]any{
 		"info": map[string]any{
 			"balls_per_over": 6,
@@ -57,7 +58,7 @@ func TestParse_FullShapes(t *testing.T) {
 	}
 	b, _ := json.Marshal(payload)
 	dec := json.NewDecoder(bytes.NewReader(b))
-	var m Match
+	var m cricsheet.Match
 	if err := dec.Decode(&m); err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -81,7 +82,6 @@ func TestParse_FullShapes(t *testing.T) {
 	if dels[1].Wickets == nil || len(*dels[1].Wickets) != 1 {
 		t.Fatalf("expected one wicket, got: %+v", dels[1].Wickets)
 	}
-	// Ensure fielders collection decoded properly (two names extracted)
 	w := (*dels[1].Wickets)[0]
 	if w.PlayerOut != "B" || w.Kind != "bowled" {
 		t.Fatalf("wicket parsed incorrectly: %+v", w)
