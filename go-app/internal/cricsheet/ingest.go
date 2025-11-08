@@ -154,7 +154,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		for _, over := range inng.Overs {
 			overNo := over.Over
 			perBowler := map[string]int{}
-			for _, d := range over.Deliveries {
+			for ballIndex, d := range over.Deliveries {
 				tr := d.Runs.Total
 				runs += tr
 				extras += d.Runs.Extras
@@ -167,7 +167,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				}
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
 					wkts += len(*d.Wickets)
-					for bi, w := range *d.Wickets {
+					for _, w := range *d.Wickets {
+						bi := ballIndex + 1
 						desc := w.Kind
 						if w.Fielders != nil && len(*w.Fielders) > 0 {
 							desc = desc + " " + strings.Join(*w.Fielders, ", ")
@@ -410,7 +411,9 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
-		_ = weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
+		if err := weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings)); err != nil {
+			log.Fatalf("error: failed to enqueue weather job: %v", err)
+		}
 	}
 	// Recompute fielding aggregates from emitted events for this match
 	_ = db.RecomputeFieldingAggregates(ctx, mid)
