@@ -26,7 +26,7 @@ func TestDetectFormat_EdgeCases(t *testing.T) {
 		{"unknown empty", "Friendly", []string{"A", "B"}, cfg, ""},
 	}
 	for _, tc := range tests {
-		got := DetectFormat(tc.matchType, tc.teams, tc.cfg)
+		got := detectFormat(tc.matchType, tc.teams, tc.cfg)
 		if got != tc.expect {
 			t.Fatalf("%s: expected %q got %q", tc.name, tc.expect, got)
 		}

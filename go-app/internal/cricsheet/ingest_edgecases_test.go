@@ -1,4 +1,4 @@
-package cricsheet
+package cricsheet_test
 
 import (
 	"context"
