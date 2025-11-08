@@ -1,4 +1,4 @@
-package cricsheet_test
+package cricsheet
 
 import (
 	"testing"

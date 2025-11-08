@@ -111,6 +111,7 @@ Code Quality
   - Dependency management: `pip` with `requirements.txt` by default.
   - Prefer `make test` if available; otherwise `pytest -q`.
   - test should not have if statements. user assert functions instead.
+  - test should be written in table tests format
 
 4) Execution Environments
 - Prefer `Makefile` targets and `docker-compose.yml` for local dev and integration.

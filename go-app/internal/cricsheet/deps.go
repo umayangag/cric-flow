@@ -21,7 +21,6 @@ type CricsheetDB interface {
 	UpsertBowling(ctx context.Context, b *db.Bowling) error
 	UpsertFielding(ctx context.Context, f *db.Fielding) error
 	Exec(ctx context.Context, sql string, args ...any) error
-	RecomputeFieldingAggregates(ctx context.Context, matchID int64) error
 }
 
 // WeatherClient abstracts weather job enqueueing for testability.
@@ -88,10 +87,6 @@ func (realDB) UpsertFielding(ctx context.Context, f *db.Fielding) error {
 func (realDB) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := db.Pool.Exec(ctx, sql, args...)
 	return err
-}
-
-func (realDB) RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
-	return db.RecomputeFieldingAggregates(ctx, matchID)
 }
 
 func (realWeather) EnqueueJob(ctx context.Context, matchID int64, city, venue string, innings int) error {
