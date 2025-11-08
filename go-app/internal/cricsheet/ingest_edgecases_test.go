@@ -14,7 +14,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-
 // Helper: write a temp JSON file
 func writeJSON(t *testing.T, dir, name, data string) string {
 	t.Helper()
@@ -70,7 +69,7 @@ func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
 
 func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	ctx := context.Background()
- dbMock := new(mocks.CricsheetDBMock)
+	dbMock := new(mocks.CricsheetDBMock)
 	weatherMock := new(mocks.WeatherClientMock)
 
 	// Set up mocks
@@ -82,7 +81,7 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	}()
 
 	// stub recompute to avoid touching real DB in unit tests
-	cricsheet.SetRecomputeFn(func(ctx context.Context, matchID int64) error { return nil })
+	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 
 	// balls_per_over is 0 -> should fallback to 6
 	// Create 7 legal deliveries so overs should be 1.1 (i.e., 1 over + 1 ball)
@@ -123,7 +122,7 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	dbMock.On("GetOrCreateByName", ctx, mock.Anything).Return(int64(0), nil)
 	dbMock.On("UpsertBatting", ctx, mock.Anything).Return(nil)
 	dbMock.On("UpsertBowling", ctx, mock.Anything).Return(nil)
- 	// Note: ImportMatchFile may return an error at the very end when it tries to
+	// Note: ImportMatchFile may return an error at the very end when it tries to
 	// recompute fielding aggregates via real DB (db.Pool not initialized in unit tests).
 	// We only care that UpdateMatchDetails was called with overs computed as 1.1.
 	_ = cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})

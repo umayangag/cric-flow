@@ -171,25 +171,25 @@ func writeTempJSON(t *testing.T, dir string, name string, data string) string {
 
 func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	ctx := context.Background()
- fdb := newFakeDB()
- fw := &fakeWeather{}
- cricsheet.SetCricsheetDB(fdb)
- cricsheet.SetWeatherClient(fw)
- // Avoid touching real DB recompute in tests
- cricsheet.SetRecomputeFn(func(ctx context.Context, matchID int64) error { return nil })
- defer func() {
- 	cricsheet.SetCricsheetDB(newFakeDB())
- 	cricsheet.SetWeatherClient(&fakeWeather{})
- 	cricsheet.SetRecomputeFn(func(ctx context.Context, matchID int64) error { return nil })
- }()
+	fdb := newFakeDB()
+	fw := &fakeWeather{}
+	cricsheet.SetCricsheetDB(fdb)
+	cricsheet.SetWeatherClient(fw)
+	// Avoid touching real DB recompute in tests
+	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	defer func() {
+		cricsheet.SetCricsheetDB(newFakeDB())
+		cricsheet.SetWeatherClient(&fakeWeather{})
+		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	}()
 
- 	d := t.TempDir()
- 	file := writeTempJSON(t, d, "a.json", sampleJSON)
+	d := t.TempDir()
+	file := writeTempJSON(t, d, "a.json", sampleJSON)
 
- 	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
- 	if err := cricsheet.ImportMatchFile(ctx, file, opts); err != nil {
- 		t.Fatalf("ImportMatchFile error: %v", err)
- 	}
+	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
+	if err := cricsheet.ImportMatchFile(ctx, file, opts); err != nil {
+		t.Fatalf("ImportMatchFile error: %v", err)
+	}
 	// Expect two UpdateMatchDetails (two innings)
 	if len(fdb.updates) != 2 {
 		t.Fatalf("expected 2 updates, got %d", len(fdb.updates))
@@ -221,11 +221,11 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	fw := &fakeWeather{}
 	cricsheet.SetCricsheetDB(fdb)
 	cricsheet.SetWeatherClient(fw)
-	cricsheet.SetRecomputeFn(func(ctx context.Context, matchID int64) error { return nil })
+	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	defer func() {
 		cricsheet.SetCricsheetDB(newFakeDB())
 		cricsheet.SetWeatherClient(&fakeWeather{})
-		cricsheet.SetRecomputeFn(func(ctx context.Context, matchID int64) error { return nil })
+		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	}()
 
 	d := t.TempDir()

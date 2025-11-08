@@ -14,14 +14,6 @@ import (
 // SPDX-License-Identifier: MIT
 // Package-level tests consolidated: prefer table-driven, black-box tests.
 
-// small assert helpers to avoid inline ifs in tests
-func assertEqual[T comparable](t *testing.T, got, want T, msg string) {
-	t.Helper()
-	if got != want {
-		t.Fatalf("%s: got %v want %v", msg, got, want)
-	}
-}
-
 func testConfig() *config.Config {
 	cfg := &config.Config{}
 	cfg.Formats.TreatT20ISubset = true
