@@ -153,8 +153,8 @@ func exportBatting(ctx context.Context, path string) error {
 		bd.fours,
 		bd.sixes,
 		bd.batting_position,
-		pcd.batting_consistency,
-		pfd.batting_form,
+		tc.batting_consistency,
+		tf.batting_form,
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
 		CASE 
 			WHEN w.viscosity IS NULL THEN 0
@@ -176,8 +176,8 @@ func exportBatting(ctx context.Context, path string) error {
 			WHEN lower(md.toss) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
-		pvd.batting_venue,
-		pod.batting_opposition,
+		tvv.batting_venue,
+		tvo.batting_opposition,
 		s.id AS season_id,
 		p.player_name
 		FROM batting_data bd
@@ -189,10 +189,34 @@ func exportBatting(ctx context.Context, path string) error {
 		LEFT JOIN venue v ON v.id = md.venue_id
 		LEFT JOIN opposition o ON o.id = md.opposition_id
 		LEFT JOIN season s ON s.id = md.season_id
-		LEFT JOIN player_venue_data pvd ON bd.player_id = pvd.player_id AND md.venue_id = pvd.venue_id
-		LEFT JOIN player_opposition_data pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id
-		LEFT JOIN player_form_data pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id
-		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id`
+		-- Latest overall batting form as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_form
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		-- Latest overall batting consistency as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_consistency
+		  FROM feature_consistency_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		-- Latest batting form vs opposition as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_opposition
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		-- Latest batting form at venue as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_venue
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE`
 
 	rows, err := db.Pool.Query(ctx, q)
 	if err != nil {
