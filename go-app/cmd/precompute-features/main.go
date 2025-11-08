@@ -7,7 +7,6 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -268,29 +267,10 @@ func main() {
 			log.Printf("processed %d players so far for %s", processed, *formatCode)
 		}
 	}
-	log.Printf("done: snapshots computed for %d players (%s) as of %s", len(players), *formatCode, asOf.Format("2006-01-02"))
+	log.Printf(
+		"done: snapshots computed for %d players (%s) as of %s",
+		len(players),
+		*formatCode,
+		asOf.Format("2006-01-02"),
+	)
 }
-
-func specEWM(alpha float64) string {
-	return "ewm:" + trimFloat(alpha)
-}
-
-func specLastN(n int) string {
-	return "lastN:" + itoa(n)
-}
-
-func trimFloat(f float64) string {
-	// Simple trim for logging/spec
-	s := fmtFloat(f)
-	// remove trailing zeros and dot
-	for len(s) > 0 && s[len(s)-1] == '0' {
-		s = s[:len(s)-1]
-	}
-	if len(s) > 0 && s[len(s)-1] == '.' {
-		s = s[:len(s)-1]
-	}
-	return s
-}
-
-func fmtFloat(f float64) string { return strconv.FormatFloat(f, 'f', 4, 64) }
-func itoa(i int) string         { return strconv.Itoa(i) }
