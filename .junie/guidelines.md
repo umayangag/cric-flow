@@ -105,6 +105,7 @@ Code Quality
   - Prefer `make test` if available; otherwise `go test ./...`.
   - Use `httptest` and interfaces for mocking; external libs (e.g., `testify`) only if already present.
   - test should not have if statements. user assert functions instead.
+  - test should be written in table tests format and has the {packagename}_test.go naming.
 - Python (ml-service):
   - Python 3.10+; use `pytest` with `tests/` directory and `test_*.py` naming.
   - Dependency management: `pip` with `requirements.txt` by default.

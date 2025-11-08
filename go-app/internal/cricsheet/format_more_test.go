@@ -1,9 +1,10 @@
-package cricsheet
+package cricsheet_test
 
 import (
 	"testing"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
 func TestDetectFormat_EdgeCases(t *testing.T) {
@@ -26,7 +27,7 @@ func TestDetectFormat_EdgeCases(t *testing.T) {
 		{"unknown empty", "Friendly", []string{"A", "B"}, cfg, ""},
 	}
 	for _, tc := range tests {
-		got := detectFormat(tc.matchType, tc.teams, tc.cfg)
+		got := cricsheet.DetectFormat(tc.matchType, tc.teams, tc.cfg)
 		if got != tc.expect {
 			t.Fatalf("%s: expected %q got %q", tc.name, tc.expect, got)
 		}

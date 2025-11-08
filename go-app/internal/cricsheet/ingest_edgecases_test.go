@@ -1,4 +1,4 @@
-package cricsheet_test
+package cricsheet
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // Helper: write a temp JSON file
@@ -21,12 +23,18 @@ func writeJSON(t *testing.T, dir, name, data string) string {
 
 func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
 	ctx := context.Background()
+	dbMock := new(CricsheetDBMock)
+	weatherMock := new(WeatherClientMock)
+
+	// Set up mocks
 	prevDB := cricDB
 	prevW := weatherClient
-	fdb := newFakeDB()
-	SetCricsheetDB(fdb)
-	SetWeatherClient(&fakeWeather{})
-	defer func() { SetCricsheetDB(prevDB); SetWeatherClient(prevW) }()
+	SetCricsheetDB(dbMock)
+	SetWeatherClient(weatherMock)
+	defer func() {
+		SetCricsheetDB(prevDB)
+		SetWeatherClient(prevW)
+	}()
 
 	// Minimal JSON with unsupported match_type
 	bad := `{
@@ -44,6 +52,9 @@ func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
 	d := t.TempDir()
 	file := writeJSON(t, d, "bad.json", bad)
 
+	// Expectations
+	dbMock.On("GetMatchFormatIDByCode", ctx, "Friendly").Return(int64(0), nil)
+
 	err := ImportMatchFile(ctx, file, &Options{})
 	if err == nil {
 		t.Fatalf("expected error for unknown match_type")
@@ -51,16 +62,25 @@ func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported match_type") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Assertions
+	dbMock.AssertExpectations(t)
 }
 
 func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	ctx := context.Background()
+	dbMock := new(CricsheetDBMock)
+	weatherMock := new(WeatherClientMock)
+
+	// Set up mocks
 	prevDB := cricDB
 	prevW := weatherClient
-	fdb := newFakeDB()
-	SetCricsheetDB(fdb)
-	SetWeatherClient(&fakeWeather{})
-	defer func() { SetCricsheetDB(prevDB); SetWeatherClient(prevW) }()
+	SetCricsheetDB(dbMock)
+	SetWeatherClient(weatherMock)
+	defer func() {
+		SetCricsheetDB(prevDB)
+		SetWeatherClient(prevW)
+	}()
 
 	// balls_per_over is 0 -> should fallback to 6
 	// Create 7 legal deliveries so overs should be 1.1 (i.e., 1 over + 1 ball)
@@ -92,18 +112,41 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	d := t.TempDir()
 	file := writeJSON(t, d, "good.json", good)
 
+	// Expectations
+	dbMock.On("GetMatchFormatIDByCode", ctx, "T20").Return(int64(1), nil)
+	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything).Return(nil)
+	dbMock.On("GetOrCreateVenue", ctx, "").Return(int64(100), nil)
+	dbMock.On("GetOrCreateSeason", ctx, "2025").Return(int64(200), nil)
+	dbMock.On("UpdateMatchDetails", ctx, mock.Anything, mock.Anything).Return(nil)
+	dbMock.On("GetOrCreateOpposition", ctx, mock.Anything).Return(int64(300), nil)
+	dbMock.On("GetOrCreateByName", ctx, mock.Anything).Return(int64(0), nil)
+	dbMock.On("UpsertBatting", ctx, mock.Anything).Return(nil)
+	dbMock.On("UpsertBowling", ctx, mock.Anything).Return(nil)
+	dbMock.On("RecomputeFieldingAggregates", ctx, mock.Anything).Return(nil)
+
 	if err := ImportMatchFile(ctx, file, &Options{}); err != nil {
 		t.Fatalf("ImportMatchFile error: %v", err)
 	}
-	if len(fdb.updates) == 0 {
-		t.Fatalf("expected at least one UpdateMatchDetails call")
+
+	// Assertions
+	dbMock.AssertExpectations(t)
+
+	// Overs assertion
+	calls := dbMock.Calls
+	for _, call := range calls {
+		if call.Method == "UpdateMatchDetails" {
+			args := call.Arguments
+			upd := args.Get(2).(*db.MatchInfoUpdate)
+			ov := upd.Overs
+			if ov == nil {
+				t.Fatalf("expected Overs to be set")
+			}
+			expected := float32(1.1) // 7 legal balls at 6 balls/over => 1.1 notation
+			if math.Abs(float64(*ov)-float64(expected)) > 1e-6 {
+				t.Fatalf("overs mismatch: got %.3f want %.3f", *ov, expected)
+			}
+			return
+		}
 	}
-	ov := fdb.updates[0].Overs
-	if ov == nil {
-		t.Fatalf("expected Overs to be set")
-	}
-	expected := float32(1.1) // 7 legal balls at 6 balls/over => 1.1 notation
-	if math.Abs(float64(*ov)-float64(expected)) > 1e-6 {
-		t.Fatalf("overs mismatch: got %.3f want %.3f", *ov, expected)
-	}
+	t.Fatalf("UpdateMatchDetails was not called")
 }
