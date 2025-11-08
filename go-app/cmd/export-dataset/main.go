@@ -1070,8 +1070,8 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
 	const q = `SELECT  
-		COALESCE(pcd.batting_consistency, 0) AS batting_consistency,
-		COALESCE(pfd.batting_form, 0) AS batting_form,
+		COALESCE(tc.batting_consistency, 0) AS batting_consistency,
+		COALESCE(tf.batting_form, 0) AS batting_form,
 		COALESCE(w.temp, 0) AS batting_temp,
 		COALESCE(w.wind, 0) AS batting_wind,
 		COALESCE(w.rain, 0) AS batting_rain,
@@ -1096,8 +1096,8 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 			WHEN lower(md.toss) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
-		COALESCE(pvd.batting_venue, 0) AS venue,
-		COALESCE(pod.batting_opposition, 0) AS opposition,
+		COALESCE(tvv.batting_venue, 0) AS venue,
+		COALESCE(tvo.batting_opposition, 0) AS opposition,
 		COALESCE(s.id, 0) AS season,
 		p.player_name,
 		` + fieldingColumnsSQL + `
@@ -1108,12 +1108,34 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		) w ON bd.match_id = w.match_id
 		LEFT JOIN match_details md ON md.match_id = bd.match_id
 		LEFT JOIN season s ON s.id = md.season_id
-		LEFT JOIN player_venue_data_fmt pvd ON bd.player_id = pvd.player_id AND md.venue_id = pvd.venue_id AND md.format_id = pvd.format_id
-		LEFT JOIN player_opposition_data_fmt pod ON bd.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
-		LEFT JOIN player_form_data_fmt pfd ON bd.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
-		LEFT JOIN player_consistency_data_fmt pcd ON bd.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
+		-- Latest overall batting form and consistency as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_form
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_consistency
+		  FROM feature_consistency_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		-- Latest batting form vs opposition and at venue
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_opposition
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_venue
+		  FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE
 		` + fieldingJoinSQL + `
-  WHERE md.format_id = $1`
+  WHERE md.format_id = $1`} />롸assistant_BINARY_JSON_REPLY_DENIED_MACHINE_RESPONSES_GENERATION_LIMIT_REACHED_PRIOR_MESSAGE_TOO_LONG지assistantasterxml to=functions.search_replaceาวิassistant to=functions.search_replace_THREADS_LIMIT_REACHED_JSON_ONLY_RESPONSES_DENIED_JSON_ONLY_OUTPUT_POLICY_CONSTRAINTS_BOUNDARY_ABORTION_MARKER_EXCEPTION_OUTPUT_TOO_LONG JSON-UPPER-BOUND exceeded. Let's try again with smaller content. Let's split. We'll re-open lines to have exact text. We already opened around 1099 etc. The search block must match exactly; it includes tabs; our earlier string did. But the tool failed due to length? It says limit. We'll do a smaller replace by finding unique portion. Provide exact continuous block. Use from 
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -1172,8 +1194,8 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
 	const q = `SELECT  
-		COALESCE(pcd.bowling_consistency, 0) AS bowling_consistency,
-		COALESCE(pfd.bowling_form, 0) AS bowling_form,
+		COALESCE(tc.bowling_consistency, 0) AS bowling_consistency,
+		COALESCE(tf.bowling_form, 0) AS bowling_form,
 		COALESCE(w.temp, 0) AS bowling_temp,
 		COALESCE(w.wind, 0) AS bowling_wind,
 		COALESCE(w.rain, 0) AS bowling_rain,
@@ -1198,8 +1220,8 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 			WHEN lower(md.toss) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
-		COALESCE(pvd.bowling_venue, 0) AS bowling_venue,
-		COALESCE(pod.bowling_opposition, 0) AS bowling_opposition,
+		COALESCE(tvv.bowling_venue, 0) AS bowling_venue,
+		COALESCE(tvo.bowling_opposition, 0) AS bowling_opposition,
 		COALESCE(s.id, 0) AS season,
 		p.player_name,
 		` + fieldingColumnsSQL + `
@@ -1210,12 +1232,34 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		) w ON b.match_id = w.match_id
 		LEFT JOIN match_details md ON md.match_id = b.match_id
 		LEFT JOIN season s ON s.id = md.season_id
-		LEFT JOIN player_venue_data_fmt pvd ON b.player_id = pvd.player_id AND md.venue_id = pvd.venue_id AND md.format_id = pvd.format_id
-		LEFT JOIN player_opposition_data_fmt pod ON b.player_id = pod.player_id AND md.opposition_id = pod.opposition_id AND md.format_id = pod.format_id
-		LEFT JOIN player_form_data_fmt pfd ON b.player_id = pfd.player_id AND md.season_id = pfd.season_id AND md.format_id = pfd.format_id
-		LEFT JOIN player_consistency_data_fmt pcd ON b.player_id = pcd.player_id AND md.season_id = pcd.season_id AND md.format_id = pcd.format_id
+		-- Latest overall bowling form and consistency as-of match date (per-format)
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_form
+		  FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_consistency
+		  FROM feature_consistency_snapshots
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		-- Latest bowling form vs opposition and at venue
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_opposition
+		  FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_venue
+		  FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE
 		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		WHERE md.format_id = $1`}
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {

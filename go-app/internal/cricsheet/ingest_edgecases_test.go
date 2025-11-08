@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // Helper: write a temp JSON file
