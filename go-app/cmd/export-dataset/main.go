@@ -27,6 +27,8 @@ const fieldingColumnsSQL = `
 `
 const fieldingJoinSQL = "LEFT JOIN fielding_data fd ON fd.match_id = %s.match_id AND fd.player_id = %s.player_id"
 
+func fieldingJoin(alias string) string { return fmt.Sprintf(fieldingJoinSQL, alias, alias) }
+
 var fieldingHeaders = []string{
 	"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 }
@@ -505,7 +507,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
-	` + fieldingJoinSQL + `
+	` + fieldingJoin("bd") + `
 	-- TEST lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
@@ -690,7 +692,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='bowling'
 	) w ON w.match_id = bw.match_id
-	` + fieldingJoinSQL + `
+	` + fieldingJoin("bw") + `
 	-- TEST laterals
 	LEFT JOIN LATERAL (
 	  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
@@ -884,7 +886,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
-		` + fieldingJoinSQL + `
+		` + fieldingJoin("bd") + `
 		WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
