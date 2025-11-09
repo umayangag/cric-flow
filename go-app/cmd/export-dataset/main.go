@@ -19,6 +19,8 @@ import (
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
+	exportrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
+	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
 )
 
 const fieldingColumnsSQL = `
