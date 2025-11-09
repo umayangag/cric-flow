@@ -23,7 +23,7 @@ const fieldingColumnsSQL = `
   COALESCE(fd.run_outs,0) AS run_outs,
   COALESCE(fd.stumpings,0) AS stumpings,
   COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
-  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 `
 const fieldingJoinSQL = "LEFT JOIN fielding_data fd ON fd.match_id = %s.match_id AND fd.player_id = %s.player_id"
 
