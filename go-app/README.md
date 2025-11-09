@@ -113,7 +113,7 @@ Note: Legacy hand-written fakes have been removed from tests in favor of mocks f
   - Exactly one `*_test.go` file per production file in a package (e.g., `client.go` → `client_test.go`).
   - Use table-driven tests: `tests := []struct{ name string; ... }{... }` with `t.Run(tc.name, ...)`.
   - Avoid conditional logic inside tests; extract helpers for comparisons and setup.
-  - Shared helpers belong in `helpers_test.go` within the same package; fixtures under `tests/fixtures/`.
+  - Shared helpers belong in `helpers_test.go` within the same package; prefer package-local `testdata/` directories for fixtures to avoid CI path issues.
 
 - Integration tests
   - Must live under `go-app/integration/` or be clearly named `*_integration_test.go`.

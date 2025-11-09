@@ -27,8 +27,8 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 		t.Fatalf("migrations failed: %v", err)
 	}
 
-	// Ingest the sample fixture directory
-	fixturesDir := filepath.Join("..", "..", "tests", "fixtures", "cricsheet")
+	// Ingest the sample fixture directory (use package-local testdata to avoid CI path issues)
+	fixturesDir := filepath.Join("testdata", "cricsheet")
 	if _, err := os.Stat(fixturesDir); err != nil {
 		t.Fatalf("fixture dir missing: %s: %v", fixturesDir, err)
 	}
@@ -63,6 +63,38 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	if err := db.RecomputeFieldingAggregates(ctx, mid); err != nil {
 		t.Fatalf("recompute aggregates: %v", err)
 	}
+
+	// Ensure minimal batting_data rows exist for exporter base.
+	// The unified batting exporter selects FROM batting_data and LEFT JOINs fielding_data;
+	// with our tiny fixture, batting_data may be empty otherwise. We upsert zeroed batting rows
+	// for each player present in fielding_data for this match to allow CSV emission.
+	pRows, err := db.Pool.Query(ctx, `SELECT DISTINCT player_id FROM fielding_data WHERE match_id=$1`, mid)
+	if err != nil {
+		t.Fatalf("list fielding players: %v", err)
+	}
+	for pRows.Next() {
+		var pid int64
+		if err := pRows.Scan(&pid); err != nil {
+			t.Fatalf("scan player_id: %v", err)
+		}
+		runs := 0
+		balls := 0
+		fours := 0
+		sixes := 0
+		pos := 0
+		if err := db.UpsertBatting(ctx, &db.Batting{
+			MatchID:         mid,
+			PlayerID:        pid,
+			Runs:            &runs,
+			Balls:           &balls,
+			Fours:           &fours,
+			Sixes:           &sixes,
+			BattingPosition: &pos,
+		}); err != nil {
+			t.Fatalf("upsert batting: %v", err)
+		}
+	}
+	pRows.Close()
 
 	rows, err := db.Pool.Query(
 		ctx,
