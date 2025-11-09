@@ -612,12 +612,15 @@ func exportBattingUnified(ctx context.Context, path string) error {
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+	}
+	// Fielding columns appear immediately after format_code in the SELECT list; keep header aligned.
+	header = append(header, fieldingHeaders...)
+	header = append(header,
 		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
 		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
 		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
 		"bat_form_T20_asof", "bat_consistency_T20_asof", "bat_vs_opp_T20_asof", "bat_at_venue_T20_asof",
-	}
-	header = append(header, fieldingHeaders...)
+	)
 	if err := w.Write(header); err != nil {
 		return err
 	}
