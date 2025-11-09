@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/eval"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
@@ -13,6 +14,8 @@ func main() {
 	format := flag.String("format", "T20", "Match format (e.g., T20, ODI)")
 	season := flag.String("season", "demo", "Season identifier (used for reporting only in scaffold)")
 	flag.Parse()
+
+	logger.SetupFromEnv()
 
 	yTrue := []float64{30, 45, 10, 60}
 	yPred := []float64{28, 40, 12, 55}
@@ -25,6 +28,6 @@ func main() {
 	yProb := []float64{0.7, 0.4, 0.65, 0.8}
 	brier := eval.BrierScore(yWin, yProb)
 
-	log.Printf("Evaluation (scaffold) — season=%s format=%s", *season, *format)
+	slog.Info("evaluation (scaffold)", slog.String("season", *season), slog.String("format", *format))
 	fmt.Printf("MAE=%.4f RMSE=%.4f Brier=%.4f\n", mae, rmse, brier)
 }

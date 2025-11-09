@@ -6,7 +6,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +15,7 @@ import (
 	pgx "github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 const fieldingColumnsSQL = `
@@ -22,9 +23,11 @@ const fieldingColumnsSQL = `
   COALESCE(fd.run_outs,0) AS run_outs,
   COALESCE(fd.stumpings,0) AS stumpings,
   COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
-  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 `
 const fieldingJoinSQL = "LEFT JOIN fielding_data fd ON fd.match_id = %s.match_id AND fd.player_id = %s.player_id"
+
+func fieldingJoin(alias string) string { return fmt.Sprintf(fieldingJoinSQL, alias, alias) }
 
 var fieldingHeaders = []string{
 	"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
@@ -60,14 +63,18 @@ func main() {
 	flag.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference (separate files)")
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		log.Fatalf("mkdir %s: %v", outDir, err)
+		slog.Error("mkdir failed", slog.String("dir", outDir), slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	var list []string
@@ -99,12 +106,14 @@ func main() {
 		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
 		bowAll := filepath.Join(outDir, "bowling_encoded_all.csv")
 		if err := exportBattingUnified(ctx, batAll); err != nil {
-			log.Fatalf("export unified batting: %v", err)
+			slog.Error("export unified batting failed", slog.Any("err", err))
+			os.Exit(1)
 		}
 		if err := exportBowlingUnified(ctx, bowAll); err != nil {
-			log.Fatalf("export unified bowling: %v", err)
+			slog.Error("export unified bowling failed", slog.Any("err", err))
+			os.Exit(1)
 		}
-		log.Printf("unified exports written to %s", outDir)
+		slog.Info("unified exports written", slog.String("dir", outDir))
 		return
 	}
 
@@ -112,14 +121,16 @@ func main() {
 		if fcode == "" {
 			// Legacy one-shot (no filter, legacy joins)
 			if inferenceOnly {
-				log.Printf("skipping legacy inference-only exports; please specify --format/--formats/--all-formats")
+				slog.Info("skip legacy inference-only exports: specify format(s)")
 				continue
 			}
 			if err := exportBattingLegacy(ctx, filepath.Join(outDir, "batting_encoded.csv")); err != nil {
-				log.Fatalf("export batting (legacy): %v", err)
+				slog.Error("export batting (legacy) failed", slog.Any("err", err))
+				os.Exit(1)
 			}
 			if err := exportBowlingLegacy(ctx, filepath.Join(outDir, "bowling_encoded.csv")); err != nil {
-				log.Fatalf("export bowling (legacy): %v", err)
+				slog.Error("export bowling (legacy) failed", slog.Any("err", err))
+				os.Exit(1)
 			}
 			continue
 		}
@@ -127,23 +138,27 @@ func main() {
 			batInfer := filepath.Join(outDir, fmt.Sprintf("batting_infer_%s.csv", fcode))
 			bowInfer := filepath.Join(outDir, fmt.Sprintf("bowling_infer_%s.csv", fcode))
 			if err := exportBattingFormatInference(ctx, fcode, batInfer); err != nil {
-				log.Fatalf("export batting inference(%s): %v", fcode, err)
+				slog.Error("export batting inference failed", slog.String("format", fcode), slog.Any("err", err))
+				os.Exit(1)
 			}
 			if err := exportBowlingFormatInference(ctx, fcode, bowInfer); err != nil {
-				log.Fatalf("export bowling inference(%s): %v", fcode, err)
+				slog.Error("export bowling inference failed", slog.String("format", fcode), slog.Any("err", err))
+				os.Exit(1)
 			}
 			continue
 		}
 		bat := filepath.Join(outDir, fmt.Sprintf("batting_encoded_%s.csv", fcode))
 		bow := filepath.Join(outDir, fmt.Sprintf("bowling_encoded_%s.csv", fcode))
 		if err := exportBattingFormat(ctx, fcode, bat); err != nil {
-			log.Fatalf("export batting(%s): %v", fcode, err)
+			slog.Error("export batting failed", slog.String("format", fcode), slog.Any("err", err))
+			os.Exit(1)
 		}
 		if err := exportBowlingFormat(ctx, fcode, bow); err != nil {
-			log.Fatalf("export bowling(%s): %v", fcode, err)
+			slog.Error("export bowling failed", slog.String("format", fcode), slog.Any("err", err))
+			os.Exit(1)
 		}
 	}
-	log.Printf("exports written to %s", outDir)
+	slog.Info("exports written", slog.String("dir", outDir))
 }
 
 func exportBatting(ctx context.Context, path string) error {
@@ -492,7 +507,7 @@ func exportBattingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
-	` + fieldingJoinSQL + `
+	` + fieldingJoin("bd") + `
 	-- TEST lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
@@ -597,12 +612,15 @@ func exportBattingUnified(ctx context.Context, path string) error {
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+	}
+	// Fielding columns appear immediately after format_code in the SELECT list; keep header aligned.
+	header = append(header, fieldingHeaders...)
+	header = append(header,
 		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
 		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
 		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
 		"bat_form_T20_asof", "bat_consistency_T20_asof", "bat_vs_opp_T20_asof", "bat_at_venue_T20_asof",
-	}
-	header = append(header, fieldingHeaders...)
+	)
 	if err := w.Write(header); err != nil {
 		return err
 	}
@@ -677,7 +695,7 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='bowling'
 	) w ON w.match_id = bw.match_id
-	` + fieldingJoinSQL + `
+	` + fieldingJoin("bw") + `
 	-- TEST laterals
 	LEFT JOIN LATERAL (
 	  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
@@ -776,12 +794,16 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+	}
+	// Fielding columns are selected immediately after format_code in the query
+	header = append(header, fieldingHeaders...)
+	// Per-format as-of feature columns follow fielding columns in the SELECT order
+	header = append(header,
 		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
 		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
 		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
 		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
-	}
-	header = append(header, fieldingHeaders...)
+	)
 	if err := w.Write(header); err != nil {
 		return err
 	}
@@ -806,7 +828,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		bd.runs,
 		bd.balls,
 		bd.fours,
@@ -870,9 +892,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		) tvv ON TRUE ` + fieldingJoin("bd") + ` WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -940,7 +960,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		b.runs,
 		b.balls,
 		b.wickets,
@@ -1002,9 +1022,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		) tvv ON TRUE ` + fieldingJoin("b") + ` WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -1069,7 +1087,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		COALESCE(tc.batting_consistency, 0) AS batting_consistency,
 		COALESCE(tf.batting_form, 0) AS batting_form,
 		COALESCE(w.temp, 0) AS batting_temp,
@@ -1133,9 +1151,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-  WHERE md.format_id = $1`
+		) tvv ON TRUE ` + fieldingJoin("bd") + ` WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -1193,7 +1209,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		COALESCE(tc.bowling_consistency, 0) AS bowling_consistency,
 		COALESCE(tf.bowling_form, 0) AS bowling_form,
 		COALESCE(w.temp, 0) AS bowling_temp,
@@ -1257,9 +1273,7 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		) tvv ON TRUE ` + fieldingJoin("b") + ` WHERE md.format_id = $1`
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {

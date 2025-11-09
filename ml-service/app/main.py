@@ -1,9 +1,12 @@
 import os
+import time
+import uuid
 from typing import List, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ml.match_win_predict import predict_for_team
@@ -14,10 +17,58 @@ from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .errors import error_payload
 from .features import batting_feature_vector
+from .logging import bind_request_context, get_struct_logger, init_logging
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
+# Initialize logging early
+init_logging(service="ml-service", version=app.version)
+logger = get_struct_logger()
+
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    # Request ID from header or generate new
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    bind_request_context(rid)
+    start = time.time()
+    # Log request start
+    logger.info(
+        "request.start",
+        method=request.method,
+        path=request.url.path,
+    )
+    try:
+        response: Response = await call_next(request)
+    except Exception as exc:
+        # Log exception and return JSON error with request_id
+        logger.exception(
+            "request.error",
+            method=request.method,
+            path=request.url.path,
+        )
+        data = error_payload(
+            code="UNHANDLED_EXCEPTION",
+            message=str(exc) or exc.__class__.__name__,
+            hint="Check server logs with the provided request_id for details.",
+        )
+        response = JSONResponse(status_code=500, content={"detail": data})
+    finally:
+        duration_ms = int((time.time() - start) * 1000)
+        # Always log end with status (if available)
+        status = getattr(response, "status_code", 0)
+        logger.info(
+            "request.end",
+            method=request.method,
+            path=request.url.path,
+            status_code=status,
+            duration_ms=duration_ms,
+        )
+    # Echo request id header
+    response.headers["X-Request-ID"] = rid
+    return response
 
 
 class BattingFeatures(BaseModel):
@@ -187,6 +238,8 @@ def _bowling_feature_vector(f: BowlingFeatures) -> List[float]:
 
 @app.get("/health")
 async def health():
+    logger.info("health.check.start")
+
     def _artifacts_info(prefix: str) -> List[dict]:
         out = []
         try:
@@ -292,6 +345,9 @@ async def predict_batting(features: List[BattingFeatures]):
             )
         scaler, model = pair
 
+    logger.info(
+        "predict.batting.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BAT_MODELS else "")
+    )
     X = np.array([batting_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
@@ -311,19 +367,18 @@ async def predict_batting(features: List[BattingFeatures]):
                     strike_rate=float(vals[5]),
                 )
             )
+        logger.info("predict.batting.success", predictions=len(preds))
         return preds
-    except Exception:
-        return [
-            BattingPrediction(
-                runs_scored=0.0,
-                balls_faced=0.0,
-                fours_scored=0.0,
-                sixes_scored=0.0,
-                batting_position=0.0,
-                strike_rate=0.0,
-            )
-            for _ in features
-        ]
+    except Exception as exc:
+        logger.exception("predict.batting.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="PREDICT_FAILED",
+                message="Batting prediction failed",
+                hint="See server logs for stacktrace using request_id",
+            ),
+        )
 
 
 @app.post("/predict/bowling", response_model=List[BowlingPrediction])
@@ -374,6 +429,9 @@ async def predict_bowling(features: List[BowlingFeatures]):
             )
         scaler, model = pair
 
+    logger.info(
+        "predict.bowling.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BOWL_MODELS else "")
+    )
     X = np.array([_bowling_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
@@ -391,11 +449,18 @@ async def predict_bowling(features: List[BowlingFeatures]):
                     econ=float(vals[3]),
                 )
             )
+        logger.info("predict.bowling.success", predictions=len(preds))
         return preds
-    except Exception:
-        return [
-            BowlingPrediction(runs_conceded=0.0, deliveries=0.0, wickets_taken=0.0, econ=0.0) for _ in features
-        ]  # noqa: E501
+    except Exception as exc:
+        logger.exception("predict.bowling.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="PREDICT_FAILED",
+                message="Bowling prediction failed",
+                hint="See server logs for stacktrace using request_id",
+            ),
+        )
 
 
 @app.post("/predict-win", response_model=List[PlayerPrediction])
@@ -410,9 +475,23 @@ async def predict_win(players: List[PlayerPrediction]):
             ),
         )
 
-    df = pd.DataFrame([p.dict() for p in players])
-    predictions, _ = predict_for_team(df)
-    return [PlayerPrediction(**p) for p in predictions.to_dict("records")]
+    logger.info("predict.win.start", players=len(players))
+    try:
+        df = pd.DataFrame([p.dict() for p in players])
+        predictions, _ = predict_for_team(df)
+        out = [PlayerPrediction(**p) for p in predictions.to_dict("records")]
+        logger.info("predict.win.success", players=len(out))
+        return out
+    except Exception as exc:
+        logger.exception("predict.win.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="PREDICT_FAILED",
+                message="Team win prediction failed",
+                hint="See server logs for stacktrace using request_id",
+            ),
+        )
 
 
 @app.post("/predict/win", response_model=TeamWinResponse)

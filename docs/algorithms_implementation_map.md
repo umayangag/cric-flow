@@ -40,12 +40,14 @@ Sources reviewed
   - Implementation: same columns in Postgres schema; surfaced by DB repos and exporter
   - Validation: DB rows non-null (or default 0) where expected; pool filtering logic in consumers
 
-- Form (prior season S-1)
+- Form (as-of, leakage-free)
   - Prototype: uses `get_player_metric(..., dim='season', key=S-1)` in `select_pool.py`
-  - Implementation:
-    - Go exporter joins `player_form_data` for relevant season; per-format exports include `*_form`
-    - ML service `ml/calculate_features.py` also computes or validates forms during precompute
-  - Validation: Spot-check that forms for season S read from S-1 rows; define tolerance for missing → 0
+  - Implementation (updated):
+    - Go exporter joins consolidated snapshot tables keyed by `as_of_date` to avoid leakage:
+      - `feature_form_snapshots` (columns: `batting_value`, `bowling_value`, `format_id`, `scope`, `scope_id`, `as_of_date`)
+      - `feature_consistency_snapshots` (columns analogous for consistency)
+    - Per-format unified exports include as-of fields for TEST/ODI/T20I/T20: `*_form_<FMT>_asof`, `*_vs_opp_<FMT>_asof`, `*_at_venue_<FMT>_asof`
+  - Validation: Spot-check that as-of snapshots are filtered with `as_of_date <= match_date`; for season-based comparisons, use snapshots closest to season start; default missing to 0
 
 ---
 

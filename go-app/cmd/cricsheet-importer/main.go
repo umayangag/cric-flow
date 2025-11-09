@@ -4,13 +4,14 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
@@ -32,14 +33,18 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	// Apply migrations to ensure schema is ready
 	if err := db.RunMigrations(ctx, "./migrations"); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	opts := &cricsheet.Options{
@@ -49,7 +54,8 @@ func main() {
 	}
 	n, err := cricsheet.ImportDir(ctx, *dataDir, opts)
 	if err != nil {
-		log.Fatalf("import failed: %v", err)
+		slog.Error("cricsheet import failed", slog.Any("err", err))
+		os.Exit(1)
 	}
-	log.Printf("cricsheet-importer finished: %d files imported", n)
+	slog.Info("cricsheet-importer finished", slog.Int("files", n))
 }
