@@ -73,12 +73,15 @@ evaluate:
 	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
-# Format Go code to align with CI (gofumpt + golines)
+# Format only modified (uncommitted) Go files to align with CI (gofumpt + golines)
 fmt:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	gofumpt -w .
-	golines -w -m 120 .
+	@files=$$( (git diff --name-only --diff-filter=ACMR; git diff --name-only --cached --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\.go$$' | sort -u || true); \
+	if [ -z "$$files" ]; then echo "No modified/uncommitted .go files to format."; exit 0; fi; \
+	echo "Formatting modified/uncommitted files:" $$files; \
+	gofumpt -w $$files; \
+	golines -w -m 120 $$files
 
 # Optional: check-only formatting status similar to CI
 fmt-check:

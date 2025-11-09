@@ -152,16 +152,16 @@ func main() {
 				return err
 			}
 			if cnt == 0 {
-fmt.Fprintf(os.Stderr, "WARN: no player matched for name '%s'\n", name)
+				slog.Warn("no player matched for name", "name", name)
 			} else {
 				matched += int(cnt)
-				fmt.Printf("PLAN: set is_wicket_keeper=%d for %d row(s) name='%s'\n", v, cnt, name)
+				slog.Info("PLAN: set is_wicket_keeper=", "value", v, "rows", cnt, "name", name)
 			}
 		}
 		if othersZero {
-			fmt.Printf("PLAN: set is_wicket_keeper=0 for players NOT in provided CSV\n")
+			slog.Info("PLAN: set is_wicket_keeper=0 for players NOT in provided CSV")
 		}
-		fmt.Printf("dry-run summary: targets=%d matched=%d\n", len(targets), matched)
+		slog.Info("dry-run summary", "targets", len(targets), "matched", matched)
 		return nil
 	}
 
@@ -184,10 +184,7 @@ fmt.Fprintf(os.Stderr, "WARN: no player matched for name '%s'\n", name)
 				args = append(args, name)
 				i++
 			}
-			q := "UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (" + strings.Join(
-				placeholders,
-				",",
-			) + ")"
+			q := fmt.Sprintf("UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1)", strings.Join(placeholders, ","))
 			if _, err := db.Pool.Exec(ctx, q, args...); err != nil {
 				return fmt.Errorf("zero others: %w", err)
 			}
