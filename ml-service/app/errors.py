@@ -1,4 +1,4 @@
-from logging import request_id_var
+from app.logging import request_id_var
 from typing import List, Optional
 
 from pydantic import BaseModel
