@@ -791,12 +791,16 @@ func exportBowlingUnified(ctx context.Context, path string) error {
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+	}
+	// Fielding columns are selected immediately after format_code in the query
+	header = append(header, fieldingHeaders...)
+	// Per-format as-of feature columns follow fielding columns in the SELECT order
+	header = append(header,
 		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
 		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
 		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
 		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
-	}
-	header = append(header, fieldingHeaders...)
+	)
 	if err := w.Write(header); err != nil {
 		return err
 	}
@@ -821,7 +825,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		bd.runs,
 		bd.balls,
 		bd.fours,
@@ -1015,11 +1019,9 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		) tvv ON TRUE $2 WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID)
+	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("b"))
 	if err != nil {
 		return err
 	}
@@ -1082,7 +1084,7 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 	if err != nil {
 		return fmt.Errorf("resolve format_id for %s: %w", formatCode, err)
 	}
-	const q = `SELECT  
+	q := `SELECT  
 		COALESCE(tc.batting_consistency, 0) AS batting_consistency,
 		COALESCE(tf.batting_form, 0) AS batting_form,
 		COALESCE(w.temp, 0) AS batting_temp,
@@ -1146,11 +1148,9 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-  WHERE md.format_id = $1`
+		) tvv ON TRUE $2 WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID)
+	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("bd"))
 	if err != nil {
 		return err
 	}
@@ -1270,11 +1270,9 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		` + fieldingJoinSQL + `
-		WHERE md.format_id = $1`
+		) tvv ON TRUE $2 WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID)
+	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("b"))
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ src/team_selection/cache
 go-app/api
 go-app/coverage.out
 go-app/bin
+go-app/export-dataset
 
 ml-service/.venv
 ml-service/.coverage
@@ -14,4 +15,5 @@ ml-service/coverage.xml
 
 data
 output
+
 .output.txt
