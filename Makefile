@@ -32,12 +32,10 @@ go-test-int:
 migrate:
 	cd go-app && go run ./cmd/tools/migrate -dir=./migrations
 
-# Export datasets (new unified files + legacy for training compatibility)
+# Export datasets (unified exports only)
 export-dataset:
-	# 1) New unified, cross-format CSVs with as-of per-format features
+	# Unified, cross-format CSVs with as-of per-format features
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
-	# 2) Legacy unsuffixed CSVs (batting_encoded.csv, bowling_encoded.csv) used by current training scripts
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:

@@ -6,12 +6,14 @@ import (
 	"context"
 	"encoding/csv"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -32,10 +34,12 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	// Import in this order to satisfy FKs: player (implicit), match_details (ensure), then weather/batting/bowling/fielding
@@ -51,29 +55,29 @@ func importWeather(ctx context.Context, path string, defaultSession string) {
 	fh, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("skip weather: %s not found", path)
+			slog.Info("skip weather: not found", slog.String("path", path))
 			return
 		}
-		log.Printf("open %s: %v", path, err)
+		slog.Error("open failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	defer func() {
 		if err := fh.Close(); err != nil {
-			log.Printf("close %s: %v", path, err)
+			slog.Warn("close file failed", slog.String("path", path), slog.Any("err", err))
 		}
 	}()
-	log.Printf("importing weather from %s", path)
+	slog.Info("importing weather", slog.String("path", path))
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
 	head, err := r.Read()
 	if err != nil {
-		log.Printf("read header %s: %v", path, err)
+		slog.Error("read header failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	idx := makeIndex(head)
 	rows, err := r.ReadAll()
 	if err != nil {
-		log.Printf("read rows %s: %v", path, err)
+		slog.Error("read rows failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	var count int
@@ -105,41 +109,46 @@ func importWeather(ctx context.Context, path string, defaultSession string) {
 			w.Viscosity = &[]string{v}[0]
 		}
 		if err := db.UpsertWeather(ctx, w); err != nil {
-			log.Printf("upsert weather match_id=%d session=%s: %v", matchID, session, err)
+			slog.Warn(
+				"upsert weather failed",
+				slog.Int64("match_id", matchID),
+				slog.String("session", session),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
 	}
-	log.Printf("weather imported: %d rows from %s", count, filepath.Base(path))
+	slog.Info("weather imported", slog.Int("rows", count), slog.String("file", filepath.Base(path)))
 }
 
 func importBatting(ctx context.Context, path string) {
 	fh, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("skip batting: %s not found", path)
+			slog.Info("skip batting: not found", slog.String("path", path))
 			return
 		}
-		log.Printf("open %s: %v", path, err)
+		slog.Error("open failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	defer func() {
 		if err := fh.Close(); err != nil {
-			log.Printf("close %s: %v", path, err)
+			slog.Warn("close file failed", slog.String("path", path), slog.Any("err", err))
 		}
 	}()
-	log.Printf("importing batting from %s", path)
+	slog.Info("importing batting", slog.String("path", path))
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
 	head, err := r.Read()
 	if err != nil {
-		log.Printf("read header %s: %v", path, err)
+		slog.Error("read header failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	idx := makeIndex(head)
 	rows, err := r.ReadAll()
 	if err != nil {
-		log.Printf("read rows %s: %v", path, err)
+		slog.Error("read rows failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	var count int
@@ -157,7 +166,7 @@ func importBatting(ctx context.Context, path string) {
 		}
 		playerID, err := db.GetOrCreateByName(ctx, playerName)
 		if err != nil {
-			log.Printf("player %q: %v", playerName, err)
+			slog.Warn("get/create player failed", slog.String("name", playerName), slog.Any("err", err))
 			continue
 		}
 		desc := get("description")
@@ -181,41 +190,46 @@ func importBatting(ctx context.Context, path string) {
 			BattingPosition: pos,
 		}
 		if err := db.UpsertBatting(ctx, b); err != nil {
-			log.Printf("upsert batting mid=%d pid=%d: %v", matchID, playerID, err)
+			slog.Warn(
+				"upsert batting failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
 	}
-	log.Printf("batting imported: %d rows", count)
+	slog.Info("batting imported", slog.Int("rows", count))
 }
 
 func importBowling(ctx context.Context, path string) {
 	fh, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("skip bowling: %s not found", path)
+			slog.Info("skip bowling: not found", slog.String("path", path))
 			return
 		}
-		log.Printf("open %s: %v", path, err)
+		slog.Error("open failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	defer func() {
 		if err := fh.Close(); err != nil {
-			log.Printf("close %s: %v", path, err)
+			slog.Warn("close file failed", slog.String("path", path), slog.Any("err", err))
 		}
 	}()
-	log.Printf("importing bowling from %s", path)
+	slog.Info("importing bowling", slog.String("path", path))
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
 	head, err := r.Read()
 	if err != nil {
-		log.Printf("read header %s: %v", path, err)
+		slog.Error("read header failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	idx := makeIndex(head)
 	rows, err := r.ReadAll()
 	if err != nil {
-		log.Printf("read rows %s: %v", path, err)
+		slog.Error("read rows failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	var count int
@@ -233,7 +247,7 @@ func importBowling(ctx context.Context, path string) {
 		}
 		playerID, err := db.GetOrCreateByName(ctx, playerName)
 		if err != nil {
-			log.Printf("player %q: %v", playerName, err)
+			slog.Warn("get/create player failed", slog.String("name", playerName), slog.Any("err", err))
 			continue
 		}
 		ov := atof32Ptr(get("overs"))
@@ -263,12 +277,17 @@ func importBowling(ctx context.Context, path string) {
 			NoBalls:  nb,
 		}
 		if err := db.UpsertBowling(ctx, b); err != nil {
-			log.Printf("upsert bowling mid=%d pid=%d: %v", matchID, playerID, err)
+			slog.Warn(
+				"upsert bowling failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
 	}
-	log.Printf("bowling imported: %d rows", count)
+	slog.Info("bowling imported", slog.Int("rows", count))
 }
 
 func importFielding(ctx context.Context, path string) {
@@ -277,26 +296,26 @@ func importFielding(ctx context.Context, path string) {
 		if os.IsNotExist(err) {
 			return
 		}
-		log.Printf("open %s: %v", path, err)
+		slog.Error("open failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	defer func() {
 		if err := fh.Close(); err != nil {
-			log.Printf("close %s: %v", path, err)
+			slog.Warn("close file failed", slog.String("path", path), slog.Any("err", err))
 		}
 	}()
-	log.Printf("importing fielding from %s", path)
+	slog.Info("importing fielding", slog.String("path", path))
 	r := csv.NewReader(bufio.NewReader(fh))
 	r.FieldsPerRecord = -1
 	head, err := r.Read()
 	if err != nil {
-		log.Printf("read header %s: %v", path, err)
+		slog.Error("read header failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	idx := makeIndex(head)
 	rows, err := r.ReadAll()
 	if err != nil {
-		log.Printf("read rows %s: %v", path, err)
+		slog.Error("read rows failed", slog.String("path", path), slog.Any("err", err))
 		return
 	}
 	var count int
@@ -314,7 +333,7 @@ func importFielding(ctx context.Context, path string) {
 		}
 		playerID, err := db.GetOrCreateByName(ctx, playerName)
 		if err != nil {
-			log.Printf("player %q: %v", playerName, err)
+			slog.Warn("get/create player failed", slog.String("name", playerName), slog.Any("err", err))
 			continue
 		}
 		ca := atoiPtr(get("catches"))
@@ -330,12 +349,17 @@ func importFielding(ctx context.Context, path string) {
 			MissedRunOuts:  mr,
 		}
 		if err := db.UpsertFielding(ctx, f); err != nil {
-			log.Printf("upsert fielding mid=%d pid=%d: %v", matchID, playerID, err)
+			slog.Warn(
+				"upsert fielding failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
 	}
-	log.Printf("fielding imported: %d rows", count)
+	slog.Info("fielding imported", slog.Int("rows", count))
 }
 
 func makeIndex(head []string) map[string]int {

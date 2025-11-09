@@ -3,7 +3,7 @@ package cricsheet
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -43,11 +43,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	count := 0
 	for _, f := range files {
 		if err := ImportMatchFile(ctx, f, opts); err != nil {
-			log.Printf("warn: import %s failed: %v", filepath.Base(f), err)
+			slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
 			continue
 		}
 		count++
-		fmt.Printf("import %s\n", filepath.Base(f))
+		slog.Info("imported file", slog.String("file", filepath.Base(f)))
 	}
 	return count, nil
 }
@@ -58,7 +58,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = fh.Close() }()
+	defer func() {
+		if err := fh.Close(); err != nil {
+			slog.Warn("close file failed", slog.String("path", path), slog.Any("err", err))
+		}
+	}()
 	m, err := Parse(fh)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
@@ -154,7 +158,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		for _, over := range inng.Overs {
 			overNo := over.Over
 			perBowler := map[string]int{}
-			for _, d := range over.Deliveries {
+			for ballIndex, d := range over.Deliveries {
 				tr := d.Runs.Total
 				runs += tr
 				extras += d.Runs.Extras
@@ -168,11 +172,91 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
 					wkts += len(*d.Wickets)
 					for _, w := range *d.Wickets {
+						bowlNumber := ballIndex + 1
 						desc := w.Kind
 						if w.Fielders != nil && len(*w.Fielders) > 0 {
 							desc = desc + " " + strings.Join(*w.Fielders, ", ")
 						}
 						dismissals[w.PlayerOut] = strings.TrimSpace(desc)
+						// Emit fielding_event rows for fielding-related dismissals
+						kindLower := strings.ToLower(strings.TrimSpace(w.Kind))
+						var eventKind, assistRole string
+						isCaught := false
+						switch kindLower {
+						case "caught":
+							eventKind = "caught"
+							isCaught = true
+						case "run out", "runout", "run_out":
+							eventKind = "run_out"
+							assistRole = "assist"
+						case "stumped":
+							eventKind = "stumped"
+							assistRole = "keeper"
+						default:
+							continue // Not a fielding dismissal we are tracking
+						}
+
+						var fNames []string
+						if w.Fielders != nil {
+							fNames = append(fNames, *w.Fielders...)
+						}
+						// Special case for caught and bowled: fielder is the bowler.
+						if isCaught && len(fNames) == 0 && d.Bowler != "" {
+							fNames = []string{d.Bowler}
+						}
+
+						if len(fNames) > 0 {
+							batterID, err := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							if err != nil {
+								slog.Warn(
+									"get/create player failed",
+									slog.String("name", w.PlayerOut),
+									slog.Any("err", err),
+								)
+								continue
+							}
+							var bowlerID *int64
+							// Bowler is only associated with 'caught' dismissals.
+							if isCaught && d.Bowler != "" {
+								bid, err := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								if err != nil {
+									slog.Warn(
+										"get/create player failed",
+										slog.String("name", d.Bowler),
+										slog.Any("err", err),
+									)
+									continue
+								}
+								bowlerID = &bid
+							}
+							for _, fn := range fNames {
+								fid, err := cricDB.GetOrCreateByName(ctx, fn)
+								if err != nil {
+									slog.Warn("get/create player failed", slog.String("name", fn), slog.Any("err", err))
+									continue
+								}
+								err = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+									MatchID:     mid,
+									Innings:     inningNo,
+									Over:        overNo,
+									Ball:        bowlNumber,
+									BatterOutID: &batterID,
+									FielderID:   &fid,
+									BowlerID:    bowlerID,
+									Kind:        eventKind,
+									AssistRole:  assistRole,
+									IsDirectHit: false,
+									Notes:       nil,
+								})
+								if err != nil {
+									slog.Warn(
+										"insert fielding_event failed",
+										slog.Int64("match_id", mid),
+										slog.Any("err", err),
+									)
+								}
+							}
+						}
 					}
 				}
 				if d.Batter != "" {
@@ -251,7 +335,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			MatchNumber:  matchNumber,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
-			log.Printf("warn: update match_details failed for match_id=%d: %v", mid, err)
+			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))
 		}
 		order := make([]string, 0, len(batAgg))
 		for name, b := range batAgg {
@@ -313,20 +397,36 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		zero := 0
 		for name := range playersSeen {
 			pid, _ := cricDB.GetOrCreateByName(ctx, name)
-			_ = cricDB.UpsertFielding(ctx, &db.Fielding{
+			if err = cricDB.UpsertFielding(ctx, &db.Fielding{
 				MatchID:        mid,
 				PlayerID:       pid,
 				Catches:        &zero,
 				RunOuts:        &zero,
 				DroppedCatches: &zero,
 				MissedRunOuts:  &zero,
-			})
+			}); err != nil {
+				slog.Error(
+					"failed to insert placeholder fielding row",
+					slog.String("player", name),
+					slog.Any("err", err),
+				)
+				return err
+			}
 		}
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
-		_ = weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings))
+		if err := weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings)); err != nil {
+			slog.Error("failed to enqueue weather job", slog.Int64("match_id", mid), slog.Any("err", err))
+			return err
+		}
 	}
+	// Recompute fielding aggregates from emitted events for this match
+	if err = recomputeFn(ctx, mid); err != nil {
+		slog.Error("failed to recompute fielding aggregates", slog.Int64("match_id", mid), slog.Any("err", err))
+		return err
+	}
+
 	return nil
 }
 

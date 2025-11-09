@@ -77,6 +77,67 @@ make docker-build
 make docker-run
 ```
 
+## Testing & Mocks
+
+We use interfaces and mockery-generated mocks instead of hand-written fakes.
+
+- Interfaces with `//go:generate` live near their packages, e.g.:
+  - `internal/mlclient/predictor.go` defines `Predictor` and has a `mockery` directive.
+  - `internal/db/connector.go` defines `Connector` and has a `mockery` directive.
+- Generate mocks locally:
+```
+make -C go-app mocks
+# or from this directory
+make mocks
+```
+This requires mockery installed:
+```
+go install github.com/vektra/mockery/v2@latest
+```
+
+- Tests import mocks from `internal/*/mocks` and configure behavior with `testify/mock`:
+```
+ml := &mlclientmocks.Predictor{}
+ml.On("PredictWin", mock.Anything, players).Return(players, nil)
+```
+
+Database testing
+- For simple orchestration tests, depend on the `db.Connector` interface and mock its `Connect` method using `internal/db/mocks`.
+- For repository-level tests that need to simulate `database/sql` primitives (e.g., `Rows`, `Result`), prefer `sqlmock` or explicit small interfaces around usage points. Some packages under `internal/cricsheet/mocks` already use `testify/mock`.
+
+Note: Legacy hand-written fakes have been removed from tests in favor of mocks for consistency and maintainability.
+
+### Testing conventions
+
+- Unit tests
+  - Exactly one `*_test.go` file per production file in a package (e.g., `client.go` → `client_test.go`).
+  - Use table-driven tests: `tests := []struct{ name string; ... }{... }` with `t.Run(tc.name, ...)`.
+  - Avoid conditional logic inside tests; extract helpers for comparisons and setup.
+  - Shared helpers belong in `helpers_test.go` within the same package; prefer package-local `testdata/` directories for fixtures to avoid CI path issues.
+
+- Integration tests
+  - Must live under `go-app/integration/` or be clearly named `*_integration_test.go`.
+  - Tests should be deterministic and offline by default. If a dependency (e.g., Postgres) is not available, they must `t.Skipf` with a clear message.
+  - Keep runtime bounded (use timeouts). See `integration/export_fielding_integration_test.go` for patterns like `runWithTimeout` and repo-relative paths.
+
+- How to run
+  - All tests (unit + integration):
+    ```
+    go test ./go-app/...
+    ```
+    Integration tests will gracefully skip if Postgres is not reachable.
+  - Only integration tests (verbose):
+    ```
+    go test ./go-app/integration -v
+    ```
+
+- Formatting and vet
+  - Ensure formatting and vet checks are clean prior to PRs:
+    ```
+    gofmt -s -l go-app | grep -v "^$" || true
+    go vet ./go-app/...
+    ```
+
 ## Run programs
 
 ### Team selection (DB-backed or CSV pool)
@@ -241,3 +302,5 @@ Then you can check formatting just like CI:
 ```
 make -C go-app fmt-check
 ```
+
+

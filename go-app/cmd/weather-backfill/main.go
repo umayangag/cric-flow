@@ -5,9 +5,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
@@ -17,12 +19,16 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	ctx := context.Background()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	if err := db.RunMigrations(ctx, "./migrations"); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	if *dryRun {
@@ -34,7 +40,8 @@ func main() {
 
 	added, err := db.EnqueueMissingWeatherJobs(ctx, *limit)
 	if err != nil {
-		log.Fatalf("enqueue missing jobs failed: %v", err)
+		slog.Error("enqueue missing jobs failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	fmt.Printf("enqueued %d weather jobs (limit=%d)\n", added, *limit)
 }

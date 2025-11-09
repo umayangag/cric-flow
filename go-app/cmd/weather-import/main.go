@@ -4,10 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/weather"
 )
 
@@ -16,8 +17,8 @@ type simpleUpserter struct{}
 
 func (simpleUpserter) UpsertForecasts(_ context.Context, f []weather.Forecast) error {
 	for _, x := range f {
-		log.Printf(
-			"[dry-run] upsert match=%d innings=%d at=%s T=%.1fC H=%.0f%% W=%.1fkph P=%.1fmm",
+		fmt.Printf(
+			"[dry-run] upsert match=%d innings=%d at=%s T=%.1fC H=%.0f%% W=%.1fkph P=%.1fmm\n",
 			x.MatchID,
 			x.Innings,
 			x.Timestamp.Format("2006-01-02T15:04Z"),
@@ -38,6 +39,8 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	matchID, err := strconv.ParseInt(*matchStr, 10, 64)
 	if err != nil || matchID <= 0 {
 		fmt.Fprintln(os.Stderr, "invalid or missing -match=<id>")
@@ -57,10 +60,11 @@ func main() {
 
 	u := simpleUpserter{}
 	if err := weather.Ingest(ctx, p, u, matchID); err != nil {
-		log.Fatalf("ingest failed: %v", err)
+		slog.Error("ingest failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	if *apply {
-		log.Printf("apply requested, but this scaffold only prints for now")
+		fmt.Printf("apply requested, but this scaffold only prints for now\n")
 	}
 }

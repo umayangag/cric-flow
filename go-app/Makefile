@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init
+.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks
 
 all: build
 
@@ -73,12 +73,15 @@ evaluate:
 	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
-# Format Go code to align with CI (gofumpt + golines)
+# Format only modified (uncommitted) Go files to align with CI (gofumpt + golines)
 fmt:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	gofumpt -w .
-	golines -w -m 120 .
+	@files=$$( (git diff --name-only --diff-filter=ACMR; git diff --name-only --cached --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\.go$$' | sort -u || true); \
+	if [ -z "$$files" ]; then echo "No modified/uncommitted .go files to format."; exit 0; fi; \
+	echo "Formatting modified/uncommitted files:" $$files; \
+	gofumpt -w $$files; \
+	golines -w -m 120 $$files
 
 # Optional: check-only formatting status similar to CI
 fmt-check:
@@ -110,6 +113,24 @@ docker-build:
 docker-run:
 	docker run --rm -e POSTGRES_HOST=$${POSTGRES_HOST} -e POSTGRES_PORT=$${POSTGRES_PORT} -e POSTGRES_DB=$${POSTGRES_DB} -e POSTGRES_USER=$${POSTGRES_USER} -e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD} -p 8080:8080 --name $(APP_NAME)-api umayangag/cric-app-api:latest
 
+# --- Convenience targets for fielding pipeline (Phase 2) ---
+# Run only integration tests in go-app/integration
+.PHONY: test-int
+test-int:
+	go test ./integration -v
+
+# Export datasets for all formats to the default output directory
+.PHONY: export-dataset
+export-dataset:
+	OUT=$${GO_APP_OUTPUT_DIR:-../output/go-app}; \
+	mkdir -p $$OUT; \
+	go run ./cmd/export-dataset --all-formats --out $$OUT
+
+# Backfill fielding aggregates from fielding_event for all matches
+.PHONY: backfill-fielding
+backfill-fielding:
+	go run ./cmd/backfill-fielding --all
+
 # Lint Go code using golangci-lint (matches CI config)
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
@@ -123,11 +144,8 @@ lint:
 COV_MIN ?= 80
 
 # Generate coverage profile for selected packages (gate scope)
-# Override COVERAGE_PACKAGES to adjust scope. Default targets unit-testable internal packages.
-# Note: internal/db is excluded by default for now (Option A: scoped gate). Include it explicitly when ready.
-COVERAGE_PACKAGES ?= ./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet
 coverage:
-	go test -covermode=atomic -coverprofile=coverage.out $(COVERAGE_PACKAGES)
+	go test -covermode=atomic -coverprofile=coverage.out ./...
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:

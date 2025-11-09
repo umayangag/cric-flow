@@ -1,8 +1,11 @@
-package cricsheet
+package cricsheet_test
 
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
 func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
@@ -19,13 +22,10 @@ func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
 		{"null", `null`, ""},
 	}
 	for _, tc := range cases {
-		var s Season
-		if err := s.UnmarshalJSON([]byte(tc.in)); err != nil {
-			t.Fatalf("%s: unexpected error: %v", tc.name, err)
-		}
-		if string(s) != tc.out {
-			t.Fatalf("%s: got %q want %q", tc.name, string(s), tc.out)
-		}
+		var s cricsheet.Season
+		err := s.UnmarshalJSON([]byte(tc.in))
+		assert.NoError(t, err, tc.name)
+		assert.Equal(t, tc.out, string(s), tc.name)
 	}
 }
 
@@ -43,37 +43,31 @@ func TestCollection_UnmarshalJSON_Forms(t *testing.T) {
 		{"null", `null`, nil},
 	}
 	for _, tc := range cases {
-		var c Collection
-		if err := c.UnmarshalJSON([]byte(tc.in)); err != nil {
-			t.Fatalf("%s: unexpected error: %v", tc.name, err)
-		}
-		if len(c) != len(tc.out) {
-			t.Fatalf("%s: len=%d want=%d", tc.name, len(c), len(tc.out))
-		}
+		var c cricsheet.Collection
+		err := c.UnmarshalJSON([]byte(tc.in))
+		assert.NoError(t, err, tc.name)
+		assert.Equal(t, len(tc.out), len(c), tc.name)
 		for i := range tc.out {
-			if c[i] != tc.out[i] {
-				t.Fatalf("%s: idx %d got %q want %q", tc.name, i, c[i], tc.out[i])
-			}
+			assert.Equal(t, tc.out[i], c[i], "%s idx %d", tc.name, i)
 		}
 	}
 }
 
 func TestCollection_UnmarshalJSON_GarbageFallback(t *testing.T) {
-	var c Collection
-	// An object without a name should fallback to empty slice (not error)
-	if err := c.UnmarshalJSON([]byte(`{"foo":"bar"}`)); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c == nil || len(c) != 0 {
-		t.Fatalf("expected empty collection, got %#v", []string(c))
-	}
+	var c cricsheet.Collection
+	err := c.UnmarshalJSON([]byte(`{"foo":"bar"}`))
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(c))
 }
 
 func TestParse_DoesNotPanicOnMinimalJSON(t *testing.T) {
-	// Minimal valid shape
 	data := []byte(`{"info":{"teams":["A","B"],"match_type":"T20","season":"2019"},"innings":[]}`)
-	m, err := Parse(bytes.NewReader(data))
-	if err != nil || m == nil {
-		t.Fatalf("parse failed: %v", err)
-	}
+	m, err := cricsheet.Parse(bytes.NewReader(data))
+	assert.NoError(t, err)
+	assert.NotNil(t, m)
+}
+
+func TestParse_ErrorOnBadJSON(t *testing.T) {
+	_, err := cricsheet.Parse(bytes.NewReader([]byte("not-json")))
+	assert.Error(t, err)
 }

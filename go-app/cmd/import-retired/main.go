@@ -27,12 +27,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 type row struct {
@@ -45,7 +46,11 @@ func parseCSV(path string) ([]row, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("close csv file failed", slog.String("path", path), slog.Any("err", err))
+		}
+	}()
 
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1
@@ -161,13 +166,17 @@ func main() {
 	flag.DurationVar(&timeout, "timeout", 60*time.Second, "operation timeout")
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	if file == "" {
-		log.Fatal("--file is required")
+		slog.Error("missing required flag --file")
+		os.Exit(1)
 	}
 
 	rows, err := parseCSV(file)
 	if err != nil {
-		log.Fatalf("parse csv: %v", err)
+		slog.Error("parse csv failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	unique := map[string]struct{}{}
 	var names []string
@@ -198,7 +207,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	// Optional: run migrations to ensure schema
 	migrationsDir := os.Getenv("MIGRATIONS_DIR")
@@ -206,12 +216,14 @@ func main() {
 		migrationsDir = "/migrations"
 	}
 	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	changed, zeroed, err := applyRetired(ctx, names, othersZero)
 	if err != nil {
-		log.Fatalf("apply failed: %v", err)
+		slog.Error("apply failed", slog.Any("err", err))
+		os.Exit(1)
 	}
-	fmt.Printf("Applied. Marked retired: %d, zeroed others: %d\n", changed, zeroed)
+slog.Info("Applied", "marked_retired", changed, "zeroed_others", zeroed)
 }

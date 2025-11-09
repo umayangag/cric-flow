@@ -32,6 +32,7 @@ type WeatherClient interface {
 var (
 	cricDB        CricsheetDB   = realDB{}
 	weatherClient WeatherClient = realWeather{}
+	recomputeFn                 = db.RecomputeFieldingAggregates
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.
@@ -39,6 +40,9 @@ func SetCricsheetDB(d CricsheetDB) { cricDB = d }
 
 // SetWeatherClient allows tests to inject a fake weather client.
 func SetWeatherClient(w WeatherClient) { weatherClient = w }
+
+// SetRecomputeFn allows tests to stub out the recompute function.
+func SetRecomputeFn(f func(ctx context.Context, matchID int64) error) { recomputeFn = f }
 
 type realDB struct{}
 

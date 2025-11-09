@@ -4,12 +4,14 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"math"
+	"os"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	weatherSvc "github.com/umayangag/cric-info-scrapers/go-app/internal/weather/service"
 )
 
@@ -30,22 +32,26 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	ctx := context.Background()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	if err := db.RunMigrations(ctx, "./migrations"); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 	cfg := config.Load()
 
-	log.Printf(
-		"weather-worker started (batch=%d interval=%ds noop=%v rate_limit=%d max_attempts=%d)",
-		*batchSize,
-		*intervalSec,
-		*noop,
-		cfg.Weather.RateLimitPerSec,
-		cfg.Weather.MaxAttempts,
+	slog.Info(
+		"weather-worker started",
+		slog.Int("batch", *batchSize),
+		slog.Int("interval_sec", *intervalSec),
+		slog.Bool("noop", *noop),
+		slog.Int("rate_limit", cfg.Weather.RateLimitPerSec),
+		slog.Int("max_attempts", cfg.Weather.MaxAttempts),
 	)
 	for {
 		processed := 0
@@ -58,16 +64,16 @@ func main() {
 			if perr != nil {
 				next := time.Now().Add(backoff(job.Attempts + 1))
 				if err2 := db.MarkWeatherJobFailed(ctx, job.ID, job.Attempts+1, perr.Error(), next); err2 != nil {
-					log.Printf("warn: reschedule failed (id=%d): %v", job.ID, err2)
+					slog.Warn("reschedule failed", slog.Int64("id", job.ID), slog.Any("err", err2))
 				} else {
-					log.Printf("requeued job id=%d match_id=%d cause=%v next=%s", job.ID, job.MatchID, perr, next.Format(time.RFC3339))
+					slog.Info("job requeued", slog.Int64("id", job.ID), slog.Int64("match_id", job.MatchID), slog.Any("cause", perr), slog.String("next", next.Format(time.RFC3339)))
 				}
 			} else {
 				if err := db.MarkWeatherJobDone(ctx, job.ID); err != nil {
-					log.Printf("warn: mark job done failed (id=%d): %v", job.ID, err)
+					slog.Warn("mark job done failed", slog.Int64("id", job.ID), slog.Any("err", err))
 				}
 				if res != nil {
-					log.Printf("done job id=%d match_id=%d venue=%s upserts=%d lat=%.4f lon=%.4f tz=%s", job.ID, job.MatchID, job.NormalizedVenue, res.Upserts, res.Lat, res.Lon, res.Timezone)
+					slog.Info("job done", slog.Int64("id", job.ID), slog.Int64("match_id", job.MatchID), slog.String("venue", job.NormalizedVenue), slog.Int("upserts", res.Upserts), slog.Float64("lat", res.Lat), slog.Float64("lon", res.Lon), slog.String("tz", res.Timezone))
 				}
 			}
 			processed++
@@ -77,5 +83,5 @@ func main() {
 		}
 		time.Sleep(time.Duration(*intervalSec) * time.Second)
 	}
-	log.Printf("weather-worker stopped")
+	slog.Info("weather-worker stopped")
 }

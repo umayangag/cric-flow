@@ -1,4 +1,4 @@
-package cricsheet
+package cricsheet_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -170,19 +171,23 @@ func writeTempJSON(t *testing.T, dir string, name string, data string) string {
 
 func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	ctx := context.Background()
-	prevDB := cricDB
-	prevW := weatherClient
 	fdb := newFakeDB()
 	fw := &fakeWeather{}
-	SetCricsheetDB(fdb)
-	SetWeatherClient(fw)
-	defer func() { SetCricsheetDB(prevDB); SetWeatherClient(prevW) }()
+	cricsheet.SetCricsheetDB(fdb)
+	cricsheet.SetWeatherClient(fw)
+	// Avoid touching real DB recompute in tests
+	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	defer func() {
+		cricsheet.SetCricsheetDB(newFakeDB())
+		cricsheet.SetWeatherClient(&fakeWeather{})
+		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	}()
 
 	d := t.TempDir()
 	file := writeTempJSON(t, d, "a.json", sampleJSON)
 
-	opts := &Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
-	if err := ImportMatchFile(ctx, file, opts); err != nil {
+	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
+	if err := cricsheet.ImportMatchFile(ctx, file, opts); err != nil {
 		t.Fatalf("ImportMatchFile error: %v", err)
 	}
 	// Expect two UpdateMatchDetails (two innings)
@@ -212,19 +217,22 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	ctx := context.Background()
-	prevDB := cricDB
-	prevW := weatherClient
 	fdb := newFakeDB()
 	fw := &fakeWeather{}
-	SetCricsheetDB(fdb)
-	SetWeatherClient(fw)
-	defer func() { SetCricsheetDB(prevDB); SetWeatherClient(prevW) }()
+	cricsheet.SetCricsheetDB(fdb)
+	cricsheet.SetWeatherClient(fw)
+	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	defer func() {
+		cricsheet.SetCricsheetDB(newFakeDB())
+		cricsheet.SetWeatherClient(&fakeWeather{})
+		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	}()
 
 	d := t.TempDir()
 	_ = writeTempJSON(t, d, "b.json", sampleJSON)
 	_ = writeTempJSON(t, d, "a.json", sampleJSON)
 
-	cnt, err := ImportDir(ctx, d, &Options{})
+	cnt, err := cricsheet.ImportDir(ctx, d, &cricsheet.Options{})
 	if err != nil {
 		t.Fatalf("ImportDir error: %v", err)
 	}

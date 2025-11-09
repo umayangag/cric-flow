@@ -5,14 +5,14 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
@@ -35,12 +35,15 @@ func main() {
 	)
 	flag.Parse()
 
+	logger.SetupFromEnv()
+
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
 	// Ensure DB connection
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	// Apply migrations
@@ -49,12 +52,14 @@ func main() {
 		migDir = env
 	}
 	if err := db.RunMigrations(ctx, migDir); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	formatID, err := db.GetMatchFormatIDByCode(ctx, *formatCode)
 	if err != nil {
-		log.Fatalf("resolve format '%s': %v", *formatCode, err)
+		slog.Error("resolve format failed", slog.String("format", *formatCode), slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	// Read optional history window from config
@@ -68,25 +73,29 @@ func main() {
 		// Chronological replay: for each match date, compute snapshots as of that date
 		matches, err := db.ListMatchesByFormatDate(ctx, formatID, nil, nil)
 		if err != nil {
-			log.Fatalf("list matches: %v", err)
+			slog.Error("list matches failed", slog.Any("err", err))
+			os.Exit(1)
 		}
-		log.Printf("precompute-features(replay): %d matches for format %s", len(matches), *formatCode)
+		slog.Info("precompute-features(replay)", slog.Int("matches", len(matches)), slog.String("format", *formatCode))
 		processed := 0
 		for _, m := range matches {
 			asOf := m.Date
 			players, err := db.ListPlayersInMatch(ctx, m.MatchID)
 			if err != nil {
-				log.Fatalf("list players in match %d: %v", m.MatchID, err)
+				slog.Error("list players in match failed", slog.Int64("match_id", m.MatchID), slog.Any("err", err))
+				os.Exit(1)
 			}
 			for _, pid := range players {
 				// Base histories strictly before match date
 				batHist, err := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, nil)
 				if err != nil {
-					log.Fatalf("bat hist p=%d: %v", pid, err)
+					slog.Error("batting history query failed", slog.Int64("player_id", pid), slog.Any("err", err))
+					os.Exit(1)
 				}
 				bowlHist, err := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, nil)
 				if err != nil {
-					log.Fatalf("bowl hist p=%d: %v", pid, err)
+					slog.Error("bowling history query failed", slog.Int64("player_id", pid), slog.Any("err", err))
+					os.Exit(1)
 				}
 
 				batInn := make([]features.Innings, 0, len(batHist))
@@ -113,14 +122,23 @@ func main() {
 				batCons, nCbat := features.Consistency(batInn, *lastN)
 				bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
 
-				if err := db.UpsertPlayerFormAsOf(ctx, pid, asOf, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
-					log.Fatalf("upsert form asof p=%d: %v", pid, err)
+				// Write overall snapshots (form + consistency)
+				if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "overall", nil,
+					batForm, bowlForm, *alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+					slog.Error("upsert feature_form overall failed", slog.Int64("player_id", pid), slog.Any("err", err))
+					os.Exit(1)
 				}
-				if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, asOf, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
-					log.Fatalf("upsert consistency asof p=%d: %v", pid, err)
+				if err := db.UpsertFeatureConsistencySnapshot(ctx, pid, asOf, formatID, "overall", nil,
+					batCons, bowlCons, *lastN, nCbat, nCbowl, "v1"); err != nil {
+					slog.Error(
+						"upsert feature_consistency overall failed",
+						slog.Int64("player_id", pid),
+						slog.Any("err", err),
+					)
+					os.Exit(1)
 				}
 
-				// Vs-opposition and at-venue filtered histories
+				// Vs-opposition and at-venue filtered histories (form only, to preserve current behavior)
 				if m.OppositionID != 0 {
 					oppID := m.OppositionID
 					oppBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, &oppID, nil)
@@ -145,8 +163,15 @@ func main() {
 					}
 					oppBatForm, nOppBat := features.EWM(oppBatInn, *alpha)
 					oppBowlForm, nOppBowl := features.EWM(oppBowlInn, *alpha)
-					if err := db.UpsertPlayerVsOppAsOf(ctx, pid, oppID, asOf, formatID, oppBatForm, oppBowlForm, int(nOppBat+nOppBowl), specEWM(*alpha)); err != nil {
-						log.Fatalf("upsert vs_opp asof p=%d: %v", pid, err)
+					if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "opposition", &oppID,
+						oppBatForm, oppBowlForm, *alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
+						slog.Error(
+							"upsert feature_form opposition failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("opp_id", oppID),
+							slog.Any("err", err),
+						)
+						os.Exit(1)
 					}
 				}
 				if m.VenueID != 0 {
@@ -173,17 +198,24 @@ func main() {
 					}
 					venBatForm, nVenBat := features.EWM(venBatInn, *alpha)
 					venBowlForm, nVenBowl := features.EWM(venBowlInn, *alpha)
-					if err := db.UpsertPlayerAtVenueAsOf(ctx, pid, venueID, asOf, formatID, venBatForm, venBowlForm, int(nVenBat+nVenBowl), specEWM(*alpha)); err != nil {
-						log.Fatalf("upsert at_venue asof p=%d: %v", pid, err)
+					if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "venue", &venueID,
+						venBatForm, venBowlForm, *alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
+						slog.Error(
+							"upsert feature_form venue failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("venue_id", venueID),
+							slog.Any("err", err),
+						)
+						os.Exit(1)
 					}
 				}
 			}
 			processed += len(players)
 			if processed%1000 == 0 {
-				log.Printf("processed %d player-snapshots so far for %s", processed, *formatCode)
+				slog.Info("progress", slog.Int("player_snapshots", processed), slog.String("format", *formatCode))
 			}
 		}
-		log.Printf("done: replay snapshots computed for %d matches (%s)", len(matches), *formatCode)
+		slog.Info("done (replay)", slog.Int("matches", len(matches)), slog.String("format", *formatCode))
 		return
 	}
 
@@ -192,25 +224,27 @@ func main() {
 	if asOfStr == nil || *asOfStr == "" {
 		// Default to today's date in UTC when -as-of is not provided
 		asOf = time.Now().UTC()
-		log.Printf("no -as-of provided; defaulting to today's date (UTC): %s", asOf.Format("2006-01-02"))
+		slog.Info("no -as-of provided; defaulting to today (UTC)", slog.String("as_of", asOf.Format("2006-01-02")))
 	} else {
 		var err error
 		asOf, err = time.Parse("2006-01-02", *asOfStr)
 		if err != nil {
-			log.Fatalf("parse -as-of: %v", err)
+			slog.Error("parse -as-of failed", slog.Any("err", err))
+			os.Exit(1)
 		}
 	}
 
 	// Determine players who have any history before the cutoff in this format
 	players, err := db.ListPlayersWithHistoryBefore(ctx, formatID, asOf)
 	if err != nil {
-		log.Fatalf("list players with history: %v", err)
+		slog.Error("list players with history failed", slog.Any("err", err))
+		os.Exit(1)
 	}
-	log.Printf(
-		"precompute-features(as-of): %d players to process for format %s at %s",
-		len(players),
-		*formatCode,
-		asOf.Format("2006-01-02"),
+	slog.Info(
+		"precompute-features(as-of)",
+		slog.Int("players", len(players)),
+		slog.String("format", *formatCode),
+		slog.String("as_of", asOf.Format("2006-01-02")),
 	)
 
 	processed := 0
@@ -218,15 +252,15 @@ func main() {
 		// Batting history strictly before as-of
 		batHist, err := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, nil)
 		if err != nil {
-			log.Fatalf("bat hist p=%d: %v", pid, err)
+			slog.Error("batting history query failed", slog.Int64("player_id", pid), slog.Any("err", err))
+			os.Exit(1)
 		}
-		// Bowling history strictly before as-of
 		bowlHist, err := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, nil)
 		if err != nil {
-			log.Fatalf("bowl hist p=%d: %v", pid, err)
+			slog.Error("bowling history query failed", slog.Int64("player_id", pid), slog.Any("err", err))
+			os.Exit(1)
 		}
 
-		// Convert to features.Innings and sort/clip
 		batInn := make([]features.Innings, 0, len(batHist))
 		for _, iv := range batHist {
 			batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
@@ -237,8 +271,6 @@ func main() {
 		}
 		batInn = features.SortAndClip(batInn, asOf)
 		bowlInn = features.SortAndClip(bowlInn, asOf)
-
-		// Apply optional window from config (last K matches)
 		if windowN > 0 {
 			if len(batInn) > windowN {
 				batInn = batInn[len(batInn)-windowN:]
@@ -253,42 +285,26 @@ func main() {
 		batCons, nCbat := features.Consistency(batInn, *lastN)
 		bowlCons, nCbowl := features.Consistency(bowlInn, *lastN)
 
-		// Persist snapshots (idempotent)
-		if err := db.UpsertPlayerFormAsOf(ctx, pid, asOf, formatID, batForm, bowlForm, effNbat, effNbowl, specEWM(*alpha)); err != nil {
-			log.Fatalf("upsert form asof p=%d: %v", pid, err)
+		if err := db.UpsertFeatureFormSnapshot(ctx, pid, asOf, formatID, "overall", nil,
+			batForm, bowlForm, *alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+			slog.Error("upsert feature_form overall failed", slog.Int64("player_id", pid), slog.Any("err", err))
+			os.Exit(1)
 		}
-		if err := db.UpsertPlayerConsistencyAsOf(ctx, pid, asOf, formatID, batCons, bowlCons, nCbat, nCbowl, specLastN(*lastN)); err != nil {
-			log.Fatalf("upsert consistency asof p=%d: %v", pid, err)
+		if err := db.UpsertFeatureConsistencySnapshot(ctx, pid, asOf, formatID, "overall", nil,
+			batCons, bowlCons, *lastN, nCbat, nCbowl, "v1"); err != nil {
+			slog.Error("upsert feature_consistency overall failed", slog.Int64("player_id", pid), slog.Any("err", err))
+			os.Exit(1)
 		}
 
 		processed++
 		if processed%1000 == 0 {
-			log.Printf("processed %d/%d players for %s", processed, len(players), *formatCode)
+			slog.Info("progress", slog.Int("players", processed), slog.String("format", *formatCode))
 		}
 	}
-	log.Printf("done: %d player snapshots upserted for %s at %s", processed, *formatCode, asOf.Format("2006-01-02"))
+	slog.Info(
+		"done (as-of)",
+		slog.Int("players", len(players)),
+		slog.String("format", *formatCode),
+		slog.String("as_of", asOf.Format("2006-01-02")),
+	)
 }
-
-func specEWM(alpha float64) string {
-	return "ewm:" + trimFloat(alpha)
-}
-
-func specLastN(n int) string {
-	return "lastN:" + itoa(n)
-}
-
-func trimFloat(f float64) string {
-	// Simple trim for logging/spec
-	s := fmtFloat(f)
-	// remove trailing zeros and dot
-	for len(s) > 0 && s[len(s)-1] == '0' {
-		s = s[:len(s)-1]
-	}
-	if len(s) > 0 && s[len(s)-1] == '.' {
-		s = s[:len(s)-1]
-	}
-	return s
-}
-
-func fmtFloat(f float64) string { return strconv.FormatFloat(f, 'f', 4, 64) }
-func itoa(i int) string         { return strconv.Itoa(i) }
