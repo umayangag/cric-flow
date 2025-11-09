@@ -892,9 +892,9 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE $2 WHERE md.format_id = $1`
+		) tvv ON TRUE `+fieldingJoin("bd")+` WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("bd"))
+	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return err
 	}
@@ -1022,9 +1022,9 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE $2 WHERE md.format_id = $1`
+		) tvv ON TRUE `+fieldingJoin("b")+ ` WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("b"))
+	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return err
 	}
@@ -1151,9 +1151,9 @@ func exportBattingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE $2 WHERE md.format_id = $1`
+		) tvv ON TRUE `+fieldingJoin("bd")+` WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("bd"))
+	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return err
 	}
@@ -1273,9 +1273,9 @@ func exportBowlingFormatInference(ctx context.Context, formatCode string, path s
 		  FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE $2 WHERE md.format_id = $1`
+		) tvv ON TRUE `+fieldingJoin("b")+` WHERE md.format_id = $1`
 
-	rows, err := db.Pool.Query(ctx, q, formatID, fieldingJoin("b"))
+	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return err
 	}
