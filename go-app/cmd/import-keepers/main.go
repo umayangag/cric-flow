@@ -152,7 +152,7 @@ func main() {
 				return err
 			}
 			if cnt == 0 {
-				fmt.Printf("WARN: no player matched for name '%s'\n", name)
+fmt.Fprintf(os.Stderr, "WARN: no player matched for name '%s'\n", name)
 			} else {
 				matched += int(cnt)
 				fmt.Printf("PLAN: set is_wicket_keeper=%d for %d row(s) name='%s'\n", v, cnt, name)
