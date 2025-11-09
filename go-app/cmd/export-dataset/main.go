@@ -6,7 +6,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +15,7 @@ import (
 	pgx "github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 const fieldingColumnsSQL = `
@@ -58,16 +59,20 @@ func main() {
 		"export single merged CSV per task (batting/bowling) across all formats with as-of per-format features",
 	)
 	flag.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference (separate files)")
-	flag.Parse()
+ flag.Parse()
+
+	logger.SetupFromEnv()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		log.Fatalf("mkdir %s: %v", outDir, err)
+		slog.Error("mkdir failed", slog.String("dir", outDir), slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	var list []string
@@ -99,12 +104,14 @@ func main() {
 		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
 		bowAll := filepath.Join(outDir, "bowling_encoded_all.csv")
 		if err := exportBattingUnified(ctx, batAll); err != nil {
-			log.Fatalf("export unified batting: %v", err)
+			slog.Error("export unified batting failed", slog.Any("err", err))
+			os.Exit(1)
 		}
 		if err := exportBowlingUnified(ctx, bowAll); err != nil {
-			log.Fatalf("export unified bowling: %v", err)
+			slog.Error("export unified bowling failed", slog.Any("err", err))
+			os.Exit(1)
 		}
-		log.Printf("unified exports written to %s", outDir)
+		slog.Info("unified exports written", slog.String("dir", outDir))
 		return
 	}
 
@@ -112,14 +119,16 @@ func main() {
 		if fcode == "" {
 			// Legacy one-shot (no filter, legacy joins)
 			if inferenceOnly {
-				log.Printf("skipping legacy inference-only exports; please specify --format/--formats/--all-formats")
+				slog.Info("skip legacy inference-only exports: specify format(s)")
 				continue
 			}
 			if err := exportBattingLegacy(ctx, filepath.Join(outDir, "batting_encoded.csv")); err != nil {
-				log.Fatalf("export batting (legacy): %v", err)
+				slog.Error("export batting (legacy) failed", slog.Any("err", err))
+				os.Exit(1)
 			}
 			if err := exportBowlingLegacy(ctx, filepath.Join(outDir, "bowling_encoded.csv")); err != nil {
-				log.Fatalf("export bowling (legacy): %v", err)
+				slog.Error("export bowling (legacy) failed", slog.Any("err", err))
+				os.Exit(1)
 			}
 			continue
 		}
@@ -127,23 +136,27 @@ func main() {
 			batInfer := filepath.Join(outDir, fmt.Sprintf("batting_infer_%s.csv", fcode))
 			bowInfer := filepath.Join(outDir, fmt.Sprintf("bowling_infer_%s.csv", fcode))
 			if err := exportBattingFormatInference(ctx, fcode, batInfer); err != nil {
-				log.Fatalf("export batting inference(%s): %v", fcode, err)
+				slog.Error("export batting inference failed", slog.String("format", fcode), slog.Any("err", err))
+				os.Exit(1)
 			}
 			if err := exportBowlingFormatInference(ctx, fcode, bowInfer); err != nil {
-				log.Fatalf("export bowling inference(%s): %v", fcode, err)
+				slog.Error("export bowling inference failed", slog.String("format", fcode), slog.Any("err", err))
+				os.Exit(1)
 			}
 			continue
 		}
 		bat := filepath.Join(outDir, fmt.Sprintf("batting_encoded_%s.csv", fcode))
 		bow := filepath.Join(outDir, fmt.Sprintf("bowling_encoded_%s.csv", fcode))
 		if err := exportBattingFormat(ctx, fcode, bat); err != nil {
-			log.Fatalf("export batting(%s): %v", fcode, err)
+			slog.Error("export batting failed", slog.String("format", fcode), slog.Any("err", err))
+			os.Exit(1)
 		}
 		if err := exportBowlingFormat(ctx, fcode, bow); err != nil {
-			log.Fatalf("export bowling(%s): %v", fcode, err)
+			slog.Error("export bowling failed", slog.String("format", fcode), slog.Any("err", err))
+			os.Exit(1)
 		}
 	}
-	log.Printf("exports written to %s", outDir)
+	slog.Info("exports written", slog.String("dir", outDir))
 }
 
 func exportBatting(ctx context.Context, path string) error {

@@ -7,12 +7,13 @@ import (
 	"encoding/csv"
 	"flag"
 	"log/slog"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -108,7 +109,12 @@ func importWeather(ctx context.Context, path string, defaultSession string) {
 			w.Viscosity = &[]string{v}[0]
 		}
 		if err := db.UpsertWeather(ctx, w); err != nil {
-			slog.Warn("upsert weather failed", slog.Int64("match_id", matchID), slog.String("session", session), slog.Any("err", err))
+			slog.Warn(
+				"upsert weather failed",
+				slog.Int64("match_id", matchID),
+				slog.String("session", session),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
@@ -184,7 +190,12 @@ func importBatting(ctx context.Context, path string) {
 			BattingPosition: pos,
 		}
 		if err := db.UpsertBatting(ctx, b); err != nil {
-			slog.Warn("upsert batting failed", slog.Int64("match_id", matchID), slog.Int64("player_id", playerID), slog.Any("err", err))
+			slog.Warn(
+				"upsert batting failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
@@ -266,7 +277,12 @@ func importBowling(ctx context.Context, path string) {
 			NoBalls:  nb,
 		}
 		if err := db.UpsertBowling(ctx, b); err != nil {
-			slog.Warn("upsert bowling failed", slog.Int64("match_id", matchID), slog.Int64("player_id", playerID), slog.Any("err", err))
+			slog.Warn(
+				"upsert bowling failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++
@@ -333,7 +349,12 @@ func importFielding(ctx context.Context, path string) {
 			MissedRunOuts:  mr,
 		}
 		if err := db.UpsertFielding(ctx, f); err != nil {
-			slog.Warn("upsert fielding failed", slog.Int64("match_id", matchID), slog.Int64("player_id", playerID), slog.Any("err", err))
+			slog.Warn(
+				"upsert fielding failed",
+				slog.Int64("match_id", matchID),
+				slog.Int64("player_id", playerID),
+				slog.Any("err", err),
+			)
 			continue
 		}
 		count++

@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 
 	"github.com/gorilla/mux"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
@@ -71,7 +72,12 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 			if err := precompute.Run(ctx, season, formats); err != nil {
-				slog.Error("precompute failed", slog.Any("err", err), slog.String("season", season), slog.Any("formats", formats))
+				slog.Error(
+					"precompute failed",
+					slog.Any("err", err),
+					slog.String("season", season),
+					slog.Any("formats", formats),
+				)
 			} else {
 				slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
 			}
@@ -137,7 +143,13 @@ func main() {
 		consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
 		if err != nil {
 			// It's okay for consistency data to be missing, so just log the error
-			slog.Warn("could not get player consistency", slog.Any("err", err), slog.Int64("player_id", id), slog.String("season", season), slog.String("format", format))
+			slog.Warn(
+				"could not get player consistency",
+				slog.Any("err", err),
+				slog.Int64("player_id", id),
+				slog.String("season", season),
+				slog.String("format", format),
+			)
 		}
 
 		type respStruct struct {

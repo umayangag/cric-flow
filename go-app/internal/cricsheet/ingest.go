@@ -206,27 +206,35 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						}
 
 						if len(fNames) > 0 {
- 						batterID, err := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
- 						if err != nil {
- 							slog.Warn("get/create player failed", slog.String("name", w.PlayerOut), slog.Any("err", err))
- 							continue
- 						}
+							batterID, err := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							if err != nil {
+								slog.Warn(
+									"get/create player failed",
+									slog.String("name", w.PlayerOut),
+									slog.Any("err", err),
+								)
+								continue
+							}
 							var bowlerID *int64
 							// Bowler is only associated with 'caught' dismissals.
 							if isCaught && d.Bowler != "" {
- 							bid, err := cricDB.GetOrCreateByName(ctx, d.Bowler)
- 							if err != nil {
- 								slog.Warn("get/create player failed", slog.String("name", d.Bowler), slog.Any("err", err))
- 								continue
- 							}
+								bid, err := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								if err != nil {
+									slog.Warn(
+										"get/create player failed",
+										slog.String("name", d.Bowler),
+										slog.Any("err", err),
+									)
+									continue
+								}
 								bowlerID = &bid
 							}
 							for _, fn := range fNames {
- 							fid, err := cricDB.GetOrCreateByName(ctx, fn)
- 							if err != nil {
- 								slog.Warn("get/create player failed", slog.String("name", fn), slog.Any("err", err))
- 								continue
- 							}
+								fid, err := cricDB.GetOrCreateByName(ctx, fn)
+								if err != nil {
+									slog.Warn("get/create player failed", slog.String("name", fn), slog.Any("err", err))
+									continue
+								}
 								err = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
 									MatchID:     mid,
 									Innings:     inningNo,
@@ -240,9 +248,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 									IsDirectHit: false,
 									Notes:       nil,
 								})
- 							if err != nil {
- 								slog.Warn("insert fielding_event failed", slog.Int64("match_id", mid), slog.Any("err", err))
- 							}
+								if err != nil {
+									slog.Warn(
+										"insert fielding_event failed",
+										slog.Int64("match_id", mid),
+										slog.Any("err", err),
+									)
+								}
 							}
 						}
 					}
@@ -393,7 +405,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				DroppedCatches: &zero,
 				MissedRunOuts:  &zero,
 			}); err != nil {
-				slog.Error("failed to insert placeholder fielding row", slog.String("player", name), slog.Any("err", err))
+				slog.Error(
+					"failed to insert placeholder fielding row",
+					slog.String("player", name),
+					slog.Any("err", err),
+				)
 				return err
 			}
 		}

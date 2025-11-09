@@ -9,8 +9,9 @@ import (
 // SetupFromEnv configures the global slog default logger.
 //
 // Environment variables:
-//   LOG_FORMAT = json|text (default: text)
-//   LOG_LEVEL  = debug|info|warn|error (default: info)
+//
+//	LOG_FORMAT = json|text (default: text)
+//	LOG_LEVEL  = debug|info|warn|error (default: info)
 func SetupFromEnv() *slog.Logger {
 	level := new(slog.LevelVar)
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
