@@ -184,7 +184,7 @@ func main() {
 				args = append(args, name)
 				i++
 			}
-			q := fmt.Sprintf("UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1)", strings.Join(placeholders, ","))
+q := fmt.Sprintf("UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (%s)", strings.Join(placeholders, ","))
 			if _, err := db.Pool.Exec(ctx, q, args...); err != nil {
 				return fmt.Errorf("zero others: %w", err)
 			}
