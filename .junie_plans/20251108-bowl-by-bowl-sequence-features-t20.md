@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS bowling_sequence_features (
   wickets        INTEGER NOT NULL,
   dot_balls      INTEGER NOT NULL,
   wicket_rate    REAL GENERATED ALWAYS AS (CASE WHEN balls>0 THEN wickets::float/balls ELSE 0 END) STORED,
-  econ           REAL,
+  econ           REAL GENERATED ALWAYS AS (CASE WHEN overs_pairs > 0 THEN runs::float / overs_pairs ELSE 0 END) STORED,
   PRIMARY KEY (as_of_date, format_id, scope, COALESCE(scope_id,0), prev_bowler_id, bowler_id, phase)
 );
 
