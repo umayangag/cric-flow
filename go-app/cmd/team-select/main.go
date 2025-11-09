@@ -4,16 +4,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
 
 func main() {
+	logger.SetupFromEnv()
 	cfg := config.Load()
 
 	opts, err := parseFlags(os.Args[1:], cfg)
@@ -26,9 +28,10 @@ func main() {
 	defer cancel()
 
 	// Ensure DB connection available when using DB mode
-	if opts.fromDB {
+ if opts.fromDB {
 		if _, err := db.Connect(ctx); err != nil {
-			log.Fatalf("db connect failed: %v", err)
+			slog.Error("db connect failed", slog.Any("err", err))
+			os.Exit(1)
 		}
 	}
 
@@ -43,8 +46,9 @@ func main() {
 	} else {
 		res, err = selection.SelectTeamFromCSV(ctx, opts.poolPath, opts.matchID, opts.formatCode, opts.seasonName, selOpts)
 	}
-	if err != nil {
-		log.Fatalf("selection failed: %v", err)
+ if err != nil {
+		slog.Error("selection failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	fmt.Printf("Selected Team (size=%d) — Team Win Prob: %.4f\n", len(res.Players), res.TeamWinProbability)

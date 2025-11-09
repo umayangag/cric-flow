@@ -26,13 +26,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 type KeeperRow struct {
@@ -45,7 +46,11 @@ func parseCSV(path string) ([]KeeperRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("close csv file failed", slog.String("path", path), slog.Any("err", err))
+		}
+	}()
 	reader := csv.NewReader(bufio.NewReader(f))
 	reader.TrimLeadingSpace = true
 	reader.FieldsPerRecord = -1
@@ -107,22 +112,27 @@ func main() {
 	flag.StringVar(&file, "file", "", "path to CSV file with keepers")
 	flag.BoolVar(&apply, "apply", false, "apply changes (default is dry-run)")
 	flag.BoolVar(&othersZero, "others-zero", false, "set is_wicket_keeper=0 for players not in CSV")
-	flag.Parse()
+ flag.Parse()
+
+	logger.SetupFromEnv()
 
 	if strings.TrimSpace(file) == "" {
-		log.Fatalf("--file is required")
+		slog.Error("missing required flag --file")
+		os.Exit(1)
 	}
 
 	rows, err := parseCSV(file)
 	if err != nil {
-		log.Fatalf("parse CSV: %v", err)
+		slog.Error("parse CSV failed", slog.Any("err", err))
+		os.Exit(1)
 	}
-	log.Printf("parsed %d rows from %s", len(rows), file)
+	slog.Info("parsed keeper rows", slog.Int("rows", len(rows)), slog.String("file", file))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("db connect failed: %v", err)
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	// Build a set of target names (lowercased)
@@ -132,7 +142,7 @@ func main() {
 	}
 
 	// Preview changes
-	preview := func() error {
+ preview := func() error {
 		// Count matches and potential misses
 		matched := 0
 		for name, v := range targets {
@@ -142,16 +152,16 @@ func main() {
 				return err
 			}
 			if cnt == 0 {
-				log.Printf("WARN: no player matched for name '%s'", name)
+				fmt.Printf("WARN: no player matched for name '%s'\n", name)
 			} else {
 				matched += int(cnt)
-				log.Printf("PLAN: set is_wicket_keeper=%d for %d row(s) name='%s'", v, cnt, name)
+				fmt.Printf("PLAN: set is_wicket_keeper=%d for %d row(s) name='%s'\n", v, cnt, name)
 			}
 		}
 		if othersZero {
-			log.Printf("PLAN: set is_wicket_keeper=0 for players NOT in provided CSV")
+			fmt.Printf("PLAN: set is_wicket_keeper=0 for players NOT in provided CSV\n")
 		}
-		log.Printf("dry-run summary: targets=%d matched=%d", len(targets), matched)
+		fmt.Printf("dry-run summary: targets=%d matched=%d\n", len(targets), matched)
 		return nil
 	}
 
@@ -186,14 +196,16 @@ func main() {
 	}
 
 	if !apply {
-		if err := preview(); err != nil {
-			log.Fatalf("dry-run failed: %v", err)
-		}
-		log.Printf("dry-run complete. Re-run with --apply to persist changes.")
-		return
+  if err := preview(); err != nil {
+		slog.Error("dry-run failed", slog.Any("err", err))
+		os.Exit(1)
 	}
-	if err := applyChanges(); err != nil {
-		log.Fatalf("apply failed: %v", err)
-	}
-	log.Printf("apply complete.")
+	fmt.Printf("dry-run complete. Re-run with --apply to persist changes.\n")
+	return
+}
+if err := applyChanges(); err != nil {
+	slog.Error("apply failed", slog.Any("err", err))
+	os.Exit(1)
+}
+fmt.Printf("apply complete.\n")
 }

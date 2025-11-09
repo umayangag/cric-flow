@@ -220,3 +220,26 @@ make precompute-asof ASOF=2020-12-31 ALPHA=0.35 LASTN=12
 ```
 
 Behind the scenes this runs the Go CLI `go-app/cmd/precompute-features` once per format with `-as-of`, applying DB migrations automatically. Ensure you have already imported data (e.g., via `make cricsheet-import`).
+
+
+## Logging configuration (Go services & CLIs)
+
+All Go commands in `go-app/` use a centralized `log/slog` logger with structured output.
+
+Environment variables:
+- `LOG_FORMAT` = `json` | `text` (default: `json`)
+- `LOG_LEVEL` = `debug` | `info` | `warn` | `error` (default: `info`)
+
+Examples:
+- API with human-readable logs:
+  ```bash
+  cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api
+  ```
+- CLI with JSON logs:
+  ```bash
+  cd go-app && LOG_FORMAT=json LOG_LEVEL=info go run ./cmd/export-dataset -unified=1
+  ```
+
+Notes:
+- Fatal exits happen only in `main` packages; internal libraries never call `os.Exit` or `panic` for routine errors.
+- Non-fatal cleanup errors (e.g., `Close`/`Flush`) are logged at `warn` level.
