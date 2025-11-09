@@ -5,7 +5,8 @@ import (
 	"context"
 	"testing"
 
-	dbfake "github.com/umayangag/cric-info-scrapers/go-app/internal/db/fake"
+	"github.com/stretchr/testify/mock"
+	dbmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
@@ -40,7 +41,8 @@ func (c *capturingSelector) SelectTeamFromCSV(
 
 func TestRunSelection_PassesRequireKeeperAndMinBowlers_DB(t *testing.T) {
 	ctx := context.Background()
-	conn := dbfake.Connector{}
+	m := &dbmocks.Connector{}
+	m.On("Connect", mock.Anything).Return(nil)
 	sel := &capturingSelector{}
 	var buf bytes.Buffer
 	opts := options{
@@ -52,7 +54,7 @@ func TestRunSelection_PassesRequireKeeperAndMinBowlers_DB(t *testing.T) {
 		minBowlers:    6,
 		requireKeeper: true,
 	}
-	if err := runSelection(ctx, conn, sel, &buf, opts); err != nil {
+	if err := runSelection(ctx, m, sel, &buf, opts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !sel.lastFromDB {
@@ -65,7 +67,8 @@ func TestRunSelection_PassesRequireKeeperAndMinBowlers_DB(t *testing.T) {
 
 func TestRunSelection_PassesRequireKeeperAndMinBowlers_CSV(t *testing.T) {
 	ctx := context.Background()
-	conn := dbfake.Connector{}
+	m := &dbmocks.Connector{}
+	// Not expected to be called for CSV path; leave default zero behavior.
 	sel := &capturingSelector{}
 	var buf bytes.Buffer
 	opts := options{
@@ -78,7 +81,7 @@ func TestRunSelection_PassesRequireKeeperAndMinBowlers_CSV(t *testing.T) {
 		minBowlers:    4,
 		requireKeeper: false,
 	}
-	if err := runSelection(ctx, conn, sel, &buf, opts); err != nil {
+	if err := runSelection(ctx, m, sel, &buf, opts); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if sel.lastFromDB {

@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	fakeML "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/fake"
+	"github.com/stretchr/testify/mock"
+	mlmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
@@ -16,10 +17,10 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	// Fake will echo Responses; ensure deterministic selection/top-N
-	fake := &fakeML.Client{Responses: players}
+	m := &mlmocks.Predictor{}
+	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 
-	got, err := buildTeam(ctx, fake, players, 2)
+	got, err := buildTeam(ctx, m, players, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,8 +35,9 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 
 func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 	ctx := context.Background()
-	fake := &fakeML.Client{Err: assertErr{}}
-	_, err := buildTeam(ctx, fake, nil, 11)
+	m := &mlmocks.Predictor{}
+	m.On("PredictWin", mock.Anything, mock.Anything).Return(nil, assertErr{})
+	_, err := buildTeam(ctx, m, nil, 11)
 	if err == nil {
 		t.Fatalf("expected error from predictor")
 	}

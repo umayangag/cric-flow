@@ -112,7 +112,7 @@ func main() {
 	flag.StringVar(&file, "file", "", "path to CSV file with keepers")
 	flag.BoolVar(&apply, "apply", false, "apply changes (default is dry-run)")
 	flag.BoolVar(&othersZero, "others-zero", false, "set is_wicket_keeper=0 for players not in CSV")
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -142,7 +142,7 @@ func main() {
 	}
 
 	// Preview changes
- preview := func() error {
+	preview := func() error {
 		// Count matches and potential misses
 		matched := 0
 		for name, v := range targets {
@@ -196,16 +196,16 @@ func main() {
 	}
 
 	if !apply {
-  if err := preview(); err != nil {
-		slog.Error("dry-run failed", slog.Any("err", err))
+		if err := preview(); err != nil {
+			slog.Error("dry-run failed", slog.Any("err", err))
+			os.Exit(1)
+		}
+		fmt.Printf("dry-run complete. Re-run with --apply to persist changes.\n")
+		return
+	}
+	if err := applyChanges(); err != nil {
+		slog.Error("apply failed", slog.Any("err", err))
 		os.Exit(1)
 	}
-	fmt.Printf("dry-run complete. Re-run with --apply to persist changes.\n")
-	return
-}
-if err := applyChanges(); err != nil {
-	slog.Error("apply failed", slog.Any("err", err))
-	os.Exit(1)
-}
-fmt.Printf("apply complete.\n")
+	fmt.Printf("apply complete.\n")
 }

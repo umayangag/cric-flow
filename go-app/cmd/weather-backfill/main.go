@@ -17,7 +17,7 @@ func main() {
 		limit  = flag.Int("limit", 0, "maximum number of jobs to enqueue (0 = no limit)")
 		dryRun = flag.Bool("dry-run", false, "show how many jobs would be enqueued without modifying the database")
 	)
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 
- added, err := db.EnqueueMissingWeatherJobs(ctx, *limit)
+	added, err := db.EnqueueMissingWeatherJobs(ctx, *limit)
 	if err != nil {
 		slog.Error("enqueue missing jobs failed", slog.Any("err", err))
 		os.Exit(1)

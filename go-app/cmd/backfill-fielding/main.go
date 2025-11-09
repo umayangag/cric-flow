@@ -26,7 +26,7 @@ func main() {
 	flag.Int64Var(&matchID, "match", 0, "specific match_id to process (overrides --all if >0)")
 	flag.BoolVar(&force, "force", false, "force rebuild (reserved; future: purge/re-derive events)")
 	flag.IntVar(&batchSize, "batch-size", 500, "number of matches to process per batch")
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -38,13 +38,13 @@ func main() {
 	}
 
 	if matchID > 0 {
-  if err := backfillOne(ctx, matchID, force); err != nil {
-		slog.Error("backfill one failed", slog.Int64("match_id", matchID), slog.Any("err", err))
-		os.Exit(1)
+		if err := backfillOne(ctx, matchID, force); err != nil {
+			slog.Error("backfill one failed", slog.Int64("match_id", matchID), slog.Any("err", err))
+			os.Exit(1)
+		}
+		fmt.Printf("ok backfilled match_id=%d\n", matchID)
+		return
 	}
-	fmt.Printf("ok backfilled match_id=%d\n", matchID)
-	return
-}
 	if !all {
 		fmt.Fprintln(os.Stderr, "either --match <id> or --all must be provided")
 		os.Exit(2)
@@ -53,16 +53,21 @@ func main() {
 	processed := 0
 	offset := 0
 	for {
-  ids, err := listMatchIDs(ctx, batchSize, offset)
+		ids, err := listMatchIDs(ctx, batchSize, offset)
 		if err != nil {
-			slog.Error("list matches failed", slog.Any("err", err), slog.Int("offset", offset), slog.Int("batch_size", batchSize))
+			slog.Error(
+				"list matches failed",
+				slog.Any("err", err),
+				slog.Int("offset", offset),
+				slog.Int("batch_size", batchSize),
+			)
 			os.Exit(1)
 		}
 		if len(ids) == 0 {
 			break
 		}
 		for _, id := range ids {
-   if err := backfillOne(ctx, id, force); err != nil {
+			if err := backfillOne(ctx, id, force); err != nil {
 				slog.Warn("backfill match failed", slog.Int64("match_id", id), slog.Any("err", err))
 				continue
 			}

@@ -31,7 +31,7 @@ func main() {
 		phField   = flag.Bool("placeholders-fielding", false, "Insert zeroed fielding rows for all players seen")
 		wEnqueue  = flag.Bool("weather-enqueue", true, "Enqueue async weather jobs per match (non-blocking)")
 	)
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 

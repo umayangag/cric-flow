@@ -4,7 +4,8 @@ import (
 	"context"
 	"testing"
 
-	fakeML "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/fake"
+	"github.com/stretchr/testify/mock"
+	mlmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
@@ -13,8 +14,9 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 	players := []predictor.PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 	}
-	fake := &fakeML.Client{Responses: players}
-	got, err := buildTeam(ctx, fake, players, 0)
+	m := &mlmocks.Predictor{}
+	m.On("PredictWin", mock.Anything, players).Return(players, nil)
+	got, err := buildTeam(ctx, m, players, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,8 +28,9 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	players := []predictor.PlayerPrediction{}
-	fake := &fakeML.Client{Responses: players}
-	got, err := buildTeam(ctx, fake, players, 11)
+	m := &mlmocks.Predictor{}
+	m.On("PredictWin", mock.Anything, players).Return(players, nil)
+	got, err := buildTeam(ctx, m, players, 11)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

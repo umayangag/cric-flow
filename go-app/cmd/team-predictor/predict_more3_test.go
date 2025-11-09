@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	fakeML "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/fake"
+	"github.com/stretchr/testify/mock"
+	mlmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
@@ -17,8 +18,9 @@ func TestBuildTeam_TeamSizeLessThanPlayersSelectsTopN(t *testing.T) {
 		{PlayerName: "C", WinningProbability: 0.6},
 		{PlayerName: "D", WinningProbability: 0.8},
 	}
-	fake := &fakeML.Client{Responses: players}
-	got, err := buildTeam(ctx, fake, players, 3)
+	m := &mlmocks.Predictor{}
+	m.On("PredictWin", mock.Anything, players).Return(players, nil)
+	got, err := buildTeam(ctx, m, players, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

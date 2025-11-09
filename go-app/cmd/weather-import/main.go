@@ -37,7 +37,7 @@ func main() {
 		provider = flag.String("provider", "dummy", "Weather provider (dummy)")
 		apply    = flag.Bool("apply", false, "Apply changes (no-op for now; prints only)")
 	)
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -59,7 +59,7 @@ func main() {
 	}
 
 	u := simpleUpserter{}
- if err := weather.Ingest(ctx, p, u, matchID); err != nil {
+	if err := weather.Ingest(ctx, p, u, matchID); err != nil {
 		slog.Error("ingest failed", slog.Any("err", err))
 		os.Exit(1)
 	}

@@ -164,7 +164,7 @@ func main() {
 	flag.BoolVar(&apply, "apply", false, "apply changes (overrides --dry-run)")
 	flag.BoolVar(&othersZero, "others-zero", false, "set is_retired=0 for players not listed in CSV")
 	flag.DurationVar(&timeout, "timeout", 60*time.Second, "operation timeout")
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -206,24 +206,24 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
- if _, err := db.Connect(ctx); err != nil {
-	slog.Error("db connect failed", slog.Any("err", err))
-	os.Exit(1)
-}
-// Optional: run migrations to ensure schema
-migrationsDir := os.Getenv("MIGRATIONS_DIR")
-if migrationsDir == "" {
-	migrationsDir = "/migrations"
-}
-if err := db.RunMigrations(ctx, migrationsDir); err != nil {
-	slog.Error("migrations failed", slog.Any("err", err))
-	os.Exit(1)
-}
+	if _, err := db.Connect(ctx); err != nil {
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
+	}
+	// Optional: run migrations to ensure schema
+	migrationsDir := os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "/migrations"
+	}
+	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
+	}
 
-changed, zeroed, err := applyRetired(ctx, names, othersZero)
-if err != nil {
-	slog.Error("apply failed", slog.Any("err", err))
-	os.Exit(1)
-}
-fmt.Printf("Applied. Marked retired: %d, zeroed others: %d\n", changed, zeroed)
+	changed, zeroed, err := applyRetired(ctx, names, othersZero)
+	if err != nil {
+		slog.Error("apply failed", slog.Any("err", err))
+		os.Exit(1)
+	}
+	fmt.Printf("Applied. Marked retired: %d, zeroed others: %d\n", changed, zeroed)
 }

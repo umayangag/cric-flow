@@ -77,6 +77,36 @@ make docker-build
 make docker-run
 ```
 
+## Testing & Mocks
+
+We use interfaces and mockery-generated mocks instead of hand-written fakes.
+
+- Interfaces with `//go:generate` live near their packages, e.g.:
+  - `internal/mlclient/predictor.go` defines `Predictor` and has a `mockery` directive.
+  - `internal/db/connector.go` defines `Connector` and has a `mockery` directive.
+- Generate mocks locally:
+```
+make -C go-app mocks
+# or from this directory
+make mocks
+```
+This requires mockery installed:
+```
+go install github.com/vektra/mockery/v2@latest
+```
+
+- Tests import mocks from `internal/*/mocks` and configure behavior with `testify/mock`:
+```
+ml := &mlclientmocks.Predictor{}
+ml.On("PredictWin", mock.Anything, players).Return(players, nil)
+```
+
+Database testing
+- For simple orchestration tests, depend on the `db.Connector` interface and mock its `Connect` method using `internal/db/mocks`.
+- For repository-level tests that need to simulate `database/sql` primitives (e.g., `Rows`, `Result`), prefer `sqlmock` or explicit small interfaces around usage points. Some packages under `internal/cricsheet/mocks` already use `testify/mock`.
+
+Note: Legacy hand-written fakes have been removed from tests in favor of mocks for consistency and maintainability.
+
 ## Run programs
 
 ### Team selection (DB-backed or CSV pool)

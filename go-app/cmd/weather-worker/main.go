@@ -30,7 +30,7 @@ func main() {
 		once        = flag.Bool("once", false, "process only one batch and exit")
 		noop        = flag.Bool("noop", true, "dev-safe: do not call external APIs; requeue jobs with backoff")
 	)
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 

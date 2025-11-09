@@ -28,7 +28,7 @@ func main() {
 	defer cancel()
 
 	// Ensure DB connection available when using DB mode
- if opts.fromDB {
+	if opts.fromDB {
 		if _, err := db.Connect(ctx); err != nil {
 			slog.Error("db connect failed", slog.Any("err", err))
 			os.Exit(1)
@@ -46,7 +46,7 @@ func main() {
 	} else {
 		res, err = selection.SelectTeamFromCSV(ctx, opts.poolPath, opts.matchID, opts.formatCode, opts.seasonName, selOpts)
 	}
- if err != nil {
+	if err != nil {
 		slog.Error("selection failed", slog.Any("err", err))
 		os.Exit(1)
 	}

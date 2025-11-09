@@ -59,7 +59,7 @@ func main() {
 		"export single merged CSV per task (batting/bowling) across all formats with as-of per-format features",
 	)
 	flag.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference (separate files)")
- flag.Parse()
+	flag.Parse()
 
 	logger.SetupFromEnv()
 
