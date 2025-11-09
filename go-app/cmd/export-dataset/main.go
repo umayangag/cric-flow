@@ -16,6 +16,9 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
+	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 )
 
 const fieldingColumnsSQL = `
@@ -34,73 +37,46 @@ var fieldingHeaders = []string{
 }
 
 func main() {
+	// Phase 2: delegate flag parsing and output dir preparation to internal packages.
+	fs := flag.NewFlagSet("export-dataset", flag.ContinueOnError)
+	opts, err := exportcli.ParseArgs(fs, os.Args[1:])
+	if err != nil {
+		// Preserve legacy behavior: print error and exit similar to flag.Parse failure.
+		slog.Error("flag parsing failed", slog.Any("err", err))
+		os.Exit(2)
+	}
+	// Ensure output directory precedence: flag > env (handled by parser) > config.DefaultExportDir()
+	if opts.OutDir == "" {
+		opts.OutDir = config.DefaultExportDir()
+	}
+
+	// Map options to legacy variables used later in this file while we migrate logic incrementally.
 	var outDir string
-	var format string
-	var formats string
-	var allFormats bool
 	var unified bool
 	var inferenceOnly bool
-	// Resolve default output directory with precedence: flag > env > config > built-in
-	defOut := os.Getenv("GO_APP_OUTPUT_DIR")
-	if defOut == "" {
-		defOut = config.DefaultExportDir()
-	}
-	flag.StringVar(
-		&outDir,
-		"out",
-		defOut,
-		"output directory for exported CSVs (default from env GO_APP_OUTPUT_DIR or config.json)",
-	)
-	flag.StringVar(&format, "format", "", "single format code (TEST, ODI, T20, T20I)")
-	flag.StringVar(&formats, "formats", "", "comma-separated list of format codes")
-	flag.BoolVar(&allFormats, "all-formats", false, "export for all formats")
-	flag.BoolVar(
-		&unified,
-		"unified",
-		false,
-		"export single merged CSV per task (batting/bowling) across all formats with as-of per-format features",
-	)
-	flag.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference (separate files)")
-	flag.Parse()
+	outDir = opts.OutDir
+	unified = opts.Unified
+	inferenceOnly = opts.InferenceOnly
 
 	logger.SetupFromEnv()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+
+	// Prepare filesystem via internal runner (creates outDir). Remove direct os.MkdirAll.
+	runner := expcmd.NewRunner(osfs.New())
+	if runErr := runner.Run(ctx, opts); runErr != nil {
+		slog.Error("prepare out dir failed", slog.String("dir", opts.OutDir), slog.Any("err", runErr))
+		os.Exit(1)
+	}
+
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
 		os.Exit(1)
 	}
 
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		slog.Error("mkdir failed", slog.String("dir", outDir), slog.Any("err", err))
-		os.Exit(1)
-	}
-
-	var list []string
-	if allFormats {
-		list = []string{"TEST", "ODI", "T20", "T20I"}
-	} else if formats != "" {
-		for _, c := range strings.Split(formats, ",") {
-			c = strings.TrimSpace(strings.ToUpper(c))
-			if c != "" {
-				list = append(list, c)
-			}
-		}
-	} else if format != "" {
-		list = []string{strings.ToUpper(strings.TrimSpace(format))}
-	}
-	if len(list) == 0 {
-		cfg := config.Load()
-		if cfg.Export.RequiredFormat != "" {
-			list = []string{strings.ToUpper(strings.TrimSpace(cfg.Export.RequiredFormat))}
-		} else if cfg.Export.SplitByFormat {
-			list = []string{"TEST", "ODI", "T20", "T20I"}
-		} else {
-			// Backward-compat: single unsuffixed files using all formats combined (legacy)
-			list = []string{""}
-		}
-	}
+	// Resolve formats using internal command helper to centralize behavior.
+	list := expcmd.ResolveFormats(opts, config.Load())
 
 	if unified {
 		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
