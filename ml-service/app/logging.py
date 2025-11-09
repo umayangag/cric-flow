@@ -107,7 +107,6 @@ def get_logger() -> logging.Logger:
     Note: structlog is initialized via init_logging(); this function returns the
     named stdlib logger which routes through the configured ProcessorFormatter.
     """
-    # global _std_logger_singleton
     if _std_logger_singleton is None:
         init_logging()
     assert _std_logger_singleton is not None
