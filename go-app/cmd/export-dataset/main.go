@@ -1069,7 +1069,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		return err
 	}
 	for rows.Next() {
-		vals, err := scanRow(rows, 24)
+vals, err := scanRow(rows, len(rows.FieldDescriptions()))
 		if err != nil {
 			return err
 		}
