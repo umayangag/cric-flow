@@ -10,7 +10,7 @@ import (
 //
 // Environment variables:
 //
-//	LOG_FORMAT = json|text (default: text)
+//	LOG_FORMAT = json|text (default: json)
 //	LOG_LEVEL  = debug|info|warn|error (default: info)
 func SetupFromEnv() *slog.Logger {
 	level := new(slog.LevelVar)
