@@ -63,7 +63,7 @@ func (f *fakeBow) ExportLegacy(_ context.Context, w io.Writer) error {
 	_, _ = w.Write([]byte("wlh1,wlh2\n3,4\n"))
 	return nil
 }
-func (f *fakeBow) ExportInference(_ context.Context, format string, w interface{ Write([]byte) (int, error) }) error {
+func (f *fakeBow) ExportInference(_ context.Context, format string, w io.Writer) error {
 	f.infer++
 	_, _ = w.Write([]byte("wih1,wih2\n5,6\n"))
 	return nil
@@ -82,7 +82,7 @@ func assertNoErrorUnifiedOrch(outDir string) assertOrchFn {
 	}
 }
 
-func assertNoErrorLegacy(outDir string) assertFn {
+func assertNoErrorLegacyOrch(outDir string) assertOrchFn {
 	return func(t *testing.T, fs *memFS, bat *fakeBat, bow *fakeBow, err error) {
 		if err != nil { t.Fatalf("unexpected err: %v", err) }
 		if bat.legacy != 1 || bow.legacy != 1 { t.Fatalf("want legacy calls bat=1 bow=1, got %d %d", bat.legacy, bow.legacy) }
@@ -93,7 +93,7 @@ func assertNoErrorLegacy(outDir string) assertFn {
 	}
 }
 
-func assertNoErrorInfer(outDir string, fmtcode string) assertFn {
+func assertNoErrorInferOrch(outDir string, fmtcode string) assertOrchFn {
 	return func(t *testing.T, fs *memFS, bat *fakeBat, bow *fakeBow, err error) {
 		if err != nil { t.Fatalf("unexpected err: %v", err) }
 		if bat.infer != 1 || bow.infer != 1 { t.Fatalf("want infer calls bat=1 bow=1, got %d %d", bat.infer, bow.infer) }
@@ -111,8 +111,8 @@ func TestRunner_Orchestrates_Unified(t *testing.T) {
 	bow := &fakeBow{}
 	r := cmd.NewRunnerWithServices(fsys, bat, bow)
 	opts := cli.Options{OutDir: t.TempDir(), Unified: true}
-	err := r.Run(context.Background(), opts)
-	assertNoErrorUnified(opts.OutDir)(t, fsys, bat, bow, err)
+ err := r.Run(context.Background(), opts)
+	assertNoErrorUnifiedOrch(opts.OutDir)(t, fsys, bat, bow, err)
 }
 
 func TestRunner_Orchestrates_LegacyCombined(t *testing.T) {
@@ -122,17 +122,45 @@ func TestRunner_Orchestrates_LegacyCombined(t *testing.T) {
 	bow := &fakeBow{}
 	r := cmd.NewRunnerWithServices(fsys, bat, bow)
 	opts := cli.Options{OutDir: t.TempDir(), Formats: []string{""}}
-	err := r.Run(context.Background(), opts)
-	assertNoErrorLegacy(opts.OutDir)(t, fsys, bat, bow, err)
+ err := r.Run(context.Background(), opts)
+	assertNoErrorLegacyOrch(opts.OutDir)(t, fsys, bat, bow, err)
 }
 
 func TestRunner_Orchestrates_InferenceOnly(t *testing.T) {
-	t.Parallel()
+	to := t
+	to.Parallel()
 	fsys := &memFS{}
 	bat := &fakeBat{}
 	bow := &fakeBow{}
 	r := cmd.NewRunnerWithServices(fsys, bat, bow)
-	opts := cli.Options{OutDir: t.TempDir(), InferenceOnly: true, Formats: []string{"ODI"}}
+	opts := cli.Options{OutDir: to.TempDir(), InferenceOnly: true, Formats: []string{"ODI"}}
 	err := r.Run(context.Background(), opts)
-	assertNoErrorInfer(opts.OutDir, "ODI")(t, fsys, bat, bow, err)
+	assertNoErrorInferOrch(opts.OutDir, "ODI")(to, fsys, bat, bow, err)
+}
+
+func TestRunner_WriteFileError_Propagates(t *testing.T) {
+	t.Parallel()
+	fsys := &memFS{writeErr: errors.New("disk full")}
+	bat := &fakeBat{}
+	bow := &fakeBow{}
+	r := cmd.NewRunnerWithServices(fsys, bat, bow)
+	// unified path triggers two writes; the first should fail and propagate
+	opts := cli.Options{OutDir: t.TempDir(), Unified: true}
+	err := r.Run(context.Background(), opts)
+	if err == nil || (err != nil && !containsErr(err.Error(), "disk full")) {
+		t.Fatalf("expected write error to propagate, got %v", err)
+	}
+}
+
+// containsErr is a tiny helper to avoid importing strings for a single use.
+func containsErr(s, sub string) bool {
+	if len(sub) == 0 { return true }
+	for i := 0; i+len(sub) <= len(s); i++ {
+		match := true
+		for j := 0; j < len(sub); j++ {
+			if s[i+j] != sub[j] { match = false; break }
+		}
+		if match { return true }
+	}
+	return false
 }

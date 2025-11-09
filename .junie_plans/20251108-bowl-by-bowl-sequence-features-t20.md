@@ -30,18 +30,28 @@ Engineer bowl-by-bowl, sequence-aware features from Cricsheet deliveries for all
 
 ## 4. Deliverables
 - Normalized `ball_event` table populated during imports/backfill (all formats).
-- Derived sequence tables:
+- Derived feature stores (materialized tables) capturing rich sequence dynamics, windows, and reactions:
   - `batting_transition_features` (B after A by phase/format)
   - `bowling_sequence_features` (B after A by phase/format)
-- Precompute job to populate derived tables incrementally for all formats.
-- Exporter joins to include new features.
+  - `player_window_features` (batter and bowler rolling windows at multiple horizons)
+  - `entry_set_batter_features` (batter entry vulnerability and set-batter acceleration)
+  - `partnership_features` (pair-level batting tendencies)
+  - `pressure_state_features` (performance under match pressure states)
+  - `event_reaction_features` (immediately-after specific prior events)
+  - `dot_streak_features` (behavior after sequences of dots)
+  - `extras_discipline_features` (wide/no-ball discipline)
+  - `wicket_mode_features` (dismissal mode distributions)
+  - `bowling_spell_features` (spell position effects)
+  - `over_boundary_wicket_features` (start/end of over tendencies)
+- Precompute job(s) to populate all derived tables incrementally for all formats.
+- Exporter joins to include a compact, high-signal subset of these features.
 - ML readers that transform these features appropriately and baseline experiments demonstrating impact.
 
 ---
 
-## 5. Data Model (Approved)
+## 5. Data Model (Approved core + new)
 
-### 5.1 `ball_event`
+### 5.1 `ball_event` (core)
 One row per delivery (legal/illegal) with context.
 
 ```sql
@@ -76,63 +86,59 @@ CREATE INDEX IF NOT EXISTS idx_ball_event_phase
   ON ball_event (phase);
 ```
 
-Notes: `ball_seq` advances only on legal balls. Illegal deliveries keep `is_legal=false`; ordering uses `(innings, over, ball)` and `ball_seq` for windowing.
+### 5.2 Transition features (core)
 
-### 5.2 `batting_transition_features`
-Performance of batter B after predecessor A by phase.
+- `batting_transition_features` — performance of batter B after predecessor A by phase (as previously defined with latest-as-of indexes).
+- `bowling_sequence_features` — over-by-over effect of B following A (as previously defined with latest-as-of indexes).
 
-```sql
-CREATE TABLE IF NOT EXISTS batting_transition_features (
-  as_of_date     DATE NOT NULL,
-  format_id      SMALLINT NOT NULL,
-  scope          VARCHAR(16) NOT NULL DEFAULT 'overall',
-  scope_id       BIGINT,
-  prev_batter_id BIGINT NOT NULL,
-  batter_id      BIGINT NOT NULL,
-  phase          VARCHAR(16) NOT NULL,
-  balls          INTEGER NOT NULL,
-  runs           INTEGER NOT NULL,
-  dismissals     INTEGER NOT NULL,
-  fours          INTEGER NOT NULL,
-  sixes          INTEGER NOT NULL,
-  strike_rate    REAL GENERATED ALWAYS AS (CASE WHEN balls>0 THEN runs::float*100/balls ELSE 0 END) STORED,
-  out_rate       REAL GENERATED ALWAYS AS (CASE WHEN balls>0 THEN dismissals::float/balls ELSE 0 END) STORED,
-  PRIMARY KEY (as_of_date, format_id, scope, COALESCE(scope_id,0), prev_batter_id, batter_id, phase)
-);
+### 5.3 New feature stores (schemas)
 
-CREATE INDEX IF NOT EXISTS idx_bat_trans_latest
-  ON batting_transition_features (batter_id, format_id, as_of_date DESC)
-  INCLUDE (prev_batter_id, phase, balls, runs, strike_rate)
-  WHERE scope='overall' AND scope_id IS NULL;
-```
+For all below, columns include at minimum: `as_of_date DATE`, `format_id SMALLINT`, `scope VARCHAR(16) DEFAULT 'overall'`, `scope_id BIGINT NULL`, plus keys and aggregates listed. Primary keys follow the pattern `(as_of_date, format_id, scope, COALESCE(scope_id,0), <keys...>)`. Add latest-as-of indexes mirroring snapshot tables.
 
-### 5.3 `bowling_sequence_features`
-Effect of bowler B’s over when following A.
+1) `player_window_features` — rolling windows for both batters and bowlers at multiple horizons (e.g., 6, 12, 24, 30 balls for batters; 12, 24, 30, 36 balls for bowlers)
+- Keys: `player_id`, `role` in ('bat','bowl'), `phase`, `horizon`
+- Aggs (bat): `balls`, `runs`, `fours`, `sixes`, `dots`, `dismissals`, `sr`, `boundary_rate`, `dot_rate`, `dismissal_hazard`
+- Aggs (bowl): `balls`, `runs`, `wickets`, `dot_balls`, `boundaries_conceded`, `wide_nb`, `econ`, `dot_rate`, `wicket_rate`
 
-```sql
-CREATE TABLE IF NOT EXISTS bowling_sequence_features (
-  as_of_date     DATE NOT NULL,
-  format_id      SMALLINT NOT NULL,
-  scope          VARCHAR(16) NOT NULL DEFAULT 'overall',
-  scope_id       BIGINT,
-  prev_bowler_id BIGINT NOT NULL,
-  bowler_id      BIGINT NOT NULL,
-  phase          VARCHAR(16) NOT NULL,
-  overs_pairs    INTEGER NOT NULL,
-  balls          INTEGER NOT NULL,
-  runs           INTEGER NOT NULL,
-  wickets        INTEGER NOT NULL,
-  dot_balls      INTEGER NOT NULL,
-  wicket_rate    REAL GENERATED ALWAYS AS (CASE WHEN balls>0 THEN wickets::float/balls ELSE 0 END) STORED,
-  econ           REAL GENERATED ALWAYS AS (CASE WHEN overs_pairs > 0 THEN runs::float / overs_pairs ELSE 0 END) STORED,
-  PRIMARY KEY (as_of_date, format_id, scope, COALESCE(scope_id,0), prev_bowler_id, bowler_id, phase)
-);
+2) `entry_set_batter_features` — batter entry and set-batter behavior
+- Keys: `batter_id`, `phase`, `segment` in ('entry_1_6','entry_7_12','set_13_30','set_31_plus')
+- Aggs: `balls`, `runs`, `sr`, `dismissals`, `boundary_rate`
 
-CREATE INDEX IF NOT EXISTS idx_bowl_seq_latest
-  ON bowling_sequence_features (bowler_id, format_id, as_of_date DESC)
-  INCLUDE (prev_bowler_id, phase, balls, wickets, wicket_rate)
-  WHERE scope='overall' AND scope_id IS NULL;
-```
+3) `partnership_features` — pair-level batting synergy regardless of order (sorted pair)
+- Keys: `batter1_id`, `batter2_id`, `phase`
+- Aggs: `balls`, `runs`, `dismissals`, `sr`, `boundary_rate`, `avg_partnership_length`
+
+4) `pressure_state_features` — performance under match pressure states (chasing or defending)
+- Keys: `player_id`, `role`, `pressure_bucket`, `phase`
+- Pressure buckets (chase): based on required RR (`<6`, `6-8`, `8-10`, `>10`) and wickets_in_hand (`<=3`, `4-6`, `>=7`)
+- Pressure buckets (defend): based on current RR vs par, wickets_in_hand of opposition
+- Aggs (bat): `balls`, `runs`, `sr`, `dismissals`; (bowl): `balls`, `runs`, `econ`, `wickets`
+
+5) `event_reaction_features` — immediate next-ball performance conditioned on prior event
+- Keys: `player_id`, `role`, `prev_event` in ('dot','1','2','3','4','6','wide','no_ball','wicket','bye','leg_bye'), `phase`
+- Aggs (bat): `balls`, `runs`, `sr`, `dismissals`, `boundary_rate`; (bowl): `balls`, `runs`, `wickets`, `dot_rate`
+
+6) `dot_streak_features` — outcomes after k consecutive dots
+- Keys: `player_id`, `role`, `k` (0..6), `phase`
+- Aggs: probability of `boundary`, `single`, `wicket`, `extra`, plus `avg_runs_next_ball`
+
+7) `extras_discipline_features` — wides and no-balls discipline (bowlers)
+- Keys: `bowler_id`, `phase`
+- Aggs: `balls`, `wides`, `no_balls`, `wide_rate`, `no_ball_rate`, `penalty_runs`
+
+8) `wicket_mode_features` — mode-of-dismissal distributions
+- Keys: `player_id`, `role` in ('bat','bowl'), `phase`, `wicket_kind`
+- Aggs: `count`, `rate` (per ball for bowlers, per dismissal for batters), smoothing-ready
+
+9) `bowling_spell_features` — spell position effects (first over of spell vs later)
+- Keys: `bowler_id`, `phase`, `spell_pos` in ('first_over','second_over','later')
+- Aggs: `overs`, `runs`, `wickets`, `dot_balls`, `econ`, `wicket_rate`
+
+10) `over_boundary_wicket_features` — start/end-of-over tendencies
+- Keys: `player_id`, `role`, `phase`, `over_ball_pos` in ('ball1','ball6')
+- Aggs (bat): `sr`, `boundary_rate`; (bowl): `wicket_rate`, `dot_rate`, `econ`
+
+All tables include generated columns where helpful (e.g., `sr`, `econ`, rates) and latest-as-of indexes similar to `0013_feature_snapshot_indexes.sql`.
 
 ---
 
@@ -148,8 +154,8 @@ Implement a single `PhaseFor(format_id, ball_seq, innings_length)` helper with f
   - Death: last 60 legal balls (overs 41–50)
   - Middle: between PP1 and Death
 - Test:
-  - Phase: `all` (single bucket) to avoid arbitrary boundaries; sequence features computed without phase segmentation. We can later add optional `opening/middle/tail` if evidence suggests utility.
-- Super over (if present in data): treated as a separate innings; same T20 phase logic but practically very short (likely `powerplay` classification for all deliveries).
+  - Phase: `all` (single bucket) to avoid arbitrary boundaries; sequence features computed without phase segmentation. Optionally later: `opening/middle/tail`.
+- Super over: treated as a separate innings; same T20 phase logic but practically very short (nearly all `powerplay`).
 
 Unit tests will cover boundaries and clamping behavior.
 
@@ -163,31 +169,47 @@ Unit tests will cover boundaries and clamping behavior.
   - Derive `phase` using `PhaseFor(format_id, ball_seq, innings_length)`.
   - Resolve player IDs via existing helpers (GetOrCreateByName).
 - Add `cmd/backfill-ball-events` to populate `ball_event` for existing matches across all formats.
-- Add `cmd/precompute-sequence-features` to compute and upsert into sequence tables (all formats):
-  - Batting transitions: predecessor at innings start and after dismissals; aggregate next-N legal balls or until next wicket, partitioned by `phase` (except Test where `phase='all'`).
-  - Bowling sequences: pair each over by B with the immediately preceding over by A for the same side; aggregate outcomes in B’s over with `phase`.
+- Add `cmd/precompute-sequence-features` to compute and upsert into all sequence tables (all formats):
+  - Reconstruct state (chasing/defending, runs_needed, balls_remaining, wickets_in_hand) from score progression in `match_details`/`ball_event`.
+  - Compute transitions, windows, pressure buckets, dots streaks, event reactions, spell changes, and over positions.
+  - Ensure `as_of_date = match_date` and idempotent writes.
 
 ---
 
 ## 8. Exporter Integration (no dataset v2)
-- Extend exporter SQL to join latest-as-of rows from `batting_transition_features` and `bowling_sequence_features` for each player at match time `(as_of_date <= match_date)` and `format_id`.
-- Initial added columns (narrow set):
-  - Batting: `bat_trans_prev_id`, `bat_trans_phase`, `bat_trans_balls`, `bat_trans_sr`, `bat_trans_out_rate`.
-  - Bowling: `bowl_seq_prev_id`, `bowl_seq_phase`, `bowl_seq_balls`, `bowl_seq_wkt_rate`, `bowl_seq_econ`.
-- Keep existing columns untouched.
+Export only a compact, high-signal subset initially to keep columns manageable; allow flags to expand later.
+
+- Batting additions (examples):
+  - `bat_prev_batter_id`, `bat_prev_phase`, `bat_prev_sr`, `bat_prev_out_rate`
+  - `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`
+  - `bat_pressure_sr_rr_gt8_wih_le3`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p(k=2)`
+  - `bat_partnership_sr_top_prev_partner` (optional)
+- Bowling additions (examples):
+  - `bowl_prev_bowler_id`, `bowl_prev_phase`, `bowl_prev_wkt_rate`
+  - `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`
+  - `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`
+  - `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_dot_rate`
+
+Joins use latest-as-of by `(player_id, format_id, as_of_date <= match_date)` and provided indexes.
 
 ---
 
 ## 9. ML Feature Transformation (All formats)
 - Readers (ml-service):
-  - Parse the added exporter columns.
+  - Parse added exporter columns; keep a YAML/JSON config mapping to feature groups for easy A/B toggling.
   - Encodings:
-    - `prev_batter_id`, `prev_bowler_id`: keep as numeric ids only when paired with their aggregated stats. Use Bayesian smoothing on rates: `rate_smooth = (sum + m*prior) / (n + m)`, with `prior` from global mean per format, `m = 50` (tunable). Include `log(n+1)` as a confidence feature.
-    - `phase`: one-hot per format. For Test, `phase='all'` → a single indicator (or omit and treat missing as zero).
-    - `format_id`: include as categorical/one-hot to capture format effects directly.
-  - Leakage control: ensure exporter enforces `as_of_date <= match_date`; use temporal splits by match date per format.
-- Baseline experiments (per format): current model → +batting transitions → +bowling sequences; report lift.
-- Metrics: classification AUC/PR-AUC for wicket- or dismissal-related targets; regression RMSE/MAE for runs/wickets.
+    - Rates with Bayesian smoothing: `rate_smooth = (sum + m*prior) / (n + m)`, with `prior` per-format global mean; include `log(n+1)` confidence.
+    - `phase` one-hot per format; for Test, treat `all` as single-hot.
+    - `format_id` one-hot.
+  - Normalization: winsorize extreme rates; standardize continuous features.
+  - Leakage control: exporter enforces `as_of_date <= match_date`; temporal split by match date.
+- Baselines (per format):
+  - Baseline A: current snapshot features only.
+  - Baseline B: A + transitions (bat & bowl).
+  - Baseline C: B + windows + pressure.
+  - Baseline D: C + reaction & streaks + extras discipline.
+- Metrics: AUC/PR-AUC for wicket-related, RMSE/MAE for runs/wickets.
+- Reproducibility: fixed seeds; deterministic test fixtures.
 
 ---
 
@@ -195,7 +217,6 @@ Unit tests will cover boundaries and clamping behavior.
 - Follow existing style and repo structure; Go 1.25+, Python 3.10+.
 - Use `make migrate`, `go test ./...`, `pytest -q`.
 - Lint/format according to defaults (`gofmt -s`, `go vet`, `black`, `ruff` if configured).
-- Secrets: none added; env vars documented if needed.
 
 ---
 
@@ -219,6 +240,8 @@ psql -c "SELECT COUNT(*) FROM ball_event WHERE phase='all';"
 go run ./go-app/cmd/precompute-sequence-features
 psql -c "SELECT * FROM batting_transition_features ORDER BY as_of_date DESC LIMIT 10;"
 psql -c "SELECT * FROM bowling_sequence_features ORDER BY as_of_date DESC LIMIT 10;"
+psql -c "SELECT * FROM player_window_features ORDER BY as_of_date DESC LIMIT 10;"
+psql -c "SELECT * FROM pressure_state_features ORDER BY as_of_date DESC LIMIT 10;"
 
 # Export dataset (no version bump)
 make -C go-app export-dataset OUTPUT=./output/dataset_seq.csv
@@ -249,9 +272,6 @@ Parent: 1
   - Tests: DB migration and insert idempotency tests
 - Acceptance:
   - `make migrate` succeeds; unit tests pass.
-- Verification:
-  - `psql -c "\d+ ball_event"`
-- Rollback: drop migration or run `down` if maintained; remove helper.
 
 ### 1.2 PR2 — Importer emits ball_event (phase + ball_seq)
 Parent: 1
@@ -261,9 +281,6 @@ Parent: 1
   - Tests under `go-app/internal/cricsheet/` using deterministic Cricsheet fixtures in `data/sample/{t20,odi,test}/`.
 - Acceptance:
   - Import samples; `SELECT` returns expected rows by `(innings, ball_seq)` and phases per format.
-- Verification:
-  - Run importer and SQL queries listed in §11.
-- Rollback: feature flag to disable writes; revert changes.
 
 ### 1.3 PR3 — Backfill CLI
 Parent: 1
@@ -274,63 +291,74 @@ Parent: 1
   - Tests: CLI dry-run; verify counts
 - Acceptance:
   - Backfill runs idempotently on samples; progress logs; no duplicates
-- Verification:
-  - Row counts stable across reruns
-- Rollback: remove CLI and target.
 
-### 1.4 PR4 — Precompute sequence features (schemas + job)
+### 1.4 PR4 — Core transitions (schemas + job)
 Parent: 1
-- Objectives: Create sequence feature tables and computation job (all formats).
+- Objectives: Create `0015_sequence_features.sql`; implement `precompute-sequence-features` for batting/bowling transitions.
 - Files:
   - `go-app/migrations/0015_sequence_features.sql`
   - `go-app/cmd/precompute-sequence-features/main.go`
-  - Tests: unit tests for pairing/window logic; integration on samples across formats
+  - Tests: unit tests; integration on samples
 - Acceptance:
   - Tables populated; expected sample rows visible across formats
-- Verification:
-  - SQL queries in §11
-- Rollback: drop tables + job code.
 
-### 1.5 PR5 — Exporter integration (additive)
+### 1.5 PR5 — Windows & Entry/Set (schemas + job)
 Parent: 1
-- Objectives: Join latest-as-of sequence features into exports (no v2). Ensure queries are format-aware.
+- Objectives: Add `player_window_features` and `entry_set_batter_features` with computations.
+- Files:
+  - `go-app/migrations/0016_player_windows.sql`
+  - `go-app/cmd/precompute-sequence-features/windows.go`
+  - Tests: unit tests; integration on samples
+- Acceptance: rows populated; sanity on window math.
+
+### 1.6 PR6 — Pressure & Reaction & Dot-streaks
+Parent: 1
+- Objectives: Add `pressure_state_features`, `event_reaction_features`, `dot_streak_features` with computations.
+- Files:
+  - `go-app/migrations/0017_pressure_reaction_streaks.sql`
+  - `go-app/cmd/precompute-sequence-features/pressure_reaction.go`
+  - Tests: unit tests; integration on samples
+- Acceptance: rows populated; buckets correct.
+
+### 1.7 PR7 — Extras discipline, wicket modes, spell & over-pos
+Parent: 1
+- Objectives: Add `extras_discipline_features`, `wicket_mode_features`, `bowling_spell_features`, `over_boundary_wicket_features` with computations.
+- Files:
+  - `go-app/migrations/0018_extras_modes_spells_overpos.sql`
+  - `go-app/cmd/precompute-sequence-features/discipline_modes_spells.go`
+  - Tests: unit tests; integration on samples
+- Acceptance: rows populated; modes and rates consistent.
+
+### 1.8 PR8 — Exporter integration (additive)
+Parent: 1
+- Objectives: Join a compact subset of high-signal features (bat + bowl) into exports (no v2). Ensure queries are format-aware and latest-as-of.
 - Files:
   - `go-app/cmd/export-dataset/*`
-  - Tests: schema presence and latest-as-of correctness across formats
-- Acceptance:
-  - Export completes and includes new columns; existing columns unchanged
-- Verification:
-  - Inspect CSV header and sample rows
-- Rollback: behind flag; revert joins.
+  - Tests: schema presence and correctness across formats
+- Acceptance: Export completes with new columns; existing columns unchanged
 
-### 1.6 PR6 — ML readers + baseline experiments
+### 1.9 PR9 — ML readers + staged baselines
 Parent: 1
-- Objectives: Read new columns and quantify lift per format.
+- Objectives: Read new columns and run staged baselines (A→D) per format.
 - Files:
-  - `ml-service/` readers
+  - `ml-service/` readers and configs
   - `tests/` for reader contract
-- Acceptance:
-  - `pytest -q` passes; training completes on samples
-- Verification:
-  - Report baseline vs enhanced metrics per format
-- Rollback: keep old readers; guard new readers behind config.
+- Acceptance: `pytest -q` passes; baseline reports produced.
 
-### 1.7 PR7 — Performance & polish
+### 1.10 PR10 — Performance & polish
 Parent: 1
-- Objectives: Index tuning; documentation; finalize ODI/Test nuances (e.g., rain-shortened games, follow-on).
+- Objectives: Index tuning; documentation; finalize ODI/Test nuances (rain-shortened, follow-on).
 - Files: migrations (if needed), code tweaks, docs updates
 - Acceptance: Same tests pass across formats; performance acceptable
-- Verification: Timing logs; EXPLAIN ANALYZE on key queries
-- Rollback: keep stable indexes only.
 
 ---
 
 ## 14. Risks & Mitigations
-- Table growth: compact schema and targeted indexes; only necessary INCLUDEs.
-- Rule variations across eras/formats: centralized `PhaseFor` with config; easy to adjust and backfill if needed.
+- Table growth: compact schemas and targeted indexes; only necessary INCLUDEs; consider partitioning by match_date if needed later.
+- Rule variations across eras/formats: centralized `PhaseFor` with config; easy to adjust and backfill.
 - Edge cases: super overs, multiple wickets on one ball, rain-shortened innings, follow-on — covered with tests and documented assumptions.
 
 ---
 
 ## 15. Close Conditions
-Plan 1 closes when PRs 1.1 through 1.6 are merged and verified across all formats and 1.7 is completed or explicitly deferred. Active path is updated in each PR and status note; parent/child progress reconciled after each merge.
+Plan 1 closes when PRs 1.1 through 1.9 are merged and verified across all formats and 1.10 is completed or explicitly deferred. Active path is updated in each PR and status note; parent/child progress reconciled after each merge.
