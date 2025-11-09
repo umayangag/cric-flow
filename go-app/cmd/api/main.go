@@ -4,7 +4,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,10 +21,12 @@ import (
 )
 
 func main() {
+	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
-		log.Fatalf("database connection failed: %v", err)
+		slog.Error("database connection failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	// Run migrations on startup (idempotent)
@@ -32,7 +35,8 @@ func main() {
 		migrationsDir = "/migrations"
 	}
 	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	r := mux.NewRouter()
@@ -67,9 +71,9 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 			if err := precompute.Run(ctx, season, formats); err != nil {
-				log.Printf("precompute failed: %v", err)
+				slog.Error("precompute failed", slog.Any("err", err), slog.String("season", season), slog.Any("formats", formats))
 			} else {
-				log.Printf("precompute completed: season=%s formats=%v", season, formats)
+				slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
 			}
 		}(body.Season, body.Formats)
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
@@ -101,9 +105,9 @@ func main() {
 				PlaceholdersFielding: body.PlaceholdersFielding,
 			}
 			if n, err := cricsheet.ImportDir(ctx, body.Dir, opts); err != nil {
-				log.Printf("cricsheet import failed: %v", err)
+				slog.Error("cricsheet import failed", slog.Any("err", err))
 			} else {
-				log.Printf("cricsheet import completed: %d files", n)
+				slog.Info("cricsheet import completed", slog.Int("files", n))
 			}
 		}()
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
@@ -133,7 +137,7 @@ func main() {
 		consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
 		if err != nil {
 			// It's okay for consistency data to be missing, so just log the error
-			log.Printf("could not get player consistency: %v", err)
+			slog.Warn("could not get player consistency", slog.Any("err", err), slog.Int64("player_id", id), slog.String("season", season), slog.String("format", format))
 		}
 
 		type respStruct struct {
@@ -227,14 +231,19 @@ func main() {
 	if v := os.Getenv("PORT"); v != "" {
 		addr = ":" + v
 	}
-	log.Printf("API listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	slog.Info("API listening", slog.String("addr", addr))
+	if err := http.ListenAndServe(addr, r); err != nil {
+		slog.Error("server exited", slog.Any("err", err))
+		os.Exit(1)
+	}
 }
 
 func respondJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Warn("respondJSON encode failed", slog.Any("err", err))
+	}
 }
 
 func respondErr(w http.ResponseWriter, err error) {

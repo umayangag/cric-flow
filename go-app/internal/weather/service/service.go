@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +53,11 @@ func EnqueueJob(ctx context.Context, matchID int64, city string, venue string, i
 		cityPtr = &c
 	}
 	sessions := buildSessions(inningsCount)
-	b, _ := json.Marshal(sessions)
+	b, err := json.Marshal(sessions)
+	if err != nil {
+		slog.Error("marshal sessions failed", slog.Any("err", err), slog.Int("innings", inningsCount))
+		return err
+	}
 	job := &db.WeatherJob{
 		MatchID:         matchID,
 		NormalizedVenue: norm,
@@ -64,7 +68,7 @@ func EnqueueJob(ctx context.Context, matchID int64, city string, venue string, i
 		SessionsJSON:    b,
 	}
 	if err := db.EnqueueWeatherJob(ctx, job); err != nil {
-		log.Printf("warn: enqueue weather job failed for match %d: %v", matchID, err)
+		slog.Warn("enqueue weather job failed", slog.Int64("match_id", matchID), slog.Any("err", err))
 		return err
 	}
 	return nil
