@@ -27,8 +27,8 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 		t.Fatalf("migrations failed: %v", err)
 	}
 
-	// Ingest the sample fixture directory
-	fixturesDir := filepath.Join("..", "..", "tests", "fixtures", "cricsheet")
+	// Ingest the sample fixture directory (use package-local testdata to avoid CI path issues)
+	fixturesDir := filepath.Join("testdata", "cricsheet")
 	if _, err := os.Stat(fixturesDir); err != nil {
 		t.Fatalf("fixture dir missing: %s: %v", fixturesDir, err)
 	}
