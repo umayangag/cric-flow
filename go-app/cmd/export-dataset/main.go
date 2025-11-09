@@ -887,7 +887,7 @@ func exportBattingFormat(ctx context.Context, formatCode string, path string) er
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
 		` + fieldingJoin("bd") + `
-		WHERE md.format_id = $1`
+		WHERE md.format_id = `+formatID
 
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
