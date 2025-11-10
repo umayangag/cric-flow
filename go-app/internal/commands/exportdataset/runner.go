@@ -19,6 +19,7 @@ type BattingExporter interface {
 	ExportUnified(ctx context.Context, w io.Writer) error
 	ExportLegacy(ctx context.Context, w io.Writer) error
 	ExportInference(ctx context.Context, format string, w io.Writer) error
+	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
 
 // BowlingExporter is the minimal interface Runner needs for bowling exports.
@@ -26,6 +27,7 @@ type BowlingExporter interface {
 	ExportUnified(ctx context.Context, w io.Writer) error
 	ExportLegacy(ctx context.Context, w io.Writer) error
 	ExportInference(ctx context.Context, format string, w io.Writer) error
+	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
 
 // Runner orchestrates the export-dataset workflow behind interfaces for testability.
@@ -85,7 +87,11 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) }); err != nil { return err }
 				continue
 			}
-			// Per-format training exports (non-inference) remain in cmd for now.
+			// Per-format training exports (non-inference)
+			bat := fmt.Sprintf("batting_encoded_%s.csv", f)
+			bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
+			if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) }); err != nil { return err }
+			if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) }); err != nil { return err }
 		}
 	}
 	return nil

@@ -387,6 +387,120 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 	return out, nil
 }
 
+// BattingFormatRows returns CSV-shaped rows for the per-format training batting export.
+// Mirrors legacy exportBattingFormat headers and order.
+func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
+	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	if err != nil {
+		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
+	}
+	q := `SELECT  
+		bd.runs,
+		bd.balls,
+		bd.fours,
+		bd.sixes,
+		bd.batting_position,
+		tc.batting_consistency,
+		tf.batting_form,
+		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
+		CASE 
+			WHEN w.viscosity IS NULL THEN 0
+			WHEN lower(w.viscosity) = 'dry' THEN 0
+			WHEN lower(w.viscosity) = 'humid' THEN 1
+			WHEN lower(w.viscosity) = 'windy' THEN 2
+			ELSE 0
+		END AS viscosity,
+		md.inning,
+		CASE 
+			WHEN md.batting_session IS NULL THEN 0
+			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
+			WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
+			WHEN lower(md.batting_session) LIKE '%evening%' THEN 2
+			ELSE 0
+		END AS batting_session,
+		CASE 
+			WHEN md.toss IS NULL THEN 0
+			WHEN lower(md.toss) LIKE '%bat%' THEN 1
+			ELSE 0
+		END AS toss,
+		tvv.batting_venue,
+		tvo.batting_opposition,
+		s.id AS season_id,
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+		FROM batting_data bd
+		LEFT JOIN player p ON bd.player_id = p.id
+		LEFT JOIN (
+			SELECT * FROM weather_data WHERE session = 'batting'
+		) w ON bd.match_id = w.match_id
+		LEFT JOIN match_details md ON md.match_id = bd.match_id
+		LEFT JOIN season s ON s.id = md.season_id
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_form, n_samples_bat FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_consistency, n_samples_bat FROM feature_consistency_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_opposition, n_samples_bat AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE md.format_id = $1`
+	rows, err := db.Pool.Query(ctx, q, formatID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	headers := []string{
+		"runs",
+		"balls",
+		"fours",
+		"sixes",
+		"batting_position",
+		"batting_consistency",
+		"batting_form",
+		"temp",
+		"wind",
+		"rain",
+		"humidity",
+		"cloud",
+		"pressure",
+		"viscosity",
+		"inning",
+		"batting_session",
+		"toss",
+		"batting_venue",
+		"batting_opposition",
+		"season_id",
+		"player_name",
+		"catches",
+		"run_outs",
+		"stumpings",
+		"runouts_direct_hits",
+		"fielding_involvements",
+	}
+	out := make([][]string, 0, 1024)
+	out = append(out, headers)
+	for rows.Next() {
+		vals, err := scanToStrings(rows, len(headers))
+		if err != nil { return nil, err }
+		out = append(out, vals)
+	}
+	if err := rows.Err(); err != nil { return nil, err }
+	return out, nil
+}
+
 // scanToStrings scans the current row into a []any and converts to []string
 // mirroring the conversion helpers used in cmd/export-dataset.
 func scanToStrings(r pgx.Rows, n int) ([]string, error) {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -54,11 +53,7 @@ func main() {
 
 	// Map options to legacy variables used later in this file while we migrate logic incrementally.
 	var outDir string
-	var unified bool
-	var inferenceOnly bool
 	outDir = opts.OutDir
-	unified = opts.Unified
-	inferenceOnly = opts.InferenceOnly
 
 	logger.SetupFromEnv()
 
@@ -72,8 +67,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Resolve formats using internal command helper to centralize behavior.
-	list := expcmd.ResolveFormats(opts, config.Load())
 
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
 	fsys := osfs.New()
@@ -85,73 +78,9 @@ func main() {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
 		os.Exit(1)
 	}
-	// If any of the flows fully handled by runner are requested, exit early.
-	hasCombined := false
-	for _, f := range list {
-		if f == "" { hasCombined = true; break }
-	}
-	if unified || inferenceOnly || hasCombined {
-		slog.Info("exports written", slog.String("dir", outDir))
-		return
-	}
-
-	if unified {
-		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
-		bowAll := filepath.Join(outDir, "bowling_encoded_all.csv")
-		if err := exportBattingUnified(ctx, batAll); err != nil {
-			slog.Error("export unified batting failed", slog.Any("err", err))
-			os.Exit(1)
-		}
-		if err := exportBowlingUnified(ctx, bowAll); err != nil {
-			slog.Error("export unified bowling failed", slog.Any("err", err))
-			os.Exit(1)
-		}
-		slog.Info("unified exports written", slog.String("dir", outDir))
-		return
-	}
-
-	for _, fcode := range list {
-		if fcode == "" {
-			// Legacy one-shot (no filter, legacy joins)
-			if inferenceOnly {
-				slog.Info("skip legacy inference-only exports: specify format(s)")
-				continue
-			}
-			if err := exportBattingLegacy(ctx, filepath.Join(outDir, "batting_encoded.csv")); err != nil {
-				slog.Error("export batting (legacy) failed", slog.Any("err", err))
-				os.Exit(1)
-			}
-			if err := exportBowlingLegacy(ctx, filepath.Join(outDir, "bowling_encoded.csv")); err != nil {
-				slog.Error("export bowling (legacy) failed", slog.Any("err", err))
-				os.Exit(1)
-			}
-			continue
-		}
-		if inferenceOnly {
-			batInfer := filepath.Join(outDir, fmt.Sprintf("batting_infer_%s.csv", fcode))
-			bowInfer := filepath.Join(outDir, fmt.Sprintf("bowling_infer_%s.csv", fcode))
-			if err := exportBattingFormatInference(ctx, fcode, batInfer); err != nil {
-				slog.Error("export batting inference failed", slog.String("format", fcode), slog.Any("err", err))
-				os.Exit(1)
-			}
-			if err := exportBowlingFormatInference(ctx, fcode, bowInfer); err != nil {
-				slog.Error("export bowling inference failed", slog.String("format", fcode), slog.Any("err", err))
-				os.Exit(1)
-			}
-			continue
-		}
-		bat := filepath.Join(outDir, fmt.Sprintf("batting_encoded_%s.csv", fcode))
-		bow := filepath.Join(outDir, fmt.Sprintf("bowling_encoded_%s.csv", fcode))
-		if err := exportBattingFormat(ctx, fcode, bat); err != nil {
-			slog.Error("export batting failed", slog.String("format", fcode), slog.Any("err", err))
-			os.Exit(1)
-		}
-		if err := exportBowlingFormat(ctx, fcode, bow); err != nil {
-			slog.Error("export bowling failed", slog.String("format", fcode), slog.Any("err", err))
-			os.Exit(1)
-		}
-	}
+	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
+	return
 }
 
 func exportBatting(ctx context.Context, path string) error {

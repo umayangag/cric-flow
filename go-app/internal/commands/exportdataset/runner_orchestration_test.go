@@ -33,9 +33,9 @@ func (m *memFS) WriteFile(_ context.Context, path string, data []byte, perm fs.F
 func (m *memFS) MkdirAll(path string, perm fs.FileMode) error { m.mkdirPath, m.mkdirPerm = path, perm; return m.mkdirErr }
 func (m *memFS) Glob(_ string) ([]string, error) { return nil, errors.New("not implemented") }
 
-type fakeBat struct{ unified, legacy, infer int }
+type fakeBat struct{ unified, legacy, infer, format int }
 
-type fakeBow struct{ unified, legacy, infer int }
+type fakeBow struct{ unified, legacy, infer, format int }
 
 func (f *fakeBat) ExportUnified(_ context.Context, w io.Writer) error {
 	f.unified++
@@ -52,6 +52,11 @@ func (f *fakeBat) ExportInference(_ context.Context, format string, w io.Writer)
 	_, _ = w.Write([]byte("bih1,bih2\nI,J\n"))
 	return nil
 }
+func (f *fakeBat) ExportFormat(_ context.Context, format string, w io.Writer) error {
+	f.format++
+	_, _ = w.Write([]byte("bfh1,bfh2\nQ,R\n"))
+	return nil
+}
 
 func (f *fakeBow) ExportUnified(_ context.Context, w io.Writer) error {
 	f.unified++
@@ -66,6 +71,11 @@ func (f *fakeBow) ExportLegacy(_ context.Context, w io.Writer) error {
 func (f *fakeBow) ExportInference(_ context.Context, format string, w io.Writer) error {
 	f.infer++
 	_, _ = w.Write([]byte("wih1,wih2\n5,6\n"))
+	return nil
+}
+func (f *fakeBow) ExportFormat(_ context.Context, format string, w io.Writer) error {
+	f.format++
+	_, _ = w.Write([]byte("wfh1,wfh2\n7,8\n"))
 	return nil
 }
 
@@ -101,6 +111,17 @@ func assertNoErrorInferOrch(outDir string, fmtcode string) assertOrchFn {
 		wpath := filepath.Join(outDir, "bowling_infer_"+fmtcode+".csv")
 		if string(fs.writes[bpath]) != "bih1,bih2\nI,J\n" { t.Fatalf("unexpected batting data: %q", string(fs.writes[bpath])) }
 		if string(fs.writes[wpath]) != "wih1,wih2\n5,6\n" { t.Fatalf("unexpected bowling data: %q", string(fs.writes[wpath])) }
+	}
+}
+
+func assertNoErrorFormatOrch(outDir string, fmtcode string) assertOrchFn {
+	return func(t *testing.T, fs *memFS, bat *fakeBat, bow *fakeBow, err error) {
+		if err != nil { t.Fatalf("unexpected err: %v", err) }
+		if bat.format != 1 || bow.format != 1 { t.Fatalf("want format calls bat=1 bow=1, got %d %d", bat.format, bow.format) }
+		bpath := filepath.Join(outDir, "batting_encoded_"+fmtcode+".csv")
+		wpath := filepath.Join(outDir, "bowling_encoded_"+fmtcode+".csv")
+		if string(fs.writes[bpath]) != "bfh1,bfh2\nQ,R\n" { t.Fatalf("unexpected batting data: %q", string(fs.writes[bpath])) }
+		if string(fs.writes[wpath]) != "wfh1,wfh2\n7,8\n" { t.Fatalf("unexpected bowling data: %q", string(fs.writes[wpath])) }
 	}
 }
 

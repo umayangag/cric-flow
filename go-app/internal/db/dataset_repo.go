@@ -14,6 +14,8 @@ type DatasetRepo interface {
 	BattingLegacyRows(ctx context.Context) ([][]string, error)
 	// BattingInferenceRows returns rows for batting inference export filtered by format.
 	BattingInferenceRows(ctx context.Context, format string) ([][]string, error)
+	// BattingFormatRows returns rows for per-format training batting export.
+	BattingFormatRows(ctx context.Context, format string) ([][]string, error)
 
 	// BowlingUnifiedRows returns rows for the unified bowling export.
 	BowlingUnifiedRows(ctx context.Context) ([][]string, error)
@@ -21,4 +23,6 @@ type DatasetRepo interface {
 	BowlingLegacyRows(ctx context.Context) ([][]string, error)
 	// BowlingInferenceRows returns rows for bowling inference export filtered by format.
 	BowlingInferenceRows(ctx context.Context, format string) ([][]string, error)
+	// BowlingFormatRows returns rows for per-format training bowling export.
+	BowlingFormatRows(ctx context.Context, format string) ([][]string, error)
 }

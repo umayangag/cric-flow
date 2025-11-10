@@ -14,6 +14,7 @@ type BattingExporter interface {
 	ExportUnified(ctx context.Context, w io.Writer) error
 	ExportLegacy(ctx context.Context, w io.Writer) error
 	ExportInference(ctx context.Context, format string, w io.Writer) error
+	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
 
 // BattingService implements BattingExporter using a DatasetRepo.
@@ -50,6 +51,17 @@ func (s *BattingService) ExportInference(ctx context.Context, format string, w i
 		return fmt.Errorf("nil service or repo")
 	}
 	rows, err := s.Repo.BattingInferenceRows(ctx, format)
+	if err != nil {
+		return err
+	}
+	return writeCSV(w, rows)
+}
+
+func (s *BattingService) ExportFormat(ctx context.Context, format string, w io.Writer) error {
+	if s == nil || s.Repo == nil {
+		return fmt.Errorf("nil service or repo")
+	}
+	rows, err := s.Repo.BattingFormatRows(ctx, format)
 	if err != nil {
 		return err
 	}

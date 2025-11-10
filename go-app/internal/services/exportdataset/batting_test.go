@@ -14,10 +14,12 @@ type fakeRepo struct {
 	batUnified   [][]string
 	batLegacy    [][]string
 	batInfer     map[string][][]string
+	batFmt       map[string][][]string
 	batErr       error
 	bowUnified   [][]string
 	bowLegacy    [][]string
 	bowInfer     map[string][][]string
+	bowFmt       map[string][][]string
 	bowErr       error
 }
 
@@ -33,11 +35,19 @@ func (f *fakeRepo) BattingInferenceRows(_ context.Context, format string) ([][]s
 	if f.batErr != nil { return nil, f.batErr }
 	return f.batInfer[format], nil
 }
+func (f *fakeRepo) BattingFormatRows(_ context.Context, format string) ([][]string, error) {
+	if f.batErr != nil { return nil, f.batErr }
+	return f.batFmt[format], nil
+}
 func (f *fakeRepo) BowlingUnifiedRows(context.Context) ([][]string, error) { return f.bowUnified, f.bowErr }
 func (f *fakeRepo) BowlingLegacyRows(context.Context) ([][]string, error) { return f.bowLegacy, f.bowErr }
 func (f *fakeRepo) BowlingInferenceRows(_ context.Context, format string) ([][]string, error) {
 	if f.bowErr != nil { return nil, f.bowErr }
 	return f.bowInfer[format], nil
+}
+func (f *fakeRepo) BowlingFormatRows(_ context.Context, format string) ([][]string, error) {
+	if f.bowErr != nil { return nil, f.bowErr }
+	return f.bowFmt[format], nil
 }
 
 type assertFn func(t *testing.T, w *bytes.Buffer, err error)

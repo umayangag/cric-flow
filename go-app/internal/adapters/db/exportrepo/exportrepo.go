@@ -37,6 +37,10 @@ func (r *Repo) BattingInferenceRows(ctx context.Context, format string) ([][]str
 	return exq.BattingInferenceRows(ctx, format)
 }
 
+func (r *Repo) BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
+	return exq.BattingFormatRows(ctx, format)
+}
+
 func (r *Repo) BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	return exq.BowlingUnifiedRows(ctx)
 }
@@ -47,4 +51,8 @@ func (r *Repo) BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 
 func (r *Repo) BowlingInferenceRows(ctx context.Context, format string) ([][]string, error) {
 	return exq.BowlingInferenceRows(ctx, format)
+}
+
+func (r *Repo) BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
+	return exq.BowlingFormatRows(ctx, format)
 }
