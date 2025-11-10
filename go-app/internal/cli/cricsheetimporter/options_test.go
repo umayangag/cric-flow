@@ -71,6 +71,17 @@ func TestParseArgs_Basic(t *testing.T) {
 			args:  []string{"-concurrency", "0"},
 			assert: assertErrorContains("concurrency"),
 		},
+		{
+			name: "legacy behavior flags parsed",
+			setup: func() { os.Setenv("GO_APP_CRICSHEET_DIR", tmp); os.Setenv("CRICSHEET_CONCURRENCY", "2") },
+			args:  []string{"-placeholders-weather", "-placeholders-fielding", "-weather-enqueue=false"},
+			assert: func(t *testing.T, got cli.Options, err error) {
+				if err != nil { t.Fatalf("unexpected err: %v", err) }
+				if !got.PlaceholdersWeather { t.Fatalf("expected placeholders-weather true") }
+				if !got.PlaceholdersFielding { t.Fatalf("expected placeholders-fielding true") }
+				if got.WeatherEnqueue { t.Fatalf("expected weather-enqueue false") }
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -13,9 +13,12 @@ import (
 // Options captures CLI options for cricsheet-importer.
 // Only CLI-derived options live here; higher layers may merge config/env.
 type Options struct {
-	InDir       string
-	Apply       bool
-	Concurrency int
+	InDir                string
+	Apply                bool
+	Concurrency          int
+	PlaceholdersWeather  bool
+	PlaceholdersFielding bool
+	WeatherEnqueue       bool
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -35,6 +38,13 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.StringVar(&inDir, "in", defIn, "input directory containing Cricsheet match files")
 	fs.BoolVar(&apply, "apply", false, "apply changes (upsert to DB); if false, dry-run")
 	fs.IntVar(&concurrency, "concurrency", defConc, "number of concurrent workers")
+	// Legacy behavior flags retained for parity with existing CLI
+	var placeholdersWeather bool
+	var placeholdersFielding bool
+	var weatherEnqueue bool
+	fs.BoolVar(&placeholdersWeather, "placeholders-weather", false, "insert placeholder weather rows per match")
+	fs.BoolVar(&placeholdersFielding, "placeholders-fielding", false, "insert zeroed fielding rows for all players seen")
+	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -47,7 +57,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, errors.New("concurrency must be >= 1")
 	}
 
-	return Options{InDir: inDir, Apply: apply, Concurrency: concurrency}, nil
+ return Options{InDir: inDir, Apply: apply, Concurrency: concurrency, PlaceholdersWeather: placeholdersWeather, PlaceholdersFielding: placeholdersFielding, WeatherEnqueue: weatherEnqueue}, nil
 }
 
 func getenv(key, def string) string {
