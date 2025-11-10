@@ -24,7 +24,7 @@
 2. Gather Information:
     * Use the serena MCP for code search, file reads, and edits. Prefer serena’s tools over any alternatives.
     * For third‑party documentation, use context7 when needed.
-3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `.junie_plans/{parent_plan_slug}/{timestamp}-{plan_number}.md`. (eg: plan_number=X.y.z) The plan must outline:
+3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `.junie_plans/{chat_title}/{timestamp}-{plan_number}-{slug}.md`. (eg: plan_number=X.y.z) The plan must outline:
     * Files to create or modify.
     * High‑level changes per file.
     * Tests to add or update.
@@ -128,7 +128,7 @@
 - Tests run offline by default. Mock external calls. Internet access is allowed only if the plan explicitly states it.
 
 ### 7. Acceptance Criteria in Plans
-- Every `.junie_plans/{timestamp}-{slug}.md` must include explicit acceptance criteria and exact verification commands.
+- Every `.junie_plans/{chat_title}/{timestamp}-{plan_number}-{slug}.md` must include explicit acceptance criteria and exact verification commands.
 
 ## 7. Security & Secrets
 - Use environment variables for secrets. Provide a `.env.example` with variable names and placeholders.
