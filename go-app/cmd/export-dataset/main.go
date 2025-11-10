@@ -66,11 +66,6 @@ func main() {
 	defer cancel()
 
 	// Prepare filesystem via internal runner (creates outDir). Remove direct os.MkdirAll.
-	runner := expcmd.NewRunner(osfs.New())
-	if runErr := runner.Run(ctx, opts); runErr != nil {
-		slog.Error("prepare out dir failed", slog.String("dir", opts.OutDir), slog.Any("err", runErr))
-		os.Exit(1)
-	}
 
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
@@ -79,6 +74,26 @@ func main() {
 
 	// Resolve formats using internal command helper to centralize behavior.
 	list := expcmd.ResolveFormats(opts, config.Load())
+
+	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
+	fsys := osfs.New()
+	repo := exportrepo.New()
+	bat := exportsvc.NewBattingService(repo)
+	bow := exportsvc.NewBowlingService(repo)
+	runner := expcmd.NewRunnerWithServices(fsys, bat, bow)
+	if runErr := runner.Run(ctx, opts); runErr != nil {
+		slog.Error("runner execution failed", slog.Any("err", runErr))
+		os.Exit(1)
+	}
+	// If any of the flows fully handled by runner are requested, exit early.
+	hasCombined := false
+	for _, f := range list {
+		if f == "" { hasCombined = true; break }
+	}
+	if unified || inferenceOnly || hasCombined {
+		slog.Info("exports written", slog.String("dir", outDir))
+		return
+	}
 
 	if unified {
 		batAll := filepath.Join(outDir, "batting_encoded_all.csv")
