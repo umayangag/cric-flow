@@ -216,8 +216,11 @@ func TestRunner_WriteFileError_Propagates(t *testing.T) {
 	// unified path triggers two writes; the first should fail and propagate
 	opts := cli.Options{OutDir: t.TempDir(), Unified: true}
 	err := r.Run(context.Background(), opts)
-	if err == nil || (err != nil && !containsErr(err.Error(), "disk full")) {
+	if err != nil && !containsErr(err.Error(), "disk full") {
 		t.Fatalf("expected write error to propagate, got %v", err)
+	}
+	if err == nil {
+		t.Fatal("expected write error to propagate, got nil")
 	}
 }
 
