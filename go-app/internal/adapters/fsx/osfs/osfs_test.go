@@ -78,7 +78,7 @@ func TestOSFS_BasicOps(t *testing.T) {
 				dir := t.TempDir()
 				return impl.New(), filepath.Join(dir, "a", "b")
 			},
-			act:    func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, fs.FileMode(0o755)) },
+			act:    func(_ *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, fs.FileMode(0o755)) },
 			assert: assertDirExists(),
 		},
 	}
@@ -111,7 +111,7 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 				}
 				return impl.New(), file
 			},
-			act:    func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, 0o755) },
+			act:    func(_ *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, 0o755) },
 			assert: assertErrorContains("not a directory"),
 		},
 		{
@@ -120,7 +120,7 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 				dir := t.TempDir()
 				return impl.New(), filepath.Join(dir, "hello.txt")
 			},
-			act: func(t *testing.T, fsys *impl.OSFS, path string) error {
+			act: func(_ *testing.T, fsys *impl.OSFS, path string) error {
 				ctx := context.Background()
 				if err := fsys.WriteFile(ctx, path, []byte("hi"), 0o644); err != nil {
 					return err

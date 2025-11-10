@@ -52,8 +52,7 @@ func main() {
 	}
 
 	// Map options to legacy variables used later in this file while we migrate logic incrementally.
-	var outDir string
-	outDir = opts.OutDir
+	outDir := opts.OutDir
 
 	logger.SetupFromEnv()
 
@@ -79,7 +78,6 @@ func main() {
 	}
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
-	return
 }
 
 func exportBatting(ctx context.Context, path string) error {

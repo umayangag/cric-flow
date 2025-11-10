@@ -53,8 +53,7 @@ func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]domain.Match, error
 		return nil, p.err
 	}
 	// In tests, raw contains key as string
-	key := string(raw)
-	return p.matches[key], nil
+	return p.matches[string(raw)], nil
 }
 
 type fakeRepo struct {

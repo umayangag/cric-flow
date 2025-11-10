@@ -59,13 +59,13 @@ func (f *fakeBat) ExportLegacy(_ context.Context, w io.Writer) error {
 	return nil
 }
 
-func (f *fakeBat) ExportInference(_ context.Context, format string, w io.Writer) error {
+func (f *fakeBat) ExportInference(_ context.Context, _ string, w io.Writer) error {
 	f.infer++
 	_, _ = w.Write([]byte("bih1,bih2\nI,J\n"))
 	return nil
 }
 
-func (f *fakeBat) ExportFormat(_ context.Context, format string, w io.Writer) error {
+func (f *fakeBat) ExportFormat(_ context.Context, _ string, w io.Writer) error {
 	f.format++
 	_, _ = w.Write([]byte("bfh1,bfh2\nQ,R\n"))
 	return nil
@@ -83,13 +83,13 @@ func (f *fakeBow) ExportLegacy(_ context.Context, w io.Writer) error {
 	return nil
 }
 
-func (f *fakeBow) ExportInference(_ context.Context, format string, w io.Writer) error {
+func (f *fakeBow) ExportInference(_ context.Context, _ string, w io.Writer) error {
 	f.infer++
 	_, _ = w.Write([]byte("wih1,wih2\n5,6\n"))
 	return nil
 }
 
-func (f *fakeBow) ExportFormat(_ context.Context, format string, w io.Writer) error {
+func (f *fakeBow) ExportFormat(_ context.Context, _ string, w io.Writer) error {
 	f.format++
 	_, _ = w.Write([]byte("wfh1,wfh2\n7,8\n"))
 	return nil
