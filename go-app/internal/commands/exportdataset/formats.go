@@ -11,10 +11,10 @@ import (
 // preserving legacy behavior exactly while centralizing the logic for testing.
 //
 // Precedence:
-//  1) CLI flags (already normalized by cli.ParseArgs) when provided.
-//  2) Config.Export.RequiredFormat (trimmed, uppercased) if non-empty.
-//  3) Config.Export.SplitByFormat == true → all formats [TEST, ODI, T20, T20I].
-//  4) Legacy fallback: combined export represented by a single empty string: [""].
+//  1. CLI flags (already normalized by cli.ParseArgs) when provided.
+//  2. Config.Export.RequiredFormat (trimmed, uppercased) if non-empty.
+//  3. Config.Export.SplitByFormat == true → all formats [TEST, ODI, T20, T20I].
+//  4. Legacy fallback: combined export represented by a single empty string: [""].
 //
 // The function is pure/deterministic: it does not access I/O and does not mutate inputs.
 func ResolveFormats(opts cli.Options, cfg *config.Config) []string {

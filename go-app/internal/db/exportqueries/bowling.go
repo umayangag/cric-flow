@@ -144,26 +144,32 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
 		) t20vv ON TRUE`
 	rows, err := db.Pool.Query(ctx, q, ids...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	headers := []string{
-		"overs","balls","maidens","runs","wickets","dots","fours","sixes","econ","wides","no_balls",
-		"temp","wind","rain","humidity","cloud","pressure","viscosity",
-		"inning","bowling_session","toss","season_id","player_name","format_code",
-		"catches","run_outs","stumpings","runouts_direct_hits","fielding_involvements",
-		"bowl_form_TEST_asof","bowl_consistency_TEST_asof","bowl_vs_opp_TEST_asof","bowl_at_venue_TEST_asof",
-		"bowl_form_ODI_asof","bowl_consistency_ODI_asof","bowl_vs_opp_ODI_asof","bowl_at_venue_ODI_asof",
-		"bowl_form_T20I_asof","bowl_consistency_T20I_asof","bowl_vs_opp_T20I_asof","bowl_at_venue_T20I_asof",
-		"bowl_form_T20_asof","bowl_consistency_T20_asof","bowl_vs_opp_T20_asof","bowl_at_venue_T20_asof",
+		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
+		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
+		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
+		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
 	}
 	out := make([][]string, 0, 2048)
 	out = append(out, headers)
 	for rows.Next() {
 		vals, err := scanToStringsB(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -229,19 +235,23 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 	defer rows.Close()
 
 	headers := []string{
-		"runs","balls","wickets","bowling_consistency","bowling_form",
-		"temp","wind","rain","humidity","cloud","pressure","viscosity",
-		"inning","bowling_session","toss","bowling_venue","bowling_opposition","season_id","player_name",
+		"runs", "balls", "wickets", "bowling_consistency", "bowling_form",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 
 	for rows.Next() {
 		vals, err := scanToStringsB(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -249,7 +259,9 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 // Mirrors legacy exportBowlingFormatInference headers and order.
 func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error) {
 	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
-	if err != nil { return nil, fmt.Errorf("resolve format_id for %s: %w", format, err) }
+	if err != nil {
+		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
+	}
 	q := `SELECT  
 		COALESCE(tc.bowling_consistency, 0) AS bowling_consistency,
 		COALESCE(tf.bowling_form, 0) AS bowling_form,
@@ -320,7 +332,9 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id WHERE md.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	headers := []string{
 		"bowling_consistency",
@@ -349,10 +363,14 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 	out = append(out, headers)
 	for rows.Next() {
 		vals, err := scanToStringsB(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -360,7 +378,9 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 // Mirrors legacy exportBowlingFormat headers and order (including a trailing format_code column).
 func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
-	if err != nil { return nil, fmt.Errorf("resolve format_id for %s: %w", format, err) }
+	if err != nil {
+		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
+	}
 	q := `SELECT  
 		b.runs,
 		b.balls,
@@ -408,7 +428,9 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE WHERE md.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	headers := []string{
 		"runs",
@@ -442,21 +464,33 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	fmtcode := strings.ToUpper(strings.TrimSpace(format))
 	for rows.Next() {
 		vals, err := scanToStringsB(rows, len(headers)-1)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		vals = append(vals, fmtcode)
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // scanToStringsB mirrors scanToStrings with a local copy to avoid cross-file deps.
 func scanToStringsB(r pgx.Rows, n int) ([]string, error) {
 	dests := make([]any, n)
-	for i := 0; i < n; i++ { var v any; dests[i] = &v }
-	if err := r.Scan(dests...); err != nil { return nil, err }
+	for i := 0; i < n; i++ {
+		var v any
+		dests[i] = &v
+	}
+	if err := r.Scan(dests...); err != nil {
+		return nil, err
+	}
 	out := make([]string, n)
-	for i := 0; i < n; i++ { v := *(dests[i].(*any)); out[i] = anyToStringB(v) }
+	for i := 0; i < n; i++ {
+		v := *(dests[i].(*any))
+		out[i] = anyToStringB(v)
+	}
 	return out, nil
 }
 
@@ -479,7 +513,9 @@ func anyToStringB(v any) string {
 	case float64:
 		return trimFloatB(fmt.Sprintf("%g", t))
 	case bool:
-		if t { return "1" }
+		if t {
+			return "1"
+		}
 		return "0"
 	default:
 		return fmt.Sprintf("%v", t)

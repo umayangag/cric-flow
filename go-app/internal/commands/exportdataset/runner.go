@@ -9,8 +9,8 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
@@ -66,8 +66,12 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r.Bat != nil && r.Bow != nil {
 		formats := ResolveFormats(opts, config.Load())
 		if opts.Unified {
-			if err := r.writeUsing(opts.OutDir, "batting_encoded_all.csv", func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) }); err != nil { return err }
-			if err := r.writeUsing(opts.OutDir, "bowling_encoded_all.csv", func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) }); err != nil { return err }
+			if err := r.writeUsing(opts.OutDir, "batting_encoded_all.csv", func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) }); err != nil {
+				return err
+			}
+			if err := r.writeUsing(opts.OutDir, "bowling_encoded_all.csv", func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) }); err != nil {
+				return err
+			}
 			return nil
 		}
 		for _, f := range formats {
@@ -76,22 +80,34 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					// Legacy note: inference-only requires explicit formats; skip combined.
 					continue
 				}
-				if err := r.writeUsing(opts.OutDir, "batting_encoded.csv", func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) }); err != nil { return err }
-				if err := r.writeUsing(opts.OutDir, "bowling_encoded.csv", func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) }); err != nil { return err }
+				if err := r.writeUsing(opts.OutDir, "batting_encoded.csv", func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) }); err != nil {
+					return err
+				}
+				if err := r.writeUsing(opts.OutDir, "bowling_encoded.csv", func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) }); err != nil {
+					return err
+				}
 				continue
 			}
 			if opts.InferenceOnly {
 				bat := fmt.Sprintf("batting_infer_%s.csv", f)
 				bow := fmt.Sprintf("bowling_infer_%s.csv", f)
-				if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) }); err != nil { return err }
-				if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) }); err != nil { return err }
+				if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) }); err != nil {
+					return err
+				}
+				if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) }); err != nil {
+					return err
+				}
 				continue
 			}
 			// Per-format training exports (non-inference)
 			bat := fmt.Sprintf("batting_encoded_%s.csv", f)
 			bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
-			if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) }); err != nil { return err }
-			if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) }); err != nil { return err }
+			if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) }); err != nil {
+				return err
+			}
+			if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) }); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -99,8 +115,12 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 
 func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) error {
 	var buf bytes.Buffer
-	if err := fn(&buf); err != nil { return err }
+	if err := fn(&buf); err != nil {
+		return err
+	}
 	path := filepath.Join(outDir, name)
-	if r.FS == nil { return errors.New("missing FS dependency") }
+	if r.FS == nil {
+		return errors.New("missing FS dependency")
+	}
 	return r.FS.WriteFile(context.Background(), path, buf.Bytes(), fs.FileMode(0o644))
 }

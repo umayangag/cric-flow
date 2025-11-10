@@ -151,23 +151,27 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	defer rows.Close()
 
 	headers := []string{
-		"runs","balls","fours","sixes","batting_position",
-		"temp","wind","rain","humidity","cloud","pressure","viscosity",
-		"inning","batting_session","toss","season_id","player_name","format_code",
-		"catches","run_outs","stumpings","runouts_direct_hits","fielding_involvements",
-		"bat_form_TEST_asof","bat_consistency_TEST_asof","bat_vs_opp_TEST_asof","bat_at_venue_TEST_asof",
-		"bat_form_ODI_asof","bat_consistency_ODI_asof","bat_vs_opp_ODI_asof","bat_at_venue_ODI_asof",
-		"bat_form_T20I_asof","bat_consistency_T20I_asof","bat_vs_opp_T20I_asof","bat_at_venue_T20I_asof",
-		"bat_form_T20_asof","bat_consistency_T20_asof","bat_vs_opp_T20_asof","bat_at_venue_T20_asof",
+		"runs", "balls", "fours", "sixes", "batting_position",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
+		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
+		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
+		"bat_form_T20_asof", "bat_consistency_T20_asof", "bat_vs_opp_T20_asof", "bat_at_venue_T20_asof",
 	}
 	out := make([][]string, 0, 2048)
 	out = append(out, headers)
 	for rows.Next() {
 		vals, err := scanToStrings(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -252,9 +256,9 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 	defer rows.Close()
 
 	headers := []string{
-		"runs","balls","fours","sixes","batting_position","batting_consistency","batting_form",
-		"temp","wind","rain","humidity","cloud","pressure","viscosity","inning","batting_session","toss",
-		"batting_venue","batting_opposition","season_id","player_name",
+		"runs", "balls", "fours", "sixes", "batting_position", "batting_consistency", "batting_form",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity", "inning", "batting_session", "toss",
+		"batting_venue", "batting_opposition", "season_id", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
@@ -380,10 +384,14 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 	out = append(out, headers)
 	for rows.Next() {
 		vals, err := scanToStrings(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -460,7 +468,9 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE md.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	headers := []string{
 		"runs",
@@ -494,10 +504,14 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	out = append(out, headers)
 	for rows.Next() {
 		vals, err := scanToStrings(rows, len(headers))
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, vals)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -539,7 +553,9 @@ func anyToString(v any) string {
 	case float64:
 		return trimFloat(fmt.Sprintf("%g", t))
 	case bool:
-		if t { return "1" }
+		if t {
+			return "1"
+		}
 		return "0"
 	default:
 		return fmt.Sprintf("%v", t)

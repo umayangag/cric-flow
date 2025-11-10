@@ -15,7 +15,9 @@ type assertFn func(t *testing.T, err error)
 type assertPathFn func(t *testing.T, path string, err error)
 
 func assertNoError(t *testing.T, err error) {
-	if err != nil { t.Fatalf("unexpected error: %v", err) }
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func assertErrorContains(substr string) assertFn {
@@ -28,22 +30,35 @@ func assertErrorContains(substr string) assertFn {
 
 func assertDirExists() assertPathFn {
 	return func(t *testing.T, path string, err error) {
-		if err != nil { t.Fatalf("unexpected error: %v", err) }
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		st, statErr := os.Stat(path)
-		if statErr != nil { t.Fatalf("expected dir to exist: %v", statErr) }
-		if !st.IsDir() { t.Fatalf("expected %s to be a directory", path) }
+		if statErr != nil {
+			t.Fatalf("expected dir to exist: %v", statErr)
+		}
+		if !st.IsDir() {
+			t.Fatalf("expected %s to be a directory", path)
+		}
 	}
 }
 
-func contains(s, sub string) bool { return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0) }
+func contains(s, sub string) bool {
+	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
+}
 
 func indexOf(s, sub string) int {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		match := true
 		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] { match = false; break }
+			if s[i+j] != sub[j] {
+				match = false
+				break
+			}
 		}
-		if match { return i }
+		if match {
+			return i
+		}
 	}
 	return -1
 }
@@ -54,8 +69,8 @@ func TestOSFS_BasicOps(t *testing.T) {
 	cases := []struct {
 		name    string
 		arrange func(t *testing.T) (*impl.OSFS, string)
-		act    func(t *testing.T, fsys *impl.OSFS, path string) error
-		assert assertPathFn
+		act     func(t *testing.T, fsys *impl.OSFS, path string) error
+		assert  assertPathFn
 	}{
 		{
 			name: "mkdirall creates directory",
@@ -63,7 +78,7 @@ func TestOSFS_BasicOps(t *testing.T) {
 				dir := t.TempDir()
 				return impl.New(), filepath.Join(dir, "a", "b")
 			},
-			act: func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, fs.FileMode(0o755)) },
+			act:    func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, fs.FileMode(0o755)) },
 			assert: assertDirExists(),
 		},
 	}
@@ -83,8 +98,8 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 	cases := []struct {
 		name    string
 		arrange func(t *testing.T) (*impl.OSFS, string)
-		act    func(t *testing.T, fsys *impl.OSFS, path string) error
-		assert assertFn
+		act     func(t *testing.T, fsys *impl.OSFS, path string) error
+		assert  assertFn
 	}{
 		{
 			name: "mkdirall error when path is existing file",
@@ -96,7 +111,7 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 				}
 				return impl.New(), file
 			},
-			act: func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, 0o755) },
+			act:    func(t *testing.T, fsys *impl.OSFS, path string) error { return fsys.MkdirAll(path, 0o755) },
 			assert: assertErrorContains("not a directory"),
 		},
 		{
@@ -107,10 +122,16 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 			},
 			act: func(t *testing.T, fsys *impl.OSFS, path string) error {
 				ctx := context.Background()
-				if err := fsys.WriteFile(ctx, path, []byte("hi"), 0o644); err != nil { return err }
+				if err := fsys.WriteFile(ctx, path, []byte("hi"), 0o644); err != nil {
+					return err
+				}
 				b, err := fsys.ReadFile(ctx, path)
-				if err != nil { return err }
-				if string(b) != "hi" { return &rtErr{got: string(b)} }
+				if err != nil {
+					return err
+				}
+				if string(b) != "hi" {
+					return &rtErr{got: string(b)}
+				}
 				return nil
 			},
 			assert: assertNoError,

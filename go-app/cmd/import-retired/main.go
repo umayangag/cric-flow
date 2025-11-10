@@ -225,5 +225,5 @@ func main() {
 		slog.Error("apply failed", slog.Any("err", err))
 		os.Exit(1)
 	}
-slog.Info("Applied", "marked_retired", changed, "zeroed_others", zeroed)
+	slog.Info("Applied", "marked_retired", changed, "zeroed_others", zeroed)
 }

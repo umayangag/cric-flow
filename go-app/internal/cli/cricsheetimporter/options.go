@@ -43,7 +43,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var placeholdersFielding bool
 	var weatherEnqueue bool
 	fs.BoolVar(&placeholdersWeather, "placeholders-weather", false, "insert placeholder weather rows per match")
-	fs.BoolVar(&placeholdersFielding, "placeholders-fielding", false, "insert zeroed fielding rows for all players seen")
+	fs.BoolVar(
+		&placeholdersFielding,
+		"placeholders-fielding",
+		false,
+		"insert zeroed fielding rows for all players seen",
+	)
 	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
 
 	if err := fs.Parse(args); err != nil {
@@ -57,7 +62,14 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, errors.New("concurrency must be >= 1")
 	}
 
- return Options{InDir: inDir, Apply: apply, Concurrency: concurrency, PlaceholdersWeather: placeholdersWeather, PlaceholdersFielding: placeholdersFielding, WeatherEnqueue: weatherEnqueue}, nil
+	return Options{
+		InDir:                inDir,
+		Apply:                apply,
+		Concurrency:          concurrency,
+		PlaceholdersWeather:  placeholdersWeather,
+		PlaceholdersFielding: placeholdersFielding,
+		WeatherEnqueue:       weatherEnqueue,
+	}, nil
 }
 
 func getenv(key, def string) string {

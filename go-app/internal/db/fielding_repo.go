@@ -25,8 +25,9 @@ type FieldingAggregateRow struct {
 }
 
 // FieldingRepo provides the minimal persistence API for backfilling fielding aggregates.
-//go:generate mockery --name FieldingRepo --output internal/mocks --case underscore
 // NOTE: Interfaces live close to consumers and are intentionally tiny.
+//
+//go:generate mockery --name FieldingRepo --output internal/mocks --case underscore
 type FieldingRepo interface {
 	// ListFieldingEvents returns fielding events filtered by matchID when provided.
 	// When matchID is nil, returns events for all matches.

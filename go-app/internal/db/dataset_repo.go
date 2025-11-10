@@ -3,10 +3,11 @@ package db
 import "context"
 
 // DatasetRepo defines minimal data access for CSV exporters.
-//go:generate mockery --name DatasetRepo --output internal/mocks --case underscore
 // NOTE: This is intentionally small; we will evolve method sets as more logic is
 // extracted from cmd/export-dataset. Methods return rows already shaped for CSV
 // (including header row as the first entry if desired by the service layer).
+//
+//go:generate mockery --name DatasetRepo --output internal/mocks --case underscore
 type DatasetRepo interface {
 	// BattingUnifiedRows returns rows for the unified batting export.
 	BattingUnifiedRows(ctx context.Context) ([][]string, error)

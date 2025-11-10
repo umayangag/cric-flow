@@ -12,13 +12,13 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v5"
+	exportrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
+	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
+	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
-	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
-	exportrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
 )
 
@@ -66,7 +66,6 @@ func main() {
 		slog.Error("db connect failed", slog.Any("err", err))
 		os.Exit(1)
 	}
-
 
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
 	fsys := osfs.New()
@@ -991,7 +990,7 @@ func exportBowlingFormat(ctx context.Context, formatCode string, path string) er
 		return err
 	}
 	for rows.Next() {
-vals, err := scanRow(rows, len(rows.FieldDescriptions()))
+		vals, err := scanRow(rows, len(rows.FieldDescriptions()))
 		if err != nil {
 			return err
 		}

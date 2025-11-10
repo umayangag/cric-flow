@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
@@ -23,7 +23,13 @@ type Runner struct {
 }
 
 // NewRunner constructs a Runner with its dependencies.
-func NewRunner(fs fsx.FS, loader cricsheet.Loader, parser cricsheet.Parser, repo db.MatchRepo, log logging.Logger) *Runner {
+func NewRunner(
+	fs fsx.FS,
+	loader cricsheet.Loader,
+	parser cricsheet.Parser,
+	repo db.MatchRepo,
+	log logging.Logger,
+) *Runner {
 	return &Runner{FS: fs, Loader: loader, Parser: parser, Repo: repo, Log: log}
 }
 

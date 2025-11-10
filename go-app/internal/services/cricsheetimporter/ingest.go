@@ -32,9 +32,9 @@ type IngestService struct {
 
 // IngestDir processes all inputs returned by Loader.List for the given dir.
 //
-// - If apply == false, it will not write to Repo and simply validates it can
-//   load+parse all inputs.
-// - concurrency <= 0 defaults to 1; otherwise spawns up to `concurrency` workers.
+//   - If apply == false, it will not write to Repo and simply validates it can
+//     load+parse all inputs.
+//   - concurrency <= 0 defaults to 1; otherwise spawns up to `concurrency` workers.
 //
 // Returns the count of files successfully processed (loaded+parsed; and upserted
 // when apply == true) or the first error encountered.

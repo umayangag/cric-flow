@@ -17,7 +17,6 @@ import (
 //
 // Behavior is preserved identically to the legacy cmd/export-dataset logic.
 // Errors are passed through without logging.
-//
 type Repo struct{}
 
 // New constructs a new Repo instance.
