@@ -16,6 +16,7 @@ type memFS struct{}
 func (memFS) ReadFile(context.Context, string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (memFS) WriteFile(context.Context, string, []byte, fs.FileMode) error {
 	return errors.New("not implemented")
 }
@@ -34,6 +35,7 @@ func (f *fakeLoader) List(_ context.Context, _ string) ([]string, error) {
 	}
 	return f.ids, nil
 }
+
 func (f *fakeLoader) Load(_ context.Context, _ string, id string) ([]byte, error) {
 	if f.err != nil {
 		return nil, f.err

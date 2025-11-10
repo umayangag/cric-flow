@@ -36,6 +36,7 @@ func (m *memFS) WriteFile(_ context.Context, path string, data []byte, perm fs.F
 	m.writePerm[path] = perm
 	return nil
 }
+
 func (m *memFS) MkdirAll(path string, perm fs.FileMode) error {
 	m.mkdirPath, m.mkdirPerm = path, perm
 	return m.mkdirErr

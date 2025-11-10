@@ -50,12 +50,15 @@ func (f *fakeRepo) BattingFormatRows(_ context.Context, format string) ([][]stri
 	}
 	return f.batFmt[format], nil
 }
+
 func (f *fakeRepo) BowlingUnifiedRows(context.Context) ([][]string, error) {
 	return f.bowUnified, f.bowErr
 }
+
 func (f *fakeRepo) BowlingLegacyRows(context.Context) ([][]string, error) {
 	return f.bowLegacy, f.bowErr
 }
+
 func (f *fakeRepo) BowlingInferenceRows(_ context.Context, format string) ([][]string, error) {
 	if f.bowErr != nil {
 		return nil, f.bowErr

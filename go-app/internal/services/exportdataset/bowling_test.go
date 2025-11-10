@@ -26,9 +26,11 @@ type fakeRepoB struct {
 func (f *fakeRepoB) BattingUnifiedRows(context.Context) ([][]string, error) {
 	return f.batUnified, f.batErr
 }
+
 func (f *fakeRepoB) BattingLegacyRows(context.Context) ([][]string, error) {
 	return f.batLegacy, f.batErr
 }
+
 func (f *fakeRepoB) BattingInferenceRows(_ context.Context, format string) ([][]string, error) {
 	if f.batErr != nil {
 		return nil, f.batErr

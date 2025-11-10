@@ -19,9 +19,11 @@ type mockFS struct {
 func (m *mockFS) ReadFile(_ context.Context, _ string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (m *mockFS) WriteFile(_ context.Context, _ string, _ []byte, _ fs.FileMode) error {
 	return errors.New("not implemented")
 }
+
 func (m *mockFS) MkdirAll(path string, perm fs.FileMode) error {
 	m.mkdirPath, m.mkdirPerm = path, perm
 	return m.mkdirErr
