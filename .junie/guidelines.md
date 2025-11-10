@@ -31,7 +31,7 @@ Step 2: Analysis & Planning
 2. Gather Information:
     * Use the serena MCP for code search, file reads, and edits. Prefer serena’s tools over any alternatives.
     * For third‑party documentation, use context7 when needed.
-3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `.junie_plans/{timestamp}-{slug}.md`. The plan must outline:
+3. Create a Plan: Before writing any code, generate a detailed execution plan and save it as `.junie_plans/{timestamp}-{plan_number}-{slug}.md`. (eg: plan_number=X.y.z) The plan must outline:
     * Files to create or modify.
     * High‑level changes per file.
     * Tests to add or update.

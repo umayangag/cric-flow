@@ -130,3 +130,63 @@ func TestRunner_Run_Errors(t *testing.T) {
 		})
 	}
 }
+
+
+func TestRunner_Run_MissingDepsAndNil(t *testing.T) {
+	to := t; to.Parallel()
+	cases := []struct{
+		name string
+		r    *cmd.Runner
+		opts cli.Options
+		assert assertFn
+	}{
+		{"nil runner", nil, cli.Options{InDir:"/tmp"}, assertErrContains("nil runner")},
+		{"missing deps", &cmd.Runner{}, cli.Options{InDir:"/tmp"}, assertErrContains("missing dependency")},
+	}
+	for _, tc := range cases {
+		to.Run(tc.name, func(t *testing.T) {
+			var err error
+			if tc.r == nil { err = (*cmd.Runner)(nil).Run(context.Background(), tc.opts) } else { err = tc.r.Run(context.Background(), tc.opts) }
+			tc.assert(t, nil, err)
+		})
+	}
+}
+
+// loader that lists ok but fails on Load
+type loadErrLoader struct{ ids []string }
+func (l *loadErrLoader) List(_ context.Context, _ string) ([]string, error) { return l.ids, nil }
+func (l *loadErrLoader) Load(_ context.Context, _ string, _ string) ([]byte, error) { return nil, errors.New("load boom") }
+
+func TestRunner_Run_LoadErrorAndEmptyList(t *testing.T) {
+	t.Parallel()
+	// load error case
+	{
+		loader := &loadErrLoader{ids: []string{"a"}}
+		repo := &fakeRepo{}
+		r := cmd.NewRunner(memFS{}, loader, &fakeParser{}, repo, nil)
+		opts := cli.Options{InDir:"/tmp", Apply:true, Concurrency:1}
+		err := r.Run(context.Background(), opts)
+		assertErrContains("load")(t, repo, err)
+	}
+	// empty list case
+	{
+		loader := &fakeLoader{ids: []string{}, data: map[string][]byte{}}
+		repo := &fakeRepo{}
+		r := cmd.NewRunner(memFS{}, loader, &fakeParser{}, repo, nil)
+		opts := cli.Options{InDir:"/tmp", Apply:true, Concurrency:1}
+		err := r.Run(context.Background(), opts)
+		// should succeed and upsert 0 matches
+		assertNoErrorUpsertCount(0)(t, repo, err)
+	}
+}
+
+func TestRunner_Run_UpsertError(t *testing.T) {
+	t.Parallel()
+	loader := &fakeLoader{ids: []string{"a"}, data: map[string][]byte{"a": []byte("a")}}
+	parser := &fakeParser{matches: map[string][]domain.Match{"a": {domain.Match{ID: 1}}}}
+	repo := &fakeRepo{err: errors.New("db fail")}
+	r := cmd.NewRunner(memFS{}, loader, parser, repo, nil)
+	opts := cli.Options{InDir:"/tmp", Apply:true, Concurrency:1}
+	err := r.Run(context.Background(), opts)
+	assertErrContains("upsert matches")(t, repo, err)
+}

@@ -8,30 +8,20 @@ import (
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	cricsheetcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
-	// Resolve default input directory from env or config fallback
-	defDataDir := os.Getenv("GO_APP_INPUT_DIR")
-	if defDataDir == "" {
-		defDataDir = config.DefaultCricsheetDir()
+	// Parse flags via internal CLI to unify behavior and enable testing
+	fs := flag.NewFlagSet("cricsheet-importer", flag.ContinueOnError)
+	copts, perr := cricsheetcli.ParseArgs(fs, os.Args[1:])
+	if perr != nil {
+		slog.Error("flag parsing failed", slog.Any("err", perr))
+		os.Exit(2)
 	}
-
-	var (
-		dataDir = flag.String(
-			"dir",
-			defDataDir,
-			"Directory containing Cricsheet .json files (default from GO_APP_INPUT_DIR or ../data/go-app)",
-		)
-		phWeather = flag.Bool("placeholders-weather", false, "Insert placeholder weather rows per match")
-		phField   = flag.Bool("placeholders-fielding", false, "Insert zeroed fielding rows for all players seen")
-		wEnqueue  = flag.Bool("weather-enqueue", true, "Enqueue async weather jobs per match (non-blocking)")
-	)
-	flag.Parse()
 
 	logger.SetupFromEnv()
 
@@ -47,12 +37,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Map CLI options to legacy cricsheet.Options to preserve behavior
 	opts := &cricsheet.Options{
-		PlaceholdersWeather:  *phWeather,
-		PlaceholdersFielding: *phField,
-		WeatherEnqueue:       *wEnqueue,
+		PlaceholdersWeather:  copts.PlaceholdersWeather,
+		PlaceholdersFielding: copts.PlaceholdersFielding,
+		WeatherEnqueue:       copts.WeatherEnqueue,
 	}
-	n, err := cricsheet.ImportDir(ctx, *dataDir, opts)
+	n, err := cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if err != nil {
 		slog.Error("cricsheet import failed", slog.Any("err", err))
 		os.Exit(1)
