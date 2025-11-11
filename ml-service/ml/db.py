@@ -24,20 +24,14 @@ def _cfg_default(getter_name: str, fallback: str) -> str:
 
 
 def get_db_connection():
-    host = os.environ.get("POSTGRES_HOST") or os.environ.get("DB_HOST") or _cfg_default(
-        "default_db_host", "localhost"
-    )
-    port = os.environ.get("POSTGRES_PORT") or os.environ.get("DB_PORT") or _cfg_default(
-        "default_db_port", "5432"
-    )
-    name = os.environ.get("POSTGRES_DB") or os.environ.get("DB_NAME") or _cfg_default(
-        "default_db_name", "cricket_data"
-    )
-    user = os.environ.get("POSTGRES_USER") or os.environ.get("DB_USER") or _cfg_default(
-        "default_db_user", "postgres"
-    )
-    password = os.environ.get("POSTGRES_PASSWORD") or os.environ.get("DB_PASSWORD") or _cfg_default(
-        "default_db_password", "postgres"
+    host = os.environ.get("POSTGRES_HOST") or os.environ.get("DB_HOST") or _cfg_default("default_db_host", "localhost")
+    port = os.environ.get("POSTGRES_PORT") or os.environ.get("DB_PORT") or _cfg_default("default_db_port", "5432")
+    name = os.environ.get("POSTGRES_DB") or os.environ.get("DB_NAME") or _cfg_default("default_db_name", "cricket_data")
+    user = os.environ.get("POSTGRES_USER") or os.environ.get("DB_USER") or _cfg_default("default_db_user", "postgres")
+    password = (
+        os.environ.get("POSTGRES_PASSWORD")
+        or os.environ.get("DB_PASSWORD")
+        or _cfg_default("default_db_password", "postgres")
     )
 
     return psycopg2.connect(
