@@ -17,10 +17,10 @@ type PredictResponse struct {
 	Score   float64
 }
 
-// Client is the abstraction for an ML predictor service.
+// Service is the abstraction for an ML predictor service.
 //
-//go:generate mockery --name Client --output internal/mocks --case underscore
-type Client interface {
+//go:generate mockery --name Service --output internal/mocks --case underscore
+type Service interface {
 	PredictTeam(ctx context.Context, in PredictRequest) (PredictResponse, error)
 	Reload(ctx context.Context) error
 }

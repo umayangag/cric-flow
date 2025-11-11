@@ -13,7 +13,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 )
 
-// Client calls the Python ML service.
+// Service calls the Python ML service.
 type Client struct {
 	BaseURL   string
 	HTTP      *http.Client

@@ -12,10 +12,10 @@ import (
 // Keep it small and deterministic; no logging here.
 
 type Service struct {
-	ML mlclient.Client
+	ML mlclient.Service
 }
 
-func NewService(c mlclient.Client) *Service { return &Service{ML: c} }
+func NewService(c mlclient.Service) *Service { return &Service{ML: c} }
 
 func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.PredictResponse, error) {
 	if s == nil || s.ML == nil {
