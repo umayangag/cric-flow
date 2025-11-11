@@ -1,26 +1,16 @@
 # Mockery configuration for go-app
-# Minimal, compatible with mockery v2.36+
+# Compatible with mockery v2.36+
 with-expecter: true
 all: false
 outpkg: mocks
 packages:
-  ./internal/logging:
-    config:
-      output: internal/mocks
-    interfaces:
-      - Logger
-  ./internal/adapters/httpx:
-    config:
-      output: internal/mocks
-    interfaces:
-      - HTTPClient
-  ./internal/adapters/clock:
-    config:
-      output: internal/mocks
-    interfaces:
-      - Clock
   ./internal/adapters/random:
     config:
       output: internal/mocks
     interfaces:
-      - Random
+      Random: {}
+  ./internal/mlclient:
+    config:
+      output: internal/mocks
+    interfaces:
+      Service: {}

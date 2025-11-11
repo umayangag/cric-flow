@@ -145,7 +145,9 @@ COV_MIN ?= 80
 
 # Generate coverage profile for selected packages (gate scope)
 coverage:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+	@PKGS="$(COVERAGE_PACKAGES)"; \
+	if [ -z "$$PKGS" ]; then PKGS="./..."; fi; \
+	go test -covermode=atomic -coverprofile=coverage.out $$PKGS
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:
