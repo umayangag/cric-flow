@@ -39,10 +39,7 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 // precomputeHandler triggers precompute with optional filters.
 // Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}
 func precomputeHandler(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Season  string   `json:"season"`
-		Formats []string `json:"formats"`
-	}
+	var body precomputeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		slog.Error("error decoding the response", slog.Any("err", err))
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "error decoding the response"})
@@ -72,11 +69,7 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 // importCricSheetHandler runs import of cricsheet data directory.
 // Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
 func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Dir                  string `json:"dir"`
-		PlaceholdersWeather  bool   `json:"placeholders_weather"`
-		PlaceholdersFielding bool   `json:"placeholders_fielding"`
-	}
+	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		slog.Error("error decoding the response", slog.Any("err", err))
 	}
@@ -132,16 +125,7 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	type respStruct struct {
-		ID                 int64    `json:"id"`
-		Name               string   `json:"player_name"`
-		IsWicketKeeper     int16    `json:"is_wicket_keeper"`
-		IsRetired          int16    `json:"is_retired"`
-		BattingConsistency *float32 `json:"batting_consistency,omitempty"`
-		BowlingConsistency *float32 `json:"bowling_consistency,omitempty"`
-	}
-
-	resp := respStruct{
+	resp := playerResponse{
 		ID:             player.ID,
 		Name:           player.Name,
 		IsWicketKeeper: player.IsWicketKeeper,
@@ -165,22 +149,15 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, err)
 		return
 	}
+
 	row := db.Pool.QueryRow(
 		r.Context(),
 		`SELECT id, match_id, venue_id, opposition_id, season_id, toss, batting_session, bowling_session FROM match_details WHERE match_id = $1`,
 		mid,
 	)
-	var resp struct {
-		ID             int64   `json:"id"`
-		MatchID        int64   `json:"match_id"`
-		VenueID        *int64  `json:"venue_id"`
-		OppositionID   *int64  `json:"opposition_id"`
-		SeasonID       *int64  `json:"season_id"`
-		Toss           *string `json:"toss"`
-		BattingSession *string `json:"batting_session"`
-		BowlingSession *string `json:"bowling_session"`
-	}
-	if err := row.Scan(&resp.ID, &resp.MatchID, &resp.VenueID, &resp.OppositionID, &resp.SeasonID, &resp.Toss, &resp.BattingSession, &resp.BowlingSession); err != nil {
+
+	var resp matchDetailsResponse
+	if err := row.Scan(&resp); err != nil {
 		respondErr(w, err)
 		return
 	}
