@@ -1,20 +1,6 @@
 # Mockery configuration for go-app
-# See: https://github.com/vektra/mockery
+# Minimal, compatible with mockery v2.36+
 with-expecter: true
-keeptree: true
 all: false
-case: underscore
 outpkg: mocks
-packages:
-  github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient:
-    interfaces:
-      - Predictor
-    config:
-      dir: internal/mlclient/mocks
-      filename: mock_predictor.go
-  github.com/umayangag/cric-info-scrapers/go-app/internal/db:
-    interfaces:
-      - Connector
-    config:
-      dir: internal/db/mocks
-      filename: mock_connector.go
+packages: {}

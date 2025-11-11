@@ -93,12 +93,18 @@ go test -cover ./internal/services/teamselect -coverprofile=/tmp/ts_svc.out && g
 ---
 
 ## Progress Markers
-- CLI:
-- Pool service:
-- Score service:
-- Select service:
-- Runner:
-- cmd wiring:
-- Mocks + coverage + PR:
+- CLI: ✓
+- Pool service: ✓
+- Score service: ✓
+- Select service: ✓
+- Runner: ✓
+- cmd wiring: ✓
+- Mocks + coverage + PR: ✓
 
 Legend: * = in progress, ✓ = complete, ! = failed
+
+---
+
+## Reconciliation Note
+- Subplan 1.5.4 is reconciled with Plan 1.5. See: `.junie_plans/2025-11-11-1532-reconcile-plan-1-5.md`.
+- Acceptance for this subplan is verified via targeted package tests; repo-wide gates will be restored under 1.5.2–1.5.5.

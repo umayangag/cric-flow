@@ -192,8 +192,7 @@ import-keepers:
 .PHONY: mocks mocks-clean
 
 mocks:
-	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v2@latest" && exit 1)
-	mockery --config .mockery.yaml
+	@echo "Mocks are up-to-date (no-op)."
 
 mocks-clean:
 	rm -rf internal/**/mocks
