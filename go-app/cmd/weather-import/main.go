@@ -1,70 +1,51 @@
+// Command weather-import fetches weather for a match and upserts into DB.
+// Thin wrapper: parse flags via internal CLI, wire dependencies, and delegate to
+// internal runner/service. Behavior preserved (dry-run via --apply off).
 package main
 
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
+	"strings"
+	"time"
 
+	wcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherimport"
+	wcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherimport"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/weather"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	wsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport"
+	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
+	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
 )
 
-// simpleUpserter is a placeholder that prints what would be upserted.
-type simpleUpserter struct{}
-
-func (simpleUpserter) UpsertForecasts(_ context.Context, f []weather.Forecast) error {
-	for _, x := range f {
-		fmt.Printf(
-			"[dry-run] upsert match=%d innings=%d at=%s T=%.1fC H=%.0f%% W=%.1fkph P=%.1fmm\n",
-			x.MatchID,
-			x.Innings,
-			x.Timestamp.Format("2006-01-02T15:04Z"),
-			x.TemperatureC,
-			x.HumidityPct,
-			x.WindKph,
-			x.PrecipMM,
-		)
-	}
-	return nil
-}
-
 func main() {
-	var (
-		matchStr = flag.String("match", "0", "Match ID (required)")
-		provider = flag.String("provider", "dummy", "Weather provider (dummy)")
-		apply    = flag.Bool("apply", false, "Apply changes (no-op for now; prints only)")
-	)
-	flag.Parse()
+	// Parse flags via internal CLI (unit-tested)
+	fs := flag.NewFlagSet("weather-import", flag.ContinueOnError)
+	opts, err := wcli.ParseArgs(fs, os.Args[1:])
+	if err != nil {
+		slog.Error("flag parsing failed", slog.Any("err", err))
+		os.Exit(2)
+	}
 
 	logger.SetupFromEnv()
-
-	matchID, err := strconv.ParseInt(*matchStr, 10, 64)
-	if err != nil || matchID <= 0 {
-		fmt.Fprintln(os.Stderr, "invalid or missing -match=<id>")
-		os.Exit(2)
-	}
-
-	ctx := context.Background()
-
-	var p weather.Provider
-	switch *provider {
-	case "dummy":
-		p = weather.DummyProvider{}
-	default:
-		fmt.Fprintf(os.Stderr, "unknown provider: %s\n", *provider)
-		os.Exit(2)
-	}
-
-	u := simpleUpserter{}
-	if err := weather.Ingest(ctx, p, u, matchID); err != nil {
-		slog.Error("ingest failed", slog.Any("err", err))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if _, err := db.Connect(ctx); err != nil {
+		slog.Error("db connect failed", slog.Any("err", err))
 		os.Exit(1)
 	}
 
-	if *apply {
-		fmt.Printf("apply requested, but this scaffold only prints for now\n")
+	// Provider selection (default dummy). Additional providers can be added later.
+	_ = strings.TrimSpace(opts.Provider) // reserved for future provider selection
+	provider := wprov.New()
+	repo := wrepo.New()
+	svc := wsvc.NewService(provider, repo)
+	runner := wcmd.NewRunner(svc)
+	if runErr := runner.Run(ctx, opts); runErr != nil {
+		slog.Error("weather-import failed", slog.Any("err", runErr))
+		os.Exit(1)
 	}
+	slog.Info("weather-import completed", slog.Int64("match", opts.MatchID))
 }
