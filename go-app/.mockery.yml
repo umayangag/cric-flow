@@ -1,5 +1,5 @@
 all: false
-dir: '{{.InterfaceDir}}'
+dir: '{{.InterfaceDir}}/internal/mocks/'
 filename: mocks_test.go
 force-file-write: false
 formatter: goimports
@@ -9,6 +9,6 @@ pkgname: '{{.SrcPackageName}}'
 recursive: false
 template: testify
 packages:
-  cmd/api:
+  github.com/umayangag/cric-info-scrapers/go-app/cmd/api:
     config:
       all: true

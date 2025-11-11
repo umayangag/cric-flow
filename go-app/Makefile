@@ -192,7 +192,7 @@ import-keepers:
 
 mocks:
 	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: brew install mockery" && exit 1)
-	mockery --config .mockery.yaml
+	mockery --config .mockery.yml
 
 mocks-clean:
 	rm -rf internal/**/mocks
