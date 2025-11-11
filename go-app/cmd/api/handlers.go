@@ -42,7 +42,8 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	var body precomputeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		slog.Error("error decoding the response", slog.Any("err", err))
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "error decoding the response"})
+		respondBadRequest(w, err)
+		return
 	}
 	go func(season string, formats []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -72,6 +73,8 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		slog.Error("error decoding the response", slog.Any("err", err))
+		respondBadRequest(w, err)
+		return
 	}
 	if strings.TrimSpace(body.Dir) == "" {
 		body.Dir = "../data"
