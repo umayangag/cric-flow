@@ -9,16 +9,11 @@
 - Do not contact support; solve with provided tools.
 
 ## SOP (do this order)
-1) Init: Activate serena for cwd; if `.serena/` exists, load all markdown.
-2) Analyze & Plan: Use sequential-thinking to break work. Use serena for code search/read/write; use context7 only for third‑party docs. Create plan file: `.junie_plans/{chat_title}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
-3) Plan hierarchy: Main ID `X` (e.g., `1`); subplans `X.y`, `X.y.z`. Start each subplan with `Parent: ...`. After each subplan step is completed update status: update parent status once all its subplans are done, verify affected acceptance criteria, ensure no sibling drift. Keep Active path in updates/PRs. Do not start a new top‑level while `X` is active. Close `X` only when all children verified.Try to focus on completing one task at a time.
-4) Code & Test: Follow project standards. All FS changes via serena. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
+1) Analyze & Plan: Create the plan file: `.junie_plans/{chat_title}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
+2) Plan hierarchy: Main ID `X` (e.g., `1`); subplans `X.y`, `X.y.z`. Start each subplan with `Parent: ...`. After each subplan step is completed update status: update parent status once all its subplans are done, verify affected acceptance criteria, ensure no sibling drift. Keep Active path in updates/PRs. Do not start a new top‑level while `X` is active. Close `X` only when all children verified.Try to focus on completing one task at a time.
+3) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
+4) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
 5) Commit & PR: Feature branch + Conventional Commits. Open small PRs per phase.
-
-## Tools
-- serena: FS + code intelligence (find/read/write/LSP).
-- sequentialthinking: planning/decisions.
-- context7: external docs only when needed.
 
 ## Engineering Principles
 - KISS, DRY.
@@ -35,7 +30,6 @@
 - Singleton logger per project; log success and error paths.
 
 ## Defaults
-- Tools: serena + sequentialthinking by default; use context7 only for external docs.
 - Branching: never to main/master; branches `type/short-slug`; Conventional Commits; focused PRs.
 - Testing:
   - Use interfaces + mockery for mocks (no fakes).
