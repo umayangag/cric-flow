@@ -70,9 +70,6 @@ func parseCSV(path string) ([]KeeperRow, error) {
 					}
 				} else {
 					lv := strings.ToLower(v)
-					if lv == "true" || lv == "yes" || lv == "y" {
-						val = 1
-					}
 					if lv == "false" || lv == "no" || lv == "n" {
 						val = 0
 					}
