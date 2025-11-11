@@ -40,7 +40,7 @@ func main() {
 			continue
 		}
 		unique[key] = struct{}{}
-		names = append(names, n)
+        names = append(names, key)
 	}
 
 	if !opts.apply {
