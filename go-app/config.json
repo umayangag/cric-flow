@@ -53,5 +53,13 @@
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
     "require_keeper": false
+  },
+  "database": {
+    "host": "localhost",
+    "port": "5432",
+    "name": "cricket_data",
+    "user": "postgres",
+    "password": "postgres",
+    "sslmode": "disable"
   }
 }

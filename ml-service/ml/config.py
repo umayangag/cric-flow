@@ -61,3 +61,58 @@ def default_artifacts_dir() -> str:
         pass
     # built-in fallback
     return os.path.join("../..", "..", "output", "ml-service")
+
+
+def default_db_host() -> str:
+    cfg = _load()
+    try:
+        val = cfg.get("database", {}).get("host")
+        if val:
+            return val
+    except Exception:
+        pass
+    return "localhost"
+
+
+def default_db_port() -> str:
+    cfg = _load()
+    try:
+        val = cfg.get("database", {}).get("port")
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    return "5432"
+
+
+def default_db_name() -> str:
+    cfg = _load()
+    try:
+        val = cfg.get("database", {}).get("name")
+        if val:
+            return val
+    except Exception:
+        pass
+    return "cricket_data"
+
+
+def default_db_user() -> str:
+    cfg = _load()
+    try:
+        val = cfg.get("database", {}).get("user")
+        if val:
+            return val
+    except Exception:
+        pass
+    return "postgres"
+
+
+def default_db_password() -> str:
+    cfg = _load()
+    try:
+        val = cfg.get("database", {}).get("password")
+        if val:
+            return val
+    except Exception:
+        pass
+    return "postgres"

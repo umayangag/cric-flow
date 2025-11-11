@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	cfgpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // Pool is a global connection pool reference returned by Connect.
@@ -58,15 +59,46 @@ func BuildDSN(user, pass, host, port, database, ssl string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, database, ssl)
 }
 
-// Connect initializes a pgx connection pool using environment variables:
-// POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_SSLMODE
+// Connect initializes a pgx connection pool.
+// Precedence: env vars > config.json > built-in defaults.
+// Env vars: POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_SSLMODE
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
-	host := getenv("POSTGRES_HOST", "localhost")
-	port := getenv("POSTGRES_PORT", "5432")
-	db := getenv("POSTGRES_DB", "cricket_data")
-	user := getenv("POSTGRES_USER", "postgres")
-	pass := getenv("POSTGRES_PASSWORD", "postgres")
-	ssl := getenv("POSTGRES_SSLMODE", "disable")
+	cfgJSON := cfgpkg.Load()
+
+	// Defaults from config.json if present; else built-ins
+	defHost := "localhost"
+	defPort := "5432"
+	defDB := "cricket_data"
+	defUser := "postgres"
+	defPass := "postgres"
+	defSSL := "disable"
+	if cfgJSON != nil {
+		if v := cfgJSON.Database.Host; v != "" {
+			defHost = v
+		}
+		if v := cfgJSON.Database.Port; v != "" {
+			defPort = v
+		}
+		if v := cfgJSON.Database.Name; v != "" {
+			defDB = v
+		}
+		if v := cfgJSON.Database.User; v != "" {
+			defUser = v
+		}
+		if v := cfgJSON.Database.Password; v != "" {
+			defPass = v
+		}
+		if v := cfgJSON.Database.SSLMode; v != "" {
+			defSSL = v
+		}
+	}
+
+	host := getenv("POSTGRES_HOST", defHost)
+	port := getenv("POSTGRES_PORT", defPort)
+	db := getenv("POSTGRES_DB", defDB)
+	user := getenv("POSTGRES_USER", defUser)
+	pass := getenv("POSTGRES_PASSWORD", defPass)
+	ssl := getenv("POSTGRES_SSLMODE", defSSL)
 
 	dsn := BuildDSN(user, pass, host, port, db, ssl)
 	cfg, err := pgxpool.ParseConfig(dsn)

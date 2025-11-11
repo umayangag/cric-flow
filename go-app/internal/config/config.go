@@ -64,6 +64,14 @@ type Config struct {
 		DefaultPoolCSV string `json:"default_pool_csv"`
 		RequireKeeper  bool   `json:"require_keeper"`
 	} `json:"selection"`
+	Database struct {
+		Host     string `json:"host"`
+		Port     string `json:"port"`
+		Name     string `json:"name"`
+		User     string `json:"user"`
+		Password string `json:"password"`
+		SSLMode  string `json:"sslmode"`
+	} `json:"database"`
 }
 
 var cached *Config

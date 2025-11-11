@@ -24,5 +24,12 @@
   "team_prediction": {
     "team_size": 11,
     "default_extras": 14.26
+  },
+  "database": {
+    "host": "localhost",
+    "port": "5432",
+    "name": "cricket_data",
+    "user": "postgres",
+    "password": "postgres"
   }
 }
