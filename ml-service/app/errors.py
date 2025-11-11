@@ -1,7 +1,8 @@
-from logging import request_id_var
 from typing import List, Optional
 
 from pydantic import BaseModel
+
+from logging import request_id_var
 
 
 class ErrorDetail(BaseModel):
