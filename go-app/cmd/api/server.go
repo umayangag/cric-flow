@@ -7,7 +7,7 @@ import (
 )
 
 // newRouter constructs and returns the API HTTP router with all routes registered.
-func newRouter() http.Handler {
+func newRouter(a *app) http.Handler {
 	r := mux.NewRouter()
 
 	// Liveness
@@ -28,8 +28,8 @@ func newRouter() http.Handler {
 	r.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet)
 
 	// ML predictions
-	r.HandleFunc("/predict/batting", predictBattingHandler).Methods(http.MethodPost)
-	r.HandleFunc("/predict/bowling", predictBowlingHandler).Methods(http.MethodPost)
+	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
+	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 
 	return r
 }

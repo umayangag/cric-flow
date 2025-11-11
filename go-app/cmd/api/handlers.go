@@ -13,7 +13,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
 )
 
@@ -44,7 +43,10 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		Season  string   `json:"season"`
 		Formats []string `json:"formats"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		slog.Error("error decoding the response", slog.Any("err", err))
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "error decoding the response"})
+	}
 	go func(season string, formats []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
@@ -75,7 +77,9 @@ func importCricsheetHandler(w http.ResponseWriter, r *http.Request) {
 		PlaceholdersWeather  bool   `json:"placeholders_weather"`
 		PlaceholdersFielding bool   `json:"placeholders_fielding"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+
+	}
 	if strings.TrimSpace(body.Dir) == "" {
 		body.Dir = "../data"
 	}
@@ -184,14 +188,13 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // predictBattingHandler sends features to ML service for batting predictions.
-func predictBattingHandler(w http.ResponseWriter, r *http.Request) {
+func (a *app) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []contracts.BattingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
 		respondBadRequest(w, err)
 		return
 	}
-	cli := mlclient.New()
-	preds, err := cli.PredictBatting(r.Context(), feats)
+	preds, err := a.mlClient.PredictBatting(r.Context(), feats)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -200,14 +203,13 @@ func predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // predictBowlingHandler sends features to ML service for bowling predictions.
-func predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
+func (a *app) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []contracts.BowlingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
 		respondBadRequest(w, err)
 		return
 	}
-	cli := mlclient.New()
-	preds, err := cli.PredictBowling(r.Context(), feats)
+	preds, err := a.mlClient.PredictBowling(r.Context(), feats)
 	if err != nil {
 		respondErr(w, err)
 		return

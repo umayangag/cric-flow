@@ -10,6 +10,7 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 )
 
 func main() {
@@ -31,13 +32,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	r := newRouter()
+	// Initialize long-lived dependencies
+	client := mlclient.New()
+	server := newApp(client)
+
+	// Build router with dependencies
+	r := newRouter(server)
 
 	addr := ":8080"
 	if v := os.Getenv("PORT"); v != "" {
 		addr = ":" + v
 	}
-	slog.Info("API listening", slog.String("addr", addr))
+	slog.Info("API listening", slog.String("address", addr))
 	if err := http.ListenAndServe(addr, r); err != nil {
 		slog.Error("server exited", slog.Any("err", err))
 		os.Exit(1)
