@@ -19,7 +19,27 @@ func New() *Provider { return &Provider{} }
 
 func (p *Provider) Fetch(_ context.Context, matchID int64) ([]wx.Record, error) {
 	return []wx.Record{
-		{MatchID: matchID, Session: "batting", Temp: 25, Wind: 5, Rain: 0, Humidity: 40, Cloud: 10, Pressure: 1010, Viscosity: "dry"},
-		{MatchID: matchID, Session: "bowling", Temp: 24, Wind: 7, Rain: 0, Humidity: 45, Cloud: 20, Pressure: 1012, Viscosity: "humid"},
+		{
+			MatchID:   matchID,
+			Session:   "batting",
+			Temp:      25,
+			Wind:      5,
+			Rain:      0,
+			Humidity:  40,
+			Cloud:     10,
+			Pressure:  1010,
+			Viscosity: "dry",
+		},
+		{
+			MatchID:   matchID,
+			Session:   "bowling",
+			Temp:      24,
+			Wind:      7,
+			Rain:      0,
+			Humidity:  45,
+			Cloud:     20,
+			Pressure:  1012,
+			Viscosity: "humid",
+		},
 	}, nil
 }

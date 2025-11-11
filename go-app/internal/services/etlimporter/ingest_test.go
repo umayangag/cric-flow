@@ -104,16 +104,26 @@ func TestService_IngestDir(t *testing.T) {
 		assert assertFn
 	}{
 		{
-			name:   "dry-run parses batting and bowling",
-			apply:  false,
-			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
+			name:  "dry-run parses batting and bowling",
+			apply: false,
+			fs: &memFS{
+				files: map[string]string{
+					filepath.Join("/data", "a.csv"): batCSV,
+					filepath.Join("/data", "b.csv"): bwlCSV,
+				},
+			},
 			repo:   &fakeRepo{},
 			assert: assertNoErrorCounts(2, 1, 1),
 		},
 		{
-			name:   "apply upserts successfully",
-			apply:  true,
-			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
+			name:  "apply upserts successfully",
+			apply: true,
+			fs: &memFS{
+				files: map[string]string{
+					filepath.Join("/data", "a.csv"): batCSV,
+					filepath.Join("/data", "b.csv"): bwlCSV,
+				},
+			},
 			repo:   &fakeRepo{},
 			assert: assertNoErrorCounts(2, 1, 1),
 		},

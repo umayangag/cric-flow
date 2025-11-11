@@ -69,14 +69,34 @@ func TestRunner_Run_Table(t *testing.T) {
 		pool   []ts.Player
 		assert assertFn
 	}{
-		{"nil runner", cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3}, nil, func(t *testing.T, _ []ts.Player, _ error) {
-			var nr *cmd.Runner
-			_, err := nr.Run(context.Background(), cli.Options{}, nil)
-			assertErrContains("nil runner")(t, nil, err)
-		}},
-		{"invalid opts", cli.Options{MatchID: 0, Format: "T20", Season: "2019", Size: 3}, pool, assertErrContains("invalid options")},
-		{"insufficient pool", cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 10}, pool, assertErrContains("insufficient pool")},
-		{"happy path", cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3, MinBowlers: 1, RequireKeeper: true}, pool, assertNoErrorSize(3)},
+		{
+			"nil runner",
+			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3},
+			nil,
+			func(t *testing.T, _ []ts.Player, _ error) {
+				var nr *cmd.Runner
+				_, err := nr.Run(context.Background(), cli.Options{}, nil)
+				assertErrContains("nil runner")(t, nil, err)
+			},
+		},
+		{
+			"invalid opts",
+			cli.Options{MatchID: 0, Format: "T20", Season: "2019", Size: 3},
+			pool,
+			assertErrContains("invalid options"),
+		},
+		{
+			"insufficient pool",
+			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 10},
+			pool,
+			assertErrContains("insufficient pool"),
+		},
+		{
+			"happy path",
+			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3, MinBowlers: 1, RequireKeeper: true},
+			pool,
+			assertNoErrorSize(3),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

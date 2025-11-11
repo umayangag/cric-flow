@@ -24,6 +24,12 @@ func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.Predi
 	if opts.MatchID <= 0 || opts.Format == "" || opts.Season == "" || opts.Bat < 0 || opts.Bowl < 0 {
 		return mlclient.PredictResponse{}, errors.New("invalid options")
 	}
-	req := mlclient.PredictRequest{MatchID: opts.MatchID, Format: opts.Format, Season: opts.Season, Bat: opts.Bat, Bowl: opts.Bowl}
+	req := mlclient.PredictRequest{
+		MatchID: opts.MatchID,
+		Format:  opts.Format,
+		Season:  opts.Season,
+		Bat:     opts.Bat,
+		Bowl:    opts.Bowl,
+	}
 	return s.ML.PredictTeam(ctx, req)
 }

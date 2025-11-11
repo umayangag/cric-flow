@@ -77,11 +77,8 @@ evaluate:
 fmt:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	@files=$$( (git diff --name-only --diff-filter=ACMR; git diff --name-only --cached --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\.go$$' | sort -u || true); \
-	if [ -z "$$files" ]; then echo "No modified/uncommitted .go files to format."; exit 0; fi; \
-	echo "Formatting modified/uncommitted files:" $$files; \
-	gofumpt -w $$files; \
-	golines -w -m 120 $$files
+	gofumpt -w .
+	golines -w -m 120 .
 
 # Optional: check-only formatting status similar to CI
 fmt-check:
@@ -194,8 +191,8 @@ import-keepers:
 .PHONY: mocks mocks-clean
 
 mocks:
-	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v2@latest" && exit 1)
-	mockery --config .mockery.yaml
+	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: brew install mockery" && exit 1)
+	mockery --config .mockery.yml
 
 mocks-clean:
 	rm -rf internal/**/mocks

@@ -104,8 +104,12 @@ func TestSelect_Table(t *testing.T) {
 			assert: assertNoErrorSize(5, false, 3),
 		},
 		{
-			name:   "insufficient bowlers errors",
-			pool:   []ts.Player{mk("A", 1, 0, false, false), mk("B", 0.9, 0, false, false), mk("K", 0.1, 0, false, true)},
+			name: "insufficient bowlers errors",
+			pool: []ts.Player{
+				mk("A", 1, 0, false, false),
+				mk("B", 0.9, 0, false, false),
+				mk("K", 0.1, 0, false, true),
+			},
 			c:      ts.Constraints{Size: 3, MinBowlers: 1, RequireKeeper: false},
 			assert: assertErrContains("not enough bowlers"),
 		},

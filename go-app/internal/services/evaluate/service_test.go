@@ -55,8 +55,13 @@ func TestComputeMetrics(t *testing.T) {
 		assert assertMetricsFn
 	}{
 		{
-			name:   "happy path",
-			in:     svc.Inputs{YTrue: []float64{30, 45, 10, 60}, YPred: []float64{28, 40, 12, 55}, YWin: []float64{1, 0, 1, 1}, YProb: []float64{0.7, 0.4, 0.65, 0.8}},
+			name: "happy path",
+			in: svc.Inputs{
+				YTrue: []float64{30, 45, 10, 60},
+				YPred: []float64{28, 40, 12, 55},
+				YWin:  []float64{1, 0, 1, 1},
+				YProb: []float64{0.7, 0.4, 0.65, 0.8},
+			},
 			assert: assertApprox(svc.Metrics{MAE: 3.5, RMSE: 3.807886553, Brier: 0.103125}, 1e-6),
 		},
 		{

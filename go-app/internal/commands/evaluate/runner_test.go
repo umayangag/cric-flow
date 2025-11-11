@@ -69,8 +69,17 @@ func TestRunner_Run(t *testing.T) {
 		assert assertRunFn
 	}{
 		{
-			name:   "happy path formats metrics",
-			repo:   cmd.Runner{Repo: fakeRepo{in: svc.Inputs{YTrue: []float64{1, 2}, YPred: []float64{1.5, 2.5}, YWin: []float64{1, 0}, YProb: []float64{0.9, 0.1}}}},
+			name: "happy path formats metrics",
+			repo: cmd.Runner{
+				Repo: fakeRepo{
+					in: svc.Inputs{
+						YTrue: []float64{1, 2},
+						YPred: []float64{1.5, 2.5},
+						YWin:  []float64{1, 0},
+						YProb: []float64{0.9, 0.1},
+					},
+				},
+			},
 			opts:   clieval.Options{Season: "2019", Format: "T20"},
 			assert: assertRunSuccessContains("MAE="),
 		},
