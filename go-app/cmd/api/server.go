@@ -21,7 +21,7 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/precompute/status", precomputeStatusHandler).Methods(http.MethodGet)
 
 	// Import cricsheet data
-	r.HandleFunc("/import/cricsheet", importCricsheetHandler).Methods(http.MethodPost)
+	r.HandleFunc("/import/cricsheet", importCricSheetHandler).Methods(http.MethodPost)
 
 	// Domain queries
 	r.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet)

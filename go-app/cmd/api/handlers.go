@@ -69,16 +69,16 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, precompute.GetStatus())
 }
 
-// importCricsheetHandler runs import of cricsheet data directory.
+// importCricSheetHandler runs import of cricsheet data directory.
 // Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
-func importCricsheetHandler(w http.ResponseWriter, r *http.Request) {
+func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Dir                  string `json:"dir"`
 		PlaceholdersWeather  bool   `json:"placeholders_weather"`
 		PlaceholdersFielding bool   `json:"placeholders_fielding"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-
+		slog.Error("error decoding the response", slog.Any("err", err))
 	}
 	if strings.TrimSpace(body.Dir) == "" {
 		body.Dir = "../data"
