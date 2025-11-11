@@ -119,7 +119,7 @@ func applyRetired(ctx context.Context, names []string, othersZero bool) (int64, 
 				placeholders[i] = fmt.Sprintf("lower($%d)", i+1)
 				args[i] = n
 			}
-			q := fmt.Sprintf(`UPDATE player SET is_retired = 0 WHERE lower(player_name) NOT IN ($1) AND is_retired IS DISTINCT FROM 0`, strings.Join(placeholders, ","))
+			q := fmt.Sprintf(`UPDATE player SET is_retired = 0 WHERE lower(player_name) NOT IN (%s) AND is_retired IS DISTINCT FROM 0`, strings.Join(placeholders, ","))
 			ct, err := db.Pool.Exec(ctx, q, args...)
 			if err != nil {
 				return changed, zeroed, err

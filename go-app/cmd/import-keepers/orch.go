@@ -127,7 +127,7 @@ func (Runner) Apply(ctx context.Context, targets map[string]int, othersZero bool
 			i++
 		}
 		q := fmt.Sprintf(
-			"UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1)",
+			"UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (%s)",
 			strings.Join(placeholders, ","),
 		)
 		if _, err := db.Pool.Exec(ctx, q, args...); err != nil {
