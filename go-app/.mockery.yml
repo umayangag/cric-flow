@@ -9,6 +9,3 @@ pkgname: '{{.SrcPackageName}}'
 recursive: false
 template: testify
 packages:
-  github.com/umayangag/cric-info-scrapers/go-app/cmd/api:
-    config:
-      all: true
