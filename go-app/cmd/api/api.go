@@ -34,10 +34,10 @@ func main() {
 
 	// Initialize long-lived dependencies
 	client := mlclient.New()
-	server := newApp(client)
+	server := NewApp(client)
 
 	// Build router with dependencies
-	r := newRouter(server)
+	r := NewRouter(server)
 
 	addr := ":8080"
 	if v := os.Getenv("PORT"); v != "" {

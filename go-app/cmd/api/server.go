@@ -6,8 +6,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// newRouter constructs and returns the API HTTP router with all routes registered.
-func newRouter(a *app) http.Handler {
+// NewRouter constructs and returns the API HTTP router with all routes registered.
+func NewRouter(a *App) http.Handler {
 	r := mux.NewRouter()
 
 	// Liveness

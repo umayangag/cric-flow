@@ -1,6 +1,6 @@
 all: false
 dir: '{{.InterfaceDir}}/internal/mocks/'
-filename: mocks_test.go
+filename: mocks.go
 force-file-write: false
 formatter: goimports
 log-level: info

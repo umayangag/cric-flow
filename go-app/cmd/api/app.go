@@ -1,13 +1,13 @@
 package main
 
-// app holds long-lived application dependencies to be shared with handlers.
+// App holds long-lived application dependencies to be shared with handlers.
 // Extend this struct as new dependencies are introduced.
-type app struct {
+type App struct {
 	mlClient Client
 }
 
-func newApp(client Client) *app {
-	return &app{
+func NewApp(client Client) *App {
+	return &App{
 		mlClient: client,
 	}
 }
