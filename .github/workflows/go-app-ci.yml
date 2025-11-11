@@ -1,69 +1,91 @@
-name: go-app CI
+name: Go App CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'go-app/**'
+      - '.github/workflows/go-app-ci.yml'
+      - 'go.mod'
+      - 'go.sum'
   pull_request:
     paths:
       - 'go-app/**'
       - '.github/workflows/go-app-ci.yml'
-  push:
-    branches: [ '**' ]
-    paths:
-      - 'go-app/**'
-      - '.github/workflows/go-app-ci.yml'
+      - 'go.mod'
+      - 'go.sum'
+  issue_comment:
+    types: [created]
 
 jobs:
-  build-test-coverage:
+  go:
+    if: ${{ github.event_name != 'issue_comment' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go-app
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports: ['5432:5432']
+        env:
+          POSTGRES_DB: cricket_data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cricket_data" 
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version: '1.25.x'
+          check-latest: true
 
-      - name: Go module download
-        run: go mod download
+      - name: Init via Make (tools + modules)
+        run: make -C go-app init
 
-      - name: Install tools (gofumpt, golines, golangci-lint)
-        run: |
-          go install mvdan.cc/gofumpt@latest
-          go install github.com/segmentio/golines@latest
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Vet
+        run: make -C go-app vet
 
       - name: Format check
-        run: |
-          make fmt-check || (echo "Formatting issues found (CI shows them)." && exit 1)
+        run: make -C go-app fmt-check
 
-      - name: Lint
-        run: |
-          make lint
-
-      - name: Unit tests
-        run: |
-          make test
-
-      - name: Coverage (informational gate)
+      - name: Apply migrations
         env:
-          # Curated scope to reflect actively maintained/tested packages; expand over time
-          COVERAGE_PACKAGES: |
-            ./internal/cli/... ./internal/commands/... ./internal/services/... \
-            ./internal/adapters/httpx/... ./internal/adapters/clock/... ./internal/adapters/random/... \
-            ./internal/logger ./internal/config ./internal/mlclient ./internal/predictor
-          COV_MIN: 50
-        run: |
-          make coverage
-          make coverage-func
-          # Do not fail PRs under 50 globally; apply minimum 50%
-          make coverage-check COV_MIN=${COV_MIN}
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: cricket_data
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_SSLMODE: disable
+        run: make -C go-app migrate
 
-      - name: Upload coverage profile
+      - name: Build
+        run: make -C go-app build
+
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: go-app
+          args: -c ../.golangci.yml
+
+      - name: Coverage (generate)
+        run: make -C go-app coverage
+
+      - name: Coverage (enforce >= 80%)
+        env:
+          COV_MIN: "80"
+        run: make -C go-app coverage-check
+
+      - name: Upload coverage artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-app-coverage
           path: go-app/coverage.out
-          if-no-files-found: warn
