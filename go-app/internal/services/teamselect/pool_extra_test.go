@@ -64,7 +64,10 @@ func TestLoadFromDB_InvalidArgsAndSuccess(t *testing.T) {
 		t.Fatalf("want error for empty season")
 	}
 	// success maps DTOs to Player
-	repo.players = []db.PoolPlayer{{Name: "A", IsBowler: true, BatScore: 0.3, BowlScore: 0.7}, {Name: "K", IsKeeper: true, BatScore: 0.5, BowlScore: 0.2}}
+	repo.players = []db.PoolPlayer{
+		{Name: "A", IsBowler: true, BatScore: 0.3, BowlScore: 0.7},
+		{Name: "K", IsKeeper: true, BatScore: 0.5, BowlScore: 0.2},
+	}
 	ps, err := ts.LoadFromDB(context.Background(), repo, 1, "T20", "2019")
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -87,7 +90,11 @@ func TestSelect_BowlerReplacementFallback(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
 	// team of size 2, need 1 bowler; only one candidate bowler in rest should replace a non-bowler
-	pool := []ts.Player{{Name: "A", BatScore: 0.9}, {Name: "B", BatScore: 0.8}, {Name: "C", BowlScore: 0.9, IsBowler: true}}
+	pool := []ts.Player{
+		{Name: "A", BatScore: 0.9},
+		{Name: "B", BatScore: 0.8},
+		{Name: "C", BowlScore: 0.9, IsBowler: true},
+	}
 	team, err := ts.Select(pool, w, ts.Constraints{Size: 2, MinBowlers: 1})
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)

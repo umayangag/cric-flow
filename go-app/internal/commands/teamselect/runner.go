@@ -26,7 +26,11 @@ func (r *Runner) Run(_ context.Context, opts cli.Options, pool []ts.Player) ([]t
 	if len(pool) < opts.Size {
 		return nil, errors.New("insufficient pool")
 	}
-	team, err := ts.Select(pool, r.Weights, ts.Constraints{Size: opts.Size, MinBowlers: opts.MinBowlers, RequireKeeper: opts.RequireKeeper})
+	team, err := ts.Select(
+		pool,
+		r.Weights,
+		ts.Constraints{Size: opts.Size, MinBowlers: opts.MinBowlers, RequireKeeper: opts.RequireKeeper},
+	)
 	if err != nil {
 		return nil, err
 	}

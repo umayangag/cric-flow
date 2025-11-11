@@ -49,7 +49,10 @@ func TestHTTPClient_PredictTeam_and_Reload(t *testing.T) {
 		defer srv.Close()
 
 		c := adapter.New(srv.URL)
-		out, err := c.PredictTeam(context.Background(), mlclient.PredictRequest{MatchID: 1, Format: "T20", Season: "2019"})
+		out, err := c.PredictTeam(
+			context.Background(),
+			mlclient.PredictRequest{MatchID: 1, Format: "T20", Season: "2019"},
+		)
 		assertNoErrorPlayers([]string{"A", "B", "C"})(t, out, err)
 	})
 
