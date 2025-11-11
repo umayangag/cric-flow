@@ -117,7 +117,7 @@ func (Runner) Apply(ctx context.Context, targets map[string]int, othersZero bool
 		}
 	}
 	if othersZero {
-		// Build NOT IN list of parameters
+		// Build NOT IN list of parameters. For very large sets, a temporary table approach may be more performant.
 		placeholders := make([]string, 0, len(targets))
 		args := make([]any, 0, len(targets))
 		i := 1
