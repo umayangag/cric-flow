@@ -27,7 +27,9 @@ func (m *memFS) ReadFile(_ context.Context, path string) ([]byte, error) {
 	return []byte(v), nil
 }
 
-func (m *memFS) WriteFile(_ context.Context, _ string, _ []byte, _ fs.FileMode) error { return errors.New("not implemented") }
+func (m *memFS) WriteFile(_ context.Context, _ string, _ []byte, _ fs.FileMode) error {
+	return errors.New("not implemented")
+}
 
 func (m *memFS) MkdirAll(_ string, _ fs.FileMode) error { return errors.New("not implemented") }
 
@@ -68,7 +70,7 @@ func (r *fakeRepo) UpsertBowling(_ context.Context, rows []db.EtlBowlingRow) err
 type assertFn func(t *testing.T, st etlimporter.Stats, repo *fakeRepo, err error)
 
 func assertNoErrorCounts(files, bat, bowl int) assertFn {
-	return func(t *testing.T, st etlimporter.Stats, repo *fakeRepo, err error) {
+	return func(t *testing.T, st etlimporter.Stats, _ *fakeRepo, err error) {
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -102,31 +104,31 @@ func TestService_IngestDir(t *testing.T) {
 		assert assertFn
 	}{
 		{
-			name:  "dry-run parses batting and bowling",
-			apply: false,
-			fs:    &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
-			repo:  &fakeRepo{},
+			name:   "dry-run parses batting and bowling",
+			apply:  false,
+			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
+			repo:   &fakeRepo{},
 			assert: assertNoErrorCounts(2, 1, 1),
 		},
 		{
-			name:  "apply upserts successfully",
-			apply: true,
-			fs:    &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
-			repo:  &fakeRepo{},
+			name:   "apply upserts successfully",
+			apply:  true,
+			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV, filepath.Join("/data", "b.csv"): bwlCSV}},
+			repo:   &fakeRepo{},
 			assert: assertNoErrorCounts(2, 1, 1),
 		},
 		{
-			name:  "parse error surfaces",
-			apply: false,
-			fs:    &memFS{files: map[string]string{filepath.Join("/data", "bad.csv"): "x,y\n1,2\n"}},
-			repo:  &fakeRepo{},
+			name:   "parse error surfaces",
+			apply:  false,
+			fs:     &memFS{files: map[string]string{filepath.Join("/data", "bad.csv"): "x,y\n1,2\n"}},
+			repo:   &fakeRepo{},
 			assert: assertErrContains("unexpected batting header"),
 		},
 		{
-			name:  "repo error surfaces",
-			apply: true,
-			fs:    &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV}},
-			repo:  &fakeRepo{errBat: errors.New("boom")},
+			name:   "repo error surfaces",
+			apply:  true,
+			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV}},
+			repo:   &fakeRepo{errBat: errors.New("boom")},
 			assert: assertErrContains("boom"),
 		},
 	}

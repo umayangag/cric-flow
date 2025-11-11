@@ -10,8 +10,6 @@ import (
 
 type assertFn func(t *testing.T, got cli.Options, err error)
 
-type assertErrFn func(t *testing.T, err error)
-
 func assertNoErrorOpts(want cli.Options) assertFn {
 	return func(t *testing.T, got cli.Options, err error) {
 		if err != nil {

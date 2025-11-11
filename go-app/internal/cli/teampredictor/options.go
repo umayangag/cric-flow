@@ -59,6 +59,11 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	return Options{MatchID: matchID, Format: format, Season: season, Bat: bat, Bowl: bowl}, nil
 }
 
-func getenv(k, def string) string { if v := os.Getenv(k); v != "" { return v }; return def }
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
 
 func parseInt64(s string) (int64, error) { return strconv.ParseInt(strings.TrimSpace(s), 10, 64) }

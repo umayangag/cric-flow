@@ -2,6 +2,7 @@ package evaluate
 
 import (
 	"context"
+
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/eval"
 )
 
@@ -22,8 +23,9 @@ type Metrics struct {
 }
 
 // EvaluationRepo defines a minimal dependency to supply evaluation inputs.
-//go:generate mockery --name EvaluationRepo --filename evaluation_repo.go --output ../../mocks --case underscore
 // Note: mock generation may be managed centrally; this tag is provided for future use.
+//
+//go:generate mockery --name EvaluationRepo --filename evaluation_repo.go --output ../../mocks --case underscore
 type EvaluationRepo interface {
 	LoadInputs(ctx context.Context, season, format string) (Inputs, error)
 }

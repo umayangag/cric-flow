@@ -43,8 +43,6 @@ func (r *fakeRepo) UpsertFieldingAggregates(_ context.Context, rows []db.Fieldin
 
 type assertSvcFn func(t *testing.T, n int, repo *fakeRepo, err error)
 
-type assertErrFn func(t *testing.T, err error)
-
 func assertNoErrorCount(want int, wantBatches int) assertSvcFn {
 	return func(t *testing.T, n int, repo *fakeRepo, err error) {
 		if err != nil {

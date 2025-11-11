@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
+	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
 	wcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherimport"
 	wcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherimport"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	wsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport"
-	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
-	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
 )
 
 func main() {

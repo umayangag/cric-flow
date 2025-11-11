@@ -13,7 +13,7 @@ import (
 
 // Stats summarizes the ingestion results.
 type Stats struct {
-	Files int
+	Files       int
 	BattingRows int
 	BowlingRows int
 }

@@ -49,8 +49,8 @@ func (r *Repo) ListFieldingEvents(ctx context.Context, matchID *int64) ([]appdb.
 	out := make([]appdb.BackfillEvent, 0, 2048)
 	for rows.Next() {
 		var (
-			mid int64
-			pid int64
+			mid  int64
+			pid  int64
 			kind string
 			isDH bool
 		)

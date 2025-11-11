@@ -8,8 +8,8 @@ import (
 	"os"
 
 	climig "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/migrate"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/migrate"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
@@ -17,7 +17,9 @@ func main() {
 	// Thin delegator: parse, wire, run.
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	opts, err := climig.ParseArgs(fs, os.Args[1:])
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 
 	logger.SetupFromEnv()
 	_ = slog.Default()

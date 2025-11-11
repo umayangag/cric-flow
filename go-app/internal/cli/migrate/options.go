@@ -14,7 +14,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if fs == nil {
 		fs = flag.NewFlagSet("migrate", flag.ContinueOnError)
 	}
-	var dir = fs.String("dir", "migrations", "directory with .sql migration files")
+	dir := fs.String("dir", "migrations", "directory with .sql migration files")
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}

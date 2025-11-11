@@ -14,9 +14,9 @@ import (
 // Only CLI-derived options live here; higher layers may merge config/env.
 // Behavior is preserved to act as a thin delegator.
 type Options struct {
-	MatchID   int64
-	Provider  string
-	Apply     bool
+	MatchID  int64
+	Provider string
+	Apply    bool
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -47,11 +47,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if strings.TrimSpace(matchStr) == "" {
 		return Options{}, errors.New("match id is required")
 	}
-	if m, err := strconv.ParseInt(strings.TrimSpace(matchStr), 10, 64); err != nil || m <= 0 {
+	mstr := strings.TrimSpace(matchStr)
+	m, err := strconv.ParseInt(mstr, 10, 64)
+	if err != nil || m <= 0 {
 		return Options{}, errors.New("invalid match id")
-	} else {
-		matchID = m
 	}
+	matchID = m
 
 	provider = strings.TrimSpace(provider)
 	if provider == "" {

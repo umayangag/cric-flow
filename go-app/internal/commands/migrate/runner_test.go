@@ -13,35 +13,39 @@ type assertErrFn func(t *testing.T, err error)
 
 func assertNoErr() assertErrFn {
 	return func(t *testing.T, err error) {
-		if err != nil { t.Fatalf("unexpected err: %v", err) }
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
 	}
 }
 
 func assertErr() assertErrFn {
 	return func(t *testing.T, err error) {
-		if err == nil { t.Fatalf("expected error, got nil") }
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
 	}
 }
 
 func TestRunner_Run(t *testing.T) {
 	t.Parallel()
-	cases := []struct{
-		name string
+	cases := []struct {
+		name    string
 		migrate func(ctx context.Context, dir string) error
 		timeout time.Duration
-		assert assertErrFn
+		assert  assertErrFn
 	}{
 		{
-			name: "success path",
-			migrate: func(ctx context.Context, dir string) error { return nil },
+			name:    "success path",
+			migrate: func(_ context.Context, _ string) error { return nil },
 			timeout: 10 * time.Millisecond,
-			assert: assertNoErr(),
+			assert:  assertNoErr(),
 		},
 		{
-			name: "error propagates",
-			migrate: func(ctx context.Context, dir string) error { return errors.New("boom") },
+			name:    "error propagates",
+			migrate: func(_ context.Context, _ string) error { return errors.New("boom") },
 			timeout: 10 * time.Millisecond,
-			assert: assertErr(),
+			assert:  assertErr(),
 		},
 	}
 	for _, tc := range cases {

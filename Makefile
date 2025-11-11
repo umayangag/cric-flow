@@ -163,7 +163,7 @@ fmt-go:
 	cd go-app && make fmt-check
 
 lint-go:
-	cd go-app && go vet ./...
+	cd go-app && go vet ./... && make lint
 
 fmt-py:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)

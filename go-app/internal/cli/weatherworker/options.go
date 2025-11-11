@@ -44,6 +44,8 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 }
 
 func getenv(k, def string) string {
-	if v := os.Getenv(k); v != "" { return v }
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
 	return def
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func TestClient_Do_DelegatesToUnderlying(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Test", "ok")
 		w.WriteHeader(http.StatusNoContent)
 		_, _ = io.WriteString(w, "")

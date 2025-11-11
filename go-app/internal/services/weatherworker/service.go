@@ -12,14 +12,15 @@ import (
 // Service coordinates fetching weather for match IDs from a job source and,
 // when apply==true, upserting the resulting records via the WeatherRepo.
 // It is deterministic and testable; no logging here.
-//
 type Service struct {
 	Jobs jobs.Source
 	Prov wx.Provider
 	Repo db.WeatherRepo
 }
 
-func NewService(j jobs.Source, p wx.Provider, r db.WeatherRepo) *Service { return &Service{Jobs: j, Prov: p, Repo: r} }
+func NewService(j jobs.Source, p wx.Provider, r db.WeatherRepo) *Service {
+	return &Service{Jobs: j, Prov: p, Repo: r}
+}
 
 // Run pulls batches from Jobs until exhausted or until maxJobs have been
 // processed. When apply is false, it will not call Repo.

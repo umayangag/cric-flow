@@ -18,7 +18,7 @@ func TestParseArgs_EnvDefaults(t *testing.T) {
 	os.Setenv("TEAM_SELECT_REQUIRE_KEEPER", "yes")
 	os.Setenv("TEAM_SELECT_FROM_DB", "0")
 	os.Setenv("TEAM_SELECT_POOL", "/tmp/p.csv")
-	t.Cleanup(func(){
+	t.Cleanup(func() {
 		os.Unsetenv("TEAM_SELECT_MATCH")
 		os.Unsetenv("TEAM_SELECT_FORMAT")
 		os.Unsetenv("TEAM_SELECT_SEASON")
@@ -30,7 +30,9 @@ func TestParseArgs_EnvDefaults(t *testing.T) {
 	})
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	got, err := cli.ParseArgs(fs, []string{})
-	if err != nil { t.Fatalf("unexpected err: %v", err) }
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
 	if got.MatchID != 42 || got.Format != "T20I" || got.Season != "2020" || got.Size != 7 || got.MinBowlers != 2 || !got.RequireKeeper || got.FromDB || got.PoolCSV != "/tmp/p.csv" {
 		t.Fatalf("unexpected parse via env: %#v", got)
 	}

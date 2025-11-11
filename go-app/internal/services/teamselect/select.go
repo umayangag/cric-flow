@@ -45,8 +45,12 @@ func Select(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
 			break
 		}
 		team = append(team, p)
-		if p.IsBowler { bowCount++ }
-		if p.IsKeeper { keeperSeen = true }
+		if p.IsBowler {
+			bowCount++
+		}
+		if p.IsKeeper {
+			keeperSeen = true
+		}
 	}
 	// If constraints unmet, try to swap in candidates from the remainder.
 	// Ensure we attempt to satisfy keeper first (if required), then bowlers.
@@ -63,7 +67,6 @@ func Select(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
 		}
 		team[rep] = rest[idx]
 		rest = append(rest[:idx], rest[idx+1:]...)
-		keeperSeen = true
 		// recompute bowlCount in case swap affected it
 		bowCount = countIf(team, func(p Player) bool { return p.IsBowler })
 	}
@@ -100,6 +103,30 @@ func Select(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
 	return team, nil
 }
 
-func indexFirst(ps []Player, pred func(Player) bool) int { for i, p := range ps { if pred(p) { return i } } ; return -1 }
-func indexLast(ps []Player, pred func(Player) bool) int { for i := len(ps)-1; i>=0; i-- { if pred(ps[i]) { return i } } ; return -1 }
-func countIf(ps []Player, pred func(Player) bool) int { n:=0; for _, p := range ps { if pred(p) { n++ } }; return n }
+func indexFirst(ps []Player, pred func(Player) bool) int {
+	for i, p := range ps {
+		if pred(p) {
+			return i
+		}
+	}
+	return -1
+}
+
+func indexLast(ps []Player, pred func(Player) bool) int {
+	for i := len(ps) - 1; i >= 0; i-- {
+		if pred(ps[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func countIf(ps []Player, pred func(Player) bool) int {
+	n := 0
+	for _, p := range ps {
+		if pred(p) {
+			n++
+		}
+	}
+	return n
+}

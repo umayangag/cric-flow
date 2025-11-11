@@ -10,12 +10,12 @@ import (
 	"os"
 	"time"
 
+	bfrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/fieldingrepo"
 	bfcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/backfillfielding"
 	bfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/backfillfielding"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	bfrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/fieldingrepo"
-	bfsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/fielding"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	bfsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/fielding"
 )
 
 func main() {

@@ -72,8 +72,8 @@ func TestRunner_Run(t *testing.T) {
 			assert: assertErrContains("nil runner"),
 		},
 		{
-			name: "missing service",
-			r: func() *cmd.Runner { return cmd.NewRunner(nil) },
+			name:   "missing service",
+			r:      func() *cmd.Runner { return cmd.NewRunner(nil) },
 			opts:   cli.Options{InDir: "/x", Concurrency: 1, Pattern: "*.csv"},
 			assert: assertErrContains("missing service"),
 		},

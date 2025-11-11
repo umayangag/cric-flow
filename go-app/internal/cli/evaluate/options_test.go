@@ -11,17 +11,27 @@ type assertOptsFn func(t *testing.T, got cli.Options, err error)
 
 func assertNoErrWant(want cli.Options) assertOptsFn {
 	return func(t *testing.T, got cli.Options, err error) {
-		if err != nil { t.Fatalf("unexpected err: %v", err) }
-		if got.Season != want.Season { t.Fatalf("want Season=%q got %q", want.Season, got.Season) }
-		if got.Format != want.Format { t.Fatalf("want Format=%q got %q", want.Format, got.Format) }
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if got.Season != want.Season {
+			t.Fatalf("want Season=%q got %q", want.Season, got.Season)
+		}
+		if got.Format != want.Format {
+			t.Fatalf("want Format=%q got %q", want.Format, got.Format)
+		}
 	}
 }
 
 func assertErrContains(sub string) assertOptsFn {
 	return func(t *testing.T, _ cli.Options, err error) {
-		if err == nil { t.Fatalf("expected error containing %q; got nil", sub) }
+		if err == nil {
+			t.Fatalf("expected error containing %q; got nil", sub)
+		}
 		msg := err.Error()
-		if !contains(msg, sub) { t.Fatalf("err %q does not contain %q", msg, sub) }
+		if !contains(msg, sub) {
+			t.Fatalf("err %q does not contain %q", msg, sub)
+		}
 	}
 }
 
@@ -29,38 +39,43 @@ func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		ok := true
 		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] { ok = false; break }
+			if s[i+j] != sub[j] {
+				ok = false
+				break
+			}
 		}
-		if ok { return true }
+		if ok {
+			return true
+		}
 	}
 	return false
 }
 
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
-	cases := []struct{
-		name string
-		args []string
+	cases := []struct {
+		name   string
+		args   []string
 		assert assertOptsFn
 	}{
 		{
-			name: "defaults",
-			args: []string{},
+			name:   "defaults",
+			args:   []string{},
 			assert: assertNoErrWant(cli.Options{Season: "demo", Format: "T20"}),
 		},
 		{
-			name: "overrides",
-			args: []string{"-season","2019","-format","ODI"},
+			name:   "overrides",
+			args:   []string{"-season", "2019", "-format", "ODI"},
 			assert: assertNoErrWant(cli.Options{Season: "2019", Format: "ODI"}),
 		},
 		{
-			name: "missing season",
-			args: []string{"-season","","-format","T20"},
+			name:   "missing season",
+			args:   []string{"-season", "", "-format", "T20"},
 			assert: assertErrContains("season must not be empty"),
 		},
 		{
-			name: "missing format",
-			args: []string{"-season","2019","-format",""},
+			name:   "missing format",
+			args:   []string{"-season", "2019", "-format", ""},
 			assert: assertErrContains("format must not be empty"),
 		},
 	}

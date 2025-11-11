@@ -40,7 +40,9 @@ type assertFn func(t *testing.T, err error, fr *fakeRepo)
 func assertErrContains(sub string) assertFn {
 	return func(t *testing.T, err error, _ *fakeRepo) {
 		s := ""
-		if err != nil { s = err.Error() }
+		if err != nil {
+			s = err.Error()
+		}
 		if err == nil || indexOf(s, sub) < 0 {
 			t.Fatalf("want err containing %q, got %v", sub, err)
 		}
@@ -73,9 +75,14 @@ func indexOf(s, sub string) int {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		ok := true
 		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] { ok = false; break }
+			if s[i+j] != sub[j] {
+				ok = false
+				break
+			}
 		}
-		if ok { return i }
+		if ok {
+			return i
+		}
 	}
 	return -1
 }
@@ -83,10 +90,10 @@ func indexOf(s, sub string) int {
 func TestRunner_Run_Table(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct{
-		name   string
+	cases := []struct {
+		name    string
 		arrange func() (*cmd.Runner, cli.Options, *fakeRepo)
-		assert assertFn
+		assert  assertFn
 	}{
 		{
 			name: "nil service errors",

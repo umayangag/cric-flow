@@ -154,25 +154,6 @@ func assertNoErrorInferOrch(outDir string, fmtcode string) assertOrchFn {
 	}
 }
 
-func assertNoErrorFormatOrch(outDir string, fmtcode string) assertOrchFn {
-	return func(t *testing.T, fs *memFS, bat *fakeBat, bow *fakeBow, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if bat.format != 1 || bow.format != 1 {
-			t.Fatalf("want format calls bat=1 bow=1, got %d %d", bat.format, bow.format)
-		}
-		bpath := filepath.Join(outDir, "batting_encoded_"+fmtcode+".csv")
-		wpath := filepath.Join(outDir, "bowling_encoded_"+fmtcode+".csv")
-		if string(fs.writes[bpath]) != "bfh1,bfh2\nQ,R\n" {
-			t.Fatalf("unexpected batting data: %q", string(fs.writes[bpath]))
-		}
-		if string(fs.writes[wpath]) != "wfh1,wfh2\n7,8\n" {
-			t.Fatalf("unexpected bowling data: %q", string(fs.writes[wpath]))
-		}
-	}
-}
-
 func TestRunner_Orchestrates_Unified(t *testing.T) {
 	t.Parallel()
 	fsys := &memFS{}

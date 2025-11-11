@@ -15,8 +15,8 @@ type Player struct {
 
 // ScoreWeights defines relative weights for combining signals into a single score.
 type ScoreWeights struct {
-	Bat float64
-	Bowl float64
+	Bat         float64
+	Bowl        float64
 	KeeperBonus float64 // extra additive bonus if the player can keep wickets
 }
 
@@ -37,7 +37,11 @@ func ScorePlayer(p Player, w ScoreWeights) float64 {
 
 // clamp01 limits x into the inclusive range [0,1].
 func clamp01(x float64) float64 {
-	if x < 0 { return 0 }
-	if x > 1 { return 1 }
+	if x < 0 {
+		return 0
+	}
+	if x > 1 {
+		return 1
+	}
 	return x
 }

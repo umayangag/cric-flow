@@ -54,16 +54,26 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, ou
 		body = bytes.NewReader(nil)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
-	if err != nil { return err }
-	if in != nil { req.Header.Set("Content-Type", "application/json") }
-	if c.UserAgent != "" { req.Header.Set("User-Agent", c.UserAgent) }
+	if err != nil {
+		return err
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 	resp, err := cli.Do(req)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("ml-service status: %s", resp.Status)
 	}
-	if out == nil { return nil }
+	if out == nil {
+		return nil
+	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 

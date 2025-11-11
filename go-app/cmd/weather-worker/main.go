@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	jobsdummy "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/jobs/dummy"
 	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
+	jobsdummy "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/jobs/dummy"
 	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherworker"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherworker"
@@ -24,35 +24,50 @@ import (
 func main() {
 	fs := flag.NewFlagSet("weather-worker", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
-	if err != nil { slog.Error("flag parse failed", slog.Any("err", err)); os.Exit(2) }
+	if err != nil {
+		slog.Error("flag parse failed", slog.Any("err", err))
+		os.Exit(2)
+	}
 
 	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := db.Connect(ctx); err != nil { slog.Error("db connect failed", slog.Any("err", err)); os.Exit(1) }
+	if _, err := db.Connect(ctx); err != nil {
+		slog.Error("db connect failed", slog.Any("err", err))
+		os.Exit(1)
+	}
 
 	// Jobs source from env (comma separated match IDs), e.g., WEATHER_MATCH_IDS="1193505,1193506"
 	ids := parseIDs(os.Getenv("WEATHER_MATCH_IDS"))
 	jobs := jobsdummy.New(ids)
 
 	// Provider selection: currently only "dummy" wired; others can be added later.
-	var prov = wprov.New()
+	prov := wprov.New()
 	repo := wrepo.New()
 	service := svc.NewService(jobs, prov, repo)
 	runner := cmd.NewRunner(service)
-	if runErr := runner.Run(ctx, opts); runErr != nil { slog.Error("weather-worker failed", slog.Any("err", runErr)); os.Exit(1) }
+	if runErr := runner.Run(ctx, opts); runErr != nil {
+		slog.Error("weather-worker failed", slog.Any("err", runErr))
+		os.Exit(1)
+	}
 	slog.Info("weather-worker completed")
 }
 
 func parseIDs(csv string) []int64 {
 	csv = strings.TrimSpace(csv)
-	if csv == "" { return nil }
+	if csv == "" {
+		return nil
+	}
 	parts := strings.Split(csv, ",")
 	out := make([]int64, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p == "" { continue }
-		if n, err := strconv.ParseInt(p, 10, 64); err == nil && n > 0 { out = append(out, n) }
+		if p == "" {
+			continue
+		}
+		if n, err := strconv.ParseInt(p, 10, 64); err == nil && n > 0 {
+			out = append(out, n)
+		}
 	}
 	return out
 }

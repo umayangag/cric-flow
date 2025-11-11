@@ -28,10 +28,10 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		format   string
 		season   string
 		sizeStr  string
-		minBStr string
+		minBStr  string
 		reqK     bool
-		fromDB  bool
-		pool    string
+		fromDB   bool
+		pool     string
 	)
 
 	fs.StringVar(&matchStr, "match", getenv("TEAM_SELECT_MATCH", ""), "match id (int64)")
@@ -76,18 +76,23 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		}
 	}
 	return Options{
-		MatchID: matchID,
-		Format: format,
-		Season: season,
-		Size: size,
-		MinBowlers: minB,
+		MatchID:       matchID,
+		Format:        format,
+		Season:        season,
+		Size:          size,
+		MinBowlers:    minB,
 		RequireKeeper: reqK,
-		FromDB: fromDB,
-		PoolCSV: pool,
+		FromDB:        fromDB,
+		PoolCSV:       pool,
 	}, nil
 }
 
-func getenv(k, def string) string { if v := os.Getenv(k); v != "" { return v }; return def }
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
 
 func getenvBool(k string, def bool) bool {
 	if v := os.Getenv(k); v != "" {

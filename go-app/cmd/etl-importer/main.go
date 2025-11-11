@@ -10,13 +10,13 @@ import (
 	"os"
 	"time"
 
+	etlrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/etlrepo"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	etlcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/etlimporter"
 	etlcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	etlrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/etlrepo"
-	etlsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/etlimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	etlsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/etlimporter"
 )
 
 func main() {

@@ -19,7 +19,9 @@ func (s *Source) Next(_ context.Context, batch int) ([]int64, bool, error) {
 		return nil, false, nil
 	}
 	end := s.pos + batch
-	if end > len(s.ids) { end = len(s.ids) }
+	if end > len(s.ids) {
+		end = len(s.ids)
+	}
 	out := s.ids[s.pos:end]
 	s.pos = end
 	return out, true, nil

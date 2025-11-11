@@ -10,8 +10,6 @@ import (
 
 type assertFn func(t *testing.T, got cli.Options, err error)
 
-type assertErrFn func(t *testing.T, err error)
-
 func assertNoErrorOpts(want cli.Options) assertFn {
 	return func(t *testing.T, got cli.Options, err error) {
 		if err != nil {
@@ -71,33 +69,49 @@ func TestParseArgs_BasicAndEnvDefaults(t *testing.T) {
 		assert assertFn
 	}{
 		{
-			name:  "explicit flags override env/defaults",
-			setup: func() { os.Setenv("GO_APP_ETL_DIR", ""); os.Setenv("ETL_CONCURRENCY", ""); os.Setenv("ETL_PATTERN", "") },
-			args:  []string{"-in", tmp, "-apply", "-concurrency", "8", "-pattern", "*.bat.csv"},
+			name: "explicit flags override env/defaults",
+			setup: func() {
+				os.Setenv("GO_APP_ETL_DIR", "")
+				os.Setenv("ETL_CONCURRENCY", "")
+				os.Setenv("ETL_PATTERN", "")
+			},
+			args:   []string{"-in", tmp, "-apply", "-concurrency", "8", "-pattern", "*.bat.csv"},
 			assert: assertNoErrorOpts(cli.Options{InDir: tmp, Apply: true, Concurrency: 8, Pattern: "*.bat.csv"}),
 		},
 		{
-			name:  "env provides defaults when flags absent",
-			setup: func() { os.Setenv("GO_APP_ETL_DIR", tmp); os.Setenv("ETL_CONCURRENCY", "5"); os.Setenv("ETL_PATTERN", "*.csv") },
-			args:  []string{},
+			name: "env provides defaults when flags absent",
+			setup: func() {
+				os.Setenv("GO_APP_ETL_DIR", tmp)
+				os.Setenv("ETL_CONCURRENCY", "5")
+				os.Setenv("ETL_PATTERN", "*.csv")
+			},
+			args:   []string{},
 			assert: assertNoErrorOpts(cli.Options{InDir: tmp, Apply: false, Concurrency: 5, Pattern: "*.csv"}),
 		},
 		{
-			name:  "error on empty in dir",
-			setup: func() { os.Setenv("GO_APP_ETL_DIR", " "); os.Setenv("ETL_CONCURRENCY", ""); os.Setenv("ETL_PATTERN", "*.csv") },
-			args:  []string{"-in", ""},
+			name: "error on empty in dir",
+			setup: func() {
+				os.Setenv("GO_APP_ETL_DIR", " ")
+				os.Setenv("ETL_CONCURRENCY", "")
+				os.Setenv("ETL_PATTERN", "*.csv")
+			},
+			args:   []string{"-in", ""},
 			assert: assertErrorContains("input directory"),
 		},
 		{
-			name:  "error on bad concurrency",
-			setup: func() { os.Unsetenv("GO_APP_ETL_DIR"); os.Setenv("ETL_CONCURRENCY", ""); os.Setenv("ETL_PATTERN", "*.csv") },
-			args:  []string{"-in", tmp, "-concurrency", "0"},
+			name: "error on bad concurrency",
+			setup: func() {
+				os.Unsetenv("GO_APP_ETL_DIR")
+				os.Setenv("ETL_CONCURRENCY", "")
+				os.Setenv("ETL_PATTERN", "*.csv")
+			},
+			args:   []string{"-in", tmp, "-concurrency", "0"},
 			assert: assertErrorContains("concurrency"),
 		},
 		{
-			name:  "error on empty pattern",
-			setup: func() { os.Unsetenv("GO_APP_ETL_DIR"); os.Setenv("ETL_CONCURRENCY", ""); os.Setenv("ETL_PATTERN", "") },
-			args:  []string{"-in", tmp, "-pattern", "  "},
+			name:   "error on empty pattern",
+			setup:  func() { os.Unsetenv("GO_APP_ETL_DIR"); os.Setenv("ETL_CONCURRENCY", ""); os.Setenv("ETL_PATTERN", "") },
+			args:   []string{"-in", tmp, "-pattern", "  "},
 			assert: assertErrorContains("pattern"),
 		},
 	}
