@@ -33,13 +33,13 @@ func (o *Options) Validate() error {
 	case "TEST", "ODI", "T20", "T20I":
 		// ok
 	default:
-return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
+		return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
 	}
 	if o.TeamSize <= 0 {
-return errors.New("team size must be a positive number")
+		return errors.New("team size must be a positive number")
 	}
 	if o.MinBowlers < 0 {
-return errors.New("min-bowlers must be a non-negative number")
+		return errors.New("min-bowlers must be a non-negative number")
 	}
 	if !o.FromDB && strings.TrimSpace(o.PoolPath) == "" {
 		return errors.New("pool csv is required when from-db=false")
