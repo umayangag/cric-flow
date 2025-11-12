@@ -24,7 +24,7 @@
 * Never start a new top-level plan while `X` is active. If scope changes, request approval to revise `X` rather than creating a new top-level plan.
 * In all status updates and PR descriptions, include the active path (e.g., `Active path: X -> X.2 -> X.2.1`).
 * Close the main plan `X` only after all direct steps and sub-plans under its hierarchy are marked complete and verified.
-* try to complete sub plans one by one, one step at a time.
+* Try to complete sub-plans one by one, one step at a time.
 
 ## Engineering Principles to follow
 - KISS, DRY.
