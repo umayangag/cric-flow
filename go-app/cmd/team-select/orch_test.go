@@ -97,7 +97,14 @@ func TestOrch_FromCSV_Success(t *testing.T) {
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{FromDB: false, PoolPath: "/tmp/pool.csv", MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11}
+	opts := cli.Options{
+		FromDB:   false,
+		PoolPath: "/tmp/pool.csv",
+		MatchID:  1,
+		Format:   "T20",
+		Season:   "2025",
+		TeamSize: 11,
+	}
 	if err := r.Run(context.Background(), opts, buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,13 +123,24 @@ type capturingSelector struct {
 	lastOpts   selection.Options
 }
 
-func (c *capturingSelector) SelectTeam(_ context.Context, _ int64, _, _ string, opts selection.Options) (selection.Result, error) {
+func (c *capturingSelector) SelectTeam(
+	_ context.Context,
+	_ int64,
+	_, _ string,
+	opts selection.Options,
+) (selection.Result, error) {
 	c.lastFromDB = true
 	c.lastOpts = opts
 	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "X", WinningProbability: 0.1}}}, nil
 }
 
-func (c *capturingSelector) SelectTeamFromCSV(_ context.Context, _ string, _ int64, _, _ string, opts selection.Options) (selection.Result, error) {
+func (c *capturingSelector) SelectTeamFromCSV(
+	_ context.Context,
+	_ string,
+	_ int64,
+	_, _ string,
+	opts selection.Options,
+) (selection.Result, error) {
 	c.lastFromDB = false
 	c.lastOpts = opts
 	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "Y", WinningProbability: 0.2}}}, nil
@@ -133,7 +151,15 @@ func TestOrch_OptionPropagation_DB(t *testing.T) {
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(sel, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 6, RequireKeeper: true}
+	opts := cli.Options{
+		FromDB:        true,
+		MatchID:       1,
+		Format:        "T20",
+		Season:        "2025",
+		TeamSize:      11,
+		MinBowlers:    6,
+		RequireKeeper: true,
+	}
 	if err := r.Run(context.Background(), opts, buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -147,7 +173,15 @@ func TestOrch_OptionPropagation_CSV(t *testing.T) {
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(sel, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{FromDB: false, PoolPath: "/tmp/pool.csv", MatchID: 1, Format: "T20", Season: "2025", TeamSize: 9, MinBowlers: 4}
+	opts := cli.Options{
+		FromDB:     false,
+		PoolPath:   "/tmp/pool.csv",
+		MatchID:    1,
+		Format:     "T20",
+		Season:     "2025",
+		TeamSize:   9,
+		MinBowlers: 4,
+	}
 	if err := r.Run(context.Background(), opts, buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

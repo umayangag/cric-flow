@@ -35,13 +35,24 @@ type fakeSelector struct {
 	err        error
 }
 
-func (f *fakeSelector) SelectTeam(_ context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (f *fakeSelector) SelectTeam(
+	_ context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	f.calledDB++
 	f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = matchID, format, season, opts
 	return f.res, f.err
 }
 
-func (f *fakeSelector) SelectTeamFromCSV(_ context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error) {
+func (f *fakeSelector) SelectTeamFromCSV(
+	_ context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
 	f.calledCSV++
 	f.lastPool, f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = poolPath, matchID, format, season, opts
 	return f.res, f.err
@@ -97,7 +108,14 @@ func TestRunner_FromCSV_Success(t *testing.T) {
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{FromDB: false, PoolPath: "/tmp/pool.csv", MatchID: 1, Format: "ODI", Season: "2019", TeamSize: 11}
+	opts := cli.Options{
+		FromDB:   false,
+		PoolPath: "/tmp/pool.csv",
+		MatchID:  1,
+		Format:   "ODI",
+		Season:   "2019",
+		TeamSize: 11,
+	}
 	if err := r.Run(context.Background(), opts, buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
