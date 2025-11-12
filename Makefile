@@ -214,11 +214,11 @@ recreate-apps:
 
 # Central mock generation using go-app/.mockery.yml
 mock:
-	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v2@v3.5.5" && exit 1)
+	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v3@v3.6.0" && exit 1)
 	@ver=$$(mockery --version 2>/dev/null | awk '{print $$3}'); \
-	if [ "$$ver" != "v3.5.5" ]; then \
+	if [ "$$ver" != "v3@v3.6.0" ]; then \
 		echo "mockery version $$ver detected. Please install v3.5.5 for deterministic generation:"; \
-		echo "  go install github.com/vektra/mockery/v2@v3.5.5"; \
+		echo "  go install github.com/vektra/mockery/v3@v3.6.0"; \
 		exit 2; \
 	fi
 	mockery --config go-app/.mockery.yml
