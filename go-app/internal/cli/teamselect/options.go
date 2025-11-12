@@ -39,7 +39,7 @@ return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
 return errors.New("team size must be a positive number")
 	}
 	if o.MinBowlers < 0 {
-		return errors.New("invalid min-bowlers")
+return errors.New("min-bowlers must be a non-negative number")
 	}
 	if !o.FromDB && strings.TrimSpace(o.PoolPath) == "" {
 		return errors.New("pool csv is required when from-db=false")
