@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	apipkg "github.com/umayangag/cric-info-scrapers/go-app/internal/api"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
@@ -34,10 +35,10 @@ func main() {
 
 	// Initialize long-lived dependencies
 	client := mlclient.New()
-	server := NewApp(client)
+	server := apipkg.NewApp(client)
 
 	// Build router with dependencies
-	r := NewRouter(server)
+	r := apipkg.NewRouter(server)
 
 	addr := ":8080"
 	if v := os.Getenv("PORT"); v != "" {

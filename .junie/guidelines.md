@@ -22,7 +22,7 @@
 - Prefer simple, readable, minimal code and package flow.
 
 ## Code Quality
-- Prefer clarity; descriptive names (no abbreviations).
+- Prefer clarity; descriptive long names (no abbreviations).
 - Restructure when it simplifies flow.
 - Reuse code; keep functions small; modular design.
 - Robust error handling; never suppress errors.
