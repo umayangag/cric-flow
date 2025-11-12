@@ -10,10 +10,19 @@
 
 ## SOP (do this order)
 1) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
-2) Plan hierarchy: Main ID `X` (e.g., `1`); subplans `X.y`, `X.y.z`. Start each subplan with `Parent: ...`. After each subplan step is completed update status: update parent status once all its subplans are done, verify affected acceptance criteria, ensure no sibling drift. Keep Active path in updates/PRs. Do not start a new top‑level while `X` is active. Close `X` only when all children verified.Try to focus on completing one task at a time.
-3) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
-4) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
-5) Commit & PR: Feature branch + Conventional Commits. Open small PRs per phase.
+2) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
+3) Plan Hierarchy & Anti-Drift Rule:
+* Assign a stable Plan ID to the main plan for the task: `X` (e.g., `1`). All sub-plans must derive from this ID.
+* Number sub-plans as `X.y` for step `y` of the main plan; deeper levels continue as `X.y.z` and so on.
+* At the start of any sub-plan, record its parent path (breadcrumb) explicitly: `Parent: X` or `Parent: X.y`.
+* After completing a sub-plan, update the status of the subplan, immediately return to its parent plan and reconcile:
+- Update the parent's status for the corresponding step.
+- Verify the parent's acceptance criteria affected by the sub-plan.
+- Ensure no sibling subtasks are left untracked.
+* Never start a new top-level plan while `X` is active. If scope changes, request approval to revise `X` rather than creating a new top-level plan.
+* In all status updates and PR descriptions, include the active path (e.g., `Active path: X -> X.2 -> X.2.1`).
+* Close the main plan `X` only after all direct steps and sub-plans under its hierarchy are marked complete and verified.
+* try to complete sub plans one by one, one step at a time.
 
 ## Engineering Principles
 - KISS, DRY.
