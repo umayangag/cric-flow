@@ -37,7 +37,7 @@ t.Fatalf("want TeamSize=%d got %d", want.TeamSize, got.TeamSize)
 			t.Fatalf("want FromDB=%v got %v", want.FromDB, got.FromDB)
 		}
 		if got.PoolPath != want.PoolPath {
-			t.Fatalf("want PoolPath=%q got %q", want.PoolPath, got.PoolPath)
+t.Fatalf("want PoolPath=%q got %q", want.PoolPath, got.PoolPath)
 		}
 	}
 }
