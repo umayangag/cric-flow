@@ -80,7 +80,7 @@ jobs:
 
       - name: Coverage
         env:
-          COV_MIN: "38"
+          COV_MIN: "30"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact

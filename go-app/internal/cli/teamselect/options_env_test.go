@@ -33,10 +33,10 @@ func TestParseArgs_EnvDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if got.MatchID != 42 || got.Format != "T20I" || got.Season != "2020" || got.Size != 7 || got.MinBowlers != 2 ||
+	if got.MatchID != 42 || got.Format != "T20I" || got.Season != "2020" || got.TeamSize != 7 || got.MinBowlers != 2 ||
 		!got.RequireKeeper ||
 		got.FromDB ||
-		got.PoolCSV != "/tmp/p.csv" {
+		got.PoolPath != "/tmp/p.csv" {
 		t.Fatalf("unexpected parse via env: %#v", got)
 	}
 }

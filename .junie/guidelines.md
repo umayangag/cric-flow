@@ -9,10 +9,12 @@
 - Do not contact support; solve with provided tools.
 
 ## SOP (do this order)
-1) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
-2) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
-3) Plan Hierarchy & Anti-Drift Rule:
+1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit usage and improve productivity.
+2) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
+3) Code & Test: Follow project standards. Use table test style. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
+4) Plan Hierarchy & Anti-Drift Rule:
 * Assign a stable Plan ID to the main plan for the task: `X` (e.g., `1`). All sub-plans must derive from this ID.
+* All sub plans must be created under the same directory as the main plan.
 * Number sub-plans as `X.y` for step `y` of the main plan; deeper levels continue as `X.y.z` and so on.
 * At the start of any sub-plan, record its parent path (breadcrumb) explicitly: `Parent: X` or `Parent: X.y`.
 * After completing a sub-plan, update the status of the subplan, immediately return to its parent plan and reconcile:
@@ -24,13 +26,13 @@
 * Close the main plan `X` only after all direct steps and sub-plans under its hierarchy are marked complete and verified.
 * try to complete sub plans one by one, one step at a time.
 
-## Engineering Principles
+## Engineering Principles to follow
 - KISS, DRY.
 - OOP: Encapsulation, Abstraction, Inheritance, Polymorphism.
 - SOLID: SRP, OCP, LSP, ISP, DIP.
 - Prefer simple, readable, minimal code and package flow.
 
-## Code Quality
+## Code Quality instructions
 - Prefer clarity; descriptive long names (no abbreviations).
 - Restructure when it simplifies flow.
 - Reuse code; keep functions small; modular design.

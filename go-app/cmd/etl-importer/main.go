@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	etlrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/etlrepo"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/etlrepo"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	etlcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/etlimporter"
 	etlcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter"

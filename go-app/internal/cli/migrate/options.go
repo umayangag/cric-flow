@@ -4,7 +4,7 @@ import (
 	"flag"
 )
 
-// Options for tools/migrate command.
+// Options for migrate command.
 type Options struct {
 	Dir string
 }

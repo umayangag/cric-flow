@@ -22,7 +22,7 @@ Orchestrate with Docker Compose:
 
 Database migrations:
 - Apply migrations locally (env can override defaults): `make migrate`
-- Go-only migrations runner inside the repo: `cd go-app && go run ./cmd/tools/migrate -dir=./migrations`
+- Go-only migrations runner inside the repo: `cd go-app && go run ./cmd/migrate -dir=./migrations`
 
 Data import/export and preprocessing:
 - Export ML-ready datasets (to `output/go-app/`): `make export-dataset`

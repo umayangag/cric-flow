@@ -7,7 +7,7 @@ Legend: [ ] planned, [~] partial, [x] complete, [!] blocked, [?] needs verificat
 ## 1) Data importers and DB lifecycle
 - [x] DB schema creation & migrations
   - Prototype: `src/createdb/create_db.py`, `src/createdb/create_tables.py`, `src/createdb/queries/`.
-  - Implementation: `go-app/migrations/*.sql`, `go-app/cmd/tools/migrate`.
+  - Implementation: `go-app/migrations/*.sql`, `go-app/cmd/migrate`.
   - Notes: migrations exist. Ensure up/down paths cover parity with prototype tables.
 - [x] Cricsheet match details import
   - Prototype: `src/createdb/importers/import_match_details.py`

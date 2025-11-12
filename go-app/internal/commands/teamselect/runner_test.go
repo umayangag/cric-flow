@@ -1,107 +1,131 @@
 package teamselect_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teamselect"
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
 
-type assertFn func(t *testing.T, team []ts.Player, err error)
+type fakeConnector struct {
+	called int
+	err    error
+}
 
-func assertErrContains(sub string) assertFn {
-	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+func (f *fakeConnector) Connect(_ context.Context) error {
+	f.called++
+	return f.err
+}
+
+type fakeSelector struct {
+	calledDB   int
+	calledCSV  int
+	lastPool   string
+	lastMatch  int64
+	lastFormat string
+	lastSeason string
+	lastOpts   selection.Options
+	res        selection.Result
+	err        error
+}
+
+func (f *fakeSelector) SelectTeam(
+	_ context.Context,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
+	f.calledDB++
+	f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = matchID, format, season, opts
+	return f.res, f.err
+}
+
+func (f *fakeSelector) SelectTeamFromCSV(
+	_ context.Context,
+	poolPath string,
+	matchID int64,
+	format, season string,
+	opts selection.Options,
+) (selection.Result, error) {
+	f.calledCSV++
+	f.lastPool, f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = poolPath, matchID, format, season, opts
+	return f.res, f.err
+}
+
+func sampleResult() selection.Result {
+	return selection.Result{
+		Players: []predictor.PlayerPrediction{
+			{PlayerName: "A", WinningProbability: 0.9},
+			{PlayerName: "B", WinningProbability: 0.8},
+		},
+		TeamWinProbability: 0.7777,
 	}
 }
 
-func assertNoErrorSize(n int) assertFn {
-	return func(t *testing.T, team []ts.Player, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(team) != n {
-			t.Fatalf("want size=%d got %d", n, len(team))
-		}
+func TestRunner_FromDB_Success(t *testing.T) {
+	fs := &fakeSelector{res: sampleResult()}
+	fc := &fakeConnector{}
+	r := cmd.NewRunner(fs, fc)
+	buf := &bytes.Buffer{}
+	opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
+	if err := r.Run(context.Background(), opts, buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fc.called != 1 {
+		t.Fatalf("expected connector called once, got %d", fc.called)
+	}
+	if fs.calledDB != 1 || fs.calledCSV != 0 {
+		t.Fatalf("selector calls mismatch: db=%d csv=%d", fs.calledDB, fs.calledCSV)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Selected Team (size=2)") {
+		t.Fatalf("missing header, got: %s", out)
+	}
+	if !strings.Contains(out, "1. A") || !strings.Contains(out, "2. B") {
+		t.Fatalf("missing players, got: %s", out)
 	}
 }
 
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
+func TestRunner_FromDB_ConnectError(t *testing.T) {
+	fs := &fakeSelector{res: sampleResult()}
+	fc := &fakeConnector{err: errors.New("boom")}
+	r := cmd.NewRunner(fs, fc)
+	buf := &bytes.Buffer{}
+	err := r.Run(context.Background(), cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}, buf)
+	if err == nil || !strings.Contains(err.Error(), "db connect failed") {
+		t.Fatalf("expected db connect failed error, got %v", err)
 	}
-	return -1
 }
 
-func TestRunner_Run_Table(t *testing.T) {
-	t.Parallel()
-	mk := func(name string, bat, bowl float64, isBow, isKeep bool) ts.Player {
-		return ts.Player{Name: name, BatScore: bat, BowlScore: bowl, IsBowler: isBow, IsKeeper: isKeep}
+func TestRunner_FromCSV_Success(t *testing.T) {
+	fs := &fakeSelector{res: sampleResult()}
+	fc := &fakeConnector{}
+	r := cmd.NewRunner(fs, fc)
+	buf := &bytes.Buffer{}
+	opts := cli.Options{
+		FromDB:   false,
+		PoolPath: "/tmp/pool.csv",
+		MatchID:  1,
+		Format:   "ODI",
+		Season:   "2019",
+		TeamSize: 11,
 	}
-	pool := []ts.Player{
-		mk("A", 0.9, 0.1, false, false),
-		mk("B", 0.7, 0.8, true, false),
-		mk("C", 0.6, 0.7, true, false),
-		mk("D", 0.5, 0.2, false, false),
-		mk("K", 0.4, 0.3, false, true),
+	if err := r.Run(context.Background(), opts, buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	r := cmd.NewRunner()
-	cases := []struct {
-		name   string
-		opts   cli.Options
-		pool   []ts.Player
-		assert assertFn
-	}{
-		{
-			"nil runner",
-			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3},
-			nil,
-			func(t *testing.T, _ []ts.Player, _ error) {
-				var nr *cmd.Runner
-				_, err := nr.Run(context.Background(), cli.Options{}, nil)
-				assertErrContains("nil runner")(t, nil, err)
-			},
-		},
-		{
-			"invalid opts",
-			cli.Options{MatchID: 0, Format: "T20", Season: "2019", Size: 3},
-			pool,
-			assertErrContains("invalid options"),
-		},
-		{
-			"insufficient pool",
-			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 10},
-			pool,
-			assertErrContains("insufficient pool"),
-		},
-		{
-			"happy path",
-			cli.Options{MatchID: 1, Format: "T20", Season: "2019", Size: 3, MinBowlers: 1, RequireKeeper: true},
-			pool,
-			assertNoErrorSize(3),
-		},
+	if fc.called != 0 {
+		t.Fatalf("connector should not be called for CSV, got %d", fc.called)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			team, err := r.Run(context.Background(), tc.opts, tc.pool)
-			tc.assert(t, team, err)
-		})
+	if fs.calledCSV != 1 || fs.calledDB != 0 {
+		t.Fatalf("selector calls mismatch: db=%d csv=%d", fs.calledDB, fs.calledCSV)
+	}
+	if fs.lastPool != "/tmp/pool.csv" || fs.lastMatch != 1 || fs.lastFormat != "ODI" || fs.lastSeason != "2019" {
+		t.Fatalf("selector args mismatch: %+v", fs)
 	}
 }
