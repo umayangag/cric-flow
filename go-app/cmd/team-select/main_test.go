@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"reflect"
 	"testing"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
@@ -52,10 +53,7 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got.MatchID != tc.want.MatchID || got.Format != tc.want.Format || got.Season != tc.want.Season ||
-				got.TeamSize != tc.want.TeamSize || got.MinBowlers != tc.want.MinBowlers ||
-				got.RequireKeeper != tc.want.RequireKeeper || got.FromDB != tc.want.FromDB ||
-				got.PoolPath != tc.want.PoolPath {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("options mismatch\n got: %#v\nwant: %#v", got, tc.want)
 			}
 		})
