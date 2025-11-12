@@ -24,8 +24,8 @@ func assertNoErrorOpts(want cli.Options) assertFn {
 		if got.Season != want.Season {
 			t.Fatalf("want Season=%q got %q", want.Season, got.Season)
 		}
-		if got.Size != want.Size {
-			t.Fatalf("want Size=%d got %d", want.Size, got.Size)
+		if got.TeamSize != want.TeamSize {
+			t.Fatalf("want TeamSize=%d got %d", want.TeamSize, got.TeamSize)
 		}
 		if got.MinBowlers != want.MinBowlers {
 			t.Fatalf("want MinBowlers=%d got %d", want.MinBowlers, got.MinBowlers)
@@ -36,8 +36,8 @@ func assertNoErrorOpts(want cli.Options) assertFn {
 		if got.FromDB != want.FromDB {
 			t.Fatalf("want FromDB=%v got %v", want.FromDB, got.FromDB)
 		}
-		if got.PoolCSV != want.PoolCSV {
-			t.Fatalf("want PoolCSV=%q got %q", want.PoolCSV, got.PoolCSV)
+		if got.PoolPath != want.PoolPath {
+			t.Fatalf("want PoolPath=%q got %q", want.PoolPath, got.PoolPath)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func assertErrorContains(sub string) assertFn {
 			s = err.Error()
 		}
 		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %v", sub, err)
+			t.Fatalf("want err containing %q got %q", sub, err.Error())
 		}
 	}
 }
@@ -99,7 +99,7 @@ func TestParseArgs_Basic(t *testing.T) {
 					MatchID:       1193505,
 					Format:        "T20",
 					Season:        "2019",
-					Size:          11,
+					TeamSize:      11,
 					MinBowlers:    5,
 					RequireKeeper: true,
 					FromDB:        true,
@@ -129,10 +129,10 @@ func TestParseArgs_Basic(t *testing.T) {
 					MatchID:    1193505,
 					Format:     "ODI",
 					Season:     "2019",
-					Size:       11,
+					TeamSize:   11,
 					MinBowlers: 4,
 					FromDB:     false,
-					PoolCSV:    "/tmp/pool.csv",
+					PoolPath:   "/tmp/pool.csv",
 				},
 			),
 		},
@@ -140,7 +140,7 @@ func TestParseArgs_Basic(t *testing.T) {
 			name:   "invalid match",
 			setup:  func() {},
 			args:   []string{"-match", "0", "-format", "T20", "-season", "2019"},
-			assert: assertErrorContains("invalid match"),
+			assert: assertErrorContains("match is required and must be a positive number"),
 		},
 		{
 			name:   "invalid format",
@@ -158,13 +158,13 @@ func TestParseArgs_Basic(t *testing.T) {
 			name:   "invalid size",
 			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "T20", "-season", "2019", "-size", "0"},
-			assert: assertErrorContains("invalid size"),
+			assert: assertErrorContains("team size must be a positive number"),
 		},
 		{
 			name:   "invalid min-bowlers",
 			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "T20", "-season", "2019", "-min-bowlers", "-1"},
-			assert: assertErrorContains("invalid min-bowlers"),
+			assert: assertErrorContains("min-bowlers must be a non-negative number"),
 		},
 		{
 			name:   "from csv requires pool",

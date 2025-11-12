@@ -4,19 +4,24 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
 
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/importkeepers"
+	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/importkeepers"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/csvx"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
-	// Parse flags via pure function
-	opts, err := parseFlags(os.Args[1:])
+	// Parse flags via internal CLI
+	fs := flag.NewFlagSet("import-keepers", flag.ContinueOnError)
+	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		os.Exit(2)
@@ -31,12 +36,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	rows, err := parseCSV(opts.file)
+	rows, err := csvx.ParseKeepersCSV(os.DirFS("."), opts.File)
 	if err != nil {
 		slog.Error("parse CSV failed", slog.Any("err", err))
 		os.Exit(1)
 	}
-	slog.Info("parsed keeper rows", slog.Int("rows", len(rows)), slog.String("file", opts.file))
+	slog.Info("parsed keeper rows", slog.Int("rows", len(rows)), slog.String("file", opts.File))
 
 	// Build target map
 	targets := make(map[string]int, len(rows))
@@ -44,16 +49,16 @@ func main() {
 		targets[strings.ToLower(r.Name)] = r.Value
 	}
 
-	runner := Runner{}
-	if !opts.apply {
-		if err := runner.Preview(ctx, targets, opts.othersZero); err != nil {
+	runner := cmd.NewRunner(cmd.NewDB())
+	if !opts.Apply {
+		if err := runner.Preview(ctx, targets, opts.OthersZero); err != nil {
 			slog.Error("dry-run failed", slog.Any("err", err))
 			os.Exit(1)
 		}
 		fmt.Println("dry-run complete. Re-run with --apply to persist changes.")
 		return
 	}
-	if err := runner.Apply(ctx, targets, opts.othersZero); err != nil {
+	if err := runner.Apply(ctx, targets, opts.OthersZero); err != nil {
 		slog.Error("apply failed", slog.Any("err", err))
 		os.Exit(1)
 	}

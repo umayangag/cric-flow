@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 )
 
+// Client abstracts ML prediction client used by API handlers.
 type Client interface {
 	PredictBatting(ctx context.Context, feats []contracts.BattingFeatures) ([]contracts.BattingPrediction, error)
 	PredictBowling(ctx context.Context, feats []contracts.BowlingFeatures) ([]contracts.BowlingPrediction, error)
