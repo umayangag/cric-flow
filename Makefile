@@ -30,7 +30,7 @@ go-test-int:
 
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
-	cd go-app && go run ./cmd/tools/migrate -dir=./migrations
+	cd go-app && go run ./cmd/migrate -dir=./migrations
 
 # Export datasets (unified exports only)
 export-dataset:

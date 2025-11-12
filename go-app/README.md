@@ -8,7 +8,7 @@ Components:
 - `cmd/api`: HTTP API server (health/readiness + orchestration endpoints, including `/import/cricsheet` and `/precompute`).
 - `cmd/team-predictor`: CLI to select a cricket team based on ML predictions, reading from a pre-generated player pool.
 - `cmd/team-select`: CLI to run the end-to-end team selection pipeline either from the DB or from a CSV pool.
-- `cmd/tools/migrate`: DB migration runner.
+- `cmd/migrate`: DB migration runner.
 - `internal/*`: packages for Cricsheet parsing, contracts, repos, ML client, etc. (Note: Feature calculation logic has moved to the ML service).
 
 Prerequisites:
