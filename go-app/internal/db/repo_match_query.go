@@ -13,7 +13,7 @@ func GetMatchDate(ctx context.Context, matchID int64) (*time.Time, error) {
 		return nil, errors.New("db pool not initialized")
 	}
 	var d sql.NullTime
-	err := Pool.QueryRow(ctx, `SELECT date FROM match_details WHERE match_id = $1`, matchID).Scan(&d)
+	err := QueryRow(ctx, `SELECT date FROM match_details WHERE match_id = $1`, matchID).Scan(&d)
 	if err != nil {
 		return nil, err
 	}

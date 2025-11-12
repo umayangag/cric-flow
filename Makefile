@@ -209,6 +209,27 @@ build-apps-nocache:
 recreate-apps:
 	$(DC) up -d --no-deps --force-recreate $(APP_SERVICES)
 
+# --- Tooling: mocks, tests, lint ---
+.PHONY: mock test lint
+
+# Central mock generation using root .mockery.yaml
+mock:
+	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v2@v3.5.5" && exit 1)
+	@ver=$$(mockery --version 2>/dev/null | awk '{print $$3}'); \
+	if [ "$$ver" != "v3.5.5" ]; then \
+		echo "mockery version $$ver detected. Please install v3.5.5 for deterministic generation:"; \
+		echo "  go install github.com/vektra/mockery/v2@v3.5.5"; \
+		exit 2; \
+	fi
+	mockery --config .mockery.yaml
+
+# Aggregate test target (Go only by default)
+test:
+	cd go-app && go test ./...
+
+# Aggregate lint target
+lint: lint-go lint-py
+
 # Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
 dev-rebuild:
 	$(MAKE) build-apps

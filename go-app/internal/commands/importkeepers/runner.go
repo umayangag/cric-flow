@@ -4,22 +4,27 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 )
 
-// Runner orchestrates the import/preview flow using an abstract DB.
-type Runner struct {
-	DB DB
+// KeeperRepository abstracts the minimal operations needed by this command.
+type KeeperRepository interface {
+	CountPlayersByLowerName(ctx context.Context, lowerName string) (int64, error)
+	SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName string) (int64, error)
+	ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error)
 }
 
-func NewRunner(db DB) Runner { return Runner{DB: db} }
+// Runner orchestrates the import/preview flow using a repository.
+type Runner struct {
+	Repo KeeperRepository
+}
+
+func NewRunner(repo KeeperRepository) Runner { return Runner{Repo: repo} }
 
 // Preview logs the planned changes without mutating the database.
 func (r Runner) Preview(ctx context.Context, targets map[string]int, othersZero bool) error {
 	matched := 0
 	for name, v := range targets {
-		q := `SELECT COUNT(1) FROM player WHERE lower(player_name) = $1`
-		cnt, err := r.DB.QueryRowCount(ctx, q, name)
+		cnt, err := r.Repo.CountPlayersByLowerName(ctx, name)
 		if err != nil {
 			return err
 		}
@@ -39,26 +44,18 @@ func (r Runner) Preview(ctx context.Context, targets map[string]int, othersZero 
 
 // Apply performs the updates. When othersZero is true, sets is_wicket_keeper=0 for players not listed.
 func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bool) error {
-	upd := `UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2`
 	for name, v := range targets {
-		if _, err := r.DB.Exec(ctx, upd, v, name); err != nil {
+		if _, err := r.Repo.SetIsWicketKeeperByLowerName(ctx, v, name); err != nil {
 			return fmt.Errorf("update keeper for '%s': %w", name, err)
 		}
 	}
 	if othersZero {
-		placeholders := make([]string, 0, len(targets))
-		args := make([]any, 0, len(targets))
-		i := 1
+		// Build list of lower-case names to exclude from zeroing.
+		names := make([]string, 0, len(targets))
 		for name := range targets {
-			placeholders = append(placeholders, fmt.Sprintf("$%d", i))
-			args = append(args, name)
-			i++
+			names = append(names, name)
 		}
-		q := fmt.Sprintf(
-			"UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (%s)",
-			strings.Join(placeholders, ","),
-		)
-		if _, err := r.DB.Exec(ctx, q, args...); err != nil {
+		if _, err := r.Repo.ZeroKeepersExcept(ctx, names); err != nil {
 			return fmt.Errorf("zero others: %w", err)
 		}
 	}

@@ -14,10 +14,27 @@ import (
 // Pool is a global connection pool reference returned by Connect.
 var Pool *pgxpool.Pool
 
-// DB is a minimal database interface to enable offline tests.
+// DB is a minimal database interface to enable offline tests and pgxmock.
+// Keep this surface area small; prefer repository-local helpers if you need more.
 type DB interface {
 	Exec(ctx context.Context, sql string, args ...any) error
 	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) Row
+	Begin(ctx context.Context) (Tx, error)
+}
+
+// Tx is a minimal transaction interface used by a few repos.
+type Tx interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) Row
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+// Row allows scanning a single row.
+type Row interface {
+	Scan(dest ...any) error
 }
 
 // Rows is a minimal row iterator abstraction for tests.
@@ -32,6 +49,24 @@ var defaultDB DB
 
 // SetDB allows tests to inject a fake DB implementation.
 func SetDB(d DB) { defaultDB = d }
+
+// Exec runs a statement using the default DB.
+func Exec(ctx context.Context, sql string, args ...any) error {
+	return defaultDB.Exec(ctx, sql, args...)
+}
+
+// Query runs a query returning multiple rows using the default DB.
+func Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	return defaultDB.Query(ctx, sql, args...)
+}
+
+// QueryRow runs a query expecting a single row using the default DB.
+func QueryRow(ctx context.Context, sql string, args ...any) Row {
+	return defaultDB.QueryRow(ctx, sql, args...)
+}
+
+// Begin starts a transaction using the default DB.
+func Begin(ctx context.Context) (Tx, error) { return defaultDB.Begin(ctx) }
 
 // poolDB adapts pgxpool.Pool to the DB interface.
 type poolDB struct{ p *pgxpool.Pool }
@@ -49,9 +84,48 @@ func (w poolDB) Query(ctx context.Context, sql string, args ...any) (Rows, error
 	return rowsAdapter{r}, nil
 }
 
+func (w poolDB) QueryRow(ctx context.Context, sql string, args ...any) Row {
+	return rowAdapter{w.p.QueryRow(ctx, sql, args...)}
+}
+
+func (w poolDB) Begin(ctx context.Context) (Tx, error) {
+	tx, err := w.p.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return txAdapter{tx}, nil
+}
+
 type rowsAdapter struct{ pgx.Rows }
 
 func (r rowsAdapter) Close() { r.Rows.Close() }
+
+type rowAdapter struct{ pgx.Row }
+
+// Scan proxies to the underlying row's Scan.
+func (r rowAdapter) Scan(dest ...any) error { return r.Row.Scan(dest...) }
+
+type txAdapter struct{ pgx.Tx }
+
+func (t txAdapter) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := t.Tx.Exec(ctx, sql, args...)
+	return err
+}
+
+func (t txAdapter) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	r, err := t.Tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rowsAdapter{r}, nil
+}
+
+func (t txAdapter) QueryRow(ctx context.Context, sql string, args ...any) Row {
+	return rowAdapter{t.Tx.QueryRow(ctx, sql, args...)}
+}
+
+func (t txAdapter) Commit(ctx context.Context) error   { return t.Tx.Commit(ctx) }
+func (t txAdapter) Rollback(ctx context.Context) error { return t.Tx.Rollback(ctx) }
 
 // BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
 func BuildDSN(user, pass, host, port, database, ssl string) string {

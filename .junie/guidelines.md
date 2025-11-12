@@ -9,7 +9,7 @@
 - Do not contact support; solve with provided tools.
 
 ## SOP (do this order)
-1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit usage and improve productivity.
+1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit and token usage and improve productivity.
 2) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
 3) Code & Test: Follow project standards. Use table test style. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
 4) Plan Hierarchy & Anti-Drift Rule:
