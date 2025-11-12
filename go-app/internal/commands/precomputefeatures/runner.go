@@ -18,7 +18,14 @@ func NewRunner() Runner { return Runner{} }
 
 // RunReplay iterates through matches chronologically and writes snapshots as of each match date.
 // Behavior mirrors the previous cmd implementation.
-func (Runner) RunReplay(ctx context.Context, formatCode string, formatID int64, alpha float64, lastN int, windowN int) error {
+func (Runner) RunReplay(
+	ctx context.Context,
+	formatCode string,
+	formatID int64,
+	alpha float64,
+	lastN int,
+	windowN int,
+) error {
 	matches, err := db.ListMatchesByFormatDate(ctx, formatID, nil, nil)
 	if err != nil {
 		return fmt.Errorf("list matches: %w", err)
@@ -148,12 +155,25 @@ func (Runner) RunReplay(ctx context.Context, formatCode string, formatID int64, 
 }
 
 // RunPointInTime computes snapshots for all players strictly before the cutoff date.
-func (Runner) RunPointInTime(ctx context.Context, formatCode string, formatID int64, asOf time.Time, alpha float64, lastN int, windowN int) error {
+func (Runner) RunPointInTime(
+	ctx context.Context,
+	formatCode string,
+	formatID int64,
+	asOf time.Time,
+	alpha float64,
+	lastN int,
+	windowN int,
+) error {
 	players, err := db.ListPlayersWithHistoryBefore(ctx, formatID, asOf)
 	if err != nil {
 		return fmt.Errorf("list players with history: %w", err)
 	}
-	slog.Info("precompute-features(as-of)", slog.Int("players", len(players)), slog.String("format", formatCode), slog.String("as_of", asOf.Format("2006-01-02")))
+	slog.Info(
+		"precompute-features(as-of)",
+		slog.Int("players", len(players)),
+		slog.String("format", formatCode),
+		slog.String("as_of", asOf.Format("2006-01-02")),
+	)
 	processed := 0
 	for _, pid := range players {
 		batHist, err := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, nil)
@@ -197,6 +217,11 @@ func (Runner) RunPointInTime(ctx context.Context, formatCode string, formatID in
 			slog.Info("progress", slog.Int("players", processed), slog.String("format", formatCode))
 		}
 	}
-	slog.Info("done (as-of)", slog.Int("players", len(players)), slog.String("format", formatCode), slog.String("as_of", asOf.Format("2006-01-02")))
+	slog.Info(
+		"done (as-of)",
+		slog.Int("players", len(players)),
+		slog.String("format", formatCode),
+		slog.String("as_of", asOf.Format("2006-01-02")),
+	)
 	return nil
 }

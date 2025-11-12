@@ -8,8 +8,19 @@ import (
 
 // Selector abstracts team selection operations, enabling offline tests.
 type Selector interface {
-	SelectTeam(ctx context.Context, matchID int64, format, season string, opts selection.Options) (selection.Result, error)
-	SelectTeamFromCSV(ctx context.Context, poolPath string, matchID int64, format, season string, opts selection.Options) (selection.Result, error)
+	SelectTeam(
+		ctx context.Context,
+		matchID int64,
+		format, season string,
+		opts selection.Options,
+	) (selection.Result, error)
+	SelectTeamFromCSV(
+		ctx context.Context,
+		poolPath string,
+		matchID int64,
+		format, season string,
+		opts selection.Options,
+	) (selection.Result, error)
 }
 
 type selectionAdapter struct{}

@@ -25,7 +25,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	)
 	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I")
 	fs.StringVar(&asOf, "as-of", "", "Cutoff date (YYYY-MM-DD); used only when -replay is false")
-	fs.BoolVar(&replay, "replay", false, "Replay mode: iterate matches chronologically and write snapshots as of each match date (ignores -as-of)")
+	fs.BoolVar(
+		&replay,
+		"replay",
+		false,
+		"Replay mode: iterate matches chronologically and write snapshots as of each match date (ignores -as-of)",
+	)
 	fs.Float64Var(&alpha, "ewm-alpha", 0.3, "Alpha for exponentially weighted mean (0,1]")
 	fs.IntVar(&lastN, "lastN", 10, "Last-N window size for consistency")
 	fs.StringVar(&migrDir, "migrations", "./migrations", "Directory with SQL migrations")
