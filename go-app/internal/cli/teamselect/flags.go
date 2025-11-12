@@ -1,7 +1,6 @@
 package teamselect
 
 import (
-	"errors"
 	"flag"
 	"os"
 	"strconv"
@@ -75,30 +74,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, err
 	}
 
-	format = strings.ToUpper(strings.TrimSpace(format))
-	if matchID <= 0 {
-		return Options{}, errors.New("invalid match")
-	}
-	if strings.TrimSpace(season) == "" {
-		return Options{}, errors.New("season is required")
-	}
-	switch format {
-	case "TEST", "ODI", "T20", "T20I":
-		// ok
-	default:
-		return Options{}, errors.New("invalid format")
-	}
-	if size <= 0 {
-		return Options{}, errors.New("invalid size")
-	}
-	if minB < 0 {
-		return Options{}, errors.New("invalid min-bowlers")
-	}
-	if !fromDB && strings.TrimSpace(pool) == "" {
-		return Options{}, errors.New("pool csv is required when from-db=false")
-	}
-
-	return Options{
+	opts := Options{
 		MatchID:       matchID,
 		Format:        format,
 		Season:        season,
@@ -107,5 +83,9 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		MinBowlers:    minB,
 		RequireKeeper: reqK,
 		FromDB:        fromDB,
-	}, nil
+	}
+	if err := opts.Validate(); err != nil {
+		return Options{}, err
+	}
+	return opts, nil
 }
