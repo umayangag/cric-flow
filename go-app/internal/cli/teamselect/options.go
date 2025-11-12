@@ -36,7 +36,7 @@ return errors.New("match is required and must be a positive number")
 return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
 	}
 	if o.TeamSize <= 0 {
-		return errors.New("invalid size")
+return errors.New("team size must be a positive number")
 	}
 	if o.MinBowlers < 0 {
 		return errors.New("invalid min-bowlers")
