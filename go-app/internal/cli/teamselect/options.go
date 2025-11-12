@@ -33,7 +33,7 @@ return errors.New("match is required and must be a positive number")
 	case "TEST", "ODI", "T20", "T20I":
 		// ok
 	default:
-		return errors.New("invalid format")
+return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
 	}
 	if o.TeamSize <= 0 {
 		return errors.New("invalid size")
