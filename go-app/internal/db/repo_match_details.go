@@ -11,9 +11,8 @@ func EnsureMatchByID(ctx context.Context, matchID int64) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `INSERT INTO match_details(match_id) VALUES($1)
+	return Exec(ctx, `INSERT INTO match_details(match_id) VALUES($1)
 		ON CONFLICT (match_id) DO NOTHING`, matchID)
-	return err
 }
 
 // ExistsMatchID checks if a match_id exists in match_details.

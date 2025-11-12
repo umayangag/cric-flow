@@ -41,6 +41,20 @@ type fakeDB struct {
 	failOn  string // substring that triggers failure on Exec
 }
 
+type fakeRow struct{}
+
+func (fakeRow) Scan(_ ...any) error { return errors.New("unsupported in migrations tests") }
+
+type fakeTx struct{}
+
+func (fakeTx) Exec(_ context.Context, _ string, _ ...any) error { return nil }
+func (fakeTx) Query(_ context.Context, _ string, _ ...any) (Rows, error) {
+	return &fakeRows{}, nil
+}
+func (fakeTx) QueryRow(_ context.Context, _ string, _ ...any) Row { return fakeRow{} }
+func (fakeTx) Commit(_ context.Context) error                     { return nil }
+func (fakeTx) Rollback(_ context.Context) error                   { return nil }
+
 func (f *fakeDB) Exec(_ context.Context, sql string, args ...any) error {
 	// record sql
 	f.execs = append(f.execs, sql)
@@ -75,6 +89,9 @@ func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (Rows, error) {
 	sort.Strings(list)
 	return &fakeRows{vals: list}, nil
 }
+
+func (f *fakeDB) QueryRow(_ context.Context, _ string, _ ...any) Row { return fakeRow{} }
+func (f *fakeDB) Begin(_ context.Context) (Tx, error)                { return fakeTx{}, nil }
 
 func TestRunMigrationsFS_AppliesInLexicalOrder(t *testing.T) {
 	ctx := context.Background()

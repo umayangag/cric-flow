@@ -9,11 +9,11 @@
 - Do not contact support; solve with provided tools.
 
 ## SOP (do this order)
-1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit usage and improve productivity.
+1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit and token usage and improve productivity.
 2) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
 3) Code & Test: Follow project standards. Use table test style. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
 4) Plan Hierarchy & Anti-Drift Rule:
-* Assign a stable Plan ID to the main plan for the task: `X` (e.g., `1`). All sub-plans must derive from this ID.
+* Assign a stable unique Plan ID to the main plan for the task: `X` (e.g., `1-{plan_name}`). All sub-plans must derive from this ID.
 * All sub plans must be created under the same directory as the main plan.
 * Number sub-plans as `X.y` for step `y` of the main plan; deeper levels continue as `X.y.z` and so on.
 * At the start of any sub-plan, record its parent path (breadcrumb) explicitly: `Parent: X` or `Parent: X.y`.

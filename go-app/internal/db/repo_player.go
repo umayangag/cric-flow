@@ -27,7 +27,7 @@ func GetPlayerByID(ctx context.Context, id int64) (*Player, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	row := Pool.QueryRow(
+	row := QueryRow(
 		ctx,
 		`SELECT id, player_name, is_wicket_keeper, is_retired FROM player WHERE id = $1`,
 		id,
