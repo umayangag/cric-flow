@@ -25,7 +25,7 @@ func assertNoErrorOpts(want cli.Options) assertFn {
 			t.Fatalf("want Season=%q got %q", want.Season, got.Season)
 		}
 		if got.TeamSize != want.TeamSize {
-t.Fatalf("want TeamSize=%d got %d", want.TeamSize, got.TeamSize)
+			t.Fatalf("want TeamSize=%d got %d", want.TeamSize, got.TeamSize)
 		}
 		if got.MinBowlers != want.MinBowlers {
 			t.Fatalf("want MinBowlers=%d got %d", want.MinBowlers, got.MinBowlers)
