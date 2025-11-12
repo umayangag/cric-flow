@@ -8,6 +8,7 @@ import (
 )
 
 func TestParseArgs_EnvDefaults(t *testing.T) {
+	t.Parallel()
 	t.Setenv("TEAM_SELECT_MATCH", "42")
 	t.Setenv("TEAM_SELECT_FORMAT", "t20i")
 	t.Setenv("TEAM_SELECT_SEASON", "2020")
