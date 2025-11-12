@@ -43,17 +43,17 @@ type fakeDB struct {
 
 type fakeRow struct{}
 
-func (fakeRow) Scan(dest ...any) error { return errors.New("unsupported in migrations tests") }
+func (fakeRow) Scan(_ ...any) error { return errors.New("unsupported in migrations tests") }
 
 type fakeTx struct{}
 
-func (fakeTx) Exec(ctx context.Context, sql string, args ...any) error { return nil }
-func (fakeTx) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+func (fakeTx) Exec(_ context.Context, _ string, _ ...any) error { return nil }
+func (fakeTx) Query(_ context.Context, _ string, _ ...any) (Rows, error) {
 	return &fakeRows{}, nil
 }
-func (fakeTx) QueryRow(ctx context.Context, sql string, args ...any) Row { return fakeRow{} }
-func (fakeTx) Commit(ctx context.Context) error                          { return nil }
-func (fakeTx) Rollback(ctx context.Context) error                        { return nil }
+func (fakeTx) QueryRow(_ context.Context, _ string, _ ...any) Row { return fakeRow{} }
+func (fakeTx) Commit(_ context.Context) error                     { return nil }
+func (fakeTx) Rollback(_ context.Context) error                   { return nil }
 
 func (f *fakeDB) Exec(_ context.Context, sql string, args ...any) error {
 	// record sql

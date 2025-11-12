@@ -19,7 +19,12 @@ func CountPlayersByLowerName(ctx context.Context, lowerName string) (int64, erro
 
 // SetIsWicketKeeperByLowerName updates the flag for rows matching the provided lower-cased name.
 func SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName string) (int64, error) {
-	rows, err := Query(ctx, `UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`, value, lowerName)
+	rows, err := Query(
+		ctx,
+		`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`,
+		value,
+		lowerName,
+	)
 	if err != nil {
 		return 0, err
 	}
