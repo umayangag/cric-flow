@@ -18,6 +18,8 @@ Environment defaults used by Go services/API:
 - POSTGRES_HOST=localhost, POSTGRES_PORT=5432, POSTGRES_DB=cricket_data
 - POSTGRES_USER=postgres, POSTGRES_PASSWORD=postgres, POSTGRES_SSLMODE=disable
 
+Tip: copy `.env.example` to `.env` to override defaults locally. See `docs/dev-ux.md` for common workflows and commands.
+
 ### 0) One-time local setup (tools, venv, hooks)
 Initialize dev tooling for both components, aligned with CI formatters/linters.
 ```
@@ -189,7 +191,7 @@ Generate/update mocks (from repo root):
 ```
 make mock
 ```
-This uses the root `.mockery.yaml` to generate mocks under `go-app/internal/**/mocks` with `--with-expecter` enabled.
+This uses `go-app/.mockery.yml` to generate mocks under `go-app/internal/**/mocks` with `--with-expecter` enabled.
 
 Run tests and vet:
 ```

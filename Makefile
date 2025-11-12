@@ -212,7 +212,7 @@ recreate-apps:
 # --- Tooling: mocks, tests, lint ---
 .PHONY: mock test lint
 
-# Central mock generation using root .mockery.yaml
+# Central mock generation using go-app/.mockery.yml
 mock:
 	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v2@v3.5.5" && exit 1)
 	@ver=$$(mockery --version 2>/dev/null | awk '{print $$3}'); \
@@ -221,7 +221,7 @@ mock:
 		echo "  go install github.com/vektra/mockery/v2@v3.5.5"; \
 		exit 2; \
 	fi
-	mockery --config .mockery.yaml
+	mockery --config go-app/.mockery.yml
 
 # Aggregate test target (Go only by default)
 test:

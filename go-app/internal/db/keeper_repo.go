@@ -4,19 +4,9 @@ import (
 	"context"
 	"strconv"
 	"strings"
-)
 
-// KeeperRepo exposes minimal operations needed by the import-keepers command.
-// It is implemented in terms of the package-level DB helpers so it is testable
-// via SetDB with pgxmock-compatible adapters.
-type KeeperRepo interface {
-	// CountPlayersByLowerName returns the number of players matching the exact lower(name).
-	CountPlayersByLowerName(ctx context.Context, lowerName string) (int64, error)
-	// SetIsWicketKeeperByLowerName sets the is_wicket_keeper flag for exact lower(name).
-	SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName string) (int64, error)
-	// ZeroKeepersExcept sets is_wicket_keeper=0 for players whose lower(name) is NOT in provided list.
-	ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error)
-}
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
+)
 
 // CountPlayersByLowerName returns count of players whose lower(player_name) equals lowerName.
 func CountPlayersByLowerName(ctx context.Context, lowerName string) (int64, error) {
@@ -33,16 +23,7 @@ func SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName stri
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
-	var affected int64
-	for rows.Next() {
-		var one int
-		if err := rows.Scan(&one); err != nil {
-			return 0, err
-		}
-		affected++
-	}
-	return affected, nil
+	return scanx.CountReturningOnes(rows)
 }
 
 // ZeroKeepersExcept sets is_wicket_keeper=0 where lower(player_name) NOT IN list.
@@ -76,14 +57,5 @@ func ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
-	var affected int64
-	for rows.Next() {
-		var one int
-		if err := rows.Scan(&one); err != nil {
-			return 0, err
-		}
-		affected++
-	}
-	return affected, nil
+	return scanx.CountReturningOnes(rows)
 }
