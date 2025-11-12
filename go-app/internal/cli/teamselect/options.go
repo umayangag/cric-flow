@@ -24,7 +24,7 @@ func (o *Options) Validate() error {
 	o.Format = strings.ToUpper(strings.TrimSpace(o.Format))
 
 	if o.MatchID <= 0 {
-return errors.New("match is required and must be a positive number")
+		return errors.New("match is required and must be a positive number")
 	}
 	if strings.TrimSpace(o.Season) == "" {
 		return errors.New("season is required")
