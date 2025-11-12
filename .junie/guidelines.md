@@ -9,7 +9,7 @@
 - Do not contact support; solve with provided tools.
 
 ## SOP (do this order)
-1) Analyze & Plan: Create the plan file: `.junie_plans/{chat_title}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
+1) Analyze & Plan: Create the plan file: `.junie_plans/{master_plan_name}/{timestamp}-{plan_number}-{slug}.md` with files, changes, tests, acceptance criteria + exact commands. Lock plan; execute in phases.
 2) Plan hierarchy: Main ID `X` (e.g., `1`); subplans `X.y`, `X.y.z`. Start each subplan with `Parent: ...`. After each subplan step is completed update status: update parent status once all its subplans are done, verify affected acceptance criteria, ensure no sibling drift. Keep Active path in updates/PRs. Do not start a new top‑level while `X` is active. Close `X` only when all children verified.Try to focus on completing one task at a time.
 3) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.
 4) Code & Test: Follow project standards. TDD: write failing test, then code. Tests independent with clear assertions. Keep code small and clean.

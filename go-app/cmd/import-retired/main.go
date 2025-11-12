@@ -1,21 +1,26 @@
 // Command import-retired updates the is_retired flag in the player table from a CSV.
-// See flags.go for CLI parsing and orch.go for orchestration.
+// Thin entrypoint: parse flags via internal CLI, parse CSV via internal/csvx,
+// and delegate dry-run/apply to internal command runner.
 package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"log/slog"
 	"os"
 	"strings"
 
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/importretired"
+	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/importretired"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/csvx"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 func main() {
-	// Parse flags via pure function
-	opts, err := parseFlags(os.Args[1:])
+	// Parse flags via internal CLI (testable)
+	fs := flag.NewFlagSet("import-retired", flag.ContinueOnError)
+	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		os.Exit(2)
@@ -23,7 +28,7 @@ func main() {
 
 	logger.SetupFromEnv()
 
-	rows, err := parseCSV(opts.file)
+	rows, err := csvx.ParseRetiredCSV(os.DirFS("."), opts.File)
 	if err != nil {
 		slog.Error("parse csv failed", slog.Any("err", err))
 		os.Exit(1)
@@ -43,18 +48,16 @@ func main() {
 		names = append(names, n)
 	}
 
-	if !opts.apply {
-		fmt.Printf("[DRY-RUN] Would mark %d players as retired. others-zero=%v\n", len(names), opts.othersZero)
-		for _, n := range names {
-			fmt.Printf("  - %s\n", n)
-		}
-		if opts.othersZero {
-			fmt.Println("[DRY-RUN] Would set is_retired=0 for all other players not listed")
+	runner := cmd.NewRunner(cmd.NewDB())
+	if !opts.Apply {
+		if err := runner.DryRun(names, opts.OthersZero, os.Stdout); err != nil {
+			slog.Error("dry-run failed", slog.Any("err", err))
+			os.Exit(1)
 		}
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
@@ -70,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	changed, zeroed, err := applyRetired(ctx, names, opts.othersZero)
+	changed, zeroed, err := runner.Apply(ctx, names, opts.OthersZero)
 	if err != nil {
 		slog.Error("apply failed", slog.Any("err", err))
 		os.Exit(1)

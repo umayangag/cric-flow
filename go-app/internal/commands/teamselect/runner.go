@@ -2,37 +2,61 @@ package teamselect
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"io"
+	"os"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	cliteam "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
 
-// Runner validates options and orchestrates selection given a pre-loaded pool.
-// Pool loading (CSV/DB) is performed by the caller (cmd or higher service),
-// keeping this runner pure and easy to test.
+// Runner orchestrates team selection by delegating to a Selector.
+// It optionally connects to the DB via Connector when FromDB is true.
+type Runner struct {
+	Selector  Selector
+	Connector db.Connector
+}
 
-type Runner struct{ Weights ts.ScoreWeights }
+func NewRunner(sel Selector, conn db.Connector) Runner { return Runner{Selector: sel, Connector: conn} }
 
-func NewRunner() *Runner { return &Runner{Weights: ts.DefaultWeights()} }
-
-func (r *Runner) Run(_ context.Context, opts cli.Options, pool []ts.Player) ([]ts.Player, error) {
-	if r == nil {
-		return nil, errors.New("nil runner")
+// Run executes selection using either DB-backed features or a CSV pool and writes
+// a deterministic summary to out.
+func (r Runner) Run(ctx context.Context, opts cliteam.Options, out io.Writer) error {
+	w := out
+	if w == nil {
+		w = os.Stdout
 	}
-	if opts.MatchID <= 0 || opts.Format == "" || opts.Season == "" || opts.Size < 1 || opts.MinBowlers < 0 {
-		return nil, errors.New("invalid options")
-	}
-	if len(pool) < opts.Size {
-		return nil, errors.New("insufficient pool")
-	}
-	team, err := ts.Select(
-		pool,
-		r.Weights,
-		ts.Constraints{Size: opts.Size, MinBowlers: opts.MinBowlers, RequireKeeper: opts.RequireKeeper},
+	var (
+		res selection.Result
+		err error
 	)
-	if err != nil {
-		return nil, err
+
+	if opts.FromDB {
+		if r.Connector != nil {
+			if err := r.Connector.Connect(ctx); err != nil {
+				return fmt.Errorf("db connect failed: %w", err)
+			}
+		}
+		res, err = r.Selector.SelectTeam(ctx, opts.MatchID, opts.Format, opts.Season, selection.Options{
+			TeamSize:      opts.TeamSize,
+			MinBowlers:    opts.MinBowlers,
+			RequireKeeper: opts.RequireKeeper,
+		})
+	} else {
+		res, err = r.Selector.SelectTeamFromCSV(ctx, opts.PoolPath, opts.MatchID, opts.Format, opts.Season, selection.Options{
+			TeamSize:      opts.TeamSize,
+			MinBowlers:    opts.MinBowlers,
+			RequireKeeper: opts.RequireKeeper,
+		})
 	}
-	return team, nil
+	if err != nil {
+		return err
+	}
+	// Print using the same format as previous implementation for parity.
+	fmt.Fprintf(w, "Selected Team (size=%d) — Team Win Prob: %.4f\n", len(res.Players), res.TeamWinProbability)
+	for i, p := range res.Players {
+		fmt.Fprintf(w, "%2d. %s %.4f\n", i+1, p.PlayerName, p.WinningProbability)
+	}
+	return nil
 }
