@@ -1,0 +1,36 @@
+{
+  "batting": [
+    "batting_consistency",
+    "batting_form",
+    "batting_temp",
+    "batting_wind",
+    "batting_rain",
+    "batting_humidity",
+    "batting_cloud",
+    "batting_pressure",
+    "batting_viscosity",
+    "batting_inning",
+    "batting_session",
+    "toss",
+    "venue",
+    "opposition",
+    "season"
+  ],
+  "bowling": [
+    "bowling_consistency",
+    "bowling_form",
+    "bowling_temp",
+    "bowling_wind",
+    "bowling_rain",
+    "bowling_humidity",
+    "bowling_cloud",
+    "bowling_pressure",
+    "bowling_viscosity",
+    "batting_inning",
+    "bowling_session",
+    "toss",
+    "bowling_venue",
+    "bowling_opposition",
+    "season"
+  ]
+}
