@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -66,7 +67,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 			continue
 		}
 		// If neither parsed, return first error (batting) for diagnosability
-return Stats{}, fmt.Errorf("failed to parse as batting (%w) or bowling (%w)", berr, werr)
+		return Stats{}, fmt.Errorf("failed to parse as batting (%w) or bowling (%w)", berr, werr)
 	}
 	if apply {
 		if len(allBat) > 0 {
