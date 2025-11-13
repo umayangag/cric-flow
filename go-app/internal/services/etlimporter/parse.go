@@ -34,25 +34,25 @@ func ParseBattingCSV(r io.Reader) ([]db.EtlBattingRow, error) {
 		if len(row) < len(h) {
 			return nil, fmt.Errorf("row %d: wrong column count", i)
 		}
-		runs, err := atoi(row[indexOf(h, "runs")])
+		runs, err := getInt(row, h, "runs", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d runs: %w", i, err)
+			return nil, err
 		}
-		balls, err := atoi(row[indexOf(h, "balls")])
+		balls, err := getInt(row, h, "balls", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d balls: %w", i, err)
+			return nil, err
 		}
-		fours, err := atoi(row[indexOf(h, "fours")])
+		fours, err := getInt(row, h, "fours", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d fours: %w", i, err)
+			return nil, err
 		}
-		sixes, err := atoi(row[indexOf(h, "sixes")])
+		sixes, err := getInt(row, h, "sixes", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d sixes: %w", i, err)
+			return nil, err
 		}
-		pos, err := atoi(row[indexOf(h, "position")])
+		pos, err := getInt(row, h, "position", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d position: %w", i, err)
+			return nil, err
 		}
 		out = append(out, db.EtlBattingRow{
 			PlayerName: strings.TrimSpace(row[indexOf(h, "player_name")]),
@@ -92,29 +92,29 @@ func ParseBowlingCSV(r io.Reader) ([]db.EtlBowlingRow, error) {
 		if len(row) < len(h) {
 			return nil, fmt.Errorf("row %d: wrong column count", i)
 		}
-		overse, err := atof(row[indexOf(h, "overs")])
+		overse, err := getFloat(row, h, "overs", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d overs: %w", i, err)
+			return nil, err
 		}
-		balls, err := atoi(row[indexOf(h, "balls")])
+		balls, err := getInt(row, h, "balls", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d balls: %w", i, err)
+			return nil, err
 		}
-		maidens, err := atoi(row[indexOf(h, "maidens")])
+		maidens, err := getInt(row, h, "maidens", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d maidens: %w", i, err)
+			return nil, err
 		}
-		runs, err := atoi(row[indexOf(h, "runs")])
+		runs, err := getInt(row, h, "runs", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d runs: %w", i, err)
+			return nil, err
 		}
-		wickets, err := atoi(row[indexOf(h, "wickets")])
+		wickets, err := getInt(row, h, "wickets", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d wickets: %w", i, err)
+			return nil, err
 		}
-		econ, err := atof(row[indexOf(h, "economy")])
+		econ, err := getFloat(row, h, "economy", i)
 		if err != nil {
-			return nil, fmt.Errorf("row %d economy: %w", i, err)
+			return nil, err
 		}
 		out = append(out, db.EtlBowlingRow{
 			PlayerName: strings.TrimSpace(row[indexOf(h, "player_name")]),
@@ -171,4 +171,26 @@ func atof(s string) (float64, error) {
 		return 0, nil
 	}
 	return strconv.ParseFloat(s, 64)
+}
+
+// getInt fetches and parses the integer value for the given column, wrapping any parse error
+// with a consistent "row N <col>: <err>" message used by tests.
+func getInt(row, header []string, colName string, rowNum int) (int, error) {
+	idx := indexOf(header, colName)
+	v, err := atoi(row[idx])
+	if err != nil {
+		return 0, fmt.Errorf("row %d %s: %w", rowNum, colName, err)
+	}
+	return v, nil
+}
+
+// getFloat fetches and parses the float value for the given column, wrapping any parse error
+// with a consistent "row N <col>: <err>" message used by tests.
+func getFloat(row, header []string, colName string, rowNum int) (float64, error) {
+	idx := indexOf(header, colName)
+	v, err := atof(row[idx])
+	if err != nil {
+		return 0, fmt.Errorf("row %d %s: %w", rowNum, colName, err)
+	}
+	return v, nil
 }

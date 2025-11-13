@@ -217,7 +217,7 @@ mock:
 	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v3@v3.6.0" && exit 1)
 	@ver=$$(mockery --version 2>/dev/null | awk '{print $$3}'); \
 	if [ "$$ver" != "v3@v3.6.0" ]; then \
-		echo "mockery version $$ver detected. Please install v3.5.5 for deterministic generation:"; \
+		echo "mockery version $$ver detected. Please install v3.6.0 for deterministic generation:"; \
 		echo "  go install github.com/vektra/mockery/v3@v3.6.0"; \
 		exit 2; \
 	fi
