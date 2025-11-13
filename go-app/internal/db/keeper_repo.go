@@ -41,11 +41,6 @@ func ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error) 
 		}
 		return n, nil
 	}
-	// Build numbered placeholders and args.
-	args := make([]any, 0, len(lowerNames))
-	for _, s := range lowerNames {
-		args = append(args, s)
-	}
 	q := `UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (SELECT unnest($1::text[])) RETURNING 1`
 	rows, err := Query(ctx, q, lowerNames)
 	if err != nil {
