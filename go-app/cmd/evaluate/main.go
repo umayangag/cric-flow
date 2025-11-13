@@ -34,7 +34,6 @@ func main() {
 	}
 
 	logger.SetupFromEnv()
-	_ = slog.Default() // ensure slog imported
 
 	r := cmd.Runner{Repo: demoRepo{}, Out: os.Stdout}
 	if err := r.Run(context.Background(), opts); err != nil {
