@@ -66,7 +66,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 			continue
 		}
 		// If neither parsed, return first error (batting) for diagnosability
-		return Stats{}, berr
+return Stats{}, fmt.Errorf("failed to parse as batting (%w) or bowling (%w)", berr, werr)
 	}
 	if apply {
 		if len(allBat) > 0 {
