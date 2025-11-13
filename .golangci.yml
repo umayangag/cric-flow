@@ -29,12 +29,6 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Exclude gosec and unparam in test files (allow math/rand, file perms, and helper signatures)
-    - path: ".*_test\\.go$"
-      linters:
-        - gosec
-        - unparam
 formatters:
   exclusions:
     generated: lax
