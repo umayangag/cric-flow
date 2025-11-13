@@ -50,6 +50,8 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     cfg_path, cfg = write_temp_config(tmp_path)
     monkeypatch.setenv("FEATURE_CONFIG_PATH", str(cfg_path))
 
+    m_config = importlib.import_module("app.feature_config")
+    importlib.reload(m_config)
     m = importlib.import_module("app.main")
     importlib.reload(m)
 
