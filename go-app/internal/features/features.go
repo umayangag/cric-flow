@@ -34,50 +34,25 @@ func EWM(inn []Innings, alpha float64) (float64, float64) {
 	m := 0.0
 	for _, in := range inn {
 		w = alpha + (1-alpha)*w
-		m = m + (in.Value-m)*(alpha/w) // numerically stable incremental EWM
+		m += (in.Value - m) * (alpha / w) // numerically stable incremental EWM
 	}
 	return m, w
 }
 
-// LastNMean computes the mean of the last N innings (by date asc assumed).
-func LastNMean(inn []Innings, N int) (float64, int) {
-	if N <= 0 {
-		N = 10
-	}
-	n := len(inn)
-	if n == 0 {
-		return 0, 0
-	}
-	start := 0
-	if n > N {
-		start = n - N
-	}
-	sum := 0.0
-	cnt := 0
-	for i := start; i < n; i++ {
-		sum += inn[i].Value
-		cnt++
-	}
-	if cnt == 0 {
-		return 0, 0
-	}
-	return sum / float64(cnt), cnt
-}
-
 // Consistency computes a dispersion metric; by default coefficient of variation (std/mean) on the last N innings.
 // Returns (consistency, n).
-func Consistency(inn []Innings, N int) (float64, int) {
+func Consistency(inn []Innings, n int) (float64, int) {
 	if len(inn) == 0 {
 		return 0, 0
 	}
-	// Take last N
-	n := len(inn)
+	// Take last n
+	ln := len(inn)
 	start := 0
-	if N > 0 && n > N {
-		start = n - N
+	if n > 0 && ln > n {
+		start = ln - n
 	}
-	vals := make([]float64, 0, n-start)
-	for i := start; i < n; i++ {
+	vals := make([]float64, 0, ln-start)
+	for i := start; i < ln; i++ {
 		vals = append(vals, inn[i].Value)
 	}
 	mean := 0.0

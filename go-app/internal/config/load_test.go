@@ -10,7 +10,7 @@ import (
 func writeConfigFile(t *testing.T, dir string, content string) string {
 	t.Helper()
 	p := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	return p
@@ -23,7 +23,7 @@ func TestLoad_EnvPathPrecedence(t *testing.T) {
 	tmp := t.TempDir()
 	cfgJSON := `{"inputs":{"cricsheet_dir":"/env/cricsheet"},"outputs":{"export_dir":"/env/export"}}`
 	p := filepath.Join(tmp, "custom.json")
-	if err := os.WriteFile(p, []byte(cfgJSON), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(cfgJSON), 0o600); err != nil {
 		t.Fatalf("write env cfg: %v", err)
 	}
 	t.Setenv("GO_APP_CONFIG", p)
@@ -66,7 +66,7 @@ func TestLoad_CachePersistsUntilReset(t *testing.T) {
 	p := filepath.Join(tmp, "a.json")
 	first := `{"inputs":{"cricsheet_dir":"/first"}}`
 	second := `{"inputs":{"cricsheet_dir":"/second"}}`
-	if err := os.WriteFile(p, []byte(first), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(first), 0o600); err != nil {
 		t.Fatalf("write first: %v", err)
 	}
 	t.Setenv("GO_APP_CONFIG", p)
@@ -75,7 +75,7 @@ func TestLoad_CachePersistsUntilReset(t *testing.T) {
 		t.Fatalf("expected /first, got %q", c1.Inputs.CricsheetDir)
 	}
 	// mutate file
-	if err := os.WriteFile(p, []byte(second), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(second), 0o600); err != nil {
 		t.Fatalf("write second: %v", err)
 	}
 	c2 := Load()

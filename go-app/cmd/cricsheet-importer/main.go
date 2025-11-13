@@ -14,13 +14,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Parse flags via internal CLI to unify behavior and enable testing
 	fs := flag.NewFlagSet("cricsheet-importer", flag.ContinueOnError)
 	copts, perr := cricsheetcli.ParseArgs(fs, os.Args[1:])
 	if perr != nil {
 		slog.Error("flag parsing failed", slog.Any("err", perr))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -29,12 +31,12 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	// Apply migrations to ensure schema is ready
 	if err := db.RunMigrations(ctx, "./migrations"); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Map CLI options to legacy cricsheet.Options to preserve behavior
@@ -46,7 +48,8 @@ func main() {
 	n, err := cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if err != nil {
 		slog.Error("cricsheet import failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("cricsheet-importer finished", slog.Int("files", n))
+	return 0
 }

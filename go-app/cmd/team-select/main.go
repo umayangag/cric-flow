@@ -16,12 +16,14 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	fs := flag.NewFlagSet("team-select", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parse failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -32,6 +34,7 @@ func main() {
 	runner := cmd.NewRunner(cmd.NewSelectionAdapter(), db.RealConnector{})
 	if runErr := runner.Run(ctx, opts, os.Stdout); runErr != nil {
 		slog.Error("team-select failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

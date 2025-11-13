@@ -64,7 +64,7 @@ func SelectTeamFromCSV(
 	}
 	header := records[0]
 
-	var players []predictor.PlayerPrediction
+	players := make([]predictor.PlayerPrediction, 0, len(records)-1)
 	for _, rec := range records[1:] {
 		p := predictor.PlayerPrediction{}
 		for i := range header {

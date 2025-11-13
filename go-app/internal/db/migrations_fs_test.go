@@ -82,7 +82,7 @@ func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (Rows, error) {
 		return nil, errors.New("unexpected query")
 	}
 	// deterministically list applied versions
-	var list []string
+	list := make([]string, 0, len(f.applied))
 	for v := range f.applied {
 		list = append(list, v)
 	}

@@ -1,4 +1,4 @@
-package db
+package db_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func TestCountPlayersByLowerName(t *testing.T) {
@@ -19,7 +20,7 @@ func TestCountPlayersByLowerName(t *testing.T) {
 	defer mock.Close()
 
 	// Inject our mock DB
-	SetDB(mockDB{pool: mock})
+	db.SetDB(mockDB{pool: mock})
 
 	// Happy and error paths table
 	tests := []struct {
@@ -65,7 +66,7 @@ func TestCountPlayersByLowerName(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setup()
-			got, err := CountPlayersByLowerName(ctx, tc.arg)
+			got, err := db.CountPlayersByLowerName(ctx, tc.arg)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error mismatch: %v", err)
 			}
@@ -87,13 +88,13 @@ func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 		t.Fatalf("pgxmock: %v", err)
 	}
 	defer mock.Close()
-	SetDB(mockDB{pool: mock})
+	db.SetDB(mockDB{pool: mock})
 
 	t.Run("happy -> multiple affected", func(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
 			WithArgs(1, "kumar sangakkara").
 			WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1))
-		n, err := SetIsWicketKeeperByLowerName(ctx, 1, "kumar sangakkara")
+		n, err := db.SetIsWicketKeeperByLowerName(ctx, 1, "kumar sangakkara")
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -109,7 +110,7 @@ func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
 			WithArgs(0, "foo bar").
 			WillReturnError(errors.New("fail"))
-		_, err := SetIsWicketKeeperByLowerName(ctx, 0, "foo bar")
+		_, err := db.SetIsWicketKeeperByLowerName(ctx, 0, "foo bar")
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -122,20 +123,16 @@ func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 func TestZeroKeepersExcept(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("empty list -> exec then count", func(t *testing.T) {
+	t.Run("empty list -> returns error", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
-		mock.ExpectExec(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0`)).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 10))
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(1) FROM player`)).
-			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(10)))
-		n, err := ZeroKeepersExcept(ctx, nil)
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
+		db.SetDB(mockDB{pool: mock})
+		n, err := db.ZeroKeepersExcept(ctx, nil)
+		if err == nil {
+			t.Fatalf("expected err but got nil")
 		}
-		if n != 10 {
-			t.Fatalf("count mismatch: got %d want %d", n, 10)
+		if n != 0 {
+			t.Fatalf("count mismatch: got %d want %d", n, 0)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatalf("unmet expectations: %v", err)
@@ -145,11 +142,11 @@ func TestZeroKeepersExcept(t *testing.T) {
 	t.Run("non-empty -> returning rows counted", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
+		db.SetDB(mockDB{pool: mock})
 		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1,$2) RETURNING 1`)).
 			WithArgs("adam gilchrist", "ms dhoni").
 			WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1).AddRow(1))
-		n, err := ZeroKeepersExcept(ctx, []string{"adam gilchrist", "ms dhoni"})
+		n, err := db.ZeroKeepersExcept(ctx, []string{"adam gilchrist", "ms dhoni"})
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -164,11 +161,11 @@ func TestZeroKeepersExcept(t *testing.T) {
 	t.Run("db error on returning path", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
+		db.SetDB(mockDB{pool: mock})
 		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1) RETURNING 1`)).
 			WithArgs("only one").
 			WillReturnError(errors.New("boom"))
-		if _, err := ZeroKeepersExcept(ctx, []string{"only one"}); err == nil {
+		if _, err := db.ZeroKeepersExcept(ctx, []string{"only one"}); err == nil {
 			t.Fatalf("expected error")
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {

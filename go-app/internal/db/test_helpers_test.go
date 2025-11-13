@@ -1,4 +1,4 @@
-package db
+package db_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // mockDB adapts pgxmock pool to our DB interface for tests.
@@ -26,7 +27,7 @@ func (m mockDB) Exec(ctx context.Context, sql string, args ...any) error {
 	return err
 }
 
-func (m mockDB) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+func (m mockDB) Query(ctx context.Context, sql string, args ...any) (db.Rows, error) {
 	r, err := m.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
@@ -34,10 +35,10 @@ func (m mockDB) Query(ctx context.Context, sql string, args ...any) (Rows, error
 	return mockRows{rows: r}, nil
 }
 
-func (m mockDB) QueryRow(ctx context.Context, sql string, args ...any) Row {
+func (m mockDB) QueryRow(ctx context.Context, sql string, args ...any) db.Row {
 	return mockRow{row: m.pool.QueryRow(ctx, sql, args...)}
 }
 
-func (m mockDB) Begin(_ context.Context) (Tx, error) {
+func (m mockDB) Begin(_ context.Context) (db.Tx, error) {
 	return nil, errors.New("not implemented in tests")
 }

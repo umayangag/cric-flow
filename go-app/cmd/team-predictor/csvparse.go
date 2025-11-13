@@ -26,7 +26,7 @@ func parsePlayersCSV(r io.Reader) ([]predictor.PlayerPrediction, error) {
 		return nil, fmt.Errorf("empty csv")
 	}
 	header := records[0]
-	var players []predictor.PlayerPrediction
+	players := make([]predictor.PlayerPrediction, 0, len(records)-1)
 	for _, rec := range records[1:] {
 		var p predictor.PlayerPrediction
 		for i, val := range rec {

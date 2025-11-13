@@ -17,13 +17,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Parse flags via internal CLI (testable)
 	fs := flag.NewFlagSet("import-retired", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -31,10 +33,10 @@ func main() {
 	rows, err := csvx.ParseRetiredCSV(os.DirFS("."), opts.File)
 	if err != nil {
 		slog.Error("parse csv failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	unique := map[string]struct{}{}
-	var names []string
+	names := make([]string, 0, len(rows))
 	for _, r := range rows {
 		n := strings.TrimSpace(r.Name)
 		if n == "" {
@@ -52,16 +54,16 @@ func main() {
 	if !opts.Apply {
 		if err := runner.DryRun(names, opts.OthersZero, os.Stdout); err != nil {
 			slog.Error("dry-run failed", slog.Any("err", err))
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	// Optional: run migrations to ensure schema
 	migrationsDir := os.Getenv("MIGRATIONS_DIR")
@@ -70,13 +72,14 @@ func main() {
 	}
 	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	changed, zeroed, err := runner.Apply(ctx, names, opts.OthersZero)
 	if err != nil {
 		slog.Error("apply failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("Applied", slog.Int64("marked_retired", changed), slog.Int64("zeroed_others", zeroed))
+	return 0
 }

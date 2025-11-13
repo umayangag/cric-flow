@@ -18,13 +18,15 @@ import (
 	bfsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/fielding"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// parse flags using internal CLI (table-driven tests live in internal package)
 	fs := flag.NewFlagSet("backfill-fielding", flag.ContinueOnError)
 	opts, err := bfcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -32,7 +34,7 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	repo := bfrepo.New()
@@ -40,7 +42,8 @@ func main() {
 	runner := bfcmd.NewRunner(svc)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("backfill-fielding failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("backfill-fielding completed")
+	return 0
 }

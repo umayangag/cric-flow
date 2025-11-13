@@ -106,7 +106,7 @@ func TestOSFS_ErrorPropagation(t *testing.T) {
 			arrange: func(t *testing.T) (*impl.OSFS, string) {
 				dir := t.TempDir()
 				file := filepath.Join(dir, "file.txt")
-				if writeErr := os.WriteFile(file, []byte("x"), 0o644); writeErr != nil {
+				if writeErr := os.WriteFile(file, []byte("x"), 0o600); writeErr != nil {
 					t.Fatalf("prep file: %v", writeErr)
 				}
 				return impl.New(), file

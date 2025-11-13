@@ -17,13 +17,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Parse flags via internal CLI
 	fs := flag.NewFlagSet("precompute-features", flag.ContinueOnError)
 	opts, err := pfcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -34,7 +36,7 @@ func main() {
 	// Ensure DB connection
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Apply migrations
@@ -44,13 +46,13 @@ func main() {
 	}
 	if err := db.RunMigrations(ctx, migDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	formatID, err := db.GetMatchFormatIDByCode(ctx, opts.Format)
 	if err != nil {
 		slog.Error("resolve format failed", slog.String("format", opts.Format), slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Read optional history window from config
@@ -64,9 +66,9 @@ func main() {
 	if opts.Replay {
 		if err := runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 			slog.Error("replay failed", slog.Any("err", err))
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 
 	// Single-date mode (as-of)
@@ -80,11 +82,12 @@ func main() {
 		asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
 		if parseErr != nil {
 			slog.Error("parse -as-of failed", slog.Any("err", parseErr))
-			os.Exit(1)
+			return 1
 		}
 	}
 	if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 		slog.Error("as-of run failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

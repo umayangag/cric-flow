@@ -129,7 +129,7 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	outDir := t.TempDir()
 	cmd := exec.Command("go", "run", "./cmd/export-dataset", "--unified", "--out", outDir)
 	cmd.Env = append(os.Environ(), "GO_APP_OUTPUT_DIR="+outDir)
-	cmd.Dir = filepath.Join("..") // go-app directory root
+	cmd.Dir = ".." // go-app directory root
 	if err := runWithTimeout(cmd, 60*time.Second); err != nil {
 		t.Fatalf("export unified failed: %v", err)
 	}

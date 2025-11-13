@@ -101,18 +101,19 @@ func TestRunner_Run(t *testing.T) {
 			var fs *fakeSvc
 			// Execute
 			var err error
-			if r == nil {
+			switch {
+			case r == nil:
 				// Force error check for nil runner by calling method on nil pointer through interface
 				var rnil *cmd.Runner
 				err = rnil.Run(context.Background(), tc.opts)
-			} else if tc.name == "happy path" {
+			case tc.name == "happy path":
 				// Directly test that runner delegates by constructing a runner with a fake service adapter.
 				// Use a local wrapper implementing the same signature
 				fs = &fakeSvc{}
 				// Call fake directly through expected code path
 				_, _ = fs.Run(context.Background(), tc.opts.MaxJobs, tc.opts.Apply)
 				err = nil
-			} else {
+			default:
 				err = r.Run(context.Background(), tc.opts)
 			}
 			// Assert

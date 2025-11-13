@@ -10,6 +10,7 @@ import (
 
 type assertFnG func(t *testing.T, err error)
 
+//nolint:unparam // sub is kept for future diverse cases even if tests pass same value now
 func assertErrContainsG(sub string) assertFnG {
 	return func(t *testing.T, err error) {
 		s := ""
