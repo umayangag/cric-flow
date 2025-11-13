@@ -108,3 +108,20 @@ make fmt-check
 Notes:
 - Keep feature contracts in sync with the Go app.
 - See repo root `README.md` for the end-to-end workflow (export datasets, train models, run full stack).
+
+
+
+## Centralized feature vectors (shared config)
+This service constructs input vectors based on a single shared configuration file stored at `../configs/feature_vectors.json`. The file defines ordered lists of feature names for `batting` and `bowling`. The loader in `app/feature_config.py` reads this file and returns the order at runtime.
+
+- Override path via environment:
+  - `FEATURE_CONFIG_PATH=../configs/feature_vectors.json`
+- Fallback behavior:
+  - If the file is missing or malformed, the service falls back to the legacy ordering to preserve backward compatibility with existing models/tests.
+- Interop with Go:
+  - The Go app reads and validates the same file via `go-app/internal/featurecfg` against its `internal/contracts` JSON tags, ensuring both sides use an identical order.
+
+Example (override temporarily for experiments):
+```
+FEATURE_CONFIG_PATH=$(pwd)/configs/feature_vectors.json pytest -q -k feature_config
+```
