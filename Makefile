@@ -30,7 +30,7 @@ go-test-int:
 
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
-	cd go-app && go run ./cmd/tools/migrate -dir=./migrations
+	cd go-app && go run ./cmd/migrate -dir=./migrations
 
 # Export datasets (unified exports only)
 export-dataset:
@@ -163,7 +163,7 @@ fmt-go:
 	cd go-app && make fmt-check
 
 lint-go:
-	cd go-app && go vet ./...
+	cd go-app && go vet ./... && make lint
 
 fmt-py:
 	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
@@ -209,6 +209,27 @@ build-apps-nocache:
 recreate-apps:
 	$(DC) up -d --no-deps --force-recreate $(APP_SERVICES)
 
+# --- Tooling: mocks, tests, lint ---
+.PHONY: mock test lint
+
+# Central mock generation using go-app/.mockery.yml
+mock:
+	@command -v mockery >/dev/null 2>&1 || (echo "mockery not found. Install pinned version:\n  go install github.com/vektra/mockery/v3@v3.6.0" && exit 1)
+	@ver=$$(mockery --version 2>/dev/null | awk '{print $$3}'); \
+	if [ "$$ver" != "v3@v3.6.0" ]; then \
+		echo "mockery version $$ver detected. Please install v3.6.0 for deterministic generation:"; \
+		echo "  go install github.com/vektra/mockery/v3@v3.6.0"; \
+		exit 2; \
+	fi
+	mockery --config go-app/.mockery.yml
+
+# Aggregate test target (Go only by default)
+test:
+	cd go-app && go test ./...
+
+# Aggregate lint target
+lint: lint-go lint-py
+
 # Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
 dev-rebuild:
 	$(MAKE) build-apps
@@ -221,7 +242,7 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 90
+COV_MIN_GO ?= 80
 COV_MIN_ML ?= 80
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)

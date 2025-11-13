@@ -1,0 +1,24 @@
+all: false
+inpackage: false
+filename: "{{.InterfaceName}}.go"
+formatter: goimports
+packages:
+  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/importkeepers:
+    config:
+      dir: internal/commands/importkeepers/mocks
+      pkgname: mocks
+    interfaces:
+      KeeperRepository: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset:
+    config:
+      dir: internal/commands/exportdataset/mocks
+      pkgname: mocks
+    interfaces:
+      BattingExporter: {}
+      BowlingExporter: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx:
+    config:
+      dir: internal/adapters/fsx/mocks
+      pkgname: mocks
+    interfaces:
+      FS: {}

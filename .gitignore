@@ -3,6 +3,7 @@
 __pycache__
 venv
 src/team_selection/cache
+.junie_plans/
 
 go-app/api
 go-app/coverage.out

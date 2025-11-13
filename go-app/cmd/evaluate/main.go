@@ -1,33 +1,42 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
 	"log/slog"
+	"os"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/eval"
+	clieval "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/evaluate"
+	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/evaluate"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/evaluate"
 )
 
+// demoRepo preserves existing scaffold behavior by returning fixed arrays.
+type demoRepo struct{}
+
+func (demoRepo) LoadInputs(_ context.Context, _, _ string) (svc.Inputs, error) {
+	return svc.Inputs{
+		YTrue: []float64{30, 45, 10, 60},
+		YPred: []float64{28, 40, 12, 55},
+		YWin:  []float64{1, 0, 1, 1},
+		YProb: []float64{0.7, 0.4, 0.65, 0.8},
+	}, nil
+}
+
 func main() {
-	// Scaffold: evaluate tiny fixed arrays just to prove the wiring.
-	format := flag.String("format", "T20", "Match format (e.g., T20, ODI)")
-	season := flag.String("season", "demo", "Season identifier (used for reporting only in scaffold)")
-	flag.Parse()
+	// Thin delegator: parse, wire, run.
+	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
+	opts, err := clieval.ParseArgs(fs, os.Args[1:])
+	if err != nil {
+		slog.Error("flag parsing failed", slog.Any("err", err))
+		os.Exit(1)
+	}
 
 	logger.SetupFromEnv()
 
-	yTrue := []float64{30, 45, 10, 60}
-	yPred := []float64{28, 40, 12, 55}
-
-	mae := eval.MAE(yTrue, yPred)
-	rmse := eval.RMSE(yTrue, yPred)
-
-	// Team-level example for Brier score (probability of win)
-	yWin := []float64{1, 0, 1, 1}
-	yProb := []float64{0.7, 0.4, 0.65, 0.8}
-	brier := eval.BrierScore(yWin, yProb)
-
-	slog.Info("evaluation (scaffold)", slog.String("season", *season), slog.String("format", *format))
-	fmt.Printf("MAE=%.4f RMSE=%.4f Brier=%.4f\n", mae, rmse, brier)
+	r := cmd.Runner{Repo: demoRepo{}, Out: os.Stdout}
+	if err := r.Run(context.Background(), opts); err != nil {
+		panic(err)
+	}
 }

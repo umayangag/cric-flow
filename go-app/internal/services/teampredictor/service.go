@@ -1,0 +1,35 @@
+package teampredictor
+
+import (
+	"context"
+	"errors"
+
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+)
+
+// Service orchestrates team prediction via mlclient.
+// Keep it small and deterministic; no logging here.
+
+type Service struct {
+	ML mlclient.Service
+}
+
+func NewService(c mlclient.Service) *Service { return &Service{ML: c} }
+
+func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.PredictResponse, error) {
+	if s == nil || s.ML == nil {
+		return mlclient.PredictResponse{}, errors.New("nil service or ml client")
+	}
+	if opts.MatchID <= 0 || opts.Format == "" || opts.Season == "" || opts.Bat < 0 || opts.Bowl < 0 {
+		return mlclient.PredictResponse{}, errors.New("invalid options")
+	}
+	req := mlclient.PredictRequest{
+		MatchID: opts.MatchID,
+		Format:  opts.Format,
+		Season:  opts.Season,
+		Bat:     opts.Bat,
+		Bowl:    opts.Bowl,
+	}
+	return s.ML.PredictTeam(ctx, req)
+}

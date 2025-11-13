@@ -1,60 +1,40 @@
-// Command team-select runs the end-to-end team selection pipeline analogous to src/team_selection/select_pool.py
+// Command team-select selects a team for a given match by applying simple
+// constraints to a candidate player pool loaded from DB or CSV.
+// Thin wrapper: parse via internal CLI, wire deps, delegate to internal runner.
 package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"log/slog"
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
+	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teamselect"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
 )
 
-func main() {
-	logger.SetupFromEnv()
-	cfg := config.Load()
+func main() { os.Exit(run()) }
 
-	opts, err := parseFlags(os.Args[1:], cfg)
+func run() int {
+	fs := flag.NewFlagSet("team-select", flag.ContinueOnError)
+	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
+		slog.Error("flag parse failed", slog.Any("err", err))
+		return 2
 	}
 
+	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// Ensure DB connection available when using DB mode
-	if opts.fromDB {
-		if _, err := db.Connect(ctx); err != nil {
-			slog.Error("db connect failed", slog.Any("err", err))
-			os.Exit(1)
-		}
+	// Build runner with selector adapter and DB connector (only used when FromDB)
+	runner := cmd.NewRunner(cmd.NewSelectionAdapter(), db.RealConnector{})
+	if runErr := runner.Run(ctx, opts, os.Stdout); runErr != nil {
+		slog.Error("team-select failed", slog.Any("err", runErr))
+		return 1
 	}
-
-	selOpts := selection.Options{
-		TeamSize:      opts.teamSize,
-		MinBowlers:    opts.minBowlers,
-		RequireKeeper: opts.requireKeeper,
-	}
-	var res selection.Result
-	if opts.fromDB {
-		res, err = selection.SelectTeam(ctx, opts.matchID, opts.formatCode, opts.seasonName, selOpts)
-	} else {
-		res, err = selection.SelectTeamFromCSV(ctx, opts.poolPath, opts.matchID, opts.formatCode, opts.seasonName, selOpts)
-	}
-	if err != nil {
-		slog.Error("selection failed", slog.Any("err", err))
-		os.Exit(1)
-	}
-
-	fmt.Printf("Selected Team (size=%d) — Team Win Prob: %.4f\n", len(res.Players), res.TeamWinProbability)
-	fmt.Println("-----------------------------------------------------------")
-	for i, p := range res.Players {
-		fmt.Printf("%2d. %-24s  win=%.4f  bat_pos=%.0f  runs=%.1f  wkts=%.1f\n",
-			i+1, p.PlayerName, p.WinningProbability, p.BattingPosition, p.RunsScored, p.WicketsTaken)
-	}
+	return 0
 }

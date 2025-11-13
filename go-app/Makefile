@@ -21,7 +21,7 @@ build:
 
 build-migrate:
 	@mkdir -p bin
-	GOFLAGS=$(GOFLAGS) CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(MIGRATE_BIN) ./cmd/tools/migrate
+	GOFLAGS=$(GOFLAGS) CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(MIGRATE_BIN) ./cmd/migrate
 
 migrate: build-migrate
 	POSTGRES_HOST=$(POSTGRES_HOST) POSTGRES_PORT=$(POSTGRES_PORT) POSTGRES_DB=$(POSTGRES_DB) POSTGRES_USER=$(POSTGRES_USER) POSTGRES_PASSWORD=$(POSTGRES_PASSWORD) POSTGRES_SSLMODE=$(POSTGRES_SSLMODE) \
@@ -77,11 +77,8 @@ evaluate:
 fmt:
 	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
 	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	@files=$$( (git diff --name-only --diff-filter=ACMR; git diff --name-only --cached --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\.go$$' | sort -u || true); \
-	if [ -z "$$files" ]; then echo "No modified/uncommitted .go files to format."; exit 0; fi; \
-	echo "Formatting modified/uncommitted files:" $$files; \
-	gofumpt -w $$files; \
-	golines -w -m 120 $$files
+	gofumpt -w .
+	golines -w -m 120 .
 
 # Optional: check-only formatting status similar to CI
 fmt-check:
@@ -145,7 +142,9 @@ COV_MIN ?= 80
 
 # Generate coverage profile for selected packages (gate scope)
 coverage:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+	@PKGS="$(COVERAGE_PACKAGES)"; \
+	if [ -z "$$PKGS" ]; then PKGS="./..."; fi; \
+	go test -covermode=atomic -coverprofile=coverage.out $$PKGS
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:
@@ -192,8 +191,8 @@ import-keepers:
 .PHONY: mocks mocks-clean
 
 mocks:
-	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v2@latest" && exit 1)
-	mockery --config .mockery.yaml
+	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v3@v3.6.0" && exit 1)
+	mockery --config .mockery.yml
 
 mocks-clean:
 	rm -rf internal/**/mocks
