@@ -19,13 +19,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Parse flags via internal CLI
 	fs := flag.NewFlagSet("import-keepers", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -34,13 +36,13 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	rows, err := csvx.ParseKeepersCSV(os.DirFS("."), opts.File)
 	if err != nil {
 		slog.Error("parse CSV failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("parsed keeper rows", slog.Int("rows", len(rows)), slog.String("file", opts.File))
 
@@ -55,14 +57,15 @@ func main() {
 	if !opts.Apply {
 		if err := runner.Preview(ctx, targets, opts.OthersZero); err != nil {
 			slog.Error("dry-run failed", slog.Any("err", err))
-			os.Exit(1)
+			return 1
 		}
 		fmt.Println("dry-run complete. Re-run with --apply to persist changes.")
-		return
+		return 0
 	}
 	if err := runner.Apply(ctx, targets, opts.OthersZero); err != nil {
 		slog.Error("apply failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	fmt.Println("apply complete.")
+	return 0
 }

@@ -18,14 +18,16 @@ import (
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Phase 2: delegate flag parsing and output dir preparation to internal packages.
 	fs := flag.NewFlagSet("export-dataset", flag.ContinueOnError)
 	opts, err := exportcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		// Preserve legacy behavior: print error and exit similar to flag.Parse failure.
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 	// Ensure output directory precedence: flag > env (handled by parser) > config.DefaultExportDir()
 	if opts.OutDir == "" {
@@ -44,7 +46,7 @@ func main() {
 
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
@@ -55,8 +57,9 @@ func main() {
 	runner := expcmd.NewRunnerWithServices(fsys, bat, bow)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
+	return 0
 }

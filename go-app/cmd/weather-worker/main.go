@@ -21,12 +21,14 @@ import (
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	fs := flag.NewFlagSet("weather-worker", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parse failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -34,7 +36,7 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Jobs source from env (comma separated match IDs), e.g., WEATHER_MATCH_IDS="1193505,1193506"
@@ -48,9 +50,10 @@ func main() {
 	runner := cmd.NewRunner(service)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("weather-worker failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("weather-worker completed")
+	return 0
 }
 
 func parseIDs(csv string) []int64 {

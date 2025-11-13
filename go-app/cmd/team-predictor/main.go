@@ -17,12 +17,14 @@ import (
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	fs := flag.NewFlagSet("team-predictor", flag.ContinueOnError)
 	opts, err := cli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parse failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -34,10 +36,11 @@ func main() {
 	resp, runErr := runner.Run(ctx, opts)
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
 	// Render simple output (players, one per line)
 	for i, p := range resp.Players {
 		fmt.Printf("%d. %s\n", i+1, p)
 	}
+	return 0
 }

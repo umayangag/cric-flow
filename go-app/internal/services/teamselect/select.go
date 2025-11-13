@@ -37,7 +37,7 @@ func Select(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
 		return si > sj
 	})
 	// First pass: greedily take best players respecting constraints minimally.
-	var team []Player
+	team := make([]Player, 0, c.Size)
 	bowCount := 0
 	keeperSeen := false
 	for _, p := range scored {

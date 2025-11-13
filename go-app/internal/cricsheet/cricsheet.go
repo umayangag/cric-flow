@@ -2,7 +2,7 @@
 package cricsheet
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -215,14 +215,18 @@ func Parse(r io.Reader) (*Match, error) {
 // StableMatchID returns a deterministic int64 based on date + team names.
 func StableMatchID(dateISO, teamA, teamB string) int64 {
 	arr := []byte(fmt.Sprintf("%s|%s|%s", dateISO, teamA, teamB))
-	h := md5.Sum(arr)
+	h := sha256.Sum256(arr)
 	hex10 := hex.EncodeToString(h[:])[:10]
 	var v uint64
 	if _, err := fmt.Sscanf(hex10, "%x", &v); err != nil {
 		// Fallback to zero if parsing fails; unlikely given fixed hex source
 		v = 0
 	}
-	// bound into 12-digit space, then cast to int64
+	// bound into 12-digit space
 	v = (v % 900000000000) + 100000000000
+	// guard uint64 -> int64 conversion (gosec G115)
+	if v > math.MaxInt64 {
+		v = uint64(math.MaxInt64)
+	}
 	return int64(v)
 }

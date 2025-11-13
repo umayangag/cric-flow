@@ -6,7 +6,9 @@ import (
 )
 
 func TestRNG_DeterministicWithSeed(t *testing.T) {
+	//nolint:gosec // deterministic math/rand is intentional for testing repeatability
 	r1 := New(mrand.New(mrand.NewSource(1)))
+	//nolint:gosec // deterministic math/rand is intentional for testing repeatability
 	r2 := New(mrand.New(mrand.NewSource(1)))
 
 	vals1 := []int{r1.Intn(100), r1.Intn(100), r1.Intn(100)}
@@ -20,6 +22,7 @@ func TestRNG_DeterministicWithSeed(t *testing.T) {
 }
 
 func TestRNG_SeedAffectsSequence(t *testing.T) {
+	//nolint:gosec // deterministic math/rand is intentional for testing repeatability
 	r := New(mrand.New(mrand.NewSource(0)))
 	_ = []int{r.Intn(100), r.Intn(100)} // burn a couple
 	r.Seed(42)

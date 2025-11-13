@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -34,14 +36,8 @@ func SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName stri
 // ZeroKeepersExcept sets is_wicket_keeper=0 where lower(player_name) NOT IN list.
 func ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error) {
 	if len(lowerNames) == 0 {
-		if err := Exec(ctx, `UPDATE player SET is_wicket_keeper = 0`); err != nil {
-			return 0, err
-		}
-		var n int64
-		if err := QueryRow(ctx, `SELECT COUNT(1) FROM player`).Scan(&n); err != nil {
-			return 0, err
-		}
-		return n, nil
+		slog.Warn("ZeroKeepersExcept called with empty list")
+		return 0, errors.New("empty list")
 	}
 	b := strings.Builder{}
 	b.WriteString(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (`)

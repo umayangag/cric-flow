@@ -20,13 +20,15 @@ import (
 	wsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	// Parse flags via internal CLI (unit-tested)
 	fs := flag.NewFlagSet("weather-import", flag.ContinueOnError)
 	opts, err := wcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
-		os.Exit(2)
+		return 2
 	}
 
 	logger.SetupFromEnv()
@@ -34,7 +36,7 @@ func main() {
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Provider selection (default dummy). Additional providers can be added later.
@@ -45,7 +47,8 @@ func main() {
 	runner := wcmd.NewRunner(svc)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("weather-import failed", slog.Any("err", runErr))
-		os.Exit(1)
+		return 1
 	}
 	slog.Info("weather-import completed", slog.Int64("match", opts.MatchID))
+	return 0
 }

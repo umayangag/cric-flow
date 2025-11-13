@@ -24,7 +24,7 @@ func ComputePendingMigrations(fileNames []string, applied []string) []string {
 		}
 	}
 	sort.Strings(sqlFiles)
-	var pending []string
+	pending := make([]string, 0, len(sqlFiles))
 	for _, f := range sqlFiles {
 		if _, ok := appliedSet[f]; ok {
 			continue

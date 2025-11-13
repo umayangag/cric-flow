@@ -15,12 +15,16 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	logger.SetupFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("database connection failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Run migrations on startup (idempotent)
@@ -30,7 +34,7 @@ func main() {
 	}
 	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Initialize long-lived dependencies
@@ -45,8 +49,19 @@ func main() {
 		addr = ":" + v
 	}
 	slog.Info("API listening", slog.String("address", addr))
-	if err := http.ListenAndServe(addr, r); err != nil {
-		slog.Error("server exited", slog.Any("err", err))
-		os.Exit(1)
+
+	// Use http.Server to set timeouts (gosec G114)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Error("server exited", slog.Any("err", err))
+		return 1
+	}
+	return 0
 }

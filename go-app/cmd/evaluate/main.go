@@ -29,7 +29,8 @@ func main() {
 	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
 	opts, err := clieval.ParseArgs(fs, os.Args[1:])
 	if err != nil {
-		panic(err)
+		slog.Error("flag parsing failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 
 	logger.SetupFromEnv()

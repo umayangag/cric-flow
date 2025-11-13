@@ -1,4 +1,4 @@
-package db
+package db_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func TestGetMatchDate(t *testing.T) {
@@ -17,13 +18,13 @@ func TestGetMatchDate(t *testing.T) {
 	t.Run("happy -> returns time", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
-		Pool = &pgxpool.Pool{}
+		db.SetDB(mockDB{pool: mock})
+		db.Pool = &pgxpool.Pool{}
 		ts := time.Date(2020, 5, 17, 0, 0, 0, 0, time.UTC)
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
 			WithArgs(int64(42)).
 			WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(ts))
-		got, err := GetMatchDate(ctx, 42)
+		got, err := db.GetMatchDate(ctx, 42)
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -38,12 +39,12 @@ func TestGetMatchDate(t *testing.T) {
 	t.Run("null -> returns nil", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
-		Pool = &pgxpool.Pool{}
+		db.SetDB(mockDB{pool: mock})
+		db.Pool = &pgxpool.Pool{}
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
 			WithArgs(int64(7)).
 			WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(nil))
-		got, err := GetMatchDate(ctx, 7)
+		got, err := db.GetMatchDate(ctx, 7)
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -58,11 +59,11 @@ func TestGetMatchDate(t *testing.T) {
 	t.Run("db error", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
-		SetDB(mockDB{pool: mock})
+		db.SetDB(mockDB{pool: mock})
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
 			WithArgs(int64(99)).
 			WillReturnError(errors.New("boom"))
-		if _, err := GetMatchDate(ctx, 99); err == nil {
+		if _, err := db.GetMatchDate(ctx, 99); err == nil {
 			t.Fatalf("expected error")
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
