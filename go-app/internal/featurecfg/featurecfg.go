@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,7 +26,11 @@ type Config struct {
 // relative to the go-app directory.
 func DefaultPath() string {
 	// go-app/internal/featurecfg -> go-app -> repo root -> configs/feature_vectors.json
-	wd, _ := os.Getwd()
+	wd, err := os.Getwd()
+	if err != nil {
+		slog.Error("could not get current working dir", slog.Any("err", err))
+		panic(err)
+	}
 	// Try to find repo root by looking for go.work near cwd; fall back to relative path
 	// Keep it simple: assume running from go-app or repo root in tests/CI.
 	// Prefer ../configs when current dir is go-app, otherwise ./configs at repo root.
