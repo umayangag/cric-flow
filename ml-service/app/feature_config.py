@@ -68,7 +68,7 @@ def get_feature_names(kind: str) -> List[str]:
     if isinstance(data, dict):
         names = data.get(kind) or []
     if kind == "batting":
-        return names if len(names) == len(_DEFAULT_BATTING) else list(_DEFAULT_BATTING)
+        return names if names else list(_DEFAULT_BATTING)
     if kind == "bowling":
-        return names if len(names) == len(_DEFAULT_BOWLING) else list(_DEFAULT_BOWLING)
+        return names if names else list(_DEFAULT_BOWLING)
     raise ValueError(f"unknown feature kind: {kind}")
