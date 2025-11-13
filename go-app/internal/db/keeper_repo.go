@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
 )
@@ -41,8 +43,23 @@ func ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error) 
 		}
 		return n, nil
 	}
-	q := `UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (SELECT unnest($1::text[])) RETURNING 1`
-	rows, err := Query(ctx, q, lowerNames)
+	b := strings.Builder{}
+	b.WriteString(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN (`)
+	for i := range lowerNames {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString("$")
+		b.WriteString(strconv.Itoa(i + 1))
+	}
+	b.WriteString(`) RETURNING 1`)
+
+	// Build numbered placeholders and args.
+	args := make([]any, 0, len(lowerNames))
+	for _, s := range lowerNames {
+		args = append(args, s)
+	}
+	rows, err := Query(ctx, b.String(), args...)
 	if err != nil {
 		return 0, err
 	}
