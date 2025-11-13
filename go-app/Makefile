@@ -191,7 +191,7 @@ import-keepers:
 .PHONY: mocks mocks-clean
 
 mocks:
-	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: brew install mockery" && exit 1)
+	@command -v mockery >/dev/null 2>&1 || (echo "Install mockery: go install github.com/vektra/mockery/v3@v3.6.0" && exit 1)
 	mockery --config .mockery.yml
 
 mocks-clean:

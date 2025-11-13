@@ -81,7 +81,7 @@ make install-hooks
 ## Mocks
 - Install pinned mockery once (for deterministic generation):
 ```
-go install github.com/vektra/mockery/v2@v3.5.5
+go install github.com/vektra/mockery/v3@v3.6.0
 ```
 - Generate/update mocks from repo root using `.mockery.yaml`:
 ```
