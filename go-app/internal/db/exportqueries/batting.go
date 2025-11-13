@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	pgx "github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
 )
 
 // BattingUnifiedRows returns CSV-shaped rows for the unified batting export.
@@ -163,7 +163,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	out := make([][]string, 0, 2048)
 	out = append(out, headers)
 	for rows.Next() {
-		vals, err := scanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +264,7 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 	out = append(out, headers)
 
 	for rows.Next() {
-		vals, err := scanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +383,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
-		vals, err := scanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -503,7 +503,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
-		vals, err := scanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -513,60 +513,4 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-// scanToStrings scans the current row into a []any and converts to []string
-// mirroring the conversion helpers used in cmd/export-dataset.
-func scanToStrings(r pgx.Rows, n int) ([]string, error) {
-	dests := make([]any, n)
-	for i := 0; i < n; i++ {
-		var v any
-		dests[i] = &v
-	}
-	if err := r.Scan(dests...); err != nil {
-		return nil, err
-	}
-	out := make([]string, n)
-	for i := 0; i < n; i++ {
-		v := *(dests[i].(*any))
-		out[i] = anyToString(v)
-	}
-	return out, nil
-}
-
-func anyToString(v any) string {
-	switch t := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	case int64:
-		return fmt.Sprintf("%d", t)
-	case int32:
-		return fmt.Sprintf("%d", t)
-	case int:
-		return fmt.Sprintf("%d", t)
-	case float32:
-		return trimFloat(fmt.Sprintf("%g", float64(t)))
-	case float64:
-		return trimFloat(fmt.Sprintf("%g", t))
-	case bool:
-		if t {
-			return "1"
-		}
-		return "0"
-	default:
-		return fmt.Sprintf("%v", t)
-	}
-}
-
-func trimFloat(s string) string {
-	// normalize representations like 1.000000 → 1
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return s
 }

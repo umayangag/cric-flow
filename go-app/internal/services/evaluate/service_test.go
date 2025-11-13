@@ -41,10 +41,7 @@ func approx(a, b, eps float64) bool {
 	if math.IsNaN(a) && math.IsNaN(b) {
 		return true
 	}
-	if a > b {
-		return a-b < eps
-	}
-	return b-a < eps
+	return math.Abs(b-a) < eps
 }
 
 func TestComputeMetrics(t *testing.T) {

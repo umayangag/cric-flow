@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	pgx "github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
 )
 
 // BowlingUnifiedRows returns CSV-shaped rows for the unified bowling export.
@@ -161,7 +161,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	out := make([][]string, 0, 2048)
 	out = append(out, headers)
 	for rows.Next() {
-		vals, err := scanToStringsB(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +243,7 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 	out = append(out, headers)
 
 	for rows.Next() {
-		vals, err := scanToStringsB(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -362,7 +362,7 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
-		vals, err := scanToStringsB(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(headers))
 		if err != nil {
 			return nil, err
 		}
@@ -463,7 +463,7 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	out = append(out, headers)
 	fmtcode := strings.ToUpper(strings.TrimSpace(format))
 	for rows.Next() {
-		vals, err := scanToStringsB(rows, len(headers)-1)
+		vals, err := scanx.ScanToStrings(rows, len(headers)-1)
 		if err != nil {
 			return nil, err
 		}
@@ -474,58 +474,4 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-// scanToStringsB mirrors scanToStrings with a local copy to avoid cross-file deps.
-func scanToStringsB(r pgx.Rows, n int) ([]string, error) {
-	dests := make([]any, n)
-	for i := 0; i < n; i++ {
-		var v any
-		dests[i] = &v
-	}
-	if err := r.Scan(dests...); err != nil {
-		return nil, err
-	}
-	out := make([]string, n)
-	for i := 0; i < n; i++ {
-		v := *(dests[i].(*any))
-		out[i] = anyToStringB(v)
-	}
-	return out, nil
-}
-
-func anyToStringB(v any) string {
-	switch t := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	case int64:
-		return fmt.Sprintf("%d", t)
-	case int32:
-		return fmt.Sprintf("%d", t)
-	case int:
-		return fmt.Sprintf("%d", t)
-	case float32:
-		return trimFloatB(fmt.Sprintf("%g", float64(t)))
-	case float64:
-		return trimFloatB(fmt.Sprintf("%g", t))
-	case bool:
-		if t {
-			return "1"
-		}
-		return "0"
-	default:
-		return fmt.Sprintf("%v", t)
-	}
-}
-
-func trimFloatB(s string) string {
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return s
 }
