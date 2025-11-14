@@ -116,8 +116,8 @@ This service constructs input vectors based on a single shared configuration fil
 
 - Override path via environment:
   - `FEATURE_CONFIG_PATH=../configs/feature_vectors.json`
-- Fallback behavior:
-  - If the file is missing or malformed, the service falls back to the legacy ordering to preserve backward compatibility with existing models/tests.
+- Behavior when missing/invalid:
+  - If the file is missing or malformed, the service will fail fast with a clear error. Set `FEATURE_CONFIG_PATH` or ensure `configs/feature_vectors.json` exists and is valid.
 - Interop with Go:
   - The Go app reads and validates the same file via `go-app/internal/featurecfg` against its `internal/contracts` JSON tags, ensuring both sides use an identical order.
 

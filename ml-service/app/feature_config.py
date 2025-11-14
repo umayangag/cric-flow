@@ -9,42 +9,6 @@ from .logging import get_struct_logger, init_logging
 init_logging(service="ml-service", version="0.3.0")
 logger = get_struct_logger()
 
-# Legacy default orders (retained only for reference; not used as runtime fallback)
-_DEFAULT_BATTING = [
-    "batting_consistency",
-    "batting_form",
-    "batting_temp",
-    "batting_wind",
-    "batting_rain",
-    "batting_humidity",
-    "batting_cloud",
-    "batting_pressure",
-    "batting_viscosity",
-    "batting_inning",
-    "batting_session",
-    "toss",
-    "venue",
-    "opposition",
-    "season",
-]
-
-_DEFAULT_BOWLING = [
-    "bowling_consistency",
-    "bowling_form",
-    "bowling_temp",
-    "bowling_wind",
-    "bowling_rain",
-    "bowling_humidity",
-    "bowling_cloud",
-    "bowling_pressure",
-    "bowling_viscosity",
-    "batting_inning",
-    "bowling_session",
-    "toss",
-    "bowling_venue",
-    "bowling_opposition",
-    "season",
-]
 
 
 class FeatureConfigError(RuntimeError):

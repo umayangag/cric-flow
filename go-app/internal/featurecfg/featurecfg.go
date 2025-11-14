@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,20 +24,20 @@ type Config struct {
 // DefaultPath resolves the repo-root default path to configs/feature_vectors.json
 // by walking up from the current directory until a repository marker is found.
 // Repository markers checked (in order): go.work, .git directory.
-func DefaultPath() string {
+// Returns the resolved path or an error if the current working directory cannot be determined.
+func DefaultPath() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		slog.Error("could not get current working dir", slog.Any("err", err))
-		return ""
+		return "", fmt.Errorf("featurecfg: could not determine current working directory: %w", err)
 	}
 	// Walk upwards to locate repository root
 	d := wd
 	for i := 0; i < 10; i++ { // guard to avoid infinite loops
 		if _, err := os.Stat(filepath.Join(d, "go.work")); err == nil {
-			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json"))
+			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json")), nil
 		}
 		if info, err := os.Stat(filepath.Join(d, ".git")); err == nil && info.IsDir() {
-			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json"))
+			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json")), nil
 		}
 		parent := filepath.Dir(d)
 		if parent == d { // reached filesystem root
@@ -47,14 +46,18 @@ func DefaultPath() string {
 		d = parent
 	}
 	// Fallback to starting directory under configs
-	return filepath.Clean(filepath.Join(wd, "configs", "feature_vectors.json"))
+	return filepath.Clean(filepath.Join(wd, "configs", "feature_vectors.json")), nil
 }
 
 // LoadFromEnv loads the config using FEATURE_CONFIG_PATH if set, otherwise DefaultPath().
 func LoadFromEnv() (Config, error) {
 	p := strings.TrimSpace(os.Getenv("FEATURE_CONFIG_PATH"))
 	if p == "" {
-		p = DefaultPath()
+		var err error
+		p, err = DefaultPath()
+		if err != nil {
+			return Config{}, fmt.Errorf("featurecfg: unable to resolve default config path: %w", err)
+		}
 	}
 	return Load(p)
 }

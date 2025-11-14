@@ -291,7 +291,7 @@ FEATURE_CONFIG_PATH=./configs/feature_vectors.json
 ```
 
 Notes:
-- If the file is missing or invalid, ml-service falls back to the legacy order to remain backward-compatible with existing tests and artifacts.
+- If the file is missing or invalid, ml-service will fail fast with a clear error. Set `FEATURE_CONFIG_PATH` or ensure `configs/feature_vectors.json` exists and is valid.
 - go-app loader will return an error if the file is missing or contains invalid names.
 
 Verification commands:
