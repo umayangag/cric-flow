@@ -23,20 +23,30 @@ type Config struct {
 }
 
 // DefaultPath resolves the repo-root default path to configs/feature_vectors.json
-// relative to the go-app directory.
+// by walking up from the current directory until a repository marker is found.
+// Repository markers checked (in order): go.work, .git directory.
 func DefaultPath() string {
-	// go-app/internal/featurecfg -> go-app -> repo root -> configs/feature_vectors.json
 	wd, err := os.Getwd()
 	if err != nil {
 		slog.Error("could not get current working dir", slog.Any("err", err))
 		return ""
 	}
-	// Try to find repo root by looking for go.work near cwd; fall back to relative path
-	// Keep it simple: assume running from go-app or repo root in tests/CI.
-	// Prefer ../configs when current dir is go-app, otherwise ./configs at repo root.
-	if strings.HasSuffix(filepath.Base(wd), "go-app") {
-		return filepath.Clean(filepath.Join(wd, "..", "configs", "feature_vectors.json"))
+	// Walk upwards to locate repository root
+	d := wd
+	for i := 0; i < 10; i++ { // guard to avoid infinite loops
+		if _, err := os.Stat(filepath.Join(d, "go.work")); err == nil {
+			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json"))
+		}
+		if info, err := os.Stat(filepath.Join(d, ".git")); err == nil && info.IsDir() {
+			return filepath.Clean(filepath.Join(d, "configs", "feature_vectors.json"))
+		}
+		parent := filepath.Dir(d)
+		if parent == d { // reached filesystem root
+			break
+		}
+		d = parent
 	}
+	// Fallback to starting directory under configs
 	return filepath.Clean(filepath.Join(wd, "configs", "feature_vectors.json"))
 }
 
