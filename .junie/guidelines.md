@@ -59,5 +59,8 @@
 ## Project-Specific
 - `src/` is prototype reference; do not modify.
 - Project not live; prefer clarity/maintainability over legacy.
+- No need of backward compatibility or support for legacy features.
 - Restructure when it streamlines (outside `src/`).
 - Ensure code is tested and documented (Makefile, README).
+- All python code is in ml-service/
+- All go code is in go-app/

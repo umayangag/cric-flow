@@ -16,7 +16,7 @@ from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .errors import error_payload
-from .features import batting_feature_vector
+from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -194,46 +194,6 @@ try:
 except Exception:
     # Don't crash on load errors; endpoints will fall back to zeros or return helpful errors
     pass
-
-
-def _batting_feature_vector(f: BattingFeatures) -> List[float]:
-    return [
-        f.batting_consistency,
-        f.batting_form,
-        f.batting_temp,
-        f.batting_wind,
-        f.batting_rain,
-        f.batting_humidity,
-        f.batting_cloud,
-        f.batting_pressure,
-        f.batting_viscosity,
-        f.batting_inning,
-        f.batting_session,
-        f.toss,
-        f.venue,
-        f.opposition,
-        f.season,
-    ]
-
-
-def _bowling_feature_vector(f: BowlingFeatures) -> List[float]:
-    return [
-        f.bowling_consistency,
-        f.bowling_form,
-        f.bowling_temp,
-        f.bowling_wind,
-        f.bowling_rain,
-        f.bowling_humidity,
-        f.bowling_cloud,
-        f.bowling_pressure,
-        f.bowling_viscosity,
-        f.batting_inning,
-        f.bowling_session,
-        f.toss,
-        f.bowling_venue,
-        f.bowling_opposition,
-        f.season,
-    ]
 
 
 @app.get("/health")
@@ -432,7 +392,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
     logger.info(
         "predict.bowling.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BOWL_MODELS else "")
     )
-    X = np.array([_bowling_feature_vector(f) for f in features], dtype=float)
+    X = np.array([bowling_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
     try:
@@ -477,7 +437,7 @@ async def predict_win(players: List[PlayerPrediction]):
 
     logger.info("predict.win.start", players=len(players))
     try:
-        df = pd.DataFrame([p.dict() for p in players])
+        df = pd.DataFrame([p.model_dump() for p in players])
         predictions, _ = predict_for_team(df)
         out = [PlayerPrediction(**p) for p in predictions.to_dict("records")]
         logger.info("predict.win.success", players=len(out))
@@ -506,7 +466,7 @@ async def predict_win_wrapped(players: List[PlayerPrediction]):
             ),
         )
 
-    df = pd.DataFrame([p.dict() for p in players])
+    df = pd.DataFrame([p.model_dump() for p in players])
     predictions, team_mean = predict_for_team(df)
     wrapped = TeamWinResponse(
         players=[PlayerPrediction(**p) for p in predictions.to_dict("records")],

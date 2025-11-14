@@ -271,3 +271,33 @@ Examples:
 Notes:
 - Fatal exits happen only in `main` packages; internal libraries never call `os.Exit` or `panic` for routine errors.
 - Non-fatal cleanup errors (e.g., `Close`/`Flush`) are logged at `warn` level.
+
+
+
+## Centralized Feature Vectors (shared config)
+To prevent drift between the Go app and the Python ML service, the ordered feature names for batting and bowling are defined once in a shared JSON config:
+
+- File: `configs/feature_vectors.json`
+- Schema keys: `batting` and `bowling`, each a 15-element ordered list of feature field names matching the public contracts in both services.
+
+Both services consume this configuration:
+- ml-service: builds its input vectors dynamically using `app/feature_config.py` (which reads `FEATURE_CONFIG_PATH` or defaults to `../configs/feature_vectors.json` relative to the repo).
+- go-app: provides a loader/validator in `go-app/internal/featurecfg` that reads the same file and validates names against `internal/contracts` JSON tags.
+
+Override path for experiments or custom deployments via environment variable (both services honor it):
+
+```
+FEATURE_CONFIG_PATH=./configs/feature_vectors.json
+```
+
+Notes:
+- If the file is missing or invalid, ml-service will fail fast with a clear error. Set `FEATURE_CONFIG_PATH` or ensure `configs/feature_vectors.json` exists and is valid.
+- go-app loader will return an error if the file is missing or contains invalid names.
+
+Verification commands:
+- Go tests:
+  - `cd go-app && go test ./...`
+- Python tests (requires a Python venv with deps installed):
+  - `cd ml-service && pytest -q`
+
+To experiment with a different order locally without changing the repo file, point `FEATURE_CONFIG_PATH` at a temporary JSON file and run tests; they should reflect your custom order in vector construction.
