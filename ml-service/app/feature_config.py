@@ -1,10 +1,14 @@
 import json
 import os
 from functools import lru_cache
-from logging import get_logger
 from typing import List
 
-logger = get_logger(__name__)
+from .logging import get_struct_logger, init_logging
+
+# Initialize logging early
+init_logging(service="ml-service", version="0.3.0")
+logger = get_struct_logger()
+
 # Legacy default orders (kept as fallback if config missing)
 _DEFAULT_BATTING = [
     "batting_consistency",
