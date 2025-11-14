@@ -10,7 +10,6 @@ init_logging(service="ml-service", version="0.3.0")
 logger = get_struct_logger()
 
 
-
 class FeatureConfigError(RuntimeError):
     """Raised when feature names cannot be loaded from the shared configuration file."""
 
