@@ -3,7 +3,7 @@ import os
 from functools import lru_cache
 from typing import List
 
-from pip._internal.utils.logging import getLogger
+from logging import getLogger
 
 logger = getLogger(__name__)
 # Legacy default orders (kept as fallback if config missing)
