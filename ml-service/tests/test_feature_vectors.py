@@ -26,7 +26,7 @@ def test_batting_feature_vector_length(tmp_path):
         player_name="P",
         format="ODI",
     )
-    vec = m._batting_feature_vector(f)
+    vec = m.batting_feature_vector(f)
     assert isinstance(vec, list)
     assert len(vec) == 15
 
@@ -55,6 +55,6 @@ def test_bowling_feature_vector_length(tmp_path):
         player_name="P",
         format="ODI",
     )
-    vec = m._bowling_feature_vector(f)
+    vec = m.bowling_feature_vector(f)
     assert isinstance(vec, list)
     assert len(vec) == 15

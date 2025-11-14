@@ -76,7 +76,7 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "format": "ODI",
     }
     bf = m.BattingFeatures(**bat_kwargs)
-    vec = m._batting_feature_vector(bf)
+    vec = m.batting_feature_vector(bf)
     assert vec == [bat_kwargs[name] for name in cfg["batting"]]
 
     bowl_kwargs = {
@@ -99,5 +99,5 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "format": "ODI",
     }
     bwf = m.BowlingFeatures(**bowl_kwargs)
-    vec2 = m._bowling_feature_vector(bwf)
+    vec2 = m.bowling_feature_vector(bwf)
     assert vec2 == [bowl_kwargs[name] for name in cfg["bowling"]]
