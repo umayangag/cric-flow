@@ -47,9 +47,13 @@ def _default_config_path() -> str:
     return os.path.normpath(os.path.join(here, "..", "..", "configs", "feature_vectors.json"))
 
 
-@lru_cache(maxsize=1)
-def _load_config() -> dict:
-    path = os.environ.get("FEATURE_CONFIG_PATH") or _default_config_path()
+def _config_path() -> str:
+    # Resolve the path each time so the cache key changes if the env var changes.
+    return os.environ.get("FEATURE_CONFIG_PATH") or _default_config_path()
+
+
+@lru_cache(maxsize=None)
+def _load_config(path: str) -> dict:
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -63,7 +67,7 @@ def _load_config() -> dict:
 
 def get_feature_names(kind: str) -> List[str]:
     kind = kind.lower().strip()
-    data = _load_config()
+    data = _load_config(_config_path())
     names = []
     if isinstance(data, dict):
         names = data.get(kind) or []
