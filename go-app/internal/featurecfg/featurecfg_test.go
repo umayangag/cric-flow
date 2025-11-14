@@ -50,7 +50,7 @@ func TestLoad_InvalidName(t *testing.T) {
 		"bowling": {"bowling_consistency"},
 	}
 	b, _ := json.Marshal(bad)
-	if err := os.WriteFile(path, b, 0444); err != nil {
+	if err := os.WriteFile(path, b, 0600); err != nil {
 		t.Fatalf("write temp: %v", err)
 	}
 	_, err := Load(path)
