@@ -67,7 +67,7 @@ def _load_config(path: str) -> dict:
     except FileNotFoundError:
         # This is an expected case when no custom config is provided.
         return {}
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         # Silent fallback is intentional, but log a warning.
         logger.warning("Failed to load or parse feature config from %s, falling back to defaults. Error: %s", path, e)
         return {}
