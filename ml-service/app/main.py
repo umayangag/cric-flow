@@ -453,7 +453,7 @@ async def predict_win(players: List[PlayerPrediction]):
 
     logger.info("predict.win.start", players=len(players))
     try:
-        df = pd.DataFrame([p.dict() for p in players])
+        df = pd.DataFrame([p.model_dump() for p in players])
         predictions, _ = predict_for_team(df)
         out = [PlayerPrediction(**p) for p in predictions.to_dict("records")]
         logger.info("predict.win.success", players=len(out))
@@ -482,7 +482,7 @@ async def predict_win_wrapped(players: List[PlayerPrediction]):
             ),
         )
 
-    df = pd.DataFrame([p.dict() for p in players])
+    df = pd.DataFrame([p.model_dump() for p in players])
     predictions, team_mean = predict_for_team(df)
     wrapped = TeamWinResponse(
         players=[PlayerPrediction(**p) for p in predictions.to_dict("records")],
