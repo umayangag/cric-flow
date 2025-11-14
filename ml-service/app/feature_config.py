@@ -1,9 +1,8 @@
 import json
 import os
 from functools import lru_cache
-from typing import List
-
 from logging import getLogger
+from typing import List
 
 logger = getLogger(__name__)
 # Legacy default orders (kept as fallback if config missing)
