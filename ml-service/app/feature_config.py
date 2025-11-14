@@ -3,6 +3,9 @@ import os
 from functools import lru_cache
 from typing import List
 
+from pip._internal.utils.logging import getLogger
+
+logger = getLogger(__name__)
 # Legacy default orders (kept as fallback if config missing)
 _DEFAULT_BATTING = [
     "batting_consistency",
@@ -58,7 +61,7 @@ def _load_config(path: str) -> dict:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
             if not isinstance(data, dict):
-                logging.warning("Feature config at %s is not a dictionary, falling back to defaults.", path)
+                logger.warning("Feature config at %s is not a dictionary, falling back to defaults.", path)
                 return {}
             return data
     except FileNotFoundError:
@@ -66,7 +69,7 @@ def _load_config(path: str) -> dict:
         return {}
     except Exception as e:
         # Silent fallback is intentional, but log a warning.
-        logging.warning("Failed to load or parse feature config from %s, falling back to defaults. Error: %s", path, e)
+        logger.warning("Failed to load or parse feature config from %s, falling back to defaults. Error: %s", path, e)
         return {}
 
 

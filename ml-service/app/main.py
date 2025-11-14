@@ -16,6 +16,7 @@ from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .errors import error_payload
+from .feature_config import get_feature_names
 from .features import batting_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 
@@ -198,16 +199,12 @@ except Exception:
 
 def _batting_feature_vector(f: BattingFeatures) -> List[float]:
     # Build vector dynamically from centralized feature config
-    from .feature_config import get_feature_names
-
     names = get_feature_names("batting")
     return [getattr(f, n) for n in names]
 
 
 def _bowling_feature_vector(f: BowlingFeatures) -> List[float]:
     # Build vector dynamically from centralized feature config
-    from .feature_config import get_feature_names
-
     names = get_feature_names("bowling")
     return [getattr(f, n) for n in names]
 
