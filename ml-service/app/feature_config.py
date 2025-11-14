@@ -1,10 +1,10 @@
 import json
 import os
 from functools import lru_cache
-from logging import getLogger
+from logging import get_logger
 from typing import List
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 # Legacy default orders (kept as fallback if config missing)
 _DEFAULT_BATTING = [
     "batting_consistency",
