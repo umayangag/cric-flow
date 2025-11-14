@@ -29,7 +29,7 @@ func DefaultPath() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		slog.Error("could not get current working dir", slog.Any("err", err))
-		panic(err)
+		return ""
 	}
 	// Try to find repo root by looking for go.work near cwd; fall back to relative path
 	// Keep it simple: assume running from go-app or repo root in tests/CI.

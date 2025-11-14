@@ -52,8 +52,6 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
 
     m_config = importlib.import_module("app.feature_config")
     importlib.reload(m_config)
-    m_config = importlib.import_module("app.feature_config")
-    importlib.reload(m_config)
     m = importlib.import_module("app.main")
     importlib.reload(m)
 
