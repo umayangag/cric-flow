@@ -196,8 +196,6 @@ except Exception:
     pass
 
 
-
-
 @app.get("/health")
 async def health():
     logger.info("health.check.start")

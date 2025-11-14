@@ -73,7 +73,9 @@ def _load_config(path: str) -> dict:
                 raise FeatureConfigError(msg)
             return data
     except FileNotFoundError as e:
-        msg = f"Feature config file not found at {path}. Set FEATURE_CONFIG_PATH or provide configs/feature_vectors.json."
+        msg = (
+            f"Feature config file not found at {path}. Set FEATURE_CONFIG_PATH or provide configs/feature_vectors.json."
+        )
         logger.error(msg)
         raise FeatureConfigError(msg) from e
     except (json.JSONDecodeError, OSError) as e:
