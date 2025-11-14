@@ -16,8 +16,7 @@ from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .errors import error_payload
-from .feature_config import get_feature_names
-from .features import batting_feature_vector
+from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -197,16 +196,6 @@ except Exception:
     pass
 
 
-def _batting_feature_vector(f: BattingFeatures) -> List[float]:
-    # Build vector dynamically from centralized feature config
-    names = get_feature_names("batting")
-    return [getattr(f, n) for n in names]
-
-
-def _bowling_feature_vector(f: BowlingFeatures) -> List[float]:
-    # Build vector dynamically from centralized feature config
-    names = get_feature_names("bowling")
-    return [getattr(f, n) for n in names]
 
 
 @app.get("/health")
@@ -405,7 +394,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
     logger.info(
         "predict.bowling.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BOWL_MODELS else "")
     )
-    X = np.array([_bowling_feature_vector(f) for f in features], dtype=float)
+    X = np.array([bowling_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
     try:

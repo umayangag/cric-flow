@@ -9,7 +9,7 @@ from .logging import get_struct_logger, init_logging
 init_logging(service="ml-service", version="0.3.0")
 logger = get_struct_logger()
 
-# Legacy default orders (kept as fallback if config missing)
+# Legacy default orders (retained only for reference; not used as runtime fallback)
 _DEFAULT_BATTING = [
     "batting_consistency",
     "batting_form",
@@ -47,6 +47,10 @@ _DEFAULT_BOWLING = [
 ]
 
 
+class FeatureConfigError(RuntimeError):
+    """Raised when feature names cannot be loaded from the shared configuration file."""
+
+
 def _default_config_path() -> str:
     # repo root: ../../ from app/, then configs/feature_vectors.json
     here = os.path.dirname(__file__)
@@ -64,26 +68,41 @@ def _load_config(path: str) -> dict:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
             if not isinstance(data, dict):
-                logger.warning("Feature config at %s is not a dictionary, falling back to defaults.", path)
-                return {}
+                msg = f"Feature config at {path} is not a JSON object (dict)."
+                logger.error(msg)
+                raise FeatureConfigError(msg)
             return data
-    except FileNotFoundError:
-        # This is an expected case when no custom config is provided.
-        return {}
+    except FileNotFoundError as e:
+        msg = f"Feature config file not found at {path}. Set FEATURE_CONFIG_PATH or provide configs/feature_vectors.json."
+        logger.error(msg)
+        raise FeatureConfigError(msg) from e
     except (json.JSONDecodeError, OSError) as e:
-        # Silent fallback is intentional, but log a warning.
-        logger.warning("Failed to load or parse feature config from %s, falling back to defaults. Error: %s", path, e)
-        return {}
+        msg = f"Failed to load or parse feature config from {path}: {e}"
+        logger.error(msg)
+        raise FeatureConfigError(msg) from e
 
 
 def get_feature_names(kind: str) -> List[str]:
     kind = kind.lower().strip()
-    data = _load_config(_config_path())
-    names = []
-    if isinstance(data, dict):
-        names = data.get(kind) or []
-    if kind == "batting":
-        return names if names else list(_DEFAULT_BATTING)
-    if kind == "bowling":
-        return names if names else list(_DEFAULT_BOWLING)
-    raise ValueError(f"unknown feature kind: {kind}")
+    if kind not in {"batting", "bowling"}:
+        raise ValueError(f"unknown feature kind: {kind}")
+
+    path = _config_path()
+    data = _load_config(path)
+
+    names = data.get(kind)
+    if not isinstance(names, list) or not names:
+        msg = (
+            f"Feature names for kind '{kind}' are missing or invalid in shared config at {path}. "
+            f"Ensure the key '{kind}' exists with a non-empty list of feature names."
+        )
+        logger.error(msg)
+        raise FeatureConfigError(msg)
+
+    # Basic structural validation: all names must be strings
+    if not all(isinstance(n, str) and n for n in names):
+        msg = f"Feature names for kind '{kind}' must be a list of non-empty strings in {path}."
+        logger.error(msg)
+        raise FeatureConfigError(msg)
+
+    return names
