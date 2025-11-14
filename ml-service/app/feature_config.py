@@ -58,10 +58,15 @@ def _load_config(path: str) -> dict:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
             if not isinstance(data, dict):
+                logging.warning("Feature config at %s is not a dictionary, falling back to defaults.", path)
                 return {}
             return data
-    except Exception:
-        # Silent fallback is intentional to preserve backward compat
+    except FileNotFoundError:
+        # This is an expected case when no custom config is provided.
+        return {}
+    except Exception as e:
+        # Silent fallback is intentional, but log a warning.
+        logging.warning("Failed to load or parse feature config from %s, falling back to defaults. Error: %s", path, e)
         return {}
 
 
