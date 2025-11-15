@@ -66,4 +66,4 @@
 - Ensure code is tested and documented (Makefile, README).
 - All python code is in ml-service/
 - All go code is in go-app/
-- No need to be backwared compatible. no backfilling or preserving old features. It is always easier to start fresh.
+- No need to be backward compatible. no backfilling or preserving old features. It is always easier to start fresh.
