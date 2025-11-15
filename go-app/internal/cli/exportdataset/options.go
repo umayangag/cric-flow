@@ -15,6 +15,7 @@ type Options struct {
 	Formats       []string // empty => caller may decide defaults
 	Unified       bool
 	InferenceOnly bool
+	EnableSeq     bool // gate sequence feature columns in exporter
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -26,14 +27,20 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var allFormats bool
 	var unified bool
 	var inferenceOnly bool
+	var enableSeq bool
 
 	defOut := os.Getenv("GO_APP_OUTPUT_DIR")
+	// Default for enable-seq from env; accepted truthy values: 1, true, yes (case-insensitive)
+	defSeqEnv := os.Getenv("ENABLE_SEQ_FEATURES")
+	defEnableSeq := defSeqEnv == "1" || strings.EqualFold(defSeqEnv, "true") || strings.EqualFold(defSeqEnv, "yes")
+
 	fs.StringVar(&outDir, "out", defOut, "output directory for exported CSVs")
 	fs.StringVar(&format, "format", "", "single format code (TEST, ODI, T20, T20I)")
 	fs.StringVar(&formats, "formats", "", "comma-separated list of format codes")
 	fs.BoolVar(&allFormats, "all-formats", false, "export for all formats")
 	fs.BoolVar(&unified, "unified", false, "export single merged CSV per task across all formats")
 	fs.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference")
+	fs.BoolVar(&enableSeq, "enable-seq", defEnableSeq, "enable sequence feature columns (can also set ENABLE_SEQ_FEATURES=1)")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -49,6 +56,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		Formats:       list,
 		Unified:       unified,
 		InferenceOnly: inferenceOnly,
+		EnableSeq:     enableSeq,
 	}, nil
 }
 

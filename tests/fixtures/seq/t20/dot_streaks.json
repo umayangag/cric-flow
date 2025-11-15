@@ -1,0 +1,30 @@
+{
+  "format": "T20",
+  "match_id": 3,
+  "innings": 1,
+  "comment": "Sequences engineered to test behavior after k consecutive dots (k=0..3) and after boundary/wicket events.",
+  "sequences": [
+    {"label": "k=0 start", "deliveries": [
+      {"over":1, "ball":1, "is_legal":true,  "ball_seq":1,  "striker_id":111, "non_striker_id":112, "bowler_id":211, "runs_batter":1, "runs_extras":0, "runs_total":1, "extras_kind":null, "wicket_kind":null, "player_out_id":null}
+    ]},
+    {"label": "k=1 dot then single", "deliveries": [
+      {"over":1, "ball":2, "is_legal":true,  "ball_seq":2,  "striker_id":111, "non_striker_id":112, "bowler_id":211, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":1, "ball":3, "is_legal":true,  "ball_seq":3,  "striker_id":111, "non_striker_id":112, "bowler_id":211, "runs_batter":1, "runs_extras":0, "runs_total":1, "extras_kind":null, "wicket_kind":null, "player_out_id":null}
+    ]},
+    {"label": "k=2 dots then boundary", "deliveries": [
+      {"over":1, "ball":4, "is_legal":true,  "ball_seq":4,  "striker_id":112, "non_striker_id":111, "bowler_id":211, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":1, "ball":5, "is_legal":true,  "ball_seq":5,  "striker_id":112, "non_striker_id":111, "bowler_id":211, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":1, "ball":6, "is_legal":true,  "ball_seq":6,  "striker_id":112, "non_striker_id":111, "bowler_id":211, "runs_batter":4, "runs_extras":0, "runs_total":4, "extras_kind":null, "wicket_kind":null, "player_out_id":null}
+    ]},
+    {"label": "k=3 dots then wicket", "deliveries": [
+      {"over":2, "ball":1, "is_legal":true,  "ball_seq":7,  "striker_id":111, "non_striker_id":112, "bowler_id":212, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":2, "ball":2, "is_legal":true,  "ball_seq":8,  "striker_id":111, "non_striker_id":112, "bowler_id":212, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":2, "ball":3, "is_legal":true,  "ball_seq":9,  "striker_id":111, "non_striker_id":112, "bowler_id":212, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":2, "ball":4, "is_legal":true,  "ball_seq":10, "striker_id":111, "non_striker_id":112, "bowler_id":212, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":"lbw", "player_out_id":111}
+    ]},
+    {"label": "after boundary reaction", "deliveries": [
+      {"over":2, "ball":5, "is_legal":true,  "ball_seq":11, "striker_id":113, "non_striker_id":112, "bowler_id":212, "runs_batter":4, "runs_extras":0, "runs_total":4, "extras_kind":null, "wicket_kind":null, "player_out_id":null},
+      {"over":2, "ball":6, "is_legal":true,  "ball_seq":12, "striker_id":113, "non_striker_id":112, "bowler_id":212, "runs_batter":0, "runs_extras":0, "runs_total":0, "extras_kind":null, "wicket_kind":null, "player_out_id":null}
+    ]}
+  ]
+}
