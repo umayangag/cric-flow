@@ -7,7 +7,7 @@ PIP:=$(VENV)/bin/pip
 DC:=docker-compose
 APP_SERVICES:=go-api ml-service
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset precompute go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -37,6 +37,18 @@ export-dataset:
 	# Unified, cross-format CSVs with as-of per-format features
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
 
+# Convenience targets for sequence feature workflows (FORMAT defaults to T20)
+precompute-seq:
+	cd go-app && go run ./cmd/precompute-sequence-features -format=$(FORMAT) -targets=all
+
+export-off:
+	# Baseline export without optional sequence columns
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
+
+export-on:
+	# Export with sequence columns appended (flag and env gate)
+	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 go run ./cmd/export-dataset -format=$(FORMAT) -enable-seq=1
+
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
 	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations go run ./cmd/api
@@ -47,6 +59,7 @@ ml-serve:
 
 # Variables for convenience (override like: make team-predictor MATCH=123 BAT=6 BOWL=5)
 SEASON ?= 2019
+FORMAT ?= T20
 MATCH ?= 0
 BAT ?= 6
 BOWL ?= 5
@@ -291,8 +304,11 @@ help:
 	@echo "  migrate            Run DB migrations"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB"
 	@echo "  precompute         Trigger precompute (via API)"
-	@echo "  export-dataset     Export training datasets"
-	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"
+	@echo "  precompute-seq     Precompute sequence features: go-app/cmd/precompute-sequence-features (FORMAT?=$(FORMAT))"
+	@echo "  export-dataset     Export training datasets (unified)"
+	@echo "  export-off         Export without seq columns for FORMAT (default T20)"
+	@echo "  export-on          Export with seq columns appended for FORMAT (uses -enable-seq and ENABLE_SEQ_FEATURES=1)"
+	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"} !*** json ?>
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  go-test            Run Go unit tests"

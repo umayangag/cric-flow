@@ -6,15 +6,14 @@ from typing import Tuple
 
 import joblib  # type: ignore
 import numpy as np
-import pandas as pd
 from sklearn.linear_model import LogisticRegression  # type: ignore
-from sklearn.preprocessing import StandardScaler  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
+from sklearn.preprocessing import StandardScaler  # type: ignore
 
 from ml_service.datasets import (
-    load_batting_dataframe,
-    build_feature_matrix,
     BATTING_SEQ_COLUMNS,
+    build_feature_matrix,
+    load_batting_dataframe,
 )
 
 
@@ -50,10 +49,12 @@ def train_from_csv(
         y = np.zeros((X.shape[0],), dtype=int)
 
     # Very small, deterministic pipeline
-    pipe = Pipeline([
-        ("scaler", StandardScaler(with_mean=True, with_std=True)),
-        ("clf", LogisticRegression(max_iter=100, random_state=random_state)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler(with_mean=True, with_std=True)),
+            ("clf", LogisticRegression(max_iter=100, random_state=random_state)),
+        ]
+    )
     pipe.fit(X, y)
 
     _ensure_output_dir(model_out_path)

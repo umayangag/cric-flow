@@ -2,14 +2,13 @@ import os
 import pathlib
 
 import numpy as np
-import pandas as pd
 
 from ml_service.datasets import (
-    load_batting_dataframe,
-    load_bowling_dataframe,
-    build_feature_matrix,
     BATTING_SEQ_COLUMNS,
     BOWLING_SEQ_COLUMNS,
+    build_feature_matrix,
+    load_batting_dataframe,
+    load_bowling_dataframe,
 )
 
 

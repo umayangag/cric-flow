@@ -325,6 +325,16 @@ cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
   go run ./cmd/export-dataset -format=T20 -enable-seq=1
 ```
 
+Convenience Make targets:
+```
+# Precompute sequence features (FORMAT defaults to T20)
+make precompute-seq FORMAT=T20
+
+# Exporter OFF vs ON for a given format
+make export-off FORMAT=T20
+make export-on  FORMAT=T20
+```
+
 Bowling columns added when ON:
 - `bowl_prev_bowler_id`, `bowl_prev_phase`, `bowl_prev_wkt_rate`
 - `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`
