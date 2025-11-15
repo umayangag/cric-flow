@@ -86,7 +86,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// Create a temp table with the exact columns we intend to insert.
 	// Using CTAS to inherit column types from ball_event while restricting to insert columns only.
 	_, err = tx.Exec(ctx, `
-        CREATE TEMP TABLE ball_event_stage AS
+        CREATE TEMP TABLE ball_event AS
         SELECT 
             match_id::bigint,
             innings::int,
@@ -138,7 +138,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// Perform COPY INTO the staging table.
 	_, err = tx.CopyFrom(
 		ctx,
-		pgx.Identifier{"ball_event_stage"},
+		pgx.Identifier{"ball_event"},
 		[]string{
 			"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase",
 			"striker_id", "non_striker_id", "bowler_id",
@@ -164,7 +164,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
-        FROM ball_event_stage
+        FROM ball_event
         ON CONFLICT (match_id, innings, over, ball) DO NOTHING
     `)
 	if err != nil {
