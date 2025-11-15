@@ -132,3 +132,38 @@ func TestAggregateWicketModes_PhaseSeparation(t *testing.T) {
 		t.Fatalf("death unexpected counts: %+v", *death)
 	}
 }
+
+func TestAggregateWicketModes_FormatMapping(t *testing.T) {
+	asOf := time.Date(2024, 9, 11, 0, 0, 0, 0, time.UTC)
+	bowler := int64(4242)
+	cases := []struct {
+		name  string
+		fmtID int
+	}{
+		{"ODI", 2},
+		{"TEST", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := []evRowWK{
+				// two legal balls, one wicket in given format
+				evWK(9, 1, 1, "middle", true, bowler, 0, "", 0, "", asOf, tc.fmtID),
+				evWK(9, 1, 2, "middle", true, bowler, 0, "", 999, "lbw", asOf, tc.fmtID),
+			}
+			agg := aggregateWicketModes(rows)
+			if len(agg) == 0 {
+				t.Fatalf("expected rows for format %d", tc.fmtID)
+			}
+			found := false
+			for i := range agg {
+				if agg[i].FormatID == tc.fmtID && agg[i].PlayerID == bowler {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("did not find aggregated row for fmt %d", tc.fmtID)
+			}
+		})
+	}
+}

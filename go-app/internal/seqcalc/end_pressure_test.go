@@ -167,3 +167,46 @@ func TestAggregateEndPressure_PhaseSeparation(t *testing.T) {
 		t.Fatalf("unexpected phase separation: powerplay=%d death=%d", pp, death)
 	}
 }
+
+// 1.13.1 — Multi-format mapping tests for end_pressure
+func TestAggregateEndPressure_FormatMapping(t *testing.T) {
+	asOf := time.Date(2024, 9, 14, 0, 0, 0, 0, time.UTC)
+	bow := int64(8181)
+	cases := []struct {
+		name  string
+		fmtID int
+	}{
+		{"ODI", 2},
+		{"TEST", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seq := []evRowEP{
+				// Over 10 with six legal balls so positions 5 and 6 exist
+				evEP(10, 1, 10, 1, "middle", true, bow, 0, 0, 0, asOf, tc.fmtID),   // pos1
+				evEP(10, 1, 10, 2, "middle", true, bow, 0, 0, 0, asOf, tc.fmtID),   // pos2
+				evEP(10, 1, 10, 3, "middle", true, bow, 0, 0, 0, asOf, tc.fmtID),   // pos3
+				evEP(10, 1, 10, 4, "middle", true, bow, 0, 0, 0, asOf, tc.fmtID),   // pos4
+				evEP(10, 1, 10, 5, "middle", true, bow, 4, 4, 0, asOf, tc.fmtID),   // pos5 boundary
+				evEP(10, 1, 10, 6, "middle", true, bow, 0, 0, 123, asOf, tc.fmtID), // pos6 wicket
+			}
+			rows := aggregateEndPressure(seq)
+			if len(rows) == 0 {
+				t.Fatalf("expected rows for format %d", tc.fmtID)
+			}
+			found5 := false
+			found6 := false
+			for i := range rows {
+				if rows[i].FormatID == tc.fmtID && rows[i].PlayerID == bow && rows[i].Position == 5 {
+					found5 = true
+				}
+				if rows[i].FormatID == tc.fmtID && rows[i].PlayerID == bow && rows[i].Position == 6 {
+					found6 = true
+				}
+			}
+			if !(found5 && found6) {
+				t.Fatalf("did not find both positions for fmt %d: p5=%v p6=%v", tc.fmtID, found5, found6)
+			}
+		})
+	}
+}

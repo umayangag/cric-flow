@@ -153,3 +153,40 @@ func TestAggregateSpells_BreakCreatesNewSpell(t *testing.T) {
 		t.Fatalf("unexpected ball counts: first=%d later=%d", r.FirstOversBalls, r.LaterOversBalls)
 	}
 }
+
+func TestAggregateSpells_FormatMapping(t *testing.T) {
+	asOf := time.Date(2024, 9, 12, 0, 0, 0, 0, time.UTC)
+	bow := int64(707)
+	phase := "middle"
+	cases := []struct {
+		name  string
+		fmtID int
+	}{
+		{"ODI", 2},
+		{"TEST", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seq := []evRowSpell{
+				// One over only so it's the first-over part of a spell
+				evS(5, 1, 10, 1, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
+				evS(5, 1, 10, 2, phase, true, bow, 1, 1, "", 0, asOf, tc.fmtID),
+				evS(5, 1, 10, 3, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
+				evS(5, 1, 10, 4, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
+				evS(5, 1, 10, 5, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
+				evS(5, 1, 10, 6, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
+			}
+			rows := aggregateSpells(seq)
+			if len(rows) == 0 {
+				t.Fatalf("expected rows for format %d", tc.fmtID)
+			}
+			r := rows[0]
+			if r.FormatID != tc.fmtID {
+				t.Fatalf("wrong format id: got %d want %d", r.FormatID, tc.fmtID)
+			}
+			if r.PlayerID != bow {
+				t.Fatalf("unexpected player id: %d", r.PlayerID)
+			}
+		})
+	}
+}

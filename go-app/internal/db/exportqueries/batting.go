@@ -144,13 +144,20 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
 	) t20vv ON TRUE`
 
+	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
+	if IsSeqEnabled(ctx) {
+		seqFields, seqJoins := BuildBattingSeqFragments(ctx)
+		if len(seqFields) > 0 {
+			q = fmt.Sprintf("SELECT base.*, %s FROM (%s) base %s", strings.Join(seqFields, ", "), q, seqJoins)
+		}
+	}
 	rows, err := db.Pool.Query(ctx, q, ids...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	headers := []string{
+	baseHeaders := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
@@ -160,10 +167,11 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 		"bat_form_T20I_asof", "bat_consistency_T20I_asof", "bat_vs_opp_T20I_asof", "bat_at_venue_T20I_asof",
 		"bat_form_T20_asof", "bat_consistency_T20_asof", "bat_vs_opp_T20_asof", "bat_at_venue_T20_asof",
 	}
+	finalHeaders := AppendSeqIfEnabled(ctx, baseHeaders, BattingSeqHeaders())
 	out := make([][]string, 0, 2048)
-	out = append(out, headers)
+	out = append(out, finalHeaders)
 	for rows.Next() {
-		vals, err := scanx.ScanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(finalHeaders))
 		if err != nil {
 			return nil, err
 		}

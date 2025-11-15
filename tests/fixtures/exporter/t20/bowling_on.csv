@@ -1,0 +1,4 @@
+overs,balls,player_name,bowl_prev_bowler_id,bowl_prev_phase,bowl_prev_wkt_rate,bowl_window_econ_24_death,bowl_window_wkt_rate_24_death,bowl_extras_wide_rate_pp,bowl_react_after_boundary_wkt_rate_next,bowl_spell_first_over_wkt_rate,bowl_over_ball1_wkt_rate,bowl_over_ball6_wkt_rate
+2,12,Alice,201,powerplay,12.5,8.5,24.0,0.80,5.0,10.0,0.05,0.07
+4,24,Bob,202,death,15.0,7.8,20.0,0.60,7.5,9.0,0.04,0.06
+1,6,Chris,0,middle,0.0,9.2,18.0,0.50,2.0,8.0,0.03,0.05

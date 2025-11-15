@@ -38,7 +38,7 @@
 - Prefer clarity; descriptive long names (no abbreviations).
 - Restructure when it simplifies flow.
 - Reuse code; keep functions small; modular design.
-- Robust error handling; never suppress errors.
+- Robust error handling; never suppress errors. Log and return.
 - Comments explain why.
 - Singleton logger per project; log success and error paths.
 

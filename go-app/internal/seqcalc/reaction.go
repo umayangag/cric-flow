@@ -100,7 +100,7 @@ func queryEvents(ctx context.Context, formatIDs []int) ([]evRow, error) {
 		  be.match_id, be.innings, be.ball_seq, be.phase,
 		  be.is_legal,
 		  be.striker_id, be.bowler_id, be.runs_batter, be.runs_total, be.extras_kind, be.player_out_id,
-		  md.match_date, md.format_id
+    COALESCE(md.match_date, md.date, CURRENT_DATE) AS match_date, md.format_id
 		FROM ball_event be
 		JOIN match_details md ON md.match_id = be.match_id
 		WHERE md.format_id IN (%s)
@@ -115,6 +115,7 @@ func queryEvents(ctx context.Context, formatIDs []int) ([]evRow, error) {
 	for dr.Next() {
 		var r evRow
 		if err := dr.Scan(&r.MatchID, &r.Innings, &r.BallSeq, &r.Phase,
+			&r.IsLegal,
 			&r.StrikerID, &r.BowlerID, &r.RunsBatter, &r.RunsTotal, &r.ExtrasKind, &r.PlayerOutID,
 			&r.AsOf, &r.FormatID); err != nil {
 			return nil, err

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
 
@@ -68,5 +69,9 @@ func run(args []string, out io.Writer) error {
 		return seqcalc.DryRun(out, calcs, params)
 	}
 	ctx := context.Background()
+	// Establish DB connection so calculators can write results.
+	if _, err := db.Connect(ctx); err != nil {
+		return fmt.Errorf("db connect failed: %w", err)
+	}
 	return seqcalc.Run(ctx, calcs, params, false)
 }

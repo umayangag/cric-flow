@@ -144,3 +144,38 @@ func TestAggregateOverPos_PhaseSeparation(t *testing.T) {
 		t.Fatalf("phase separation missing: %+v", agg)
 	}
 }
+
+// 1.13.1 — Multi-format mapping tests for overpos
+func TestAggregateOverPos_FormatMapping(t *testing.T) {
+	asOf := time.Date(2024, 9, 13, 0, 0, 0, 0, time.UTC)
+	bow := int64(9090)
+	cases := []struct {
+		name  string
+		fmtID int
+	}{
+		{"ODI", 2},
+		{"TEST", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := []evRowOverPos{
+				// one legal ball at position 1 for simplicity
+				evOP(7, 1, 3, 1, "middle", true, bow, 0, 0, asOf, tc.fmtID),
+			}
+			agg := aggregateOverPos(rows)
+			if len(agg) == 0 {
+				t.Fatalf("expected rows for format %d", tc.fmtID)
+			}
+			found := false
+			for i := range agg {
+				if agg[i].FormatID == tc.fmtID && agg[i].PlayerID == bow {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("did not find aggregated row for fmt %d", tc.fmtID)
+			}
+		})
+	}
+}

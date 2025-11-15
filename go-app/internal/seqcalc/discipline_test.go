@@ -100,3 +100,35 @@ func TestAggregateDiscipline_BasicCountsAndRates(t *testing.T) {
 		t.Fatalf("rates unexpected: WPO=%v NBPO=%v EXPO=%v (extras_total=%d)", r.WidesPerOver, r.NoBallsPerOver, r.ExtrasPerOver, r.ExtrasTotal)
 	}
 }
+
+func TestAggregateDiscipline_FormatMapping(t *testing.T) {
+	asOf := time.Date(2024, 9, 10, 0, 0, 0, 0, time.UTC)
+	bowler := int64(909)
+	cases := []struct {
+		name  string
+		fmtID int
+	}{
+		{"ODI", 2},
+		{"TEST", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seq := []evRow{
+				// two legal balls in powerplay
+				evD(10, 1, 1, "powerplay", true, 101, bowler, 0, 0, "", 0, asOf, tc.fmtID),
+				evD(10, 1, 2, "powerplay", true, 101, bowler, 1, 1, "", 0, asOf, tc.fmtID),
+			}
+			rows := aggregateDiscipline(seq)
+			if len(rows) == 0 {
+				t.Fatalf("expected rows for format %d", tc.fmtID)
+			}
+			r := rows[0]
+			if r.FormatID != tc.fmtID {
+				t.Fatalf("wrong format id: got %d want %d", r.FormatID, tc.fmtID)
+			}
+			if r.PlayerID != bowler {
+				t.Fatalf("unexpected player id: %d", r.PlayerID)
+			}
+		})
+	}
+}

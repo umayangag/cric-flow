@@ -143,12 +143,19 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
 		) t20vv ON TRUE`
+	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
+	if IsSeqEnabled(ctx) {
+		seqFields, seqJoins := BuildBowlingSeqFragments(ctx)
+		if len(seqFields) > 0 {
+			q = fmt.Sprintf("SELECT base.*, %s FROM (%s) base %s", strings.Join(seqFields, ", "), q, seqJoins)
+		}
+	}
 	rows, err := db.Pool.Query(ctx, q, ids...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
+	baseHeaders := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
@@ -158,10 +165,11 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
 		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
 	}
+	finalHeaders := AppendSeqIfEnabled(ctx, baseHeaders, BowlingSeqHeaders())
 	out := make([][]string, 0, 2048)
-	out = append(out, headers)
+	out = append(out, finalHeaders)
 	for rows.Next() {
-		vals, err := scanx.ScanToStrings(rows, len(headers))
+		vals, err := scanx.ScanToStrings(rows, len(finalHeaders))
 		if err != nil {
 			return nil, err
 		}
@@ -426,7 +434,9 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE WHERE md.format_id = $1`
+		) tvv ON TRUE 
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id 
+		WHERE md.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return nil, err
