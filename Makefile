@@ -308,7 +308,7 @@ help:
 	@echo "  export-dataset     Export training datasets (unified)"
 	@echo "  export-off         Export without seq columns for FORMAT (default T20)"
 	@echo "  export-on          Export with seq columns appended for FORMAT (uses -enable-seq and ENABLE_SEQ_FEATURES=1)"
-	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"} !*** json ?>
+	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"}
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  go-test            Run Go unit tests"

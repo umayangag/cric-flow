@@ -3,10 +3,14 @@ package phase
 import "strings"
 
 const (
-	PhasePowerplay = "powerplay"
-	PhaseMiddle    = "middle"
-	PhaseDeath     = "death"
-	PhaseAll       = "all"
+	PhasePowerplay    = "powerplay"
+	PhaseMiddle       = "middle"
+	PhaseDeath        = "death"
+	PhaseAll          = "all"
+	t20PowerplayBalls = 36
+	t20DeathStartBall = 91
+	odiPowerplayBalls = 60
+	odiDeathStartBall = 241
 )
 
 // PhaseForCode determines the innings phase for a given canonical format code.
@@ -54,11 +58,11 @@ func PhaseFor(formatID, ballSeq, inningsLength int) string {
 //     For shortened innings (<91 legal balls), we do not classify any ball as death.
 //   - Middle: all between.
 func phaseT20(ballSeq, inningsLength int) string {
-	if ballSeq <= 36 {
+	if ballSeq <= t20PowerplayBalls {
 		return PhasePowerplay
 	}
 	// Death window starts at ball 91, but only if innings is long enough.
-	if ballSeq >= 91 && (inningsLength == 0 || 91 <= inningsLength) {
+	if ballSeq >= t20DeathStartBall && (inningsLength == 0 || t20DeathStartBall <= inningsLength) {
 		return PhaseDeath
 	}
 	return PhaseMiddle
@@ -70,10 +74,10 @@ func phaseT20(ballSeq, inningsLength int) string {
 //     For shortened innings (<241 legal balls), we do not classify any ball as death.
 //   - Middle: all between.
 func phaseODI(ballSeq, inningsLength int) string {
-	if ballSeq <= 60 {
+	if ballSeq <= odiPowerplayBalls {
 		return PhasePowerplay
 	}
-	if ballSeq >= 241 && (inningsLength == 0 || 241 <= inningsLength) {
+	if ballSeq >= odiDeathStartBall && (inningsLength == 0 || odiDeathStartBall <= inningsLength) {
 		return PhaseDeath
 	}
 	return PhaseMiddle

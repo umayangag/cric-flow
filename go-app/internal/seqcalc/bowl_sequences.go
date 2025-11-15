@@ -205,44 +205,40 @@ type overKey struct {
 
 // pairConsecutiveOvers groups consecutive completed overs within the same match and innings into A→B pairs.
 func pairConsecutiveOvers(seq []overSummary) []pairAgg {
-	var out []pairAgg
+	aggs := make(map[overKey]*pairAgg)
 	var prev overSummary
 	var hasPrev bool
+
 	for _, o := range seq {
 		if hasPrev && o.matchID == prev.matchID && o.innings == prev.innings {
 			k := overKey{date: o.date, format: o.format, phase: o.phase, prev: prev.bowler, curr: o.bowler}
-			// accumulate
-			var idx = -1
-			for i := range out {
-				if out[i].date == k.date && out[i].format == k.format && out[i].phase == k.phase && out[i].prevBowler == k.prev && out[i].currBowler == k.curr {
-					idx = i
-					break
-				}
-			}
-			if idx == -1 {
-				out = append(out, pairAgg{
+
+			agg, ok := aggs[k]
+			if !ok {
+				agg = &pairAgg{
 					date:       k.date,
 					format:     k.format,
 					prevBowler: k.prev,
 					currBowler: k.curr,
 					phase:      k.phase,
-					oversPairs: 0,
-					balls:      0,
-					runs:       0,
-					wickets:    0,
-					dots:       0,
-				})
-				idx = len(out) - 1
+				}
+				aggs[k] = agg
 			}
-			out[idx].oversPairs++
+
+			agg.oversPairs++
 			// Note: metrics are attributed to the current over (B) in the A→B pair
-			out[idx].balls += o.balls
-			out[idx].runs += o.runs
-			out[idx].wickets += o.wickets
-			out[idx].dots += o.dots
+			agg.balls += o.balls
+			agg.runs += o.runs
+			agg.wickets += o.wickets
+			agg.dots += o.dots
 		}
 		prev = o
 		hasPrev = true
+	}
+
+	out := make([]pairAgg, 0, len(aggs))
+	for _, agg := range aggs {
+		out = append(out, *agg)
 	}
 	return out
 }

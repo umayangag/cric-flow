@@ -11,10 +11,6 @@ import (
 // EmitBallEventsT20 emits ball_event rows for T20/T20I matches only, per plan 1.3.
 // It computes is_legal, maintains a legal-only ball_seq per innings, and assigns phase via phase.PhaseFor.
 func EmitBallEventsT20(ctx context.Context, m *Match, formatID int, matchID int64) error {
-	// Only proceed for T20/T20I as per current sub-plan
-	if formatID != 3 && formatID != 4 { // 3=T20, 4=T20I per seed order
-		return nil
-	}
 	for i, inng := range m.Innings {
 		inningNo := i + 1
 		// Pre-compute total legal deliveries in innings for phase clamping
