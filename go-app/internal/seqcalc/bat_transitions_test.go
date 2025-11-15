@@ -34,12 +34,33 @@ func TestAggregateTransitions_SimpleInnings(t *testing.T) {
 	for _, r := range rows {
 		m[key(r.PrevBatterID, r.BatterID)] = r
 	}
-	if got := m[key(101, 102)]; !(got.Balls == 3 && got.Runs == 4 && got.Fours == 1 && got.Dismissals == 1) {
-		t.Fatalf("101->102 aggregates unexpected: %+v", got)
+	if got := m[key(101, 102)]; true {
+		if got.Balls != 3 {
+			t.Fatalf("101->102 Balls unexpected: %+v", got)
+		}
+		if got.Runs != 4 {
+			t.Fatalf("101->102 Runs unexpected: %+v", got)
+		}
+		if got.Fours != 1 {
+			t.Fatalf("101->102 Fours unexpected: %+v", got)
+		}
+		if got.Dismissals != 1 {
+			t.Fatalf("101->102 Dismissals unexpected: %+v", got)
+		}
 	}
-	if got := m[key(102, 103)]; !(got.Balls == 1 && got.Dismissals == 0 && got.Sixes == 1 && got.Runs == 6) {
-		// After transition to 103, we saw one ball with a six; dismissals counted before would belong to 102, not 103
-		t.Fatalf("102->103 aggregates unexpected: %+v", got)
+	if got := m[key(102, 103)]; true {
+		if got.Balls != 1 {
+			t.Fatalf("102->103 Balls unexpected: %+v", got)
+		}
+		if got.Dismissals != 0 {
+			t.Fatalf("102->103 Dismissals unexpected: %+v", got)
+		}
+		if got.Sixes != 1 {
+			t.Fatalf("102->103 Sixes unexpected: %+v", got)
+		}
+		if got.Runs != 6 {
+			t.Fatalf("102->103 Runs unexpected: %+v", got)
+		}
 	}
 }
 

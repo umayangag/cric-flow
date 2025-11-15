@@ -14,12 +14,12 @@ import (
 // fakeFS implements fsx.FS minimal methods used by Runner.
 type fakeFS struct{}
 
-func (fakeFS) MkdirAll(path string, perm fs.FileMode) error { return nil }
-func (fakeFS) WriteFile(ctx context.Context, path string, data []byte, perm fs.FileMode) error {
+func (fakeFS) MkdirAll(_ string, _ fs.FileMode) error { return nil }
+func (fakeFS) WriteFile(_ context.Context, _ string, _ []byte, _ fs.FileMode) error {
 	return nil
 }
-func (fakeFS) ReadFile(ctx context.Context, path string) ([]byte, error) { return nil, nil }
-func (fakeFS) Glob(pattern string) ([]string, error)                     { return []string{}, nil }
+func (fakeFS) ReadFile(_ context.Context, _ string) ([]byte, error) { return nil, nil }
+func (fakeFS) Glob(_ string) ([]string, error)                      { return []string{}, nil }
 
 // fakeRepo asserts seq flag presence via context and returns trivial CSV rows.
 type fakeRepo struct{ wantSeq bool }
@@ -30,11 +30,11 @@ func (f fakeRepo) BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	}
 	return [][]string{{"h1", "h2"}, {"a", "b"}}, nil
 }
-func (f fakeRepo) BattingLegacyRows(ctx context.Context) ([][]string, error) { return nil, nil }
-func (f fakeRepo) BattingInferenceRows(ctx context.Context, format string) ([][]string, error) {
+func (f fakeRepo) BattingLegacyRows(_ context.Context) ([][]string, error) { return nil, nil }
+func (f fakeRepo) BattingInferenceRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
-func (f fakeRepo) BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
+func (f fakeRepo) BattingFormatRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
 func (f fakeRepo) BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
@@ -43,11 +43,11 @@ func (f fakeRepo) BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	}
 	return [][]string{{"h1", "h2"}, {"c", "d"}}, nil
 }
-func (f fakeRepo) BowlingLegacyRows(ctx context.Context) ([][]string, error) { return nil, nil }
-func (f fakeRepo) BowlingInferenceRows(ctx context.Context, format string) ([][]string, error) {
+func (f fakeRepo) BowlingLegacyRows(_ context.Context) ([][]string, error) { return nil, nil }
+func (f fakeRepo) BowlingInferenceRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
-func (f fakeRepo) BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
+func (f fakeRepo) BowlingFormatRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
 

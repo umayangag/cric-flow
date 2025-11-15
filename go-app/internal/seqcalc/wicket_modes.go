@@ -108,8 +108,6 @@ type wkAggKey struct {
 	ph, mode string
 }
 
-type wkSum struct{ balls, wkts int }
-
 func aggregateWicketModes(events []evRowWK) []db.WicketModeRow {
 	// First pass: collect total legal balls per (asof, fmt, player, phase)
 	totals := map[wkAggKey]int{}

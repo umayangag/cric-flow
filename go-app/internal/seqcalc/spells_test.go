@@ -7,6 +7,8 @@ import (
 )
 
 // helper to craft evRowSpell quickly
+//
+//nolint:unparam // helper accepts many params for clarity; some are constant in tests
 func evS(match int64, inng, over, seq int, phase string, isLegal bool, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRowSpell {
 	var bID sql.NullInt64
 	if bowler != 0 {

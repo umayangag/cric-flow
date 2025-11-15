@@ -7,6 +7,8 @@ import (
 )
 
 // evD is similar to ev/ev2 helpers in sibling tests; kept local for clarity.
+//
+//nolint:unparam // helper accepts many params for clarity; some are constant in tests
 func evD(match int64, inng, ballSeq int, phase string, isLegal bool, striker, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRow {
 	var sID, bID sql.NullInt64
 	if striker != 0 {

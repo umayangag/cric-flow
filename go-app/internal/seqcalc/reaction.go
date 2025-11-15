@@ -212,7 +212,7 @@ func aggregateReaction(events []evRow, forBat bool) []db.EventReactionRow {
 		}
 	}
 	// flatten
-	var out []db.EventReactionRow
+	out := make([]db.EventReactionRow, 0, len(sums))
 	for _, v := range sums {
 		out = append(out, *v)
 	}

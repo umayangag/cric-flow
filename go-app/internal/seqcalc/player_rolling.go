@@ -66,9 +66,9 @@ type pwInningsKey struct {
 	inn   int
 }
 
-func pushBat(d *pwBatDeque, a pwBatAgg, max int) {
+func pushBat(d *pwBatDeque, a pwBatAgg, maxWindow int) {
 	d.items = append(d.items, a)
-	for len(d.items) > max {
+	for len(d.items) > maxWindow {
 		d.items = d.items[1:]
 	}
 }
@@ -86,9 +86,9 @@ func batSum(d *pwBatDeque) pwBatAgg {
 	return s
 }
 
-func pushBowl(d *pwBowlDeque, a pwBowlAgg, max int) {
+func pushBowl(d *pwBowlDeque, a pwBowlAgg, maxWindow int) {
 	d.items = append(d.items, a)
-	for len(d.items) > max {
+	for len(d.items) > maxWindow {
 		d.items = d.items[1:]
 	}
 }

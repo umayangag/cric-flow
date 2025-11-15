@@ -9,6 +9,8 @@ import (
 )
 
 // helper to craft evRowEP rows quickly
+//
+//nolint:unparam // helper accepts many params for clarity; some are constant in tests
 func evEP(match int64, inng, over, seq int, phase string, isLegal bool, bowler int64, runsBat, runsTot int, outPID int64, asOf time.Time, fmtID int) evRowEP {
 	var bID sql.NullInt64
 	if bowler != 0 {
@@ -204,7 +206,7 @@ func TestAggregateEndPressure_FormatMapping(t *testing.T) {
 					found6 = true
 				}
 			}
-			if !(found5 && found6) {
+			if !found5 || !found6 {
 				t.Fatalf("did not find both positions for fmt %d: p5=%v p6=%v", tc.fmtID, found5, found6)
 			}
 		})

@@ -2,7 +2,6 @@ package seqcalc
 
 import (
 	"context"
-	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -107,7 +106,7 @@ func aggregateDotStreaks(events []evRow, forBat bool) []db.DotStreakRow {
 			}
 		}
 	}
-	var out []db.DotStreakRow
+	out := make([]db.DotStreakRow, 0, len(sums))
 	for _, v := range sums {
 		out = append(out, *v)
 	}
@@ -124,4 +123,3 @@ func ensureDotStreak(m map[dotAggKey]*db.DotStreakRow, ak dotAggKey) *db.DotStre
 }
 
 // date helper used in tests
-func dateYMD(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.UTC) }

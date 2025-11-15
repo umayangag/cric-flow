@@ -7,6 +7,8 @@ import (
 )
 
 // helper to quickly build an evRow
+//
+//nolint:unparam // helper accepts many params for clarity; some are constant in tests
 func ev(match int64, inng, ballSeq int, phase string, isLegal bool, striker, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRow {
 	var sID, bID sql.NullInt64
 	if striker != 0 {
@@ -75,14 +77,35 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	}
 
 	// Expectations for batter stream
-	if got := bat["dot"]; !(got.balls == 1 && got.runs == 1) { // b2 under prev=dot
-		t.Fatalf("bat prev=dot unexpected: %+v", got)
+	if got := bat["dot"]; true { // b2 under prev=dot
+		if got.balls != 1 {
+			t.Fatalf("bat prev=dot balls unexpected: %+v", got)
+		}
+		if got.runs != 1 {
+			t.Fatalf("bat prev=dot runs unexpected: %+v", got)
+		}
 	}
-	if got := bat["1"]; !(got.balls == 1 && got.bnd == 0 && got.runs == 1) { // after single, next was wide (illegal) with 1 run
-		t.Fatalf("bat prev=1 unexpected: %+v", got)
+	if got := bat["1"]; true { // after single, next was wide (illegal) with 1 run
+		if got.balls != 1 {
+			t.Fatalf("bat prev=1 balls unexpected: %+v", got)
+		}
+		if got.bnd != 0 {
+			t.Fatalf("bat prev=1 boundaries unexpected: %+v", got)
+		}
+		if got.runs != 1 {
+			t.Fatalf("bat prev=1 runs unexpected: %+v", got)
+		}
 	}
-	if got := bat["wide"]; !(got.balls == 1 && got.bnd == 1 && got.runs == 4) { // after wide, next was boundary 4
-		t.Fatalf("bat prev=wide unexpected: %+v", got)
+	if got := bat["wide"]; true { // after wide, next was boundary 4
+		if got.balls != 1 {
+			t.Fatalf("bat prev=wide balls unexpected: %+v", got)
+		}
+		if got.bnd != 1 {
+			t.Fatalf("bat prev=wide boundaries unexpected: %+v", got)
+		}
+		if got.runs != 4 {
+			t.Fatalf("bat prev=wide runs unexpected: %+v", got)
+		}
 	}
 	// New striker has no prev event in his own stream; no record under prev=wicket for batter stream
 	if got, ok := bat["wicket"]; ok && (got.balls != 0 || got.runs != 0) {
@@ -90,10 +113,23 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	}
 
 	// Expectations for bowler stream
-	if got := bowl["wide"]; !(got.balls == 1 && got.bcon == 1 && got.runs == 4) { // b4 after wide conceded a boundary next
-		t.Fatalf("bowl prev=wide unexpected: %+v", got)
+	if got := bowl["wide"]; true { // b4 after wide conceded a boundary next
+		if got.balls != 1 {
+			t.Fatalf("bowl prev=wide balls unexpected: %+v", got)
+		}
+		if got.bcon != 1 {
+			t.Fatalf("bowl prev=wide boundaries conceded unexpected: %+v", got)
+		}
+		if got.runs != 4 {
+			t.Fatalf("bowl prev=wide runs unexpected: %+v", got)
+		}
 	}
-	if got := bowl["4"]; !(got.balls == 1 && got.wkts == 1) { // b5 after 4 produced a wicket
-		t.Fatalf("bowl prev=4 unexpected: %+v", got)
+	if got := bowl["4"]; true { // b5 after 4 produced a wicket
+		if got.balls != 1 {
+			t.Fatalf("bowl prev=4 balls unexpected: %+v", got)
+		}
+		if got.wkts != 1 {
+			t.Fatalf("bowl prev=4 wickets unexpected: %+v", got)
+		}
 	}
 }

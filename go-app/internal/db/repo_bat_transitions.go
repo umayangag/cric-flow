@@ -32,9 +32,9 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
 		if r.Scope == "" {
 			r.Scope = "overall"
 		}
-		// normalize scope_id when using overall scope
-		if r.Scope == "overall" && r.ScopeID == 0 {
-			// already 0
+		// normalize scope_id when using overall scope (no-op; kept for clarity)
+		if r.Scope == "overall" && r.ScopeID != 0 {
+			r.ScopeID = 0
 		}
 		_, err := Pool.Exec(ctx, `
 			INSERT INTO batting_transition_features(

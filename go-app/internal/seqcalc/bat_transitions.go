@@ -68,9 +68,6 @@ func normFormat(code string) string {
 		return ""
 	}
 	s := code
-	if 'a' <= s[0] && s[0] <= 'z' {
-		// quick upper for common ones; correctness not critical here
-	}
 	su := ""
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -164,8 +161,8 @@ func aggregateTransitions(evs []bevent) []db.BatTransitionRow {
 	for k, seq := range byInng {
 		_ = k
 		// seq already ordered by ball_seq from query; if used in tests, callers should pre-order
-		var prevBatter int64 = 0
-		var currentStriker int64 = 0
+		var prevBatter int64
+		var currentStriker int64
 		var haveStriker bool
 		var curKey *akey
 		for i := 0; i < len(seq); i++ {
@@ -240,7 +237,7 @@ func aggregateTransitions(evs []bevent) []db.BatTransitionRow {
 		}
 	}
 	// flatten
-	var out []db.BatTransitionRow
+	out := make([]db.BatTransitionRow, 0, len(sums))
 	for _, v := range sums {
 		out = append(out, *v)
 	}

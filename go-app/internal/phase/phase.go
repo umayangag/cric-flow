@@ -13,6 +13,8 @@ const (
 // Supported codes: "T20", "T20I", "ODI", "TEST" (case-insensitive).
 // ballSeq is the 1-based index of legal deliveries in the innings.
 // inningsLength is the total number of legal deliveries in the innings when known (0 if unknown).
+//
+//revive:disable-next-line:exported // external API intentionally stutters with package name for clarity
 func PhaseForCode(formatCode string, ballSeq, inningsLength int) string {
 	code := strings.ToUpper(strings.TrimSpace(formatCode))
 	switch code {
@@ -31,6 +33,8 @@ func PhaseForCode(formatCode string, ballSeq, inningsLength int) string {
 // PhaseFor maps a numeric format identifier to phases. This assumes the seed order from
 // migrations (0004_format_dimension.sql): 1=TEST, 2=ODI, 3=T20, 4=T20I. If your DB differs,
 // prefer PhaseForCode.
+//
+//revive:disable-next-line:exported // external API intentionally stutters with package name for clarity
 func PhaseFor(formatID, ballSeq, inningsLength int) string {
 	switch formatID {
 	case 3, 4: // T20/T20I

@@ -9,8 +9,8 @@ import (
 
 type baseNoop struct{ name Target }
 
-func (b baseNoop) Name() Target                                                  { return b.name }
-func (b baseNoop) Compute(ctx context.Context, params Params, dryRun bool) error { return nil }
+func (b baseNoop) Name() Target                                      { return b.name }
+func (b baseNoop) Compute(_ context.Context, _ Params, _ bool) error { return nil }
 
 func NewNoopCalculators() []Calculator {
 	return []Calculator{

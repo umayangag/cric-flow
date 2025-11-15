@@ -119,7 +119,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 	})
 
 	// Build an ordered list of over summaries per (match,innings)
-	var seq []overSummary
+	seq := make([]overSummary, 0, len(orderKeys))
 	for _, k := range orderKeys {
 		rows := overMap[k]
 		if len(rows) == 0 {
@@ -234,7 +234,7 @@ func pairConsecutiveOvers(seq []overSummary) []pairAgg {
 				})
 				idx = len(out) - 1
 			}
-			out[idx].oversPairs += 1
+			out[idx].oversPairs++
 			// Note: metrics are attributed to the current over (B) in the A→B pair
 			out[idx].balls += o.balls
 			out[idx].runs += o.runs

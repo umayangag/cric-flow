@@ -192,15 +192,15 @@ func aggregateSpells(events []evRowSpell) []db.BowlingSpellRow {
 					}
 					// Over-level contribution
 					if j == start {
-						row.Spells += 1 // count spells starting in this phase
-						row.SpellOvers += 1
+						row.Spells++ // count spells starting in this phase
+						row.SpellOvers++
 						row.FirstOversBalls += o.balls
 						row.FirstOversRuns += o.runs
 						row.FirstOversWickets += o.wkts
 						row.FirstOversDots += o.dots
 						row.FirstOversBoundaries += o.bounds
 					} else {
-						row.SpellOvers += 1
+						row.SpellOvers++
 						row.LaterOversBalls += o.balls
 						row.LaterOversRuns += o.runs
 						row.LaterOversWickets += o.wkts

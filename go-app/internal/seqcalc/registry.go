@@ -49,7 +49,7 @@ func (r *Registry) ResolveTargets(spec string) ([]Calculator, error) {
 		return out, nil
 	}
 	names := strings.Split(spec, ",")
-	var out []Calculator
+	out := make([]Calculator, 0, len(names))
 	for _, n := range names {
 		name := Target(strings.TrimSpace(strings.ToLower(n)))
 		if name == "" {
