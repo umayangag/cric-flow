@@ -2,12 +2,11 @@ package seqcalc
 
 import (
 	"context"
-	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // overSummary is a minimal per-over rollup used to form consecutive A→B pairs.
@@ -38,7 +37,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 	if dryRun {
 		return nil
 	}
-	formatID, err := formatIDFor(params.FormatCode)
+	formatID, err := formats.IDForCode(params.FormatCode)
 	if err != nil {
 		return err
 	}
@@ -243,18 +242,4 @@ func pairConsecutiveOvers(seq []overSummary) []pairAgg {
 	return out
 }
 
-// formatIDFor maps format code to numeric id consistent with seed order (0004 migration notes).
-func formatIDFor(code string) (int, error) {
-	switch strings.ToUpper(strings.TrimSpace(code)) {
-	case "T20":
-		return 3, nil
-	case "T20I":
-		return 4, nil
-	case "ODI":
-		return 2, nil
-	case "TEST":
-		return 1, nil
-	default:
-		return 0, fmt.Errorf("unknown format code: %s", code)
-	}
-}
+// format resolution is centralized in internal/formats

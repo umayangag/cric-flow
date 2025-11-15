@@ -1,6 +1,9 @@
 package phase
 
-import "strings"
+import (
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"strings"
+)
 
 const (
 	PhasePowerplay    = "powerplay"
@@ -41,11 +44,11 @@ func PhaseForCode(formatCode string, ballSeq, inningsLength int) string {
 //revive:disable-next-line:exported // external API intentionally stutters with package name for clarity
 func PhaseFor(formatID, ballSeq, inningsLength int) string {
 	switch formatID {
-	case 3, 4: // T20/T20I
+	case formats.IDT20, formats.IDT20I: // T20/T20I
 		return phaseT20(ballSeq, inningsLength)
-	case 2: // ODI
+	case formats.IDODI: // ODI
 		return phaseODI(ballSeq, inningsLength)
-	case 1: // TEST
+	case formats.IDTest: // TEST
 		return PhaseAll
 	default:
 		return PhaseAll

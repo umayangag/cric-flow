@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // NewPlayerWindowsCalculator returns the calculator for player rolling window features.
@@ -110,7 +111,7 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
 	if dryRun {
 		return nil
 	}
-	formatID, err := formatIDFor(params.FormatCode)
+	formatID, err := formats.IDForCode(params.FormatCode)
 	if err != nil {
 		return err
 	}
