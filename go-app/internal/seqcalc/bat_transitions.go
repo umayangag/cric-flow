@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // batTransitionsCalc implements Calculator for batting transitions (T20-first).
@@ -43,44 +44,13 @@ func (batTransitionsCalc) Compute(ctx context.Context, params Params, dryRun boo
 	if dryRun {
 		return nil
 	}
-	// Map format codes to ids, default to T20/T20I if empty.
-	formatIDs := []int{3, 4}
-	switch normFormat(params.FormatCode) {
-	case "T20":
-		formatIDs = []int{3, 4}
-	case "ODI":
-		formatIDs = []int{2}
-	case "TEST":
-		formatIDs = []int{1}
-	case "":
-		// default: T20/T20I
-		formatIDs = []int{3, 4}
-	}
+	// Map format code to numeric ids via shared formats package.
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 
 	if err := runBatTransitionsQueryAndUpsert(ctx, formatIDs); err != nil {
 		return err
 	}
 	return nil
-}
-
-func normFormat(code string) string {
-	if code == "" {
-		return ""
-	}
-	s := code
-	su := ""
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if 'a' <= c && c <= 'z' {
-			su += string(c - 32)
-		} else {
-			su += string(c)
-		}
-	}
-	if su == "T20I" {
-		return "T20"
-	}
-	return su
 }
 
 func runBatTransitionsQueryAndUpsert(ctx context.Context, formatIDs []int) error {

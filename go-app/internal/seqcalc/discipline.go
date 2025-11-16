@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // disciplineCalc computes extras discipline metrics for bowlers by phase.
@@ -19,7 +20,7 @@ func (disciplineCalc) Compute(ctx context.Context, params Params, dryRun bool) e
 	if dryRun {
 		return nil
 	}
-	formatIDs := mapFormatIDs(params.FormatCode)
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 	events, err := queryEvents(ctx, formatIDs)
 	if err != nil {
 		return err

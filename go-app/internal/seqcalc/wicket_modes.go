@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // wicketModesCalc computes wicket mode distributions by bowler and phase.
@@ -20,7 +21,7 @@ func (wicketModesCalc) Compute(ctx context.Context, params Params, dryRun bool) 
 	if dryRun {
 		return nil
 	}
-	formatIDs := mapFormatIDs(params.FormatCode)
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 	rows, err := queryEventsWithWicketKind(ctx, formatIDs)
 	if err != nil {
 		return err

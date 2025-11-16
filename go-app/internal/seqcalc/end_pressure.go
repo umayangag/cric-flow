@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // endPressureCalc computes end-of-over pressure metrics for positions 5 and 6 (legal balls only).
@@ -35,7 +36,7 @@ func (endPressureCalc) Compute(ctx context.Context, params Params, dryRun bool) 
 	if dryRun {
 		return nil
 	}
-	formatIDs := mapFormatIDs(params.FormatCode)
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 	ev, err := queryEventsForEndPressure(ctx, formatIDs)
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // spellsCalc computes bowling spell features split by phase and first-over vs later-overs.
@@ -37,7 +38,7 @@ func (spellsCalc) Compute(ctx context.Context, params Params, dryRun bool) error
 	if dryRun {
 		return nil
 	}
-	formatIDs := mapFormatIDs(params.FormatCode)
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 	ev, err := queryEventsForSpells(ctx, formatIDs)
 	if err != nil {
 		return err

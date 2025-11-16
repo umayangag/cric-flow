@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // reactionCalc computes immediate next-ball outcomes conditioned on the prior event
@@ -37,7 +38,7 @@ func (reactionCalc) Compute(ctx context.Context, params Params, dryRun bool) err
 	if dryRun {
 		return nil
 	}
-	fids := mapFormatIDs(params.FormatCode)
+	fids := formats.MapFormatIDs(params.FormatCode)
 	rows, err := queryEvents(ctx, fids)
 	if err != nil {
 		return err
@@ -55,32 +56,7 @@ func (reactionCalc) Compute(ctx context.Context, params Params, dryRun bool) err
 	return nil
 }
 
-func normUpper(s string) string {
-	b := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if 'a' <= c && c <= 'z' {
-			b = append(b, c-32)
-		} else {
-			b = append(b, c)
-		}
-	}
-	return string(b)
-}
-
-func mapFormatIDs(code string) []int {
-	s := normUpper(code)
-	switch s {
-	case "T20", "T20I", "":
-		return []int{3, 4}
-	case "ODI":
-		return []int{2}
-	case "TEST":
-		return []int{1}
-	default:
-		return []int{3, 4}
-	}
-}
+// Removed local helpers in favor of shared formats package.
 
 func queryEvents(ctx context.Context, formatIDs []int) ([]evRow, error) {
 	if db.Pool == nil {

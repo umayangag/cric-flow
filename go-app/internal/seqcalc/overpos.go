@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // overPosCalc computes incidence of boundaries and wickets at ball 1 and ball 6 by bowler and phase.
@@ -47,7 +48,7 @@ func (overPosCalc) Compute(ctx context.Context, params Params, dryRun bool) erro
 	if dryRun {
 		return nil
 	}
-	formatIDs := mapFormatIDs(params.FormatCode)
+	formatIDs := formats.MapFormatIDs(params.FormatCode)
 	rows, err := queryEventsForOverPos(ctx, formatIDs)
 	if err != nil {
 		return err

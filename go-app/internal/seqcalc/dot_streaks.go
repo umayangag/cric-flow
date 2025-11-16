@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // dotStreaksCalc computes distributions of next-ball outcomes after k consecutive dots.
@@ -16,7 +17,7 @@ func (dotStreaksCalc) Compute(ctx context.Context, params Params, dryRun bool) e
 	if dryRun {
 		return nil
 	}
-	fids := mapFormatIDs(params.FormatCode)
+	fids := formats.MapFormatIDs(params.FormatCode)
 	rows, err := queryEvents(ctx, fids)
 	if err != nil {
 		return err
