@@ -24,7 +24,7 @@ type BowlSequenceRow struct {
 
 // UpsertBowlingSequences performs idempotent upserts for bowling_sequence_features rows.
 func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
-	if Pool == nil {
+if PoolAPI == nil {
 		return errors.New("db pool not initialized")
 	}
 	for i := range rows {
