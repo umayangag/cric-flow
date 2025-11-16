@@ -6,7 +6,6 @@ import (
 	"flag"
 	"log/slog"
 	"os"
-	"time"
 
 	cricsheetcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
@@ -27,8 +26,7 @@ func run() int {
 
 	logger.SetupFromEnv()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
 		return 1
