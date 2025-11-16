@@ -32,20 +32,6 @@ go-test-int:
 migrate:
 	cd go-app && go run ./cmd/migrate -dir=./migrations
 
-# Import Cricsheet JSON into the DB (idempotent). Honors env flags to include optional placeholders.
-# Usage examples:
-#   make cricsheet-import
-#   GO_APP_INPUT_DIR=../data/go-app/cricsheet make cricsheet-import
-#   PLACEHOLDERS_WEATHER=1 PLACEHOLDERS_FIELDING=1 WEATHER_ENQUEUE=1 make cricsheet-import
-cricsheet-import:
-	cd go-app; \
-	INDIR=$${GO_APP_INPUT_DIR:-../data/go-app/cricsheet}; \
-	WFLAG=""; FFLAG=""; EFLAG=""; \
-	if [ "$$PLACEHOLDERS_WEATHER" = "1" ]; then WFLAG="--placeholders-weather"; fi; \
-	if [ "$$PLACEHOLDERS_FIELDING" = "1" ]; then FFLAG="--placeholders-fielding"; fi; \
-	if [ "$$WEATHER_ENQUEUE" = "1" ]; then EFLAG="--weather-enqueue"; fi; \
-	GO_APP_INPUT_DIR=$$INDIR go run ./cmd/cricsheet-importer -dir=$$INDIR $$WFLAG $$FFLAG $$EFLAG
-
 # Export datasets (unified exports only)
 export-dataset:
 	# Unified, cross-format CSVs with as-of per-format features
