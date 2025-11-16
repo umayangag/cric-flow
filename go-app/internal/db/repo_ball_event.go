@@ -168,7 +168,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
-        FROM ball_event
+        FROM ball_event_stage
         ON CONFLICT (match_id, innings, over, ball) DO NOTHING
     `)
 	if err != nil {
