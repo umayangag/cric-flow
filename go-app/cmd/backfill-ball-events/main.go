@@ -128,9 +128,10 @@ func run(ctx context.Context, args []string) error {
 	start := time.Now()
 	total := 0
 	for _, f := range files {
-		m, meta, perr := parseMatchFile(f)
+m, meta, perr := parseMatchFile(f)
 		if perr != nil {
-			log.Fatalf("[skip] parse failed %s: %v", filepath.Base(f), perr)
+			log.Printf("[error] parse failed %s: %v", filepath.Base(f), perr)
+			continue
 		}
 		fmtCode := cricsheet.DetectFormat(meta.matchType, meta.teams, cfg)
 		if strings.ToUpper(fmtCode) != opts.format {
