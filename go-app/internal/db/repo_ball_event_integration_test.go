@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -10,6 +12,15 @@ import (
 func guardIntegration(t *testing.T) bool {
 	t.Helper()
 	return os.Getenv("RUN_DB_TESTS") == "1"
+}
+
+// migrationsDir returns an absolute path to the migrations directory regardless of the
+// working directory Go test uses (which may be a temp dir). It derives the path from
+// this test file's location.
+func migrationsDir() string {
+	_, file, _, _ := runtime.Caller(0)
+	// This test file is in go-app/internal/db; migrations live in go-app/migrations
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../migrations"))
 }
 
 func TestInsertBallEvents_Integration(t *testing.T) {
@@ -24,8 +35,8 @@ func TestInsertBallEvents_Integration(t *testing.T) {
 	}
 	t.Cleanup(func() { pool.Close() })
 
-	// Run migrations from go-app/migrations
-	if err := RunMigrations(ctx, "./go-app/migrations"); err != nil {
+	// Run migrations using an absolute path derived from this test file
+	if err := RunMigrations(ctx, migrationsDir()); err != nil {
 		t.Fatalf("migrations failed: %v", err)
 	}
 

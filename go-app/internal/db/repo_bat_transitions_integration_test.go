@@ -17,8 +17,8 @@ func TestUpsertBattingTransitions_Integration(t *testing.T) {
 	}
 	t.Cleanup(func() { pool.Close() })
 
-	// Run migrations
-	if err := RunMigrations(ctx, "./go-app/migrations"); err != nil {
+	// Run migrations using an absolute path derived from this test package
+	if err := RunMigrations(ctx, migrationsDir()); err != nil {
 		t.Fatalf("migrations failed: %v", err)
 	}
 

@@ -128,7 +128,7 @@ func run(ctx context.Context, args []string) error {
 	start := time.Now()
 	total := 0
 	for _, f := range files {
-m, meta, perr := parseMatchFile(f)
+		m, meta, perr := parseMatchFile(f)
 		if perr != nil {
 			log.Printf("[error] parse failed %s: %v", filepath.Base(f), perr)
 			continue
@@ -149,7 +149,7 @@ m, meta, perr := parseMatchFile(f)
 			total++
 			continue
 		}
-if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
+		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
 			log.Printf("[error] ensure match failed id=%d: %v", stableID, err)
 			continue
 		}
