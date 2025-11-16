@@ -127,13 +127,10 @@ func run(ctx context.Context, args []string) error {
 	cfg := config.Load()
 	start := time.Now()
 	total := 0
-	errs := 0
 	for _, f := range files {
 		m, meta, perr := parseMatchFile(f)
 		if perr != nil {
-			log.Printf("[skip] parse failed %s: %v", filepath.Base(f), perr)
-			errs++
-			continue
+			log.Fatalf("[skip] parse failed %s: %v", filepath.Base(f), perr)
 		}
 		fmtCode := cricsheet.DetectFormat(meta.matchType, meta.teams, cfg)
 		if strings.ToUpper(fmtCode) != opts.format {
@@ -152,18 +149,15 @@ func run(ctx context.Context, args []string) error {
 			continue
 		}
 		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
-			log.Printf("[warn] ensure match failed id=%d: %v", stableID, err)
-			// continue; we still try to emit
+			log.Fatalf("[error] ensure match failed id=%d: %v", stableID, err)
 		}
-		if err := cricsheet.EmitBallEventsT20(ctx, m, int(formatID), stableID); err != nil {
-			log.Printf("[err] emit failed for id=%d: %v", stableID, err)
-			errs++
-			continue
+		if err := cricsheet.EmitBallEvents(ctx, m, int(formatID), stableID); err != nil {
+			log.Fatalf("[error] emit failed for id=%d: %v", stableID, err)
 		}
 		log.Printf("[ok] backfilled ball_event for id=%d from %s", stableID, filepath.Base(f))
 		total++
 	}
-	log.Printf("done. matches=%d errors=%d elapsed=%s", total, errs, time.Since(start).Round(time.Millisecond))
+	log.Printf("done. matches=%d elapsed=%s", total, time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
