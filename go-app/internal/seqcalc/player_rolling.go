@@ -1,9 +1,5 @@
 package seqcalc
 
-// Note: this file duplicates the implementation from player_windows.go but is named without
-// the OS-specific suffix to ensure it is included on non-Windows builds. The previous filename
-// inadvertently matched Go's OS build tag pattern (*_windows.go) and was excluded on darwin/linux.
-
 import (
 	"context"
 	"database/sql"

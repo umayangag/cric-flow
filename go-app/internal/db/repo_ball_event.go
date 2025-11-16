@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// smallBatchThreshold determines when to switch from individual INSERTs to a bulk COPY.
+// For very small batches, the overhead of creating a temp table and using COPY can be higher
+// than simple INSERT statements. This value is a heuristic.
+const smallBatchThreshold = 8
+
 // BallEventRow mirrors columns for insertion into ball_event.
 // Optional player references are pointers; nil means unresolved/unknown.
 // fielder_ids is omitted in this version for simplicity (left NULL).
@@ -43,8 +48,6 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 		return nil
 	}
 
-	// For very small batches, the overhead of COPY can outweigh benefits. Use simple inserts.
-	const smallBatchThreshold = 8
 	if len(rows) <= smallBatchThreshold {
 		for i := range rows {
 			r := rows[i]
@@ -165,7 +168,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
-        FROM ball_event_stage
+        FROM ball_event
         ON CONFLICT (match_id, innings, over, ball) DO NOTHING
     `)
 	if err != nil {
