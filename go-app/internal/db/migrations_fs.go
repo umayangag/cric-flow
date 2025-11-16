@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +42,7 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		}
 	}
 	sort.Strings(files)
+	slog.Info("migrations: scanned directory", slog.String("dir", dir), slog.Int("files_total", len(files)))
 
 	// get applied versions
 	applied := map[string]bool{}
@@ -57,9 +59,12 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		applied[v] = true
 	}
 
+	appliedCount := 0
+	skippedCount := 0
 	for _, fname := range files {
 		version := filepath.Base(fname)
 		if applied[version] {
+			skippedCount++
 			continue
 		}
 		b, err := fs.ReadFile(fsys, filepath.Join(dir, fname))
@@ -73,6 +78,9 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		if err := defaultDB.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, version); err != nil {
 			return err
 		}
+		appliedCount++
+		slog.Info("migrations: applied", slog.String("version", version))
 	}
+	slog.Info("migrations: done", slog.Int("applied", appliedCount), slog.Int("skipped", skippedCount), slog.Int("seen", len(files)))
 	return nil
 }

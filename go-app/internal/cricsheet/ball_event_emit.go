@@ -2,6 +2,8 @@ package cricsheet
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -56,6 +58,8 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 				if s := strings.TrimSpace(d.Bowler); s != "" {
 					if id, err := cricDB.GetOrCreateByName(ctx, s); err == nil {
 						bowlerID = &id
+					} else {
+						slog.Error("get/create bowler failed", slog.String("name", s), slog.Any("err", err))
 					}
 				}
 				// extras kind (prefer wide/no_ball; else leg_bye/bye/penalty when present)
@@ -88,6 +92,8 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 					if name != "" {
 						if id, err := cricDB.GetOrCreateByName(ctx, name); err == nil {
 							playerOutID = &id
+						} else {
+							slog.Error("get/create player failed", slog.String("name", name), slog.Any("err", err))
 						}
 					}
 				}
@@ -113,7 +119,8 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 			}
 		}
 		if err := insertBallEventsFn(ctx, rows); err != nil {
-			return err
+			slog.Error("failed to insert ball_event rows", slog.Any("err", err))
+			return fmt.Errorf("failed to insert ball events for inning %d: %w", inningNo, err)
 		}
 	}
 	return nil
