@@ -47,10 +47,12 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 		slog.Warn("[InsertBallEvents] no rows to insert")
 		return nil
 	}
+	slog.Debug("[InsertBallEvents] inserting", slog.Int("num_rows", len(rows)))
 
 	if len(rows) <= smallBatchThreshold {
 		for i := range rows {
 			r := rows[i]
+			slog.Debug("insert ball event", slog.Int("match_id", int(r.MatchID)), slog.Any("row", r))
 			err := PoolAPI.Exec(ctx, `
                 INSERT INTO ball_event(
                     match_id, innings, over, ball, ball_seq, is_legal, phase,
@@ -71,6 +73,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 				r.ExtrasKind, r.WicketKind, r.PlayerOutID,
 			)
 			if err != nil {
+				slog.Error("insert ball events failed", slog.Any("err", err))
 				return err
 			}
 		}
@@ -90,7 +93,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// Create a temp table with the exact columns we intend to insert.
 	// Using CTAS to inherit column types from ball_event while restricting to insert columns only.
 	err = tx.Exec(ctx, `
-        CREATE TEMP TABLE ball_event_stage AS
+        CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS
         SELECT 
             match_id::bigint,
             innings::int,

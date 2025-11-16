@@ -263,7 +263,7 @@ mock:
 
 # Aggregate test target (Go only by default)
 test:
-	cd go-app && go test ./...
+	cd go-app && make test
 
 # Aggregate lint target
 lint: lint-go lint-py
