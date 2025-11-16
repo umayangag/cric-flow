@@ -36,7 +36,11 @@ func parseFlags(args []string) (*options, error) {
 		matchID = fs.Int64("match-id", 0, "Optional specific stable match ID to backfill")
 		conc    = fs.Int("concurrency", 1, "Concurrency level (currently only 1 is supported deterministically)")
 		dry     = fs.Bool("dry-run", false, "Plan only; do not write to DB")
-		inDirF  = fs.String("in", "", "Input directory of Cricsheet JSONs (default from CRICSHEET_DIR or data/cricsheet)")
+		inDirF  = fs.String(
+			"in",
+			"",
+			"Input directory of Cricsheet JSONs (default from CRICSHEET_DIR or data/cricsheet)",
+		)
 	)
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -83,7 +87,10 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if opts.concurrency != 1 {
-		log.Printf("[warn] only concurrency=1 is supported currently; proceeding sequentially (requested %d)", opts.concurrency)
+		log.Printf(
+			"[warn] only concurrency=1 is supported currently; proceeding sequentially (requested %d)",
+			opts.concurrency,
+		)
 	}
 
 	// Connect DB

@@ -146,7 +146,13 @@ func aggregateOverPos(events []evRowOverPos) []overPosRow {
 		if e.Ball != 1 && e.Ball != 6 {
 			continue
 		}
-		k := key{asof: e.AsOf.Time.Format("2006-01-02"), fmt: e.FormatID, pos: e.Ball, pid: e.BowlerID.Int64, phase: e.Phase}
+		k := key{
+			asof:  e.AsOf.Time.Format("2006-01-02"),
+			fmt:   e.FormatID,
+			pos:   e.Ball,
+			pid:   e.BowlerID.Int64,
+			phase: e.Phase,
+		}
 		v := counts[k]
 		v.balls++
 		if e.RunsBatter == 4 || e.RunsBatter == 6 {

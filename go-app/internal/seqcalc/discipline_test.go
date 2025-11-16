@@ -9,7 +9,18 @@ import (
 // evD is similar to ev/ev2 helpers in sibling tests; kept local for clarity.
 //
 //nolint:unparam // helper accepts many params for clarity; some are constant in tests
-func evD(match int64, inng, ballSeq int, phase string, isLegal bool, striker, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRow {
+func evD(
+	match int64,
+	inng, ballSeq int,
+	phase string,
+	isLegal bool,
+	striker, bowler int64,
+	runsBat, runsTot int,
+	extrasKind string,
+	outPID int64,
+	asOf time.Time,
+	fmtID int,
+) evRow {
 	var sID, bID sql.NullInt64
 	if striker != 0 {
 		sID = sql.NullInt64{Int64: striker, Valid: true}
@@ -84,7 +95,14 @@ func TestAggregateDiscipline_BasicCountsAndRates(t *testing.T) {
 	}
 	// extras counts
 	if r.Wides != 1 || r.NoBalls != 1 || r.LegByes != 1 || r.Byes != 0 || r.PenaltyRuns != 0 {
-		t.Fatalf("extras counts unexpected: W:%d NB:%d LB:%d B:%d P:%d", r.Wides, r.NoBalls, r.LegByes, r.Byes, r.PenaltyRuns)
+		t.Fatalf(
+			"extras counts unexpected: W:%d NB:%d LB:%d B:%d P:%d",
+			r.Wides,
+			r.NoBalls,
+			r.LegByes,
+			r.Byes,
+			r.PenaltyRuns,
+		)
 	}
 	if r.ExtrasTotal != (r.Wides + r.NoBalls + r.Byes + r.LegByes + r.PenaltyRuns) {
 		t.Fatalf("ExtrasTotal mismatch: got %d", r.ExtrasTotal)
@@ -99,7 +117,13 @@ func TestAggregateDiscipline_BasicCountsAndRates(t *testing.T) {
 	}
 	// Rates per over with overs=1
 	if r.WidesPerOver != 1.0 || r.NoBallsPerOver != 1.0 || r.ExtrasPerOver != float64(r.ExtrasTotal) {
-		t.Fatalf("rates unexpected: WPO=%v NBPO=%v EXPO=%v (extras_total=%d)", r.WidesPerOver, r.NoBallsPerOver, r.ExtrasPerOver, r.ExtrasTotal)
+		t.Fatalf(
+			"rates unexpected: WPO=%v NBPO=%v EXPO=%v (extras_total=%d)",
+			r.WidesPerOver,
+			r.NoBallsPerOver,
+			r.ExtrasPerOver,
+			r.ExtrasTotal,
+		)
 	}
 }
 

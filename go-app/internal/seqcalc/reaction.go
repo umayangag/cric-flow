@@ -181,7 +181,14 @@ func aggregateReaction(events []evRow, forBat bool) []db.EventReactionRow {
 			}
 			// On each delivery after we have a prev, record next-ball outcome under that prev
 			if curPrev != "" {
-				ak := reactionAggKey{asof: e.AsOf.Format("2006-01-02"), fmt: e.FormatID, pid: curPID, role: role, prev: curPrev, ph: e.Phase}
+				ak := reactionAggKey{
+					asof: e.AsOf.Format("2006-01-02"),
+					fmt:  e.FormatID,
+					pid:  curPID,
+					role: role,
+					prev: curPrev,
+					ph:   e.Phase,
+				}
 				row := ensureEventReaction(sums, ak)
 				row.Balls++ // denominator includes illegal deliveries per approval
 				row.Runs += e.RunsTotal
@@ -244,7 +251,16 @@ func ensureEventReaction(m map[reactionAggKey]*db.EventReactionRow, ak reactionA
 	if r, ok := m[ak]; ok {
 		return r
 	}
-	r := &db.EventReactionRow{AsOfDate: ak.asof, FormatID: ak.fmt, Scope: "overall", ScopeID: 0, PlayerID: ak.pid, Role: ak.role, PrevEvent: ak.prev, Phase: ak.ph}
+	r := &db.EventReactionRow{
+		AsOfDate:  ak.asof,
+		FormatID:  ak.fmt,
+		Scope:     "overall",
+		ScopeID:   0,
+		PlayerID:  ak.pid,
+		Role:      ak.role,
+		PrevEvent: ak.prev,
+		Phase:     ak.ph,
+	}
 	m[ak] = r
 	return r
 }

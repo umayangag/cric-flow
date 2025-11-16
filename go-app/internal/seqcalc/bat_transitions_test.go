@@ -14,14 +14,76 @@ func TestAggregateTransitions_SimpleInnings(t *testing.T) {
 	asOf := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	seq := []bevent{
-		{MatchID: 1, Innings: 1, BallSeq: 1, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 101, Valid: true}, RunsBatter: 0, RunsTotal: 0, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 2, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 101, Valid: true}, RunsBatter: 1, RunsTotal: 1, AsOf: asOf, FormatID: fmtID},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    1,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 101, Valid: true},
+			RunsBatter: 0,
+			RunsTotal:  0,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    2,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 101, Valid: true},
+			RunsBatter: 1,
+			RunsTotal:  1,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
 		// striker change after over strike rotation (simulate change): 101 -> 102
-		{MatchID: 1, Innings: 1, BallSeq: 3, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 102, Valid: true}, RunsBatter: 0, RunsTotal: 0, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 4, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 102, Valid: true}, RunsBatter: 4, RunsTotal: 4, AsOf: asOf, FormatID: fmtID},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    3,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 102, Valid: true},
+			RunsBatter: 0,
+			RunsTotal:  0,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    4,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 102, Valid: true},
+			RunsBatter: 4,
+			RunsTotal:  4,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
 		// wicket: striker 102 out, new batter 103 next ball
-		{MatchID: 1, Innings: 1, BallSeq: 5, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 102, Valid: true}, RunsBatter: 0, RunsTotal: 0, WicketKind: sql.NullString{String: "bowled", Valid: true}, PlayerOutID: sql.NullInt64{Int64: 102, Valid: true}, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 6, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 103, Valid: true}, RunsBatter: 6, RunsTotal: 6, AsOf: asOf, FormatID: fmtID},
+		{
+			MatchID:     1,
+			Innings:     1,
+			BallSeq:     5,
+			Phase:       "powerplay",
+			StrikerID:   sql.NullInt64{Int64: 102, Valid: true},
+			RunsBatter:  0,
+			RunsTotal:   0,
+			WicketKind:  sql.NullString{String: "bowled", Valid: true},
+			PlayerOutID: sql.NullInt64{Int64: 102, Valid: true},
+			AsOf:        asOf,
+			FormatID:    fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    6,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 103, Valid: true},
+			RunsBatter: 6,
+			RunsTotal:  6,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
 	}
 	rows := aggregateTransitions(seq)
 	if len(rows) != 2 {
@@ -69,16 +131,57 @@ func TestAggregateTransitions_NoAsOfSkips(t *testing.T) {
 	asOf := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	seq := []bevent{
-		{MatchID: 1, Innings: 1, BallSeq: 1, Phase: "powerplay", StrikerID: sql.NullInt64{Valid: false}, RunsBatter: 0, RunsTotal: 0, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 2, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 201, Valid: true}, RunsBatter: 0, RunsTotal: 0, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 3, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 202, Valid: true}, RunsBatter: 1, RunsTotal: 1, AsOf: asOf, FormatID: fmtID},
-		{MatchID: 1, Innings: 1, BallSeq: 4, Phase: "powerplay", StrikerID: sql.NullInt64{Int64: 202, Valid: true}, RunsBatter: 6, RunsTotal: 6, AsOf: asOf, FormatID: fmtID},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    1,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Valid: false},
+			RunsBatter: 0,
+			RunsTotal:  0,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    2,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 201, Valid: true},
+			RunsBatter: 0,
+			RunsTotal:  0,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    3,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 202, Valid: true},
+			RunsBatter: 1,
+			RunsTotal:  1,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
+		{
+			MatchID:    1,
+			Innings:    1,
+			BallSeq:    4,
+			Phase:      "powerplay",
+			StrikerID:  sql.NullInt64{Int64: 202, Valid: true},
+			RunsBatter: 6,
+			RunsTotal:  6,
+			AsOf:       asOf,
+			FormatID:   fmtID,
+		},
 	}
 	rows := aggregateTransitions(seq)
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 transition row, got %d", len(rows))
 	}
-	if rows[0].PrevBatterID != 201 || rows[0].BatterID != 202 || rows[0].Runs != 7 || rows[0].Fours != 0 || rows[0].Sixes != 1 {
+	if rows[0].PrevBatterID != 201 || rows[0].BatterID != 202 || rows[0].Runs != 7 || rows[0].Fours != 0 ||
+		rows[0].Sixes != 1 {
 		t.Fatalf("unexpected aggregation: %+v", rows[0])
 	}
 }

@@ -133,7 +133,14 @@ func aggregateEndPressure(events []evRowEP) []db.OverEndPressureRow {
 				key := aggKey{asof: e.AsOf.Format("2006-01-02"), fmt: e.FormatID, pos: pos, pid: ok.bow, phase: e.Phase}
 				row := counts[key]
 				if row == nil {
-					row = &db.OverEndPressureRow{AsOfDate: key.asof, FormatID: key.fmt, Scope: "overall", PlayerID: key.pid, Phase: key.phase, Position: key.pos}
+					row = &db.OverEndPressureRow{
+						AsOfDate: key.asof,
+						FormatID: key.fmt,
+						Scope:    "overall",
+						PlayerID: key.pid,
+						Phase:    key.phase,
+						Position: key.pos,
+					}
 					counts[key] = row
 				}
 				row.Balls++

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -169,8 +170,51 @@ func writeTempJSON(t *testing.T, dir string, name string, data string) string {
 	return p
 }
 
+// nop pool/tx implementations to satisfy db.PoolIface and db.CopyFromTx for offline tests
+type nopPool struct{}
+
+func (nopPool) Exec(_ context.Context, _ string, _ ...any) error { return nil }
+func (nopPool) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
+	return nopRows{}, nil
+}
+func (nopPool) QueryRow(_ context.Context, _ string, _ ...any) db.Row { return nopRow{} }
+func (nopPool) Begin(_ context.Context) (db.CopyFromTx, error)        { return nopTx{}, nil }
+
+type nopTx struct{}
+
+func (nopTx) Exec(_ context.Context, _ string, _ ...any) error { return nil }
+func (nopTx) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
+	return nopRows{}, nil
+}
+func (nopTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row { return nopRow{} }
+
+func (nopTx) CopyFrom(
+	_ context.Context,
+	_ pgx.Identifier,
+	_ []string,
+	_ pgx.CopyFromSource,
+) (int64, error) {
+	return 0, nil
+}
+func (nopTx) Commit(_ context.Context) error   { return nil }
+func (nopTx) Rollback(_ context.Context) error { return nil }
+
+type nopRows struct{}
+
+func (nopRows) Next() bool          { return false }
+func (nopRows) Scan(_ ...any) error { return nil }
+func (nopRows) Close()              {}
+
+type nopRow struct{}
+
+func (nopRow) Scan(_ ...any) error { return nil }
+
 func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	ctx := context.Background()
+	// Provide a no-op pool so repository functions that require PoolAPI succeed in tests.
+	prevPool := db.PoolAPI
+	db.SetPoolAPI(nopPool{})
+	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 	fdb := newFakeDB()
 	fw := &fakeWeather{}
 	cricsheet.SetCricsheetDB(fdb)
@@ -217,6 +261,10 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	ctx := context.Background()
+	// Provide a no-op pool so repository functions that require PoolAPI succeed in tests.
+	prevPool := db.PoolAPI
+	db.SetPoolAPI(nopPool{})
+	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 	fdb := newFakeDB()
 	fw := &fakeWeather{}
 	cricsheet.SetCricsheetDB(fdb)

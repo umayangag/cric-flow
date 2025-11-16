@@ -324,7 +324,11 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
 				pid := e.BowlerID.Int64
 				st, ok := bowlByPlayer[k][pid]
 				if !ok {
-					st = &pwBowlState{deques: map[int]*pwBowlDeque{}, last: map[int]pwBowlAgg{}, phase: map[int]string{}}
+					st = &pwBowlState{
+						deques: map[int]*pwBowlDeque{},
+						last:   map[int]pwBowlAgg{},
+						phase:  map[int]string{},
+					}
 					for _, h := range bowlHorizons {
 						st.deques[h] = &pwBowlDeque{}
 					}

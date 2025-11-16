@@ -142,5 +142,7 @@ func aggregateDiscipline(events []evRow) []db.ExtrasDisciplineRow {
 }
 
 // compile-time guards for imports
-var _ = sql.NullInt64{}
-var _ = fmt.Sprintf
+var (
+	_ = sql.NullInt64{}
+	_ = fmt.Sprintf
+)

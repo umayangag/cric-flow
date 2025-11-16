@@ -34,7 +34,8 @@ type BallEventRow struct {
 // (match_id, innings, over, ball). On conflicts, it does nothing to remain safe
 // for re-runs and backfills.
 func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
-	if Pool == nil {
+	// Pool must be available for this function per requirement.
+	if PoolAPI == nil {
 		return errors.New("db pool not initialized")
 	}
 	if len(rows) == 0 {
@@ -47,7 +48,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	if len(rows) <= smallBatchThreshold {
 		for i := range rows {
 			r := rows[i]
-			_, err := Pool.Exec(ctx, `
+			err := PoolAPI.Exec(ctx, `
                 INSERT INTO ball_event(
                     match_id, innings, over, ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,
@@ -74,7 +75,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	}
 
 	// Bulk path: COPY rows into a temporary staging table, then INSERT .. ON CONFLICT DO NOTHING.
-	tx, err := Pool.Begin(ctx)
+	tx, err := PoolAPI.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -85,8 +86,8 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 
 	// Create a temp table with the exact columns we intend to insert.
 	// Using CTAS to inherit column types from ball_event while restricting to insert columns only.
-	_, err = tx.Exec(ctx, `
-        CREATE TEMP TABLE ball_event AS
+	err = tx.Exec(ctx, `
+        CREATE TEMP TABLE ball_event_stage AS
         SELECT 
             match_id::bigint,
             innings::int,
@@ -138,7 +139,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// Perform COPY INTO the staging table.
 	_, err = tx.CopyFrom(
 		ctx,
-		pgx.Identifier{"ball_event"},
+		pgx.Identifier{"ball_event_stage"},
 		[]string{
 			"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase",
 			"striker_id", "non_striker_id", "bowler_id",
@@ -152,7 +153,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	}
 
 	// Insert into the real table with idempotency.
-	_, err = tx.Exec(ctx, `
+	err = tx.Exec(ctx, `
         INSERT INTO ball_event(
             match_id, innings, over, ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id,
@@ -164,7 +165,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
-        FROM ball_event
+        FROM ball_event_stage
         ON CONFLICT (match_id, innings, over, ball) DO NOTHING
     `)
 	if err != nil {

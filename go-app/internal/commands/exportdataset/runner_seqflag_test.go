@@ -34,9 +34,11 @@ func (f fakeRepo) BattingLegacyRows(_ context.Context) ([][]string, error) { ret
 func (f fakeRepo) BattingInferenceRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
+
 func (f fakeRepo) BattingFormatRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
+
 func (f fakeRepo) BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	if exq.IsSeqEnabled(ctx) != f.wantSeq {
 		testFailf(ctx, "BowlingUnifiedRows: IsSeqEnabled mismatch")
@@ -47,6 +49,7 @@ func (f fakeRepo) BowlingLegacyRows(_ context.Context) ([][]string, error) { ret
 func (f fakeRepo) BowlingInferenceRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }
+
 func (f fakeRepo) BowlingFormatRows(_ context.Context, _ string) ([][]string, error) {
 	return nil, nil
 }

@@ -11,7 +11,19 @@ import (
 // helper to craft evRowWK rows
 //
 //nolint:unparam // helper accepts many params for clarity; some are constant in tests
-func evWK(match int64, inng, ballSeq int, phase string, isLegal bool, bowler int64, runsTot int, extrasKind string, outPID int64, wicketKind string, asOf time.Time, fmtID int) evRowWK {
+func evWK(
+	match int64,
+	inng, ballSeq int,
+	phase string,
+	isLegal bool,
+	bowler int64,
+	runsTot int,
+	extrasKind string,
+	outPID int64,
+	wicketKind string,
+	asOf time.Time,
+	fmtID int,
+) evRowWK {
 	var bID sql.NullInt64
 	if bowler != 0 {
 		bID = sql.NullInt64{Int64: bowler, Valid: true}

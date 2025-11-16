@@ -40,7 +40,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.BoolVar(&allFormats, "all-formats", false, "export for all formats")
 	fs.BoolVar(&unified, "unified", false, "export single merged CSV per task across all formats")
 	fs.BoolVar(&inferenceOnly, "inference-only", false, "emit inputs-only CSVs for inference")
-	fs.BoolVar(&enableSeq, "enable-seq", defEnableSeq, "enable sequence feature columns (can also set ENABLE_SEQ_FEATURES=1)")
+	fs.BoolVar(
+		&enableSeq,
+		"enable-seq",
+		defEnableSeq,
+		"enable sequence feature columns (can also set ENABLE_SEQ_FEATURES=1)",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err

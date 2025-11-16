@@ -9,7 +9,17 @@ import (
 // helper to craft ev rows for over position tests
 //
 //nolint:unparam // helper accepts many params for clarity; some are constant in tests
-func evOP(match int64, inng, over, ball int, phase string, isLegal bool, bowler int64, runsBat int, outPID int64, asOf time.Time, fmtID int) evRowOverPos {
+func evOP(
+	match int64,
+	inng, over, ball int,
+	phase string,
+	isLegal bool,
+	bowler int64,
+	runsBat int,
+	outPID int64,
+	asOf time.Time,
+	fmtID int,
+) evRowOverPos {
 	var bID sql.NullInt64
 	if bowler != 0 {
 		bID = sql.NullInt64{Int64: bowler, Valid: true}

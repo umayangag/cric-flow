@@ -41,6 +41,7 @@
 - Robust error handling; never suppress errors. Log and return.
 - Comments explain why.
 - Singleton logger per project; log success and error paths.
+- Use available formating commands. eg: `make lint`, `make fmt`
 
 ## Defaults
 - Branching: never to main/master; branches `type/short-slug`; Conventional Commits; focused PRs.

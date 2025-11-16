@@ -187,7 +187,13 @@ func aggregateSpells(events []evRowSpell) []db.BowlingSpellRow {
 					key := outKey{asof: o.asof, fmt: o.fmtID, pid: pb.bow, phase: o.phase}
 					row := acc[key]
 					if row == nil {
-						row = &db.BowlingSpellRow{AsOfDate: key.asof, FormatID: key.fmt, PlayerID: key.pid, Phase: key.phase, Scope: "overall"}
+						row = &db.BowlingSpellRow{
+							AsOfDate: key.asof,
+							FormatID: key.fmt,
+							PlayerID: key.pid,
+							Phase:    key.phase,
+							Scope:    "overall",
+						}
 						acc[key] = row
 					}
 					// Over-level contribution

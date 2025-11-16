@@ -78,7 +78,14 @@ func aggregateDotStreaks(events []evRow, forBat bool) []db.DotStreakRow {
 			if kDots > 6 {
 				kDots = 6
 			}
-			ak := dotAggKey{asof: e.AsOf.Format("2006-01-02"), fmt: e.FormatID, pid: pid, role: role, k: kDots, ph: e.Phase}
+			ak := dotAggKey{
+				asof: e.AsOf.Format("2006-01-02"),
+				fmt:  e.FormatID,
+				pid:  pid,
+				role: role,
+				k:    kDots,
+				ph:   e.Phase,
+			}
 			row := ensureDotStreak(sums, ak)
 			row.Balls++ // denominator includes illegal next deliveries per approval
 			row.RunsNextTotal += e.RunsTotal
@@ -92,7 +99,8 @@ func aggregateDotStreaks(events []evRow, forBat bool) []db.DotStreakRow {
 			if e.PlayerOutID.Valid {
 				row.NextWicket++
 			}
-			if e.ExtrasKind.Valid && (e.ExtrasKind.String == "wide" || e.ExtrasKind.String == "no_ball" || e.ExtrasKind.String == "bye" || e.ExtrasKind.String == "leg_bye") {
+			if e.ExtrasKind.Valid &&
+				(e.ExtrasKind.String == "wide" || e.ExtrasKind.String == "no_ball" || e.ExtrasKind.String == "bye" || e.ExtrasKind.String == "leg_bye") {
 				row.NextExtra++
 			}
 			if e.RunsTotal == 0 {
@@ -117,7 +125,16 @@ func ensureDotStreak(m map[dotAggKey]*db.DotStreakRow, ak dotAggKey) *db.DotStre
 	if r, ok := m[ak]; ok {
 		return r
 	}
-	r := &db.DotStreakRow{AsOfDate: ak.asof, FormatID: ak.fmt, Scope: "overall", ScopeID: 0, PlayerID: ak.pid, Role: ak.role, K: ak.k, Phase: ak.ph}
+	r := &db.DotStreakRow{
+		AsOfDate: ak.asof,
+		FormatID: ak.fmt,
+		Scope:    "overall",
+		ScopeID:  0,
+		PlayerID: ak.pid,
+		Role:     ak.role,
+		K:        ak.k,
+		Phase:    ak.ph,
+	}
 	m[ak] = r
 	return r
 }

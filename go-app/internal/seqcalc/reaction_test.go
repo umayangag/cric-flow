@@ -9,7 +9,18 @@ import (
 // helper to quickly build an evRow
 //
 //nolint:unparam // helper accepts many params for clarity; some are constant in tests
-func ev(match int64, inng, ballSeq int, phase string, isLegal bool, striker, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRow {
+func ev(
+	match int64,
+	inng, ballSeq int,
+	phase string,
+	isLegal bool,
+	striker, bowler int64,
+	runsBat, runsTot int,
+	extrasKind string,
+	outPID int64,
+	asOf time.Time,
+	fmtID int,
+) evRow {
 	var sID, bID sql.NullInt64
 	if striker != 0 {
 		sID = sql.NullInt64{Int64: striker, Valid: true}
@@ -53,12 +64,54 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	asOf := time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	seq := []evRow{
-		ev(1, 1, 1, "powerplay", true, 101, 201, 0, 0, "", 0, asOf, fmtID),      // prev=nil
-		ev(1, 1, 2, "powerplay", true, 101, 201, 1, 1, "", 0, asOf, fmtID),      // prev=dot -> record under prev=dot
-		ev(1, 1, 3, "powerplay", false, 101, 201, 0, 1, "wide", 0, asOf, fmtID), // prev=1 -> record under prev=1 (illegal included)
-		ev(1, 1, 4, "powerplay", true, 101, 201, 4, 4, "", 0, asOf, fmtID),      // prev=wide -> under prev=wide
-		ev(1, 1, 5, "powerplay", true, 101, 201, 0, 0, "", 101, asOf, fmtID),    // prev=4 -> under prev=4 (wicket event priority if it were combined)
-		ev(1, 1, 6, "powerplay", true, 103, 201, 0, 0, "", 0, asOf, fmtID),      // new striker after wicket -> under prev=wicket
+		ev(1, 1, 1, "powerplay", true, 101, 201, 0, 0, "", 0, asOf, fmtID), // prev=nil
+		ev(1, 1, 2, "powerplay", true, 101, 201, 1, 1, "", 0, asOf, fmtID), // prev=dot -> record under prev=dot
+		ev(
+			1,
+			1,
+			3,
+			"powerplay",
+			false,
+			101,
+			201,
+			0,
+			1,
+			"wide",
+			0,
+			asOf,
+			fmtID,
+		), // prev=1 -> record under prev=1 (illegal included)
+		ev(1, 1, 4, "powerplay", true, 101, 201, 4, 4, "", 0, asOf, fmtID), // prev=wide -> under prev=wide
+		ev(
+			1,
+			1,
+			5,
+			"powerplay",
+			true,
+			101,
+			201,
+			0,
+			0,
+			"",
+			101,
+			asOf,
+			fmtID,
+		), // prev=4 -> under prev=4 (wicket event priority if it were combined)
+		ev(
+			1,
+			1,
+			6,
+			"powerplay",
+			true,
+			103,
+			201,
+			0,
+			0,
+			"",
+			0,
+			asOf,
+			fmtID,
+		), // new striker after wicket -> under prev=wicket
 	}
 
 	batRows := aggregateReaction(seq, true)
@@ -73,7 +126,13 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	bowl := map[string]struct{ balls, runs, dots, wkts, bcon int }{}
 	for _, r := range bowlRows {
 		key := r.PrevEvent
-		bowl[key] = struct{ balls, runs, dots, wkts, bcon int }{r.Balls, r.Runs, r.DotBalls, r.Wickets, r.BoundariesConceded}
+		bowl[key] = struct{ balls, runs, dots, wkts, bcon int }{
+			r.Balls,
+			r.Runs,
+			r.DotBalls,
+			r.Wickets,
+			r.BoundariesConceded,
+		}
 	}
 
 	// Expectations for batter stream

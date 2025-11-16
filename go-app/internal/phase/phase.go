@@ -1,8 +1,9 @@
 package phase
 
 import (
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 	"strings"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 const (

@@ -183,7 +183,13 @@ func aggregateTransitions(evs []bevent) []db.BatTransitionRow {
 				prevBatter = currentStriker
 				currentStriker = striker
 				// record/ensure entry for this A->B at this phase/as_of/format; stats should accrue starting on THIS ball
-				ak := akey{asOf: seq[i].AsOf.Format("2006-01-02"), fmt: e.FormatID, prev: prevBatter, bat: striker, ph: e.Phase}
+				ak := akey{
+					asOf: seq[i].AsOf.Format("2006-01-02"),
+					fmt:  e.FormatID,
+					prev: prevBatter,
+					bat:  striker,
+					ph:   e.Phase,
+				}
 				row, ok := sums[ak]
 				if !ok {
 					row = &db.BatTransitionRow{

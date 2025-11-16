@@ -9,7 +9,18 @@ import (
 // ev2 is same as ev helper in reaction tests, duplicated locally for clarity
 //
 //nolint:unparam // helper accepts many params for clarity; some are constant in tests
-func ev2(match int64, inng, ballSeq int, phase string, isLegal bool, striker, bowler int64, runsBat, runsTot int, extrasKind string, outPID int64, asOf time.Time, fmtID int) evRow {
+func ev2(
+	match int64,
+	inng, ballSeq int,
+	phase string,
+	isLegal bool,
+	striker, bowler int64,
+	runsBat, runsTot int,
+	extrasKind string,
+	outPID int64,
+	asOf time.Time,
+	fmtID int,
+) evRow {
 	var sID, bID sql.NullInt64
 	if striker != 0 {
 		sID = sql.NullInt64{Int64: striker, Valid: true}
