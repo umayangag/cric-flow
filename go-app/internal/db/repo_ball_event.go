@@ -47,7 +47,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 		slog.Warn("[InsertBallEvents] no rows to insert")
 		return nil
 	}
-slog.Debug("inserting ball events", slog.Int("num_rows", len(rows)))
+	slog.Debug("inserting ball events", slog.Int("num_rows", len(rows)))
 
 	if len(rows) <= smallBatchThreshold {
 		for i := range rows {
