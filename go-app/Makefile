@@ -211,9 +211,11 @@ help:
 	@echo "  lint               Run golangci-lint"
 	@echo "  vet                Run go vet"
 	@echo "  test               Run unit tests"
+	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
 	@echo "  coverage-html      Render HTML coverage report"
+	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo
 	@echo "[Build & Run]"
 	@echo "  build              Build API binary (cmd/api)"
@@ -225,6 +227,10 @@ help:
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
+	@echo "  export-dataset     Export datasets for all formats to output dir (GO_APP_OUTPUT_DIR)"
+	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
+	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
+	@echo "  import-keepers     Import wicket keepers from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
 	@echo
 	@echo "[Docker]"
 	@echo "  docker-build       Build API Docker image"
