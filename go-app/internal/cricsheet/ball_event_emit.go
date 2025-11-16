@@ -2,6 +2,7 @@ package cricsheet
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -119,7 +120,7 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 		}
 		if err := insertBallEventsFn(ctx, rows); err != nil {
 			slog.Error("failed to insert ball_event rows", slog.Any("err", err))
-			return err
+			return fmt.Errorf("failed to insert ball events for inning %d: %w", inningNo, err)
 		}
 	}
 	return nil
