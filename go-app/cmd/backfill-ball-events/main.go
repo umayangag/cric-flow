@@ -149,11 +149,13 @@ m, meta, perr := parseMatchFile(f)
 			total++
 			continue
 		}
-		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
-			log.Fatalf("[error] ensure match failed id=%d: %v", stableID, err)
+if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
+			log.Printf("[error] ensure match failed id=%d: %v", stableID, err)
+			continue
 		}
 		if err := cricsheet.EmitBallEvents(ctx, m, int(formatID), stableID); err != nil {
-			log.Fatalf("[error] emit failed for id=%d: %v", stableID, err)
+			log.Printf("[error] emit failed for id=%d: %v", stableID, err)
+			continue
 		}
 		log.Printf("[ok] backfilled ball_event for id=%d from %s", stableID, filepath.Base(f))
 		total++
