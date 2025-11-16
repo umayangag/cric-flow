@@ -81,7 +81,7 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
 
 	// Create staging table with column types matching target insert columns.
 	if err := tx.Exec(ctx, `
-        CREATE TEMP TABLE batting_transition_features AS
+        CREATE TEMP TABLE bat_trans_stage AS
         SELECT 
             as_of_date::date,
             format_id::smallint,
@@ -131,7 +131,7 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
 
 	if _, err := tx.CopyFrom(
 		ctx,
-		pgx.Identifier{"batting_transition_features"},
+		pgx.Identifier{"bat_trans_stage"},
 		[]string{
 			"as_of_date", "format_id", "scope", "scope_id",
 			"prev_batter_id", "batter_id", "phase",
@@ -152,7 +152,7 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
             as_of_date, format_id, scope, scope_id,
             prev_batter_id, batter_id, phase,
             balls, runs, dismissals, fours, sixes
-        FROM batting_transition_features
+        FROM bat_trans_stage
         ON CONFLICT (as_of_date, format_id, scope, scope_id, prev_batter_id, batter_id, phase)
         DO UPDATE SET
             balls = EXCLUDED.balls,
