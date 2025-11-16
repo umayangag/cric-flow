@@ -14,6 +14,11 @@ import (
 // Pool is a global connection pool reference returned by Connect.
 var Pool *pgxpool.Pool
 
+// PoolAPI is an abstracted, mockable view of the pgx pool/tx used by code paths
+// that require pgx-specific features like CopyFrom. It is initialized by Connect
+// and can be overridden in tests.
+var PoolAPI PoolIface
+
 // DB is a minimal database interface to enable offline tests and pgxmock.
 // Keep this surface area small; prefer repository-local helpers if you need more.
 type DB interface {
@@ -30,6 +35,26 @@ type Tx interface {
 	QueryRow(ctx context.Context, sql string, args ...any) Row
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
+}
+
+// CopyFromTx is a transaction interface that supports pgx's CopyFrom in addition
+// to the standard Tx methods. Used for high-throughput bulk inserts.
+type CopyFromTx interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) Row
+	CopyFrom(ctx context.Context, table pgx.Identifier, columns []string, src pgx.CopyFromSource) (int64, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+// PoolIface abstracts the subset of pgxpool.Pool we need, allowing pgxmock-based
+// tests to inject a fake pool.
+type PoolIface interface {
+	Exec(ctx context.Context, sql string, args ...any) error
+	Query(ctx context.Context, sql string, args ...any) (Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) Row
+	Begin(ctx context.Context) (CopyFromTx, error)
 }
 
 // Row allows scanning a single row.
@@ -96,6 +121,34 @@ func (w poolDB) Begin(ctx context.Context) (Tx, error) {
 	return txAdapter{tx}, nil
 }
 
+// poolAPIAdapter adapts pgxpool.Pool to PoolIface.
+type poolAPIAdapter struct{ p *pgxpool.Pool }
+
+func (a poolAPIAdapter) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := a.p.Exec(ctx, sql, args...)
+	return err
+}
+
+func (a poolAPIAdapter) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	r, err := a.p.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rowsAdapter{r}, nil
+}
+
+func (a poolAPIAdapter) QueryRow(ctx context.Context, sql string, args ...any) Row {
+	return rowAdapter{a.p.QueryRow(ctx, sql, args...)}
+}
+
+func (a poolAPIAdapter) Begin(ctx context.Context) (CopyFromTx, error) {
+	tx, err := a.p.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return txCopyAdapter{Tx: tx}, nil
+}
+
 type rowsAdapter struct{ pgx.Rows }
 
 func (r rowsAdapter) Close() { r.Rows.Close() }
@@ -126,6 +179,38 @@ func (t txAdapter) QueryRow(ctx context.Context, sql string, args ...any) Row {
 
 func (t txAdapter) Commit(ctx context.Context) error   { return t.Tx.Commit(ctx) }
 func (t txAdapter) Rollback(ctx context.Context) error { return t.Tx.Rollback(ctx) }
+
+// txCopyAdapter adapts pgx.Tx to CopyFromTx.
+type txCopyAdapter struct{ Tx pgx.Tx }
+
+func (t txCopyAdapter) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := t.Tx.Exec(ctx, sql, args...)
+	return err
+}
+
+func (t txCopyAdapter) Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	r, err := t.Tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return rowsAdapter{r}, nil
+}
+
+func (t txCopyAdapter) QueryRow(ctx context.Context, sql string, args ...any) Row {
+	return rowAdapter{t.Tx.QueryRow(ctx, sql, args...)}
+}
+
+func (t txCopyAdapter) CopyFrom(
+	ctx context.Context,
+	table pgx.Identifier,
+	columns []string,
+	src pgx.CopyFromSource,
+) (int64, error) {
+	return t.Tx.CopyFrom(ctx, table, columns, src)
+}
+
+func (t txCopyAdapter) Commit(ctx context.Context) error   { return t.Tx.Commit(ctx) }
+func (t txCopyAdapter) Rollback(ctx context.Context) error { return t.Tx.Rollback(ctx) }
 
 // BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
 func BuildDSN(user, pass, host, port, database, ssl string) string {
@@ -162,8 +247,12 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 	Pool = pool
 	defaultDB = poolDB{p: pool}
+	PoolAPI = poolAPIAdapter{p: pool}
 	return pool, nil
 }
+
+// SetPoolAPI allows tests to inject a mock pool implementation.
+func SetPoolAPI(p PoolIface) { PoolAPI = p }
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

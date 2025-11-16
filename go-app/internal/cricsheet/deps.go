@@ -30,9 +30,10 @@ type WeatherClient interface {
 
 // Default adapters
 var (
-	cricDB        CricsheetDB   = realDB{}
-	weatherClient WeatherClient = realWeather{}
-	recomputeFn                 = db.RecomputeFieldingAggregates
+	cricDB             CricsheetDB   = realDB{}
+	weatherClient      WeatherClient = realWeather{}
+	recomputeFn                      = db.RecomputeFieldingAggregates
+	insertBallEventsFn               = db.InsertBallEvents
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.

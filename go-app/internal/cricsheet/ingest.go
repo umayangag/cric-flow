@@ -427,6 +427,12 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		return err
 	}
 
+	// Emit ball_event rows for T20/T20I (sub-plan 1.3)
+	if err = EmitBallEvents(ctx, m, int(formatID), mid); err != nil {
+		slog.Error("failed to emit ball_event rows", slog.Int64("match_id", mid), slog.Any("err", err))
+		return err
+	}
+
 	return nil
 }
 

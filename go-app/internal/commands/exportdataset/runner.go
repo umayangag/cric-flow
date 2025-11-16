@@ -12,6 +12,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 )
 
 // BattingExporter is the minimal interface Runner needs for batting exports.
@@ -64,6 +65,8 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	// when Bat and Bow are non-nil. The existing main currently constructs the
 	// runner without services, so behavior remains unchanged until wiring is added.
 	if r.Bat != nil && r.Bow != nil {
+		// Inject the exporter sequence flag into context so lower layers can gate joins.
+		ctx = exq.WithSeqEnabled(ctx, opts.EnableSeq)
 		formats := ResolveFormats(opts, config.Load())
 		if opts.Unified {
 			if err := r.writeUsing(opts.OutDir, "batting_encoded_all.csv", func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) }); err != nil {

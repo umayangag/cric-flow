@@ -301,3 +301,116 @@ Verification commands:
   - `cd ml-service && pytest -q`
 
 To experiment with a different order locally without changing the repo file, point `FEATURE_CONFIG_PATH` at a temporary JSON file and run tests; they should reflect your custom order in vector construction.
+
+
+
+## Sequence features in exporter (T20 subset; gated by -enable-seq)
+
+The exporter can optionally append a compact subset of T20 bowl/bat sequence features to the CSV outputs. By default this is OFF to preserve the current schema. Enable it via a CLI flag or environment variable.
+
+- Flag: `-enable-seq=1`
+- Env:  `ENABLE_SEQ_FEATURES=1` (truthy values: `1`, `true`, `yes`)
+
+Examples (structure-only runs; values require a DB connection):
+
+- OFF (baseline headers; no extra columns)
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -format=T20
+```
+
+- ON (appends T20 sequence columns to the end of the CSV headers)
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
+  go run ./cmd/export-dataset -format=T20 -enable-seq=1
+```
+
+Convenience Make targets:
+```
+# Precompute sequence features (FORMAT defaults to T20)
+make precompute-seq FORMAT=T20
+
+# Exporter OFF vs ON for a given format
+make export-off FORMAT=T20
+make export-on  FORMAT=T20
+```
+
+Bowling columns added when ON:
+- `bowl_prev_bowler_id`, `bowl_prev_phase`, `bowl_prev_wkt_rate`
+- `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`
+- `bowl_extras_wide_rate_pp`
+- `bowl_react_after_boundary_wkt_rate_next`
+- `bowl_spell_first_over_wkt_rate`
+- `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`
+
+Batting columns added when ON:
+- `bat_prev_batter_id`, `bat_prev_phase`, `bat_prev_sr`, `bat_prev_out_rate`
+- `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`
+- `bat_entry_sr_1_6`, `bat_set_sr_13_30`
+- `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`
+
+Notes:
+- These features are joined using latest-as-of semantics (`as_of_date <= match_date`) and filtered by format. For this step, only T20 is wired; ODI/TEST are scheduled under Plan 1.13.
+- Some columns are placeholders (NULLs) until their upstream sources are finalized; headers are stable so downstream consumers can adopt them behind the flag.
+
+
+
+## ML readers and tiny baselines (T20)
+
+This repo includes tolerant Python readers that can consume exporter CSVs with or without the optional T20 sequence columns (gated by `-enable-seq`). Small, deterministic baselines are provided to validate end‑to‑end wiring.
+
+- Readers live in `ml-service/ml_service/datasets/seq_reader.py` and will backfill zeros for any optional sequence columns that are missing.
+- Tiny baselines live in `ml-service/ml_service/baselines/` and save artifacts under `output/ml-service/`.
+
+Make targets:
+- Run only the new reader/baseline tests (scoped; does not require the full FastAPI test suite):
+```
+make ml-test
+```
+- Train tiny T20 baselines using fixtures (structure only):
+```
+make train-batting-baseline
+make train-bowling-baseline
+```
+
+Notes:
+- These readers handle both exporter modes:
+  - OFF: baseline headers only
+  - ON: baseline + appended T20 sequence columns (see the exporter section on how to enable `-enable-seq`).
+- For full Python tests (FastAPI + readers + baselines), ensure the `ml-service/requirements.txt` dependencies are installed (pandas, scikit-learn, fastapi, etc.).
+
+
+
+### ODI/TEST quick examples (precompute and exporter)
+
+Multi‑format support for the new sequence feature fragments is available for ODI and TEST as well (behind the same -enable-seq flag for the exporter). Default remains OFF; these examples are structure‑only unless DB env is configured.
+
+Precompute bowl-by-bowl sequence features (dry‑run):
+```
+cd go-app && go run ./cmd/precompute-sequence-features -format=ODI  -targets=all -dry-run
+cd go-app && go run ./cmd/precompute-sequence-features -format=TEST -targets=all -dry-run
+```
+
+Exporter (default OFF vs ON with -enable-seq):
+
+- ODI
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -format=ODI
+
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
+  go run ./cmd/export-dataset -format=ODI -enable-seq=1
+```
+
+- TEST
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -format=TEST
+
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
+  go run ./cmd/export-dataset -format=TEST -enable-seq=1
+```
+
+Notes:
+- The exporter appends the same compact sequence column subsets when enabled (see the T20 section for the exact column lists); ODI/TEST use latest‑as‑of joins with proper format filters under the hood.
+- The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.

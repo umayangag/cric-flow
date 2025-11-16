@@ -1,0 +1,14 @@
+{
+  "format": "T20",
+  "match_id": 2,
+  "innings": 1,
+  "comment": "Focused on bowler over order for A→B sequences across 6 overs. Alternation and repeats included.",
+  "overs": [
+    {"over":1, "bowler_id":201, "balls": [1,2,3,4,5,6]},
+    {"over":2, "bowler_id":202, "balls": [1,2,3,4,5,6]},
+    {"over":3, "bowler_id":201, "balls": [1,2,3,4,5,6]},
+    {"over":4, "bowler_id":203, "balls": [1,2,3,4,5,6]},
+    {"over":5, "bowler_id":202, "balls": [1,2,3,4,5,6]},
+    {"over":6, "bowler_id":203, "balls": [1,2,3,4,5,6]}
+  ]
+}

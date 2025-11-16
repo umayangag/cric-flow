@@ -1,0 +1,4 @@
+runs,balls,player_name,bat_prev_batter_id,bat_prev_phase,bat_prev_sr,bat_prev_out_rate,bat_window_sr_12_pp,bat_window_boundary_rate_12_pp,bat_entry_sr_1_6,bat_set_sr_13_30,bat_react_after_dot_sr,bat_after_k_dots_boundary_p_k2
+10,8,Alice,101,powerplay,120.0,0.05,130.0,0.45,110.0,95.0,85.0,0.30
+5,6,Bob,102,death,140.0,0.06,125.0,0.40,100.0,90.0,80.0,0.25
+0,1,Chris,0,middle,0.0,0.00,110.0,0.35,95.0,88.0,70.0,0.20
