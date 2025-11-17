@@ -33,13 +33,6 @@ type Team struct {
 	WinningProbability float64
 }
 
-// CalculateOverallPerformance aggregates player predictions into a team summary for a match.
-// It delegates to CalculateOverallPerformanceWithConfig using the loaded config.
-func CalculateOverallPerformance(players []PlayerPrediction, matchID int64) Team {
-	cfg := config.Load()
-	return CalculateOverallPerformanceWithConfig(cfg, players, matchID)
-}
-
 // CalculateOverallPerformanceWithConfig is a pure variant that accepts configuration explicitly.
 // This improves testability by avoiding implicit I/O or environment reads inside the function.
 func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerPrediction, matchID int64) Team {

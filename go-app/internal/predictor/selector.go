@@ -1,21 +1,19 @@
-package main
+package predictor
 
 import (
 	"sort"
-
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
 // selectTop returns the top N players by WinningProbability.
 // It is pure and deterministic. For ties, it uses PlayerName ascending as a tie-breaker
 // to keep unit tests stable across runs and environments.
-func selectTop(players []predictor.PlayerPrediction, teamSize int) []predictor.PlayerPrediction {
+func selectTop(players []PlayerPrediction, teamSize int) []PlayerPrediction {
 	if teamSize <= 0 || len(players) == 0 {
-		return []predictor.PlayerPrediction{}
+		return []PlayerPrediction{}
 	}
 
 	// Work on a copy to avoid mutating the input slice.
-	cp := append([]predictor.PlayerPrediction(nil), players...)
+	cp := append([]PlayerPrediction(nil), players...)
 	sort.Slice(cp, func(i, j int) bool {
 		li, lj := cp[i], cp[j]
 		if li.WinningProbability == lj.WinningProbability {

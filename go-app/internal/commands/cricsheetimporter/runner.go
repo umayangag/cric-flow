@@ -10,7 +10,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logging"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 // Runner orchestrates the cricsheet-importer workflow.
@@ -19,7 +19,7 @@ type Runner struct {
 	Loader cricsheet.Loader
 	Parser cricsheet.Parser
 	Repo   db.MatchRepo
-	Log    logging.Logger
+	Log    logger.Logger
 }
 
 // NewRunner constructs a Runner with its dependencies.
@@ -28,7 +28,7 @@ func NewRunner(
 	loader cricsheet.Loader,
 	parser cricsheet.Parser,
 	repo db.MatchRepo,
-	log logging.Logger,
+	log logger.Logger,
 ) *Runner {
 	return &Runner{FS: fs, Loader: loader, Parser: parser, Repo: repo, Log: log}
 }
