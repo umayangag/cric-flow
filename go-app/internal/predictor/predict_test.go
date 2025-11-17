@@ -1,4 +1,4 @@
-package main
+package predictor
 
 import (
 	"context"
@@ -6,25 +6,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
-	mlmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient/mocks"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor/internal/mocks"
 )
 
 func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 	ctx := context.Background()
-	players := []predictor.PlayerPrediction{
+	players := []PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.2},
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	m := &mlmocks.Predictor{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 
-	got, err := buildTeam(ctx, m, players, 2)
+	got, err := buildTeam(ctx, &m, players, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []predictor.PlayerPrediction{
+	want := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
@@ -35,9 +34,9 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 
 func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 	ctx := context.Background()
-	m := &mlmocks.Predictor{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, mock.Anything).Return(nil, assertErr{})
-	_, err := buildTeam(ctx, m, nil, 11)
+	_, err := buildTeam(ctx, &m, nil, 11)
 	if err == nil {
 		t.Fatalf("expected error from predictor")
 	}
@@ -45,12 +44,12 @@ func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 
 func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
-	players := []predictor.PlayerPrediction{
+	players := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 	}
-	m := &mlmocks.Predictor{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := buildTeam(ctx, m, players, 0)
+	got, err := buildTeam(ctx, &m, players, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,10 +60,10 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 
 func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
-	players := []predictor.PlayerPrediction{}
-	m := &mlmocks.Predictor{}
+	players := []PlayerPrediction{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := buildTeam(ctx, m, players, 11)
+	got, err := buildTeam(ctx, &m, players, 11)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,18 +74,18 @@ func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 
 func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
 	ctx := context.Background()
-	players := []predictor.PlayerPrediction{
+	players := []PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.6},
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.6},
 	}
-	m := &mlmocks.Predictor{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := buildTeam(ctx, m, players, 10)
+	got, err := buildTeam(ctx, &m, players, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []predictor.PlayerPrediction{
+	want := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		// For ties (0.6) names ascending: B then C
 		{PlayerName: "B", WinningProbability: 0.6},
@@ -103,19 +102,19 @@ func (assertErr) Error() string { return "boom" }
 
 func TestBuildTeam_TeamSizeLessThanPlayersSelectsTopN(t *testing.T) {
 	ctx := context.Background()
-	players := []predictor.PlayerPrediction{
+	players := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.7},
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.6},
 		{PlayerName: "D", WinningProbability: 0.8},
 	}
-	m := &mlmocks.Predictor{}
+	m := mocks.MockPredictor{}
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := buildTeam(ctx, m, players, 3)
+	got, err := buildTeam(ctx, &m, players, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []predictor.PlayerPrediction{
+	want := []PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "D", WinningProbability: 0.8},
 		{PlayerName: "A", WinningProbability: 0.7},

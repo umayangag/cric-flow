@@ -1,12 +1,10 @@
-package main
+package predictor
 
 import (
 	"encoding/csv"
 	"fmt"
 	"io"
 	"strconv"
-
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
 // parsePlayersCSV reads CSV data from r and returns player predictions.
@@ -16,7 +14,7 @@ import (
 //   - runs_conceded, deliveries, wickets_taken, econ, winning_probability
 //
 // Unknown columns are ignored. Non-numeric values in numeric columns are skipped.
-func parsePlayersCSV(r io.Reader) ([]predictor.PlayerPrediction, error) {
+func parsePlayersCSV(r io.Reader) ([]PlayerPrediction, error) {
 	cr := csv.NewReader(r)
 	records, err := cr.ReadAll()
 	if err != nil {
@@ -26,9 +24,9 @@ func parsePlayersCSV(r io.Reader) ([]predictor.PlayerPrediction, error) {
 		return nil, fmt.Errorf("empty csv")
 	}
 	header := records[0]
-	players := make([]predictor.PlayerPrediction, 0, len(records)-1)
+	players := make([]PlayerPrediction, 0, len(records)-1)
 	for _, rec := range records[1:] {
-		var p predictor.PlayerPrediction
+		var p PlayerPrediction
 		for i, val := range rec {
 			if i >= len(header) {
 				continue

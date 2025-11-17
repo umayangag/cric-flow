@@ -1,25 +1,23 @@
-package main
+package predictor
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
 func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 	// zero team size returns empty
-	if got := selectTop([]predictor.PlayerPrediction{{PlayerName: "A", WinningProbability: 0.9}}, 0); len(got) != 0 {
+	if got := selectTop([]PlayerPrediction{{PlayerName: "A", WinningProbability: 0.9}}, 0); len(got) != 0 {
 		t.Fatalf("expected 0, got %d", len(got))
 	}
 
 	// fewer than team size returns all in sorted order
-	in1 := []predictor.PlayerPrediction{
+	in1 := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "B", WinningProbability: 0.8},
 	}
 	got1 := selectTop(in1, 5)
-	want1 := []predictor.PlayerPrediction{
+	want1 := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "B", WinningProbability: 0.8},
 	}
@@ -28,7 +26,7 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 	}
 
 	// deterministic tie-breaker by name
-	in2 := []predictor.PlayerPrediction{
+	in2 := []PlayerPrediction{
 		{PlayerName: "Zed", WinningProbability: 0.7},
 		{PlayerName: "Ann", WinningProbability: 0.7},
 	}
@@ -38,13 +36,13 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 	}
 
 	// select top N by probability desc
-	in3 := []predictor.PlayerPrediction{
+	in3 := []PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.1},
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
 	got3 := selectTop(in3, 2)
-	want3 := []predictor.PlayerPrediction{
+	want3 := []PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
@@ -53,7 +51,7 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 	}
 
 	// does not mutate input slice
-	in4 := []predictor.PlayerPrediction{
+	in4 := []PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "A", WinningProbability: 0.8},
 	}

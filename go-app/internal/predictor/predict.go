@@ -1,10 +1,7 @@
-package main
+package predictor
 
 import (
 	"context"
-
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
 // buildTeam predicts winning probabilities for the given players using the provided
@@ -12,10 +9,10 @@ import (
 // Pure w.r.t. external systems: requires caller-provided context and predictor.
 func buildTeam(
 	ctx context.Context,
-	p mlclient.Predictor,
-	players []predictor.PlayerPrediction,
+	p Predictor,
+	players []PlayerPrediction,
 	teamSize int,
-) ([]predictor.PlayerPrediction, error) {
+) ([]PlayerPrediction, error) {
 	preds, err := p.PredictWin(ctx, players)
 	if err != nil {
 		return nil, err
