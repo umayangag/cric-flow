@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	exportrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"

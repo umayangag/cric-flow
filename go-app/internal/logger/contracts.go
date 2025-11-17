@@ -1,8 +1,6 @@
-package logging
+package logger
 
-import (
-	"context"
-)
+import "context"
 
 // Logger is a small, test-friendly logging interface.
 // NOTE: This interface is separate from the slog-backed helpers in this package
