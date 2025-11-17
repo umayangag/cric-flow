@@ -1,4 +1,4 @@
-package predictor
+package teampredictor
 
 import (
 	"errors"

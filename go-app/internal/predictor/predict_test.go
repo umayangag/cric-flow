@@ -17,10 +17,10 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 
-	got, err := predictor.BuildTeam(ctx, &m, players, 2)
+	got, err := predictor.BuildTeam(ctx, m, players, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,9 +35,9 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 
 func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 	ctx := context.Background()
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, mock.Anything).Return(nil, assertErr{})
-	_, err := predictor.BuildTeam(ctx, &m, nil, 11)
+	_, err := predictor.BuildTeam(ctx, m, nil, 11)
 	if err == nil {
 		t.Fatalf("expected error from predictor")
 	}
@@ -48,9 +48,9 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 	players := []predictor.PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 	}
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := predictor.BuildTeam(ctx, &m, players, 0)
+	got, err := predictor.BuildTeam(ctx, m, players, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,9 +62,9 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	players := []predictor.PlayerPrediction{}
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := predictor.BuildTeam(ctx, &m, players, 11)
+	got, err := predictor.BuildTeam(ctx, m, players, 11)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,9 +80,9 @@ func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.6},
 	}
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := predictor.BuildTeam(ctx, &m, players, 10)
+	got, err := predictor.BuildTeam(ctx, m, players, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,9 +109,9 @@ func TestBuildTeam_TeamSizeLessThanPlayersSelectsTopN(t *testing.T) {
 		{PlayerName: "C", WinningProbability: 0.6},
 		{PlayerName: "D", WinningProbability: 0.8},
 	}
-	m := mocks.MockPredictor{}
+	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
-	got, err := predictor.BuildTeam(ctx, &m, players, 3)
+	got, err := predictor.BuildTeam(ctx, m, players, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
