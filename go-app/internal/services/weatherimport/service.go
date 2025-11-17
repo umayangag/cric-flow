@@ -5,17 +5,15 @@ import (
 	"errors"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
 )
 
 // Service coordinates fetching weather from a Provider and (optionally) upserting via Repo.
-// It is designed to be easily unit tested with small fakes or mockery-generated mocks.
 type Service struct {
-	Provider wx.Provider
-	Repo     db.WeatherRepo
+	Provider Provider
+	Repo     Repository
 }
 
-func NewService(p wx.Provider, r db.WeatherRepo) *Service { return &Service{Provider: p, Repo: r} }
+func NewService(p Provider, r db.WeatherRepo) *Service { return &Service{Provider: p, Repo: r} }
 
 // Import fetches all weather records for a match and upserts them when apply==true.
 // Returns the number of records processed or an error.

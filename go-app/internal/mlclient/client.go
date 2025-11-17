@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Service calls the Python ML service.
@@ -62,9 +62,9 @@ func (c *Client) postJSON(ctx context.Context, path string, in any, out any) err
 // PredictBatting sends batting feature rows to the ML service and returns predictions.
 func (c *Client) PredictBatting(
 	ctx context.Context,
-	feats []contracts.BattingFeatures,
-) ([]contracts.BattingPrediction, error) {
-	var preds []contracts.BattingPrediction
+	feats []models.BattingFeatures,
+) ([]models.BattingPrediction, error) {
+	var preds []models.BattingPrediction
 	if err := c.postJSON(ctx, "/predict/batting", feats, &preds); err != nil {
 		return nil, err
 	}
@@ -74,9 +74,9 @@ func (c *Client) PredictBatting(
 // PredictBowling sends bowling feature rows to the ML service and returns predictions.
 func (c *Client) PredictBowling(
 	ctx context.Context,
-	feats []contracts.BowlingFeatures,
-) ([]contracts.BowlingPrediction, error) {
-	var preds []contracts.BowlingPrediction
+	feats []models.BowlingFeatures,
+) ([]models.BowlingPrediction, error) {
+	var preds []models.BowlingPrediction
 	if err := c.postJSON(ctx, "/predict/bowling", feats, &preds); err != nil {
 		return nil, err
 	}

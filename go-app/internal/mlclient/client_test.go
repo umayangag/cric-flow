@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Test helpers
@@ -173,7 +173,7 @@ func TestClient_PredictBatting(t *testing.T) {
 				if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 					t.Fatalf("unexpected content-type: %s", ct)
 				}
-				_ = json.NewEncoder(w).Encode([]contracts.BattingPrediction{{RunsScored: 42}})
+				_ = json.NewEncoder(w).Encode([]models.BattingPrediction{{RunsScored: 42}})
 			}),
 			false,
 			42,
@@ -193,12 +193,12 @@ func TestClient_PredictBatting(t *testing.T) {
 			srv := httptest.NewServer(tc.serverFunc)
 			defer srv.Close()
 			c := newTestClient(srv.URL, srv.Client())
-			_, err := c.PredictBatting(context.Background(), []contracts.BattingFeatures{{}})
+			_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
 			if tc.expectErr && err == nil {
 				t.Fatalf("expected error, got nil")
 			}
 			if !tc.expectErr {
-				preds, _ := c.PredictBatting(context.Background(), []contracts.BattingFeatures{{}})
+				preds, _ := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
 				if len(preds) != 1 || preds[0].RunsScored != tc.expectRuns {
 					t.Fatalf("unexpected preds: %+v", preds)
 				}
@@ -214,11 +214,11 @@ func TestClient_PredictBowling(t *testing.T) {
 			if r.URL.Path != "/predict/bowling" {
 				t.Fatalf("unexpected path: %s", r.URL.Path)
 			}
-			_ = json.NewEncoder(w).Encode([]contracts.BowlingPrediction{{WicketsTaken: 3}})
+			_ = json.NewEncoder(w).Encode([]models.BowlingPrediction{{WicketsTaken: 3}})
 		}))
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
-		preds, err := c.PredictBowling(context.Background(), []contracts.BowlingFeatures{{}})
+		preds, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -234,7 +234,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		}))
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
-		_, err := c.PredictBowling(context.Background(), []contracts.BowlingFeatures{{}})
+		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		if err == nil {
 			t.Fatalf("expected JSON decode error")
 		}
@@ -250,7 +250,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		hc := srv.Client()
 		hc.Timeout = 50 * time.Millisecond
 		c := newTestClient(srv.URL, hc)
-		_, err := c.PredictBowling(context.Background(), []contracts.BowlingFeatures{{}})
+		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		if err == nil {
 			t.Fatalf("expected timeout error, got nil")
 		}
@@ -266,7 +266,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
 		c.UserAgent = "" // explicitly clear
-		_, err := c.PredictBowling(context.Background(), []contracts.BowlingFeatures{{}})
+		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

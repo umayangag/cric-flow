@@ -3,7 +3,7 @@ package dummy
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Provider is a simple in-process weather provider for smoke/testing flows.
@@ -17,8 +17,8 @@ type Provider struct{}
 
 func New() *Provider { return &Provider{} }
 
-func (p *Provider) Fetch(_ context.Context, matchID int64) ([]wx.Record, error) {
-	return []wx.Record{
+func (p *Provider) Fetch(_ context.Context, matchID int64) ([]models.WeatherData, error) {
+	return []models.WeatherData{
 		{
 			MatchID:   matchID,
 			Session:   "batting",

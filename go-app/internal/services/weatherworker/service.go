@@ -6,27 +6,26 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
 )
 
 // Service coordinates fetching weather for match IDs from a job source and,
 // when apply==true, upserting the resulting records via the WeatherRepo.
 // It is deterministic and testable; no logging here.
 type Service struct {
-	Jobs jobs.Source
-	Prov wx.Provider
-	Repo db.WeatherRepo
+	Jobs       jobs.Source
+	Provider   Provider
+	Repository db.WeatherRepo
 }
 
-func NewService(j jobs.Source, p wx.Provider, r db.WeatherRepo) *Service {
-	return &Service{Jobs: j, Prov: p, Repo: r}
+func NewService(j jobs.Source, p Provider, r db.WeatherRepo) *Service {
+	return &Service{Jobs: j, Provider: p, Repository: r}
 }
 
 // Run pulls batches from Jobs until exhausted or until maxJobs have been
-// processed. When apply is false, it will not call Repo.
+// processed. When apply is false, it will not call Repository.
 // Returns the number of match IDs processed or the first error encountered.
 func (s *Service) Run(ctx context.Context, maxJobs int, apply bool) (int, error) {
-	if s == nil || s.Jobs == nil || s.Prov == nil || s.Repo == nil {
+	if s == nil || s.Jobs == nil || s.Provider == nil || s.Repository == nil {
 		return 0, errors.New("nil service or dependency")
 	}
 	if maxJobs < 0 {
@@ -55,13 +54,13 @@ func (s *Service) Run(ctx context.Context, maxJobs int, apply bool) (int, error)
 				return processed, nil
 			}
 			// Fetch all weather records for this match (e.g., batting/bowling sessions)
-			recs, err := s.Prov.Fetch(ctx, id)
+			recs, err := s.Provider.Fetch(ctx, id)
 			if err != nil {
 				return processed, err
 			}
 			if apply {
 				for _, r := range recs {
-					if err := s.Repo.UpsertWeather(ctx, r); err != nil {
+					if err := s.Repository.UpsertWeather(ctx, r); err != nil {
 						return processed, err
 					}
 				}

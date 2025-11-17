@@ -18,7 +18,7 @@ import (
 // Dependencies are small interfaces so tests can supply fakes or mockery mocks.
 //go:generate mockery --name IngestService --output internal/mocks --case underscore
 // NOTE: We do not usually mock the service itself; mocks are generated primarily
-// for Loader/Parser/Repo elsewhere. The directive above is a convenience if
+// for Loader/Parser/Repository elsewhere. The directive above is a convenience if
 // other packages need to mock this service.
 //
 // The service is independent from the command Runner so it can be tested in

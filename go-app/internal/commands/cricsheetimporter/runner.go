@@ -41,7 +41,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		return errors.New("nil runner")
 	}
 	if r.FS == nil || r.Loader == nil || r.Parser == nil || r.Repo == nil {
-		return errors.New("missing dependency: FS/Loader/Parser/Repo required")
+		return errors.New("missing dependency: FS/Loader/Parser/Repository required")
 	}
 	if opts.InDir == "" {
 		return errors.New("input directory is required")

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 func TestPredictBatting_Non2xx_New(t *testing.T) {
@@ -17,7 +17,7 @@ func TestPredictBatting_Non2xx_New(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
-	_, err := c.PredictBatting(context.Background(), []contracts.BattingFeatures{{PlayerName: "A"}})
+	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{PlayerName: "A"}})
 	if err == nil {
 		t.Fatalf("expected error for non-2xx response")
 	}
@@ -31,7 +31,7 @@ func TestPredictBowling_InvalidJSON_New(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
-	_, err := c.PredictBowling(context.Background(), []contracts.BowlingFeatures{{PlayerName: "B"}})
+	_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{PlayerName: "B"}})
 	if err == nil {
 		t.Fatalf("expected json decode error")
 	}

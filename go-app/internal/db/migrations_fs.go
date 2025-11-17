@@ -81,6 +81,11 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		appliedCount++
 		slog.Info("migrations: applied", slog.String("version", version))
 	}
-	slog.Info("migrations: done", slog.Int("applied", appliedCount), slog.Int("skipped", skippedCount), slog.Int("seen", len(files)))
+	slog.Info(
+		"migrations: done",
+		slog.Int("applied", appliedCount),
+		slog.Int("skipped", skippedCount),
+		slog.Int("seen", len(files)),
+	)
 	return nil
 }

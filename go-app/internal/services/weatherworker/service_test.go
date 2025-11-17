@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
 )
 
 type fakeJobs struct {
@@ -28,11 +28,11 @@ func (f *fakeJobs) Next(_ context.Context, _ int) ([]int64, bool, error) {
 }
 
 type fakeProv struct {
-	recs map[int64][]wx.Record
+	recs map[int64][]models.WeatherData
 	err  error
 }
 
-func (p *fakeProv) Fetch(_ context.Context, id int64) ([]wx.Record, error) {
+func (p *fakeProv) Fetch(_ context.Context, id int64) ([]models.WeatherData, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -44,7 +44,7 @@ type fakeRepo struct {
 	err     error
 }
 
-func (r *fakeRepo) UpsertWeather(_ context.Context, _ wx.Record) error {
+func (r *fakeRepo) UpsertWeather(_ context.Context, _ models.WeatherData) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -99,8 +99,12 @@ func indexOf(s, sub string) int {
 func TestService_Run_Table(t *testing.T) {
 	t.Parallel()
 
-	bat := func(id int64) []wx.Record { return []wx.Record{{MatchID: id, Session: "batting", Temp: 25}} }
-	bow := func(id int64) []wx.Record { return []wx.Record{{MatchID: id, Session: "bowling", Temp: 24}} }
+	bat := func(id int64) []models.WeatherData {
+		return []models.WeatherData{{MatchID: id, Session: "batting", Temp: 25}}
+	}
+	bow := func(id int64) []models.WeatherData {
+		return []models.WeatherData{{MatchID: id, Session: "bowling", Temp: 24}}
+	}
 
 	cases := []struct {
 		name   string
@@ -114,7 +118,7 @@ func TestService_Run_Table(t *testing.T) {
 		{
 			name:   "dry-run processes all without upserts",
 			jobs:   &fakeJobs{batches: [][]int64{{1, 2}, {3}}},
-			prov:   &fakeProv{recs: map[int64][]wx.Record{1: bat(1), 2: bow(2), 3: bat(3)}},
+			prov:   &fakeProv{recs: map[int64][]models.WeatherData{1: bat(1), 2: bow(2), 3: bat(3)}},
 			repo:   &fakeRepo{},
 			max:    0,
 			apply:  false,
@@ -123,7 +127,7 @@ func TestService_Run_Table(t *testing.T) {
 		{
 			name:   "apply upserts all records",
 			jobs:   &fakeJobs{batches: [][]int64{{10}, {11}}},
-			prov:   &fakeProv{recs: map[int64][]wx.Record{10: {bat(10)[0], bow(10)[0]}, 11: bat(11)}},
+			prov:   &fakeProv{recs: map[int64][]models.WeatherData{10: {bat(10)[0], bow(10)[0]}, 11: bat(11)}},
 			repo:   &fakeRepo{},
 			max:    0,
 			apply:  true,
@@ -132,7 +136,7 @@ func TestService_Run_Table(t *testing.T) {
 		{
 			name:   "respect max jobs",
 			jobs:   &fakeJobs{batches: [][]int64{{1, 2, 3}}},
-			prov:   &fakeProv{recs: map[int64][]wx.Record{1: bat(1), 2: bat(2), 3: bat(3)}},
+			prov:   &fakeProv{recs: map[int64][]models.WeatherData{1: bat(1), 2: bat(2), 3: bat(3)}},
 			repo:   &fakeRepo{},
 			max:    2,
 			apply:  true,
@@ -159,7 +163,7 @@ func TestService_Run_Table(t *testing.T) {
 		{
 			name:   "repo error surfaces",
 			jobs:   &fakeJobs{batches: [][]int64{{7}}},
-			prov:   &fakeProv{recs: map[int64][]wx.Record{7: {bat(7)[0]}}},
+			prov:   &fakeProv{recs: map[int64][]models.WeatherData{7: {bat(7)[0]}}},
 			repo:   &fakeRepo{err: errors.New("db")},
 			max:    0,
 			apply:  true,
