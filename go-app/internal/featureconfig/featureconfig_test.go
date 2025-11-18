@@ -1,4 +1,4 @@
-package featurecfg
+package featureconfig
 
 import (
 	"encoding/json"

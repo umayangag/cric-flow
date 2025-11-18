@@ -9,8 +9,8 @@ import (
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Runner orchestrates the cricsheet-importer workflow.
@@ -55,7 +55,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		r.Log.Infof(ctx, "found %d cricsheet files", len(ids))
 	}
 
-	var batch []domain.Match
+	var batch []models.Match
 	for _, id := range ids {
 		raw, lerr := r.Loader.Load(ctx, opts.InDir, id)
 		if lerr != nil {

@@ -3,7 +3,7 @@ package cricsheet
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Loader defines an abstraction to enumerate and load raw Cricsheet documents
@@ -25,5 +25,5 @@ type Loader interface {
 //go:generate mockery --name Parser --output internal/mocks --case underscore
 type Parser interface {
 	// Parse decodes a raw document and returns zero or more matches.
-	Parse(ctx context.Context, raw []byte) ([]domain.Match, error)
+	Parse(ctx context.Context, raw []byte) ([]models.Match, error)
 }

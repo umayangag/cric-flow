@@ -8,7 +8,7 @@ import (
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/cricsheetimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 type memFS struct{}
@@ -44,11 +44,11 @@ func (f *fakeLoader) Load(_ context.Context, _ string, id string) ([]byte, error
 }
 
 type fakeParser struct {
-	matches map[string][]domain.Match
+	matches map[string][]models.Match
 	err     error
 }
 
-func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]domain.Match, error) {
+func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]models.Match, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -57,15 +57,15 @@ func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]domain.Match, error
 }
 
 type fakeRepo struct {
-	got []domain.Match
+	got []models.Match
 	err error
 }
 
-func (r *fakeRepo) UpsertMatches(_ context.Context, ms []domain.Match) error {
+func (r *fakeRepo) UpsertMatches(_ context.Context, ms []models.Match) error {
 	if r.err != nil {
 		return r.err
 	}
-	r.got = append([]domain.Match(nil), ms...)
+	r.got = append([]models.Match(nil), ms...)
 	return nil
 }
 
@@ -115,7 +115,7 @@ func TestRunner_Run_BasicFlows(t *testing.T) {
 	ids := []string{"a.json", "b.json"}
 	loader := &fakeLoader{ids: ids, data: map[string][]byte{"a.json": []byte("a"), "b.json": []byte("b")}}
 	parser := &fakeParser{
-		matches: map[string][]domain.Match{"a": {{ID: 1, Format: "T20"}}, "b": {{ID: 2, Format: "ODI"}}},
+		matches: map[string][]models.Match{"a": {{ID: 1, Format: "T20"}}, "b": {{ID: 2, Format: "ODI"}}},
 	}
 	repo := &fakeRepo{}
 	r := cmd.NewRunner(memFS{}, loader, parser, repo, nil)
@@ -128,7 +128,7 @@ func TestRunner_Run_DryRun(t *testing.T) {
 	to := t
 	to.Parallel()
 	loader := &fakeLoader{ids: []string{"x"}, data: map[string][]byte{"x": []byte("x")}}
-	parser := &fakeParser{matches: map[string][]domain.Match{"x": {{ID: 9, Format: "TEST"}}}}
+	parser := &fakeParser{matches: map[string][]models.Match{"x": {{ID: 9, Format: "TEST"}}}}
 	repo := &fakeRepo{}
 	r := cmd.NewRunner(memFS{}, loader, parser, repo, nil)
 	opts := cli.Options{InDir: "/tmp", Apply: false, Concurrency: 1}
@@ -264,7 +264,7 @@ func TestRunner_Run_LoadErrorAndEmptyList(t *testing.T) {
 func TestRunner_Run_UpsertError(t *testing.T) {
 	t.Parallel()
 	loader := &fakeLoader{ids: []string{"a"}, data: map[string][]byte{"a": []byte("a")}}
-	parser := &fakeParser{matches: map[string][]domain.Match{"a": {domain.Match{ID: 1}}}}
+	parser := &fakeParser{matches: map[string][]models.Match{"a": {models.Match{ID: 1}}}}
 	repo := &fakeRepo{err: errors.New("db fail")}
 	r := cmd.NewRunner(memFS{}, loader, parser, repo, nil)
 	opts := cli.Options{InDir: "/tmp", Apply: true, Concurrency: 1}

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
 )
 
@@ -44,11 +44,11 @@ func (f *fakeLoader) Load(_ context.Context, _ string, id string) ([]byte, error
 }
 
 type fakeParser struct {
-	out map[string][]domain.Match
+	out map[string][]models.Match
 	err error
 }
 
-func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]domain.Match, error) {
+func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]models.Match, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -57,17 +57,17 @@ func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]domain.Match, error
 
 type fakeRepo struct {
 	mu      sync.Mutex
-	upserts [][]domain.Match
+	upserts [][]models.Match
 	err     error
 }
 
-func (r *fakeRepo) UpsertMatches(_ context.Context, m []domain.Match) error {
+func (r *fakeRepo) UpsertMatches(_ context.Context, m []models.Match) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.err != nil {
 		return r.err
 	}
-	r.upserts = append(r.upserts, append([]domain.Match(nil), m...))
+	r.upserts = append(r.upserts, append([]models.Match(nil), m...))
 	return nil
 }
 
@@ -151,7 +151,7 @@ func TestIngestService_BasicFlows(t *testing.T) {
 		list: []string{"a.json", "b.json"},
 		load: map[string][]byte{"a.json": []byte("A"), "b.json": []byte("B")},
 	}
-	fp := &fakeParser{out: map[string][]domain.Match{
+	fp := &fakeParser{out: map[string][]models.Match{
 		"A": {{ID: 1}},
 		"B": {{ID: 2}, {ID: 3}},
 	}}
@@ -186,7 +186,7 @@ func TestIngestService_Errors(t *testing.T) {
 	t.Parallel()
 	mk := func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
 		fl := &fakeLoader{list: []string{"x.json"}, load: map[string][]byte{"x.json": []byte("X")}}
-		fp := &fakeParser{out: map[string][]domain.Match{"X": {{ID: 9}}}}
+		fp := &fakeParser{out: map[string][]models.Match{"X": {{ID: 9}}}}
 		fr := &fakeRepo{}
 		return &svc.IngestService{Loader: fl, Parser: fp, Repository: fr}, fl, fr
 	}

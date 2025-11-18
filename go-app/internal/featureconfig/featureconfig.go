@@ -1,6 +1,6 @@
 // Package featurecfg loads the centralized feature vector configuration
 // (configs/feature_vectors.json) and exposes ordered feature names.
-package featurecfg
+package featureconfig
 
 import (
 	"encoding/json"
