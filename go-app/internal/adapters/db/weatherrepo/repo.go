@@ -4,21 +4,19 @@ import (
 	"context"
 
 	appdb "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
-// Repo implements db.WeatherRepo with a thin SQL upsert into weather_data.
+// Repository implements db.WeatherRepo with a thin SQL upsert into weather_data.
 // It assumes a unique key on (match_id, session). This keeps adapter tiny and
 // allows the service to remain fully unit-testable.
 // No unit tests here to avoid DB dependency; rely on smoke runs.
 
-type Repo struct{}
+type Repository struct{}
 
-func New() *Repo { return &Repo{} }
+func New() *Repository { return &Repository{} }
 
-var _ appdb.WeatherRepo = (*Repo)(nil)
-
-func (r *Repo) UpsertWeather(ctx context.Context, rec wx.Record) error {
+func (r *Repository) UpsertWeather(ctx context.Context, rec models.WeatherData) error {
 	if appdb.Pool == nil {
 		if _, err := appdb.Connect(ctx); err != nil {
 			return err

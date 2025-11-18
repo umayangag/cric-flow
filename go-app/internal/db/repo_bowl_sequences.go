@@ -45,7 +45,7 @@ func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
 			if scope == "" {
 				scope = "overall"
 			}
-			var scopeID = r.ScopeID
+			scopeID := r.ScopeID
 			if scope == "overall" {
 				scopeID = nil
 			}

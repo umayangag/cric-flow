@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
@@ -69,8 +69,8 @@ func SelectTeam(
 	venueID := int64(nz64(mc.VenueID))
 	oppoID := int64(nz64(mc.OppositionID))
 
-	batFeats := make([]contracts.BattingFeatures, 0, len(pool))
-	bowlFeats := make([]contracts.BowlingFeatures, 0, len(pool))
+	batFeats := make([]models.BattingFeatures, 0, len(pool))
+	bowlFeats := make([]models.BowlingFeatures, 0, len(pool))
 	isBowler := make([]bool, 0, len(pool))
 	isKeeper := make([]bool, 0, len(pool))
 	playerNames := make([]string, 0, len(pool))
@@ -81,7 +81,7 @@ func SelectTeam(
 		batVenue, bowlVenue, _ := db.GetPlayerVenueEffectFmt(ctx, p.PlayerID, venueID, fmtID)
 		batOpp, bowlOpp, _ := db.GetPlayerOppositionEffectFmt(ctx, p.PlayerID, oppoID, fmtID)
 
-		bf := contracts.BattingFeatures{
+		bf := models.BattingFeatures{
 			BattingConsistency: f32(p.BattingConsistency.Float64),
 			BattingForm:        f32(batForm),
 			BattingTemp:        w.Temp,
@@ -102,7 +102,7 @@ func SelectTeam(
 		}
 		batFeats = append(batFeats, bf)
 
-		bow := contracts.BowlingFeatures{
+		bow := models.BowlingFeatures{
 			BowlingConsistency: f32(p.BowlingConsistency.Float64),
 			BowlingForm:        f32(bowlForm),
 			BowlingTemp:        w.Temp,

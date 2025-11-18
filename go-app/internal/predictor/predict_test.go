@@ -39,7 +39,7 @@ func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 	m.On("PredictWin", mock.Anything, mock.Anything).Return(nil, assertErr{})
 	_, err := predictor.BuildTeam(ctx, m, nil, 11)
 	if err == nil {
-		t.Fatalf("expected error from predictor")
+		t.Fatalf("expected error from Predictor")
 	}
 }
 

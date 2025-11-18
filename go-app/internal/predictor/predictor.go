@@ -21,7 +21,7 @@ type PlayerPrediction struct {
 	WinningProbability float64 // Added this field
 }
 
-// Team summarises team-level aggregates computed from player predictions.
+// Team summarizes team-level aggregates computed from player predictions.
 type Team struct {
 	Players            []PlayerPrediction
 	TotalScore         float64

@@ -5,55 +5,29 @@ import (
 	"errors"
 	"testing"
 
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/wx"
+	"github.com/stretchr/testify/mock"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport/internal/mocks"
 )
 
-type fakeProvider struct {
-	recs []wx.Record
-	err  error
-}
-
-func (p *fakeProvider) Fetch(_ context.Context, _ int64) ([]wx.Record, error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	out := make([]wx.Record, len(p.recs))
-	copy(out, p.recs)
-	return out, nil
-}
-
-type fakeRepo struct {
-	upserts []wx.Record
-	err     error
-}
-
-func (r *fakeRepo) UpsertWeather(_ context.Context, rec wx.Record) error {
-	if r.err != nil {
-		return r.err
-	}
-	r.upserts = append(r.upserts, rec)
-	return nil
-}
-
-type assertFn func(t *testing.T, n int, err error, fr *fakeRepo)
+type assertFn func(t *testing.T, n int, err error, fr *mocks.MockRepository)
+type arrangeFn func(fp *mocks.MockProvider, fr *mocks.MockRepository)
 
 func assertNoErrorCount(want int, wantUpserts int) assertFn {
-	return func(t *testing.T, n int, err error, fr *fakeRepo) {
+	return func(t *testing.T, n int, err error, fr *mocks.MockRepository) {
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
 		if n != want {
 			t.Fatalf("want count=%d got %d", want, n)
 		}
-		if len(fr.upserts) != wantUpserts {
-			t.Fatalf("want upserts=%d got %d", wantUpserts, len(fr.upserts))
-		}
+		fr.AssertNumberOfCalls(t, "UpsertWeather", wantUpserts)
 	}
 }
 
 func assertErrContains(sub string) assertFn {
-	return func(t *testing.T, _ int, err error, _ *fakeRepo) {
+	return func(t *testing.T, _ int, err error, _ *mocks.MockRepository) {
 		s := ""
 		if err != nil {
 			s = err.Error()
@@ -82,7 +56,7 @@ func indexOf(s, sub string) int {
 
 func TestService_Import_Table(t *testing.T) {
 	t.Parallel()
-	baseRecs := []wx.Record{{MatchID: 1, Session: "batting", Temp: 25}, {MatchID: 1, Session: "bowling", Temp: 23}}
+	baseRecs := []models.WeatherData{{MatchID: 1, Session: "batting", Temp: 25}, {MatchID: 1, Session: "bowling", Temp: 23}}
 
 	cases := []struct {
 		name        string
@@ -90,20 +64,79 @@ func TestService_Import_Table(t *testing.T) {
 		repoErr     error
 		matchID     int64
 		apply       bool
+		arrange     arrangeFn
 		assert      assertFn
 	}{
-		{"dry-run returns count", nil, nil, 7, false, assertNoErrorCount(2, 0)},
-		{"apply upserts all", nil, nil, 7, true, assertNoErrorCount(2, 2)},
-		{"invalid match id", nil, nil, 0, true, assertErrContains("invalid match id")},
-		{"provider error", errors.New("boom"), nil, 5, true, assertErrContains("boom")},
-		{"repo error", nil, errors.New("disk"), 5, true, assertErrContains("disk")},
+		{
+			name:        "dry-run returns count",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     7,
+			apply:       false,
+			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+			},
+			assert: assertNoErrorCount(2, 0),
+		},
+		{
+			name:        "apply upserts all",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     7,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+				for _, r := range baseRecs {
+					fr.EXPECT().UpsertWeather(mock.Anything, r).Return(nil)
+				}
+			},
+			assert: assertNoErrorCount(2, 2),
+		},
+		{
+			name:        "invalid match id",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     0,
+			apply:       true,
+			arrange: func(_ *mocks.MockProvider, _ *mocks.MockRepository) {
+				// No expectations: service should short-circuit before calling provider.
+			},
+			assert: assertErrContains("invalid match id"),
+		},
+		{
+			name:        "Provider error",
+			providerErr: errors.New("boom"),
+			repoErr:     nil,
+			matchID:     5,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, errors.New("boom"))
+			},
+			assert: assertErrContains("boom"),
+		},
+		{
+			name:        "repo error",
+			providerErr: nil,
+			repoErr:     errors.New("disk"),
+			matchID:     5,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, nil)
+				fr.EXPECT().UpsertWeather(mock.Anything, baseRecs[0]).Return(errors.New("disk"))
+			},
+			assert: assertErrContains("disk"),
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			fp := &fakeProvider{recs: baseRecs, err: tc.providerErr}
-			fr := &fakeRepo{err: tc.repoErr}
-			s := svc.NewService(fp, fr)
+			fp := mocks.NewMockProvider(t)
+			fr := mocks.NewMockRepository(t)
+
+			// Arrange expectations for this case.
+			tc.arrange(fp, fr)
+
+			s := weatherimport.NewService(fp, fr)
 			n, err := s.Import(context.Background(), tc.matchID, tc.apply)
 			tc.assert(t, n, err, fr)
 		})

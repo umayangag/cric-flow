@@ -1,4 +1,4 @@
-package weatherworker
+package weatherimport
 
 import (
 	"context"

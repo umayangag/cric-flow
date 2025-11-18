@@ -9,3 +9,17 @@ packages:
       pkgname: mocks
     interfaces:
       Predictor: { }
+  github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherimport:
+    config:
+      dir: internal/services/weatherimport/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Provider: { }
+      Repository: { }
+  github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker:
+    config:
+      dir: internal/services/weatherworker/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Provider: { }
+      Repository: { }

@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Config is the JSON schema for the feature vectors definition.
@@ -62,7 +62,7 @@ func LoadFromEnv() (Config, error) {
 	return Load(p)
 }
 
-// Load reads the config from path and validates names against contracts.* JSON tags.
+// Load reads the config from path and validates names against models.* JSON tags.
 func Load(path string) (Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -87,16 +87,16 @@ func Load(path string) (Config, error) {
 }
 
 func (c Config) validate() error {
-	batTags := jsonTags(reflect.TypeOf(contracts.BattingFeatures{}))
-	bowlTags := jsonTags(reflect.TypeOf(contracts.BowlingFeatures{}))
+	batTags := jsonTags(reflect.TypeOf(models.BattingFeatures{}))
+	bowlTags := jsonTags(reflect.TypeOf(models.BowlingFeatures{}))
 	for i, n := range c.Batting {
 		if _, ok := batTags[n]; !ok {
-			return fmt.Errorf("featurecfg: batting[%d]=%q not found in contracts.BattingFeatures json tags", i, n)
+			return fmt.Errorf("featurecfg: batting[%d]=%q not found in models.BattingFeatures json tags", i, n)
 		}
 	}
 	for i, n := range c.Bowling {
 		if _, ok := bowlTags[n]; !ok {
-			return fmt.Errorf("featurecfg: bowling[%d]=%q not found in contracts.BowlingFeatures json tags", i, n)
+			return fmt.Errorf("featurecfg: bowling[%d]=%q not found in models.BowlingFeatures json tags", i, n)
 		}
 	}
 	return nil

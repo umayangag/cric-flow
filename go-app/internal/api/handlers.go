@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/contracts"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
 )
 
@@ -169,7 +169,7 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 
 // predictBattingHandler sends features to ML service for batting predictions.
 func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
-	var feats []contracts.BattingFeatures
+	var feats []models.BattingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
 		respondBadRequest(w, err)
 		return
@@ -184,7 +184,7 @@ func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 
 // predictBowlingHandler sends features to ML service for bowling predictions.
 func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
-	var feats []contracts.BowlingFeatures
+	var feats []models.BowlingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
 		respondBadRequest(w, err)
 		return

@@ -15,31 +15,25 @@ import (
 // deterministic, unit-testable behavior: concurrency is bounded, and errors
 // stop processing promptly.
 //
-// Dependencies are small interfaces so tests can supply fakes or mockery mocks.
-//go:generate mockery --name IngestService --output internal/mocks --case underscore
-// NOTE: We do not usually mock the service itself; mocks are generated primarily
-// for Loader/Parser/Repo elsewhere. The directive above is a convenience if
-// other packages need to mock this service.
-//
-// The service is independent from the command Runner so it can be tested in
+// The service is independent of the command Runner, so it can be tested in
 // isolation and reused if needed.
 
 type IngestService struct {
-	Loader cricsheet.Loader
-	Parser cricsheet.Parser
-	Repo   db.MatchRepo
+	Loader     cricsheet.Loader
+	Parser     cricsheet.Parser
+	Repository db.MatchRepo
 }
 
 // IngestDir processes all inputs returned by Loader.List for the given dir.
 //
-//   - If apply == false, it will not write to Repo and simply validates it can
+//   - If apply == false, it will not write to Repository and simply validates it can
 //     load+parse all inputs.
 //   - concurrency <= 0 defaults to 1; otherwise spawns up to `concurrency` workers.
 //
 // Returns the count of files successfully processed (loaded+parsed; and upserted
 // when apply == true) or the first error encountered.
 func (s *IngestService) IngestDir(ctx context.Context, dir string, apply bool, concurrency int) (int, error) {
-	if s == nil || s.Loader == nil || s.Parser == nil || s.Repo == nil {
+	if s == nil || s.Loader == nil || s.Parser == nil || s.Repository == nil {
 		return 0, errors.New("nil service or dependency")
 	}
 	if dir == "" {
@@ -87,7 +81,7 @@ func (s *IngestService) IngestDir(ctx context.Context, dir string, apply bool, c
 					return
 				}
 				if apply {
-					if e = s.Repo.UpsertMatches(ctx, matches); e != nil {
+					if e = s.Repository.UpsertMatches(ctx, matches); e != nil {
 						resC <- result{idx: idx, err: e}
 						return
 					}

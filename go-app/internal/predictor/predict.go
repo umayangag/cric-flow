@@ -5,8 +5,8 @@ import (
 )
 
 // BuildTeam predicts winning probabilities for the given players using the provided
-// predictor and returns the top-N by probability (deterministic tie-breakers).
-// Pure w.r.t. external systems: requires caller-provided context and predictor.
+// Predictor and returns the top-N by probability (deterministic tie-breakers).
+// Pure w.r.t. external systems: requires caller-provided context and Predictor.
 func BuildTeam(
 	ctx context.Context,
 	p Predictor,
