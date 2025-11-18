@@ -3,8 +3,6 @@ package weatherimport
 import (
 	"context"
 	"errors"
-
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // Service coordinates fetching weather from a Provider and (optionally) upserting via Repo.
