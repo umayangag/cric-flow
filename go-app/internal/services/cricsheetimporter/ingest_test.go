@@ -156,7 +156,7 @@ func TestIngestService_BasicFlows(t *testing.T) {
 		"B": {{ID: 2}, {ID: 3}},
 	}}
 	fr := &fakeRepo{}
-	s := &svc.IngestService{Loader: fl, Parser: fp, Repo: fr}
+	s := &svc.IngestService{Loader: fl, Parser: fp, Repository: fr}
 
 	cases := []struct {
 		name   string
@@ -188,7 +188,7 @@ func TestIngestService_Errors(t *testing.T) {
 		fl := &fakeLoader{list: []string{"x.json"}, load: map[string][]byte{"x.json": []byte("X")}}
 		fp := &fakeParser{out: map[string][]domain.Match{"X": {{ID: 9}}}}
 		fr := &fakeRepo{}
-		return &svc.IngestService{Loader: fl, Parser: fp, Repo: fr}, fl, fr
+		return &svc.IngestService{Loader: fl, Parser: fp, Repository: fr}, fl, fr
 	}
 	cases := []struct {
 		name   string
