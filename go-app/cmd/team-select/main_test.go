@@ -1,77 +1,97 @@
-package main
+package main_test
 
 import (
 	"flag"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
 )
 
-// These tests validate the CLI parsing used by main.go via internal/cli/teamselect.
+// TestParseArgs_DefaultsAndOverrides follows the gold-standard: external package,
+// table-driven, Arrange → Act → Assert, and `require` assertions.
 func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		args []string
-		want cli.Options
+
+	type arrangeFn func() (fs *flag.FlagSet, args []string)
+	type assertFn func(t *testing.T, got cli.Options, err error)
+
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
 	}{
 		{
 			name: "defaults applied (format T20, fromDB=true, size=11, minBowlers=5)",
-			args: []string{"-match=262039498036", "-season=2025"},
-			want: cli.Options{
-				MatchID:    262039498036,
-				Format:     "T20",
-				Season:     "2025",
-				TeamSize:   11,
-				MinBowlers: 5,
-				FromDB:     true,
+			arrange: func() (*flag.FlagSet, []string) {
+				return flag.NewFlagSet("test", flag.ContinueOnError), []string{"-match=262039498036", "-season=2025"}
+			},
+			assert: func(t *testing.T, got cli.Options, err error) {
+				require.NoError(t, err)
+				require.Equal(t, cli.Options{
+					MatchID:    262039498036,
+					Format:     "T20",
+					Season:     "2025",
+					TeamSize:   11,
+					MinBowlers: 5,
+					FromDB:     true,
+				}, got)
 			},
 		},
 		{
 			name: "overrides respected (ODI, csv pool, keeper)",
-			args: []string{
-				"-match=1", "-season=2019", "-format=ODI", "-pool=/tmp/pool.csv",
-				"-size=9", "-min-bowlers=4", "-require-keeper", "-from-db=false",
+			arrange: func() (*flag.FlagSet, []string) {
+				return flag.NewFlagSet("test", flag.ContinueOnError), []string{
+					"-match=1", "-season=2019", "-format=ODI", "-pool=/tmp/pool.csv",
+					"-size=9", "-min-bowlers=4", "-require-keeper", "-from-db=false",
+				}
 			},
-			want: cli.Options{
-				MatchID:       1,
-				Format:        "ODI",
-				Season:        "2019",
-				PoolPath:      "/tmp/pool.csv",
-				TeamSize:      9,
-				MinBowlers:    4,
-				RequireKeeper: true,
-				FromDB:        false,
+			assert: func(t *testing.T, got cli.Options, err error) {
+				require.NoError(t, err)
+				require.Equal(t, cli.Options{
+					MatchID:       1,
+					Format:        "ODI",
+					Season:        "2019",
+					PoolPath:      "/tmp/pool.csv",
+					TeamSize:      9,
+					MinBowlers:    4,
+					RequireKeeper: true,
+					FromDB:        false,
+				}, got)
 			},
 		},
 	}
-	for _, tc := range tests {
+
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			fs := flag.NewFlagSet("test", flag.ContinueOnError)
-			got, err := cli.ParseArgs(fs, tc.args)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("options mismatch\n got: %#v\nwant: %#v", got, tc.want)
-			}
+			// Arrange
+			fs, args := tc.arrange()
+			// Act
+			got, err := cli.ParseArgs(fs, args)
+			// Assert
+			tc.assert(t, got, err)
 		})
 	}
 }
 
 func TestParseArgs_Errors(t *testing.T) {
 	t.Parallel()
-	bad := [][]string{
-		{},
-		{"-season=2025"},
-		{"-match=1"},
-		{"-match=1", "-format=X", "-season=2019"},
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "missing all", args: []string{}},
+		{name: "missing match", args: []string{"-season=2025"}},
+		{name: "missing season", args: []string{"-match=1"}},
+		{name: "invalid format", args: []string{"-match=1", "-format=X", "-season=2019"}},
 	}
-	for _, args := range bad {
-		fs := flag.NewFlagSet("test", flag.ContinueOnError)
-		if _, err := cli.ParseArgs(fs, args); err == nil {
-			t.Fatalf("expected error for args: %v", args)
-		}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			_, err := cli.ParseArgs(fs, tc.args)
+			require.Error(t, err)
+		})
 	}
 }

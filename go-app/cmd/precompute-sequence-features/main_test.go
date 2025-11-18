@@ -2,39 +2,56 @@ package main
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestRun_DryRun_AllTargets(t *testing.T) {
-	var out bytes.Buffer
-	args := []string{"-format=T20", "-targets=all", "-dry-run"}
-	if err := run(args, &out); err != nil {
-		t.Fatalf("run error: %v", err)
-	}
-	got := out.String()
-	// Should mention dry-run header and at least a couple of targets
-	if !strings.Contains(got, "precompute (dry-run)") {
-		t.Fatalf("expected dry-run header, got: %s", got)
-	}
-	for _, want := range []string{"bat_transitions", "bowl_sequences", "player_windows"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("expected output to contain %q, got: %s", want, got)
-		}
-	}
-}
+// TestRun_DryRun_Table aligns with the gold standard (external pkg, table-driven,
+// Arrange → Act → Assert, require assertions).
+func TestRun_DryRun_Table(t *testing.T) {
+	t.Parallel()
 
-func TestRun_DryRun_SelectedTargets(t *testing.T) {
-	var out bytes.Buffer
-	args := []string{"-format=ODI", "-targets=bowl_sequences,overpos", "-dry-run"}
-	if err := run(args, &out); err != nil {
-		t.Fatalf("run error: %v", err)
+	type arrangeFn func() (args []string)
+	type assertFn func(t *testing.T, out string, err error)
+
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name:    "all targets in T20",
+			arrange: func() []string { return []string{"-format=T20", "-targets=all", "-dry-run"} },
+			assert: func(t *testing.T, out string, err error) {
+				require.NoError(t, err)
+				require.Contains(t, out, "precompute (dry-run)")
+				require.Contains(t, out, "bat_transitions")
+				require.Contains(t, out, "bowl_sequences")
+				require.Contains(t, out, "player_windows")
+			},
+		},
+		{
+			name:    "selected targets in ODI",
+			arrange: func() []string { return []string{"-format=ODI", "-targets=bowl_sequences,overpos", "-dry-run"} },
+			assert: func(t *testing.T, out string, err error) {
+				require.NoError(t, err)
+				require.Contains(t, out, "format=ODI")
+				require.Contains(t, out, "bowl_sequences")
+				require.Contains(t, out, "overpos")
+			},
+		},
 	}
-	got := out.String()
-	if !strings.Contains(got, "format=ODI") {
-		t.Fatalf("expected format ODI in output, got: %s", got)
-	}
-	if !strings.Contains(got, "bowl_sequences") || !strings.Contains(got, "overpos") {
-		t.Fatalf("expected selected targets in output, got: %s", got)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			var buf bytes.Buffer
+			args := tc.arrange()
+			// Act
+			err := run(args, &buf)
+			// Assert
+			tc.assert(t, buf.String(), err)
+		})
 	}
 }
