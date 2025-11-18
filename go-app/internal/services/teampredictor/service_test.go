@@ -3,103 +3,97 @@ package teampredictor_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor/internal/mocks"
 )
 
-type fakeML struct {
-	resp mlclient.PredictResponse
-	err  error
-	last mlclient.PredictRequest
-}
-
-func (f *fakeML) PredictTeam(_ context.Context, in mlclient.PredictRequest) (mlclient.PredictResponse, error) {
-	f.last = in
-	return f.resp, f.err
-}
-func (f *fakeML) Reload(_ context.Context) error { return nil }
-
-type assertFn func(t *testing.T, out mlclient.PredictResponse, err error, f *fakeML)
+type assertFn func(t *testing.T, out mlclient.PredictResponse, err error)
 
 func assertNoErrorPlayers(want []string) assertFn {
-	return func(t *testing.T, out mlclient.PredictResponse, err error, _ *fakeML) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(out.Players) != len(want) {
-			t.Fatalf("want %d players got %d", len(want), len(out.Players))
-		}
-		for i := range want {
-			if out.Players[i] != want[i] {
-				t.Fatalf("player %d: want %q got %q", i, want[i], out.Players[i])
-			}
-		}
+	return func(t *testing.T, out mlclient.PredictResponse, err error) {
+		require.NoError(t, err)
+		require.Equal(t, want, out.Players)
 	}
 }
 
 func assertErrContains(sub string) assertFn {
-	return func(t *testing.T, _ mlclient.PredictResponse, err error, _ *fakeML) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+	return func(t *testing.T, _ mlclient.PredictResponse, err error) {
+		require.Error(t, err)
+		require.Contains(t, strings.ToLower(err.Error()), strings.ToLower(sub))
 	}
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
 }
 
 func TestService_Predict_Table(t *testing.T) {
 	t.Parallel()
+
+	type arrangeFn func(t *testing.T) *svc.Service
+
 	cases := []struct {
-		name   string
-		opts   cli.Options
-		ml     *fakeML
-		assert assertFn
+		name    string
+		opts    cli.Options
+		arrange arrangeFn
+		assert  assertFn
 	}{
 		{
-			name:   "happy path",
-			opts:   cli.Options{MatchID: 1, Format: "T20", Season: "2019", Bat: 6, Bowl: 5},
-			ml:     &fakeML{resp: mlclient.PredictResponse{Players: []string{"A", "B", "C"}}},
+			name: "happy path",
+			opts: cli.Options{MatchID: 1, Format: "T20", Season: "2019", Bat: 6, Bowl: 5},
+			arrange: func(t *testing.T) *svc.Service {
+				m := mocks.NewMockMLClient(t)
+				m.EXPECT().PredictTeam(
+					context.Background(),
+					mlclient.PredictRequest{MatchID: 1, Format: "T20", Season: "2019", Bat: 6, Bowl: 5},
+				).Return(mlclient.PredictResponse{Players: []string{"A", "B", "C"}}, nil)
+				return svc.NewService(m)
+			},
 			assert: assertNoErrorPlayers([]string{"A", "B", "C"}),
 		},
 		{
-			name:   "ml error surfaces",
-			opts:   cli.Options{MatchID: 2, Format: "ODI", Season: "2011"},
-			ml:     &fakeML{err: errors.New("ml down")},
-			assert: assertErrContains("ml down"),
+			name: "client error surfaces",
+			opts: cli.Options{MatchID: 2, Format: "ODI", Season: "2011"},
+			arrange: func(t *testing.T) *svc.Service {
+				m := mocks.NewMockMLClient(t)
+				m.EXPECT().PredictTeam(
+					context.Background(),
+					mlclient.PredictRequest{MatchID: 2, Format: "ODI", Season: "2011", Bat: 0, Bowl: 0},
+				).Return(mlclient.PredictResponse{}, errors.New("client down"))
+				return svc.NewService(m)
+			},
+			assert: assertErrContains("client down"),
 		},
 		{
-			name:   "invalid options",
-			opts:   cli.Options{MatchID: 0, Format: "T20", Season: "2019"},
-			ml:     &fakeML{},
+			name: "invalid options",
+			opts: cli.Options{MatchID: 0, Format: "T20", Season: "2019"},
+			arrange: func(t *testing.T) *svc.Service {
+				// Predict should short-circuit before calling client
+				m := mocks.NewMockMLClient(t)
+				return svc.NewService(m)
+			},
 			assert: assertErrContains("invalid options"),
+		},
+		{
+			name: "nil service",
+			opts: cli.Options{MatchID: 1, Format: "T20", Season: "2019"},
+			arrange: func(_ *testing.T) *svc.Service {
+				return svc.NewService(nil)
+			},
+			assert: assertErrContains("nil service"),
 		},
 	}
 	for _, tc := range cases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			s := svc.NewService(tc.ml)
+			// Arrange
+			s := tc.arrange(t)
+			// Act
 			out, err := s.Predict(context.Background(), tc.opts)
-			tc.assert(t, out, err, tc.ml)
+			// Assert
+			tc.assert(t, out, err)
 		})
 	}
 }

@@ -16,3 +16,15 @@ packages:
     interfaces:
       Provider: { }
       Repository: { }
+  github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor:
+    config:
+      dir: internal/services/teampredictor/internal/mocks
+      pkgname: mocks
+    interfaces:
+      MLClient: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor:
+    config:
+      dir: internal/commands/teampredictor/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Predictor: { }

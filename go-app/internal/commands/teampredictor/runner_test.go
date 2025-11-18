@@ -6,8 +6,18 @@ import (
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	svcpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
 )
+
+// fakeMLClient implements the service's MLClient interface with a trivial response.
+type fakeMLClient struct{}
+
+func (fakeMLClient) PredictTeam(_ context.Context, _ mlclient.PredictRequest) (mlclient.PredictResponse, error) {
+	return mlclient.PredictResponse{Players: []string{"X"}}, nil
+}
+
+func (fakeMLClient) Reload(_ context.Context) error { return nil }
 
 type assertFn func(t *testing.T, err error)
 
@@ -76,8 +86,9 @@ func TestRunner_Run(t *testing.T) {
 		{
 			name: "happy path",
 			r: func() *cmd.Runner {
-				// Use a real service wired with the dummy mlclient adapter to satisfy non-nil dependency
-				return cmd.NewRunner(svcpkg.NewService(nil))
+				// Wire a real service with a local fake ML client to satisfy dependency
+				s := svcpkg.NewService(fakeMLClient{})
+				return cmd.NewRunner(s)
 			},
 			opts:   cli.Options{MatchID: 1, Format: "T20", Season: "2019"},
 			assert: assertNoError(),
