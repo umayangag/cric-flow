@@ -12,13 +12,13 @@ import (
 // allows the service to remain fully unit-testable.
 // No unit tests here to avoid DB dependency; rely on smoke runs.
 
-type Repo struct{}
+type Repository struct{}
 
-func New() *Repo { return &Repo{} }
+func New() *Repository { return &Repository{} }
 
-var _ appdb.WeatherRepo = (*Repo)(nil)
+var _ appdb.WeatherRepo = (*Repository)(nil)
 
-func (r *Repo) UpsertWeather(ctx context.Context, rec models.WeatherData) error {
+func (r *Repository) UpsertWeather(ctx context.Context, rec models.WeatherData) error {
 	if appdb.Pool == nil {
 		if _, err := appdb.Connect(ctx); err != nil {
 			return err

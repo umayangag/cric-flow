@@ -1,4 +1,4 @@
-// Package Predictor defines types and helpers for computing team performance and predictions.
+// Package predictor defines types and helpers for computing team performance and predictions.
 package predictor
 
 import (
