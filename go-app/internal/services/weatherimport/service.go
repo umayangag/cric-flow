@@ -13,7 +13,7 @@ type Service struct {
 	Repo     Repository
 }
 
-func NewService(p Provider, r db.WeatherRepo) *Service { return &Service{Provider: p, Repo: r} }
+func NewService(p Provider, r Repository) *Service { return &Service{Provider: p, Repo: r} }
 
 // Import fetches all weather records for a match and upserts them when apply==true.
 // Returns the number of records processed or an error.
