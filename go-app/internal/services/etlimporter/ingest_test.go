@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/etlimporter"
 )
@@ -67,31 +68,6 @@ func (r *fakeRepo) UpsertBowling(_ context.Context, rows []db.EtlBowlingRow) err
 	return nil
 }
 
-type assertFn func(t *testing.T, st etlimporter.Stats, repo *fakeRepo, err error)
-
-func assertNoErrorCounts(files, bat, bowl int) assertFn {
-	return func(t *testing.T, st etlimporter.Stats, _ *fakeRepo, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if st.Files != files || st.BattingRows != bat || st.BowlingRows != bowl {
-			t.Fatalf("want files=%d bat=%d bowl=%d got %+v", files, bat, bowl, st)
-		}
-	}
-}
-
-func assertErrContains(sub string) assertFn {
-	return func(t *testing.T, _ etlimporter.Stats, _ *fakeRepo, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || !strings.Contains(s, sub) {
-			t.Fatalf("want err containing %q, got %v", sub, err)
-		}
-	}
-}
-
 func TestService_IngestDir(t *testing.T) {
 	t.Parallel()
 	batCSV := "player_name,season,format,runs,balls,fours,sixes,position\nA,2019,T20,10,8,1,0,3\n"
@@ -101,7 +77,7 @@ func TestService_IngestDir(t *testing.T) {
 		apply  bool
 		fs     *memFS
 		repo   *fakeRepo
-		assert assertFn
+		assert func(t *testing.T, st etlimporter.Stats, repo *fakeRepo, err error)
 	}{
 		{
 			name:  "dry-run parses batting and bowling",
@@ -112,8 +88,13 @@ func TestService_IngestDir(t *testing.T) {
 					filepath.Join("/data", "b.csv"): bwlCSV,
 				},
 			},
-			repo:   &fakeRepo{},
-			assert: assertNoErrorCounts(2, 1, 1),
+			repo: &fakeRepo{},
+			assert: func(t *testing.T, st etlimporter.Stats, _ *fakeRepo, err error) {
+				require.NoError(t, err)
+				require.Equal(t, 2, st.Files)
+				require.Equal(t, 1, st.BattingRows)
+				require.Equal(t, 1, st.BowlingRows)
+			},
 		},
 		{
 			name:  "apply upserts successfully",
@@ -124,22 +105,36 @@ func TestService_IngestDir(t *testing.T) {
 					filepath.Join("/data", "b.csv"): bwlCSV,
 				},
 			},
-			repo:   &fakeRepo{},
-			assert: assertNoErrorCounts(2, 1, 1),
+			repo: &fakeRepo{},
+			assert: func(t *testing.T, st etlimporter.Stats, repo *fakeRepo, err error) {
+				require.NoError(t, err)
+				require.Equal(t, 2, st.Files)
+				require.Equal(t, 1, st.BattingRows)
+				require.Equal(t, 1, st.BowlingRows)
+				// Side-effects: repo call counts should match rows when apply=true
+				require.Equal(t, 1, repo.bat)
+				require.Equal(t, 1, repo.bowl)
+			},
 		},
 		{
-			name:   "parse error surfaces",
-			apply:  false,
-			fs:     &memFS{files: map[string]string{filepath.Join("/data", "bad.csv"): "x,y\n1,2\n"}},
-			repo:   &fakeRepo{},
-			assert: assertErrContains("unexpected batting header"),
+			name:  "parse error surfaces",
+			apply: false,
+			fs:    &memFS{files: map[string]string{filepath.Join("/data", "bad.csv"): "x,y\n1,2\n"}},
+			repo:  &fakeRepo{},
+			assert: func(t *testing.T, _ etlimporter.Stats, _ *fakeRepo, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "unexpected batting header")
+			},
 		},
 		{
-			name:   "repo error surfaces",
-			apply:  true,
-			fs:     &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV}},
-			repo:   &fakeRepo{errBat: errors.New("boom")},
-			assert: assertErrContains("boom"),
+			name:  "repo error surfaces",
+			apply: true,
+			fs:    &memFS{files: map[string]string{filepath.Join("/data", "a.csv"): batCSV}},
+			repo:  &fakeRepo{errBat: errors.New("boom")},
+			assert: func(t *testing.T, _ etlimporter.Stats, _ *fakeRepo, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "boom")
+			},
 		},
 	}
 	for _, tc := range cases {
