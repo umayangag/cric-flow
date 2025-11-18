@@ -39,7 +39,7 @@ func run() int {
 		return 1
 	}
 
-	// provider selection (default dummy). Additional providers can be added later.
+	// Provider selection (default dummy). Additional providers can be added later.
 	_ = strings.TrimSpace(opts.Provider) // reserved for future provider selection
 	provider := wprov.New()
 	repo := wrepo.New()
