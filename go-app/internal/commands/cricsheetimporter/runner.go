@@ -15,11 +15,11 @@ import (
 
 // Runner orchestrates the cricsheet-importer workflow.
 type Runner struct {
-	FS     fsx.FS
-	Loader cricsheet.Loader
-	Parser cricsheet.Parser
-	Repo   db.MatchRepo
-	Log    logger.Logger
+	FS         fsx.FS
+	Loader     cricsheet.Loader
+	Parser     cricsheet.Parser
+	Repository db.MatchRepo
+	Log        logger.Logger
 }
 
 // NewRunner constructs a Runner with its dependencies.
@@ -30,7 +30,7 @@ func NewRunner(
 	repo db.MatchRepo,
 	log logger.Logger,
 ) *Runner {
-	return &Runner{FS: fs, Loader: loader, Parser: parser, Repo: repo, Log: log}
+	return &Runner{FS: fs, Loader: loader, Parser: parser, Repository: repo, Log: log}
 }
 
 // Run executes the import according to options.
@@ -40,7 +40,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r == nil {
 		return errors.New("nil runner")
 	}
-	if r.FS == nil || r.Loader == nil || r.Parser == nil || r.Repo == nil {
+	if r.FS == nil || r.Loader == nil || r.Parser == nil || r.Repository == nil {
 		return errors.New("missing dependency: FS/Loader/Parser/Repository required")
 	}
 	if opts.InDir == "" {
@@ -77,7 +77,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		return nil
 	}
 
-	if err := r.Repo.UpsertMatches(ctx, batch); err != nil {
+	if err := r.Repository.UpsertMatches(ctx, batch); err != nil {
 		return fmt.Errorf("upsert matches: %w", err)
 	}
 	if r.Log != nil {
