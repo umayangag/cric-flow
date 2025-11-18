@@ -18,8 +18,6 @@ type Repo struct{}
 
 func New() *Repo { return &Repo{} }
 
-var _ appdb.EtlRepo = (*Repo)(nil)
-
 func (r *Repo) UpsertBatting(_ context.Context, _ []appdb.EtlBattingRow) error {
 	// TODO: implement using appdb helpers/queries; no-op for now
 	return nil

@@ -44,7 +44,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	if conc < 1 {
 		return Stats{}, errors.New("concurrency must be >= 1")
 	}
-	matches, err := s.FS.Glob(filepath.Join(dir, pattern))
+	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil {
 		return Stats{}, err
 	}
@@ -52,7 +52,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	var allBat []db.EtlBattingRow
 	var allBowl []db.EtlBowlingRow
 	for _, p := range matches {
-		b, rerr := os.ReadFile(ctx, p)
+		b, rerr := os.ReadFile(p)
 		if rerr != nil {
 			return Stats{}, rerr
 		}

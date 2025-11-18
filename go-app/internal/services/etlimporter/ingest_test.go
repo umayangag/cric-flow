@@ -139,7 +139,7 @@ func TestService_IngestDir(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := etlimporter.NewService(tc.fs, tc.repo)
+			svc := etlimporter.NewService(tc.repo)
 			st, err := svc.IngestDir(context.Background(), "/data", "*.csv", tc.apply, 1)
 			// NB: we do not assert repo counters explicitly in dry-run since service returns Stats
 			tc.assert(t, st, tc.repo, err)

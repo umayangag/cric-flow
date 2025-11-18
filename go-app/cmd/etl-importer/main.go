@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/etlrepo"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	etlcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/etlimporter"
 	etlcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -39,7 +38,7 @@ func run() int {
 	}
 
 	repo := etlrepo.New()
-	service := etlsvc.NewService(osfs.New(), repo)
+	service := etlsvc.NewService(repo)
 	runner := etlcmd.NewRunner(service)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("etl-importer failed", slog.Any("err", runErr))
