@@ -7,128 +7,14 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	tmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-type fakeDB struct {
-	formatsByCode map[string]int64
-	venues        map[string]int64
-	seasons       map[string]int64
-	players       map[string]int64
-	oppos         map[string]int64
-	batting       []*db.Batting
-	bowling       []*db.Bowling
-	fielding      []*db.Fielding
-	updates       []*db.MatchInfoUpdate
-	execs         []string
-}
-
-func newFakeDB() *fakeDB {
-	return &fakeDB{
-		formatsByCode: map[string]int64{"T20": 1, "T20I": 2, "ODI": 3, "TEST": 4},
-		venues:        map[string]int64{},
-		seasons:       map[string]int64{},
-		players:       map[string]int64{},
-		oppos:         map[string]int64{},
-	}
-}
-
-func (f *fakeDB) GetMatchFormatIDByCode(_ context.Context, code string) (int64, error) {
-	if id, ok := f.formatsByCode[code]; ok {
-		return id, nil
-	}
-	return 0, nil
-}
-
-func (f *fakeDB) EnsureMatchWithFormat(_ context.Context, _ int64, _ int64) error {
-	return nil
-}
-
-func (f *fakeDB) GetOrCreateVenue(_ context.Context, name string) (int64, error) {
-	if id, ok := f.venues[name]; ok {
-		return id, nil
-	}
-	id := int64(len(f.venues) + 1)
-	f.venues[name] = id
-	return id, nil
-}
-
-func (f *fakeDB) GetOrCreateSeason(_ context.Context, name string) (int64, error) {
-	if id, ok := f.seasons[name]; ok {
-		return id, nil
-	}
-	id := int64(len(f.seasons) + 1)
-	f.seasons[name] = id
-	return id, nil
-}
-
-func (f *fakeDB) GetOrCreateOpposition(_ context.Context, name string) (int64, error) {
-	if id, ok := f.oppos[name]; ok {
-		return id, nil
-	}
-	id := int64(len(f.oppos) + 1)
-	f.oppos[name] = id
-	return id, nil
-}
-
-func (f *fakeDB) UpdateMatchDetails(_ context.Context, _ int64, upd *db.MatchInfoUpdate) error {
-	// Copy values to avoid mutation surprises
-	u := *upd
-	f.updates = append(f.updates, &u)
-	return nil
-}
-
-func (f *fakeDB) GetOrCreateByName(_ context.Context, name string) (int64, error) {
-	if id, ok := f.players[name]; ok {
-		return id, nil
-	}
-	id := int64(len(f.players) + 1)
-	f.players[name] = id
-	return id, nil
-}
-
-func (f *fakeDB) UpsertBatting(_ context.Context, b *db.Batting) error {
-	bb := *b
-	f.batting = append(f.batting, &bb)
-	return nil
-}
-
-func (f *fakeDB) UpsertBowling(_ context.Context, b *db.Bowling) error {
-	bb := *b
-	f.bowling = append(f.bowling, &bb)
-	return nil
-}
-
-func (f *fakeDB) UpsertFielding(_ context.Context, ff *db.Fielding) error {
-	cop := *ff
-	f.fielding = append(f.fielding, &cop)
-	return nil
-}
-
-func (f *fakeDB) Exec(_ context.Context, sql string, _ ...any) error {
-	f.execs = append(f.execs, sql)
-	return nil
-}
-
-type fakeWeather struct {
-	calls int
-	last  struct {
-		matchID     int64
-		city, venue string
-		innings     int
-	}
-}
-
-func (f *fakeWeather) EnqueueJob(_ context.Context, matchID int64, city, venue string, innings int) error {
-	f.calls++
-	f.last.matchID = matchID
-	f.last.city = city
-	f.last.venue = venue
-	f.last.innings = innings
-	return nil
-}
+// Note: Replaced test fakes with mockery-generated mocks (see internal/cricsheet/mocks).
 
 // minimal two-innings JSON exercising wickets/fielders, wides/no-balls, and runs
 const sampleJSON = `{
@@ -217,15 +103,66 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	prevPool := db.PoolAPI
 	db.SetPoolAPI(nopPool{})
 	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
-	fdb := newFakeDB()
-	fw := &fakeWeather{}
-	cricsheet.SetCricsheetDB(fdb)
-	cricsheet.SetWeatherClient(fw)
+	// Setup mocks to replace previous fakes
+	mdb := &tmocks.CricsheetDBMock{}
+	mweather := &tmocks.WeatherClientMock{}
+
+	// Collections to assert behavior similar to earlier fakes
+	var (
+		updates      []*db.MatchInfoUpdate
+		batting      []*db.Batting
+		bowling      []*db.Bowling
+		fielding     []*db.Fielding
+		execs        []string
+		weatherCalls int
+		lastInnings  int
+	)
+
+	// DB expectations and behaviors
+	mdb.On("GetMatchFormatIDByCode", mock.Anything, "T20").Return(int64(1), nil)
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).Return(nil)
+	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).Return(nil).Run(func(args mock.Arguments) {
+		upd := args.Get(2).(*db.MatchInfoUpdate)
+		c := *upd
+		updates = append(updates, &c)
+	})
+	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).Return(nil).Run(func(args mock.Arguments) {
+		b := args.Get(1).(*db.Batting)
+		c := *b
+		batting = append(batting, &c)
+	})
+	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).Return(nil).Run(func(args mock.Arguments) {
+		b := args.Get(1).(*db.Bowling)
+		c := *b
+		bowling = append(bowling, &c)
+	})
+	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).Return(nil).Run(func(args mock.Arguments) {
+		f := args.Get(1).(*db.Fielding)
+		c := *f
+		fielding = append(fielding, &c)
+	})
+	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		sql := args.Get(1).(string)
+		execs = append(execs, sql)
+	})
+
+	// Weather expectations
+	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil).Run(func(args mock.Arguments) {
+		weatherCalls++
+		lastInnings = args.Get(4).(int)
+	})
+
+	cricsheet.SetCricsheetDB(mdb)
+	cricsheet.SetWeatherClient(mweather)
 	// Avoid touching real DB recompute in tests
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	defer func() {
-		cricsheet.SetCricsheetDB(newFakeDB())
-		cricsheet.SetWeatherClient(&fakeWeather{})
+		cricsheet.SetCricsheetDB(&tmocks.CricsheetDBMock{})
+		cricsheet.SetWeatherClient(&tmocks.WeatherClientMock{})
 		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	}()
 
@@ -236,19 +173,19 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	err := cricsheet.ImportMatchFile(ctx, file, opts)
 	require.NoError(t, err)
 	// Expect two UpdateMatchDetails (two innings)
-	require.Equal(t, 2, len(fdb.updates), "expected 2 updates")
+	require.Equal(t, 2, len(updates), "expected 2 updates")
 	// Target for second innings should equal first innings total (4 + 1 + 6 = 11)
-	require.NotNil(t, fdb.updates[1].Target)
-	require.Equal(t, 11, *fdb.updates[1].Target)
+	require.NotNil(t, updates[1].Target)
+	require.Equal(t, 11, *updates[1].Target)
 	// Expect at least one batting and bowling record upserted
-	require.NotEmpty(t, fdb.batting)
-	require.NotEmpty(t, fdb.bowling)
+	require.NotEmpty(t, batting)
+	require.NotEmpty(t, bowling)
 	// Fielding placeholders should be created for seen players (>= players seen)
-	require.NotEmpty(t, fdb.fielding)
+	require.NotEmpty(t, fielding)
 	// Weather placeholders executed and enqueue called
-	require.NotEmpty(t, fdb.execs)
-	require.NotZero(t, fw.calls)
-	require.Equal(t, 2, fw.last.innings)
+	require.NotEmpty(t, execs)
+	require.NotZero(t, weatherCalls)
+	require.Equal(t, 2, lastInnings)
 }
 
 func TestImportDir_SortsAndCountsJSON(t *testing.T) {
@@ -258,14 +195,27 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	prevPool := db.PoolAPI
 	db.SetPoolAPI(nopPool{})
 	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
-	fdb := newFakeDB()
-	fw := &fakeWeather{}
-	cricsheet.SetCricsheetDB(fdb)
-	cricsheet.SetWeatherClient(fw)
+	mdb := &tmocks.CricsheetDBMock{}
+	mweather := &tmocks.WeatherClientMock{}
+	// DB expectations minimal for directory import
+	mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).Return(nil)
+	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
+	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).Return(nil)
+	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).Return(nil)
+	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).Return(nil)
+	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).Return(nil)
+	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil)
+	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil)
+	cricsheet.SetCricsheetDB(mdb)
+	cricsheet.SetWeatherClient(mweather)
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	defer func() {
-		cricsheet.SetCricsheetDB(newFakeDB())
-		cricsheet.SetWeatherClient(&fakeWeather{})
+		cricsheet.SetCricsheetDB(&tmocks.CricsheetDBMock{})
+		cricsheet.SetWeatherClient(&tmocks.WeatherClientMock{})
 		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	}()
 
