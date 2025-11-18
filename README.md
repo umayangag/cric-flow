@@ -33,6 +33,20 @@ make -C ml-service init
 cd ml-service && source .venv/bin/activate
 ```
 
+## Testing standards (Go)
+
+All Go unit tests in this repository should follow our gold-standard table-driven style, as demonstrated in
+`go-app/internal/services/weatherimport/service_test.go`. See the full guidance and a ready-to-copy skeleton in:
+
+- docs/testing-standards-go.md
+- testdata/templates/go_table_test_skeleton.txt
+
+To run the Go test suite with race detector and coverage:
+
+```
+cd go-app && go test -race -cover ./...
+```
+
 ### 1) One-line bootstrap (recommended)
 This single command brings up Docker services, applies migrations, imports Cricsheet JSON data, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
 ```
