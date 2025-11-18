@@ -22,3 +22,4 @@ packages:
       pkgname: mocks
     interfaces:
       Provider: { }
+      Repository: { }

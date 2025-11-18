@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
 )
 
@@ -14,10 +13,10 @@ import (
 type Service struct {
 	Jobs       jobs.Source
 	Provider   Provider
-	Repository db.WeatherRepo
+	Repository Repository
 }
 
-func NewService(j jobs.Source, p Provider, r db.WeatherRepo) *Service {
+func NewService(j jobs.Source, p Provider, r Repository) *Service {
 	return &Service{Jobs: j, Provider: p, Repository: r}
 }
 

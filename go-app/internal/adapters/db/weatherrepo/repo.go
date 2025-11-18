@@ -16,8 +16,6 @@ type Repository struct{}
 
 func New() *Repository { return &Repository{} }
 
-var _ appdb.WeatherRepo = (*Repository)(nil)
-
 func (r *Repository) UpsertWeather(ctx context.Context, rec models.WeatherData) error {
 	if appdb.Pool == nil {
 		if _, err := appdb.Connect(ctx); err != nil {

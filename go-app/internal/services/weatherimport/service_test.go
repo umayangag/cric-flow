@@ -12,6 +12,7 @@ import (
 )
 
 type assertFn func(t *testing.T, n int, err error, fr *mocks.MockRepository)
+type arrangeFn func(fp *mocks.MockProvider, fr *mocks.MockRepository)
 
 func assertNoErrorCount(want int, wantUpserts int) assertFn {
 	return func(t *testing.T, n int, err error, fr *mocks.MockRepository) {
@@ -63,13 +64,68 @@ func TestService_Import_Table(t *testing.T) {
 		repoErr     error
 		matchID     int64
 		apply       bool
+		arrange     arrangeFn
 		assert      assertFn
 	}{
-		{"dry-run returns count", nil, nil, 7, false, assertNoErrorCount(2, 0)},
-		{"apply upserts all", nil, nil, 7, true, assertNoErrorCount(2, 2)},
-		{"invalid match id", nil, nil, 0, true, assertErrContains("invalid match id")},
-		{"Provider error", errors.New("boom"), nil, 5, true, assertErrContains("boom")},
-		{"repo error", nil, errors.New("disk"), 5, true, assertErrContains("disk")},
+		{
+			name:        "dry-run returns count",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     7,
+			apply:       false,
+			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+			},
+			assert: assertNoErrorCount(2, 0),
+		},
+		{
+			name:        "apply upserts all",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     7,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+				for _, r := range baseRecs {
+					fr.EXPECT().UpsertWeather(mock.Anything, r).Return(nil)
+				}
+			},
+			assert: assertNoErrorCount(2, 2),
+		},
+		{
+			name:        "invalid match id",
+			providerErr: nil,
+			repoErr:     nil,
+			matchID:     0,
+			apply:       true,
+			arrange: func(_ *mocks.MockProvider, _ *mocks.MockRepository) {
+				// No expectations: service should short-circuit before calling provider.
+			},
+			assert: assertErrContains("invalid match id"),
+		},
+		{
+			name:        "Provider error",
+			providerErr: errors.New("boom"),
+			repoErr:     nil,
+			matchID:     5,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, errors.New("boom"))
+			},
+			assert: assertErrContains("boom"),
+		},
+		{
+			name:        "repo error",
+			providerErr: nil,
+			repoErr:     errors.New("disk"),
+			matchID:     5,
+			apply:       true,
+			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
+				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, nil)
+				fr.EXPECT().UpsertWeather(mock.Anything, baseRecs[0]).Return(errors.New("disk"))
+			},
+			assert: assertErrContains("disk"),
+		},
 	}
 
 	for _, tc := range cases {
@@ -77,24 +133,8 @@ func TestService_Import_Table(t *testing.T) {
 			fp := mocks.NewMockProvider(t)
 			fr := mocks.NewMockRepository(t)
 
-			// Set provider expectation when matchID is valid; otherwise, service should short-circuit.
-			if tc.matchID > 0 {
-				fp.EXPECT().Fetch(mock.Anything, tc.matchID).
-					Return(baseRecs, tc.providerErr)
-			}
-
-			// Set repository expectations only when apply=true and provider has no error.
-			if tc.apply && tc.providerErr == nil && tc.matchID > 0 {
-				if tc.repoErr != nil {
-					// Expect first upsert to error; service should stop after first failure.
-					fr.EXPECT().UpsertWeather(mock.Anything, baseRecs[0]).Return(tc.repoErr)
-				} else {
-					// Expect upsert for each record.
-					for _, r := range baseRecs {
-						fr.EXPECT().UpsertWeather(mock.Anything, r).Return(nil)
-					}
-				}
-			}
+			// Arrange expectations for this case.
+			tc.arrange(fp, fr)
 
 			s := weatherimport.NewService(fp, fr)
 			n, err := s.Import(context.Background(), tc.matchID, tc.apply)

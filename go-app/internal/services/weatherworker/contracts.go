@@ -11,3 +11,8 @@ import (
 type Provider interface {
 	Fetch(ctx context.Context, matchID int64) ([]models.WeatherData, error)
 }
+
+// Repository defines a destination for weather observations.
+type Repository interface {
+	UpsertWeather(ctx context.Context, r models.WeatherData) error
+}
