@@ -17,53 +17,45 @@ func TestService_Import_Table(t *testing.T) {
 	baseRecs := []models.WeatherData{{MatchID: 1, Session: "batting", Temp: 25}, {MatchID: 1, Session: "bowling", Temp: 23}}
 
 	cases := []struct {
-		name        string
-		providerErr error
-		repoErr     error
-		matchID     int64
-		apply       bool
-		arrange     func(fp *mocks.MockProvider, fr *mocks.MockRepository)
-		assert      func(t *testing.T, n int, err error, fr *mocks.MockRepository)
+		name    string
+		matchID int64
+		apply   bool
+		arrange func(provider *mocks.MockProvider, repository *mocks.MockRepository)
+		assert  func(t *testing.T, n int, err error, repository *mocks.MockRepository)
 	}{
 		{
-			name:        "dry-run returns count",
-			providerErr: nil,
-			repoErr:     nil,
-			matchID:     7,
-			apply:       false,
-			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
-				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+			name:    "dry-run returns count",
+			matchID: 7,
+			apply:   false,
+			arrange: func(provider *mocks.MockProvider, _ *mocks.MockRepository) {
+				provider.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
 			},
-			assert: func(t *testing.T, n int, err error, fr *mocks.MockRepository) {
+			assert: func(t *testing.T, n int, err error, repository *mocks.MockRepository) {
 				require.NoError(t, err)
 				require.Equal(t, 2, n)
-				fr.AssertNumberOfCalls(t, "UpsertWeather", 0)
+				repository.AssertNumberOfCalls(t, "UpsertWeather", 0)
 			},
 		},
 		{
-			name:        "apply upserts all",
-			providerErr: nil,
-			repoErr:     nil,
-			matchID:     7,
-			apply:       true,
-			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
-				fp.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
+			name:    "apply upserts all",
+			matchID: 7,
+			apply:   true,
+			arrange: func(provider *mocks.MockProvider, repository *mocks.MockRepository) {
+				provider.EXPECT().Fetch(mock.Anything, int64(7)).Return(baseRecs, nil)
 				for _, r := range baseRecs {
-					fr.EXPECT().UpsertWeather(mock.Anything, r).Return(nil)
+					repository.EXPECT().UpsertWeather(mock.Anything, r).Return(nil)
 				}
 			},
-			assert: func(t *testing.T, n int, err error, fr *mocks.MockRepository) {
+			assert: func(t *testing.T, n int, err error, repository *mocks.MockRepository) {
 				require.NoError(t, err)
 				require.Equal(t, 2, n)
-				fr.AssertNumberOfCalls(t, "UpsertWeather", 2)
+				repository.AssertNumberOfCalls(t, "UpsertWeather", 2)
 			},
 		},
 		{
-			name:        "invalid match id",
-			providerErr: nil,
-			repoErr:     nil,
-			matchID:     0,
-			apply:       true,
+			name:    "invalid match id",
+			matchID: 0,
+			apply:   true,
 			arrange: func(_ *mocks.MockProvider, _ *mocks.MockRepository) {
 				// No expectations: service should short-circuit before calling provider.
 			},
@@ -73,13 +65,11 @@ func TestService_Import_Table(t *testing.T) {
 			},
 		},
 		{
-			name:        "Provider error",
-			providerErr: errors.New("boom"),
-			repoErr:     nil,
-			matchID:     5,
-			apply:       true,
-			arrange: func(fp *mocks.MockProvider, _ *mocks.MockRepository) {
-				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, errors.New("boom"))
+			name:    "Provider error",
+			matchID: 5,
+			apply:   true,
+			arrange: func(provider *mocks.MockProvider, _ *mocks.MockRepository) {
+				provider.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, errors.New("boom"))
 			},
 			assert: func(t *testing.T, _ int, err error, _ *mocks.MockRepository) {
 				require.Error(t, err)
@@ -87,14 +77,12 @@ func TestService_Import_Table(t *testing.T) {
 			},
 		},
 		{
-			name:        "repo error",
-			providerErr: nil,
-			repoErr:     errors.New("disk"),
-			matchID:     5,
-			apply:       true,
-			arrange: func(fp *mocks.MockProvider, fr *mocks.MockRepository) {
-				fp.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, nil)
-				fr.EXPECT().UpsertWeather(mock.Anything, baseRecs[0]).Return(errors.New("disk"))
+			name:    "repo error",
+			matchID: 5,
+			apply:   true,
+			arrange: func(provider *mocks.MockProvider, repository *mocks.MockRepository) {
+				provider.EXPECT().Fetch(mock.Anything, int64(5)).Return(baseRecs, nil)
+				repository.EXPECT().UpsertWeather(mock.Anything, baseRecs[0]).Return(errors.New("disk"))
 			},
 			assert: func(t *testing.T, _ int, err error, _ *mocks.MockRepository) {
 				require.Error(t, err)
