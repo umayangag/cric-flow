@@ -1,4 +1,4 @@
-// Package mlclient provides a typed HTTP client for the Python ML service.
+// Package mlclient provides a typed HTTP client for the Python mlCleint service.
 package mlclient
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
-// Service calls the Python ML service.
+// Service calls the Python mlCleint service.
 type Client struct {
 	BaseURL   string
 	HTTP      *http.Client
@@ -59,7 +59,7 @@ func (c *Client) postJSON(ctx context.Context, path string, in any, out any) err
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// PredictBatting sends batting feature rows to the ML service and returns predictions.
+// PredictBatting sends batting feature rows to the mlCleint service and returns predictions.
 func (c *Client) PredictBatting(
 	ctx context.Context,
 	feats []models.BattingFeatures,
@@ -71,7 +71,7 @@ func (c *Client) PredictBatting(
 	return preds, nil
 }
 
-// PredictBowling sends bowling feature rows to the ML service and returns predictions.
+// PredictBowling sends bowling feature rows to the mlCleint service and returns predictions.
 func (c *Client) PredictBowling(
 	ctx context.Context,
 	feats []models.BowlingFeatures,

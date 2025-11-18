@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
 )
@@ -77,71 +79,37 @@ type assertSvcFn func(t *testing.T, processed int, err error, fl *fakeLoader, fr
 
 func assertNoErrorProcessed(want int) assertSvcFn {
 	return func(t *testing.T, processed int, err error, _ *fakeLoader, _ *fakeRepo) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if processed != want {
-			t.Fatalf("want processed=%d got=%d", want, processed)
-		}
+		require.NoError(t, err)
+		require.Equal(t, want, processed)
 	}
 }
 
 func assertErrContains(sub string) assertSvcFn {
 	return func(t *testing.T, _ int, err error, _ *fakeLoader, _ *fakeRepo) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q, got %v", sub, err)
-		}
+		require.Error(t, err)
+		// use ErrorContains where available; fallback to strings.Contains for clarity
+		require.Truef(t, strings.Contains(err.Error(), sub), "want err containing %q, got %v", sub, err)
 	}
 }
 
 func assertRepoBatches(want int) assertSvcFn {
 	return func(t *testing.T, _ int, err error, _ *fakeLoader, r *fakeRepo) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(r.upserts) != want {
-			t.Fatalf("want %d upsert batches, got %d", want, len(r.upserts))
-		}
+		require.NoError(t, err)
+		require.Equal(t, want, len(r.upserts))
 	}
 }
 
 func assertLoaderSaw(ids ...string) assertSvcFn {
 	return func(t *testing.T, _ int, err error, fl *fakeLoader, _ *fakeRepo) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
+		require.NoError(t, err)
 		got := append([]string(nil), fl.seen...)
 		sort.Strings(got)
 		sort.Strings(ids)
-		if len(got) != len(ids) {
-			t.Fatalf("loader saw %v, want %v", got, ids)
-		}
+		require.Equal(t, len(ids), len(got), "loader saw %v, want %v", got, ids)
 		for i := range ids {
-			if got[i] != ids[i] {
-				t.Fatalf("loader saw %v, want %v", got, ids)
-			}
+			require.Equalf(t, ids[i], got[i], "loader order mismatch at %d: got %v want %v", i, got, ids)
 		}
 	}
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
 }
 
 func TestIngestService_BasicFlows(t *testing.T) {

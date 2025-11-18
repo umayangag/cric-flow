@@ -10,7 +10,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
-// PredictWin calls the /predict-win endpoint of the ML service.
+// PredictWin calls the /predict-win endpoint of the mlCleint service.
 func (c *Client) PredictWin(
 	ctx context.Context,
 	players []predictor.PlayerPrediction,

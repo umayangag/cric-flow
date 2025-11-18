@@ -2,13 +2,12 @@ package cricsheet_test
 
 import (
 	"context"
-	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -25,11 +24,12 @@ func writeJSON(t *testing.T, dir, name, data string) string {
 }
 
 func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
+	// Not parallel: uses package-level singletons via SetCricsheetDB/SetWeatherClient.
 	ctx := context.Background()
 	dbMock := new(mocks.CricsheetDBMock)
 	weatherMock := new(mocks.WeatherClientMock)
 
-	// Set up mocks
+	// Arrange: inject mocks into package-level dependencies
 	cricsheet.SetCricsheetDB(dbMock)
 	cricsheet.SetWeatherClient(weatherMock)
 	defer func() {
@@ -38,41 +38,37 @@ func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
 		cricsheet.SetWeatherClient(new(mocks.WeatherClientMock))
 	}()
 
-	// Minimal JSON with unsupported match_type
 	bad := `{
-	  "info": {
-	    "balls_per_over": 6,
-	    "dates": ["2025-11-07"],
-	    "match_type": "Friendly",
-	    "teams": ["Alpha", "Beta"],
-	    "venue": "",
-	    "city": "",
-	    "season": "2025"
-	  },
-	  "innings": []
-	}`
+      "info": {
+        "balls_per_over": 6,
+        "dates": ["2025-11-07"],
+        "match_type": "Friendly",
+        "teams": ["Alpha", "Beta"],
+        "venue": "",
+        "city": "",
+        "season": "2025"
+      },
+      "innings": []
+    }`
 	d := t.TempDir()
 	file := writeJSON(t, d, "bad.json", bad)
 
-	// No DB interactions expected because we bail out on unknown match_type before any DB call
+	// Act
 	err := cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
-	if err == nil {
-		t.Fatalf("expected error for unknown match_type")
-	}
-	if !strings.Contains(err.Error(), "unsupported match_type") {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	// Assertions: ensure no unexpected calls were made
+	// Assert
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unsupported match_type")
 	dbMock.AssertExpectations(t)
 }
 
 func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
+	// Not parallel: uses package-level singletons via SetCricsheetDB/SetWeatherClient.
 	ctx := context.Background()
 	dbMock := new(mocks.CricsheetDBMock)
 	weatherMock := new(mocks.WeatherClientMock)
 
-	// Set up mocks
+	// Arrange
 	cricsheet.SetCricsheetDB(dbMock)
 	cricsheet.SetWeatherClient(weatherMock)
 	defer func() {
@@ -83,33 +79,30 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	// stub recompute to avoid touching real DB in unit tests
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 
-	// balls_per_over is 0 -> should fallback to 6
-	// Create 7 legal deliveries so overs should be 1.1 (i.e., 1 over + 1 ball)
-	// Keep it minimal: one innings, one over block with 7 deliveries (we can emulate two overs with over index duplication; ingestion aggregates by counting legal balls only).
 	good := `{
-	  "info": {
-	    "balls_per_over": 0,
-	    "dates": ["2025-11-07"],
-	    "match_type": "T20",
-	    "teams": ["Alpha", "Beta"],
-	    "venue": "",
-	    "city": "",
-	    "season": "2025"
-	  },
-	  "innings": [
-	    {"team":"Alpha","overs":[
-	      {"over":1,"deliveries":[
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
-	        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}}
-	      ]}
-	    ]}
-	  ]
-	}`
+      "info": {
+        "balls_per_over": 0,
+        "dates": ["2025-11-07"],
+        "match_type": "T20",
+        "teams": ["Alpha", "Beta"],
+        "venue": "",
+        "city": "",
+        "season": "2025"
+      },
+      "innings": [
+        {"team":"Alpha","overs":[
+          {"over":1,"deliveries":[
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}},
+            {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0}}
+          ]}
+        ]}
+      ]
+    }`
 	d := t.TempDir()
 	file := writeJSON(t, d, "good.json", good)
 
@@ -122,12 +115,11 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	dbMock.On("GetOrCreateByName", ctx, mock.Anything).Return(int64(0), nil)
 	dbMock.On("UpsertBatting", ctx, mock.Anything).Return(nil)
 	dbMock.On("UpsertBowling", ctx, mock.Anything).Return(nil)
-	// Note: ImportMatchFile may return an error at the very end when it tries to
-	// recompute fielding aggregates via real DB (db.Pool not initialized in unit tests).
-	// We only care that UpdateMatchDetails was called with overs computed as 1.1.
+
+	// Act
 	_ = cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
 
-	// Assertions
+	// Assert
 	dbMock.AssertExpectations(t)
 
 	// Overs assertion
@@ -137,13 +129,9 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 			args := call.Arguments
 			upd := args.Get(2).(*db.MatchInfoUpdate)
 			ov := upd.Overs
-			if ov == nil {
-				t.Fatalf("expected Overs to be set")
-			}
+			require.NotNil(t, ov)
 			expected := float32(1.1) // 7 legal balls at 6 balls/over => 1.1 notation
-			if math.Abs(float64(*ov)-float64(expected)) > 1e-6 {
-				t.Fatalf("overs mismatch: got %.3f want %.3f", *ov, expected)
-			}
+			require.InDelta(t, expected, *ov, 1e-6)
 			return
 		}
 	}

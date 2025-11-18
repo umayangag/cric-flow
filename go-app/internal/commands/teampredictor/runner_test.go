@@ -4,23 +4,10 @@ import (
 	"context"
 	"testing"
 
-	dummy "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/mlclient/dummy"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	svcpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
 )
-
-type fakeSvc struct{ out mlclient.PredictResponse }
-
-func (f *fakeSvc) Predict(_ context.Context, _ cli.Options) (mlclient.PredictResponse, error) {
-	return f.out, nil
-}
-
-// Compile-time assurance this shape exists on real service, here we just need the method
-var _ interface {
-	Predict(context.Context, cli.Options) (mlclient.PredictResponse, error)
-} = (*fakeSvc)(nil)
 
 type assertFn func(t *testing.T, err error)
 
@@ -90,7 +77,7 @@ func TestRunner_Run(t *testing.T) {
 			name: "happy path",
 			r: func() *cmd.Runner {
 				// Use a real service wired with the dummy mlclient adapter to satisfy non-nil dependency
-				return cmd.NewRunner(svcpkg.NewService(dummy.New()))
+				return cmd.NewRunner(svcpkg.NewService(nil))
 			},
 			opts:   cli.Options{MatchID: 1, Format: "T20", Season: "2019"},
 			assert: assertNoError(),

@@ -167,7 +167,7 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, resp)
 }
 
-// predictBattingHandler sends features to ML service for batting predictions.
+// predictBattingHandler sends features to mlCleint service for batting predictions.
 func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []models.BattingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
@@ -182,7 +182,7 @@ func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, preds)
 }
 
-// predictBowlingHandler sends features to ML service for bowling predictions.
+// predictBowlingHandler sends features to mlCleint service for bowling predictions.
 func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []models.BowlingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {

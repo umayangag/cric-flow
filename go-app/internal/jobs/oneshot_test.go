@@ -51,7 +51,10 @@ func TestOneShotSource_Next_Table(t *testing.T) {
 			name:  "second call after first is exhausted",
 			batch: 1,
 			arrange: func(_ context.Context) *jobs.OneShotSource {
-				return jobs.NewOneShotSource(7)
+				s := jobs.NewOneShotSource(7)
+				// Exhaust the one-shot by calling once before the Act phase
+				_, _, _ = s.Next(context.Background(), 1)
+				return s
 			},
 			assert: func(t *testing.T, ids []int64, ok bool, err error) {
 				require.NoError(t, err)

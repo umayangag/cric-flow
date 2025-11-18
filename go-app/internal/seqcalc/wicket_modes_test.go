@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -57,6 +58,7 @@ func evWK(
 }
 
 func TestCanonicalMode(t *testing.T) {
+	t.Parallel()
 	tcs := []struct {
 		in   string
 		want string
@@ -71,17 +73,14 @@ func TestCanonicalMode(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		got := canonicalMode(sql.NullString{String: tc.in, Valid: true})
-		if got != tc.want {
-			t.Fatalf("canonicalMode(%q)=%q want %q", tc.in, got, tc.want)
-		}
+		require.Equalf(t, tc.want, got, "canonicalMode(%q)", tc.in)
 	}
 	// empty/null
-	if canonicalMode(sql.NullString{}) != "" {
-		t.Fatalf("expected empty for invalid null string")
-	}
+	require.Equal(t, "", canonicalMode(sql.NullString{}))
 }
 
 func TestAggregateWicketModes_Basic(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bowler := int64(42)
@@ -94,25 +93,20 @@ func TestAggregateWicketModes_Basic(t *testing.T) {
 		evWK(1, 1, 4, "powerplay", true, bowler, 0, "", 111, "Caught and Bowled", asOf, fmtID),
 	}
 	agg := aggregateWicketModes(rows)
-	if len(agg) != 1 {
-		t.Fatalf("expected 1 agg row, got %d", len(agg))
-	}
+	require.Equal(t, 1, len(agg))
 	r := agg[0]
-	if r.PlayerID != bowler || r.FormatID != fmtID || r.Phase != "powerplay" || r.Mode != "caught" {
-		t.Fatalf("unexpected key fields: %+v", r)
-	}
-	if r.Balls != 3 { // only legal deliveries counted
-		t.Fatalf("Balls expected 3, got %d", r.Balls)
-	}
-	if r.Wickets != 1 {
-		t.Fatalf("Wickets expected 1, got %d", r.Wickets)
-	}
-	if r.WicketsPer100 <= 0 || r.WicketsPer100 > 40 {
-		t.Fatalf("unexpected rate: %v", r.WicketsPer100)
-	}
+	require.Equal(t, bowler, r.PlayerID)
+	require.Equal(t, fmtID, r.FormatID)
+	require.Equal(t, "powerplay", r.Phase)
+	require.Equal(t, "caught", r.Mode)
+	require.Equal(t, 3, r.Balls) // only legal deliveries counted
+	require.Equal(t, 1, r.Wickets)
+	require.Greater(t, r.WicketsPer100, 0.0)
+	require.LessOrEqual(t, r.WicketsPer100, 40.0)
 }
 
 func TestAggregateWicketModes_PhaseSeparation(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bowler := int64(77)
@@ -123,9 +117,7 @@ func TestAggregateWicketModes_PhaseSeparation(t *testing.T) {
 		evWK(1, 1, 2, "death", true, bowler, 0, "", 222, "lbw", asOf, fmtID),
 	}
 	agg := aggregateWicketModes(rows)
-	if len(agg) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(agg))
-	}
+	require.Equal(t, 2, len(agg))
 	// collect by phase
 	var pp, death *db.WicketModeRow
 	for i := range agg {
@@ -136,18 +128,17 @@ func TestAggregateWicketModes_PhaseSeparation(t *testing.T) {
 			death = &agg[i]
 		}
 	}
-	if pp == nil || death == nil {
-		t.Fatalf("missing phases in aggregation: %+v", agg)
-	}
-	if pp.Balls != 2 || pp.Wickets != 0 {
-		t.Fatalf("powerplay unexpected counts: %+v", *pp)
-	}
-	if death.Balls != 2 || death.Wickets != 1 || death.Mode != "lbw" {
-		t.Fatalf("death unexpected counts: %+v", *death)
-	}
+	require.NotNil(t, pp, "missing powerplay agg: %+v", agg)
+	require.NotNil(t, death, "missing death agg: %+v", agg)
+	require.Equal(t, 2, pp.Balls)
+	require.Equal(t, 0, pp.Wickets)
+	require.Equal(t, 2, death.Balls)
+	require.Equal(t, 1, death.Wickets)
+	require.Equal(t, "lbw", death.Mode)
 }
 
 func TestAggregateWicketModes_FormatMapping(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 9, 11, 0, 0, 0, 0, time.UTC)
 	bowler := int64(4242)
 	cases := []struct {
@@ -165,9 +156,7 @@ func TestAggregateWicketModes_FormatMapping(t *testing.T) {
 				evWK(9, 1, 2, "middle", true, bowler, 0, "", 999, "lbw", asOf, tc.fmtID),
 			}
 			agg := aggregateWicketModes(rows)
-			if len(agg) == 0 {
-				t.Fatalf("expected rows for format %d", tc.fmtID)
-			}
+			require.NotEmpty(t, agg, "expected rows for format %d", tc.fmtID)
 			found := false
 			for i := range agg {
 				if agg[i].FormatID == tc.fmtID && agg[i].PlayerID == bowler {
@@ -175,9 +164,7 @@ func TestAggregateWicketModes_FormatMapping(t *testing.T) {
 					break
 				}
 			}
-			if !found {
-				t.Fatalf("did not find aggregated row for fmt %d", tc.fmtID)
-			}
+			require.True(t, found, "did not find aggregated row for fmt %d", tc.fmtID)
 		})
 	}
 }

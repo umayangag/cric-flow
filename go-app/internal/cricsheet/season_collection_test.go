@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
 func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name string
 		in   string
@@ -22,14 +24,21 @@ func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
 		{"null", `null`, ""},
 	}
 	for _, tc := range cases {
-		var s cricsheet.Season
-		err := s.UnmarshalJSON([]byte(tc.in))
-		assert.NoError(t, err, tc.name)
-		assert.Equal(t, tc.out, string(s), tc.name)
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			var s cricsheet.Season
+			// Act
+			err := s.UnmarshalJSON([]byte(tc.in))
+			// Assert
+			require.NoError(t, err)
+			require.Equal(t, tc.out, string(s))
+		})
 	}
 }
 
 func TestCollection_UnmarshalJSON_Forms(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name string
 		in   string
@@ -43,31 +52,39 @@ func TestCollection_UnmarshalJSON_Forms(t *testing.T) {
 		{"null", `null`, nil},
 	}
 	for _, tc := range cases {
-		var c cricsheet.Collection
-		err := c.UnmarshalJSON([]byte(tc.in))
-		assert.NoError(t, err, tc.name)
-		assert.Equal(t, len(tc.out), len(c), tc.name)
-		for i := range tc.out {
-			assert.Equal(t, tc.out[i], c[i], "%s idx %d", tc.name, i)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			var c cricsheet.Collection
+			err := c.UnmarshalJSON([]byte(tc.in))
+			require.NoError(t, err)
+			require.Equal(t, len(tc.out), len(c))
+			for i := range tc.out {
+				require.Equal(t, tc.out[i], c[i])
+			}
+		})
 	}
 }
 
 func TestCollection_UnmarshalJSON_GarbageFallback(t *testing.T) {
+	t.Parallel()
+
 	var c cricsheet.Collection
 	err := c.UnmarshalJSON([]byte(`{"foo":"bar"}`))
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(c))
+	require.NoError(t, err)
+	require.Len(t, c, 0)
 }
 
 func TestParse_DoesNotPanicOnMinimalJSON(t *testing.T) {
+	t.Parallel()
+
 	data := []byte(`{"info":{"teams":["A","B"],"match_type":"T20","season":"2019"},"innings":[]}`)
 	m, err := cricsheet.Parse(bytes.NewReader(data))
-	assert.NoError(t, err)
-	assert.NotNil(t, m)
+	require.NoError(t, err)
+	require.NotNil(t, m)
 }
 
 func TestParse_ErrorOnBadJSON(t *testing.T) {
+	t.Parallel()
+
 	_, err := cricsheet.Parse(bytes.NewReader([]byte("not-json")))
-	assert.Error(t, err)
+	require.Error(t, err)
 }

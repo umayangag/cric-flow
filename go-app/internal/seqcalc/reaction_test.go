@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // helper to quickly build an evRow
@@ -53,7 +55,9 @@ func ev(
 	}
 }
 
+// TestAggregateReaction_BatterAndBowlerStreams follows the gold standard: AAA with require assertions.
 func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
+	t.Parallel()
 	// Sequence:
 	// b1: dot (prev=none)
 	// b2: single (counts under prev=dot)
@@ -114,10 +118,11 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 		), // new striker after wicket -> under prev=wicket
 	}
 
+	// Act
 	batRows := aggregateReaction(seq, true)
 	bowlRows := aggregateReaction(seq, false)
 
-	// Convert to map for asserts
+	// Assert: Convert to map for asserts
 	bat := map[string]struct{ balls, runs, bnd, dism int }{}
 	for _, r := range batRows {
 		key := r.PrevEvent
@@ -136,59 +141,36 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	}
 
 	// Expectations for batter stream
-	if got := bat["dot"]; true { // b2 under prev=dot
-		if got.balls != 1 {
-			t.Fatalf("bat prev=dot balls unexpected: %+v", got)
-		}
-		if got.runs != 1 {
-			t.Fatalf("bat prev=dot runs unexpected: %+v", got)
-		}
+	if got, ok := bat["dot"]; ok { // b2 under prev=dot
+		require.Equal(t, 1, got.balls, "bat prev=dot balls")
+		require.Equal(t, 1, got.runs, "bat prev=dot runs")
+	} else {
+		t.Fatalf("missing bat prev=dot aggregate")
 	}
 	if got := bat["1"]; true { // after single, next was wide (illegal) with 1 run
-		if got.balls != 1 {
-			t.Fatalf("bat prev=1 balls unexpected: %+v", got)
-		}
-		if got.bnd != 0 {
-			t.Fatalf("bat prev=1 boundaries unexpected: %+v", got)
-		}
-		if got.runs != 1 {
-			t.Fatalf("bat prev=1 runs unexpected: %+v", got)
-		}
+		require.Equal(t, 1, got.balls, "bat prev=1 balls")
+		require.Equal(t, 0, got.bnd, "bat prev=1 boundaries")
+		require.Equal(t, 1, got.runs, "bat prev=1 runs")
 	}
 	if got := bat["wide"]; true { // after wide, next was boundary 4
-		if got.balls != 1 {
-			t.Fatalf("bat prev=wide balls unexpected: %+v", got)
-		}
-		if got.bnd != 1 {
-			t.Fatalf("bat prev=wide boundaries unexpected: %+v", got)
-		}
-		if got.runs != 4 {
-			t.Fatalf("bat prev=wide runs unexpected: %+v", got)
-		}
+		require.Equal(t, 1, got.balls, "bat prev=wide balls")
+		require.Equal(t, 1, got.bnd, "bat prev=wide boundaries")
+		require.Equal(t, 4, got.runs, "bat prev=wide runs")
 	}
 	// New striker has no prev event in his own stream; no record under prev=wicket for batter stream
-	if got, ok := bat["wicket"]; ok && (got.balls != 0 || got.runs != 0) {
-		t.Fatalf("bat prev=wicket should be zero, got: %+v", got)
+	if got, ok := bat["wicket"]; ok {
+		require.Equal(t, 0, got.balls, "bat prev=wicket balls")
+		require.Equal(t, 0, got.runs, "bat prev=wicket runs")
 	}
 
 	// Expectations for bowler stream
 	if got := bowl["wide"]; true { // b4 after wide conceded a boundary next
-		if got.balls != 1 {
-			t.Fatalf("bowl prev=wide balls unexpected: %+v", got)
-		}
-		if got.bcon != 1 {
-			t.Fatalf("bowl prev=wide boundaries conceded unexpected: %+v", got)
-		}
-		if got.runs != 4 {
-			t.Fatalf("bowl prev=wide runs unexpected: %+v", got)
-		}
+		require.Equal(t, 1, got.balls, "bowl prev=wide balls")
+		require.Equal(t, 1, got.bcon, "bowl prev=wide boundaries conceded")
+		require.Equal(t, 4, got.runs, "bowl prev=wide runs")
 	}
 	if got := bowl["4"]; true { // b5 after 4 produced a wicket
-		if got.balls != 1 {
-			t.Fatalf("bowl prev=4 balls unexpected: %+v", got)
-		}
-		if got.wkts != 1 {
-			t.Fatalf("bowl prev=4 wickets unexpected: %+v", got)
-		}
+		require.Equal(t, 1, got.balls, "bowl prev=4 balls")
+		require.Equal(t, 1, got.wkts, "bowl prev=4 wickets")
 	}
 }

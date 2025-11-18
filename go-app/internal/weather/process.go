@@ -1,5 +1,5 @@
 // Package service orchestrates weather job processing against external providers.
-package service
+package weather
 
 import (
 	"context"

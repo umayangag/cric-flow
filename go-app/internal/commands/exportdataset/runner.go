@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
@@ -33,17 +33,16 @@ type BowlingExporter interface {
 
 // Runner orchestrates the export-dataset workflow behind interfaces for testability.
 type Runner struct {
-	FS  fsx.FS
 	Bat BattingExporter
 	Bow BowlingExporter
 }
 
 // NewRunner constructs a Runner with only filesystem dependency (backward compatible during migration).
-func NewRunner(files fsx.FS) *Runner { return &Runner{FS: files} }
+func NewRunner() *Runner { return &Runner{} }
 
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
-func NewRunnerWithServices(files fsx.FS, bat BattingExporter, bow BowlingExporter) *Runner {
-	return &Runner{FS: files, Bat: bat, Bow: bow}
+func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter) *Runner {
+	return &Runner{Bat: bat, Bow: bow}
 }
 
 // Run executes the export based on CLI options provided by the caller.
@@ -55,10 +54,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if opts.OutDir == "" {
 		return errors.New("output directory is required")
 	}
-	if r.FS == nil {
-		return errors.New("missing FS dependency")
-	}
-	if err := r.FS.MkdirAll(opts.OutDir, fs.FileMode(0o755)); err != nil {
+	if err := os.MkdirAll(opts.OutDir, fs.FileMode(0o755)); err != nil {
 		return fmt.Errorf("mkdir %s: %w", opts.OutDir, err)
 	}
 	// If services are injected, orchestrate exports here. This path is only active
@@ -122,8 +118,5 @@ func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) err
 		return err
 	}
 	path := filepath.Join(outDir, name)
-	if r.FS == nil {
-		return errors.New("missing FS dependency")
-	}
-	return r.FS.WriteFile(context.Background(), path, buf.Bytes(), fs.FileMode(0o644))
+	return os.WriteFile(path, buf.Bytes(), fs.FileMode(0o644))
 }

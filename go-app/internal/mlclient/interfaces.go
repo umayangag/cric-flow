@@ -17,9 +17,7 @@ type PredictResponse struct {
 	Score   float64
 }
 
-// Service is the abstraction for an ML predictor service.
-//
-//go:generate mockery --name Service --output internal/mocks --case underscore
+// Service is the abstraction for an mlCleint predictor service.
 type Service interface {
 	PredictTeam(ctx context.Context, in PredictRequest) (PredictResponse, error)
 	Reload(ctx context.Context) error

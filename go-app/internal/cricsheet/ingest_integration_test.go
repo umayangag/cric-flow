@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -210,6 +211,7 @@ type nopRow struct{}
 func (nopRow) Scan(_ ...any) error { return nil }
 
 func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
+	// Not parallel: uses package-level singletons (db.PoolAPI, SetCricsheetDB, SetWeatherClient).
 	ctx := context.Background()
 	// Provide a no-op pool so repository functions that require PoolAPI succeed in tests.
 	prevPool := db.PoolAPI
@@ -231,35 +233,26 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	file := writeTempJSON(t, d, "a.json", sampleJSON)
 
 	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
-	if err := cricsheet.ImportMatchFile(ctx, file, opts); err != nil {
-		t.Fatalf("ImportMatchFile error: %v", err)
-	}
+	err := cricsheet.ImportMatchFile(ctx, file, opts)
+	require.NoError(t, err)
 	// Expect two UpdateMatchDetails (two innings)
-	if len(fdb.updates) != 2 {
-		t.Fatalf("expected 2 updates, got %d", len(fdb.updates))
-	}
+	require.Equal(t, 2, len(fdb.updates), "expected 2 updates")
 	// Target for second innings should equal first innings total (4 + 1 + 6 = 11)
-	if fdb.updates[1].Target == nil || *fdb.updates[1].Target != 11 {
-		t.Fatalf("second innings target mismatch, got %+v", fdb.updates[1].Target)
-	}
+	require.NotNil(t, fdb.updates[1].Target)
+	require.Equal(t, 11, *fdb.updates[1].Target)
 	// Expect at least one batting and bowling record upserted
-	if len(fdb.batting) == 0 || len(fdb.bowling) == 0 {
-		t.Fatalf("expected batting and bowling upserts, got batting=%d bowling=%d", len(fdb.batting), len(fdb.bowling))
-	}
+	require.NotEmpty(t, fdb.batting)
+	require.NotEmpty(t, fdb.bowling)
 	// Fielding placeholders should be created for seen players (>= players seen)
-	if len(fdb.fielding) == 0 {
-		t.Fatalf("expected placeholder fielding upserts, got 0")
-	}
+	require.NotEmpty(t, fdb.fielding)
 	// Weather placeholders executed and enqueue called
-	if len(fdb.execs) == 0 {
-		t.Fatalf("expected at least one Exec for weather placeholders")
-	}
-	if fw.calls == 0 || fw.last.innings != 2 {
-		t.Fatalf("expected weather enqueue once with innings=2, got calls=%d last=%+v", fw.calls, fw.last)
-	}
+	require.NotEmpty(t, fdb.execs)
+	require.NotZero(t, fw.calls)
+	require.Equal(t, 2, fw.last.innings)
 }
 
 func TestImportDir_SortsAndCountsJSON(t *testing.T) {
+	// Not parallel: uses package-level singletons (db.PoolAPI, SetCricsheetDB, SetWeatherClient).
 	ctx := context.Background()
 	// Provide a no-op pool so repository functions that require PoolAPI succeed in tests.
 	prevPool := db.PoolAPI
@@ -281,10 +274,6 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	_ = writeTempJSON(t, d, "a.json", sampleJSON)
 
 	cnt, err := cricsheet.ImportDir(ctx, d, &cricsheet.Options{})
-	if err != nil {
-		t.Fatalf("ImportDir error: %v", err)
-	}
-	if cnt != 2 {
-		t.Fatalf("expected 2 files imported, got %d", cnt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 2, cnt)
 }

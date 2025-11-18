@@ -27,7 +27,7 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet)
 	r.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet)
 
-	// ML predictions
+	// mlCleint predictions
 	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
 	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 

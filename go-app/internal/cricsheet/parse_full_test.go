@@ -5,10 +5,15 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
+// TestParse_FullShapes follows the gold standard: AAA with require assertions.
 func TestParse_FullShapes(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
 	payload := map[string]any{
 		"info": map[string]any{
 			"balls_per_over": 6,
@@ -58,32 +63,25 @@ func TestParse_FullShapes(t *testing.T) {
 	}
 	b, _ := json.Marshal(payload)
 	dec := json.NewDecoder(bytes.NewReader(b))
+
+	// Act
 	var m cricsheet.Match
-	if err := dec.Decode(&m); err != nil {
-		t.Fatalf("decode failed: %v", err)
-	}
-	if len(m.Innings) != 1 {
-		t.Fatalf("want 1 innings, got %d", len(m.Innings))
-	}
+	err := dec.Decode(&m)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, m.Innings, 1)
 	inn := m.Innings[0]
-	if inn.Team != "India" {
-		t.Fatalf("team mismatch: %s", inn.Team)
-	}
-	if len(inn.Overs) != 1 || inn.Overs[0].Over != 0 {
-		t.Fatalf("expected one over #0, got: %+v", inn.Overs)
-	}
+	require.Equal(t, "India", inn.Team)
+	require.Len(t, inn.Overs, 1)
+	require.Equal(t, 0, inn.Overs[0].Over)
 	dels := inn.Overs[0].Deliveries
-	if len(dels) != 2 {
-		t.Fatalf("expected 2 deliveries, got %d", len(dels))
-	}
-	if dels[0].Runs.Total != 1 || dels[1].Runs.Extras != 1 {
-		t.Fatalf("unexpected runs parsed: %+v", dels)
-	}
-	if dels[1].Wickets == nil || len(*dels[1].Wickets) != 1 {
-		t.Fatalf("expected one wicket, got: %+v", dels[1].Wickets)
-	}
+	require.Len(t, dels, 2)
+	require.Equal(t, 1, dels[0].Runs.Total)
+	require.Equal(t, 1, dels[1].Runs.Extras)
+	require.NotNil(t, dels[1].Wickets)
+	require.Len(t, *dels[1].Wickets, 1)
 	w := (*dels[1].Wickets)[0]
-	if w.PlayerOut != "B" || w.Kind != "bowled" {
-		t.Fatalf("wicket parsed incorrectly: %+v", w)
-	}
+	require.Equal(t, "B", w.PlayerOut)
+	require.Equal(t, "bowled", w.Kind)
 }

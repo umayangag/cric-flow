@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
-	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
 	wcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherimport"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
@@ -40,13 +38,11 @@ func run() int {
 		return 1
 	}
 
-	// Provider selection (default dummy). Additional providers can be added later.
 	_ = strings.TrimSpace(opts.Provider) // reserved for future provider selection
-	provider := wprov.New()
-	repo := wrepo.New()
+	// TODO: add dependency
 	// One-shot job source that yields exactly this match ID once.
 	src := jobs.NewOneShotSource(opts.MatchID)
-	svc := workersvc.NewService(src, provider, repo)
+	svc := workersvc.NewService(src, nil, nil)
 	if _, runErr := svc.Run(ctx, 1, opts.Apply); runErr != nil {
 		slog.Error("weather-import failed", slog.Any("err", runErr))
 		return 1

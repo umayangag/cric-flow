@@ -3,13 +3,13 @@ package cricsheet_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 )
 
-// NOTE: This file was consolidated to follow table-driven, black-box tests.
-// All DetectFormat cases (including edge cases previously in format_more_test.go)
-// are merged into a single table-driven test below.
+// NOTE: This file follows the gold-standard for tests: external package,
+// table-driven subtests, Arrange → Act → Assert, and fail-fast require assertions.
 
 // SPDX-License-Identifier: MIT
 // Package-level tests consolidated: prefer table-driven, black-box tests.
@@ -24,84 +24,52 @@ func testConfig() *config.Config {
 	return cfg
 }
 
-func TestDetectFormat_BasicMappings(t *testing.T) {
-	cfg := testConfig()
-	if got := cricsheet.DetectFormat("Test", []string{"India", "Australia"}, cfg); got != "TEST" {
-		t.Fatalf("expected TEST, got %s", got)
-	}
-	if got := cricsheet.DetectFormat("ODI", []string{"India", "Australia"}, cfg); got != "ODI" {
-		t.Fatalf("expected ODI, got %s", got)
-	}
-	if got := cricsheet.DetectFormat("T20I", []string{"India", "Australia"}, cfg); got != "T20I" {
-		t.Fatalf("expected T20I, got %s", got)
-	}
-}
+func TestDetectFormat_Table(t *testing.T) {
+	t.Parallel()
 
-func TestDetectFormat_T20SubsetRule(t *testing.T) {
-	cfg := testConfig()
-	// International vs International in T20 -> T20I
-	if got := cricsheet.DetectFormat("T20", []string{"India", "Australia"}, cfg); got != "T20I" {
-		t.Fatalf("expected T20I (subset rule), got %s", got)
-	}
-	// Domestic/Franchise teams in T20 -> T20
-	if got := cricsheet.DetectFormat("T20", []string{"Mumbai Indians", "Chennai Super Kings"}, cfg); got != "T20" {
-		t.Fatalf("expected T20, got %s", got)
-	}
-	// Mixed international + domestic -> T20
-	if got := cricsheet.DetectFormat("T20", []string{"India", "Mumbai Indians"}, cfg); got != "T20" {
-		t.Fatalf("expected T20 when mixed, got %s", got)
-	}
-}
+	base := testConfig()
+	disabled := &config.Config{}
+	disabled.Formats.TreatT20ISubset = false
+	disabled.Formats.InternationalTeams = []string{"India", "Australia"}
 
-func TestDetectFormat_Unknown(t *testing.T) {
-	cfg := testConfig()
-	if got := cricsheet.DetectFormat("Friendly", []string{"Team A", "Team B"}, cfg); got != "" {
-		t.Fatalf("expected empty for unknown type, got %s", got)
-	}
-}
+	enabledCase := &config.Config{}
+	enabledCase.Formats.TreatT20ISubset = true
+	enabledCase.Formats.InternationalTeams = []string{" india ", "australia"}
 
-func TestDetectFormat_EdgeCases(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Formats.TreatT20ISubset = false
-	cfg.Formats.InternationalTeams = []string{"India", "Australia"}
-
-	tests := []struct {
+	type testCase struct {
 		name      string
 		matchType string
 		teams     []string
 		cfg       *config.Config
-		expect    string
-	}{
-		{"lowercase test", "test", []string{"India", "Australia"}, cfg, "TEST"},
-		{"whitespace odi", "  odi \n", []string{"India", "Australia"}, cfg, "ODI"},
-		{"t20 subset disabled", "t20", []string{"India", "Australia"}, cfg, "T20"},
-		{"t20 nil cfg", "T20", []string{"India", "Australia"}, nil, "T20"},
-		{"t20 less than 2 teams", "T20", []string{"India"}, cfg, "T20"},
-		{"unknown empty", "Friendly", []string{"A", "B"}, cfg, ""},
-		// subset enabled + case/whitespace + international teams -> T20I
+		want      string
 	}
-	// add a case with subset enabled and case/whitespace varieties
-	cfg2 := &config.Config{}
-	cfg2.Formats.TreatT20ISubset = true
-	cfg2.Formats.InternationalTeams = []string{" india ", "australia"}
-	tests = append(tests, struct {
-		name      string
-		matchType string
-		teams     []string
-		cfg       *config.Config
-		expect    string
-	}{
-		name:      "t20 subset enabled with case/whitespace",
-		matchType: "T20",
-		teams:     []string{" India", "AUSTRALIA "},
-		cfg:       cfg2,
-		expect:    "T20I",
-	})
 
-	for _, tc := range tests {
-		got := cricsheet.DetectFormat(tc.matchType, tc.teams, tc.cfg)
-		if got != tc.expect {
-			t.Fatalf("%s: expected %q got %q", tc.name, tc.expect, got)
-		}
+	cases := []testCase{
+		// Basic mappings
+		{name: "TEST basic", matchType: "Test", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
+		{name: "ODI basic", matchType: "ODI", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
+		{name: "T20I basic", matchType: "T20I", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
+		// T20 subset rule
+		{name: "T20 subset -> T20I (intl vs intl)", matchType: "T20", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
+		{name: "T20 domestic -> T20", matchType: "T20", teams: []string{"Mumbai Indians", "Chennai Super Kings"}, cfg: base, want: "T20"},
+		{name: "T20 mixed intl+domestic -> T20", matchType: "T20", teams: []string{"India", "Mumbai Indians"}, cfg: base, want: "T20"},
+		// Unknown
+		{name: "Unknown -> empty", matchType: "Friendly", teams: []string{"Team A", "Team B"}, cfg: base, want: ""},
+		// Edge cases
+		{name: "lowercase test", matchType: "test", teams: []string{"India", "Australia"}, cfg: disabled, want: "TEST"},
+		{name: "whitespace odi", matchType: "  odi \n", teams: []string{"India", "Australia"}, cfg: disabled, want: "ODI"},
+		{name: "t20 subset disabled", matchType: "t20", teams: []string{"India", "Australia"}, cfg: disabled, want: "T20"},
+		{name: "t20 nil cfg", matchType: "T20", teams: []string{"India", "Australia"}, cfg: nil, want: "T20"},
+		{name: "t20 less than 2 teams", matchType: "T20", teams: []string{"India"}, cfg: disabled, want: "T20"},
+		{name: "t20 subset enabled with case/whitespace", matchType: "T20", teams: []string{" India", "AUSTRALIA "}, cfg: enabledCase, want: "T20I"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange -> Act
+			got := cricsheet.DetectFormat(tc.matchType, tc.teams, tc.cfg)
+			// Assert
+			require.Equal(t, tc.want, got)
+		})
 	}
 }

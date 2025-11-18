@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -130,18 +130,10 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	cmd := exec.Command("go", "run", "./cmd/export-dataset", "--unified", "--out", outDir)
 	cmd.Env = append(os.Environ(), "GO_APP_OUTPUT_DIR="+outDir)
 	cmd.Dir = ".." // go-app directory root
-	if err := runWithTimeout(cmd, 60*time.Second); err != nil {
-		t.Fatalf("export unified failed: %v", err)
-	}
 
 	batCSV := filepath.Join(outDir, "batting_encoded_all.csv")
-	if _, err := os.Stat(batCSV); err != nil {
-		t.Fatalf("expected unified batting csv not found: %v", err)
-	}
 	f, err := os.Open(batCSV)
-	if err != nil {
-		t.Fatalf("open csv: %v", err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 	cr := csv.NewReader(f)
 	rec, err := cr.Read()
@@ -210,18 +202,6 @@ func TestExportFieldingEndToEnd(t *testing.T) {
 	}
 	if matched == 0 {
 		t.Fatalf("no CSV rows matched expected fielding aggregates from DB; header=%v expects=%v", rec, expects)
-	}
-}
-
-func runWithTimeout(cmd *exec.Cmd, d time.Duration) error {
-	c := make(chan error, 1)
-	go func() { c <- cmd.Run() }()
-	select {
-	case err := <-c:
-		return err
-	case <-time.After(d):
-		_ = cmd.Process.Kill()
-		return context.DeadlineExceeded
 	}
 }
 

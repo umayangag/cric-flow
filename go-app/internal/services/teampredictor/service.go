@@ -12,13 +12,13 @@ import (
 // Keep it small and deterministic; no logging here.
 
 type Service struct {
-	ML mlclient.Service
+	mlClient mlclient.Service
 }
 
-func NewService(c mlclient.Service) *Service { return &Service{ML: c} }
+func NewService(c mlclient.Service) *Service { return &Service{mlClient: c} }
 
 func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.PredictResponse, error) {
-	if s == nil || s.ML == nil {
+	if s == nil || s.mlClient == nil {
 		return mlclient.PredictResponse{}, errors.New("nil service or ml client")
 	}
 	if opts.MatchID <= 0 || opts.Format == "" || opts.Season == "" || opts.Bat < 0 || opts.Bowl < 0 {
@@ -31,5 +31,5 @@ func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.Predi
 		Bat:     opts.Bat,
 		Bowl:    opts.Bowl,
 	}
-	return s.ML.PredictTeam(ctx, req)
+	return s.mlClient.PredictTeam(ctx, req)
 }
