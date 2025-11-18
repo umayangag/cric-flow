@@ -28,10 +28,10 @@ type EtlBowlingRow struct {
 	Economy    float64
 }
 
-// EtlRepo defines the minimal persistence API for the ETL importer.
+// EtlRepository defines the minimal persistence API for the ETL importer.
 //
 //go:generate mockery --name EtlRepo --output internal/mocks --case underscore
-type EtlRepo interface {
+type EtlRepository interface {
 	UpsertBatting(ctx context.Context, rows []EtlBattingRow) error
 	UpsertBowling(ctx context.Context, rows []EtlBowlingRow) error
 }

@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -19,20 +19,23 @@ type Stats struct {
 	BowlingRows int
 }
 
-// Service coordinates reading curated CSVs (via FS), parsing, and optionally upserting via Repo.
+// Service coordinates reading curated CSVs (via FS), parsing, and optionally upserting via Repository.
 // It is deterministic and testable; no logging here.
 type Service struct {
-	FS   fsx.FS
-	Repo db.EtlRepo
+	Repository db.EtlRepository
 }
 
-func NewService(fs fsx.FS, repo db.EtlRepo) *Service { return &Service{FS: fs, Repo: repo} }
+func NewService(repository db.EtlRepository) *Service {
+	return &Service{
+		Repository: repository,
+	}
+}
 
-// IngestDir enumerates files by pattern in dir, parses them, and when apply==true upserts via Repo.
+// IngestDir enumerates files by pattern in dir, parses them, and when apply==true upserts via Repository.
 // conc is reserved for future use; it must be >=1 (validated by the caller/CLI). For simplicity and
 // determinism we currently process sequentially.
 func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool, conc int) (Stats, error) {
-	if s == nil || s.FS == nil || s.Repo == nil {
+	if s == nil || s.Repository == nil {
 		return Stats{}, errors.New("nil service or dependency")
 	}
 	if strings.TrimSpace(dir) == "" {
@@ -49,7 +52,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	var allBat []db.EtlBattingRow
 	var allBowl []db.EtlBowlingRow
 	for _, p := range matches {
-		b, rerr := s.FS.ReadFile(ctx, p)
+		b, rerr := os.ReadFile(ctx, p)
 		if rerr != nil {
 			return Stats{}, rerr
 		}
@@ -71,12 +74,12 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	}
 	if apply {
 		if len(allBat) > 0 {
-			if err := s.Repo.UpsertBatting(ctx, allBat); err != nil {
+			if err := s.Repository.UpsertBatting(ctx, allBat); err != nil {
 				return Stats{}, err
 			}
 		}
 		if len(allBowl) > 0 {
-			if err := s.Repo.UpsertBowling(ctx, allBowl); err != nil {
+			if err := s.Repository.UpsertBowling(ctx, allBowl); err != nil {
 				return Stats{}, err
 			}
 		}
