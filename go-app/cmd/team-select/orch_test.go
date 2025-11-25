@@ -78,7 +78,14 @@ func TestOrch_Table(t *testing.T) {
 				fc := &fakeConnector{}
 				r := cmd.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
+				opts := cli.Options{
+					FromDB:     true,
+					MatchID:    1,
+					Format:     "T20",
+					Season:     "2025",
+					TeamSize:   11,
+					MinBowlers: 5,
+				}
 				return r, opts, buf, fc
 			},
 			assert: func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector) {
@@ -112,7 +119,14 @@ func TestOrch_Table(t *testing.T) {
 				fc := &fakeConnector{}
 				r := cmd.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := cli.Options{FromDB: false, PoolPath: "/tmp/pool.csv", MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11}
+				opts := cli.Options{
+					FromDB:   false,
+					PoolPath: "/tmp/pool.csv",
+					MatchID:  1,
+					Format:   "T20",
+					Season:   "2025",
+					TeamSize: 11,
+				}
 				return r, opts, buf, fc
 			},
 			assert: func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector) {

@@ -50,18 +50,54 @@ func TestDetectFormat_Table(t *testing.T) {
 		{name: "ODI basic", matchType: "ODI", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
 		{name: "T20I basic", matchType: "T20I", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
 		// T20 subset rule
-		{name: "T20 subset -> T20I (intl vs intl)", matchType: "T20", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
-		{name: "T20 domestic -> T20", matchType: "T20", teams: []string{"Mumbai Indians", "Chennai Super Kings"}, cfg: base, want: "T20"},
-		{name: "T20 mixed intl+domestic -> T20", matchType: "T20", teams: []string{"India", "Mumbai Indians"}, cfg: base, want: "T20"},
+		{
+			name:      "T20 subset -> T20I (intl vs intl)",
+			matchType: "T20",
+			teams:     []string{"India", "Australia"},
+			cfg:       base,
+			want:      "T20I",
+		},
+		{
+			name:      "T20 domestic -> T20",
+			matchType: "T20",
+			teams:     []string{"Mumbai Indians", "Chennai Super Kings"},
+			cfg:       base,
+			want:      "T20",
+		},
+		{
+			name:      "T20 mixed intl+domestic -> T20",
+			matchType: "T20",
+			teams:     []string{"India", "Mumbai Indians"},
+			cfg:       base,
+			want:      "T20",
+		},
 		// Unknown
 		{name: "Unknown -> empty", matchType: "Friendly", teams: []string{"Team A", "Team B"}, cfg: base, want: ""},
 		// Edge cases
 		{name: "lowercase test", matchType: "test", teams: []string{"India", "Australia"}, cfg: disabled, want: "TEST"},
-		{name: "whitespace odi", matchType: "  odi \n", teams: []string{"India", "Australia"}, cfg: disabled, want: "ODI"},
-		{name: "t20 subset disabled", matchType: "t20", teams: []string{"India", "Australia"}, cfg: disabled, want: "T20"},
+		{
+			name:      "whitespace odi",
+			matchType: "  odi \n",
+			teams:     []string{"India", "Australia"},
+			cfg:       disabled,
+			want:      "ODI",
+		},
+		{
+			name:      "t20 subset disabled",
+			matchType: "t20",
+			teams:     []string{"India", "Australia"},
+			cfg:       disabled,
+			want:      "T20",
+		},
 		{name: "t20 nil cfg", matchType: "T20", teams: []string{"India", "Australia"}, cfg: nil, want: "T20"},
 		{name: "t20 less than 2 teams", matchType: "T20", teams: []string{"India"}, cfg: disabled, want: "T20"},
-		{name: "t20 subset enabled with case/whitespace", matchType: "T20", teams: []string{" India", "AUSTRALIA "}, cfg: enabledCase, want: "T20I"},
+		{
+			name:      "t20 subset enabled with case/whitespace",
+			matchType: "T20",
+			teams:     []string{" India", "AUSTRALIA "},
+			cfg:       enabledCase,
+			want:      "T20I",
+		},
 	}
 
 	for _, tc := range cases {

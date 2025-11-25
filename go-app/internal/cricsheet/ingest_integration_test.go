@@ -120,41 +120,54 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 	// DB expectations and behaviors
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, "T20").Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).Return(nil)
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).
+		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).Return(nil).Run(func(args mock.Arguments) {
-		upd := args.Get(2).(*db.MatchInfoUpdate)
-		c := *upd
-		updates = append(updates, &c)
-	})
-	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).Return(nil).Run(func(args mock.Arguments) {
-		b := args.Get(1).(*db.Batting)
-		c := *b
-		batting = append(batting, &c)
-	})
-	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).Return(nil).Run(func(args mock.Arguments) {
-		b := args.Get(1).(*db.Bowling)
-		c := *b
-		bowling = append(bowling, &c)
-	})
-	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).Return(nil).Run(func(args mock.Arguments) {
-		f := args.Get(1).(*db.Fielding)
-		c := *f
-		fielding = append(fielding, &c)
-	})
-	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		sql := args.Get(1).(string)
-		execs = append(execs, sql)
-	})
+	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			upd := args.Get(2).(*db.MatchInfoUpdate)
+			c := *upd
+			updates = append(updates, &c)
+		})
+	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			b := args.Get(1).(*db.Batting)
+			c := *b
+			batting = append(batting, &c)
+		})
+	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			b := args.Get(1).(*db.Bowling)
+			c := *b
+			bowling = append(bowling, &c)
+		})
+	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			f := args.Get(1).(*db.Fielding)
+			c := *f
+			fielding = append(fielding, &c)
+		})
+	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			sql := args.Get(1).(string)
+			execs = append(execs, sql)
+		})
 
 	// Weather expectations
-	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil).Run(func(args mock.Arguments) {
-		weatherCalls++
-		lastInnings = args.Get(4).(int)
-	})
+	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			weatherCalls++
+			lastInnings = args.Get(4).(int)
+		})
 
 	cricsheet.SetCricsheetDB(mdb)
 	cricsheet.SetWeatherClient(mweather)
@@ -199,17 +212,20 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mweather := &tmocks.WeatherClientMock{}
 	// DB expectations minimal for directory import
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).Return(nil)
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).
+		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).Return(nil)
+	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).
+		Return(nil)
 	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).Return(nil)
 	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).Return(nil)
 	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).Return(nil)
 	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil)
-	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil)
+	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).
+		Return(nil)
 	cricsheet.SetCricsheetDB(mdb)
 	cricsheet.SetWeatherClient(mweather)
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })

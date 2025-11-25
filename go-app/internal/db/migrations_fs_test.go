@@ -15,7 +15,13 @@ import (
 )
 
 // Helper to setup a DB mock for migrations tests
-func setupMigrationsDBMock(t *testing.T, initiallyApplied []string, failOnSubstr string) (*dmocks.DBMock, *dmocks.RowsMock, *map[string]bool) {
+//
+//nolint:unparam
+func setupMigrationsDBMock(
+	t *testing.T,
+	initiallyApplied []string,
+	failOnSubstr string,
+) (*dmocks.DBMock, *dmocks.RowsMock, *map[string]bool) {
 	t.Helper()
 	applied := map[string]bool{}
 	for _, v := range initiallyApplied {

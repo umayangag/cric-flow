@@ -215,7 +215,14 @@ func TestAggregateEndPressure_FormatMapping(t *testing.T) {
 					found6 = true
 				}
 			}
-			require.Truef(t, found5 && found6, "did not find both positions for fmt %d: p5=%v p6=%v", tc.fmtID, found5, found6)
+			require.Truef(
+				t,
+				found5 && found6,
+				"did not find both positions for fmt %d: p5=%v p6=%v",
+				tc.fmtID,
+				found5,
+				found6,
+			)
 		})
 	}
 }
