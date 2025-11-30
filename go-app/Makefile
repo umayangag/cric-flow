@@ -121,7 +121,8 @@ test-int:
 export-dataset:
 	OUT=$${GO_APP_OUTPUT_DIR:-../output/go-app}; \
 	mkdir -p $$OUT; \
-	go run ./cmd/export-dataset --all-formats --out $$OUT
+	# Use unified cross-format export to generate *_encoded_all.csv files
+	go run ./cmd/export-dataset -unified=1 -out $$OUT
 
 # Backfill fielding aggregates from fielding_event for all matches
 .PHONY: backfill-fielding
@@ -227,7 +228,7 @@ help:
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
-	@echo "  export-dataset     Export datasets for all formats to output dir (GO_APP_OUTPUT_DIR)"
+	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
 	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
 	@echo "  import-keepers     Import wicket keepers from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"

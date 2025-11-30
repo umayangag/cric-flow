@@ -60,12 +60,23 @@ make -C .. cricsheet-import
 GO_APP_INPUT_DIR=../data/go-app/cricsheet \
   go run ./cmd/cricsheet-importer -dir=$GO_APP_INPUT_DIR --placeholders-weather --placeholders-fielding
 ```
-- Export model datasets (writes to output/go-app by default):
+- Export model datasets (writes to output/go-app by default). Unified cross-format is recommended:
 ```
 make -C .. export-dataset
 # or directly (uses GO_APP_OUTPUT_DIR or config.json default)
 GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -out=$GO_APP_OUTPUT_DIR
+  go run ./cmd/export-dataset -unified=1 -out=$GO_APP_OUTPUT_DIR
+```
+
+To append optional sequence feature columns to the exports, enable via flag or environment:
+```
+# Using CLI flag
+GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -unified=1 -enable-seq=1 -out=$GO_APP_OUTPUT_DIR
+
+# Using environment gate (equivalent)
+ENABLE_SEQ_FEATURES=1 GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -unified=1 -out=$GO_APP_OUTPUT_DIR
 ```
 - Apply DB migrations (uses env vars above):
 ```

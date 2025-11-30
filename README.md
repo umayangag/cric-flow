@@ -318,31 +318,37 @@ To experiment with a different order locally without changing the repo file, poi
 
 
 
-## Sequence features in exporter (T20 subset; gated by -enable-seq)
+## Sequence features in exporter (gated by -enable-seq)
 
-The exporter can optionally append a compact subset of T20 bowl/bat sequence features to the CSV outputs. By default this is OFF to preserve the current schema. Enable it via a CLI flag or environment variable.
+The exporter can optionally append a compact subset of bowl/bat sequence features to the CSV outputs. By default this is OFF to preserve the current schema. Enable it via a CLI flag or environment variable.
 
 - Flag: `-enable-seq=1`
 - Env:  `ENABLE_SEQ_FEATURES=1` (truthy values: `1`, `true`, `yes`)
 
 Examples (structure-only runs; values require a DB connection):
 
-- OFF (baseline headers; no extra columns)
+- OFF (baseline headers; no extra columns) — per-format export
 ```
 cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
   go run ./cmd/export-dataset -format=T20
 ```
 
-- ON (appends T20 sequence columns to the end of the CSV headers)
+- ON (appends sequence columns to the end of the CSV headers) — per-format export
 ```
 cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
   go run ./cmd/export-dataset -format=T20 -enable-seq=1
 ```
 
+- Unified export with sequence columns (recommended for training)
+```
+cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
+  go run ./cmd/export-dataset -unified=1 -enable-seq=1 -out=$GO_APP_OUTPUT_DIR
+```
+
 Convenience Make targets:
 ```
-# Precompute sequence features (FORMAT defaults to T20)
-make precompute-seq FORMAT=T20
+# Precompute sequence features for all formats (TEST, ODI, T20I, T20)
+make precompute-seq
 
 # Exporter OFF vs ON for a given format
 make export-off FORMAT=T20
