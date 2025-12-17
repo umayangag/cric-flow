@@ -176,6 +176,18 @@ up-all:
 	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
+# --- Frontend (React control panel) ---
+.PHONY: frontend-dev frontend-build frontend-test
+
+frontend-dev:
+	cd frontend && [ -f package.json ] && npm install && cp -n .env.example .env 2>/dev/null || true && npm run dev
+
+frontend-build:
+	cd frontend && npm install && npm run build
+
+frontend-test:
+	cd frontend && npm install && npm run test
+
 # --- Formatting & hooks ---
 
 # Aggregate formatters for both components

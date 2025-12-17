@@ -125,6 +125,42 @@ curl -s http://localhost:8000/health | jq
 ```
 Expected: `{"status":"ok","batting_model":true,"bowling_model":true}` once artifacts are trained.
 
+### 7.1) Frontend control panel (React)
+A minimal GUI is available to exercise the ML service, run ad-hoc predictions, and evaluate accuracy on a CSV for the immediate next season after a cutoff date.
+
+Quick start:
+```
+make frontend-dev
+# opens Vite dev server (default http://localhost:5173)
+```
+
+Configure ML service URL (optional):
+```
+cd frontend && cp .env.example .env
+# edit VITE_ML_SERVICE_URL if your ml-service runs on a different host/port
+```
+
+Build and test:
+```
+make frontend-build
+make frontend-test
+```
+
+Tabs in the UI:
+- Health: calls GET /health and shows loaded artifacts and formats.
+- Single Prediction: paste or edit a `players` array (PlayerPrediction schema) and POSTs to `/predict/win`.
+- Evaluate From CSV: upload a CSV of player-level rows, choose a cutoff date X, and the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy and a confusion matrix.
+
+CSV schema (per row):
+```
+match_id,date,season(optional),team_name,actual_win,
+player_name,runs_scored,balls_faced,fours_scored,sixes_scored,batting_position,strike_rate,
+runs_conceded,deliveries,wickets_taken,econ
+```
+
+Notes:
+- The frontend makes browser calls to the ML service. Ensure the FastAPI service allows CORS from the frontend origin (e.g., http://localhost:5173) or run both behind a reverse proxy on the same origin.
+
 ### 8) Run API (optional orchestration)
 ```
 make api
