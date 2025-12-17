@@ -39,7 +39,11 @@ export-dataset:
 
 # Convenience targets for sequence feature workflows (FORMAT defaults to T20)
 precompute-seq:
-	cd go-app && go run ./cmd/precompute-sequence-features -format=$(FORMAT) -targets=all
+	cd go-app; \
+ 	for F in TEST ODI T20I T20; do \
+ 	  echo "precompute-sequence-features for [$$F]"; \
+ 	  go run ./cmd/precompute-sequence-features -format=$$F -targets=all || exit 1; \
+ 	done
 
 export-off:
 	# Baseline export without optional sequence columns

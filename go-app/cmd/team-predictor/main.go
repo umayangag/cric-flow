@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	mldummy "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/mlclient/dummy"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
@@ -30,8 +29,7 @@ func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	ml := mldummy.New()
-	service := svc.NewService(ml)
+	service := svc.NewService(nil)
 	runner := cmd.NewRunner(service)
 	resp, runErr := runner.Run(ctx, opts)
 	if runErr != nil {

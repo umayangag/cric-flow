@@ -1,99 +1,77 @@
 package cricsheet
 
 import (
-	"math"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnsureBatAndBowl(t *testing.T) {
+	t.Parallel()
 	bm := map[string]*batRow{}
 	br1 := ensureBat(bm, "A")
-	if br1 == nil || bm["A"] == nil {
-		t.Fatalf("ensureBat should create entry")
-	}
+	require.NotNil(t, br1)
+	require.NotNil(t, bm["A"])
 	br2 := ensureBat(bm, "A")
-	if br1 != br2 {
-		t.Fatalf("ensureBat should return same pointer for existing")
-	}
+	require.Same(t, br1, br2)
 
 	wm := map[string]*bowlRow{}
 	bw1 := ensureBowl(wm, "B")
-	if bw1 == nil || wm["B"] == nil {
-		t.Fatalf("ensureBowl should create entry")
-	}
+	require.NotNil(t, bw1)
+	require.NotNil(t, wm["B"])
 	bw2 := ensureBowl(wm, "B")
-	if bw1 != bw2 {
-		t.Fatalf("ensureBowl should return same pointer for existing")
-	}
+	require.Same(t, bw1, bw2)
 }
 
 func TestInningsRuns(t *testing.T) {
+	t.Parallel()
 	inng := Innings{Team: "X", Overs: []Over{
 		{Over: 0, Deliveries: []Delivery{{Runs: RunInfo{Total: 1}}, {Runs: RunInfo{Total: 4}}}},
 		{Over: 1, Deliveries: []Delivery{{Runs: RunInfo{Total: 6}}}},
 	}}
-	if got := inningsRuns(inng); got != 11 {
-		t.Fatalf("runs mismatch: got %d want %d", got, 11)
-	}
+	require.Equal(t, 11, inningsRuns(inng))
 }
 
 func TestOversFromBalls(t *testing.T) {
-	if got := oversFromBalls(17, 6); got != 2.5 {
-		t.Fatalf("expected 2.5 overs, got %.1f", got)
-	}
+	t.Parallel()
+	require.Equal(t, float32(2.5), oversFromBalls(17, 6))
 	// invalid bpo -> default to 6
-	if got := oversFromBalls(6, 0); got != 1.0 {
-		t.Fatalf("expected 1.0 overs with default bpo, got %.1f", got)
-	}
+	require.Equal(t, float32(1.0), oversFromBalls(6, 0))
 }
 
 func TestMaidenCount(t *testing.T) {
+	t.Parallel()
 	m := map[int]int{0: 0, 1: 6, 2: 0, 3: 1}
-	if got := maidenCount(m); got != 2 {
-		t.Fatalf("expected 2 maidens, got %d", got)
-	}
+	require.Equal(t, 2, maidenCount(m))
 }
 
 func TestStrikeRate(t *testing.T) {
+	t.Parallel()
 	exp := float32(float64(50) / float64(35) * 100.0)
-	if got := strikeRate(50, 35); math.Abs(float64(got-exp)) > 1e-6 {
-		t.Fatalf("strike rate mismatch: got %.6f want %.6f", got, exp)
-	}
-	if got := strikeRate(10, 0); got != 0 {
-		t.Fatalf("expected 0 when balls=0, got %.1f", got)
-	}
+	require.InDelta(t, exp, strikeRate(50, 35), 1e-6)
+	require.Equal(t, float32(0), strikeRate(10, 0))
 }
 
 func TestStrPtrAndFirstNonEmpty(t *testing.T) {
+	t.Parallel()
 	p := strPtr("hello")
-	if p == nil || *p != "hello" {
-		t.Fatalf("strPtr incorrect")
-	}
-	if v := firstNonEmpty(" ", "", "A", "B"); v != "A" {
-		t.Fatalf("firstNonEmpty expected A, got %q", v)
-	}
-	if v := firstNonEmpty(" ", "  "); v != "" {
-		t.Fatalf("firstNonEmpty expected empty, got %q", v)
-	}
+	require.NotNil(t, p)
+	require.Equal(t, "hello", *p)
+	require.Equal(t, "A", firstNonEmpty(" ", "", "A", "B"))
+	require.Equal(t, "", firstNonEmpty(" ", "  "))
 }
 
 func TestOtherTeam(t *testing.T) {
-	if v := otherTeam("India", "India", "Australia"); v != "Australia" {
-		t.Fatalf("expected Australia, got %q", v)
-	}
-	if v := otherTeam("Australia", "India", "Australia"); v != "India" {
-		t.Fatalf("expected India, got %q", v)
-	}
-	if v := otherTeam("", " India ", " "); v != "India" {
-		t.Fatalf("expected first non-empty trimmed candidate, got %q", v)
-	}
-	if v := otherTeam("England", "India", "Australia"); v != "" {
-		t.Fatalf("expected empty when no match, got %q", v)
-	}
+	t.Parallel()
+	require.Equal(t, "Australia", otherTeam("India", "India", "Australia"))
+	require.Equal(t, "India", otherTeam("Australia", "India", "Australia"))
+	require.Equal(t, "India", otherTeam("", " India ", " "))
+	require.Equal(t, "", otherTeam("England", "India", "Australia"))
 }
 
 func TestBattingOrderFromInnings(t *testing.T) {
+	t.Parallel()
 	// Deliveries show appearance order: C (with non-striker A), then B appears
 	inng := Innings{Team: "X", Overs: []Over{
 		{Over: 0, Deliveries: []Delivery{
@@ -109,13 +87,9 @@ func TestBattingOrderFromInnings(t *testing.T) {
 	order := battingOrderFromInnings(inng, names)
 	// expected first-seen order: C, A, B then unseen: D
 	expected := []string{"C", "A", "B", "D"}
-	if len(order) != len(expected) {
-		t.Fatalf("order len mismatch: got %d want %d", len(order), len(expected))
-	}
+	require.Len(t, order, len(expected))
 	for i := range expected {
-		if order[i] != expected[i] {
-			t.Fatalf("idx %d: got %q want %q (order=%v)", i, order[i], expected[i], order)
-		}
+		require.Equalf(t, expected[i], order[i], "idx %d order=%v", i, order)
 	}
 	// Ensure unseen are sorted
 	unseen := []string{"X", "Z", "Y"}

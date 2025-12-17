@@ -8,8 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/exportrepo"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx/osfs"
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -50,11 +48,9 @@ func run() int {
 	}
 
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
-	fsys := osfs.New()
-	repo := exportrepo.New()
-	bat := exportsvc.NewBattingService(repo)
-	bow := exportsvc.NewBowlingService(repo)
-	runner := expcmd.NewRunnerWithServices(fsys, bat, bow)
+	bat := exportsvc.NewBattingService(nil)
+	bow := exportsvc.NewBowlingService(nil)
+	runner := expcmd.NewRunnerWithServices(bat, bow)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
 		return 1

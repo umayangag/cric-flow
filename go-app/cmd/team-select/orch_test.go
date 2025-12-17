@@ -1,12 +1,12 @@
-package main
+package main_test
 
 import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teamselect"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
@@ -60,60 +60,93 @@ func sampleResult() selection.Result {
 	}
 }
 
-func TestOrch_FromDB_Success(t *testing.T) {
-	fs := fakeSelector{res: sampleResult()}
-	fc := &fakeConnector{}
-	r := cmd.NewRunner(fs, fc)
-	buf := &bytes.Buffer{}
-	opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if fc.called != 1 {
-		t.Fatalf("expected Connect called once, got %d", fc.called)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "Selected Team (size=2)") {
-		t.Fatalf("output missing header, got: %s", out)
-	}
-	if !strings.Contains(out, "1. A") || !strings.Contains(out, "2. B") {
-		t.Fatalf("output missing players list, got: %s", out)
-	}
-}
+func TestOrch_Table(t *testing.T) {
+	t.Parallel()
 
-func TestOrch_FromDB_ConnectError(t *testing.T) {
-	fs := fakeSelector{res: sampleResult()}
-	fc := &fakeConnector{err: errors.New("boom")}
-	r := cmd.NewRunner(fs, fc)
-	buf := &bytes.Buffer{}
-	err := r.Run(context.Background(), cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}, buf)
-	if err == nil || !strings.Contains(err.Error(), "db connect failed") {
-		t.Fatalf("expected db connect failed error, got %v", err)
-	}
-}
+	type arrangeFn func() (r cmd.Runner, opts cli.Options, buf *bytes.Buffer, fc *fakeConnector)
+	type assertFn func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector)
 
-func TestOrch_FromCSV_Success(t *testing.T) {
-	fs := fakeSelector{res: sampleResult()}
-	fc := &fakeConnector{}
-	r := cmd.NewRunner(fs, fc)
-	buf := &bytes.Buffer{}
-	opts := cli.Options{
-		FromDB:   false,
-		PoolPath: "/tmp/pool.csv",
-		MatchID:  1,
-		Format:   "T20",
-		Season:   "2025",
-		TeamSize: 11,
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "FromDB success prints team and connects once",
+			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+				fs := fakeSelector{res: sampleResult()}
+				fc := &fakeConnector{}
+				r := cmd.NewRunner(fs, fc)
+				buf := &bytes.Buffer{}
+				opts := cli.Options{
+					FromDB:     true,
+					MatchID:    1,
+					Format:     "T20",
+					Season:     "2025",
+					TeamSize:   11,
+					MinBowlers: 5,
+				}
+				return r, opts, buf, fc
+			},
+			assert: func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector) {
+				require.NoError(t, err)
+				require.Equal(t, 1, fc.called)
+				out := buf.String()
+				require.Contains(t, out, "Selected Team (size=2)")
+				require.Contains(t, out, "1. A")
+				require.Contains(t, out, "2. B")
+			},
+		},
+		{
+			name: "FromDB connect error surfaces",
+			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+				fs := fakeSelector{res: sampleResult()}
+				fc := &fakeConnector{err: errors.New("boom")}
+				r := cmd.NewRunner(fs, fc)
+				buf := &bytes.Buffer{}
+				opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}
+				return r, opts, buf, fc
+			},
+			assert: func(t *testing.T, _ *bytes.Buffer, err error, _ *fakeConnector) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "db connect failed")
+			},
+		},
+		{
+			name: "FromCSV success prints team and does not connect",
+			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+				fs := fakeSelector{res: sampleResult()}
+				fc := &fakeConnector{}
+				r := cmd.NewRunner(fs, fc)
+				buf := &bytes.Buffer{}
+				opts := cli.Options{
+					FromDB:   false,
+					PoolPath: "/tmp/pool.csv",
+					MatchID:  1,
+					Format:   "T20",
+					Season:   "2025",
+					TeamSize: 11,
+				}
+				return r, opts, buf, fc
+			},
+			assert: func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector) {
+				require.NoError(t, err)
+				require.Equal(t, 0, fc.called)
+				out := buf.String()
+				require.Contains(t, out, "Selected Team (size=2)")
+			},
+		},
 	}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if fc.called != 0 {
-		t.Fatalf("Connect should not be called for CSV path, got %d", fc.called)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "Selected Team (size=2)") {
-		t.Fatalf("output missing header, got: %s", out)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			r, opts, buf, fc := tc.arrange()
+			// Act
+			err := r.Run(context.Background(), opts, buf)
+			// Assert
+			tc.assert(t, buf, err, fc)
+		})
 	}
 }
 
@@ -147,6 +180,7 @@ func (c *capturingSelector) SelectTeamFromCSV(
 }
 
 func TestOrch_OptionPropagation_DB(t *testing.T) {
+	t.Parallel()
 	sel := &capturingSelector{}
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(sel, fc)
@@ -160,15 +194,16 @@ func TestOrch_OptionPropagation_DB(t *testing.T) {
 		MinBowlers:    6,
 		RequireKeeper: true,
 	}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !sel.lastFromDB || !sel.lastOpts.RequireKeeper || sel.lastOpts.MinBowlers != 6 || sel.lastOpts.TeamSize != 11 {
-		t.Fatalf("options not propagated correctly: %#v", sel.lastOpts)
-	}
+	err := r.Run(context.Background(), opts, buf)
+	require.NoError(t, err)
+	require.True(t, sel.lastFromDB)
+	require.True(t, sel.lastOpts.RequireKeeper)
+	require.Equal(t, 6, sel.lastOpts.MinBowlers)
+	require.Equal(t, 11, sel.lastOpts.TeamSize)
 }
 
 func TestOrch_OptionPropagation_CSV(t *testing.T) {
+	t.Parallel()
 	sel := &capturingSelector{}
 	fc := &fakeConnector{}
 	r := cmd.NewRunner(sel, fc)
@@ -182,10 +217,10 @@ func TestOrch_OptionPropagation_CSV(t *testing.T) {
 		TeamSize:   9,
 		MinBowlers: 4,
 	}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sel.lastFromDB || sel.lastOpts.RequireKeeper || sel.lastOpts.MinBowlers != 4 || sel.lastOpts.TeamSize != 9 {
-		t.Fatalf("options not propagated correctly: %#v", sel.lastOpts)
-	}
+	err := r.Run(context.Background(), opts, buf)
+	require.NoError(t, err)
+	require.False(t, sel.lastFromDB)
+	require.False(t, sel.lastOpts.RequireKeeper)
+	require.Equal(t, 4, sel.lastOpts.MinBowlers)
+	require.Equal(t, 9, sel.lastOpts.TeamSize)
 }

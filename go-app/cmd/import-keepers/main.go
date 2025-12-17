@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	keeperrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/keeperrepo"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/importkeepers"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/importkeepers"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/csvx"
@@ -52,8 +51,7 @@ func run() int {
 		targets[strings.ToLower(r.Name)] = r.Value
 	}
 
-	repo := keeperrepo.New()
-	runner := cmd.NewRunner(repo)
+	runner := cmd.NewRunner(nil)
 	if !opts.Apply {
 		if err := runner.Preview(ctx, targets, opts.OthersZero); err != nil {
 			slog.Error("dry-run failed", slog.Any("err", err))

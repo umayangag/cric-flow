@@ -6,7 +6,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
-// Client abstracts ML prediction client used by API handlers.
+// Client abstracts mlCleint prediction client used by API handlers.
 type Client interface {
 	PredictBatting(ctx context.Context, feats []models.BattingFeatures) ([]models.BattingPrediction, error)
 	PredictBowling(ctx context.Context, feats []models.BowlingFeatures) ([]models.BowlingPrediction, error)

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // helper to craft ev rows for over position tests
@@ -43,7 +45,9 @@ func evOP(
 	}
 }
 
+// TestAggregateOverPos_Basic follows the gold standard: AAA style with require assertions.
 func TestAggregateOverPos_Basic(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 8, 10, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bow := int64(501)
@@ -57,10 +61,11 @@ func TestAggregateOverPos_Basic(t *testing.T) {
 		evOP(1, 1, 2, 1, phase, true, bow, 6, 0, asOf, fmtID),   // position 1 boundary
 		evOP(1, 1, 2, 6, phase, true, bow, 0, 123, asOf, fmtID), // position 6 wicket
 	}
+	// Act
 	agg := aggregateOverPos(rows)
-	if len(agg) != 2 {
-		t.Fatalf("expected 2 rows (pos 1 and 6), got %d", len(agg))
-	}
+
+	// Assert
+	require.Equal(t, 2, len(agg), "expected 2 rows (pos 1 and 6)")
 	var pos1, pos6 *overPosRow
 	for i := range agg {
 		if agg[i].Position == 1 {
@@ -70,24 +75,22 @@ func TestAggregateOverPos_Basic(t *testing.T) {
 			pos6 = &agg[i]
 		}
 	}
-	if pos1 == nil || pos6 == nil {
-		t.Fatalf("missing positions in aggregation: %+v", agg)
-	}
-	if pos1.Balls != 2 || pos1.Boundaries != 1 || pos1.Wickets != 0 {
-		t.Fatalf("pos1 unexpected counts: %+v", *pos1)
-	}
-	if pos6.Balls != 2 || pos6.Boundaries != 1 || pos6.Wickets != 1 {
-		t.Fatalf("pos6 unexpected counts: %+v", *pos6)
-	}
-	if pos1.BoundaryRate <= 0 || pos1.BoundaryRate >= 1.0 {
-		t.Fatalf("pos1 boundary rate unexpected: %v", pos1.BoundaryRate)
-	}
-	if pos6.WicketRate <= 0 || pos6.WicketRate >= 1.0 {
-		t.Fatalf("pos6 wicket rate unexpected: %v", pos6.WicketRate)
-	}
+	require.NotNil(t, pos1, "missing position 1: %+v", agg)
+	require.NotNil(t, pos6, "missing position 6: %+v", agg)
+	require.Equal(t, 2, pos1.Balls)
+	require.Equal(t, 1, pos1.Boundaries)
+	require.Equal(t, 0, pos1.Wickets)
+	require.Equal(t, 2, pos6.Balls)
+	require.Equal(t, 1, pos6.Boundaries)
+	require.Equal(t, 1, pos6.Wickets)
+	require.Greater(t, pos1.BoundaryRate, 0.0)
+	require.Less(t, pos1.BoundaryRate, 1.0)
+	require.Greater(t, pos6.WicketRate, 0.0)
+	require.Less(t, pos6.WicketRate, 1.0)
 }
 
 func TestAggregateOverPos_IllegalNotCounted(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 8, 11, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bow := int64(777)
@@ -102,10 +105,11 @@ func TestAggregateOverPos_IllegalNotCounted(t *testing.T) {
 		// Legal at ball 6 counts (wicket)
 		evOP(2, 1, 8, 6, phase, true, bow, 0, 909, asOf, fmtID),
 	}
+	// Act
 	agg := aggregateOverPos(rows)
-	if len(agg) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(agg))
-	}
+
+	// Assert
+	require.Equal(t, 2, len(agg))
 	var p1, p6 *overPosRow
 	for i := range agg {
 		if agg[i].Position == 1 {
@@ -115,18 +119,18 @@ func TestAggregateOverPos_IllegalNotCounted(t *testing.T) {
 			p6 = &agg[i]
 		}
 	}
-	if p1 == nil || p6 == nil {
-		t.Fatalf("missing positions in aggregation: %+v", agg)
-	}
-	if p1.Balls != 1 || p1.Boundaries != 0 || p1.Wickets != 0 {
-		t.Fatalf("pos1 counts wrong: %+v", *p1)
-	}
-	if p6.Balls != 1 || p6.Boundaries != 0 || p6.Wickets != 1 {
-		t.Fatalf("pos6 counts wrong: %+v", *p6)
-	}
+	require.NotNil(t, p1)
+	require.NotNil(t, p6)
+	require.Equal(t, 1, p1.Balls)
+	require.Equal(t, 0, p1.Boundaries)
+	require.Equal(t, 0, p1.Wickets)
+	require.Equal(t, 1, p6.Balls)
+	require.Equal(t, 0, p6.Boundaries)
+	require.Equal(t, 1, p6.Wickets)
 }
 
 func TestAggregateOverPos_PhaseSeparation(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 8, 12, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bow := int64(888)
@@ -135,10 +139,10 @@ func TestAggregateOverPos_PhaseSeparation(t *testing.T) {
 		evOP(3, 1, 5, 6, "powerplay", true, bow, 6, 0, asOf, fmtID),
 		evOP(3, 1, 17, 1, "death", true, bow, 4, 0, asOf, fmtID),
 	}
+	// Act
 	agg := aggregateOverPos(rows)
-	if len(agg) != 3 { // 2 for powerplay (pos 1 and 6), 1 for death (pos 1)
-		t.Fatalf("unexpected rows: %d", len(agg))
-	}
+	// Assert
+	require.Equal(t, 3, len(agg), "2 powerplay (pos 1 & 6), 1 death (pos 1)")
 	// ensure separate phases present
 	var pp1, pp6, d1 bool
 	for i := range agg {
@@ -152,13 +156,12 @@ func TestAggregateOverPos_PhaseSeparation(t *testing.T) {
 			d1 = true
 		}
 	}
-	if !pp1 || !pp6 || !d1 {
-		t.Fatalf("phase separation missing: %+v", agg)
-	}
+	require.True(t, pp1 && pp6 && d1, "phase separation missing: %+v", agg)
 }
 
 // 1.13.1 — Multi-format mapping tests for overpos
 func TestAggregateOverPos_FormatMapping(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 9, 13, 0, 0, 0, 0, time.UTC)
 	bow := int64(9090)
 	cases := []struct {
@@ -174,10 +177,10 @@ func TestAggregateOverPos_FormatMapping(t *testing.T) {
 				// one legal ball at position 1 for simplicity
 				evOP(7, 1, 3, 1, "middle", true, bow, 0, 0, asOf, tc.fmtID),
 			}
+			// Act
 			agg := aggregateOverPos(rows)
-			if len(agg) == 0 {
-				t.Fatalf("expected rows for format %d", tc.fmtID)
-			}
+			// Assert
+			require.NotEmpty(t, agg, "expected rows for format %d", tc.fmtID)
 			found := false
 			for i := range agg {
 				if agg[i].FormatID == tc.fmtID && agg[i].PlayerID == bow {
@@ -185,9 +188,7 @@ func TestAggregateOverPos_FormatMapping(t *testing.T) {
 					break
 				}
 			}
-			if !found {
-				t.Fatalf("did not find aggregated row for fmt %d", tc.fmtID)
-			}
+			require.True(t, found, "did not find aggregated row for fmt %d", tc.fmtID)
 		})
 	}
 }

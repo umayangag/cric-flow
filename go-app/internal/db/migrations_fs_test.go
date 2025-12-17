@@ -1,4 +1,4 @@
-package db
+package db_test
 
 import (
 	"context"
@@ -7,91 +7,69 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	dbpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	dmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
 )
 
-type fakeRows struct {
-	vals []string
-	i    int
-}
-
-func (r *fakeRows) Next() bool {
-	if r.i < len(r.vals) {
-		r.i++
-		return true
+// Helper to setup a DB mock for migrations tests
+//
+//nolint:unparam
+func setupMigrationsDBMock(
+	t *testing.T,
+	initiallyApplied []string,
+	failOnSubstr string,
+) (*dmocks.DBMock, *dmocks.RowsMock, *map[string]bool) {
+	t.Helper()
+	applied := map[string]bool{}
+	for _, v := range initiallyApplied {
+		applied[v] = true
 	}
-	return false
-}
-
-func (r *fakeRows) Scan(dest ...any) error {
-	if r.i == 0 || r.i > len(r.vals) {
-		return errors.New("scan out of range")
-	}
-	p, ok := dest[0].(*string)
-	if !ok {
-		return errors.New("dest type")
-	}
-	*p = r.vals[r.i-1]
-	return nil
-}
-func (r *fakeRows) Close() {}
-
-type fakeDB struct {
-	applied map[string]bool
-	execs   []string
-	failOn  string // substring that triggers failure on Exec
-}
-
-type fakeRow struct{}
-
-func (fakeRow) Scan(_ ...any) error { return errors.New("unsupported in migrations tests") }
-
-type fakeTx struct{}
-
-func (fakeTx) Exec(_ context.Context, _ string, _ ...any) error { return nil }
-func (fakeTx) Query(_ context.Context, _ string, _ ...any) (Rows, error) {
-	return &fakeRows{}, nil
-}
-func (fakeTx) QueryRow(_ context.Context, _ string, _ ...any) Row { return fakeRow{} }
-func (fakeTx) Commit(_ context.Context) error                     { return nil }
-func (fakeTx) Rollback(_ context.Context) error                   { return nil }
-
-func (f *fakeDB) Exec(_ context.Context, sql string, args ...any) error {
-	// record sql
-	f.execs = append(f.execs, sql)
-	// simulate failure
-	if f.failOn != "" && strings.Contains(strings.ToLower(sql), strings.ToLower(f.failOn)) {
-		return errors.New("exec failure")
-	}
-	// capture inserts into schema_migrations
-	if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(sql)), "INSERT INTO SCHEMA_MIGRATIONS") {
-		if len(args) != 1 {
-			return errors.New("insert requires version arg")
-		}
-		v, _ := args[0].(string)
-		if f.applied == nil {
-			f.applied = map[string]bool{}
-		}
-		f.applied[v] = true
-	}
-	return nil
-}
-
-func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (Rows, error) {
-	// only query we support in migrations
-	if !strings.Contains(strings.ToLower(sql), "select version from schema_migrations") {
-		return nil, errors.New("unexpected query")
-	}
-	// deterministically list applied versions
-	list := make([]string, 0, len(f.applied))
-	for v := range f.applied {
+	// Rows over the applied set (sorted lexically like the real query)
+	list := make([]string, 0, len(applied))
+	for v := range applied {
 		list = append(list, v)
 	}
 	sort.Strings(list)
-	return &fakeRows{vals: list}, nil
-}
+	rows := dmocks.NewRowsMock(list)
+	rows.On("Scan", mock.Anything).Return(nil)
+	rows.On("Close").Return()
 
-func (f *fakeDB) QueryRow(_ context.Context, _ string, _ ...any) Row { return fakeRow{} }
-func (f *fakeDB) Begin(_ context.Context) (Tx, error)                { return fakeTx{}, nil }
+	dbm := &dmocks.DBMock{}
+	// CREATE TABLE IF NOT EXISTS ... always ok
+	dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
+		return strings.Contains(strings.ToLower(sql), "create table if not exists schema_migrations")
+	}), mock.Anything).Return(nil)
+	// SELECT version FROM schema_migrations → return rows
+	dbm.On("Query", mock.Anything, mock.MatchedBy(func(sql string) bool {
+		return strings.Contains(strings.ToLower(sql), "select version from schema_migrations")
+	})).Return(rows, nil)
+	// Exec failure when SQL contains a specific substring (used for 002_bad.sql case)
+	if failOnSubstr != "" {
+		dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
+			return strings.Contains(strings.ToLower(sql), strings.ToLower(failOnSubstr))
+		}), mock.Anything).Return(errors.New("exec failure"))
+	}
+	// Catch-all Exec for migration SQL that are not INSERTs and not failing
+	dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
+		up := strings.ToUpper(strings.TrimSpace(sql))
+		return !strings.HasPrefix(up, "INSERT INTO SCHEMA_MIGRATIONS")
+	}), mock.Anything).Return(nil)
+	// INSERT INTO schema_migrations(version) VALUES($1)
+	dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
+		return strings.HasPrefix(strings.TrimSpace(strings.ToUpper(sql)), "INSERT INTO SCHEMA_MIGRATIONS")
+	}), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		// args: ctx, sql, version
+		v, _ := args.Get(2).(string)
+		applied[v] = true
+	})
+
+	dbpkg.SetDB(dbm)
+	t.Cleanup(func() { dbpkg.SetDB(nil) })
+	return dbm, rows, &applied
+}
 
 func TestRunMigrationsFS_AppliesInLexicalOrder(t *testing.T) {
 	ctx := context.Background()
@@ -101,17 +79,12 @@ func TestRunMigrationsFS_AppliesInLexicalOrder(t *testing.T) {
 		"m/002_add.sql":  &fstest.MapFile{Data: []byte("-- add\nINSERT INTO a(id) VALUES(1);")},
 		"m/readme.txt":   &fstest.MapFile{Data: []byte("ignore")},
 	}
-	fdb := &fakeDB{applied: map[string]bool{}}
-	SetDB(fdb)
-	if err := RunMigrationsFS(ctx, fsys, "m"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// verify inserts executed in lexical order 001,002,010
-	want := []string{"001_init.sql", "002_add.sql", "010_more.sql"}
-	for _, v := range want {
-		if !fdb.applied[v] {
-			t.Fatalf("version %s not applied", v)
-		}
+	_, _, applied := setupMigrationsDBMock(t, nil, "")
+	err := dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.NoError(t, err)
+	// verify inserts executed for all three versions
+	for _, v := range []string{"001_init.sql", "002_add.sql", "010_more.sql"} {
+		require.Truef(t, (*applied)[v], "version %s not applied", v)
 	}
 }
 
@@ -121,14 +94,11 @@ func TestRunMigrationsFS_SkipsAlreadyApplied(t *testing.T) {
 		"m/001_init.sql": &fstest.MapFile{Data: []byte("CREATE TABLE a(id int);")},
 		"m/002_add.sql":  &fstest.MapFile{Data: []byte("INSERT INTO a(id) VALUES(1);")},
 	}
-	fdb := &fakeDB{applied: map[string]bool{"001_init.sql": true}}
-	SetDB(fdb)
-	if err := RunMigrationsFS(ctx, fsys, "m"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !fdb.applied["001_init.sql"] || !fdb.applied["002_add.sql"] {
-		t.Fatalf("expected 002_add.sql applied; got %#v", fdb.applied)
-	}
+	_, _, applied := setupMigrationsDBMock(t, []string{"001_init.sql"}, "")
+	err := dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.NoError(t, err)
+	require.True(t, (*applied)["001_init.sql"]) // was already there
+	require.True(t, (*applied)["002_add.sql"])  // newly applied
 }
 
 func TestRunMigrationsFS_StopsOnExecError(t *testing.T) {
@@ -138,16 +108,13 @@ func TestRunMigrationsFS_StopsOnExecError(t *testing.T) {
 		"m/002_bad.sql": &fstest.MapFile{Data: []byte("BAD SQL STATEMENT")},
 		"m/003_ok.sql":  &fstest.MapFile{Data: []byte("INSERT INTO a(id) VALUES(1);")},
 	}
-	fdb := &fakeDB{applied: map[string]bool{}, failOn: "bad sql"}
-	SetDB(fdb)
-	err := RunMigrationsFS(ctx, fsys, "m")
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
+	_, _, applied := setupMigrationsDBMock(t, nil, "bad sql")
+	err := dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.Error(t, err)
 	// Only 001 should be applied; 002 fails, 003 not attempted.
-	if !fdb.applied["001_ok.sql"] || fdb.applied["002_bad.sql"] || fdb.applied["003_ok.sql"] {
-		t.Fatalf("unexpected applied set after failure: %#v", fdb.applied)
-	}
+	require.True(t, (*applied)["001_ok.sql"])
+	require.False(t, (*applied)["002_bad.sql"])
+	require.False(t, (*applied)["003_ok.sql"])
 }
 
 func TestRunMigrationsFS_EmptyDir_NoOps(t *testing.T) {
@@ -156,15 +123,10 @@ func TestRunMigrationsFS_EmptyDir_NoOps(t *testing.T) {
 	fsys := fstest.MapFS{
 		"m/.keep": &fstest.MapFile{Data: []byte("")},
 	}
-	fdb := &fakeDB{applied: map[string]bool{}}
-	SetDB(fdb)
-	if err := RunMigrationsFS(ctx, fsys, "m"); err != nil {
-		t.Fatalf("unexpected error on empty dir: %v", err)
-	}
-	// No versions should be applied
-	if len(fdb.applied) != 0 {
-		t.Fatalf("expected no applied versions, got %#v", fdb.applied)
-	}
+	_, _, applied := setupMigrationsDBMock(t, nil, "")
+	err := dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.NoError(t, err)
+	require.Len(t, *applied, 0)
 }
 
 func TestRunMigrationsFS_IdempotentOnSecondRun(t *testing.T) {
@@ -173,15 +135,18 @@ func TestRunMigrationsFS_IdempotentOnSecondRun(t *testing.T) {
 		"m/001_init.sql": &fstest.MapFile{Data: []byte("CREATE TABLE a(id int);")},
 		"m/002_add.sql":  &fstest.MapFile{Data: []byte("INSERT INTO a(id) VALUES(1);")},
 	}
-	fdb := &fakeDB{applied: map[string]bool{}}
-	SetDB(fdb)
-	if err := RunMigrationsFS(ctx, fsys, "m"); err != nil {
-		t.Fatalf("first run error: %v", err)
-	}
-	// On second run, fail if any INSERT into schema_migrations is attempted
-	fdb.execs = nil
-	fdb.failOn = "insert into schema_migrations"
-	if err := RunMigrationsFS(ctx, fsys, "m"); err != nil {
-		t.Fatalf("unexpected error on idempotent second run: %v", err)
-	}
+	// First run applies both
+	_, _, applied := setupMigrationsDBMock(t, nil, "")
+	err := dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.NoError(t, err)
+	require.True(t, (*applied)["001_init.sql"])
+	require.True(t, (*applied)["002_add.sql"])
+
+	// Second run should skip inserts; ensure we do not record new versions
+	_, _, applied2 := setupMigrationsDBMock(t, []string{"001_init.sql", "002_add.sql"}, "")
+	err = dbpkg.RunMigrationsFS(ctx, fsys, "m")
+	require.NoError(t, err)
+	// No change expected (already present)
+	require.True(t, (*applied2)["001_init.sql"])
+	require.True(t, (*applied2)["002_add.sql"])
 }

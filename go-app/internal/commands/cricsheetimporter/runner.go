@@ -5,17 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/fsx"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/domain"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 )
 
 // Runner orchestrates the cricsheet-importer workflow.
 type Runner struct {
-	FS         fsx.FS
 	Loader     cricsheet.Loader
 	Parser     cricsheet.Parser
 	Repository db.MatchRepo
@@ -24,13 +22,12 @@ type Runner struct {
 
 // NewRunner constructs a Runner with its dependencies.
 func NewRunner(
-	fs fsx.FS,
 	loader cricsheet.Loader,
 	parser cricsheet.Parser,
 	repo db.MatchRepo,
 	log logger.Logger,
 ) *Runner {
-	return &Runner{FS: fs, Loader: loader, Parser: parser, Repository: repo, Log: log}
+	return &Runner{Loader: loader, Parser: parser, Repository: repo, Log: log}
 }
 
 // Run executes the import according to options.
@@ -40,8 +37,8 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r == nil {
 		return errors.New("nil runner")
 	}
-	if r.FS == nil || r.Loader == nil || r.Parser == nil || r.Repository == nil {
-		return errors.New("missing dependency: FS/Loader/Parser/Repository required")
+	if r.Loader == nil || r.Parser == nil || r.Repository == nil {
+		return errors.New("missing dependency: Loader/Parser/Repository required")
 	}
 	if opts.InDir == "" {
 		return errors.New("input directory is required")
@@ -55,7 +52,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		r.Log.Infof(ctx, "found %d cricsheet files", len(ids))
 	}
 
-	var batch []domain.Match
+	var batch []models.Match
 	for _, id := range ids {
 		raw, lerr := r.Loader.Load(ctx, opts.InDir, id)
 		if lerr != nil {

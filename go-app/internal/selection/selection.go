@@ -28,7 +28,7 @@ type Result struct {
 }
 
 // SelectTeamFromCSV performs an end-to-end selection by reading a prepared pool CSV (same schema
-// used by the prototype), calling the ML service win predictor, applying simple constraints, and
+// used by the prototype), calling the mlCleint service win predictor, applying simple constraints, and
 // returning the best XI. This mirrors the orchestration in the Python prototype's __main__ block.
 //
 // poolCSV schema is expected to include columns like: player_name, runs_scored, balls_faced,

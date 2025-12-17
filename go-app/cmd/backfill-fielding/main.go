@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	bfrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/fieldingrepo"
 	bfcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/backfillfielding"
 	bfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/backfillfielding"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -37,8 +36,7 @@ func run() int {
 		return 1
 	}
 
-	repo := bfrepo.New()
-	svc := bfsvc.NewService(repo)
+	svc := bfsvc.NewService(nil)
 	runner := bfcmd.NewRunner(svc)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("backfill-fielding failed", slog.Any("err", runErr))

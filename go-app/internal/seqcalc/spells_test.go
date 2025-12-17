@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // helper to craft evRowSpell quickly
@@ -50,7 +52,9 @@ func evS(
 	}
 }
 
+// TestAggregateSpells_SingleTwoOverSpell follows AAA with require assertions.
 func TestAggregateSpells_SingleTwoOverSpell(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bow := int64(201)
@@ -74,62 +78,36 @@ func TestAggregateSpells_SingleTwoOverSpell(t *testing.T) {
 		evS(1, 1, 11, 11, phase, true, bow, 0, 0, "", 0, asOf, fmtID), // dot
 		evS(1, 1, 11, 12, phase, true, bow, 0, 0, "", 0, asOf, fmtID), // dot
 	}
+	// Act
 	rows := aggregateSpells(seq)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 row, got %d", len(rows))
-	}
+
+	// Assert
+	require.Equal(t, 1, len(rows))
 	r := rows[0]
-	if r.PlayerID != bow || r.FormatID != fmtID || r.Phase != phase {
-		t.Fatalf("unexpected key fields: %+v", r)
-	}
-	if r.Spells != 1 {
-		t.Fatalf("Spells expected 1, got %d", r.Spells)
-	}
-	if r.SpellOvers != 2 {
-		t.Fatalf("SpellOvers expected 2, got %d", r.SpellOvers)
-	}
-	// First over accumulators (O10): balls: 5 legal? Actually 5 legal + 1 wide is illegal → balls=5? No: Over should have 6 legal; we listed 5 legal + 1 illegal; add one more legal already present -> We had 5 legal entries in O10; add another legal? For simplicity, accept balls computed from sequence
-	if r.FirstOversBalls != 5 {
-		t.Fatalf("FirstOversBalls expected 5, got %d", r.FirstOversBalls)
-	}
-	if r.FirstOversRuns != 6 {
-		t.Fatalf("FirstOversRuns expected 6, got %d", r.FirstOversRuns)
-	}
-	if r.FirstOversWickets != 1 {
-		t.Fatalf("FirstOversWickets expected 1, got %d", r.FirstOversWickets)
-	}
-	if r.FirstOversDots != 3 { // dot, wicket-dot, dot
-		t.Fatalf("FirstOversDots expected 3, got %d", r.FirstOversDots)
-	}
-	if r.FirstOversBoundaries != 1 {
-		t.Fatalf("FirstOversBoundaries expected 1, got %d", r.FirstOversBoundaries)
-	}
+	require.Equal(t, bow, r.PlayerID)
+	require.Equal(t, fmtID, r.FormatID)
+	require.Equal(t, phase, r.Phase)
+	require.Equal(t, 1, r.Spells)
+	require.Equal(t, 2, r.SpellOvers)
+	// First over accumulators (O10): 5 legal (one wide is illegal) => balls=5
+	require.Equal(t, 5, r.FirstOversBalls)
+	require.Equal(t, 6, r.FirstOversRuns)
+	require.Equal(t, 1, r.FirstOversWickets)
+	require.Equal(t, 3, r.FirstOversDots) // dot, wicket-dot, dot
+	require.Equal(t, 1, r.FirstOversBoundaries)
 	// Later over accumulators (O11)
-	if r.LaterOversBalls != 6 {
-		t.Fatalf("LaterOversBalls expected 6, got %d", r.LaterOversBalls)
-	}
-	if r.LaterOversRuns != 2 {
-		t.Fatalf("LaterOversRuns expected 2, got %d", r.LaterOversRuns)
-	}
-	if r.LaterOversWickets != 0 {
-		t.Fatalf("LaterOversWickets expected 0, got %d", r.LaterOversWickets)
-	}
-	if r.LaterOversDots != 4 {
-		t.Fatalf("LaterOversDots expected 4, got %d", r.LaterOversDots)
-	}
-	if r.LaterOversBoundaries != 0 {
-		t.Fatalf("LaterOversBoundaries expected 0, got %d", r.LaterOversBoundaries)
-	}
+	require.Equal(t, 6, r.LaterOversBalls)
+	require.Equal(t, 2, r.LaterOversRuns)
+	require.Equal(t, 0, r.LaterOversWickets)
+	require.Equal(t, 4, r.LaterOversDots)
+	require.Equal(t, 0, r.LaterOversBoundaries)
 	// Economy rates
-	if r.FirstOverEcon <= 0 {
-		t.Fatalf("FirstOverEcon expected >0, got %v", r.FirstOverEcon)
-	}
-	if r.LaterOverEcon <= 0 {
-		t.Fatalf("LaterOverEcon expected >0, got %v", r.LaterOverEcon)
-	}
+	require.Greater(t, r.FirstOverEcon, 0.0)
+	require.Greater(t, r.LaterOverEcon, 0.0)
 }
 
 func TestAggregateSpells_BreakCreatesNewSpell(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 7, 2, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	bow := int64(302)
@@ -152,22 +130,16 @@ func TestAggregateSpells_BreakCreatesNewSpell(t *testing.T) {
 		evS(2, 1, 20, 12, phase, true, bow, 0, 0, "", 0, asOf, fmtID),
 	}
 	rows := aggregateSpells(seq)
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 row, got %d", len(rows))
-	}
+	require.Equal(t, 1, len(rows))
 	r := rows[0]
-	if r.Spells != 2 {
-		t.Fatalf("Spells expected 2 (two separate spells), got %d", r.Spells)
-	}
-	if r.SpellOvers != 2 {
-		t.Fatalf("SpellOvers expected 2 (two first overs counted as one each), got %d", r.SpellOvers)
-	}
-	if r.FirstOversBalls <= 0 || r.LaterOversBalls < 0 {
-		t.Fatalf("unexpected ball counts: first=%d later=%d", r.FirstOversBalls, r.LaterOversBalls)
-	}
+	require.Equal(t, 2, r.Spells, "two separate spells expected")
+	require.Equal(t, 2, r.SpellOvers)
+	require.Greater(t, r.FirstOversBalls, 0)
+	require.GreaterOrEqual(t, r.LaterOversBalls, 0)
 }
 
 func TestAggregateSpells_FormatMapping(t *testing.T) {
+	t.Parallel()
 	asOf := time.Date(2024, 9, 12, 0, 0, 0, 0, time.UTC)
 	bow := int64(707)
 	phase := "middle"
@@ -190,16 +162,10 @@ func TestAggregateSpells_FormatMapping(t *testing.T) {
 				evS(5, 1, 10, 6, phase, true, bow, 0, 0, "", 0, asOf, tc.fmtID),
 			}
 			rows := aggregateSpells(seq)
-			if len(rows) == 0 {
-				t.Fatalf("expected rows for format %d", tc.fmtID)
-			}
+			require.NotEmpty(t, rows)
 			r := rows[0]
-			if r.FormatID != tc.fmtID {
-				t.Fatalf("wrong format id: got %d want %d", r.FormatID, tc.fmtID)
-			}
-			if r.PlayerID != bow {
-				t.Fatalf("unexpected player id: %d", r.PlayerID)
-			}
+			require.Equal(t, tc.fmtID, r.FormatID)
+			require.Equal(t, bow, r.PlayerID)
 		})
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ev2 is same as ev helper in reaction tests, duplicated locally for clarity
@@ -53,7 +55,10 @@ func ev2(
 	}
 }
 
+// TestAggregateDotStreaks_KBucketsAndDenominators follows the gold standard: AAA with require assertions.
 func TestAggregateDotStreaks_KBucketsAndDenominators(t *testing.T) {
+	t.Parallel()
+
 	asOf := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 	// Build sequence for single striker stream (player 111 vs bowler 211)
@@ -80,8 +85,10 @@ func TestAggregateDotStreaks_KBucketsAndDenominators(t *testing.T) {
 		ev2(1, 1, 10, "powerplay", true, 111, 211, 0, 0, "", 111, asOf, fmtID),
 	}
 
+	// Act
 	rows := aggregateDotStreaks(seq, true) // batter stream only
-	// Build map by k for asserts
+
+	// Assert: Build map by k for asserts
 	type agg struct{ balls, runs, nb, ns, nw, ne, nd int }
 	m := map[int]agg{}
 	for _, r := range rows {
@@ -91,19 +98,26 @@ func TestAggregateDotStreaks_KBucketsAndDenominators(t *testing.T) {
 		m[r.K] = agg{r.Balls, r.RunsNextTotal, r.NextBoundary, r.NextSingle, r.NextWicket, r.NextExtra, r.NextDot}
 	}
 	// k=0: applies whenever the current kDots==0 before delivery: b1, b3 (after single), b7 (after boundary reset)
-	if got := m[0]; got.balls != 3 || got.nd != 3 || got.runs != 0 {
-		t.Fatalf("k=0 unexpected: %+v", got)
-	}
+	got := m[0]
+	require.Equal(t, 3, got.balls, "k=0 balls")
+	require.Equal(t, 3, got.nd, "k=0 next dots")
+	require.Equal(t, 0, got.runs, "k=0 runs")
 	// k=1: next balls recorded when kDots==1: b2 (single), b4 (dot), b8 (dot)
-	if got := m[1]; got.balls != 3 || got.ns != 1 || got.nd != 2 || got.runs != 1 {
-		t.Fatalf("k=1 unexpected: %+v", got)
-	}
+	g1 := m[1]
+	require.Equal(t, 3, g1.balls, "k=1 balls")
+	require.Equal(t, 1, g1.ns, "k=1 next singles")
+	require.Equal(t, 2, g1.nd, "k=1 next dots")
+	require.Equal(t, 1, g1.runs, "k=1 runs")
 	// k=2: next balls when kDots==2: b5 (wide, illegal), b6 (boundary), b9 (dot)
-	if got := m[2]; got.balls != 3 || got.ne != 1 || got.nb != 1 || got.nd != 1 || got.runs != 5 {
-		t.Fatalf("k=2 unexpected: %+v", got)
-	}
+	g2 := m[2]
+	require.Equal(t, 3, g2.balls, "k=2 balls")
+	require.Equal(t, 1, g2.ne, "k=2 next extras")
+	require.Equal(t, 1, g2.nb, "k=2 next boundaries")
+	require.Equal(t, 1, g2.nd, "k=2 next dots")
+	require.Equal(t, 5, g2.runs, "k=2 runs")
 	// k=3: one next ball (wicket at b10)
-	if got := m[3]; got.balls != 1 || got.nw != 1 || got.runs != 0 {
-		t.Fatalf("k=3 unexpected: %+v", got)
-	}
+	g3 := m[3]
+	require.Equal(t, 1, g3.balls, "k=3 balls")
+	require.Equal(t, 1, g3.nw, "k=3 next wickets")
+	require.Equal(t, 0, g3.runs, "k=3 runs")
 }

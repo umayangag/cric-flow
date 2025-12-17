@@ -15,7 +15,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
-// SelectTeam builds the player pool from DB, constructs features, calls ML service
+// SelectTeam builds the player pool from DB, constructs features, calls mlCleint service
 // for batting/bowling predictions, merges/fills attributes, calls the win model,
 // applies constraints, and returns the selected XI and team win probability.
 func SelectTeam(

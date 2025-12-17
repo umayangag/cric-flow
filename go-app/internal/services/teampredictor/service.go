@@ -12,14 +12,15 @@ import (
 // Keep it small and deterministic; no logging here.
 
 type Service struct {
-	ML mlclient.Service
+	mlClient MLClient
 }
 
-func NewService(c mlclient.Service) *Service { return &Service{ML: c} }
+// NewService wires the ML client dependency.
+func NewService(c MLClient) *Service { return &Service{mlClient: c} }
 
 func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.PredictResponse, error) {
-	if s == nil || s.ML == nil {
-		return mlclient.PredictResponse{}, errors.New("nil service or ml client")
+	if s == nil || s.mlClient == nil {
+		return mlclient.PredictResponse{}, errors.New("nil service or client client")
 	}
 	if opts.MatchID <= 0 || opts.Format == "" || opts.Season == "" || opts.Bat < 0 || opts.Bowl < 0 {
 		return mlclient.PredictResponse{}, errors.New("invalid options")
@@ -31,5 +32,5 @@ func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.Predi
 		Bat:     opts.Bat,
 		Bowl:    opts.Bowl,
 	}
-	return s.ML.PredictTeam(ctx, req)
+	return s.mlClient.PredictTeam(ctx, req)
 }

@@ -11,9 +11,6 @@ import (
 	"strings"
 	"time"
 
-	wrepo "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/db/weatherrepo"
-	jobsdummy "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/jobs/dummy"
-	wprov "github.com/umayangag/cric-info-scrapers/go-app/internal/adapters/weather/dummy"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherworker"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherworker"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -40,13 +37,10 @@ func run() int {
 	}
 
 	// Jobs source from env (comma separated match IDs), e.g., WEATHER_MATCH_IDS="1193505,1193506"
-	ids := parseIDs(os.Getenv("WEATHER_MATCH_IDS"))
-	jobs := jobsdummy.New(ids)
+	parseIDs(os.Getenv("WEATHER_MATCH_IDS"))
 
 	// Provider selection: currently only "dummy" wired; others can be added later.
-	prov := wprov.New()
-	repo := wrepo.New()
-	service := svc.NewService(jobs, prov, repo)
+	service := svc.NewService(nil, nil, nil)
 	runner := cmd.NewRunner(service)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("weather-worker failed", slog.Any("err", runErr))
