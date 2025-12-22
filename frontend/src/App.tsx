@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import HealthTab from './components/HealthTab';
 import PredictTab from './components/PredictTab';
 import EvaluateTab from './components/EvaluateTab';
+import EvaluateDbTab from './components/EvaluateDbTab';
 
-type TabKey = 'health' | 'predict' | 'evaluate';
+type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb';
 
 const TabButton: React.FC<{ id: TabKey; active: boolean; onClick: (id: TabKey) => void }> = ({ id, active, onClick, children }) => (
   <button
@@ -41,11 +42,15 @@ const App: React.FC = () => {
         <TabButton id="evaluate" active={tab === 'evaluate'} onClick={setTab}>
           Evaluate From CSV
         </TabButton>
+        <TabButton id="evaluateDb" active={tab === 'evaluateDb'} onClick={setTab}>
+          Evaluate (DB)
+        </TabButton>
       </div>
 
       {tab === 'health' && <HealthTab />}
       {tab === 'predict' && <PredictTab />}
       {tab === 'evaluate' && <EvaluateTab />}
+      {tab === 'evaluateDb' && <EvaluateDbTab />}
     </div>
   );
 };

@@ -42,3 +42,28 @@ export type CsvRow = PlayerPrediction & {
   team_name: string;
   actual_win: number; // 0|1 for team outcome
 };
+
+// --- DB-backed API DTOs ---
+export type SeasonsNextResponse = {
+  next_season: number | null;
+};
+
+export type MatchListItem = {
+  match_id: number | string;
+  date: string; // YYYY-MM-DD
+  format?: string;
+  teams: [string, string];
+};
+
+export type SquadDTO = {
+  team_name: string;
+  actual_win: 0 | 1;
+  players: PlayerPrediction[];
+};
+
+export type MatchSquadsResponse = {
+  match_id: number | string;
+  date: string; // YYYY-MM-DD
+  teams: [string, string];
+  squads: SquadDTO[]; // exactly two
+};

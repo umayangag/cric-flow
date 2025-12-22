@@ -134,10 +134,11 @@ make frontend-dev
 # opens Vite dev server (default http://localhost:5173)
 ```
 
-Configure ML service URL (optional):
+Configure service URLs (optional):
 ```
 cd frontend && cp .env.example .env
-# edit VITE_ML_SERVICE_URL if your ml-service runs on a different host/port
+# VITE_ML_SERVICE_URL: FastAPI ML service (default http://localhost:8000)
+# VITE_API_URL: Go API for DB-backed endpoints (default http://localhost:8080)
 ```
 
 Build and test:
@@ -150,6 +151,8 @@ Tabs in the UI:
 - Health: calls GET /health and shows loaded artifacts and formats.
 - Single Prediction: paste or edit a `players` array (PlayerPrediction schema) and POSTs to `/predict/win`.
 - Evaluate From CSV: upload a CSV of player-level rows, choose a cutoff date X, and the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy and a confusion matrix.
+
+DB-backed flows (WIP): set `VITE_API_URL` to your Go API (default http://localhost:8080). The frontend API client already includes methods for `/seasons/next`, `/matches`, and `/match/{id}/squads` which will be used by the upcoming DB Evaluate and DB Match Compare tabs.
 
 CSV schema (per row):
 ```
