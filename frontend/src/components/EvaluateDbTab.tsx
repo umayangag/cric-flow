@@ -23,6 +23,24 @@ const EvaluateDbTab: React.FC = () => {
   const canLoad = useMemo(() => Boolean(cutoff) && !loading, [cutoff, loading]);
   const canEvaluate = useMemo(() => matches.length > 0, [matches.length]);
 
+  // Reset hygiene: when cutoff or format changes, clear loaded state so user must reload
+  const onCutoffChange = (v: string) => {
+    setCutoff(v);
+    setMatches([]);
+    setMetrics(null);
+    setSeason(null);
+    setStatus('');
+    setError(null);
+  };
+  const onFormatChange = (v: string) => {
+    setFormat(v);
+    setMatches([]);
+    setMetrics(null);
+    setSeason(null);
+    setStatus('');
+    setError(null);
+  };
+
   const onLoadMatches = async () => {
     try {
       setLoading(true);
@@ -104,11 +122,11 @@ const EvaluateDbTab: React.FC = () => {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <label>
           Cutoff date:{' '}
-          <input type="date" value={cutoff} onChange={(e) => setCutoff(e.target.value)} />
+          <input type="date" value={cutoff} onChange={(e) => onCutoffChange(e.target.value)} />
         </label>
         <label>
           Format:{' '}
-          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+          <select value={format} onChange={(e) => onFormatChange(e.target.value)}>
             {formats.map((f) => (
               <option key={f} value={f}>
                 {f === '' ? 'All' : f}
@@ -119,18 +137,27 @@ const EvaluateDbTab: React.FC = () => {
         <button onClick={onLoadMatches} disabled={!canLoad}>
           Load Matches
         </button>
-        <button onClick={onEvaluate} disabled={!canEvaluate || evaluating}>
+        <button onClick={onEvaluate} disabled={!canEvaluate || evaluating || loading}>
           Evaluate
         </button>
+        {season != null && (
+          <span style={{ marginLeft: 12, color: '#555' }} aria-label="selection-context">
+            Cutoff: {cutoff} · Format: {format || 'All'} · Season: {season}
+          </span>
+        )}
       </div>
 
-      {status && <div style={{ marginBottom: 12 }}>{status}</div>}
+      {status && (
+        <div style={{ marginBottom: 12 }} aria-live="polite" aria-atomic="true">
+          {status}
+        </div>
+      )}
       {error && (
         <div style={{ marginBottom: 12, color: 'red' }}>Error: {error}</div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <section>
+        <section aria-label="matches-section">
           <h3 style={{ margin: '8px 0' }}>Matches</h3>
           {matches.length === 0 ? (
             <div style={{ color: '#666' }}>No matches loaded yet.</div>
@@ -139,8 +166,27 @@ const EvaluateDbTab: React.FC = () => {
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 {matches.map((m) => {
                   const label = `${m.teams[0]} vs ${m.teams[1]} — ${m.date}`;
+                  const badgeColor =
+                    m.ui_status === 'Evaluated'
+                      ? '#2e7d32'
+                      : m.ui_status === 'Loaded'
+                      ? '#1565c0'
+                      : m.ui_status === 'Error'
+                      ? '#c62828'
+                      : '#757575';
                   return (
                     <li key={String(m.match_id)}>
+                      <span
+                        aria-label={`status-${m.ui_status.toLowerCase()}`}
+                        style={{
+                          display: 'inline-block',
+                          minWidth: 8,
+                          minHeight: 8,
+                          borderRadius: 8,
+                          background: badgeColor,
+                          marginRight: 8,
+                        }}
+                      />
                       {label} — <em>{m.ui_status}</em>
                     </li>
                   );
@@ -164,7 +210,7 @@ const EvaluateDbTab: React.FC = () => {
           )}
         </section>
 
-        <section>
+        <section aria-label="results-section">
           <h3 style={{ margin: '8px 0' }}>Results</h3>
           {!metrics ? (
             <div style={{ color: '#666' }}>
@@ -178,14 +224,23 @@ const EvaluateDbTab: React.FC = () => {
                 <strong>{(metrics.accuracy * 100).toFixed(2)}%</strong>
               </div>
               <div style={{ marginTop: 8 }}>
-                <table style={{ borderCollapse: 'collapse' }}>
+                <table style={{ borderCollapse: 'collapse' }} aria-label="confusion-matrix">
+                  <thead>
+                    <tr>
+                      <th style={{ padding: 6 }}></th>
+                      <th style={{ border: '1px solid #ddd', padding: 6 }}>Pred=1</th>
+                      <th style={{ border: '1px solid #ddd', padding: 6 }}>Pred=0</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     <tr>
+                      <td style={{ border: '1px solid #ddd', padding: 6 }}>Actual=1</td>
                       <td style={{ border: '1px solid #ddd', padding: 6 }}>TP: {metrics.confusion.tp}</td>
-                      <td style={{ border: '1px solid #ddd', padding: 6 }}>FP: {metrics.confusion.fp}</td>
+                      <td style={{ border: '1px solid #ddd', padding: 6 }}>FN: {metrics.confusion.fn}</td>
                     </tr>
                     <tr>
-                      <td style={{ border: '1px solid #ddd', padding: 6 }}>FN: {metrics.confusion.fn}</td>
+                      <td style={{ border: '1px solid #ddd', padding: 6 }}>Actual=0</td>
+                      <td style={{ border: '1px solid #ddd', padding: 6 }}>FP: {metrics.confusion.fp}</td>
                       <td style={{ border: '1px solid #ddd', padding: 6 }}>TN: {metrics.confusion.tn}</td>
                     </tr>
                   </tbody>

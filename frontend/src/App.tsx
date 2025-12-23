@@ -3,8 +3,9 @@ import HealthTab from './components/HealthTab';
 import PredictTab from './components/PredictTab';
 import EvaluateTab from './components/EvaluateTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
+import MatchCompareDbTab from './components/MatchCompareDbTab';
 
-type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb';
+type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb' | 'compareDb';
 
 const TabButton: React.FC<{ id: TabKey; active: boolean; onClick: (id: TabKey) => void }> = ({ id, active, onClick, children }) => (
   <button
@@ -45,12 +46,16 @@ const App: React.FC = () => {
         <TabButton id="evaluateDb" active={tab === 'evaluateDb'} onClick={setTab}>
           Evaluate (DB)
         </TabButton>
+        <TabButton id="compareDb" active={tab === 'compareDb'} onClick={setTab}>
+          Match Compare (DB)
+        </TabButton>
       </div>
 
       {tab === 'health' && <HealthTab />}
       {tab === 'predict' && <PredictTab />}
       {tab === 'evaluate' && <EvaluateTab />}
       {tab === 'evaluateDb' && <EvaluateDbTab />}
+      {tab === 'compareDb' && <MatchCompareDbTab />}
     </div>
   );
 };

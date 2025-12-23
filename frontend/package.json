@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --environment jsdom",
+    "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -21,6 +21,17 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "vitest": "^2.1.4"
+    "vitest": "^2.1.4",
+    "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/jest-dom": "^6.4.8"
+  },
+  "vitest": {
+    "test": {
+      "environment": "jsdom",
+      "setupFiles": [
+        "./vitest.setup.ts"
+      ]
+    }
   }
 }

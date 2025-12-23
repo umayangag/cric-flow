@@ -1,108 +1,3 @@
-# Cric App (Monorepo)
-
-This repository contains the Go data pipeline/services and the Python ML inference service, ported from the original `src/` Python prototype (which remains intact for reference).
-
-Directories:
-- go-app/ — Go services (API, Cricsheet importer, dataset export, tools, migrations, team predictor CLI)
-- ml-service/ — Python FastAPI service for predictions and training scripts (precomputation now lives in go-app)
-- src/ — Original prototype (reference only)
-
-## Quick start (happy-path)
-
-Prerequisites:
-- Docker + Docker Compose
-- Go 1.25+
-- Python 3.10+ (only needed if training models locally without Docker)
-
-Environment defaults used by Go services/API:
-- POSTGRES_HOST=localhost, POSTGRES_PORT=5432, POSTGRES_DB=cricket_data
-- POSTGRES_USER=postgres, POSTGRES_PASSWORD=postgres, POSTGRES_SSLMODE=disable
-
-Tip: copy `.env.example` to `.env` to override defaults locally. See `docs/dev-ux.md` for common workflows and commands.
-
-### 0) One-time local setup (tools, venv, hooks)
-Initialize dev tooling for both components, aligned with CI formatters/linters.
-```
-make init
-# or per component:
-make -C go-app init
-make -C ml-service init
-```
-- For Python, activate the venv after init:
-```
-cd ml-service && source .venv/bin/activate
-```
-
-## Testing standards (Go)
-
-All Go unit tests in this repository should follow our gold-standard table-driven style, as demonstrated in
-`go-app/internal/services/weatherimport/service_test.go`. See the full guidance and a ready-to-copy skeleton in:
-
-- docs/testing-standards-go.md
-- testdata/templates/go_table_test_skeleton.txt
-
-To run the Go test suite with race detector and coverage:
-
-```
-cd go-app && go test -race -cover ./...
-```
-
-### 1) One-line bootstrap (recommended)
-This single command brings up Docker services, applies migrations, imports Cricsheet JSON data, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
-```
-make up-all
-```
-
-### Or, bring up Postgres (and optional services) manually
-```
-make dev-up
-```
-
-### 2) Run DB migrations
-```
-make migrate
-```
-
-### 3) Import Cricsheet JSON (idempotent)
-This reads local Cricsheet `.json` files under `data/` and upserts into Postgres using the Go importer.
-```
-make cricsheet-import
-# run again to confirm idempotency
-make cricsheet-import
-```
-
-### 4) Precompute player metrics (form/venue/opposition/consistency)
-This triggers the Go API to compute and store features in Postgres (no ML dependency).
-```
-make precompute
-# or with filters
-curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json' -d '{"season":"2019","formats":["ODI","T20I"]}'
-# check status (in-memory, resets on restart)
-curl -s http://localhost:8080/precompute/status | jq
-```
-
-### 5) Export model datasets (now includes unified cross-format files)
-The exporter now has a unified mode that writes a single merged CSV per task (batting/bowling) across all formats, and includes leakage-free, date-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
-
-Recommended (Makefile runs both unified and legacy for compatibility):
-```
-make export-dataset
-```
-Outputs:
-- Unified (new):
-  - `output/go-app/batting_encoded_all.csv`
-  - `output/go-app/bowling_encoded_all.csv`
-- Legacy (still produced for current training scripts):
-  - `output/go-app/batting_encoded.csv`
-  - `output/go-app/bowling_encoded.csv`
-
-To call the exporter directly:
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1
-# and (legacy unsuffixed files) without flags
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset
 ```
 
 Column naming (examples):
@@ -473,3 +368,48 @@ cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
 Notes:
 - The exporter appends the same compact sequence column subsets when enabled (see the T20 section for the exact column lists); ODI/TEST use latest‑as‑of joins with proper format filters under the hood.
 - The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.
+
+
+## Frontend (Vite + React) — ML Control Panel
+
+This repo includes a lightweight React frontend under `frontend/` to interact with the ML service and the Go API.
+
+Environment variables (copy `.env.example` to `.env`):
+
+```
+VITE_ML_SERVICE_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8080
+```
+
+Start the dev server:
+
+```
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+Build and test:
+
+```
+cd frontend
+npm test
+npm run build
+```
+
+Tabs overview:
+- Health: shows `GET /health` from the ML service.
+- Single Prediction: paste/edit a `PlayerPrediction[]` payload and call `POST /predict/win`.
+- Evaluate From CSV: legacy CSV-based evaluation of accuracy.
+- Evaluate (DB): DB-backed evaluation flow using Go API endpoints:
+  - Determine next season after a cutoff date via `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
+  - List matches via `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
+  - For each match, fetch squads `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
+  - Shows progress, per-match status badges, accuracy, and a labeled 2x2 confusion matrix.
+- Match Compare (DB): enter a match ID and as-of date to fetch squads and compare ML predictions for both teams vs the actual winner. Handles 404 (not found) and 422 (incomplete squads).
+
+Notes:
+- The Go API sets permissive CORS for the frontend origin (`FRONTEND_ORIGIN` env var, defaults to `http://localhost:5173`).
+- Ensure the Go API (`go-app`) and the ML service (`ml-service`) are both running when testing DB-backed tabs.
