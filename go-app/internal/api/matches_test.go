@@ -52,7 +52,7 @@ func TestListMatchesHandler_EmptyResult(t *testing.T) {
     // stub seam
     orig := listMatchesFunc
     defer func() { listMatchesFunc = orig }()
-    listMatchesFunc = func(_ context.Context, season int, after time.Time, format string) ([]db.MatchRow, error) {
+    listMatchesFunc = func(_ context.Context, _ int, _ time.Time, _ string) ([]db.MatchRow, error) {
         return []db.MatchRow{}, nil
     }
 
@@ -75,7 +75,7 @@ func TestListMatchesHandler_Success(t *testing.T) {
     // stub seam returning two matches
     orig := listMatchesFunc
     defer func() { listMatchesFunc = orig }()
-    listMatchesFunc = func(_ context.Context, season int, after time.Time, format string) ([]db.MatchRow, error) {
+    listMatchesFunc = func(_ context.Context, season int, _ time.Time, _ string) ([]db.MatchRow, error) {
         if season != 2023 {
             t.Fatalf("expected season 2023, got %d", season)
         }

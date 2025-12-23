@@ -38,7 +38,7 @@ func TestGetMatchSquadsHandler_NotFound(t *testing.T) {
     // stub seam
     orig := getMatchSquadsFunc
     defer func() { getMatchSquadsFunc = orig }()
-    getMatchSquadsFunc = func(matchID int64, asof time.Time, format string) (matchSquadsData, error) {
+    getMatchSquadsFunc = func(_ int64, _ time.Time, _ string) (matchSquadsData, error) {
         return matchSquadsData{}, errMatchNotFound
     }
 
@@ -54,7 +54,7 @@ func TestGetMatchSquadsHandler_Incomplete(t *testing.T) {
     // stub seam
     orig := getMatchSquadsFunc
     defer func() { getMatchSquadsFunc = orig }()
-    getMatchSquadsFunc = func(matchID int64, asof time.Time, format string) (matchSquadsData, error) {
+    getMatchSquadsFunc = func(_ int64, _ time.Time, _ string) (matchSquadsData, error) {
         return matchSquadsData{}, errIncompleteSquad
     }
 
@@ -70,7 +70,7 @@ func TestGetMatchSquadsHandler_Success(t *testing.T) {
     // stub seam returning a simple structure
     orig := getMatchSquadsFunc
     defer func() { getMatchSquadsFunc = orig }()
-    getMatchSquadsFunc = func(matchID int64, asof time.Time, format string) (matchSquadsData, error) {
+    getMatchSquadsFunc = func(_ int64, _ time.Time, _ string) (matchSquadsData, error) {
         d, _ := time.Parse("2006-01-02", "2023-01-07")
         return matchSquadsData{
             MatchID: 123,
@@ -99,13 +99,13 @@ func TestGetMatchSquadsHandler_Success(t *testing.T) {
     }
     // minimal content checks
     body := rr.Body.String()
-    if !(contains(body, `"match_id": 123`) && contains(body, `"date": "2023-01-07"`)) {
+    if !contains(body, `"match_id": 123`) || !contains(body, `"date": "2023-01-07"`) {
         t.Fatalf("unexpected body: %s", body)
     }
 }
 
 // small helper to avoid importing strings package all over
-func contains(s, substr string) bool { return len(s) >= len(substr) && (func() bool { return stringIndex(s, substr) >= 0 })() }
+func contains(s, substr string) bool { return len(s) >= len(substr) && stringIndex(s, substr) >= 0 }
 
 // very small naive index to keep dependencies minimal in this file
 func stringIndex(s, sep string) int {

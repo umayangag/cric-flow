@@ -134,7 +134,7 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
     }
 
     // Helper to fetch a single player's feature row as-of date
-    fetchPlayerFeatures := func(ctx context.Context, playerID int64) (PlayerPredictionRow, error) {
+    fetchPlayerFeatures := func(ctx context.Context, playerID int64) PlayerPredictionRow {
         // Default zeros
         out := PlayerPredictionRow{PlayerName: ""}
         // Resolve player name
@@ -195,7 +195,7 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
         out.Deliveries = deliveries
         out.WicketsTaken = wkts
         out.Econ = econ
-        return out, nil
+        return out
     }
 
     // Build squads for both teams
@@ -209,7 +209,7 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
         }
         players := make([]PlayerPredictionRow, 0, len(ids))
         for i, pid := range ids {
-            pr, _ := fetchPlayerFeatures(ctx, pid)
+            pr := fetchPlayerFeatures(ctx, pid)
             // ensure name set from names list if feature lookup failed
             if pr.PlayerName == "" && i < len(names) {
                 pr.PlayerName = names[i]

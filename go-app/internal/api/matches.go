@@ -1,7 +1,6 @@
 package api
 
 import (
-    "context"
     "net/http"
     "strconv"
     "time"
@@ -18,9 +17,7 @@ type matchItem struct {
 }
 
 // testing seam for DAO
-var listMatchesFunc = func(ctx context.Context, season int, after time.Time, format string) ([]db.MatchRow, error) {
-    return db.ListMatches(ctx, season, after, format)
-}
+var listMatchesFunc = db.ListMatches
 
 // listMatchesHandler handles GET /matches
 // Query: season=YYYY (required), after=YYYY-MM-DD (required), format=TEST|ODI|T20I|T20 (optional)

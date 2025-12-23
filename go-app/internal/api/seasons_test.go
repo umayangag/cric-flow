@@ -1,3 +1,4 @@
+// revive:disable:var-naming — package name "api" is intentional and conventional here.
 package api
 
 import (
@@ -34,7 +35,7 @@ func TestGetNextSeasonHandler_SuccessAndNull(t *testing.T) {
     defer func() { getNextSeasonFunc = orig }()
 
     calls := 0
-    getNextSeasonFunc = func(_ context.Context, cutoff time.Time, format string) (sql.NullInt64, error) {
+    getNextSeasonFunc = func(_ context.Context, _ time.Time, _ string) (sql.NullInt64, error) {
         calls++
         if calls == 1 {
             // return a season

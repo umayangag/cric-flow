@@ -56,14 +56,16 @@ fmt:
 	flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
 
 # Auto-fix lint: remove unused imports via ruff (F401)
-lint:
-	@command -v ruff >/dev/null 2>&1 || (echo "Install ruff: pip install ruff" && exit 1)
+lint: venv
+	@# Ensure ruff is available in the project venv
+	@$(PIP) show ruff >/dev/null 2>&1 || { echo "Installing ruff into $(VENV)..."; $(PIP) install ruff >/dev/null; }
 	$(VENV)/bin/ruff check --fix --select F401 .
 
 # Lint check only (CI-safe)
-lint-check:
-	@command -v ruff >/dev/null 2>&1 || (echo "Install ruff: pip install ruff" && exit 1)
-	ruff check --select F401 .
+lint-check: venv
+	@# Ensure ruff is available in the project venv
+	@$(PIP) show ruff >/dev/null 2>&1 || { echo "Installing ruff into $(VENV)..."; $(PIP) install ruff >/dev/null; }
+	$(VENV)/bin/ruff check --select F401 .
 
 # Check formatting only (same as CI)
 fmt-check:
