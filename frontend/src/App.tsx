@@ -7,7 +7,14 @@ import MatchCompareDbTab from './components/MatchCompareDbTab';
 
 type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb' | 'compareDb';
 
-const TabButton: React.FC<{ id: TabKey; active: boolean; onClick: (id: TabKey) => void }> = ({ id, active, onClick, children }) => (
+type TabButtonProps = {
+  id: TabKey;
+  active: boolean;
+  onClick: React.Dispatch<React.SetStateAction<TabKey>>;
+  children?: React.ReactNode;
+};
+
+const TabButton: React.FC<TabButtonProps> = ({ id, active, onClick, children }) => (
   <button
     onClick={() => onClick(id)}
     style={{
