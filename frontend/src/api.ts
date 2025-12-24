@@ -10,17 +10,25 @@ import type {
 const BASE_URL = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
 
-async function http<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-  }
-  return (await res.json()) as T;
+// Generic HTTP client factory to avoid duplication between different base URLs
+function createHttpClient(baseUrl: string) {
+  return async function httpClient<T>(pathOrUrl: string, options?: RequestInit): Promise<T> {
+    const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${baseUrl}${pathOrUrl}`;
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
+    }
+    return (await res.json()) as T;
+  };
 }
+
+// Specific clients
+const http = createHttpClient(BASE_URL);
+const httpApi = createHttpClient(BASE_API_URL);
 
 export const api = {
   health(): Promise<HealthResponse> {
@@ -53,18 +61,3 @@ export const api = {
     return httpApi(u.toString());
   },
 };
-
-// Internal: simple HTTP for the go-app API base
-async function httpApi<T>(absoluteUrlOrPath: string, options?: RequestInit): Promise<T> {
-  // Accept already absolute URL (we pass absolute URLs above)
-  const url = absoluteUrlOrPath.startsWith('http') ? absoluteUrlOrPath : `${BASE_API_URL}${absoluteUrlOrPath}`;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-  }
-  return (await res.json()) as T;
-}
