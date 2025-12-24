@@ -1,10 +1,10 @@
-package api
+package server
 
 import (
-    "net/http"
-    "time"
+	"net/http"
+	"time"
 
-    "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // seam for testing

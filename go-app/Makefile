@@ -73,17 +73,25 @@ evaluate:
 	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
-# Format only modified (uncommitted) Go files to align with CI (gofumpt + golines)
+# Format Go code (gofumpt + golines). Self-bootstraps tools if missing.
 fmt:
-	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
-	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	gofumpt -w .
-	golines -w -m 120 .
+	@GOBIN="$(shell go env GOPATH)/bin"; \
+	if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then \
+		echo "Installing gofumpt and golines to $$GOBIN..."; \
+		go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }; \
+		go install github.com/segmentio/golines@latest || { echo "Failed to install golines"; exit 1; }; \
+	fi; \
+	PATH="$$GOBIN:$$PATH" gofumpt -w .; \
+	PATH="$$GOBIN:$$PATH" golines -w -m 120 .
 
-# Optional: check-only formatting status similar to CI
+# Optional: check-only formatting status similar to CI (self-bootstraps gofumpt)
 fmt-check:
-	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
-	@gofumpt -l . | tee /dev/stderr | awk 'NR>0{exit 1} END{exit 0}'
+	@GOBIN="$(shell go env GOPATH)/bin"; \
+	if ! command -v gofumpt >/dev/null 2>&1; then \
+		echo "Installing gofumpt to $$GOBIN..."; \
+		go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }; \
+	fi; \
+	PATH="$$GOBIN:$$PATH" gofumpt -l . | tee /dev/stderr | awk 'NR>0{exit 1} END{exit 0}'
 
 vet:
 	go vet ./...

@@ -1,4 +1,4 @@
-package api
+package server
 
 import (
 	"context"
@@ -61,20 +61,20 @@ var (
 // getMatchSquadsHandler handles GET /match/{id}/squads
 // Query: asof=YYYY-MM-DD (required), format=TEST|ODI|T20I|T20 (optional)
 func getMatchSquadsHandler(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    idStr := vars["id"]
-    if idStr == "" {
-        writeJSON(
-            w,
-            http.StatusBadRequest,
-            apiError{
-                Code:    "INVALID_PARAM",
-                Message: "missing id",
-                Hint:    "provide path /match/{id}/squads with numeric id",
-            },
-        )
-        return
-    }
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	if idStr == "" {
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{
+				Code:    "INVALID_PARAM",
+				Message: "missing id",
+				Hint:    "provide path /match/{id}/squads with numeric id",
+			},
+		)
+		return
+	}
 	matchID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || matchID <= 0 {
 		writeJSON(

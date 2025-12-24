@@ -1,5 +1,5 @@
 // revive:disable:var-naming
-package api
+package server
 
 import (
 	"net/http"

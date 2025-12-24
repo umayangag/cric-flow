@@ -1,6 +1,5 @@
-// Package api contains HTTP server app wiring and handlers for the API.
-// revive:disable:var-naming — package name "api" is intentional and conventional here.
-package api
+// Package server contains HTTP server app wiring and handlers for the API.
+package server
 
 // App holds long-lived application dependencies to be shared with handlers.
 // Extend this struct as new dependencies are introduced.

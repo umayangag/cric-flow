@@ -199,7 +199,9 @@ fmt: fmt-go fmt-py
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
-	$(MAKE) -C ml-service fmt-check
+	# Ensure venv/dev tools exist before running Python fmt-check and expose venv bin on PATH
+	$(MAKE) -C ml-service init
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
 fmt-go:
 	# Auto-bootstrap Go dev tools if missing, then format using go-app Makefile
