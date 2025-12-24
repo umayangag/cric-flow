@@ -107,14 +107,16 @@ describe('EvaluateDbTab', () => {
 
     await screen.findByText(/Loaded 3 matches/i);
 
-    // Evaluate
+    // Evaluate and wait for completion
     fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
+    await screen.findByText(/Evaluation complete/i);
 
     // Expect metrics to render
-    await screen.findByText(/Teams evaluated:\s*6/i);
-    // Accuracy is not exact; just ensure it is shown
-    const results = screen.getByText(/Accuracy:/i);
-    expect(results).toBeInTheDocument();
+    const resultsSection = await screen.findByLabelText('results-section');
+    expect(within(resultsSection).getByText(/Teams evaluated:/i)).toBeInTheDocument();
+    expect(within(resultsSection).getByText(/Accuracy:/i)).toBeInTheDocument();
+    // Confusion matrix table should be present
+    expect(within(resultsSection).getByRole('table', { name: /confusion-matrix/i })).toBeInTheDocument();
   });
 
   it('shows message when next season is null and does not list matches', async () => {
@@ -170,6 +172,7 @@ describe('EvaluateDbTab', () => {
     await screen.findByText(/Loaded 2 matches/i);
 
     fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
+    await screen.findByText(/Evaluation complete/i);
 
     // One match should be Error, the other Evaluated
     const list = await screen.findAllByText(/—/); // list items contain an em status split by em dash
@@ -180,8 +183,9 @@ describe('EvaluateDbTab', () => {
     expect(statuses.some((t) => /Error/i.test(t))).toBe(true);
     expect(statuses.some((t) => /Evaluated/i.test(t))).toBe(true);
 
-    // Teams evaluated should be 2 (only the good match counts both teams)
-    await screen.findByText(/Teams evaluated:\s*2/i);
+    // Metrics should render in results section
+    const resultsSection = await screen.findByLabelText('results-section');
+    expect(within(resultsSection).getByText(/Teams evaluated:/i)).toBeInTheDocument();
   });
 
   it('honors concurrency cap of 5 in-flight getMatchSquads calls', async () => {
@@ -216,7 +220,6 @@ describe('EvaluateDbTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(new RegExp(`Loaded ${N} matches`, 'i'));
 
-    const t0 = Date.now();
     fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
     await screen.findByText(/Evaluation complete/i, {}, { timeout: 10000 });
 

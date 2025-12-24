@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import MatchCompareDbTab from '../components/MatchCompareDbTab';
 
 vi.mock('../api', async () => {
@@ -36,14 +36,16 @@ describe('MatchCompareDbTab', () => {
 
     render(<MatchCompareDbTab />);
 
-    fireEvent.change(screen.getByLabelText('match-id-input') as HTMLInputElement, { target: { value: '99' } });
-    fireEvent.change(screen.getByLabelText('asof-input') as HTMLInputElement, { target: { value: '2018-12-31' } });
-    fireEvent.click(screen.getByLabelText('compare-button'));
+    fireEvent.change(screen.getAllByLabelText('match-id-input')[0] as HTMLInputElement, { target: { value: '99' } });
+    fireEvent.change(screen.getAllByLabelText('asof-input')[0] as HTMLInputElement, { target: { value: '2018-12-31' } });
+    fireEvent.click(screen.getAllByLabelText('compare-button')[0]);
 
     // Predicted/Actual winner should show Alpha and Correct outcome
-    await screen.findByText(/Predicted winner/i);
-    expect(screen.getByText('Alpha')).toBeInTheDocument();
-    expect(screen.getByText(/Actual winner/i)).toBeInTheDocument();
+    const predictedRow = await screen.findByText(/Predicted winner/i);
+    // Scope strictly to the row element that contains the "Predicted winner" label
+    expect(within(predictedRow as HTMLElement).getByText('Alpha')).toBeInTheDocument();
+    const actualRow = screen.getByText(/Actual winner/i);
+    expect(within(actualRow as HTMLElement).getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText(/Correct/i)).toBeInTheDocument();
   });
 
@@ -51,8 +53,8 @@ describe('MatchCompareDbTab', () => {
     (api.getMatchSquads as any).mockRejectedValue(new Error('HTTP 404 Not Found: {"code":"NOT_FOUND"}'));
 
     render(<MatchCompareDbTab />);
-    fireEvent.change(screen.getByLabelText('match-id-input') as HTMLInputElement, { target: { value: '1' } });
-    fireEvent.click(screen.getByLabelText('compare-button'));
+    fireEvent.change(screen.getAllByLabelText('match-id-input')[0] as HTMLInputElement, { target: { value: '1' } });
+    fireEvent.click(screen.getAllByLabelText('compare-button')[0]);
 
     await screen.findByRole('alert');
     expect(screen.getByText(/Match not found/i)).toBeInTheDocument();
@@ -62,8 +64,8 @@ describe('MatchCompareDbTab', () => {
     (api.getMatchSquads as any).mockRejectedValue(new Error('HTTP 422 Unprocessable Entity: {"code":"INCOMPLETE_SQUADS"}'));
 
     render(<MatchCompareDbTab />);
-    fireEvent.change(screen.getByLabelText('match-id-input') as HTMLInputElement, { target: { value: '2' } });
-    fireEvent.click(screen.getByLabelText('compare-button'));
+    fireEvent.change(screen.getAllByLabelText('match-id-input')[0] as HTMLInputElement, { target: { value: '2' } });
+    fireEvent.click(screen.getAllByLabelText('compare-button')[0]);
 
     await screen.findByRole('alert');
     expect(screen.getByText(/Incomplete squads/i)).toBeInTheDocument();
@@ -84,8 +86,8 @@ describe('MatchCompareDbTab', () => {
       .mockResolvedValueOnce({ players: [], team_win_probability: 0.5 });
 
     render(<MatchCompareDbTab />);
-    fireEvent.change(screen.getByLabelText('match-id-input') as HTMLInputElement, { target: { value: '100' } });
-    fireEvent.click(screen.getByLabelText('compare-button'));
+    fireEvent.change(screen.getAllByLabelText('match-id-input')[0] as HTMLInputElement, { target: { value: '100' } });
+    fireEvent.click(screen.getAllByLabelText('compare-button')[0]);
 
     await screen.findByText(/Predicted winner/i);
     expect(screen.getByText(/tie/i)).toBeInTheDocument();
