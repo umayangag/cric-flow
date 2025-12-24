@@ -159,9 +159,10 @@ Notes:
 - For development speed, this setup targets the happy path first; additional edge cases can be covered by enhancing the importer as needed.
 
 ## CI
-Two separate GitHub Actions workflows:
+Three separate GitHub Actions workflows:
 - Go App: `.github/workflows/go-app-ci.yml` — spins up Postgres, applies migrations, checks formatting (gofumpt/golines), builds and tests Go modules.
 - ML Service: `.github/workflows/ml-service-ci.yml` — installs deps, runs isort/black checks, and sanity-compiles the app and training scripts.
+- Frontend: `.github/workflows/frontend-ci.yml` — sets up Node 20, installs dependencies with `npm ci`, builds (TypeScript + Vite), and runs unit tests with Vitest.
 
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
