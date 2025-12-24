@@ -45,6 +45,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Install jsdom for Vitest environment (no lockfile change)
+        working-directory: frontend
+        run: npm i --no-save jsdom@^24.1.0
+
       - name: Test (vitest)
         working-directory: frontend
         run: npm test --silent
