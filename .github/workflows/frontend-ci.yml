@@ -37,6 +37,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Typecheck (tsc --noEmit)
+        working-directory: frontend
+        run: npm run typecheck
+
       - name: Build (typecheck + bundle)
         working-directory: frontend
         run: npm run build
