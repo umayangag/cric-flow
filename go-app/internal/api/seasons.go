@@ -1,11 +1,10 @@
 package api
 
 import (
-	"encoding/json"
-	"net/http"
-	"time"
+    "net/http"
+    "time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+    "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // seam for testing
@@ -15,19 +14,7 @@ type nextSeasonResponse struct {
 	NextSeason *int `json:"next_season"`
 }
 
-type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Hint    string `json:"hint,omitempty"`
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(v)
-}
+// apiError and writeJSON moved to json.go for shared use across handlers.
 
 // getNextSeasonHandler handles GET /seasons/next
 // Query: cutoff=YYYY-MM-DD (required), format=TEST|ODI|T20I|T20 (optional)

@@ -2,37 +2,41 @@
 package api
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-	"time"
+    "github.com/gorilla/mux"
+    "net/http"
+    "net/http/httptest"
+    "testing"
+    "time"
 )
 
 func TestGetMatchSquadsHandler_Validation_InvalidID(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/match/abc/squads?asof=2023-01-05", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
+    req := httptest.NewRequest(http.MethodGet, "/match/abc/squads?asof=2023-01-05", nil)
+    req = mux.SetURLVars(req, map[string]string{"id": "abc"})
+    rr := httptest.NewRecorder()
+    getMatchSquadsHandler(rr, req)
+    if rr.Code != http.StatusBadRequest {
+        t.Fatalf("expected 400, got %d", rr.Code)
+    }
 }
 
 func TestGetMatchSquadsHandler_Validation_MissingAsOf(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/match/123/squads", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
+    req := httptest.NewRequest(http.MethodGet, "/match/123/squads", nil)
+    req = mux.SetURLVars(req, map[string]string{"id": "123"})
+    rr := httptest.NewRecorder()
+    getMatchSquadsHandler(rr, req)
+    if rr.Code != http.StatusBadRequest {
+        t.Fatalf("expected 400, got %d", rr.Code)
+    }
 }
 
 func TestGetMatchSquadsHandler_Validation_InvalidAsOf(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023/01/05", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
+    req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023/01/05", nil)
+    req = mux.SetURLVars(req, map[string]string{"id": "123"})
+    rr := httptest.NewRecorder()
+    getMatchSquadsHandler(rr, req)
+    if rr.Code != http.StatusBadRequest {
+        t.Fatalf("expected 400, got %d", rr.Code)
+    }
 }
 
 func TestGetMatchSquadsHandler_NotFound(t *testing.T) {
@@ -43,12 +47,13 @@ func TestGetMatchSquadsHandler_NotFound(t *testing.T) {
 		return matchSquadsData{}, errMatchNotFound
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/match/999/squads?asof=2023-01-05", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rr.Code)
-	}
+    req := httptest.NewRequest(http.MethodGet, "/match/999/squads?asof=2023-01-05", nil)
+    req = mux.SetURLVars(req, map[string]string{"id": "999"})
+    rr := httptest.NewRecorder()
+    getMatchSquadsHandler(rr, req)
+    if rr.Code != http.StatusNotFound {
+        t.Fatalf("expected 404, got %d", rr.Code)
+    }
 }
 
 func TestGetMatchSquadsHandler_Incomplete(t *testing.T) {
@@ -59,12 +64,13 @@ func TestGetMatchSquadsHandler_Incomplete(t *testing.T) {
 		return matchSquadsData{}, errIncompleteSquad
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023-01-05", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d", rr.Code)
-	}
+    req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023-01-05", nil)
+    req = mux.SetURLVars(req, map[string]string{"id": "123"})
+    rr := httptest.NewRecorder()
+    getMatchSquadsHandler(rr, req)
+    if rr.Code != http.StatusUnprocessableEntity {
+        t.Fatalf("expected 422, got %d", rr.Code)
+    }
 }
 
 func TestGetMatchSquadsHandler_Success(t *testing.T) {
@@ -92,12 +98,13 @@ func TestGetMatchSquadsHandler_Success(t *testing.T) {
 		}, nil
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023-01-05", nil)
-	rr := httptest.NewRecorder()
-	getMatchSquadsHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
+ req := httptest.NewRequest(http.MethodGet, "/match/123/squads?asof=2023-01-05", nil)
+ req = mux.SetURLVars(req, map[string]string{"id": "123"})
+ rr := httptest.NewRecorder()
+ getMatchSquadsHandler(rr, req)
+ if rr.Code != http.StatusOK {
+     t.Fatalf("expected 200, got %d", rr.Code)
+ }
 	// minimal content checks
 	body := rr.Body.String()
 	if !contains(body, `"match_id": 123`) || !contains(body, `"date": "2023-01-07"`) {

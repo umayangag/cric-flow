@@ -61,49 +61,20 @@ var (
 // getMatchSquadsHandler handles GET /match/{id}/squads
 // Query: asof=YYYY-MM-DD (required), format=TEST|ODI|T20I|T20 (optional)
 func getMatchSquadsHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	idStr := vars["id"]
-	if idStr == "" {
-		// Fallback for direct handler tests without mux route context: extract from URL path
-		// Expected path: /match/{id}/squads
-		p := r.URL.Path
-		// Trim trailing slashes just in case
-		if len(p) > 1 && p[len(p)-1] == '/' {
-			p = p[:len(p)-1]
-		}
-		// Find segments and pick the third one as id
-		// Safe minimal split without importing strings extensively in this file
-		// We assume path starts with '/'
-		segs := make([]string, 0, 4)
-		start := 0
-		for i := 0; i < len(p); i++ {
-			if p[i] == '/' {
-				if i > start {
-					segs = append(segs, p[start:i])
-				}
-				start = i + 1
-			}
-		}
-		if start < len(p) {
-			segs = append(segs, p[start:])
-		}
-		// segs like ["match","{id}","squads"]
-		if len(segs) >= 3 && segs[0] == "match" && segs[2] == "squads" {
-			idStr = segs[1]
-		}
-	}
-	if idStr == "" {
-		writeJSON(
-			w,
-			http.StatusBadRequest,
-			apiError{
-				Code:    "INVALID_PARAM",
-				Message: "missing id",
-				Hint:    "provide path /match/{id}/squads with numeric id",
-			},
-		)
-		return
-	}
+    vars := mux.Vars(r)
+    idStr := vars["id"]
+    if idStr == "" {
+        writeJSON(
+            w,
+            http.StatusBadRequest,
+            apiError{
+                Code:    "INVALID_PARAM",
+                Message: "missing id",
+                Hint:    "provide path /match/{id}/squads with numeric id",
+            },
+        )
+        return
+    }
 	matchID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || matchID <= 0 {
 		writeJSON(
