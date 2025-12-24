@@ -32,7 +32,7 @@ const TabButton: React.FC<TabButtonProps> = ({ id, active, onClick, children }) 
 
 const App: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('health');
-  const baseUrl = useMemo(() => (import.meta.env.VITE_ML_SERVICE_URL as string) || 'http://localhost:8000', []);
+  const baseUrl = useMemo(() => import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000', []);
 
   return (
     <div style={{ fontFamily: 'system-ui, Arial, sans-serif', padding: 16 }}>
