@@ -148,7 +148,7 @@ func getMatchSquadsHandler(w http.ResponseWriter, r *http.Request) {
 // Wire the DAO seam to the real DB implementation and map structs.
 func init() {
     getMatchSquadsFunc = func(matchID int64, asof time.Time, format string) (matchSquadsData, error) {
-        ms, err := db.GetMatchSquads(ctx, matchID, asof, format)
+        ms, err := db.GetMatchSquads(context.Background(), matchID, asof, format)
         if err != nil {
             return matchSquadsData{}, err
         }
