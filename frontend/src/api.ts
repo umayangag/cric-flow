@@ -7,7 +7,7 @@ import type {
   MatchSquadsResponse,
 } from './types';
 
-const BASE_URL = (import.meta.env.VITE_ML_SERVICE_URL as string) || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
 
 async function http<T>(path: string, options?: RequestInit): Promise<T> {
