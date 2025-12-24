@@ -13,8 +13,8 @@ const HealthTab: React.FC = () => {
       setError(null);
       const resp = await api.health();
       setData(resp);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }

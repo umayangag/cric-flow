@@ -43,8 +43,8 @@ const EvaluateTab: React.FC = () => {
       const metrics = computeMetrics(preds, threshold);
       setResult(metrics);
       setStatus(`Done. Evaluated ${metrics.total} squads from season ${nextSeason}.`);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
       setStatus('');
     }
   };

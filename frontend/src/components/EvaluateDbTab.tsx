@@ -59,8 +59,8 @@ const EvaluateDbTab: React.FC = () => {
       const ui: MatchUI[] = list.map((m) => ({ ...m, ui_status: 'Pending' }));
       setMatches(ui);
       setStatus(`Loaded ${ui.length} matches for season ${next.next_season}.`);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
       setStatus('');
     } finally {
       setLoading(false);
@@ -93,7 +93,7 @@ const EvaluateDbTab: React.FC = () => {
         }
         // mark evaluated
         setMatches((prev) => prev.map((x) => (x.match_id === m.match_id ? { ...x, ui_status: 'Evaluated' } : x)));
-      } catch (e: any) {
+      } catch (e: unknown) {
         setMatches((prev) => prev.map((x) => (x.match_id === m.match_id ? { ...x, ui_status: 'Error' } : x)));
       } finally {
         setProgress((p) => ({ ...p, done: p.done + 1 }));

@@ -51,8 +51,8 @@ const MatchCompareDbTab: React.FC = () => {
         predictedWinnerIndex: predictedWinnerIndex as 0 | 1 | null,
         squads: data.squads,
       });
-    } catch (e: any) {
-      const msg = e?.message || String(e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       // Friendly messages for common errors
       if (msg.includes('HTTP 404')) {
         setError('Match not found. Please verify the match ID.');

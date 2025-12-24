@@ -14,17 +14,38 @@ type TabButtonProps = {
   children?: React.ReactNode;
 };
 
+const styles = {
+  container: {
+    fontFamily: 'system-ui, Arial, sans-serif',
+    padding: 16,
+  } as React.CSSProperties,
+  title: {
+    marginTop: 0,
+  } as React.CSSProperties,
+  info: {
+    marginBottom: 12,
+  } as React.CSSProperties,
+  tabs: {
+    marginBottom: 16,
+  } as React.CSSProperties,
+  tabButton: {
+    padding: '8px 12px',
+    border: '1px solid #ccc',
+    background: '#fff',
+    cursor: 'pointer',
+    borderBottom: '1px solid #ccc',
+    marginRight: 8,
+  } as React.CSSProperties,
+  tabButtonActive: {
+    background: '#eef',
+    borderBottom: '2px solid #55f',
+  } as React.CSSProperties,
+};
+
 const TabButton: React.FC<TabButtonProps> = ({ id, active, onClick, children }) => (
   <button
     onClick={() => onClick(id)}
-    style={{
-      padding: '8px 12px',
-      border: '1px solid #ccc',
-      background: active ? '#eef' : '#fff',
-      cursor: 'pointer',
-      borderBottom: active ? '2px solid #55f' : '1px solid #ccc',
-      marginRight: 8,
-    }}
+    style={active ? { ...styles.tabButton, ...styles.tabButtonActive } : styles.tabButton}
   >
     {children}
   </button>
@@ -35,12 +56,12 @@ const App: React.FC = () => {
   const baseUrl = useMemo(() => import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000', []);
 
   return (
-    <div style={{ fontFamily: 'system-ui, Arial, sans-serif', padding: 16 }}>
-      <h1 style={{ marginTop: 0 }}>ML Control Panel</h1>
-      <div style={{ marginBottom: 12 }}>
+    <div style={styles.container}>
+      <h1 style={styles.title}>ML Control Panel</h1>
+      <div style={styles.info}>
         <small>ML Service: {baseUrl}</small>
       </div>
-      <div style={{ marginBottom: 16 }}>
+      <div style={styles.tabs}>
         <TabButton id="health" active={tab === 'health'} onClick={setTab}>
           Health
         </TabButton>
