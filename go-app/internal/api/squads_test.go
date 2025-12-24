@@ -1,4 +1,5 @@
-package api_test
+// revive:disable:var-naming — package name "api" is intentional and conventional here.
+package api
 
 import (
     "net/http"
