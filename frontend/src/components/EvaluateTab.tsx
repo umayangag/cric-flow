@@ -34,14 +34,12 @@ const EvaluateTab: React.FC = () => {
       const testSquads = squads.filter((s) => s.season === nextSeason);
       if (!testSquads.length) throw new Error(`No squads found in season ${nextSeason}.`);
 
-      const preds: Array<{ prob: number; actual: number }> = [];
-      let done = 0;
-      for (const sq of testSquads) {
-        setStatus(`Predicting ${done + 1}/${testSquads.length}…`);
-        const resp = await api.predictWin(sq.players);
-        preds.push({ prob: resp.team_win_probability, actual: sq.actual_win });
-        done++;
-      }
+      setStatus(`Predicting for ${testSquads.length} squads...`);
+      const responses = await Promise.all(testSquads.map((sq) => api.predictWin(sq.players)));
+      const preds: Array<{ prob: number; actual: number }> = responses.map((resp, i) => ({
+        prob: resp.team_win_probability,
+        actual: testSquads[i].actual_win,
+      }));
       const metrics = computeMetrics(preds, threshold);
       setResult(metrics);
       setStatus(`Done. Evaluated ${metrics.total} squads from season ${nextSeason}.`);

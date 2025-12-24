@@ -177,16 +177,20 @@ up-all:
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
 # --- Frontend (React control panel) ---
-.PHONY: frontend-dev frontend-build frontend-test
+.PHONY: frontend-dev frontend-build frontend-test frontend-install
 
-frontend-dev:
-	cd frontend && [ -f package.json ] && npm install && cp -n .env.example .env 2>/dev/null || true && npm run dev
+# Install dependencies only if node_modules is missing (idempotent)
+frontend-install:
+	cd frontend && if [ -f package.json ]; then if [ ! -d "node_modules" ]; then npm install; fi; fi
 
-frontend-build:
-	cd frontend && npm install && npm run build
+frontend-dev: frontend-install
+	cd frontend && cp -n .env.example .env 2>/dev/null || true && npm run dev
 
-frontend-test:
-	cd frontend && npm install && npm run test
+frontend-build: frontend-install
+	cd frontend && npm run build
+
+frontend-test: frontend-install
+	cd frontend && npm run test
 
 # --- Formatting & hooks ---
 
