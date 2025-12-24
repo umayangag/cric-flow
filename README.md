@@ -20,7 +20,7 @@ curl -s http://localhost:8000/health | jq
 ```
 Expected: `{"status":"ok","batting_model":true,"bowling_model":true}` once artifacts are trained.
 
-### 7.1) Frontend control panel (React)
+### 8) Frontend control panel (React)
 A minimal GUI is available to exercise the ML service, run ad-hoc predictions, and evaluate accuracy on a CSV for the immediate next season after a cutoff date.
 
 Quick start:
