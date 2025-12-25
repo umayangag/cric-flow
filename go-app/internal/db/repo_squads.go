@@ -187,7 +187,12 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 			playerID,
 			asof,
 			format,
-			&runsScored, &ballsFaced, &fours, &sixes, &batPos, &sr,
+			&runsScored,
+			&ballsFaced,
+			&fours,
+			&sixes,
+			&batPos,
+			&sr,
 		)
 
 		// Bowling features (latest as-of)

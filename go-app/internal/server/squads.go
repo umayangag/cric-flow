@@ -106,16 +106,6 @@ func getMatchSquadsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	format := q.Get("format")
 
-	if getMatchSquadsFunc == nil {
-		// until wired to DAO, return not implemented
-		writeJSON(
-			w,
-			http.StatusNotImplemented,
-			apiError{Code: "NOT_IMPLEMENTED", Message: "squads retrieval not implemented yet"},
-		)
-		return
-	}
-
 	data, err := getMatchSquadsFunc(matchID, asof, format)
 	if err != nil {
 		switch {
