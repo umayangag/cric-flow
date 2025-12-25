@@ -73,25 +73,13 @@ evaluate:
 	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
-# Format Go code (gofumpt + golines). Self-bootstraps tools if missing.
+# Format Go code (gofumpt + golines). Extracted to script for readability.
 fmt:
-	@GOBIN="$(shell go env GOPATH)/bin"; \
-	if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then \
-		echo "Installing gofumpt and golines to $$GOBIN..."; \
-		go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }; \
-		go install github.com/segmentio/golines@latest || { echo "Failed to install golines"; exit 1; }; \
-	fi; \
-	PATH="$$GOBIN:$$PATH" gofumpt -w .; \
-	PATH="$$GOBIN:$$PATH" golines -w -m 120 .
+	@bash ./scripts/go_fmt.sh
 
 # Optional: check-only formatting status similar to CI (self-bootstraps gofumpt)
 fmt-check:
-	@GOBIN="$(shell go env GOPATH)/bin"; \
-	if ! command -v gofumpt >/dev/null 2>&1; then \
-		echo "Installing gofumpt to $$GOBIN..."; \
-		go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }; \
-	fi; \
-	PATH="$$GOBIN:$$PATH" gofumpt -l . | tee /dev/stderr | awk 'NR>0{exit 1} END{exit 0}'
+	@bash ./scripts/go_fmt_check.sh
 
 vet:
 	go vet ./...
@@ -145,20 +133,7 @@ GOLANGCI_VERSION ?= latest
 GOLANGCI_MODULE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 lint:
-	# Ensure golangci-lint v2 is installed (install if missing or if v1 is present)
-	@if [ -x "$(GOLANGCI_BIN)" ]; then \
-		ver=$$($(GOLANGCI_BIN) version 2>/dev/null | awk '{print $$4}'); \
-		case "$$ver" in \
-			v2.*) ;; \
-			*) echo "Detected golangci-lint $$ver (not v2), installing v2@$(GOLANGCI_VERSION)..."; \
-				go install $(GOLANGCI_MODULE)@$(GOLANGCI_VERSION) || { echo "Failed to install golangci-lint v2"; exit 1; }; \
-		;; \
-		esac; \
-	else \
-		echo "golangci-lint not found, installing v2@$(GOLANGCI_VERSION)..."; \
-		go install $(GOLANGCI_MODULE)@$(GOLANGCI_VERSION) || { echo "Failed to install golangci-lint v2"; exit 1; }; \
-	fi
-	"$(GOLANGCI_BIN)" run -c ../.golangci.yml
+	@bash ./scripts/golangci_lint.sh
 
 
 # Coverage targets

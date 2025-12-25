@@ -138,15 +138,17 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 		return ids, names, nil
 	}
 
-	// Helper to fetch a single player's feature row as-of date
-	fetchPlayerFeatures := func(ctx context.Context, playerID int64) PlayerPredictionRow {
-		// Default zeros
-		out := PlayerPredictionRow{PlayerName: ""}
-		// Resolve player name
-		if err := Pool.QueryRow(ctx, `SELECT name FROM player WHERE id = $1`, playerID).Scan(&out.PlayerName); err != nil {
-			// keep empty name on error; not fatal
-			out.PlayerName = fmt.Sprintf("player_%d", playerID)
-		}
+ // Helper to fetch a single player's feature row as-of date
+ // Returns an error if feature queries fail due to DB or other issues (excluding no-rows),
+ // so callers can decide whether to exclude the player or fail the whole request.
+ fetchPlayerFeatures := func(ctx context.Context, playerID int64) (PlayerPredictionRow, error) {
+     // Default zeros
+     out := PlayerPredictionRow{PlayerName: ""}
+     // Resolve player name
+     if err := Pool.QueryRow(ctx, `SELECT name FROM player WHERE id = $1`, playerID).Scan(&out.PlayerName); err != nil {
+         // keep empty name on error; not fatal
+         out.PlayerName = fmt.Sprintf("player_%d", playerID)
+     }
 
 		// Small helper to reduce query duplication for latest-as-of lookups
 		fetchLatestFeatures := func(ctx context.Context, table string, selectCols string, playerID int64, asof time.Time, format string, dest ...any) error {
@@ -180,34 +182,44 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 		var (
 			runsScored, ballsFaced, fours, sixes, batPos, sr float64
 		)
-		_ = fetchLatestFeatures(
-			ctx,
-			"batting_features",
-			"COALESCE(runs_scored,0), COALESCE(balls_faced,0), COALESCE(fours_scored,0), COALESCE(sixes_scored,0), COALESCE(batting_position,0), COALESCE(strike_rate,0)",
-			playerID,
-			asof,
-			format,
-			&runsScored,
-			&ballsFaced,
-			&fours,
-			&sixes,
-			&batPos,
-			&sr,
-		)
+  if err := fetchLatestFeatures(
+            ctx,
+            "batting_features",
+            "COALESCE(runs_scored,0), COALESCE(balls_faced,0), COALESCE(fours_scored,0), COALESCE(sixes_scored,0), COALESCE(batting_position,0), COALESCE(strike_rate,0)",
+            playerID,
+            asof,
+            format,
+            &runsScored,
+            &ballsFaced,
+            &fours,
+            &sixes,
+            &batPos,
+            &sr,
+        ); err != nil {
+            if err != sql.ErrNoRows {
+                // propagate unexpected error (already logged inside helper)
+                return PlayerPredictionRow{}, err
+            }
+        }
 
 		// Bowling features (latest as-of)
 		var (
 			runsConc, deliveries, wkts, econ float64
 		)
-		_ = fetchLatestFeatures(
-			ctx,
-			"bowling_features",
-			"COALESCE(runs_conceded,0), COALESCE(deliveries,0), COALESCE(wickets_taken,0), COALESCE(econ,0)",
-			playerID,
-			asof,
-			format,
-			&runsConc, &deliveries, &wkts, &econ,
-		)
+  if err := fetchLatestFeatures(
+            ctx,
+            "bowling_features",
+            "COALESCE(runs_conceded,0), COALESCE(deliveries,0), COALESCE(wickets_taken,0), COALESCE(econ,0)",
+            playerID,
+            asof,
+            format,
+            &runsConc, &deliveries, &wkts, &econ,
+        ); err != nil {
+            if err != sql.ErrNoRows {
+                // propagate unexpected error (already logged inside helper)
+                return PlayerPredictionRow{}, err
+            }
+        }
 
 		out.RunsScored = runsScored
 		out.BallsFaced = ballsFaced
@@ -219,8 +231,8 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 		out.Deliveries = deliveries
 		out.WicketsTaken = wkts
 		out.Econ = econ
-		return out
-	}
+        return out, nil
+    }
 
 	// Build squads for both teams
 	makeSquad := func(team teamInfo) (SquadRow, error) {
@@ -232,14 +244,26 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 			return SquadRow{}, ErrIncompleteSquads
 		}
 		players := make([]PlayerPredictionRow, 0, len(ids))
-		for i, pid := range ids {
-			pr := fetchPlayerFeatures(ctx, pid)
-			// ensure name set from names list if feature lookup failed
-			if pr.PlayerName == "" && i < len(names) {
-				pr.PlayerName = names[i]
-			}
-			players = append(players, pr)
-		}
+  for i, pid := range ids {
+            pr, ferr := fetchPlayerFeatures(ctx, pid)
+            if ferr != nil {
+                // Prominently log and propagate to fail the squad fetch
+                slog.Error("failed to fetch player features",
+                    slog.Int64("match_id", matchID),
+                    slog.String("team", team.name),
+                    slog.Int64("player_id", pid),
+                    slog.Time("as_of", asof),
+                    slog.String("format", format),
+                    slog.Any("err", ferr),
+                )
+                return SquadRow{}, fmt.Errorf("fetch player features: %w", ferr)
+            }
+            // ensure name set from names list if feature lookup failed
+            if pr.PlayerName == "" && i < len(names) {
+                pr.PlayerName = names[i]
+            }
+            players = append(players, pr)
+        }
 		return SquadRow{
 			TeamName:  team.name,
 			ActualWin: team.win,

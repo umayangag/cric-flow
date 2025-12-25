@@ -194,6 +194,8 @@ frontend-test: frontend-install
 
 # --- Formatting & hooks ---
 
+ML_VENV_BIN := $(abspath ml-service/.venv/bin)
+
 # Aggregate formatters for both components
 fmt: fmt-go fmt-py
 
@@ -213,8 +215,6 @@ fmt-go:
 
 lint-go:
 	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
-
-ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
 fmt-py:
 	# Auto-bootstrap Python venv + dev tools, then format using ml-service Makefile
