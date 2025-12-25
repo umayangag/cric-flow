@@ -65,5 +65,5 @@ export type MatchSquadsResponse = {
   match_id: number | string;
   date: string; // YYYY-MM-DD
   teams: [string, string];
-  squads: SquadDTO[]; // exactly two
+  squads: [SquadDTO, SquadDTO]; // exactly two
 };
