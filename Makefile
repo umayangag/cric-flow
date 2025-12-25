@@ -176,27 +176,50 @@ up-all:
 	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
 
+# --- Frontend (React control panel) ---
+.PHONY: frontend-dev frontend-build frontend-test frontend-install
+
+# Install dependencies only if node_modules is missing (idempotent)
+frontend-install:
+	cd frontend && if [ -f package.json ]; then if [ ! -d "node_modules" ]; then npm install; fi; fi
+
+frontend-dev: frontend-install
+	cd frontend && cp -n .env.example .env 2>/dev/null || true && npm run dev
+
+frontend-build: frontend-install
+	cd frontend && npm run build
+
+frontend-test: frontend-install
+	cd frontend && npm run test
+
 # --- Formatting & hooks ---
+
+ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
 # Aggregate formatters for both components
 fmt: fmt-go fmt-py
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
-	$(MAKE) -C ml-service fmt-check
+	# Ensure venv/dev tools exist before running Python fmt-check and expose venv bin on PATH
+	$(MAKE) -C ml-service init
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
 fmt-go:
-	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
-	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	cd go-app && make fmt-check
+	# Auto-bootstrap Go dev tools if missing, then format using go-app Makefile
+	@if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then \
+		echo "Bootstrapping Go tools (gofumpt, golines) via 'make -C go-app init'..."; \
+		$(MAKE) -C go-app init || { echo "Failed to setup Go tools"; exit 1; }; \
+	fi
+	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C go-app fmt
 
 lint-go:
-	cd go-app && go vet ./... && make lint
+	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
 
 fmt-py:
-	@command -v black >/dev/null 2>&1 || (echo "Install black: pip install black" && exit 1)
-	@command -v isort >/dev/null 2>&1 || (echo "Install isort: pip install isort" && exit 1)
-	cd ml-service && make fmt-check
+	# Auto-bootstrap Python venv + dev tools, then format using ml-service Makefile
+	$(MAKE) -C ml-service init
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt
 
 lint-py:
 	cd ml-service && make lint-check

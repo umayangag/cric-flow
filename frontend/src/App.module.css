@@ -1,0 +1,30 @@
+.container {
+  font-family: system-ui, Arial, sans-serif;
+  padding: 16px;
+}
+
+.title {
+  margin-top: 0;
+}
+
+.info {
+  margin-bottom: 12px;
+}
+
+.tabs {
+  margin-bottom: 16px;
+}
+
+.tabButton {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+  border-bottom: 1px solid #ccc;
+  margin-right: 8px;
+}
+
+.tabButtonActive {
+  background: #eef;
+  border-bottom: 2px solid #55f;
+}

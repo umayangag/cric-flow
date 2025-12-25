@@ -1,108 +1,3 @@
-# Cric App (Monorepo)
-
-This repository contains the Go data pipeline/services and the Python ML inference service, ported from the original `src/` Python prototype (which remains intact for reference).
-
-Directories:
-- go-app/ — Go services (API, Cricsheet importer, dataset export, tools, migrations, team predictor CLI)
-- ml-service/ — Python FastAPI service for predictions and training scripts (precomputation now lives in go-app)
-- src/ — Original prototype (reference only)
-
-## Quick start (happy-path)
-
-Prerequisites:
-- Docker + Docker Compose
-- Go 1.25+
-- Python 3.10+ (only needed if training models locally without Docker)
-
-Environment defaults used by Go services/API:
-- POSTGRES_HOST=localhost, POSTGRES_PORT=5432, POSTGRES_DB=cricket_data
-- POSTGRES_USER=postgres, POSTGRES_PASSWORD=postgres, POSTGRES_SSLMODE=disable
-
-Tip: copy `.env.example` to `.env` to override defaults locally. See `docs/dev-ux.md` for common workflows and commands.
-
-### 0) One-time local setup (tools, venv, hooks)
-Initialize dev tooling for both components, aligned with CI formatters/linters.
-```
-make init
-# or per component:
-make -C go-app init
-make -C ml-service init
-```
-- For Python, activate the venv after init:
-```
-cd ml-service && source .venv/bin/activate
-```
-
-## Testing standards (Go)
-
-All Go unit tests in this repository should follow our gold-standard table-driven style, as demonstrated in
-`go-app/internal/services/weatherimport/service_test.go`. See the full guidance and a ready-to-copy skeleton in:
-
-- docs/testing-standards-go.md
-- testdata/templates/go_table_test_skeleton.txt
-
-To run the Go test suite with race detector and coverage:
-
-```
-cd go-app && go test -race -cover ./...
-```
-
-### 1) One-line bootstrap (recommended)
-This single command brings up Docker services, applies migrations, imports Cricsheet JSON data, precomputes metrics, exports datasets, trains ML models, and restarts the ML service to load artifacts.
-```
-make up-all
-```
-
-### Or, bring up Postgres (and optional services) manually
-```
-make dev-up
-```
-
-### 2) Run DB migrations
-```
-make migrate
-```
-
-### 3) Import Cricsheet JSON (idempotent)
-This reads local Cricsheet `.json` files under `data/` and upserts into Postgres using the Go importer.
-```
-make cricsheet-import
-# run again to confirm idempotency
-make cricsheet-import
-```
-
-### 4) Precompute player metrics (form/venue/opposition/consistency)
-This triggers the Go API to compute and store features in Postgres (no ML dependency).
-```
-make precompute
-# or with filters
-curl -X POST http://localhost:8080/precompute -H 'Content-Type: application/json' -d '{"season":"2019","formats":["ODI","T20I"]}'
-# check status (in-memory, resets on restart)
-curl -s http://localhost:8080/precompute/status | jq
-```
-
-### 5) Export model datasets (now includes unified cross-format files)
-The exporter now has a unified mode that writes a single merged CSV per task (batting/bowling) across all formats, and includes leakage-free, date-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
-
-Recommended (Makefile runs both unified and legacy for compatibility):
-```
-make export-dataset
-```
-Outputs:
-- Unified (new):
-  - `output/go-app/batting_encoded_all.csv`
-  - `output/go-app/bowling_encoded_all.csv`
-- Legacy (still produced for current training scripts):
-  - `output/go-app/batting_encoded.csv`
-  - `output/go-app/bowling_encoded.csv`
-
-To call the exporter directly:
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1
-# and (legacy unsuffixed files) without flags
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset
 ```
 
 Column naming (examples):
@@ -125,7 +20,63 @@ curl -s http://localhost:8000/health | jq
 ```
 Expected: `{"status":"ok","batting_model":true,"bowling_model":true}` once artifacts are trained.
 
-### 8) Run API (optional orchestration)
+### 8) Frontend (Vite + React) — ML Control Panel
+A lightweight web UI under `frontend/` to interact with the ML service and the Go API. Use it to run ad‑hoc predictions and to evaluate accuracy from CSV or DB-backed flows.
+
+Quick start (Make):
+```
+make frontend-dev
+# opens Vite dev server (default http://localhost:5173)
+```
+
+Alternative (manual):
+```
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+Environment variables (copy `.env.example` to `.env` if customizing):
+```
+VITE_ML_SERVICE_URL=http://localhost:8000   # FastAPI ML service
+VITE_API_URL=http://localhost:8080          # Go API for DB-backed endpoints
+```
+
+Build and test:
+```
+make frontend-build
+make frontend-test
+
+# or using npm from ./frontend
+npm test
+npm run build
+```
+
+Tabs in the UI:
+- Health: shows `GET /health` from the ML service and loaded artifacts/formats.
+- Single Prediction: paste/edit a `PlayerPrediction[]` payload and call `POST /predict/win`.
+- Evaluate From CSV: upload player-level rows for a cutoff date X; the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy plus a 2x2 confusion matrix.
+- Evaluate (DB): DB-backed evaluation using Go API endpoints:
+  - Determine next season after a cutoff: `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
+  - List matches: `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
+  - For each match, fetch squads: `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
+  - Shows progress, per-match status badges, accuracy, and a labeled 2x2 confusion matrix.
+- Match Compare (DB): enter a match ID and as-of date to fetch squads and compare ML predictions for both teams vs the actual winner; handles 404 (not found) and 422 (incomplete squads).
+
+CSV schema for Evaluate From CSV (per row):
+```
+match_id,date,season(optional),team_name,actual_win,
+player_name,runs_scored,balls_faced,fours_scored,sixes_scored,batting_position,strike_rate,
+runs_conceded,deliveries,wickets_taken,econ
+```
+
+Notes:
+- Ensure both the Go API (`go-app`) and the ML service (`ml-service`) are running for DB-backed tabs.
+- The frontend calls the ML service from the browser. Allow CORS from the frontend origin (e.g., http://localhost:5173) or serve behind the same origin/reverse proxy.
+
+### 9) Run API (optional orchestration)
 ```
 make api
 # liveness/readiness
@@ -133,7 +84,7 @@ curl -s http://localhost:8080/health
 curl -s http://localhost:8080/readiness
 ```
 
-### 9) Predict team (DB-backed, end-to-end)
+### 10) Predict team (DB-backed, end-to-end)
 Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
 ```
 cd go-app
@@ -225,9 +176,10 @@ Notes:
 - For development speed, this setup targets the happy path first; additional edge cases can be covered by enhancing the importer as needed.
 
 ## CI
-Two separate GitHub Actions workflows:
+Three separate GitHub Actions workflows:
 - Go App: `.github/workflows/go-app-ci.yml` — spins up Postgres, applies migrations, checks formatting (gofumpt/golines), builds and tests Go modules.
 - ML Service: `.github/workflows/ml-service-ci.yml` — installs deps, runs isort/black checks, and sanity-compiles the app and training scripts.
+- Frontend: `.github/workflows/frontend-ci.yml` — sets up Node 20, installs dependencies with `npm ci`, builds (TypeScript + Vite), and runs unit tests with Vitest.
 
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
@@ -434,3 +386,5 @@ cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
 Notes:
 - The exporter appends the same compact sequence column subsets when enabled (see the T20 section for the exact column lists); ODI/TEST use latest‑as‑of joins with proper format filters under the hood.
 - The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.
+
+

@@ -73,17 +73,13 @@ evaluate:
 	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
 
 
-# Format only modified (uncommitted) Go files to align with CI (gofumpt + golines)
+# Format Go code (gofumpt + golines). Extracted to script for readability.
 fmt:
-	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
-	@command -v golines >/dev/null 2>&1 || (echo "Install golines: go install github.com/segmentio/golines@latest" && exit 1)
-	gofumpt -w .
-	golines -w -m 120 .
+	@bash ./scripts/go_fmt.sh
 
-# Optional: check-only formatting status similar to CI
+# Optional: check-only formatting status similar to CI (self-bootstraps gofumpt)
 fmt-check:
-	@command -v gofumpt >/dev/null 2>&1 || (echo "Install gofumpt: go install mvdan.cc/gofumpt@latest" && exit 1)
-	@gofumpt -l . | tee /dev/stderr | awk 'NR>0{exit 1} END{exit 0}'
+	@bash ./scripts/go_fmt_check.sh
 
 vet:
 	go vet ./...
@@ -130,9 +126,14 @@ backfill-fielding:
 	go run ./cmd/backfill-fielding --all
 
 # Lint Go code using golangci-lint (matches CI config)
+# Self-bootstrap a pinned major version (v2) if missing or outdated and invoke via absolute path if needed
+GOLANGCI_BIN := $(shell command -v golangci-lint 2>/dev/null || echo $$(go env GOPATH)/bin/golangci-lint)
+# Use v2 line by default to match .golangci.yml (which requires v2 config schema)
+GOLANGCI_VERSION ?= latest
+GOLANGCI_MODULE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+
 lint:
-	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
-	golangci-lint run -c ../.golangci.yml
+	@bash ./scripts/golangci_lint.sh
 
 
 # Coverage targets

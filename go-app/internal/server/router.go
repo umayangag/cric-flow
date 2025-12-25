@@ -1,4 +1,5 @@
-package api
+// revive:disable:var-naming
+package server
 
 import (
 	"net/http"
@@ -27,9 +28,17 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet)
 	r.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet)
 
-	// mlCleint predictions
+	// ML predictions
 	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
 	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 
-	return r
+	// Seasons/Matches for DB-backed evaluation
+	r.HandleFunc("/seasons/next", getNextSeasonHandler).Methods(http.MethodGet)
+	r.HandleFunc("/matches", listMatchesHandler).Methods(http.MethodGet)
+
+	// Match squads for DB-backed evaluation/compare
+	r.HandleFunc("/match/{id}/squads", getMatchSquadsHandler).Methods(http.MethodGet)
+
+	// Wrap with CORS middleware for frontend access
+	return corsMiddleware(r)
 }
