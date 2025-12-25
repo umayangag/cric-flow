@@ -147,88 +147,62 @@ func GetMatchSquads(ctx context.Context, matchID int64, asof time.Time, format s
 			// keep empty name on error; not fatal
 			out.PlayerName = fmt.Sprintf("player_%d", playerID)
 		}
+
+		// Small helper to reduce query duplication for latest-as-of lookups
+		fetchLatestFeatures := func(ctx context.Context, table string, selectCols string, playerID int64, asof time.Time, format string, dest ...any) error {
+			query := fmt.Sprintf(`
+				SELECT %s
+				FROM %s
+				WHERE player_id = $1 AND feature_date <= $2`, selectCols, table)
+			args := []any{playerID, asof}
+			if format != "" {
+				query += fmt.Sprintf(" AND format_code = $%d", len(args)+1)
+				args = append(args, format)
+			}
+			query += " ORDER BY feature_date DESC LIMIT 1"
+
+			if err := Pool.QueryRow(ctx, query, args...).Scan(dest...); err != nil {
+				if err != sql.ErrNoRows {
+					slog.Error("feature scan failed",
+						slog.String("table", table),
+						slog.Int64("player_id", playerID),
+						slog.Time("as_of", asof),
+						slog.String("format", format),
+						slog.Any("err", err),
+					)
+				}
+				return err
+			}
+			return nil
+		}
+
 		// Batting features (latest as-of)
 		var (
 			runsScored, ballsFaced, fours, sixes, batPos, sr float64
 		)
+		_ = fetchLatestFeatures(
+			ctx,
+			"batting_features",
+			"COALESCE(runs_scored,0), COALESCE(balls_faced,0), COALESCE(fours_scored,0), COALESCE(sixes_scored,0), COALESCE(batting_position,0), COALESCE(strike_rate,0)",
+			playerID,
+			asof,
+			format,
+			&runsScored, &ballsFaced, &fours, &sixes, &batPos, &sr,
+		)
+
 		// Bowling features (latest as-of)
 		var (
 			runsConc, deliveries, wkts, econ float64
 		)
-
-		// Optional format filter; if schema lacks format, omit condition
-		batQuery := `
-            SELECT
-                COALESCE(runs_scored,0), COALESCE(balls_faced,0), COALESCE(fours_scored,0), COALESCE(sixes_scored,0),
-                COALESCE(batting_position,0), COALESCE(strike_rate,0)
-            FROM batting_features
-            WHERE player_id = $1 AND feature_date <= $2` + func() string {
-			if format != "" {
-				return " AND format_code = $3"
-			}
-			return ""
-		}() + `
-            ORDER BY feature_date DESC
-            LIMIT 1`
-		if format != "" {
-			if err := Pool.QueryRow(ctx, batQuery, playerID, asof, format).Scan(&runsScored, &ballsFaced, &fours, &sixes, &batPos, &sr); err != nil {
-				if err != sql.ErrNoRows {
-					slog.Error("batting features scan failed",
-						slog.Int64("player_id", playerID),
-						slog.Time("as_of", asof),
-						slog.String("format", format),
-						slog.Any("err", err),
-					)
-				}
-			}
-		} else {
-			if err := Pool.QueryRow(ctx, batQuery, playerID, asof).Scan(&runsScored, &ballsFaced, &fours, &sixes, &batPos, &sr); err != nil {
-				if err != sql.ErrNoRows {
-					slog.Error("batting features scan failed",
-						slog.Int64("player_id", playerID),
-						slog.Time("as_of", asof),
-						slog.String("format", ""),
-						slog.Any("err", err),
-					)
-				}
-			}
-		}
-
-		bowlQuery := `
-            SELECT
-                COALESCE(runs_conceded,0), COALESCE(deliveries,0), COALESCE(wickets_taken,0), COALESCE(econ,0)
-            FROM bowling_features
-            WHERE player_id = $1 AND feature_date <= $2` + func() string {
-			if format != "" {
-				return " AND format_code = $3"
-			}
-			return ""
-		}() + `
-            ORDER BY feature_date DESC
-            LIMIT 1`
-		if format != "" {
-			if err := Pool.QueryRow(ctx, bowlQuery, playerID, asof, format).Scan(&runsConc, &deliveries, &wkts, &econ); err != nil {
-				if err != sql.ErrNoRows {
-					slog.Error("bowling features scan failed",
-						slog.Int64("player_id", playerID),
-						slog.Time("as_of", asof),
-						slog.String("format", format),
-						slog.Any("err", err),
-					)
-				}
-			}
-		} else {
-			if err := Pool.QueryRow(ctx, bowlQuery, playerID, asof).Scan(&runsConc, &deliveries, &wkts, &econ); err != nil {
-				if err != sql.ErrNoRows {
-					slog.Error("bowling features scan failed",
-						slog.Int64("player_id", playerID),
-						slog.Time("as_of", asof),
-						slog.String("format", ""),
-						slog.Any("err", err),
-					)
-				}
-			}
-		}
+		_ = fetchLatestFeatures(
+			ctx,
+			"bowling_features",
+			"COALESCE(runs_conceded,0), COALESCE(deliveries,0), COALESCE(wickets_taken,0), COALESCE(econ,0)",
+			playerID,
+			asof,
+			format,
+			&runsConc, &deliveries, &wkts, &econ,
+		)
 
 		out.RunsScored = runsScored
 		out.BallsFaced = ballsFaced
