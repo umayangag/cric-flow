@@ -20,36 +20,52 @@ curl -s http://localhost:8000/health | jq
 ```
 Expected: `{"status":"ok","batting_model":true,"bowling_model":true}` once artifacts are trained.
 
-### 8) Frontend control panel (React)
-A minimal GUI is available to exercise the ML service, run ad-hoc predictions, and evaluate accuracy on a CSV for the immediate next season after a cutoff date.
+### 8) Frontend (Vite + React) — ML Control Panel
+A lightweight web UI under `frontend/` to interact with the ML service and the Go API. Use it to run ad‑hoc predictions and to evaluate accuracy from CSV or DB-backed flows.
 
-Quick start:
+Quick start (Make):
 ```
 make frontend-dev
 # opens Vite dev server (default http://localhost:5173)
 ```
 
-Configure service URLs (optional):
+Alternative (manual):
 ```
-cd frontend && cp .env.example .env
-# VITE_ML_SERVICE_URL: FastAPI ML service (default http://localhost:8000)
-# VITE_API_URL: Go API for DB-backed endpoints (default http://localhost:8080)
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+Environment variables (copy `.env.example` to `.env` if customizing):
+```
+VITE_ML_SERVICE_URL=http://localhost:8000   # FastAPI ML service
+VITE_API_URL=http://localhost:8080          # Go API for DB-backed endpoints
 ```
 
 Build and test:
 ```
 make frontend-build
 make frontend-test
+
+# or using npm from ./frontend
+npm test
+npm run build
 ```
 
 Tabs in the UI:
-- Health: calls GET /health and shows loaded artifacts and formats.
-- Single Prediction: paste or edit a `players` array (PlayerPrediction schema) and POSTs to `/predict/win`.
-- Evaluate From CSV: upload a CSV of player-level rows, choose a cutoff date X, and the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy and a confusion matrix.
+- Health: shows `GET /health` from the ML service and loaded artifacts/formats.
+- Single Prediction: paste/edit a `PlayerPrediction[]` payload and call `POST /predict/win`.
+- Evaluate From CSV: upload player-level rows for a cutoff date X; the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy plus a 2x2 confusion matrix.
+- Evaluate (DB): DB-backed evaluation using Go API endpoints:
+  - Determine next season after a cutoff: `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
+  - List matches: `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
+  - For each match, fetch squads: `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
+  - Shows progress, per-match status badges, accuracy, and a labeled 2x2 confusion matrix.
+- Match Compare (DB): enter a match ID and as-of date to fetch squads and compare ML predictions for both teams vs the actual winner; handles 404 (not found) and 422 (incomplete squads).
 
-DB-backed flows (WIP): set `VITE_API_URL` to your Go API (default http://localhost:8080). The frontend API client already includes methods for `/seasons/next`, `/matches`, and `/match/{id}/squads` which will be used by the upcoming DB Evaluate and DB Match Compare tabs.
-
-CSV schema (per row):
+CSV schema for Evaluate From CSV (per row):
 ```
 match_id,date,season(optional),team_name,actual_win,
 player_name,runs_scored,balls_faced,fours_scored,sixes_scored,batting_position,strike_rate,
@@ -57,9 +73,10 @@ runs_conceded,deliveries,wickets_taken,econ
 ```
 
 Notes:
-- The frontend makes browser calls to the ML service. Ensure the FastAPI service allows CORS from the frontend origin (e.g., http://localhost:5173) or run both behind a reverse proxy on the same origin.
+- Ensure both the Go API (`go-app`) and the ML service (`ml-service`) are running for DB-backed tabs.
+- The frontend calls the ML service from the browser. Allow CORS from the frontend origin (e.g., http://localhost:5173) or serve behind the same origin/reverse proxy.
 
-### 8) Run API (optional orchestration)
+### 9) Run API (optional orchestration)
 ```
 make api
 # liveness/readiness
@@ -67,7 +84,7 @@ curl -s http://localhost:8080/health
 curl -s http://localhost:8080/readiness
 ```
 
-### 9) Predict team (DB-backed, end-to-end)
+### 10) Predict team (DB-backed, end-to-end)
 Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
 ```
 cd go-app
@@ -371,46 +388,3 @@ Notes:
 - The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.
 
 
-## Frontend (Vite + React) — ML Control Panel
-
-This repo includes a lightweight React frontend under `frontend/` to interact with the ML service and the Go API.
-
-Environment variables (copy `.env.example` to `.env`):
-
-```
-VITE_ML_SERVICE_URL=http://localhost:8000
-VITE_API_URL=http://localhost:8080
-```
-
-Start the dev server:
-
-```
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-# Open http://localhost:5173
-```
-
-Build and test:
-
-```
-cd frontend
-npm test
-npm run build
-```
-
-Tabs overview:
-- Health: shows `GET /health` from the ML service.
-- Single Prediction: paste/edit a `PlayerPrediction[]` payload and call `POST /predict/win`.
-- Evaluate From CSV: legacy CSV-based evaluation of accuracy.
-- Evaluate (DB): DB-backed evaluation flow using Go API endpoints:
-  - Determine next season after a cutoff date via `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
-  - List matches via `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
-  - For each match, fetch squads `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
-  - Shows progress, per-match status badges, accuracy, and a labeled 2x2 confusion matrix.
-- Match Compare (DB): enter a match ID and as-of date to fetch squads and compare ML predictions for both teams vs the actual winner. Handles 404 (not found) and 422 (incomplete squads).
-
-Notes:
-- The Go API sets permissive CORS for the frontend origin (`FRONTEND_ORIGIN` env var, defaults to `http://localhost:5173`).
-- Ensure the Go API (`go-app`) and the ML service (`ml-service`) are both running when testing DB-backed tabs.
