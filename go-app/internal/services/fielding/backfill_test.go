@@ -45,9 +45,7 @@ func TestService_BackfillMatch(t *testing.T) {
 			m := dbmocks.NewMockFieldingRepo(t)
 			s := fsvc.NewService(m)
 
-			if tc.match <= 0 {
-				// no expectations; method should error before calling repo
-			} else {
+			if tc.match > 0 {
 				// List expectation for specific match
 				matchID := tc.match
 				if tc.listErr != nil {
@@ -80,9 +78,6 @@ func TestService_BackfillMatch(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.wantCount, n)
-			if tc.apply {
-				// cannot directly assert batches without intercepting rows; rely on expectations
-			}
 		})
 	}
 }
@@ -120,14 +115,14 @@ func TestService_BackfillAll_ConcurrencyAndErrors(t *testing.T) {
 			m := dbmocks.NewMockFieldingRepo(t)
 			s := fsvc.NewService(m)
 
-			if tc.conc < 1 {
-				// no expectations; should fail fast
-			} else if tc.listErr != nil {
-				m.EXPECT().ListFieldingEvents(mock.Anything, (*int64)(nil)).Return(nil, tc.listErr)
-			} else {
-				m.EXPECT().ListFieldingEvents(mock.Anything, (*int64)(nil)).Return(events, nil)
-				if tc.apply {
-					m.EXPECT().UpsertFieldingAggregates(mock.Anything, mock.Anything).Return(tc.upsertErr)
+			if tc.conc >= 1 {
+				if tc.listErr != nil {
+					m.EXPECT().ListFieldingEvents(mock.Anything, (*int64)(nil)).Return(nil, tc.listErr)
+				} else {
+					m.EXPECT().ListFieldingEvents(mock.Anything, (*int64)(nil)).Return(events, nil)
+					if tc.apply {
+						m.EXPECT().UpsertFieldingAggregates(mock.Anything, mock.Anything).Return(tc.upsertErr)
+					}
 				}
 			}
 
