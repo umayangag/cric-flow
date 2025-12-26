@@ -29,3 +29,9 @@ packages:
     interfaces:
       Predictor: { }
       MLClient: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/db:
+    config:
+      dir: internal/db/mocks
+      pkgname: mocks
+    interfaces:
+      FieldingRepo: {}
