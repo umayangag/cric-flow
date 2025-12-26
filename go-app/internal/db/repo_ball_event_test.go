@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -76,80 +77,98 @@ type rowWrap struct{ pgx.Row }
 
 func (r rowWrap) Scan(dest ...any) error { return r.Row.Scan(dest...) }
 
-func TestInsertBallEvents_SmallBatch_UsesExec(t *testing.T) {
-	ctx := context.Background()
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock.NewPool: %v", err)
-	}
-	t.Cleanup(mock.Close)
+// TestInsertBallEvents_Scenarios: table-driven tests covering small-batch Exec and bulk CopyFrom paths.
+func TestInsertBallEvents_Scenarios(t *testing.T) {
+	type arrangeFn func(t *testing.T) (ctx context.Context, mock pgxmock.PgxPoolIface, rows []db.BallEventRow)
+	type assertFn func(t *testing.T, mock pgxmock.PgxPoolIface, err error)
 
-	// Expect 2 Exec calls (<= small threshold) with any 16 args each
-	mock.ExpectExec("INSERT INTO ball_event").
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	mock.ExpectExec("INSERT INTO ball_event").
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "small batch uses Exec with individual inserts",
+			arrange: func(t *testing.T) (context.Context, pgxmock.PgxPoolIface, []db.BallEventRow) {
+				ctx := context.Background()
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err, "pgxmock.NewPool")
+				t.Cleanup(mock.Close)
 
-	db.SetPoolAPI(mockPoolAPI{p: mock})
-	t.Cleanup(func() { db.SetPoolAPI(nil) })
+				// Expect 2 Exec calls (<= small threshold) with any 16 args each
+				mock.ExpectExec("INSERT INTO ball_event").
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WillReturnResult(pgxmock.NewResult("INSERT", 1))
+				mock.ExpectExec("INSERT INTO ball_event").
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+						pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	rows := []db.BallEventRow{
-		{MatchID: 1, Innings: 1, Over: 1, Ball: 1, BallSeq: 1, IsLegal: true, Phase: "pp"},
-		{MatchID: 1, Innings: 1, Over: 1, Ball: 2, BallSeq: 2, IsLegal: true, Phase: "pp"},
-	}
-	if err := db.InsertBallEvents(ctx, rows); err != nil {
-		t.Fatalf("InsertBallEvents small batch: %v", err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet expectations: %v", err)
-	}
-}
+				rows := []db.BallEventRow{
+					{MatchID: 1, Innings: 1, Over: 1, Ball: 1, BallSeq: 1, IsLegal: true, Phase: "pp"},
+					{MatchID: 1, Innings: 1, Over: 1, Ball: 2, BallSeq: 2, IsLegal: true, Phase: "pp"},
+				}
+				return ctx, mock, rows
+			},
+			assert: func(t *testing.T, mock pgxmock.PgxPoolIface, err error) {
+				require.NoError(t, err, "InsertBallEvents small batch")
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "bulk path uses CopyFrom and staged insert",
+			arrange: func(t *testing.T) (context.Context, pgxmock.PgxPoolIface, []db.BallEventRow) {
+				ctx := context.Background()
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err, "pgxmock.NewPool")
+				t.Cleanup(mock.Close)
 
-func TestInsertBallEvents_Bulk_CopyFromAndInsert(t *testing.T) {
-	ctx := context.Background()
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock.NewPool: %v", err)
-	}
-	t.Cleanup(mock.Close)
+				// Bulk path expectations
+				mock.ExpectBegin()
+				mock.ExpectExec("CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS").
+					WillReturnResult(pgxmock.NewResult("CREATE TABLE", 0))
+				mock.ExpectCopyFrom(pgx.Identifier{"ball_event_stage"}, []string{"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase", "striker_id", "non_striker_id", "bowler_id", "runs_batter", "runs_extras", "runs_total", "extras_kind", "wicket_kind", "player_out_id"}).
+					WillReturnResult(10)
+				mock.ExpectExec("INSERT INTO ball_event").WillReturnResult(pgxmock.NewResult("INSERT", 10))
+				mock.ExpectCommit()
 
-	// Bulk path expectations
-	mock.ExpectBegin()
-	mock.ExpectExec("CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS").
-		WillReturnResult(pgxmock.NewResult("CREATE TABLE", 0))
-	mock.ExpectCopyFrom(pgx.Identifier{"ball_event_stage"}, []string{"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase", "striker_id", "non_striker_id", "bowler_id", "runs_batter", "runs_extras", "runs_total", "extras_kind", "wicket_kind", "player_out_id"}).
-		WillReturnResult(10)
-	mock.ExpectExec("INSERT INTO ball_event").WillReturnResult(pgxmock.NewResult("INSERT", 10))
-	mock.ExpectCommit()
-
-	db.SetPoolAPI(mockPoolAPI{p: mock})
-	t.Cleanup(func() { db.SetPoolAPI(nil) })
-
-	// len(rows)=9 to exceed smallBatchThreshold(8)
-	rows := make([]db.BallEventRow, 9)
-	for i := 0; i < 9; i++ {
-		rows[i] = db.BallEventRow{
-			MatchID: 1,
-			Innings: 1,
-			Over:    1 + i/6,
-			Ball:    1 + i%6,
-			BallSeq: 1 + i,
-			IsLegal: true,
-			Phase:   "pp",
-		}
+				// len(rows)=9 to exceed smallBatchThreshold(8)
+				rows := make([]db.BallEventRow, 9)
+				for i := 0; i < 9; i++ {
+					rows[i] = db.BallEventRow{
+						MatchID: 1,
+						Innings: 1,
+						Over:    1 + i/6,
+						Ball:    1 + i%6,
+						BallSeq: 1 + i,
+						IsLegal: true,
+						Phase:   "pp",
+					}
+				}
+				return ctx, mock, rows
+			},
+			assert: func(t *testing.T, mock pgxmock.PgxPoolIface, err error) {
+				require.NoError(t, err, "InsertBallEvents bulk")
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
 	}
-	if err := db.InsertBallEvents(ctx, rows); err != nil {
-		t.Fatalf("InsertBallEvents bulk: %v", err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet expectations: %v", err)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			ctx, mock, rows := tc.arrange(t)
+			db.SetPoolAPI(mockPoolAPI{p: mock})
+			t.Cleanup(func() { db.SetPoolAPI(nil) })
+			// Act
+			err := db.InsertBallEvents(ctx, rows)
+			// Assert
+			tc.assert(t, mock, err)
+		})
 	}
 }

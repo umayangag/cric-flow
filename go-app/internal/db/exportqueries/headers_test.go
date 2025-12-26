@@ -3,41 +3,65 @@ package exportqueries
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestAppendSeqIfEnabled_Bowling(t *testing.T) {
-	base := []string{"c1", "c2"}
-	seq := BowlingSeqHeaders()
-	// OFF → unchanged
-	got := AppendSeqIfEnabled(context.Background(), base, seq)
-	if len(got) != len(base) {
-		t.Fatalf("OFF: expected len=%d got %d", len(base), len(got))
-	}
-	// ON → base + seq
-	ctx := WithSeqEnabled(context.Background(), true)
-	got2 := AppendSeqIfEnabled(ctx, base, seq)
-	if len(got2) != len(base)+len(seq) {
-		t.Fatalf("ON: expected len=%d got %d", len(base)+len(seq), len(got2))
-	}
-	for i := range base {
-		if got2[i] != base[i] {
-			t.Fatalf("prefix mismatch at %d: %q vs %q", i, got2[i], base[i])
-		}
-	}
-}
+// TestAppendSeqIfEnabled_Table converts the legacy tests into table-driven AAA style.
+func TestAppendSeqIfEnabled_Table(t *testing.T) {
+	t.Parallel()
 
-func TestAppendSeqIfEnabled_Batting(t *testing.T) {
-	base := []string{"h1"}
-	seq := BattingSeqHeaders()
-	// OFF
-	got := AppendSeqIfEnabled(context.Background(), base, seq)
-	if len(got) != 1 || got[0] != "h1" {
-		t.Fatalf("OFF: unexpected result: %v", got)
+	type arrangeFn func() (ctx context.Context, base []string, seq []string)
+	type assertFn func(t *testing.T, got []string, base []string, seq []string)
+
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "bowling: OFF -> unchanged; ON -> base prefix preserved and len grows",
+			arrange: func() (context.Context, []string, []string) {
+				return context.Background(), []string{"c1", "c2"}, BowlingSeqHeaders()
+			},
+			assert: func(t *testing.T, got []string, base, seq []string) {
+				// OFF path
+				require.Len(t, got, len(base))
+				// ON path
+				ctxOn := WithSeqEnabled(context.Background(), true)
+				gotOn := AppendSeqIfEnabled(ctxOn, base, seq)
+				require.Len(t, gotOn, len(base)+len(seq))
+				for i := range base {
+					require.Equalf(t, base[i], gotOn[i], "prefix mismatch at %d", i)
+				}
+			},
+		},
+		{
+			name: "batting: OFF -> unchanged; ON -> base + seq length",
+			arrange: func() (context.Context, []string, []string) {
+				return context.Background(), []string{"h1"}, BattingSeqHeaders()
+			},
+			assert: func(t *testing.T, got []string, base, seq []string) {
+				// OFF path
+				require.Len(t, got, len(base))
+				require.Equal(t, base[0], got[0])
+				// ON path
+				ctxOn := WithSeqEnabled(context.Background(), true)
+				gotOn := AppendSeqIfEnabled(ctxOn, base, seq)
+				require.Len(t, gotOn, len(base)+len(seq))
+			},
+		},
 	}
-	// ON
-	ctx := WithSeqEnabled(context.Background(), true)
-	got2 := AppendSeqIfEnabled(ctx, base, seq)
-	if len(got2) != 1+len(seq) {
-		t.Fatalf("ON: wrong length: %d", len(got2))
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			ctx, base, seq := tc.arrange()
+			// Act
+			got := AppendSeqIfEnabled(ctx, base, seq)
+			// Assert
+			tc.assert(t, got, base, seq)
+		})
 	}
 }

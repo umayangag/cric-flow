@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
@@ -14,10 +15,8 @@ func TestCountPlayersByLowerName(t *testing.T) {
 	ctx := context.Background()
 
 	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock: %v", err)
-	}
-	defer mock.Close()
+	require.NoError(t, err, "pgxmock")
+	t.Cleanup(mock.Close)
 
 	// Inject our mock DB
 	db.SetDB(mockDB{pool: mock})
@@ -65,17 +64,18 @@ func TestCountPlayersByLowerName(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
 			tc.setup()
+			// Act
 			got, err := db.CountPlayersByLowerName(ctx, tc.arg)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("error mismatch: %v", err)
+			// Assert
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.wantCount, got)
 			}
-			if !tc.wantErr && got != tc.wantCount {
-				t.Fatalf("count mismatch: got %d want %d", got, tc.wantCount)
-			}
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatalf("unmet expectations: %v", err)
-			}
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }
@@ -83,93 +83,133 @@ func TestCountPlayersByLowerName(t *testing.T) {
 func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 	ctx := context.Background()
 
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock: %v", err)
+	type arrangeFn func(t *testing.T) (pgxmock.PgxPoolIface, int, string)
+	type assertFn func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface)
+
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "happy -> multiple affected",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, int, string) {
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err)
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
+					WithArgs(1, "kumar sangakkara").
+					WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1))
+				return mock, 1, "kumar sangakkara"
+			},
+			assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
+				require.NoError(t, err)
+				require.Equal(t, int64(3), n)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "db error",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, int, string) {
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err)
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
+					WithArgs(0, "foo bar").
+					WillReturnError(errors.New("fail"))
+				return mock, 0, "foo bar"
+			},
+			assert: func(t *testing.T, _ int64, err error, mock pgxmock.PgxPoolIface) {
+				require.Error(t, err)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
 	}
-	defer mock.Close()
-	db.SetDB(mockDB{pool: mock})
 
-	t.Run("happy -> multiple affected", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
-			WithArgs(1, "kumar sangakkara").
-			WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1))
-		n, err := db.SetIsWicketKeeperByLowerName(ctx, 1, "kumar sangakkara")
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if n != 3 {
-			t.Fatalf("affected mismatch: got %d want %d", n, 3)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
-
-	t.Run("db error", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = $2 RETURNING 1`)).
-			WithArgs(0, "foo bar").
-			WillReturnError(errors.New("fail"))
-		_, err := db.SetIsWicketKeeperByLowerName(ctx, 0, "foo bar")
-		if err == nil {
-			t.Fatalf("expected error")
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			mock, flag, name := tc.arrange(t)
+			// Act
+			n, err := db.SetIsWicketKeeperByLowerName(ctx, flag, name)
+			// Assert
+			tc.assert(t, n, err, mock)
+		})
+	}
 }
 
 func TestZeroKeepersExcept(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("empty list -> returns error", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		n, err := db.ZeroKeepersExcept(ctx, nil)
-		if err == nil {
-			t.Fatalf("expected err but got nil")
-		}
-		if n != 0 {
-			t.Fatalf("count mismatch: got %d want %d", n, 0)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	type arrangeFn func(t *testing.T) (pgxmock.PgxPoolIface, []string)
+	type assertFn func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface)
 
-	t.Run("non-empty -> returning rows counted", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1,$2) RETURNING 1`)).
-			WithArgs("adam gilchrist", "ms dhoni").
-			WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1).AddRow(1))
-		n, err := db.ZeroKeepersExcept(ctx, []string{"adam gilchrist", "ms dhoni"})
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if n != 4 {
-			t.Fatalf("affected mismatch: got %d want %d", n, 4)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "empty list -> returns error",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+				mock, _ := pgxmock.NewPool()
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				return mock, nil
+			},
+			assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
+				require.Error(t, err)
+				require.Equal(t, int64(0), n)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "non-empty -> returning rows counted",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+				mock, _ := pgxmock.NewPool()
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1,$2) RETURNING 1`)).
+					WithArgs("adam gilchrist", "ms dhoni").
+					WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1).AddRow(1))
+				return mock, []string{"adam gilchrist", "ms dhoni"}
+			},
+			assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
+				require.NoError(t, err)
+				require.Equal(t, int64(4), n)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "db error on returning path",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+				mock, _ := pgxmock.NewPool()
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1) RETURNING 1`)).
+					WithArgs("only one").
+					WillReturnError(errors.New("boom"))
+				return mock, []string{"only one"}
+			},
+			assert: func(t *testing.T, _ int64, err error, mock pgxmock.PgxPoolIface) {
+				require.Error(t, err)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+	}
 
-	t.Run("db error on returning path", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1) RETURNING 1`)).
-			WithArgs("only one").
-			WillReturnError(errors.New("boom"))
-		if _, err := db.ZeroKeepersExcept(ctx, []string{"only one"}); err == nil {
-			t.Fatalf("expected error")
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			mock, keepers := tc.arrange(t)
+			// Act
+			n, err := db.ZeroKeepersExcept(ctx, keepers)
+			// Assert
+			tc.assert(t, n, err, mock)
+		})
+	}
 }
