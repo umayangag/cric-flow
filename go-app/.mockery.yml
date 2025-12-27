@@ -35,3 +35,24 @@ packages:
       pkgname: mocks
     interfaces:
       FieldingRepo: {}
+      DatasetRepo: {}
+      MatchRepo: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/jobs:
+    config:
+      dir: internal/services/weatherworker/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Source: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter:
+    config:
+      dir: internal/commands/etlimporter/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Ingestor: {}
+  github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet:
+    config:
+      dir: internal/services/cricsheetimporter/internal/mocks
+      pkgname: mocks
+    interfaces:
+      Loader: {}
+      Parser: {}

@@ -1,208 +1,166 @@
 package cricsheetimporter_test
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"sort"
-	"strings"
-	"sync"
-	"testing"
+    "context"
+    "errors"
+    "testing"
 
-	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
+    "github.com/stretchr/testify/mock"
+    "github.com/stretchr/testify/require"
+    dbmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
+    "github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+    svcmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter/internal/mocks"
+    svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
 )
 
-type fakeLoader struct {
-	list []string
-	load map[string][]byte
-	err  error
-	mu   sync.Mutex
-	seen []string
-}
-
-func (f *fakeLoader) List(_ context.Context, _ string) ([]string, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	out := make([]string, len(f.list))
-	copy(out, f.list)
-	return out, nil
-}
-
-func (f *fakeLoader) Load(_ context.Context, _ string, id string) ([]byte, error) {
-	f.mu.Lock()
-	f.seen = append(f.seen, id)
-	f.mu.Unlock()
-	if f.err != nil {
-		return nil, f.err
-	}
-	b, ok := f.load[id]
-	if !ok {
-		return nil, fmt.Errorf("missing: %s", id)
-	}
-	return b, nil
-}
-
-type fakeParser struct {
-	out map[string][]models.Match
-	err error
-}
-
-func (p *fakeParser) Parse(_ context.Context, raw []byte) ([]models.Match, error) {
-	if p.err != nil {
-		return nil, p.err
-	}
-	return p.out[string(raw)], nil
-}
-
-type fakeRepo struct {
-	mu      sync.Mutex
-	upserts [][]models.Match
-	err     error
-}
-
-func (r *fakeRepo) UpsertMatches(_ context.Context, m []models.Match) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.err != nil {
-		return r.err
-	}
-	r.upserts = append(r.upserts, append([]models.Match(nil), m...))
-	return nil
-}
-
-// assert helpers (no ifs in test bodies)
-
-type assertSvcFn func(t *testing.T, processed int, err error, fl *fakeLoader, fr *fakeRepo)
+type assertSvcFn func(t *testing.T, processed int, err error)
 
 func assertNoErrorProcessed(want int) assertSvcFn {
-	return func(t *testing.T, processed int, err error, _ *fakeLoader, _ *fakeRepo) {
-		require.NoError(t, err)
-		require.Equal(t, want, processed)
-	}
+    return func(t *testing.T, processed int, err error) {
+        require.NoError(t, err)
+        require.Equal(t, want, processed)
+    }
 }
 
 func assertErrContains(sub string) assertSvcFn {
-	return func(t *testing.T, _ int, err error, _ *fakeLoader, _ *fakeRepo) {
-		require.Error(t, err)
-		// use ErrorContains where available; fallback to strings.Contains for clarity
-		require.Truef(t, strings.Contains(err.Error(), sub), "want err containing %q, got %v", sub, err)
-	}
-}
-
-func assertRepoBatches(want int) assertSvcFn {
-	return func(t *testing.T, _ int, err error, _ *fakeLoader, r *fakeRepo) {
-		require.NoError(t, err)
-		require.Equal(t, want, len(r.upserts))
-	}
-}
-
-func assertLoaderSaw(ids ...string) assertSvcFn {
-	return func(t *testing.T, _ int, err error, fl *fakeLoader, _ *fakeRepo) {
-		require.NoError(t, err)
-		got := append([]string(nil), fl.seen...)
-		sort.Strings(got)
-		sort.Strings(ids)
-		require.Equal(t, len(ids), len(got), "loader saw %v, want %v", got, ids)
-		for i := range ids {
-			require.Equalf(t, ids[i], got[i], "loader order mismatch at %d: got %v want %v", i, got, ids)
-		}
-	}
+    return func(t *testing.T, _ int, err error) {
+        require.Error(t, err)
+        require.ErrorContains(t, err, sub)
+    }
 }
 
 func TestIngestService_BasicFlows(t *testing.T) {
-	t.Parallel()
-	// common fakes
-	fl := &fakeLoader{
-		list: []string{"a.json", "b.json"},
-		load: map[string][]byte{"a.json": []byte("A"), "b.json": []byte("B")},
-	}
-	fp := &fakeParser{out: map[string][]models.Match{
-		"A": {{ID: 1}},
-		"B": {{ID: 2}, {ID: 3}},
-	}}
-	fr := &fakeRepo{}
-	s := &svc.IngestService{Loader: fl, Parser: fp, Repository: fr}
-
-	cases := []struct {
-		name   string
-		apply  bool
-		conc   int
-		assert assertSvcFn
-	}{
-		{"dry-run single worker", false, 1, func(t *testing.T, p int, e error, fl *fakeLoader, fr *fakeRepo) {
-			assertNoErrorProcessed(2)(t, p, e, fl, fr)
-			assertRepoBatches(0)(t, p, e, fl, fr)
-			assertLoaderSaw("a.json", "b.json")(t, p, e, fl, fr)
-		}},
-		{"apply with 2 workers", true, 2, func(t *testing.T, p int, e error, fl *fakeLoader, fr *fakeRepo) {
-			assertNoErrorProcessed(2)(t, p, e, fl, fr)
-			assertRepoBatches(2)(t, p, e, fl, fr)
-		}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			processed, err := s.IngestDir(context.Background(), ".", tc.apply, tc.conc)
-			tc.assert(t, processed, err, fl, fr)
-		})
-	}
+    t.Parallel()
+    cases := []struct {
+        name    string
+        apply   bool
+        conc    int
+        arrange func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo)
+        assert  assertSvcFn
+    }{
+        {
+            name:  "dry-run single worker",
+            apply: false,
+            conc:  1,
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return([]string{"a.json", "b.json"}, nil)
+                l.EXPECT().Load(mock.Anything, ".", "a.json").Return([]byte("A"), nil).Once()
+                l.EXPECT().Load(mock.Anything, ".", "b.json").Return([]byte("B"), nil).Once()
+                p.EXPECT().Parse(mock.Anything, []byte("A")).Return([]models.Match{{ID: 1}}, nil)
+                p.EXPECT().Parse(mock.Anything, []byte("B")).Return([]models.Match{{ID: 2}, {ID: 3}}, nil)
+                // No repository calls when apply=false
+            },
+            assert: assertNoErrorProcessed(2),
+        },
+        {
+            name:  "apply with 2 workers",
+            apply: true,
+            conc:  2,
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return([]string{"a.json", "b.json"}, nil)
+                // Order-agnostic loads
+                l.EXPECT().Load(mock.Anything, ".", "a.json").Return([]byte("A"), nil).Once()
+                l.EXPECT().Load(mock.Anything, ".", "b.json").Return([]byte("B"), nil).Once()
+                p.EXPECT().Parse(mock.Anything, []byte("A")).Return([]models.Match{{ID: 1}}, nil)
+                p.EXPECT().Parse(mock.Anything, []byte("B")).Return([]models.Match{{ID: 2}, {ID: 3}}, nil)
+                r.EXPECT().UpsertMatches(mock.Anything, mock.Anything).Return(nil).Twice()
+            },
+            assert: assertNoErrorProcessed(2),
+        },
+    }
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            l := svcmocks.NewMockLoader(t)
+            p := svcmocks.NewMockParser(t)
+            r := dbmocks.NewMockMatchRepo(t)
+            s := &svc.IngestService{Loader: l, Parser: p, Repository: r}
+            if tc.arrange != nil {
+                tc.arrange(l, p, r)
+            }
+            processed, err := s.IngestDir(context.Background(), ".", tc.apply, tc.conc)
+            tc.assert(t, processed, err)
+        })
+    }
 }
 
 func TestIngestService_Errors(t *testing.T) {
-	t.Parallel()
-	mk := func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
-		fl := &fakeLoader{list: []string{"x.json"}, load: map[string][]byte{"x.json": []byte("X")}}
-		fp := &fakeParser{out: map[string][]models.Match{"X": {{ID: 9}}}}
-		fr := &fakeRepo{}
-		return &svc.IngestService{Loader: fl, Parser: fp, Repository: fr}, fl, fr
-	}
-	cases := []struct {
-		name   string
-		arr    func() (*svc.IngestService, *fakeLoader, *fakeRepo)
-		dir    string
-		assert assertSvcFn
-	}{
-		{
-			"nil deps",
-			func() (*svc.IngestService, *fakeLoader, *fakeRepo) { return &svc.IngestService{}, nil, nil },
-			".",
-			assertErrContains("nil service"),
-		},
-		{
-			"empty dir",
-			func() (*svc.IngestService, *fakeLoader, *fakeRepo) { s, fl, fr := mk(); return s, fl, fr },
-			"",
-			assertErrContains("input directory"),
-		},
-		{"list error", func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
-			s, fl, fr := mk()
-			fl.err = errors.New("boom")
-			return s, fl, fr
-		}, ".", assertErrContains("boom")},
-		{"load error", func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
-			s, fl, fr := mk()
-			fl.err = nil
-			s.Loader = &fakeLoader{list: []string{"y.json"}, load: map[string][]byte{}, err: nil}
-			return s, s.Loader.(*fakeLoader), fr
-		}, ".", assertErrContains("missing")},
-		{"parse error", func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
-			s, fl, fr := mk()
-			s.Parser = &fakeParser{err: errors.New("parse")}
-			return s, fl, fr
-		}, ".", assertErrContains("parse")},
-		{"repo error", func() (*svc.IngestService, *fakeLoader, *fakeRepo) {
-			s, fl, fr := mk()
-			fr.err = errors.New("db")
-			return s, fl, fr
-		}, ".", assertErrContains("db")},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s, fl, fr := tc.arr()
-			_, err := s.IngestDir(context.Background(), tc.dir, true, 1)
-			tc.assert(t, 0, err, fl, fr)
-		})
-	}
+    t.Parallel()
+    cases := []struct {
+        name    string
+        dir     string
+        arrange func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo)
+        svcNil  bool
+        assert  assertSvcFn
+    }{
+        {
+            name:   "nil deps",
+            dir:    ".",
+            svcNil: true,
+            assert: assertErrContains("nil service"),
+        },
+        {
+            name:   "empty dir",
+            dir:    "",
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                // no expectations; validation fails before use
+            },
+            assert: assertErrContains("input directory"),
+        },
+        {
+            name: "list error",
+            dir:  ".",
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return(nil, errors.New("boom"))
+            },
+            assert: assertErrContains("boom"),
+        },
+        {
+            name: "load error",
+            dir:  ".",
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return([]string{"y.json"}, nil)
+                l.EXPECT().Load(mock.Anything, ".", "y.json").Return(nil, errors.New("missing"))
+            },
+            assert: assertErrContains("missing"),
+        },
+        {
+            name: "parse error",
+            dir:  ".",
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return([]string{"x.json"}, nil)
+                l.EXPECT().Load(mock.Anything, ".", "x.json").Return([]byte("X"), nil)
+                p.EXPECT().Parse(mock.Anything, []byte("X")).Return(nil, errors.New("parse"))
+            },
+            assert: assertErrContains("parse"),
+        },
+        {
+            name: "repo error",
+            dir:  ".",
+            arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+                l.EXPECT().List(mock.Anything, ".").Return([]string{"x.json"}, nil)
+                l.EXPECT().Load(mock.Anything, ".", "x.json").Return([]byte("X"), nil)
+                p.EXPECT().Parse(mock.Anything, []byte("X")).Return([]models.Match{{ID: 9}}, nil)
+                r.EXPECT().UpsertMatches(mock.Anything, mock.Anything).Return(errors.New("db"))
+            },
+            assert: assertErrContains("db"),
+        },
+    }
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            var s *svc.IngestService
+            if tc.svcNil {
+                s = &svc.IngestService{}
+            } else {
+                l := svcmocks.NewMockLoader(t)
+                p := svcmocks.NewMockParser(t)
+                r := dbmocks.NewMockMatchRepo(t)
+                if tc.arrange != nil {
+                    tc.arrange(l, p, r)
+                }
+                s = &svc.IngestService{Loader: l, Parser: p, Repository: r}
+            }
+            _, err := s.IngestDir(context.Background(), tc.dir, true, 1)
+            tc.assert(t, 0, err)
+        })
+    }
 }
