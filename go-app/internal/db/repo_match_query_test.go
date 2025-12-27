@@ -87,6 +87,7 @@ func TestGetMatchDate_Table(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			tc := tc
 			// Arrange
 			mock, matchID := tc.arrange(t)
 			// Act

@@ -152,53 +152,56 @@ func TestZeroKeepersExcept(t *testing.T) {
 		arrange arrangeFn
 		assert  assertFn
 	}{
-		{
-			name: "empty list -> returns error",
-			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
-				mock, _ := pgxmock.NewPool()
-				t.Cleanup(mock.Close)
-				db.SetDB(mockDB{pool: mock})
-				return mock, nil
-			},
-			assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
+  {
+            name: "empty list -> returns error",
+            arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+                mock, err := pgxmock.NewPool()
+                require.NoError(t, err)
+                t.Cleanup(mock.Close)
+                db.SetDB(mockDB{pool: mock})
+                return mock, nil
+            },
+            assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
 				require.Error(t, err)
 				require.Equal(t, int64(0), n)
 				require.NoError(t, mock.ExpectationsWereMet())
 			},
 		},
-		{
-			name: "non-empty -> returning rows counted",
-			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
-				mock, _ := pgxmock.NewPool()
-				t.Cleanup(mock.Close)
-				db.SetDB(mockDB{pool: mock})
-				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1,$2) RETURNING 1`)).
-					WithArgs("adam gilchrist", "ms dhoni").
-					WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1).AddRow(1))
-				return mock, []string{"adam gilchrist", "ms dhoni"}
-			},
-			assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
-				require.NoError(t, err)
-				require.Equal(t, int64(4), n)
-				require.NoError(t, mock.ExpectationsWereMet())
-			},
-		},
-		{
-			name: "db error on returning path",
-			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
-				mock, _ := pgxmock.NewPool()
-				t.Cleanup(mock.Close)
-				db.SetDB(mockDB{pool: mock})
-				mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1) RETURNING 1`)).
-					WithArgs("only one").
-					WillReturnError(errors.New("boom"))
-				return mock, []string{"only one"}
-			},
-			assert: func(t *testing.T, _ int64, err error, mock pgxmock.PgxPoolIface) {
-				require.Error(t, err)
-				require.NoError(t, mock.ExpectationsWereMet())
-			},
-		},
+  {
+            name: "non-empty -> returning rows counted",
+            arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+                mock, err := pgxmock.NewPool()
+                require.NoError(t, err)
+                t.Cleanup(mock.Close)
+                db.SetDB(mockDB{pool: mock})
+                mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1,$2) RETURNING 1`)).
+                    WithArgs("adam gilchrist", "ms dhoni").
+                    WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1).AddRow(1).AddRow(1).AddRow(1))
+                return mock, []string{"adam gilchrist", "ms dhoni"}
+            },
+            assert: func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface) {
+                require.NoError(t, err)
+                require.Equal(t, int64(4), n)
+                require.NoError(t, mock.ExpectationsWereMet())
+            },
+        },
+        {
+            name: "db error on returning path",
+            arrange: func(t *testing.T) (pgxmock.PgxPoolIface, []string) {
+                mock, err := pgxmock.NewPool()
+                require.NoError(t, err)
+                t.Cleanup(mock.Close)
+                db.SetDB(mockDB{pool: mock})
+                mock.ExpectQuery(regexp.QuoteMeta(`UPDATE player SET is_wicket_keeper = 0 WHERE lower(player_name) NOT IN ($1) RETURNING 1`)).
+                    WithArgs("only one").
+                    WillReturnError(errors.New("boom"))
+                return mock, []string{"only one"}
+            },
+            assert: func(t *testing.T, _ int64, err error, mock pgxmock.PgxPoolIface) {
+                require.Error(t, err)
+                require.NoError(t, mock.ExpectationsWereMet())
+            },
+        },
 	}
 
 	for _, tc := range cases {

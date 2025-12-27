@@ -23,6 +23,8 @@ func TestGetNextSeasonHandler_Validation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Capture range variable for safety if t.Parallel is introduced later.
+			tc := tc
 			// Arrange
 			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
 			rr := httptest.NewRecorder()
@@ -47,7 +49,6 @@ func TestGetNextSeasonHandler_Scenarios(t *testing.T) {
 		stub       daoFn
 		url        string
 		expectCode int
-		expectJSON string // for quick check of next_season value
 		assertFn   func(t *testing.T, body []byte)
 	}{
 		{
@@ -85,6 +86,8 @@ func TestGetNextSeasonHandler_Scenarios(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Capture range variable for safety if t.Parallel is introduced later.
+			tc := tc
 			// Arrange
 			getNextSeasonFunc = tc.stub
 			req := httptest.NewRequest(http.MethodGet, tc.url, nil)

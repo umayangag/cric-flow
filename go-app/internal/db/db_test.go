@@ -65,15 +65,10 @@ func TestGetenv_Table(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			if tc.setEnv {
-				if tc.envValue == "" {
-					// Explicitly ensure empty
-					require.NoError(t, os.Unsetenv(tc.key))
-				} else {
-					require.NoError(t, os.Setenv(tc.key, tc.envValue))
-					t.Cleanup(func() { _ = os.Unsetenv(tc.key) })
-				}
+				require.NoError(t, os.Setenv(tc.key, tc.envValue))
+				t.Cleanup(func() { require.NoError(t, os.Unsetenv(tc.key)) })
 			} else {
-				_ = os.Unsetenv(tc.key)
+				require.NoError(t, os.Unsetenv(tc.key))
 			}
 			// Act
 			got := getenv(tc.key, tc.defaultVal)

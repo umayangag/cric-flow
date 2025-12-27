@@ -161,6 +161,7 @@ func TestInsertBallEvents_Scenarios(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			tc := tc
 			// Arrange
 			ctx, mock, rows := tc.arrange(t)
 			db.SetPoolAPI(mockPoolAPI{p: mock})

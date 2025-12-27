@@ -7,61 +7,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAppendSeqIfEnabled_Table converts the legacy tests into table-driven AAA style.
-func TestAppendSeqIfEnabled_Table(t *testing.T) {
-	t.Parallel()
+// TestAppendSeqIfEnabled verifies OFF and ON scenarios as separate table cases
+// to keep Arrange-Act-Assert strictly separated per subtest.
+func TestAppendSeqIfEnabled(t *testing.T) {
+    t.Parallel()
 
-	type arrangeFn func() (ctx context.Context, base []string, seq []string)
-	type assertFn func(t *testing.T, got []string, base []string, seq []string)
+    cases := []struct {
+        name       string
+        seqEnabled bool
+        base       []string
+        seqFn      func() []string
+    }{
+        {name: "bowling headers with seq disabled", seqEnabled: false, base: []string{"c1", "c2"}, seqFn: BowlingSeqHeaders},
+        {name: "bowling headers with seq enabled", seqEnabled: true, base: []string{"c1", "c2"}, seqFn: BowlingSeqHeaders},
+        {name: "batting headers with seq disabled", seqEnabled: false, base: []string{"h1"}, seqFn: BattingSeqHeaders},
+        {name: "batting headers with seq enabled", seqEnabled: true, base: []string{"h1"}, seqFn: BattingSeqHeaders},
+    }
 
-	cases := []struct {
-		name    string
-		arrange arrangeFn
-		assert  assertFn
-	}{
-		{
-			name: "bowling: OFF -> unchanged; ON -> base prefix preserved and len grows",
-			arrange: func() (context.Context, []string, []string) {
-				return context.Background(), []string{"c1", "c2"}, BowlingSeqHeaders()
-			},
-			assert: func(t *testing.T, got []string, base, seq []string) {
-				// OFF path
-				require.Len(t, got, len(base))
-				// ON path
-				ctxOn := WithSeqEnabled(context.Background(), true)
-				gotOn := AppendSeqIfEnabled(ctxOn, base, seq)
-				require.Len(t, gotOn, len(base)+len(seq))
-				for i := range base {
-					require.Equalf(t, base[i], gotOn[i], "prefix mismatch at %d", i)
-				}
-			},
-		},
-		{
-			name: "batting: OFF -> unchanged; ON -> base + seq length",
-			arrange: func() (context.Context, []string, []string) {
-				return context.Background(), []string{"h1"}, BattingSeqHeaders()
-			},
-			assert: func(t *testing.T, got []string, base, seq []string) {
-				// OFF path
-				require.Len(t, got, len(base))
-				require.Equal(t, base[0], got[0])
-				// ON path
-				ctxOn := WithSeqEnabled(context.Background(), true)
-				gotOn := AppendSeqIfEnabled(ctxOn, base, seq)
-				require.Len(t, gotOn, len(base)+len(seq))
-			},
-		},
-	}
+    for _, tc := range cases {
+        tc := tc
+        t.Run(tc.name, func(t *testing.T) {
+            // Arrange
+            ctx := context.Background()
+            if tc.seqEnabled {
+                ctx = WithSeqEnabled(ctx, true)
+            }
+            seq := tc.seqFn()
 
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			ctx, base, seq := tc.arrange()
-			// Act
-			got := AppendSeqIfEnabled(ctx, base, seq)
-			// Assert
-			tc.assert(t, got, base, seq)
-		})
-	}
+            // Act
+            got := AppendSeqIfEnabled(ctx, tc.base, seq)
+
+            // Assert
+            if !tc.seqEnabled {
+                // OFF: unchanged
+                require.Equal(t, tc.base, got)
+                return
+            }
+            // ON: base prefix preserved and seq appended
+            require.Equal(t, len(tc.base)+len(seq), len(got))
+            require.Equal(t, tc.base, got[:len(tc.base)])
+            require.Equal(t, seq, got[len(tc.base):])
+        })
+    }
 }
