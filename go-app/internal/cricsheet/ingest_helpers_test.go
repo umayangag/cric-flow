@@ -1,9 +1,9 @@
 package cricsheet
 
 import (
-    "testing"
+	"testing"
 
-    "github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/require"
 )
 
 // TestEnsureBatAndBowl uses table-driven subtests to validate ensureBat/ensureBowl behavior.
@@ -179,49 +179,49 @@ func TestOtherTeam(t *testing.T) {
 func TestBattingOrderFromInnings(t *testing.T) {
 	t.Parallel()
 
- cases := []struct {
-        name     string
-        inng     Innings
-        names    []string
-        expected []string
-    }{
-        {
-            name: "appearance order respected; unseen appended sorted",
-            inng: Innings{Team: "X", Overs: []Over{
-                {Over: 0, Deliveries: []Delivery{
-                    {Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 4, Total: 4}},
-                    {Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 1, Total: 1}},
-                }},
-                {Over: 1, Deliveries: []Delivery{
-                    {Batter: "B", NonStriker: "C", Runs: RunInfo{Batter: 0, Total: 0}},
-                }},
-            }},
-            names:    []string{"A", "B", "C", "D"},
-            expected: []string{"C", "A", "B", "D"},
-        },
-        {
-            name: "multiple unseen appended alphabetically",
-            inng: Innings{Team: "X", Overs: []Over{
-                {Over: 0, Deliveries: []Delivery{
-                    {Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 4, Total: 4}},
-                    {Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 1, Total: 1}},
-                }},
-                {Over: 1, Deliveries: []Delivery{
-                    {Batter: "B", NonStriker: "C", Runs: RunInfo{Batter: 0, Total: 0}},
-                }},
-            }},
-            names:    []string{"A", "B", "C", "E", "D"},
-            expected: []string{"C", "A", "B", "D", "E"},
-        },
-    }
+	cases := []struct {
+		name     string
+		inng     Innings
+		names    []string
+		expected []string
+	}{
+		{
+			name: "appearance order respected; unseen appended sorted",
+			inng: Innings{Team: "X", Overs: []Over{
+				{Over: 0, Deliveries: []Delivery{
+					{Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 4, Total: 4}},
+					{Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 1, Total: 1}},
+				}},
+				{Over: 1, Deliveries: []Delivery{
+					{Batter: "B", NonStriker: "C", Runs: RunInfo{Batter: 0, Total: 0}},
+				}},
+			}},
+			names:    []string{"A", "B", "C", "D"},
+			expected: []string{"C", "A", "B", "D"},
+		},
+		{
+			name: "multiple unseen appended alphabetically",
+			inng: Innings{Team: "X", Overs: []Over{
+				{Over: 0, Deliveries: []Delivery{
+					{Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 4, Total: 4}},
+					{Batter: "C", NonStriker: "A", Runs: RunInfo{Batter: 1, Total: 1}},
+				}},
+				{Over: 1, Deliveries: []Delivery{
+					{Batter: "B", NonStriker: "C", Runs: RunInfo{Batter: 0, Total: 0}},
+				}},
+			}},
+			names:    []string{"A", "B", "C", "E", "D"},
+			expected: []string{"C", "A", "B", "D", "E"},
+		},
+	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			order := battingOrderFromInnings(tc.inng, tc.names)
 			require.Len(t, order, len(tc.expected))
-            for i := range tc.expected {
-                require.Equalf(t, tc.expected[i], order[i], "idx %d order=%v", i, order)
-            }
-        })
-    }
+			for i := range tc.expected {
+				require.Equalf(t, tc.expected[i], order[i], "idx %d order=%v", i, order)
+			}
+		})
+	}
 }
