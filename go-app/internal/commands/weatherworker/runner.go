@@ -5,17 +5,21 @@ import (
 	"errors"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherworker"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker"
 )
+
+// Service abstracts the weather worker service for testability.
+// It mirrors the Run method we need from the underlying service.
+type Service interface {
+	Run(ctx context.Context, maxJobs int, apply bool) (int, error)
+}
 
 // Runner validates CLI options and delegates execution to the Service.
 // It is small and testable; no logging here.
-
 type Runner struct {
-	Svc *svc.Service
+	Svc Service
 }
 
-func NewRunner(s *svc.Service) *Runner { return &Runner{Svc: s} }
+func NewRunner(s Service) *Runner { return &Runner{Svc: s} }
 
 func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r == nil {

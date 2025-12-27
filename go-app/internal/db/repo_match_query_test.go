@@ -9,65 +9,91 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-func TestGetMatchDate(t *testing.T) {
+// TestGetMatchDate_Table refactors scenarios into table-driven subtests with AAA and require.
+func TestGetMatchDate_Table(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("happy -> returns time", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		db.Pool = &pgxpool.Pool{}
-		ts := time.Date(2020, 5, 17, 0, 0, 0, 0, time.UTC)
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
-			WithArgs(int64(42)).
-			WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(ts))
-		got, err := db.GetMatchDate(ctx, 42)
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got == nil || !got.Equal(ts) {
-			t.Fatalf("date mismatch: got %v want %v", got, ts)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	type arrangeFn func(t *testing.T) (mock pgxmock.PgxPoolIface, matchID int64)
+	type assertFn func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface)
 
-	t.Run("null -> returns nil", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		db.Pool = &pgxpool.Pool{}
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
-			WithArgs(int64(7)).
-			WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(nil))
-		got, err := db.GetMatchDate(ctx, 7)
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got != nil {
-			t.Fatalf("expected nil date, got %v", got)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	cases := []struct {
+		name    string
+		arrange arrangeFn
+		assert  assertFn
+	}{
+		{
+			name: "happy -> returns time",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, int64) {
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err)
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				// Some code paths check db.Pool not nil; maintain previous pattern
+				db.Pool = &pgxpool.Pool{}
+				ts := time.Date(2020, 5, 17, 0, 0, 0, 0, time.UTC)
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+					WithArgs(int64(42)).
+					WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(ts))
+				return mock, 42
+			},
+			assert: func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface) {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				require.True(t, got.Equal(time.Date(2020, 5, 17, 0, 0, 0, 0, time.UTC)))
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "null -> returns nil",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, int64) {
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err)
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				db.Pool = &pgxpool.Pool{}
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+					WithArgs(int64(7)).
+					WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(nil))
+				return mock, 7
+			},
+			assert: func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface) {
+				require.NoError(t, err)
+				require.Nil(t, got)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+		{
+			name: "db error",
+			arrange: func(t *testing.T) (pgxmock.PgxPoolIface, int64) {
+				mock, err := pgxmock.NewPool()
+				require.NoError(t, err)
+				t.Cleanup(mock.Close)
+				db.SetDB(mockDB{pool: mock})
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+					WithArgs(int64(99)).
+					WillReturnError(errors.New("boom"))
+				return mock, 99
+			},
+			assert: func(t *testing.T, _ *time.Time, err error, mock pgxmock.PgxPoolIface) {
+				require.Error(t, err)
+				require.NoError(t, mock.ExpectationsWereMet())
+			},
+		},
+	}
 
-	t.Run("db error", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		db.SetDB(mockDB{pool: mock})
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
-			WithArgs(int64(99)).
-			WillReturnError(errors.New("boom"))
-		if _, err := db.GetMatchDate(ctx, 99); err == nil {
-			t.Fatalf("expected error")
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Fatalf("unmet expectations: %v", err)
-		}
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc := tc
+			// Arrange
+			mock, matchID := tc.arrange(t)
+			// Act
+			got, err := db.GetMatchDate(ctx, matchID)
+			// Assert
+			tc.assert(t, got, err, mock)
+		})
+	}
 }

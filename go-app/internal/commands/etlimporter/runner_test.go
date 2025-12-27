@@ -4,104 +4,83 @@ import (
 	"context"
 	"testing"
 
+	testmock "github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/etlimporter"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter"
+	mocks "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter/internal/mocks"
 	svcpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/services/etlimporter"
 )
 
-type fakeSvc struct{ called bool }
-
-func (f *fakeSvc) IngestDir(_ context.Context, _ string, _ string, _ bool, _ int) (svcpkg.Stats, error) {
-	f.called = true
-	return svcpkg.Stats{Files: 1}, nil
-}
-
-type assertFn func(t *testing.T, svc *fakeSvc, err error)
+type assertFn func(t *testing.T, err error)
 
 func assertErrContains(sub string) assertFn {
-	return func(t *testing.T, _ *fakeSvc, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q, got %v", sub, err)
-		}
+	return func(t *testing.T, err error) {
+		require.Error(t, err)
+		require.ErrorContains(t, err, sub)
 	}
 }
 
-func assertNoErrorCalled() assertFn {
-	return func(t *testing.T, svc *fakeSvc, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if !svc.called {
-			t.Fatalf("expected service to be called")
-		}
+func assertNoError() assertFn {
+	return func(t *testing.T, err error) {
+		require.NoError(t, err)
 	}
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
 }
 
 func TestRunner_Run(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name   string
-		r      func() *cmd.Runner
-		opts   cli.Options
-		assert assertFn
+		name    string
+		arrange func(t *testing.T) (*cmd.Runner, cli.Options)
+		assert  assertFn
 	}{
 		{
-			name:   "nil runner",
-			r:      func() *cmd.Runner { return nil },
-			opts:   cli.Options{InDir: "/x", Concurrency: 1, Pattern: "*.csv"},
+			name: "nil runner",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				_ = t
+				return nil, cli.Options{InDir: "/x", Concurrency: 1, Pattern: "*.csv"}
+			},
 			assert: assertErrContains("nil runner"),
 		},
 		{
-			name:   "missing service",
-			r:      func() *cmd.Runner { return cmd.NewRunner(nil) },
-			opts:   cli.Options{InDir: "/x", Concurrency: 1, Pattern: "*.csv"},
+			name: "missing service",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				_ = t
+				return cmd.NewRunner(nil), cli.Options{InDir: "/x", Concurrency: 1, Pattern: "*.csv"}
+			},
 			assert: assertErrContains("missing service"),
 		},
 		{
-			name:   "bad opts",
-			r:      func() *cmd.Runner { return cmd.NewRunner(&fakeSvc{}) },
-			opts:   cli.Options{InDir: "", Concurrency: 0, Pattern: ""},
+			name: "bad opts",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				m := mocks.NewMockIngestor(t)
+				r := cmd.NewRunner(m)
+				return r, cli.Options{InDir: "", Concurrency: 0, Pattern: ""}
+			},
 			assert: assertErrContains("input directory"),
 		},
 		{
-			name:   "happy path calls service",
-			r:      func() *cmd.Runner { return cmd.NewRunner(&fakeSvc{}) },
-			opts:   cli.Options{InDir: "/data", Concurrency: 1, Pattern: "*.csv", Apply: true},
-			assert: assertNoErrorCalled(),
+			name: "happy path calls service",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				m := mocks.NewMockIngestor(t)
+				m.EXPECT().IngestDir(testmock.Anything, "/data", "*.csv", true, 1).Return(svcpkg.Stats{Files: 1}, nil)
+				r := cmd.NewRunner(m)
+				return r, cli.Options{InDir: "/data", Concurrency: 1, Pattern: "*.csv", Apply: true}
+			},
+			assert: assertNoError(),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := tc.r()
-			err := r.Run(context.Background(), tc.opts)
-			var svc *fakeSvc
-			if r != nil {
-				// best-effort: type assert when our fake is used
-				if fs, ok := r.Svc.(*fakeSvc); ok {
-					svc = fs
-				}
+			r, opts := tc.arrange(t)
+			var err error
+			if r == nil {
+				var rn *cmd.Runner
+				err = rn.Run(context.Background(), opts)
+			} else {
+				err = r.Run(context.Background(), opts)
 			}
-			tc.assert(t, svc, err)
+			tc.assert(t, err)
 		})
 	}
 }
