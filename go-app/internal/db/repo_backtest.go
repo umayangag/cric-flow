@@ -1,23 +1,23 @@
 package db
 
 import (
-    "context"
-    "database/sql"
-    "errors"
-    "time"
+	"context"
+	"database/sql"
+	"errors"
+	"time"
 )
 
 // BacktestCandidate represents a played match candidate for backtesting.
 type BacktestCandidate struct {
-    MatchID    int64
-    StableID   sql.NullString
-    Date       time.Time
-    Venue      sql.NullString
-    Season     sql.NullString
-    FormatCode sql.NullString
-    Team1      string
-    Team2      string
-    WinnerTeam sql.NullString
+	MatchID    int64
+	StableID   sql.NullString
+	Date       time.Time
+	Venue      sql.NullString
+	Season     sql.NullString
+	FormatCode sql.NullString
+	Team1      string
+	Team2      string
+	WinnerTeam sql.NullString
 }
 
 // ListPlayedMatchesByFormatAndTeams returns already-played matches filtered by
@@ -30,12 +30,17 @@ type BacktestCandidate struct {
 //   - match_format(id, code)
 //   - team_match(match_id, team_id, result)
 //   - team(id, name)
-func ListPlayedMatchesByFormatAndTeams(ctx context.Context, formatCode string, team1 string, team2 string) ([]BacktestCandidate, error) {
-    if Pool == nil {
-        return nil, errors.New("db pool not initialized")
-    }
+func ListPlayedMatchesByFormatAndTeams(
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
+) ([]BacktestCandidate, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
 
-    q := `
+	q := `
         WITH tm AS (
             SELECT tm.match_id,
                    MIN(t.name) AS team_a,
@@ -65,32 +70,32 @@ func ListPlayedMatchesByFormatAndTeams(ctx context.Context, formatCode string, t
         ORDER BY md.date ASC
     `
 
-    rows, err := Pool.Query(ctx, q, formatCode, team1, team2)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	rows, err := Pool.Query(ctx, q, formatCode, team1, team2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    out := make([]BacktestCandidate, 0)
-    for rows.Next() {
-        var c BacktestCandidate
-        if err := rows.Scan(
-            &c.MatchID,
-            &c.StableID,
-            &c.Date,
-            &c.Venue,
-            &c.Season,
-            &c.FormatCode,
-            &c.Team1,
-            &c.Team2,
-            &c.WinnerTeam,
-        ); err != nil {
-            return nil, err
-        }
-        out = append(out, c)
-    }
-    if err := rows.Err(); err != nil {
-        return nil, err
-    }
-    return out, nil
+	out := make([]BacktestCandidate, 0)
+	for rows.Next() {
+		var c BacktestCandidate
+		if err := rows.Scan(
+			&c.MatchID,
+			&c.StableID,
+			&c.Date,
+			&c.Venue,
+			&c.Season,
+			&c.FormatCode,
+			&c.Team1,
+			&c.Team2,
+			&c.WinnerTeam,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
