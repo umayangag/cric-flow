@@ -19,17 +19,17 @@ var listPlayedByFmtTeams = db.ListPlayedMatchesByFormatAndTeams
 // Evaluate-mode seams (to be backed by DB repos; overridden in tests)
 var (
     // Returns the match date (cutoff) for the given match id
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
         // Placeholder: to be implemented via db repo in a later step
         return time.Time{}, sql.ErrNoRows
     }
     // Returns the list of player IDs who actually played the match (XI + subs if available)
     // Requires cutoff and optional format to align with DB query semantics
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, cutoff time.Time, format string) ([]int64, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
         return nil, sql.ErrNoRows
     }
     // Returns actuals for players in the match, keyed by player id; minimal target: runs
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return nil, sql.ErrNoRows
     }
     // Optional: retrieve features at-or-before cutoff; may be unused by tests initially
@@ -38,15 +38,15 @@ var (
         return db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)
     }
     // ML seam for backtest: given cutoff and player ids, return predicted targets per player
-    mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return nil, sql.ErrNoRows
     }
     // Match-level aggregates: actuals from DB for given match
-    getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
+    getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
         return matchAggregates{}, sql.ErrNoRows
     }
     // Match-level aggregates: predictions from ML given cutoff and teams
-    mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoff time.Time, teams [2]string) (matchAggregates, error) {
+    mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
         return matchAggregates{}, sql.ErrNoRows
     }
 )
@@ -247,7 +247,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
         diffRuns := pPred.Runs - pAct.Runs
         absErrRuns := math.Abs(diffRuns)
         totalAbsErrRuns += absErrRuns
-        countRuns += 1
+        countRuns++
         totalSqErrRuns += diffRuns * diffRuns
         runsActuals = append(runsActuals, pAct.Runs)
         runsPreds = append(runsPreds, pPred.Runs)
@@ -257,7 +257,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
         if !math.IsNaN(pPred.Wickets) || !math.IsNaN(pAct.Wickets) {
             absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
             totalAbsErrWickets += absErrWkts
-            countWickets += 1
+            countWickets++
         }
 
         // Economy (optional)
@@ -265,7 +265,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
         if !math.IsNaN(pPred.Economy) || !math.IsNaN(pAct.Economy) {
             absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
             totalAbsErrEcon += absErrEcon
-            countEcon += 1
+            countEcon++
         }
 
         // Fielding: catches (optional)
@@ -273,7 +273,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
         if !math.IsNaN(pPred.Catches) || !math.IsNaN(pAct.Catches) {
             absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
             totalAbsErrCatches += absErrCatches
-            countCatches += 1
+            countCatches++
         }
 
         // Fielding: run_outs (optional)
@@ -281,7 +281,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
         if !math.IsNaN(pPred.RunOuts) || !math.IsNaN(pAct.RunOuts) {
             absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
             totalAbsErrRunOuts += absErrRunOuts
-            countRunOuts += 1
+            countRunOuts++
         }
 
         row := struct {

@@ -12,36 +12,36 @@ import (
 // Test evaluate mode happy path with minimal targets (runs) and MAE computation
 func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
     // Backup seams and restore after
-    origGetDate := getMatchDateFunc
-    origGetSquads := getMatchSquadsFunc
-    origGetActuals := getPlayerActualsForMatchFunc
+    origGetDate := getBacktestMatchDateFunc
+    origGetSquads := getBacktestSquadPlayerIDsFunc
+    origGetActuals := getBacktestPlayerActualsForMatchFunc
     origML := mlBacktestPredictFunc
     defer func() {
-        getMatchDateFunc = origGetDate
-        getMatchSquadsFunc = origGetSquads
-        getPlayerActualsForMatchFunc = origGetActuals
+        getBacktestMatchDateFunc = origGetDate
+        getBacktestSquadPlayerIDsFunc = origGetSquads
+        getBacktestPlayerActualsForMatchFunc = origGetActuals
         mlBacktestPredictFunc = origML
     }()
 
     // Stub seams
     cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-    getMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
+    getBacktestMatchDateFunc = func(_ context.Context, matchID int64) (time.Time, error) {
         if matchID != 111 {
             t.Fatalf("unexpected matchID: %d", matchID)
         }
         return cutoff, nil
     }
-    getMatchSquadsFunc = func(ctx context.Context, matchID int64) ([]int64, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
         return []int64{1, 2, 3}, nil
     }
-    getPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             1: {Runs: 30},
             2: {Runs: 10},
             3: {Runs: 0},
         }, nil
     }
-    mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         // Deterministic predictions
         return map[int64]playerPredictions{
             1: {Runs: 25},
@@ -109,13 +109,13 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
     }()
 
     cutoff := time.Date(2023, 7, 15, 10, 30, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
         return cutoff, nil
     }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
         return []int64{10, 20}, nil
     }
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             10: {Runs: 40},
             20: {Runs: 20},
@@ -123,7 +123,7 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
     }
 
     var receivedCutoff time.Time
-    mlBacktestPredictFunc = func(ctx context.Context, cutoffArg time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, cutoffArg time.Time, _ []int64) (map[int64]playerPredictions, error) {
         receivedCutoff = cutoffArg
         return map[int64]playerPredictions{
             10: {Runs: 35},
@@ -159,21 +159,21 @@ func TestBacktestMatchHandler_EvaluateMode_BowlingMetrics(t *testing.T) {
     }()
 
     cutoff := time.Date(2024, 11, 5, 9, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
         return cutoff, nil
     }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
         return []int64{101, 102}, nil
     }
     // Actuals: include runs, wickets, economy
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             101: {Runs: 30, Wickets: 2, Economy: 7.5},
             102: {Runs: 5, Wickets: 0, Economy: 6.0},
         }, nil
     }
     // Predictions
-    mlBacktestPredictFunc = func(ctx context.Context, cutoffArg time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return map[int64]playerPredictions{
             101: {Runs: 28, Wickets: 1, Economy: 8.0},
             102: {Runs: 10, Wickets: 0, Economy: 5.5},
@@ -234,17 +234,17 @@ func TestBacktestMatchHandler_EvaluateMode_FieldingMetrics(t *testing.T) {
     }()
 
     cutoff := time.Date(2024, 11, 6, 9, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) { return cutoff, nil }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) { return []int64{201, 202}, nil }
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{201, 202}, nil }
     // Actuals: include fielding catches and run_outs
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             201: {Runs: 10, Catches: 2, RunOuts: 1},
             202: {Runs: 5, Catches: 0, RunOuts: 0},
         }, nil
     }
     // Predictions include fielding
-    mlBacktestPredictFunc = func(ctx context.Context, cutoffArg time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return map[int64]playerPredictions{
             201: {Runs: 12, Catches: 1, RunOuts: 2},
             202: {Runs: 4, Catches: 0, RunOuts: 1},
@@ -296,29 +296,29 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
     }()
 
     cutoff := time.Date(2024, 12, 1, 12, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
         return cutoff, nil
     }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
         return []int64{1, 2}, nil
     }
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             1: {Runs: 20},
             2: {Runs: 30},
         }, nil
     }
-    mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return map[int64]playerPredictions{
             1: {Runs: 18},
             2: {Runs: 35},
         }, nil
     }
     // Match-level seams
-    mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoffArg time.Time, teams [2]string) (matchAggregates, error) {
+    mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
         return matchAggregates{Runs: 160, Wickets: 6, Extras: 12, WinnerTeamCode: "IND"}, nil
     }
-    getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
+    getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
         return matchAggregates{Runs: 150, Wickets: 7, Extras: 10, WinnerTeamCode: "IND"}, nil
     }
 
@@ -377,17 +377,17 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_CutoffPassed(t *testi
     }()
 
     cutoff := time.Date(2025, 1, 2, 8, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) { return cutoff, nil }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) { return map[int64]playerActuals{1: {Runs: 10}}, nil }
-    mlBacktestPredictFunc = func(ctx context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) { return map[int64]playerPredictions{1: {Runs: 9}}, nil }
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) { return map[int64]playerActuals{1: {Runs: 10}}, nil }
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) { return map[int64]playerPredictions{1: {Runs: 9}}, nil }
 
     var receivedCutoff time.Time
-    mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoffArg time.Time, teams [2]string) (matchAggregates, error) {
+    mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, cutoffArg time.Time, _ [2]string) (matchAggregates, error) {
         receivedCutoff = cutoffArg
         return matchAggregates{Runs: 100, Wickets: 5, Extras: 8, WinnerTeamCode: "IND"}, nil
     }
-    getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
+    getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
         return matchAggregates{Runs: 95, Wickets: 6, Extras: 6, WinnerTeamCode: "AUS"}, nil
     }
 
@@ -419,10 +419,10 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
     }()
 
     cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) { return cutoff, nil }
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) { return []int64{1, 2, 3}, nil }
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1, 2, 3}, nil }
     // Actuals
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{
             1: {Runs: 30},
             2: {Runs: 10},
@@ -430,7 +430,7 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
         }, nil
     }
     // Predictions
-    mlBacktestPredictFunc = func(ctx context.Context, cutoffArg time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return map[int64]playerPredictions{
             1: {Runs: 25},
             2: {Runs: 15},
@@ -486,13 +486,13 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
     }()
 
     cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-    getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) { return cutoff, nil }
+    getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
     squadIDs := []int64{7, 8, 9}
-    getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) { return squadIDs, nil }
-    getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+    getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return squadIDs, nil }
+    getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
         return map[int64]playerActuals{7: {Runs: 10}, 8: {Runs: 20}, 9: {Runs: 30}}, nil
     }
-    mlBacktestPredictFunc = func(ctx context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
+    mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
         return map[int64]playerPredictions{7: {Runs: 11}, 8: {Runs: 19}, 9: {Runs: 31}}, nil
     }
 

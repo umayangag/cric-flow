@@ -68,7 +68,7 @@ func (q *fakeQuerier) QueryRow(_ context.Context, sql string, args ...any) rowSc
             return writeDoubleNullableFloat(dest, q.hasAvgWkts, q.avgWkts, q.hasAvgEcon, q.avgEcon)
         }}
     default:
-        return fakeRow{scan: func(dest ...any) error { return nil }}
+        return fakeRow{scan: func(_ ...any) error { return nil }}
     }
 }
 
