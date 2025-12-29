@@ -4,10 +4,10 @@ PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 
 # Common variables
-DC:=docker-compose
+DC:=docker compose
 APP_SERVICES:=go-api ml-service
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -108,6 +108,59 @@ train-bowling:
 	cd ml-service && $(PY) ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
+
+# -------------------- Backtest fixtures and smoke --------------------
+# Defaults for local DB that mirror docker-compose ports
+POSTGRES_HOST ?= localhost
+POSTGRES_PORT ?= 5432
+POSTGRES_DB ?= cricket_data
+POSTGRES_USER ?= postgres
+POSTGRES_PASSWORD ?= postgres
+POSTGRES_SSLMODE ?= disable
+
+# Run migrations against local Postgres (compose or external)
+migrate-local:
+	cd go-app && \
+	POSTGRES_HOST=$(POSTGRES_HOST) \
+	POSTGRES_PORT=$(POSTGRES_PORT) \
+	POSTGRES_DB=$(POSTGRES_DB) \
+	POSTGRES_USER=$(POSTGRES_USER) \
+	POSTGRES_PASSWORD=$(POSTGRES_PASSWORD) \
+	POSTGRES_SSLMODE=$(POSTGRES_SSLMODE) \
+	MIGRATIONS_DIR=./migrations \
+	go run ./cmd/migrate -dir=./migrations
+
+# Seed tiny deterministic fixtures for E2E backtest smoke
+seed-fixtures:
+	# Ensure Postgres is up (compose service name: postgres)
+	$(DC) up -d postgres
+	# Apply migrations to create schema if needed
+	$(MAKE) migrate-local
+	# Load the seed dataset
+	psql "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)" \
+		-f tests/fixtures/backtest/seed.sql
+
+# End-to-end smoke: select → evaluate with jq assertions
+e2e-backtest-smoke:
+	# Start services
+	$(DC) up -d postgres
+	$(MAKE) seed-fixtures
+	$(DC) up -d go-api ml-service
+	# Wait briefly for services
+	sleep 3
+	# Select candidates
+	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
+	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \
+	echo $$SEL | jq '.candidates | length' | grep -qE '^[1-9][0-9]*$$'
+	# Evaluate the seeded match (match_id known from fixtures: 9000111)
+	@echo "[SMOKE] Evaluating match_id=9000111"; \
+	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
+	echo $$EVAL | jq -e '.players | length' >/dev/null; \
+	echo $$EVAL | jq -e '.metrics.player_runs_mae' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.actual' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
+	echo "[SMOKE] OK"
 
 # Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
 ml-test:
