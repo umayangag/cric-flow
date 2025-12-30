@@ -79,7 +79,7 @@ Notes:
 - Training data used by ML is restricted to rows before the match date (cutoff).
 - Players list includes only those who actually played.
 - Match aggregates section is present when both ML and DB seams are wired; otherwise it may be omitted.
- - Totals mapping: numeric match totals are read from the database table `match_details` using these columns — `score` as total runs, `wickets` as total wickets, and `extras` as total extras. The `target` column is not used for backtest accuracy metrics.
+- Totals mapping: numeric match totals are read from the database table `match_details` using these columns — `score` as total runs, `wickets` as total wickets, and `extras` as total extras. The `target` column is not used for backtest accuracy metrics.
 
 ### Metrics definitions (player-level runs)
 
