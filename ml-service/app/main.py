@@ -1,9 +1,8 @@
 import os
 import time
 import uuid
-import os
-from typing import List, Optional, Dict, Tuple, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -38,6 +37,7 @@ _backtest_cache: Dict[Tuple[str, str, Tuple[Any, ...]], Tuple[float, Dict[str, A
 BACKTEST_PLAYERS_COMPUTE_COUNT = 0
 BACKTEST_MATCH_COMPUTE_COUNT = 0
 
+
 def _cache_get(mode: str, cutoff_iso: str, ids: List[Any]) -> Optional[Dict[str, Any]]:
     if DISABLE_BACKTEST_CACHE or CACHE_TTL_SECONDS <= 0:
         return None
@@ -51,11 +51,13 @@ def _cache_get(mode: str, cutoff_iso: str, ids: List[Any]) -> Optional[Dict[str,
         return None
     return payload
 
+
 def _cache_put(mode: str, cutoff_iso: str, ids: List[Any], payload: Dict[str, Any]) -> None:
     if DISABLE_BACKTEST_CACHE or CACHE_TTL_SECONDS <= 0:
         return
     key = (mode, cutoff_iso, tuple(sorted(ids)))
     _backtest_cache[key] = (time.time(), payload)
+
 
 def reset_backtest_cache() -> None:
     """Utility for tests to clear cache and counters."""
@@ -63,6 +65,7 @@ def reset_backtest_cache() -> None:
     _backtest_cache = {}
     BACKTEST_PLAYERS_COMPUTE_COUNT = 0
     BACKTEST_MATCH_COMPUTE_COUNT = 0
+
 
 def get_backtest_compute_counts() -> Tuple[int, int]:
     return BACKTEST_PLAYERS_COMPUTE_COUNT, BACKTEST_MATCH_COMPUTE_COUNT
@@ -172,6 +175,7 @@ class BowlingFeatures(BaseModel):
 
 # -------------------- Backtest endpoint models --------------------
 
+
 class BacktestPredictRequest(BaseModel):
     cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
     # one of the following should be present
@@ -248,14 +252,16 @@ def _predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[B
         # Fielding: small integer counts 0–3, deterministic
         catches = float(int(rng.integers(0, 4)))
         run_outs = float(int(rng.integers(0, 3)))
-        out.append(BacktestPlayerPred(
-            player_id=int(pid),
-            runs=runs,
-            wickets=wickets,
-            economy=economy,
-            catches=catches,
-            run_outs=run_outs,
-        ))
+        out.append(
+            BacktestPlayerPred(
+                player_id=int(pid),
+                runs=runs,
+                wickets=wickets,
+                economy=economy,
+                catches=catches,
+                run_outs=run_outs,
+            )
+        )
     return out
 
 
@@ -298,11 +304,14 @@ def backtest_predict(req: BacktestPredictRequest):
         body = BacktestMatchResponse(match=match).model_dump()
         _cache_put("match", cutoff_iso, list(req.teams), body)
         return JSONResponse(status_code=200, content=body)
-    raise HTTPException(status_code=400, detail=error_payload(
-        code="INVALID_REQUEST",
-        message="provide either player_ids or teams",
-        hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}"
-    ))
+    raise HTTPException(
+        status_code=400,
+        detail=error_payload(
+            code="INVALID_REQUEST",
+            message="provide either player_ids or teams",
+            hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
+        ),
+    )
 
 
 class BattingPrediction(BaseModel):
