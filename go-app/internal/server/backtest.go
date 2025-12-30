@@ -258,29 +258,25 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 		totalSqErrRuns += diffRuns * diffRuns
 		runsActuals = append(runsActuals, pAct.Runs)
 
-  // Wickets: always include when both pred and actual exist
-  var absErrWkts float64
-  absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
-  totalAbsErrWickets += absErrWkts
-  countWickets++
+		// Wickets: always include when both pred and actual exist
+		absErrWkts := math.Abs(pPred.Wickets - pAct.Wickets)
+		totalAbsErrWickets += absErrWkts
+		countWickets++
 
-  // Economy: always include
-  var absErrEcon float64
-  absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
-  totalAbsErrEcon += absErrEcon
-  countEcon++
+		// Economy: always include
+		absErrEcon := math.Abs(pPred.Economy - pAct.Economy)
+		totalAbsErrEcon += absErrEcon
+		countEcon++
 
-  // Fielding: catches: always include
-  var absErrCatches float64
-  absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
-  totalAbsErrCatches += absErrCatches
-  countCatches++
+		// Fielding: catches: always include
+		absErrCatches := math.Abs(pPred.Catches - pAct.Catches)
+		totalAbsErrCatches += absErrCatches
+		countCatches++
 
-  // Fielding: run_outs: always include
-  var absErrRunOuts float64
-  absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
-  totalAbsErrRunOuts += absErrRunOuts
-  countRunOuts++
+		// Fielding: run_outs: always include
+		absErrRunOuts := math.Abs(pPred.RunOuts - pAct.RunOuts)
+		totalAbsErrRunOuts += absErrRunOuts
+		countRunOuts++
 
 		row := struct {
 			PlayerID  int64              `json:"player_id"`
@@ -439,15 +435,15 @@ func init() {
 		}
 		return ids, nil
 	}
- // Actuals for match: optimized single-query LEFT JOIN across batting, bowling, fielding
- getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
-     if db.Pool == nil {
-         return nil, errors.New("db pool not initialized")
-     }
-     // Unified query to reduce DB round-trips: get all player actuals with LEFT JOINs
-     rows, err := db.Pool.Query(
-         ctx,
-         `
+	// Actuals for match: optimized single-query LEFT JOIN across batting, bowling, fielding
+	getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+		if db.Pool == nil {
+			return nil, errors.New("db pool not initialized")
+		}
+		// Unified query to reduce DB round-trips: get all player actuals with LEFT JOINs
+		rows, err := db.Pool.Query(
+			ctx,
+			`
          SELECT
              pm.player_id,
              COALESCE(bd.runs, 0) AS runs,
@@ -462,34 +458,34 @@ func init() {
          WHERE pm.match_id = $1
          ORDER BY pm.player_id ASC
          `,
-         matchID,
-     )
-     if err != nil {
-         return nil, err
-     }
-     defer rows.Close()
-     out := make(map[int64]playerActuals, 22)
-     for rows.Next() {
-         var (
-             pid                                  int64
-             runs, wickets, econ, catches, runOuts float64
-         )
-         if err := rows.Scan(&pid, &runs, &wickets, &econ, &catches, &runOuts); err != nil {
-             return nil, err
-         }
-         out[pid] = playerActuals{
-             Runs:    runs,
-             Wickets: wickets,
-             Economy: econ,
-             Catches: catches,
-             RunOuts: runOuts,
-         }
-     }
-     if err := rows.Err(); err != nil {
-         return nil, err
-     }
-     return out, nil
- }
+			matchID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := make(map[int64]playerActuals, 22)
+		for rows.Next() {
+			var (
+				pid                                   int64
+				runs, wickets, econ, catches, runOuts float64
+			)
+			if err := rows.Scan(&pid, &runs, &wickets, &econ, &catches, &runOuts); err != nil {
+				return nil, err
+			}
+			out[pid] = playerActuals{
+				Runs:    runs,
+				Wickets: wickets,
+				Economy: econ,
+				Catches: catches,
+				RunOuts: runOuts,
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
 	// Leave features/ML seams as placeholders; tests override them.
 	// Wire default ML and aggregates seams to concrete clients/repos where available.
 	// These can be overridden in tests.
