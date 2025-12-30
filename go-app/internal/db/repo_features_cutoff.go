@@ -51,9 +51,9 @@ var DefaultFeatureProviderInst FeatureProvider = &DefaultFeatureProvider{}
 // GetPlayerFeaturesAtCutoff implements FeatureProvider. For now it validates input and
 // returns an empty map to keep current flows non-blocking.
 func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
-	ctx context.Context,
-	cutoff time.Time,
-	playerIDs []int64,
+    ctx context.Context,
+    cutoff time.Time,
+    playerIDs []int64,
 ) (map[int64]map[string]float64, error) {
 	// Guard: cutoff must be set (non-zero) and at least one player id provided.
 	if cutoff.IsZero() {
@@ -62,9 +62,11 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 	if len(playerIDs) == 0 {
 		return map[int64]map[string]float64{}, nil
 	}
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
+ // Only require a DB pool when using the real poolQuerier. Unit tests replace
+    // featureQuerier with a fake that doesn't need Pool.
+    if _, usesPool := featureQuerier.(poolQuerier); usesPool && Pool == nil {
+        return nil, errors.New("db pool not initialized")
+    }
 
 	out := make(map[int64]map[string]float64, len(playerIDs))
 	// 1) Precomputed-first: try to read form/consistency-like values.
