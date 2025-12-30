@@ -78,24 +78,24 @@ fmt-check:
 # --- CI convenience targets ---
 # Install dev tools needed in CI (system pip is fine on runners)
 ci-setup:
-	python -m pip install --upgrade pip
-	python -m pip install -r requirements.txt
-	python -m pip install black isort flake8 ruff pytest pytest-cov httpx
+	$(PY) -m pip install --upgrade pip
+	$(PY) -m pip install -r requirements.txt
+	$(PY) -m pip install black isort flake8 ruff pytest pytest-cov httpx
 
 # Run tests (quiet)
 test:
-	python -m pytest -q
+	$(PY) -m pytest -q
 
 # Generate coverage reports (xml + term)
 coverage:
-	python -m pytest -q \
+	$(PY) -m pytest -q \
 		--cov \
 		--cov-report=xml:coverage.xml \
 		--cov-report=term
 
 # Enforce minimum coverage threshold (may re-run tests)
 coverage-check:
-	python -m pytest -q \
+	$(PY) -m pytest -q \
 		--cov \
 		--cov-report=term \
 		--cov-fail-under=$(COV_MIN)

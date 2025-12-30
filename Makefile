@@ -345,7 +345,9 @@ COV_MIN_ML ?= 80
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
-	$(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
+	# Ensure Python venv and dev tools exist, then run ml-service CI with venv bin on PATH
+	$(MAKE) -C ml-service init
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
 
 # Run go-app CI: vet, format check, coverage and enforce threshold
 ci-go:
