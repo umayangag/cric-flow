@@ -1,7 +1,7 @@
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -287,7 +287,11 @@ def backtest_predict(req: BacktestPredictRequest):
     # Strict cutoff semantics are honored implicitly by not using post-cutoff data.
     # We still parse/validate the timestamp.
     cutoff = req.cutoff_date
-    cutoff_iso = cutoff.replace(tzinfo=None).isoformat() + "Z" if cutoff.tzinfo else cutoff.isoformat() + "Z"
+    # Convert to UTC first, then format as ISO 8601 with trailing 'Z'
+    # If the datetime is naive (no tzinfo), assume it is already UTC to avoid localtime assumptions.
+    cutoff_with_tz = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=timezone.utc)
+    cutoff_utc = cutoff_with_tz.astimezone(timezone.utc)
+    cutoff_iso = cutoff_utc.isoformat().replace("+00:00", "Z")
     if req.player_ids is not None:
         cached = _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:

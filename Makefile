@@ -146,8 +146,21 @@ e2e-backtest-smoke:
 	$(DC) up -d postgres
 	$(MAKE) seed-fixtures
 	$(DC) up -d go-api ml-service
-	# Wait briefly for services
-	sleep 3
+	# Wait for services to report healthy instead of using a fixed sleep
+	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
+	for url in http://localhost:8080/health http://localhost:8000/health; do \
+	  echo "  waiting for $$url ..."; \
+	  attempts=0; max_attempts=90; \
+	  until curl -fsS "$$url" >/dev/null 2>&1; do \
+	    attempts=$$((attempts+1)); \
+	    if [ $$attempts -ge $$max_attempts ]; then \
+	      echo "Timeout waiting for $$url"; \
+	      exit 1; \
+	    fi; \
+	    sleep 1; \
+	  done; \
+	  echo "  healthy: $$url"; \
+	done
 	# Select candidates
 	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
 	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \

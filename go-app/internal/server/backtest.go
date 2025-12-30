@@ -258,37 +258,37 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 		totalSqErrRuns += diffRuns * diffRuns
 		runsActuals = append(runsActuals, pAct.Runs)
 
-		// Wickets (optional)
-		var absErrWkts float64
-		if !math.IsNaN(pPred.Wickets) || !math.IsNaN(pAct.Wickets) {
-			absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
-			totalAbsErrWickets += absErrWkts
-			countWickets++
-		}
+  // Wickets (optional)
+  var absErrWkts float64
+  if pPred.Wickets != 0 || pAct.Wickets != 0 {
+      absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
+      totalAbsErrWickets += absErrWkts
+      countWickets++
+  }
 
-		// Economy (optional)
-		var absErrEcon float64
-		if !math.IsNaN(pPred.Economy) || !math.IsNaN(pAct.Economy) {
-			absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
-			totalAbsErrEcon += absErrEcon
-			countEcon++
-		}
+  // Economy (optional)
+  var absErrEcon float64
+  if pPred.Economy != 0 || pAct.Economy != 0 {
+      absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
+      totalAbsErrEcon += absErrEcon
+      countEcon++
+  }
 
-		// Fielding: catches (optional)
-		var absErrCatches float64
-		if !math.IsNaN(pPred.Catches) || !math.IsNaN(pAct.Catches) {
-			absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
-			totalAbsErrCatches += absErrCatches
-			countCatches++
-		}
+  // Fielding: catches (optional)
+  var absErrCatches float64
+  if pPred.Catches != 0 || pAct.Catches != 0 {
+      absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
+      totalAbsErrCatches += absErrCatches
+      countCatches++
+  }
 
-		// Fielding: run_outs (optional)
-		var absErrRunOuts float64
-		if !math.IsNaN(pPred.RunOuts) || !math.IsNaN(pAct.RunOuts) {
-			absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
-			totalAbsErrRunOuts += absErrRunOuts
-			countRunOuts++
-		}
+  // Fielding: run_outs (optional)
+  var absErrRunOuts float64
+  if pPred.RunOuts != 0 || pAct.RunOuts != 0 {
+      absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
+      totalAbsErrRunOuts += absErrRunOuts
+      countRunOuts++
+  }
 
 		row := struct {
 			PlayerID  int64              `json:"player_id"`
