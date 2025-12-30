@@ -141,10 +141,8 @@ seed-fixtures:
 		-f tests/fixtures/backtest/seed.sql
 
 # End-to-end smoke: select → evaluate with jq assertions
-e2e-backtest-smoke:
-	# Start services
-	$(DC) up -d postgres
-	$(MAKE) seed-fixtures
+e2e-backtest-smoke: seed-fixtures
+	# Start services (Postgres is ensured by seed-fixtures)
 	$(DC) up -d go-api ml-service
 	# Wait for services to report healthy instead of using a fixed sleep
 	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
@@ -164,12 +162,12 @@ e2e-backtest-smoke:
 	# Select candidates
 	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
 	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \
-	echo $$SEL | jq '.candidates | length' | grep -qE '^[1-9][0-9]*$$'
+	echo $$SEL | jq -e '(.candidates | length) > 0' >/dev/null
 	# Evaluate the seeded match (match_id known from fixtures: 9000111)
 	@echo "[SMOKE] Evaluating match_id=9000111"; \
 	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
-	echo $$EVAL | jq -e '.players | length' >/dev/null; \
-	echo $$EVAL | jq -e '.metrics.player_runs_mae' >/dev/null; \
+	echo $$EVAL | jq -e '(.players | length) > 0' >/dev/null; \
+	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.actual' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
