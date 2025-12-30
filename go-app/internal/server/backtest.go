@@ -258,37 +258,29 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 		totalSqErrRuns += diffRuns * diffRuns
 		runsActuals = append(runsActuals, pAct.Runs)
 
-  // Wickets (optional)
+  // Wickets: always include when both pred and actual exist
   var absErrWkts float64
-  if pPred.Wickets != 0 || pAct.Wickets != 0 {
-      absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
-      totalAbsErrWickets += absErrWkts
-      countWickets++
-  }
+  absErrWkts = math.Abs(pPred.Wickets - pAct.Wickets)
+  totalAbsErrWickets += absErrWkts
+  countWickets++
 
-  // Economy (optional)
+  // Economy: always include
   var absErrEcon float64
-  if pPred.Economy != 0 || pAct.Economy != 0 {
-      absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
-      totalAbsErrEcon += absErrEcon
-      countEcon++
-  }
+  absErrEcon = math.Abs(pPred.Economy - pAct.Economy)
+  totalAbsErrEcon += absErrEcon
+  countEcon++
 
-  // Fielding: catches (optional)
+  // Fielding: catches: always include
   var absErrCatches float64
-  if pPred.Catches != 0 || pAct.Catches != 0 {
-      absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
-      totalAbsErrCatches += absErrCatches
-      countCatches++
-  }
+  absErrCatches = math.Abs(pPred.Catches - pAct.Catches)
+  totalAbsErrCatches += absErrCatches
+  countCatches++
 
-  // Fielding: run_outs (optional)
+  // Fielding: run_outs: always include
   var absErrRunOuts float64
-  if pPred.RunOuts != 0 || pAct.RunOuts != 0 {
-      absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
-      totalAbsErrRunOuts += absErrRunOuts
-      countRunOuts++
-  }
+  absErrRunOuts = math.Abs(pPred.RunOuts - pAct.RunOuts)
+  totalAbsErrRunOuts += absErrRunOuts
+  countRunOuts++
 
 		row := struct {
 			PlayerID  int64              `json:"player_id"`
@@ -447,89 +439,57 @@ func init() {
 		}
 		return ids, nil
 	}
-	// Actuals for match: minimal implementation from batting_data (runs scored)
-	getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
-		if db.Pool == nil {
-			return nil, errors.New("db pool not initialized")
-		}
-		// Start with batting actuals (runs)
-		rows, err := db.Pool.Query(ctx, `
-            SELECT bd.player_id, COALESCE(bd.runs_scored,0)
-            FROM batting_data bd
-            WHERE bd.match_id = $1
-        `, matchID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		out := make(map[int64]playerActuals)
-		for rows.Next() {
-			var pid int64
-			var runs float64
-			if err := rows.Scan(&pid, &runs); err != nil {
-				return nil, err
-			}
-			pa := out[pid]
-			pa.Runs = runs
-			out[pid] = pa
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		// Merge bowling actuals if available (wickets, economy)
-		rows2, err := db.Pool.Query(ctx, `
-            SELECT bw.player_id,
-                   COALESCE(bw.wickets_taken,0),
-                   COALESCE(bw.econ,0)
-            FROM bowling_data bw
-            WHERE bw.match_id = $1
-        `, matchID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows2.Close()
-		for rows2.Next() {
-			var pid int64
-			var wickets, econ float64
-			if err := rows2.Scan(&pid, &wickets, &econ); err != nil {
-				return nil, err
-			}
-			pa := out[pid]
-			pa.Wickets = wickets
-			pa.Economy = econ
-			out[pid] = pa
-		}
-		if err := rows2.Err(); err != nil {
-			return nil, err
-		}
-		// Merge fielding actuals if available (catches, run_outs)
-		rows3, err := db.Pool.Query(ctx, `
-            SELECT fd.player_id,
-                   COALESCE(fd.catches,0),
-                   COALESCE(fd.run_outs,0)
-            FROM fielding_data fd
-            WHERE fd.match_id = $1
-        `, matchID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows3.Close()
-		for rows3.Next() {
-			var pid int64
-			var catches, runOuts float64
-			if err := rows3.Scan(&pid, &catches, &runOuts); err != nil {
-				return nil, err
-			}
-			pa := out[pid]
-			pa.Catches = catches
-			pa.RunOuts = runOuts
-			out[pid] = pa
-		}
-		if err := rows3.Err(); err != nil {
-			return nil, err
-		}
-		return out, nil
-	}
+ // Actuals for match: optimized single-query LEFT JOIN across batting, bowling, fielding
+ getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+     if db.Pool == nil {
+         return nil, errors.New("db pool not initialized")
+     }
+     // Unified query to reduce DB round-trips: get all player actuals with LEFT JOINs
+     rows, err := db.Pool.Query(
+         ctx,
+         `
+         SELECT
+             pm.player_id,
+             COALESCE(bd.runs, 0) AS runs,
+             COALESCE(bw.wickets, 0) AS wickets,
+             COALESCE(bw.econ, 0) AS econ,
+             COALESCE(fd.catches, 0) AS catches,
+             COALESCE(fd.run_outs, 0) AS run_outs
+         FROM player_match pm
+         LEFT JOIN batting_data bd ON bd.match_id = pm.match_id AND bd.player_id = pm.player_id
+         LEFT JOIN bowling_data bw ON bw.match_id = pm.match_id AND bw.player_id = pm.player_id
+         LEFT JOIN fielding_data fd ON fd.match_id = pm.match_id AND fd.player_id = pm.player_id
+         WHERE pm.match_id = $1
+         ORDER BY pm.player_id ASC
+         `,
+         matchID,
+     )
+     if err != nil {
+         return nil, err
+     }
+     defer rows.Close()
+     out := make(map[int64]playerActuals, 22)
+     for rows.Next() {
+         var (
+             pid                                  int64
+             runs, wickets, econ, catches, runOuts float64
+         )
+         if err := rows.Scan(&pid, &runs, &wickets, &econ, &catches, &runOuts); err != nil {
+             return nil, err
+         }
+         out[pid] = playerActuals{
+             Runs:    runs,
+             Wickets: wickets,
+             Economy: econ,
+             Catches: catches,
+             RunOuts: runOuts,
+         }
+     }
+     if err := rows.Err(); err != nil {
+         return nil, err
+     }
+     return out, nil
+ }
 	// Leave features/ML seams as placeholders; tests override them.
 	// Wire default ML and aggregates seams to concrete clients/repos where available.
 	// These can be overridden in tests.

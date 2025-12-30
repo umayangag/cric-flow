@@ -51,9 +51,9 @@ var DefaultFeatureProviderInst FeatureProvider = &DefaultFeatureProvider{}
 // GetPlayerFeaturesAtCutoff implements FeatureProvider. For now it validates input and
 // returns an empty map to keep current flows non-blocking.
 func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
-	ctx context.Context,
-	cutoff time.Time,
-	playerIDs []int64,
+    ctx context.Context,
+    cutoff time.Time,
+    playerIDs []int64,
 ) (map[int64]map[string]float64, error) {
 	// Guard: cutoff must be set (non-zero) and at least one player id provided.
 	if cutoff.IsZero() {
@@ -68,28 +68,153 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		return nil, errors.New("db pool not initialized")
 	}
 
-	out := make(map[int64]map[string]float64, len(playerIDs))
-	// 1) Precomputed-first: try to read form/consistency-like values.
-	for _, pid := range playerIDs {
-		feats := make(map[string]float64)
-		// Player-level consistency from player table (if available)
-		var batCons, bowlCons sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
+    // Initialize the output map with all player IDs.
+    out := make(map[int64]map[string]float64, len(playerIDs))
+    for _, pid := range playerIDs {
+        out[pid] = make(map[string]float64)
+    }
+
+    // Fast path: when using the real pool, batch the queries to avoid N+1.
+    if _, usesPool := featureQuerier.(poolQuerier); usesPool {
+        // 1) Player-level consistency for all requested players
+        if rows, err := Pool.Query(ctx, `
+            SELECT id, batting_consistency, bowling_consistency
+            FROM player
+            WHERE id = ANY($1::bigint[])
+        `, playerIDs); err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var pid int64
+                var batCons, bowlCons sql.NullFloat64
+                if err := rows.Scan(&pid, &batCons, &bowlCons); err == nil {
+                    feats := out[pid]
+                    if feats == nil {
+                        feats = make(map[string]float64)
+                        out[pid] = feats
+                    }
+                    if batCons.Valid {
+                        feats["batting_consistency"] = batCons.Float64
+                    }
+                    if bowlCons.Valid {
+                        feats["bowling_consistency"] = bowlCons.Float64
+                    }
+                }
+            }
+        }
+
+        // 2) Latest season form per player (season <= cutoff year)
+        cutoffYear := cutoff.Year()
+        if rows, err := Pool.Query(ctx, `
+            SELECT DISTINCT ON (pfd.player_id)
+                   pfd.player_id,
+                   pfd.batting_form,
+                   pfd.bowling_form
+            FROM player_form_data pfd
+            JOIN season s ON s.id = pfd.season_id
+            WHERE pfd.player_id = ANY($1::bigint[]) AND s.season_name <= $2
+            ORDER BY pfd.player_id, s.season_name DESC
+        `, playerIDs, cutoffYear); err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var pid int64
+                var batForm, bowlForm sql.NullFloat64
+                if err := rows.Scan(&pid, &batForm, &bowlForm); err == nil {
+                    feats := out[pid]
+                    if feats == nil {
+                        feats = make(map[string]float64)
+                        out[pid] = feats
+                    }
+                    if batForm.Valid {
+                        feats["batting_form"] = batForm.Float64
+                    }
+                    if bowlForm.Valid {
+                        feats["bowling_form"] = bowlForm.Float64
+                    }
+                }
+            }
+        }
+
+        // 3) Batting aggregates up to cutoff
+        if rows, err := Pool.Query(ctx, `
+            SELECT bd.player_id, COALESCE(AVG(bd.runs), 0)
+            FROM batting_data bd
+            JOIN match_details md ON md.match_id = bd.match_id
+            WHERE bd.player_id = ANY($1::bigint[]) AND md.date <= $2
+            GROUP BY bd.player_id
+        `, playerIDs, cutoff); err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var pid int64
+                var avgRuns sql.NullFloat64
+                if err := rows.Scan(&pid, &avgRuns); err == nil {
+                    feats := out[pid]
+                    if feats == nil {
+                        feats = make(map[string]float64)
+                        out[pid] = feats
+                    }
+                    if avgRuns.Valid {
+                        if _, ok := feats["batting_form"]; !ok {
+                            feats["batting_form"] = avgRuns.Float64
+                        }
+                        feats["avg_runs"] = avgRuns.Float64
+                    }
+                }
+            }
+        }
+
+        // 4) Bowling aggregates up to cutoff
+        if rows, err := Pool.Query(ctx, `
+            SELECT bw.player_id, COALESCE(AVG(bw.wickets), 0), COALESCE(AVG(bw.econ), 0)
+            FROM bowling_data bw
+            JOIN match_details md ON md.match_id = bw.match_id
+            WHERE bw.player_id = ANY($1::bigint[]) AND md.date <= $2
+            GROUP BY bw.player_id
+        `, playerIDs, cutoff); err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var pid int64
+                var avgWkts, avgEcon sql.NullFloat64
+                if err := rows.Scan(&pid, &avgWkts, &avgEcon); err == nil {
+                    feats := out[pid]
+                    if feats == nil {
+                        feats = make(map[string]float64)
+                        out[pid] = feats
+                    }
+                    if avgWkts.Valid {
+                        if _, ok := feats["bowling_form"]; !ok {
+                            feats["bowling_form"] = avgWkts.Float64
+                        }
+                        feats["avg_wickets"] = avgWkts.Float64
+                    }
+                    if avgEcon.Valid {
+                        feats["avg_economy"] = avgEcon.Float64
+                    }
+                }
+            }
+        }
+
+        return out, nil
+    }
+
+    // Fallback path (tests or custom querier): keep per-player queries.
+    // 1) Precomputed-first: form/consistency-like values.
+    for _, pid := range playerIDs {
+        feats := out[pid]
+        var batCons, bowlCons sql.NullFloat64
+        _ = featureQuerier.QueryRow(ctx, `
             SELECT batting_consistency, bowling_consistency
             FROM player WHERE id = $1
         `, pid).Scan(&batCons, &bowlCons)
-		if batCons.Valid {
-			feats["batting_consistency"] = batCons.Float64
-		}
-		if bowlCons.Valid {
-			feats["bowling_consistency"] = bowlCons.Float64
-		}
+        if batCons.Valid {
+            feats["batting_consistency"] = batCons.Float64
+        }
+        if bowlCons.Valid {
+            feats["bowling_consistency"] = bowlCons.Float64
+        }
 
-		// Player form from player_form_data using season <= cutoff's season (best-effort)
-		// We treat season_name as text; filter lexicographically (works for YYYY)
-		cutoffYear := cutoff.Year()
-		var batForm, bowlForm sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
+        cutoffYear := cutoff.Year()
+        var batForm, bowlForm sql.NullFloat64
+        _ = featureQuerier.QueryRow(ctx, `
             SELECT pfd.batting_form, pfd.bowling_form
             FROM player_form_data pfd
             JOIN season s ON s.id = pfd.season_id
@@ -97,59 +222,55 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
             ORDER BY s.season_name DESC
             LIMIT 1
         `, pid, cutoffYear).Scan(&batForm, &bowlForm)
-		if batForm.Valid {
-			feats["batting_form"] = batForm.Float64
-		}
-		if bowlForm.Valid {
-			feats["bowling_form"] = bowlForm.Float64
-		}
+        if batForm.Valid {
+            feats["batting_form"] = batForm.Float64
+        }
+        if bowlForm.Valid {
+            feats["bowling_form"] = bowlForm.Float64
+        }
+        out[pid] = feats
+    }
 
-		out[pid] = feats
-	}
-
-	// 2) Fallback computation for missing basic signals using base tables strictly before cutoff.
-	for _, pid := range playerIDs {
-		feats := out[pid]
-		if feats == nil {
-			feats = make(map[string]float64)
-		}
-
-		// Batting fallback: average runs up to cutoff
-		var avgRuns sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
+    // 2) Fallback computation using base tables strictly before cutoff.
+    for _, pid := range playerIDs {
+        feats := out[pid]
+        if feats == nil {
+            feats = make(map[string]float64)
+        }
+        var avgRuns sql.NullFloat64
+        _ = featureQuerier.QueryRow(ctx, `
             SELECT COALESCE(AVG(bd.runs), 0)
             FROM batting_data bd
             JOIN match_details md ON md.match_id = bd.match_id
             WHERE bd.player_id = $1 AND md.date <= $2
         `, pid, cutoff).Scan(&avgRuns)
-		if avgRuns.Valid {
-			if _, ok := feats["batting_form"]; !ok {
-				feats["batting_form"] = avgRuns.Float64
-			}
-			feats["avg_runs"] = avgRuns.Float64
-		}
+        if avgRuns.Valid {
+            if _, ok := feats["batting_form"]; !ok {
+                feats["batting_form"] = avgRuns.Float64
+            }
+            feats["avg_runs"] = avgRuns.Float64
+        }
 
-		// Bowling fallback: average wickets and economy up to cutoff
-		var avgWkts, avgEcon sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
+        var avgWkts, avgEcon sql.NullFloat64
+        _ = featureQuerier.QueryRow(ctx, `
             SELECT COALESCE(AVG(bw.wickets), 0), COALESCE(AVG(bw.econ), 0)
             FROM bowling_data bw
             JOIN match_details md ON md.match_id = bw.match_id
             WHERE bw.player_id = $1 AND md.date <= $2
         `, pid, cutoff).Scan(&avgWkts, &avgEcon)
-		if avgWkts.Valid {
-			if _, ok := feats["bowling_form"]; !ok {
-				feats["bowling_form"] = avgWkts.Float64
-			}
-			feats["avg_wickets"] = avgWkts.Float64
-		}
-		if avgEcon.Valid {
-			feats["avg_economy"] = avgEcon.Float64
-		}
-		out[pid] = feats
-	}
+        if avgWkts.Valid {
+            if _, ok := feats["bowling_form"]; !ok {
+                feats["bowling_form"] = avgWkts.Float64
+            }
+            feats["avg_wickets"] = avgWkts.Float64
+        }
+        if avgEcon.Valid {
+            feats["avg_economy"] = avgEcon.Float64
+        }
+        out[pid] = feats
+    }
 
-	return out, nil
+    return out, nil
 }
 
 // NOTE: This initial implementation is intentionally conservative and best-effort:
