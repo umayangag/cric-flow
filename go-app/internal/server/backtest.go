@@ -46,10 +46,43 @@ var (
 		return matchAggregates{}, sql.ErrNoRows
 	}
 	// Match-level aggregates: predictions from ML given cutoff and teams
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-		return matchAggregates{}, sql.ErrNoRows
-	}
+    mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+        return matchAggregates{}, sql.ErrNoRows
+    }
 )
+
+// dashboard accuracy-trend seams (overridable in tests)
+var listPlayedMatchesByFilters = func(
+    ctx context.Context,
+    format string,
+    team1 string,
+    team2 string,
+    start time.Time,
+    end time.Time,
+    order string,
+    limit int,
+) ([]backtestCandidate, error) {
+    // Delegate to DB repository implementation; transform DB rows to server DTO.
+    rows, err := db.ListPlayedMatchesByFilters(ctx, format, team1, team2, start, end, order, limit)
+    if err != nil {
+        return nil, err
+    }
+    out := make([]backtestCandidate, 0, len(rows))
+    for _, r := range rows {
+        out = append(out, backtestCandidate{
+            MatchID:        r.MatchID,
+            StableID:       nullString(r.StableID),
+            Date:           r.Date.Format(time.RFC3339),
+            Venue:          nullString(r.Venue),
+            Season:         nullString(r.Season),
+            Format:         nullString(r.FormatCode),
+            Team1:          r.Team1,
+            Team2:          r.Team2,
+            WinnerTeamCode: nullString(r.WinnerTeam),
+        })
+    }
+    return out, nil
+}
 
 type backtestSelectResponse struct {
 	Filters    map[string]any      `json:"filters"`
@@ -111,6 +144,24 @@ type backtestEvaluateResponse struct {
 		Errors    map[string]float64 `json:"errors"`
 	} `json:"players"`
 	Metrics map[string]float64 `json:"metrics"`
+}
+
+// Accuracy trend DTOs
+type accuracyTrendItem struct {
+    MatchID int64             `json:"match_id"`
+    Date    string            `json:"date"`
+    Format  string            `json:"format"`
+    Team1   string            `json:"team1"`
+    Team2   string            `json:"team2"`
+    Metrics map[string]float64 `json:"metrics"`
+}
+
+type accuracyTrendResponse struct {
+    Filters     map[string]any   `json:"filters"`
+    Count       int              `json:"count"`
+    Results     []accuracyTrendItem `json:"results"`
+    Summary     map[string]float64 `json:"summary"`
+    Progressive []map[string]float64 `json:"progressive"`
 }
 
 // backtestMatchHandler handles GET /api/backtest/match
@@ -387,6 +438,167 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// backtestAccuracyTrendHandler handles GET /api/backtest/accuracy-trend
+// Optional filters: format, start_date, end_date, team1, team2, order, limit
+func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Request) {
+    q := r.URL.Query()
+    format := strings.TrimSpace(q.Get("format"))
+    team1 := strings.TrimSpace(q.Get("team1"))
+    team2 := strings.TrimSpace(q.Get("team2"))
+    order := strings.TrimSpace(q.Get("order"))
+    if order == "" { order = "asc" }
+    limit := 0
+    if s := strings.TrimSpace(q.Get("limit")); s != "" {
+        if v, err := strconv.Atoi(s); err == nil && v > 0 { limit = v }
+    }
+    parseDate := func(k string) (time.Time, bool, error) {
+        v := strings.TrimSpace(q.Get(k))
+        if v == "" { return time.Time{}, false, nil }
+        // Accept YYYY-MM-DD
+        t, err := time.Parse("2006-01-02", v)
+        if err != nil { return time.Time{}, false, err }
+        return t, true, nil
+    }
+    start, hasStart, err := parseDate("start_date")
+    if err != nil { writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid start_date"}); return }
+    end, hasEnd, err := parseDate("end_date")
+    if err != nil { writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid end_date"}); return }
+    if hasStart && hasEnd && end.Before(start) {
+        writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "end_date before start_date"})
+        return
+    }
+
+    // List candidates via seam (tests will stub this)
+    cands, err := listPlayedMatchesByFilters(r.Context(), format, team1, team2, start, end, order, limit)
+    if err != nil && !errors.Is(err, sql.ErrNoRows) {
+        respondErr(w, err)
+        return
+    }
+    if len(cands) == 0 {
+        resp := accuracyTrendResponse{
+            Filters: map[string]any{
+                "format": format, "team1": team1, "team2": team2,
+                "start_date": q.Get("start_date"), "end_date": q.Get("end_date"),
+                "order": order, "limit": limit,
+            },
+            Count:       0,
+            Results:     []accuracyTrendItem{},
+            Summary:     map[string]float64{"n": 0},
+            Progressive: []map[string]float64{},
+        }
+        writeJSON(w, http.StatusOK, resp)
+        return
+    }
+
+    // Compute per-match metrics
+    results := make([]accuracyTrendItem, 0, len(cands))
+    // Running sums for summary and progressive
+    var sumPlayerMAE, sumTeamRunsMAE, sumWinnerAcc float64
+    var countMatches float64
+
+    for _, m := range cands {
+        mid := m.MatchID
+        // cutoff is match date from seam (prefer explicit seam)
+        cutoff, cerr := getBacktestMatchDateFunc(r.Context(), mid)
+        if cerr != nil || cutoff.IsZero() {
+            // fallback to candidate date if provided in RFC3339-ish; else skip
+            if m.Date != "" {
+                if t, err := time.Parse(time.RFC3339, m.Date); err == nil { cutoff = t }
+            }
+        }
+        // Player MAE
+        metrics := map[string]float64{}
+        if !cutoff.IsZero() {
+            squad, err := getBacktestSquadPlayerIDsFunc(r.Context(), mid, cutoff, m.Format)
+            if err == nil && len(squad) > 0 {
+                preds, err1 := mlBacktestPredictFunc(r.Context(), cutoff, squad)
+                acts, err2 := getBacktestPlayerActualsForMatchFunc(r.Context(), mid)
+                if err1 == nil && err2 == nil {
+                    var totalAbs, cnt float64
+                    for _, pid := range squad {
+                        pPred, okp := preds[pid]
+                        pAct, oka := acts[pid]
+                        if !okp || !oka { continue }
+                        totalAbs += math.Abs(pPred.Runs - pAct.Runs)
+                        cnt++
+                    }
+                    if cnt > 0 {
+                        mae := totalAbs / cnt
+                        metrics["player_runs_mae"] = mae
+                        sumPlayerMAE += mae
+                    }
+                }
+            }
+            // Team aggregates metrics
+            if m.Team1 != "" && m.Team2 != "" {
+                predAgg, errP := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{m.Team1, m.Team2})
+                actAgg, errA := getBacktestMatchAggregatesActualsFunc(r.Context(), mid)
+                if errP == nil && errA == nil {
+                    if actAgg.Runs != 0 || predAgg.Runs != 0 {
+                        mae := math.Abs(predAgg.Runs - actAgg.Runs)
+                        metrics["team_runs_mae"] = mae
+                        sumTeamRunsMAE += mae
+                    }
+                    if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
+                        acc := 0.0
+                        if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) { acc = 1.0 }
+                        metrics["team_winner_accuracy"] = acc
+                        sumWinnerAcc += acc
+                    }
+                }
+            }
+        }
+
+        results = append(results, accuracyTrendItem{
+            MatchID: mid,
+            Date:    m.Date,
+            Format:  m.Format,
+            Team1:   m.Team1,
+            Team2:   m.Team2,
+            Metrics: metrics,
+        })
+        countMatches++
+    }
+
+    // Summary and progressive
+    summary := map[string]float64{"n": countMatches}
+    if countMatches > 0 {
+        if sumPlayerMAE > 0 { summary["player_runs_mae_avg"] = sumPlayerMAE / countMatches }
+        if sumTeamRunsMAE > 0 { summary["team_runs_mae_avg"] = sumTeamRunsMAE / countMatches }
+        // winner accuracy could be 0 across all; we still include avg (0)
+        summary["team_winner_accuracy_avg"] = sumWinnerAcc / countMatches
+    }
+
+    progressive := make([]map[string]float64, 0, len(results))
+    var psPlayer, psTeamRuns, psWinner float64
+    for i, it := range results {
+        n := float64(i + 1)
+        if v, ok := it.Metrics["player_runs_mae"]; ok { psPlayer += v }
+        if v, ok := it.Metrics["team_runs_mae"]; ok { psTeamRuns += v }
+        if v, ok := it.Metrics["team_winner_accuracy"]; ok { psWinner += v }
+        row := map[string]float64{
+            "n": n,
+            "team_winner_accuracy_avg": psWinner / n,
+        }
+        if psPlayer > 0 { row["player_runs_mae_avg"] = psPlayer / n }
+        if psTeamRuns > 0 { row["team_runs_mae_avg"] = psTeamRuns / n }
+        progressive = append(progressive, row)
+    }
+
+    resp := accuracyTrendResponse{
+        Filters: map[string]any{
+            "format": format, "team1": team1, "team2": team2,
+            "start_date": q.Get("start_date"), "end_date": q.Get("end_date"),
+            "order": order, "limit": limit,
+        },
+        Count:       len(results),
+        Results:     results,
+        Summary:     summary,
+        Progressive: progressive,
+    }
+    writeJSON(w, http.StatusOK, resp)
 }
 
 func nullString(ns sql.NullString) string {

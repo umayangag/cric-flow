@@ -32,8 +32,10 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
 	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 
-	// Backtesting endpoints
-	r.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
+ // Backtesting endpoints
+ r.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
+ // Accuracy trend endpoint for dashboards
+ r.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet)
 
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
