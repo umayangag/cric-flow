@@ -85,7 +85,12 @@ vet:
 	go vet ./...
 
 test:
-	export RUN_DB_TESTS=1 && go test ./...
+	go test ./...
+
+# Run tests including DB integration tests (requires a running Postgres configured via POSTGRES_* envs)
+.PHONY: test-db
+test-db:
+	RUN_DB_TESTS=1 go test ./...
 
 # Initialize local Go development environment (tools + modules)
 init:
@@ -212,7 +217,8 @@ help:
 	@echo "  fmt / fmt-check    Format code / check formatting (gofumpt, golines)"
 	@echo "  lint               Run golangci-lint"
 	@echo "  vet                Run go vet"
-	@echo "  test               Run unit tests"
+	@echo "  test               Run unit tests (no DB)"
+	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"

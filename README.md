@@ -388,3 +388,8 @@ Notes:
 - The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.
 
 
+## Backtesting on played matches
+
+A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.
+
+See docs/backtest.md for usage details, example requests, and environment variables.

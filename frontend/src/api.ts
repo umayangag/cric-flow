@@ -5,6 +5,8 @@ import type {
   SeasonsNextResponse,
   MatchListItem,
   MatchSquadsResponse,
+  BacktestSelectResponse,
+  BacktestEvaluateResponse,
 } from './types';
 
 const BASE_URL = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
@@ -58,6 +60,24 @@ export const api = {
     const u = new URL(`/match/${matchId}/squads`, BASE_API_URL);
     u.searchParams.set('asof', asof);
     if (format) u.searchParams.set('format', format);
+    return httpApi(u.toString());
+  },
+  // --- Backtest API (select and evaluate) ---
+  backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {
+    const u = new URL('/api/backtest/match', BASE_API_URL);
+    u.searchParams.set('format', format);
+    u.searchParams.set('team1', team1);
+    u.searchParams.set('team2', team2);
+    // mode defaults to select when match_id absent
+    return httpApi(u.toString());
+  },
+  backtestEvaluate(format: string, team1: string, team2: string, matchId: number | string): Promise<BacktestEvaluateResponse> {
+    const u = new URL('/api/backtest/match', BASE_API_URL);
+    u.searchParams.set('format', format);
+    u.searchParams.set('team1', team1);
+    u.searchParams.set('team2', team2);
+    u.searchParams.set('mode', 'evaluate');
+    u.searchParams.set('match_id', String(matchId));
     return httpApi(u.toString());
   },
 };

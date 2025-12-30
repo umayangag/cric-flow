@@ -4,226 +4,229 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import EvaluateDbTab from '../components/EvaluateDbTab';
 
-// Mock the api module
+// Mock the api module to use the new backtest endpoints
 vi.mock('../api', async () => {
   return {
     api: {
-      seasonsNext: vi.fn(),
-      listMatches: vi.fn(),
-      getMatchSquads: vi.fn(),
-      predictWin: vi.fn(),
+      backtestSelect: vi.fn(),
+      backtestEvaluate: vi.fn(),
     },
   };
 });
 
-// Types for convenience
-type MatchListItem = {
-  match_id: number | string;
-  date: string;
-  teams: [string, string];
-  format?: string;
-};
-
 const { api } = await import('../api');
 
-describe('EvaluateDbTab', () => {
+describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('happy path: loads matches and evaluates, rendering metrics', async () => {
+  it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
     // Arrange mocks
-    (api.seasonsNext as any).mockResolvedValue({ next_season: 2019 });
-    const matches: MatchListItem[] = [
-      { match_id: 1, date: '2019-01-10', teams: ['A', 'B'] },
-      { match_id: 2, date: '2019-01-11', teams: ['C', 'D'] },
-      { match_id: 3, date: '2019-01-12', teams: ['E', 'F'] },
-    ];
-    (api.listMatches as any).mockResolvedValue(matches);
-
-    // Squads and outcomes
-    (api.getMatchSquads as any).mockImplementation(async (id: number) => {
-      switch (Number(id)) {
-        case 1:
-          return {
-            match_id: 1,
-            date: '2019-01-10',
-            teams: ['A', 'B'] as [string, string],
-            squads: [
-              { team_name: 'A', actual_win: 1, players: [{ player_name: 'p1', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-              { team_name: 'B', actual_win: 0, players: [{ player_name: 'q1', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-            ],
-          };
-        case 2:
-          return {
-            match_id: 2,
-            date: '2019-01-11',
-            teams: ['C', 'D'] as [string, string],
-            squads: [
-              { team_name: 'C', actual_win: 0, players: [{ player_name: 'p2', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-              { team_name: 'D', actual_win: 1, players: [{ player_name: 'q2', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-            ],
-          };
-        case 3:
-          return {
-            match_id: 3,
-            date: '2019-01-12',
-            teams: ['E', 'F'] as [string, string],
-            squads: [
-              { team_name: 'E', actual_win: 1, players: [{ player_name: 'p3', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-              { team_name: 'F', actual_win: 0, players: [{ player_name: 'q3', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-            ],
-          };
-        default:
-          throw new Error('unexpected id');
-      }
+    (api.backtestSelect as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
+      candidates: [
+        {
+          match_id: 111,
+          stable_id: 'x',
+          date: '2024-10-30T14:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
+        },
+      ],
+    });
+    (api.backtestEvaluate as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
+      match: { match_id: 111, date: '2024-10-30T14:00:00Z' },
+      players: [
+        { player_id: 1, predicted: { runs: 25 }, actual: { runs: 30 }, errors: { runs_mae: 5 } },
+        { player_id: 2, predicted: { runs: 10 }, actual: { runs: 10 }, errors: { runs_mae: 0 } },
+      ],
+      metrics: { player_runs_mae: 2.5 },
     });
 
-    // Predicts: make one incorrect to avoid 100%
-    let predictCall = 0;
-    (api.predictWin as any).mockImplementation(async () => {
-      predictCall++;
-      // For 4th call make it wrong (prob >= 0.5 predicts 1)
-      if (predictCall === 4) {
-        return { players: [], team_win_probability: 0.9 }; // will be wrong for actual 0
-      }
-      // Otherwise keep it aligned with actual: first of each pair >= 0.7, second <= 0.3
-      const isFirstOfPair = predictCall % 2 === 1;
-      return { players: [], team_win_probability: isFirstOfPair ? 0.7 : 0.3 };
-    });
-
-    // Render
     render(<EvaluateDbTab />);
 
-    // Set cutoff and format
-    const cutoffInput = screen.getByLabelText(/Cutoff date/i) as HTMLInputElement;
-    fireEvent.change(cutoffInput, { target: { value: '2018-12-31' } });
+    // Inputs exist
+    fireEvent.change(screen.getByLabelText(/Format/i), { target: { value: 'T20' } });
+    fireEvent.change(screen.getByLabelText(/Team 1/i), { target: { value: 'IND' } });
+    fireEvent.change(screen.getByLabelText(/Team 2/i), { target: { value: 'AUS' } });
 
-    const formatSelect = screen.getByLabelText(/Format/i);
-    fireEvent.change(formatSelect, { target: { value: 'T20' } });
+    // Load candidates
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    await screen.findByText(/Loaded 1 candidates/i);
 
-    // Load matches
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    // Select and evaluate
+    const radio = screen.getByRole('radio', { name: /Select/i });
+    fireEvent.click(radio);
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
-    await screen.findByText(/Loaded 3 matches/i);
-
-    // Evaluate and wait for completion
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
+    // Expect results
     await screen.findByText(/Evaluation complete/i);
-
-    // Expect metrics to render
-    const resultsSection = await screen.findByLabelText('results-section');
-    expect(within(resultsSection).getByText(/Teams evaluated:/i)).toBeInTheDocument();
-    expect(within(resultsSection).getByText(/Accuracy:/i)).toBeInTheDocument();
-    // Confusion matrix table should be present
-    expect(within(resultsSection).getByRole('table', { name: /confusion-matrix/i })).toBeInTheDocument();
+    const results = await screen.findByLabelText('results-section');
+    expect(within(results).getByText(/player_runs_mae/i)).toBeInTheDocument();
+    // players table should show player ids
+    expect(within(results).getByText('1')).toBeInTheDocument();
+    expect(within(results).getByText('2')).toBeInTheDocument();
   });
 
-  it('shows message when next season is null and does not list matches', async () => {
-    (api.seasonsNext as any).mockResolvedValue({ next_season: null });
-    const listMatchesSpy = api.listMatches as unknown as ReturnType<typeof vi.fn>;
+  it('shows error when backtestSelect fails', async () => {
+    (api.backtestSelect as any).mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
+
+    render(<EvaluateDbTab />);
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    await screen.findByText(/Error:/i);
+  });
+
+  it('renders bowling metrics and match aggregates when present', async () => {
+    // Arrange candidates
+    (api.backtestSelect as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
+      candidates: [
+        {
+          match_id: 222,
+          stable_id: 'x2',
+          date: '2024-11-05T09:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
+        },
+      ],
+    });
+
+    // Arrange evaluate with wickets/economy and match_aggregates
+    (api.backtestEvaluate as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
+      match: { match_id: 222, date: '2024-11-05T09:00:00Z' },
+      players: [
+        { player_id: 101, predicted: { runs: 28, wickets: 1, economy: 8.0 }, actual: { runs: 30, wickets: 2, economy: 7.5 }, errors: { runs_mae: 2, wickets_mae: 1, economy_mae: 0.5 } },
+        { player_id: 102, predicted: { runs: 10, wickets: 0, economy: 5.5 }, actual: { runs: 5, wickets: 0, economy: 6.0 }, errors: { runs_mae: 5, wickets_mae: 0, economy_mae: 0.5 } },
+      ],
+      match_aggregates: {
+        predicted: { runs: 160, wickets: 6, extras: 12, winner_team_code: 'IND' },
+        actual: { runs: 150, wickets: 7, extras: 10, winner_team_code: 'IND' },
+        errors: { runs_mae: 10, wickets_mae: 1, extras_mae: 2 },
+      },
+      metrics: {
+        player_runs_mae: 3.667,
+        player_wickets_mae: 0.5,
+        player_economy_mae: 0.5,
+        match_runs_mae: 10,
+        match_wickets_mae: 1,
+        match_extras_mae: 2,
+        winner_accuracy: 1,
+      },
+    });
 
     render(<EvaluateDbTab />);
 
-    const cutoffInput = screen.getByLabelText(/Cutoff date/i) as HTMLInputElement;
-    fireEvent.change(cutoffInput, { target: { value: '2020-12-31' } });
+    // Load candidates
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    await screen.findByText(/Loaded 1 candidates/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    // Select and evaluate
+    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
-    await screen.findByText(/No next season after cutoff/i);
-    expect(listMatchesSpy).not.toHaveBeenCalled();
+    // Assert metrics header shows bowling and match-level metrics
+    const results = await screen.findByLabelText('results-section');
+    expect(within(results).getByText(/player_wickets_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/player_economy_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/match_runs_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/match_wickets_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/match_extras_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/winner_accuracy/i)).toBeInTheDocument();
 
-    // Ensure matches list shows empty state
-    const matchesSection = screen.getByText('Matches').closest('section')!;
-    expect(within(matchesSection).getByText(/No matches loaded/i)).toBeInTheDocument();
+    // Assert match aggregates block present
+    expect(within(results).getByText(/Match aggregates/i)).toBeInTheDocument();
+    expect(within(results).getByText(/Predicted/i)).toBeInTheDocument();
+    // Multiple elements may contain the word "Actual" (header and table column names)
+    const actualLabels = within(results).getAllByText(/Actual\b/i);
+    expect(actualLabels.length).toBeGreaterThan(0);
+    expect(within(results).getByText(/Errors/i)).toBeInTheDocument();
+
+    // Assert bowling columns appear in table
+    const table = within(results).getByRole('table');
+    expect(within(table).getByText(/Pred Wkts/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Actual Wkts/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Wkts Abs Err/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Pred Econ/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Actual Econ/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Econ Abs Err/i)).toBeInTheDocument();
   });
 
-  it('marks match as Error on incomplete squads (422) and continues evaluation', async () => {
-    (api.seasonsNext as any).mockResolvedValue({ next_season: 2019 });
-    (api.listMatches as any).mockResolvedValue([
-      { match_id: 10, date: '2019-02-01', teams: ['G', 'H'] },
-      { match_id: 11, date: '2019-02-02', teams: ['I', 'J'] },
-    ]);
-
-    (api.getMatchSquads as any).mockImplementation(async (id: number) => {
-      if (Number(id) === 10) {
-        // Simulate HTTP 422 from API layer
-        throw new Error('HTTP 422 Unprocessable Entity: {"code":"INCOMPLETE_SQUADS"}');
-      }
-      return {
-        match_id: 11,
-        date: '2019-02-02',
-        teams: ['I', 'J'] as [string, string],
-        squads: [
-          { team_name: 'I', actual_win: 1, players: [{ player_name: 'pi', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-          { team_name: 'J', actual_win: 0, players: [{ player_name: 'pj', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-        ],
-      };
+  it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
+    // Arrange candidates
+    (api.backtestSelect as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
+      candidates: [
+        {
+          match_id: 333,
+          stable_id: 'x3',
+          date: '2024-11-06T09:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
+        },
+      ],
     });
-    (api.predictWin as any).mockImplementation(async (_players: any, idx: number) => {
-      // First of the two teams wins
-      return { players: [], team_win_probability: 0.8 };
+
+    // Arrange evaluate with fielding keys present
+    (api.backtestEvaluate as any).mockResolvedValue({
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
+      match: { match_id: 333, date: '2024-11-06T09:00:00Z' },
+      players: [
+        { player_id: 201, predicted: { runs: 12, catches: 1, run_outs: 2 }, actual: { runs: 10, catches: 2, run_outs: 1 }, errors: { runs_mae: 2, catches_mae: 1, run_outs_mae: 1 } },
+        { player_id: 202, predicted: { runs: 4, catches: 0, run_outs: 1 }, actual: { runs: 5, catches: 0, run_outs: 0 }, errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 } },
+      ],
+      metrics: {
+        player_runs_mae: 1.5,
+        player_catches_mae: 0.5,
+        player_run_outs_mae: 1.0,
+      },
     });
 
     render(<EvaluateDbTab />);
-    const cutoffInput = screen.getByLabelText(/Cutoff date/i) as HTMLInputElement;
-    fireEvent.change(cutoffInput, { target: { value: '2018-12-31' } });
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/Loaded 2 matches/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
-    await screen.findByText(/Evaluation complete/i);
+    // Load candidates
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    await screen.findByText(/Loaded 1 candidates/i);
 
-    // One match should be Error, the other Evaluated
-    const list = await screen.findAllByText(/—/); // list items contain an em status split by em dash
-    const html = (await screen.findByText(/Results/)).innerHTML; // ensure results section present
-    // Assert statuses directly via list rendering
-    const items = screen.getAllByRole('listitem');
-    const statuses = items.map((li) => li.textContent || '');
-    expect(statuses.some((t) => /Error/i.test(t))).toBe(true);
-    expect(statuses.some((t) => /Evaluated/i.test(t))).toBe(true);
+    // Select and evaluate
+    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
-    // Metrics should render in results section
-    const resultsSection = await screen.findByLabelText('results-section');
-    expect(within(resultsSection).getByText(/Teams evaluated:/i)).toBeInTheDocument();
+    // Assert metrics header shows fielding metrics
+    const results = await screen.findByLabelText('results-section');
+    expect(within(results).getByText(/player_catches_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/player_run_outs_mae/i)).toBeInTheDocument();
+
+    // Assert fielding columns appear in table
+    const table = within(results).getByRole('table');
+    expect(within(table).getByText(/Pred Catches/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Actual Catches/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Catches Abs Err/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Pred Run Outs/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Actual Run Outs/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Run Outs Abs Err/i)).toBeInTheDocument();
   });
 
-  it('honors concurrency cap of 5 in-flight getMatchSquads calls', async () => {
-    (api.seasonsNext as any).mockResolvedValue({ next_season: 2019 });
-    const N = 12;
-    const matches = Array.from({ length: N }, (_, i) => ({ match_id: 100 + i, date: '2019-03-01', teams: ['X', 'Y'] as [string, string] }));
-    (api.listMatches as any).mockResolvedValue(matches);
-
-    let inFlight = 0;
-    let maxInFlight = 0;
-    (api.getMatchSquads as any).mockImplementation(async () => {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      // Small delay to simulate network and force concurrency
-      await new Promise((res) => setTimeout(res, 10));
-      inFlight--;
-      return {
-        match_id: 0,
-        date: '2019-03-01',
-        teams: ['X', 'Y'] as [string, string],
-        squads: [
-          { team_name: 'X', actual_win: 1, players: [{ player_name: 'px', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-          { team_name: 'Y', actual_win: 0, players: [{ player_name: 'py', runs_scored: 0, balls_faced: 0, fours_scored: 0, sixes_scored: 0, batting_position: 1, strike_rate: 0, runs_conceded: 0, deliveries: 0, wickets_taken: 0, econ: 0 }] },
-        ],
-      };
-    });
-    (api.predictWin as any).mockResolvedValue({ players: [], team_win_probability: 0.8 });
-
+  it('disable evaluate until a candidate match is selected', async () => {
+    (api.backtestSelect as any).mockResolvedValue({ filters: {}, candidates: [] });
     render(<EvaluateDbTab />);
-    const cutoffInput = screen.getByLabelText(/Cutoff date/i) as HTMLInputElement;
-    fireEvent.change(cutoffInput, { target: { value: '2018-12-31' } });
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(new RegExp(`Loaded ${N} matches`, 'i'));
-
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate/i }));
-    await screen.findByText(/Evaluation complete/i, {}, { timeout: 10000 });
-
-    expect(maxInFlight).toBeLessThanOrEqual(5);
-    expect((api.getMatchSquads as any).mock.calls.length).toBe(N);
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    await screen.findByText(/No candidates loaded yet/i);
+    const btn = screen.getByRole('button', { name: /Evaluate Selected Match/i }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
   });
 });

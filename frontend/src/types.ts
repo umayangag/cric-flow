@@ -67,3 +67,44 @@ export type MatchSquadsResponse = {
   teams: [string, string];
   squads: [SquadDTO, SquadDTO]; // exactly two
 };
+
+// --- Backtest API DTOs ---
+export type BacktestCandidate = {
+  match_id: number;
+  stable_id: string;
+  date: string; // RFC3339
+  venue: string;
+  season: string;
+  format: string;
+  team1: string;
+  team2: string;
+  winner_team_code: string;
+};
+
+export type BacktestSelectResponse = {
+  filters: Record<string, unknown> & { format: string; team1: string; team2: string };
+  candidates: BacktestCandidate[];
+};
+
+export type BacktestEvaluatePlayerRow = {
+  player_id: number;
+  // Notes: backend may include optional bowling and fielding keys when available:
+  // - Bowling: wickets, economy
+  // - Fielding: catches, run_outs
+  // Keys are additive and backward compatible.
+  predicted: Record<string, number>; // e.g., { runs: 25, wickets: 1, economy: 7.5, catches: 2, run_outs: 1 }
+  actual: Record<string, number>; // e.g., { runs: 30, wickets: 2, economy: 7.2, catches: 1, run_outs: 0 }
+  errors: Record<string, number>; // e.g., { runs_mae: 5, wickets_mae: 1, economy_mae: 0.3, catches_mae: 1, run_outs_mae: 1 }
+};
+
+export type BacktestEvaluateResponse = {
+  filters: Record<string, unknown> & { format: string; team1: string; team2: string; match_id: number };
+  match: { match_id: number; date: string };
+  players: BacktestEvaluatePlayerRow[];
+  metrics: Record<string, number>; // e.g., { player_runs_mae: 3.66 }
+  match_aggregates?: {
+    predicted: Record<string, number | string>;
+    actual: Record<string, number | string>;
+    errors: Record<string, number>;
+  };
+};

@@ -4,10 +4,10 @@ PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 
 # Common variables
-DC:=docker-compose
+DC:=docker compose
 APP_SERVICES:=go-api ml-service
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -108,6 +108,70 @@ train-bowling:
 	cd ml-service && $(PY) ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
+
+# -------------------- Backtest fixtures and smoke --------------------
+# Defaults for local DB that mirror docker-compose ports
+POSTGRES_HOST ?= localhost
+POSTGRES_PORT ?= 5432
+POSTGRES_DB ?= cricket_data
+POSTGRES_USER ?= postgres
+POSTGRES_PASSWORD ?= postgres
+POSTGRES_SSLMODE ?= disable
+
+# Run migrations against local Postgres (compose or external)
+migrate-local:
+	cd go-app && \
+	POSTGRES_HOST=$(POSTGRES_HOST) \
+	POSTGRES_PORT=$(POSTGRES_PORT) \
+	POSTGRES_DB=$(POSTGRES_DB) \
+	POSTGRES_USER=$(POSTGRES_USER) \
+	POSTGRES_PASSWORD=$(POSTGRES_PASSWORD) \
+	POSTGRES_SSLMODE=$(POSTGRES_SSLMODE) \
+	MIGRATIONS_DIR=./migrations \
+	go run ./cmd/migrate -dir=./migrations
+
+# Seed tiny deterministic fixtures for E2E backtest smoke
+seed-fixtures:
+	# Ensure Postgres is up (compose service name: postgres)
+	$(DC) up -d postgres
+	# Apply migrations to create schema if needed
+	$(MAKE) migrate-local
+	# Load the seed dataset
+	psql "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)" \
+		-f tests/fixtures/backtest/seed.sql
+
+# End-to-end smoke: select → evaluate with jq assertions
+e2e-backtest-smoke: seed-fixtures
+	# Start services (Postgres is ensured by seed-fixtures)
+	$(DC) up -d go-api ml-service
+	# Wait for services to report healthy instead of using a fixed sleep
+	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
+	for url in http://localhost:8080/health http://localhost:8000/health; do \
+	  echo "  waiting for $$url ..."; \
+	  attempts=0; max_attempts=90; \
+	  until curl -fsS "$$url" >/dev/null 2>&1; do \
+	    attempts=$$((attempts+1)); \
+	    if [ $$attempts -ge $$max_attempts ]; then \
+	      echo "Timeout waiting for $$url"; \
+	      exit 1; \
+	    fi; \
+	    sleep 1; \
+	  done; \
+	  echo "  healthy: $$url"; \
+	done
+	# Select candidates
+	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
+	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \
+	echo $$SEL | jq -e '(.candidates | length) > 0' >/dev/null
+	# Evaluate the seeded match (match_id known from fixtures: 9000111)
+	@echo "[SMOKE] Evaluating match_id=9000111"; \
+	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
+	echo $$EVAL | jq -e '(.players | length) > 0' >/dev/null; \
+	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.actual' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
+	echo "[SMOKE] OK"
 
 # Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
 ml-test:
@@ -292,7 +356,9 @@ COV_MIN_ML ?= 80
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
-	$(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
+	# Ensure Python venv and dev tools exist, then run ml-service CI with venv bin on PATH
+	$(MAKE) -C ml-service init
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service ci COV_MIN=$(COV_MIN_ML)
 
 # Run go-app CI: vet, format check, coverage and enforce threshold
 ci-go:
