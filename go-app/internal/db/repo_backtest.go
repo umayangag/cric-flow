@@ -1,12 +1,12 @@
 package db
 
 import (
-    "context"
-    "database/sql"
-    "errors"
-    "strconv"
-    "strings"
-    "time"
+	"context"
+	"database/sql"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // BacktestCandidate represents a played match candidate for backtesting.
@@ -106,14 +106,14 @@ func ListPlayedMatchesByFormatAndTeams(
 // format, date range, and team codes. Results are ordered by date asc/desc and
 // can be limited.
 func ListPlayedMatchesByFilters(
-    ctx context.Context,
-    formatCode string,
-    team1 string,
-    team2 string,
-    start time.Time,
-    end time.Time,
-    order string,
-    limit int,
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
+	start time.Time,
+	end time.Time,
+	order string,
+	limit int,
 ) ([]BacktestCandidate, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
@@ -249,54 +249,54 @@ func ListPlayedMatchesByFilters(
 // MatchPredictionAggregates stores cached match-level prediction outputs.
 // Only a minimal subset is currently needed by the server for accuracy metrics.
 type MatchPredictionAggregates struct {
-    MatchID               int64
-    Format                string
-    Team1Code             string
-    Team2Code             string
-    PredictedWinnerCode   sql.NullString
-    PredictedTotalRuns    sql.NullFloat64
-    ModelVersion          sql.NullString
-    CutoffAt              time.Time
-    CreatedAt             time.Time
-    UpdatedAt             time.Time
+	MatchID             int64
+	Format              string
+	Team1Code           string
+	Team2Code           string
+	PredictedWinnerCode sql.NullString
+	PredictedTotalRuns  sql.NullFloat64
+	ModelVersion        sql.NullString
+	CutoffAt            time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // GetMatchPredictionAggregates fetches a cached aggregates record for the match.
 func GetMatchPredictionAggregates(ctx context.Context, matchID int64) (MatchPredictionAggregates, error) {
-    if Pool == nil {
-        return MatchPredictionAggregates{}, errors.New("db pool not initialized")
-    }
-    const q = `
+	if Pool == nil {
+		return MatchPredictionAggregates{}, errors.New("db pool not initialized")
+	}
+	const q = `
         SELECT match_id, format, team1_code, team2_code,
                predicted_winner_code, predicted_total_runs, model_version,
                cutoff_at, created_at, updated_at
         FROM match_prediction_aggregates
         WHERE match_id = $1`
-    var row MatchPredictionAggregates
-    err := Pool.QueryRow(ctx, q, matchID).Scan(
-        &row.MatchID,
-        &row.Format,
-        &row.Team1Code,
-        &row.Team2Code,
-        &row.PredictedWinnerCode,
-        &row.PredictedTotalRuns,
-        &row.ModelVersion,
-        &row.CutoffAt,
-        &row.CreatedAt,
-        &row.UpdatedAt,
-    )
-    if err != nil {
-        return MatchPredictionAggregates{}, err
-    }
-    return row, nil
+	var row MatchPredictionAggregates
+	err := Pool.QueryRow(ctx, q, matchID).Scan(
+		&row.MatchID,
+		&row.Format,
+		&row.Team1Code,
+		&row.Team2Code,
+		&row.PredictedWinnerCode,
+		&row.PredictedTotalRuns,
+		&row.ModelVersion,
+		&row.CutoffAt,
+		&row.CreatedAt,
+		&row.UpdatedAt,
+	)
+	if err != nil {
+		return MatchPredictionAggregates{}, err
+	}
+	return row, nil
 }
 
 // UpsertMatchPredictionAggregates inserts or updates a cached aggregates record for the match.
 func UpsertMatchPredictionAggregates(ctx context.Context, row MatchPredictionAggregates) error {
-    if Pool == nil {
-        return errors.New("db pool not initialized")
-    }
-    const q = `
+	if Pool == nil {
+		return errors.New("db pool not initialized")
+	}
+	const q = `
         INSERT INTO match_prediction_aggregates (
             match_id, format, team1_code, team2_code,
             predicted_winner_code, predicted_total_runs, model_version,
@@ -311,15 +311,15 @@ func UpsertMatchPredictionAggregates(ctx context.Context, row MatchPredictionAgg
             model_version = EXCLUDED.model_version,
             cutoff_at = EXCLUDED.cutoff_at,
             updated_at = NOW()`
-    _, err := Pool.Exec(ctx, q,
-        row.MatchID,
-        row.Format,
-        row.Team1Code,
-        row.Team2Code,
-        row.PredictedWinnerCode,
-        row.PredictedTotalRuns,
-        row.ModelVersion,
-        row.CutoffAt,
-    )
-    return err
+	_, err := Pool.Exec(ctx, q,
+		row.MatchID,
+		row.Format,
+		row.Team1Code,
+		row.Team2Code,
+		row.PredictedWinnerCode,
+		row.PredictedTotalRuns,
+		row.ModelVersion,
+		row.CutoffAt,
+	)
+	return err
 }

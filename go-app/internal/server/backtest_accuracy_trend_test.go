@@ -1,13 +1,15 @@
 package server
 
 import (
-    "database/sql"
-    "context"
-    "encoding/json"
-    "net/http"
-    "net/http/httptest"
-    "testing"
-    "time"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	db "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // withBacktestSeams is a small test helper that snapshots all global seam
@@ -476,173 +478,215 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 
 // cache=read should use cached aggregates if available and must not call ML match aggregates seam
 func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
-    withBacktestSeams(t, func() {
-        // One candidate
-        listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
-            return []backtestCandidate{{
-                MatchID: 601,
-                Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-                Format:  "T20",
-                Team1:   "IND",
-                Team2:   "AUS",
-            }}, nil
-        }
+	withBacktestSeams(t, func() {
+		// One candidate
+		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
+			return []backtestCandidate{{
+				MatchID: 601,
+				Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:  "T20",
+				Team1:   "IND",
+				Team2:   "AUS",
+			}}, nil
+		}
 
-        // Cutoff
-        getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
-            return time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC), nil
-        }
+		// Cutoff
+		getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
+			return time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC), nil
+		}
 
-        // Minimal player seams to enable player_runs_mae
-        getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
-        getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
-            return map[int64]playerActuals{1: {Runs: 10}}, nil
-        }
-        mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
-            return map[int64]playerPredictions{1: {Runs: 11}}, nil
-        }
+		// Minimal player seams to enable player_runs_mae
+		getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
+		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
+			return map[int64]playerActuals{1: {Runs: 10}}, nil
+		}
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
+			return map[int64]playerPredictions{1: {Runs: 11}}, nil
+		}
 
-        // Cached record present
-        getMatchPredictionAggregatesFunc = func(_ context.Context, matchID int64) (dbRec db.MatchPredictionAggregates, err error) {
-            return db.MatchPredictionAggregates{
-                MatchID:             matchID,
-                Format:              "T20",
-                Team1Code:           "IND",
-                Team2Code:           "AUS",
-                PredictedWinnerCode: sql.NullString{String: "IND", Valid: true},
-                PredictedTotalRuns:  sql.NullFloat64{Float64: 155, Valid: true},
-                CutoffAt:            time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC),
-            }, nil
-        }
+		// Cached record present
+		getMatchPredictionAggregatesFunc = func(_ context.Context, matchID int64) (dbRec db.MatchPredictionAggregates, err error) {
+			return db.MatchPredictionAggregates{
+				MatchID:             matchID,
+				Format:              "T20",
+				Team1Code:           "IND",
+				Team2Code:           "AUS",
+				PredictedWinnerCode: sql.NullString{String: "IND", Valid: true},
+				PredictedTotalRuns:  sql.NullFloat64{Float64: 155, Valid: true},
+				CutoffAt:            time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC),
+			}, nil
+		}
 
-        // Make ML match aggregates seam fail if called (should not be when cache=read)
-        mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-            t.Fatalf("ML match aggregates was called despite cache=read")
-            return matchAggregates{}, nil
-        }
+		// Make ML match aggregates seam fail if called (should not be when cache=read)
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+			t.Fatalf("ML match aggregates was called despite cache=read")
+			return matchAggregates{}, nil
+		}
 
-        // Actuals for aggregates
-        getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
-            return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
-        }
-    })
+		// Actuals for aggregates
+		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
+			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
+		}
+	})
 
-    app := NewApp(nil)
-    rr := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodGet, "/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=read", nil)
-    app.backtestAccuracyTrendHandler(rr, req)
-    if rr.Code != http.StatusOK {
-        t.Fatalf("status = %d, want 200", rr.Code)
-    }
-    var payload accuracyTrendResponse
-    if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-        t.Fatalf("decode: %v", err)
-    }
-    if payload.Count != 1 {
-        t.Fatalf("count = %d, want 1", payload.Count)
-    }
-    // team_runs_mae should be |155-150| = 5 from cached predictions
-    if v := payload.Results[0].Metrics["team_runs_mae"]; v < 4.99 || v > 5.01 {
-        t.Fatalf("team_runs_mae = %f, want 5 (from cache)", v)
-    }
+	app := NewApp(nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=read",
+		nil,
+	)
+	app.backtestAccuracyTrendHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var payload accuracyTrendResponse
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Count != 1 {
+		t.Fatalf("count = %d, want 1", payload.Count)
+	}
+	// team_runs_mae should be |155-150| = 5 from cached predictions
+	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 4.99 || v > 5.01 {
+		t.Fatalf("team_runs_mae = %f, want 5 (from cache)", v)
+	}
 }
 
 // cache=off should ignore cache even if present and use ML predictions
 func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
-    withBacktestSeams(t, func() {
-        listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
-            return []backtestCandidate{{MatchID: 602, Date: time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC).Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"}}, nil
-        }
-        getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC), nil }
-        getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
-        getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) { return map[int64]playerActuals{1: {Runs: 10}}, nil }
-        mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) { return map[int64]playerPredictions{1: {Runs: 9}}, nil }
+	withBacktestSeams(t, func() {
+		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
+			return []backtestCandidate{
+				{
+					MatchID: 602,
+					Date:    time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+					Format:  "T20",
+					Team1:   "IND",
+					Team2:   "AUS",
+				},
+			}, nil
+		}
+		getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
+			return time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC), nil
+		}
+		getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
+		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
+			return map[int64]playerActuals{1: {Runs: 10}}, nil
+		}
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
+			return map[int64]playerPredictions{1: {Runs: 9}}, nil
+		}
 
-        // Cache present but should be ignored
-        getMatchPredictionAggregatesFunc = func(_ context.Context, _ int64) (db.MatchPredictionAggregates, error) {
-            return db.MatchPredictionAggregates{
-                MatchID:             602,
-                Format:              "T20",
-                Team1Code:           "IND",
-                Team2Code:           "AUS",
-                PredictedWinnerCode: sql.NullString{String: "AUS", Valid: true},
-                PredictedTotalRuns:  sql.NullFloat64{Float64: 140, Valid: true},
-                CutoffAt:            time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC),
-            }, nil
-        }
-        // ML returns different value to detect path: predicted 152 → MAE |152-150|=2
-        mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-            return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, nil
-        }
-        getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
-            return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
-        }
-    })
+		// Cache present but should be ignored
+		getMatchPredictionAggregatesFunc = func(_ context.Context, _ int64) (db.MatchPredictionAggregates, error) {
+			return db.MatchPredictionAggregates{
+				MatchID:             602,
+				Format:              "T20",
+				Team1Code:           "IND",
+				Team2Code:           "AUS",
+				PredictedWinnerCode: sql.NullString{String: "AUS", Valid: true},
+				PredictedTotalRuns:  sql.NullFloat64{Float64: 140, Valid: true},
+				CutoffAt:            time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC),
+			}, nil
+		}
+		// ML returns different value to detect path: predicted 152 → MAE |152-150|=2
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, nil
+		}
+		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
+			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
+		}
+	})
 
-    app := NewApp(nil)
-    rr := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodGet, "/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=off", nil)
-    app.backtestAccuracyTrendHandler(rr, req)
-    if rr.Code != http.StatusOK {
-        t.Fatalf("status = %d, want 200", rr.Code)
-    }
-    var payload accuracyTrendResponse
-    if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-        t.Fatalf("decode: %v", err)
-    }
-    if payload.Count != 1 {
-        t.Fatalf("count = %d, want 1", payload.Count)
-    }
-    // Expect ML value 152 vs actual 150 => MAE 2 (not using cached 140)
-    if v := payload.Results[0].Metrics["team_runs_mae"]; v < 1.99 || v > 2.01 {
-        t.Fatalf("team_runs_mae = %f, want 2 (from ML, ignoring cache)", v)
-    }
+	app := NewApp(nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=off",
+		nil,
+	)
+	app.backtestAccuracyTrendHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var payload accuracyTrendResponse
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Count != 1 {
+		t.Fatalf("count = %d, want 1", payload.Count)
+	}
+	// Expect ML value 152 vs actual 150 => MAE 2 (not using cached 140)
+	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 1.99 || v > 2.01 {
+		t.Fatalf("team_runs_mae = %f, want 2 (from ML, ignoring cache)", v)
+	}
 }
 
 // cache=readwrite should compute on miss and upsert cache
 func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
-    withBacktestSeams(t, func() {
-        listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
-            return []backtestCandidate{{MatchID: 603, Date: time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC).Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"}}, nil
-        }
-        getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC), nil }
-        getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
-        getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) { return map[int64]playerActuals{1: {Runs: 10}}, nil }
-        mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) { return map[int64]playerPredictions{1: {Runs: 10}}, nil }
+	withBacktestSeams(t, func() {
+		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
+			return []backtestCandidate{
+				{
+					MatchID: 603,
+					Date:    time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+					Format:  "T20",
+					Team1:   "IND",
+					Team2:   "AUS",
+				},
+			}, nil
+		}
+		getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) {
+			return time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC), nil
+		}
+		getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
+		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
+			return map[int64]playerActuals{1: {Runs: 10}}, nil
+		}
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
+			return map[int64]playerPredictions{1: {Runs: 10}}, nil
+		}
 
-        // Cache miss
-        getMatchPredictionAggregatesFunc = func(_ context.Context, _ int64) (db.MatchPredictionAggregates, error) {
-            return db.MatchPredictionAggregates{}, sql.ErrNoRows
-        }
-        // ML compute path
-        mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-            return matchAggregates{Runs: 149, WinnerTeamCode: "IND"}, nil
-        }
-        getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) { return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil }
+		// Cache miss
+		getMatchPredictionAggregatesFunc = func(_ context.Context, _ int64) (db.MatchPredictionAggregates, error) {
+			return db.MatchPredictionAggregates{}, sql.ErrNoRows
+		}
+		// ML compute path
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+			return matchAggregates{Runs: 149, WinnerTeamCode: "IND"}, nil
+		}
+		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
+			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
+		}
 
-        // Capture upsert invocation
-        called := false
-        upsertMatchPredictionAggregatesFunc = func(_ context.Context, row db.MatchPredictionAggregates) error {
-            called = true
-            if row.MatchID != 603 || row.Team1Code != "IND" || row.Team2Code != "AUS" {
-                t.Fatalf("unexpected upsert row: %+v", row)
-            }
-            if !row.PredictedTotalRuns.Valid || row.PredictedTotalRuns.Float64 != 149 {
-                t.Fatalf("expected upsert predicted_total_runs=149, got %+v", row.PredictedTotalRuns)
-            }
-            return nil
-        }
+		// Capture upsert invocation
+		called := false
+		upsertMatchPredictionAggregatesFunc = func(_ context.Context, row db.MatchPredictionAggregates) error {
+			called = true
+			if row.MatchID != 603 || row.Team1Code != "IND" || row.Team2Code != "AUS" {
+				t.Fatalf("unexpected upsert row: %+v", row)
+			}
+			if !row.PredictedTotalRuns.Valid || row.PredictedTotalRuns.Float64 != 149 {
+				t.Fatalf("expected upsert predicted_total_runs=149, got %+v", row.PredictedTotalRuns)
+			}
+			return nil
+		}
 
-        // Ensure subsequent read would find cache (simulate by overriding get to return same record after upsert)
-        // Not strictly necessary for single-call verification.
-        _ = called
-    })
+		// Ensure subsequent read would find cache (simulate by overriding get to return same record after upsert)
+		// Not strictly necessary for single-call verification.
+		_ = called
+	})
 
-    app := NewApp(nil)
-    rr := httptest.NewRecorder()
-    req := httptest.NewRequest(http.MethodGet, "/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=readwrite", nil)
-    app.backtestAccuracyTrendHandler(rr, req)
-    if rr.Code != http.StatusOK {
-        t.Fatalf("status = %d, want 200", rr.Code)
-    }
+	app := NewApp(nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=readwrite",
+		nil,
+	)
+	app.backtestAccuracyTrendHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
 }
