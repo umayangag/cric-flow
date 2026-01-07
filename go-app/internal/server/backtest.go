@@ -504,8 +504,8 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
         cutoff, cerr := getBacktestMatchDateFunc(r.Context(), mid)
         if cerr != nil || cutoff.IsZero() {
             // fallback to candidate date if provided in RFC3339-ish; else skip
-            if m.Date != "" {
-                if t, err := time.Parse(time.RFC3339, m.Date); err == nil { cutoff = t }
+            if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
+                cutoff = t
             }
         }
         // Player MAE
