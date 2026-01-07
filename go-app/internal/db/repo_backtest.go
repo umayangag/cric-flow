@@ -1,12 +1,12 @@
 package db
 
 import (
-    "context"
-    "database/sql"
-    "errors"
-    "strconv"
-    "strings"
-    "time"
+	"context"
+	"database/sql"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // BacktestCandidate represents a played match candidate for backtesting.
@@ -33,10 +33,10 @@ type BacktestCandidate struct {
 //   - team_match(match_id, team_id, result)
 //   - team(id, name)
 func ListPlayedMatchesByFormatAndTeams(
-    ctx context.Context,
-    formatCode string,
-    team1 string,
-    team2 string,
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
 ) ([]BacktestCandidate, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
@@ -106,22 +106,22 @@ func ListPlayedMatchesByFormatAndTeams(
 // format, date range, and team codes. Results are ordered by date asc/desc and
 // can be limited.
 func ListPlayedMatchesByFilters(
-    ctx context.Context,
-    formatCode string,
-    team1 string,
-    team2 string,
-    start time.Time,
-    end time.Time,
-    order string,
-    limit int,
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
+	start time.Time,
+	end time.Time,
+	order string,
+	limit int,
 ) ([]BacktestCandidate, error) {
-    if Pool == nil {
-        return nil, errors.New("db pool not initialized")
-    }
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
 
-    // Base CTE to collect team names and winner per match
-    sb := strings.Builder{}
-    sb.WriteString(`
+	// Base CTE to collect team names and winner per match
+	sb := strings.Builder{}
+	sb.WriteString(`
         WITH tm AS (
             SELECT tm.match_id,
                    MIN(t.name) AS team_a,
@@ -147,101 +147,99 @@ func ListPlayedMatchesByFilters(
         LEFT JOIN match_format mf ON mf.id = md.format_id
         WHERE md.date < NOW()`)
 
-    args := []any{}
-    idx := 1
+	args := []any{}
+	idx := 1
 
-    if formatCode != "" {
-        sb.WriteString(" AND mf.code = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, formatCode)
-        idx++
-    }
-    if !start.IsZero() {
-        sb.WriteString(" AND md.date >= $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, start)
-        idx++
-    }
-    if !end.IsZero() {
-        sb.WriteString(" AND md.date <= $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, end)
-        idx++
-    }
-    if team1 != "" && team2 != "" {
-        sb.WriteString(" AND ((tm.team_a = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team1)
-        idx++
-        sb.WriteString(" AND tm.team_b = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team2)
-        idx++
-        sb.WriteString(") OR (tm.team_a = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team2)
-        idx++
-        sb.WriteString(" AND tm.team_b = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team1)
-        idx++
-        sb.WriteString("))")
-    } else if team1 != "" || team2 != "" {
-        // Single-team filter (order-insensitive): if only one of team1/team2 is provided,
-        // filter matches where either side equals that team.
-        team := team1
-        if team == "" {
-            team = team2
-        }
-        sb.WriteString(" AND (tm.team_a = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team)
-        idx++
-        sb.WriteString(" OR tm.team_b = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team)
-        idx++
-        sb.WriteString(")")
-    }
+	if formatCode != "" {
+		sb.WriteString(" AND mf.code = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, formatCode)
+		idx++
+	}
+	if !start.IsZero() {
+		sb.WriteString(" AND md.date >= $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, start)
+		idx++
+	}
+	if !end.IsZero() {
+		sb.WriteString(" AND md.date <= $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, end)
+		idx++
+	}
+	if team1 != "" && team2 != "" {
+		sb.WriteString(" AND ((tm.team_a = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team1)
+		idx++
+		sb.WriteString(" AND tm.team_b = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team2)
+		idx++
+		sb.WriteString(") OR (tm.team_a = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team2)
+		idx++
+		sb.WriteString(" AND tm.team_b = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team1)
+		sb.WriteString("))")
+	} else if team1 != "" || team2 != "" {
+		// Single-team filter (order-insensitive): if only one of team1/team2 is provided,
+		// filter matches where either side equals that team.
+		team := team1
+		if team == "" {
+			team = team2
+		}
+		sb.WriteString(" AND (tm.team_a = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team)
+		idx++
+		sb.WriteString(" OR tm.team_b = $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, team)
+		sb.WriteString(")")
+	}
 
-    // Ordering
-    if strings.ToLower(order) == "desc" {
-        sb.WriteString(" ORDER BY md.date DESC")
-    } else {
-        sb.WriteString(" ORDER BY md.date ASC")
-    }
-    if limit > 0 {
-        sb.WriteString(" LIMIT ")
-        sb.WriteString(strconv.Itoa(limit))
-    }
+	// Ordering
+	if strings.ToLower(order) == "desc" {
+		sb.WriteString(" ORDER BY md.date DESC")
+	} else {
+		sb.WriteString(" ORDER BY md.date ASC")
+	}
+	if limit > 0 {
+		sb.WriteString(" LIMIT ")
+		sb.WriteString(strconv.Itoa(limit))
+	}
 
-    q := sb.String()
-    rows, err := Pool.Query(ctx, q, args...)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	q := sb.String()
+	rows, err := Pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    out := make([]BacktestCandidate, 0)
-    for rows.Next() {
-        var c BacktestCandidate
-        if err := rows.Scan(
-            &c.MatchID,
-            &c.StableID,
-            &c.Date,
-            &c.Venue,
-            &c.Season,
-            &c.FormatCode,
-            &c.Team1,
-            &c.Team2,
-            &c.WinnerTeam,
-        ); err != nil {
-            return nil, err
-        }
-        out = append(out, c)
-    }
-    if err := rows.Err(); err != nil {
-        return nil, err
-    }
-    return out, nil
+	out := make([]BacktestCandidate, 0)
+	for rows.Next() {
+		var c BacktestCandidate
+		if err := rows.Scan(
+			&c.MatchID,
+			&c.StableID,
+			&c.Date,
+			&c.Venue,
+			&c.Season,
+			&c.FormatCode,
+			&c.Team1,
+			&c.Team2,
+			&c.WinnerTeam,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
