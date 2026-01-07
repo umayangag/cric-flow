@@ -186,24 +186,20 @@ func ListPlayedMatchesByFilters(
         args = append(args, team1)
         idx++
         sb.WriteString("))")
-    } else if team1 != "" {
+    } else if team1 != "" || team2 != "" {
+        // Single-team filter (order-insensitive): if only one of team1/team2 is provided,
+        // filter matches where either side equals that team.
+        team := team1
+        if team == "" {
+            team = team2
+        }
         sb.WriteString(" AND (tm.team_a = $")
         sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team1)
+        args = append(args, team)
         idx++
         sb.WriteString(" OR tm.team_b = $")
         sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team1)
-        idx++
-        sb.WriteString(")")
-    } else if team2 != "" {
-        sb.WriteString(" AND (tm.team_a = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team2)
-        idx++
-        sb.WriteString(" OR tm.team_b = $")
-        sb.WriteString(strconv.Itoa(idx))
-        args = append(args, team2)
+        args = append(args, team)
         idx++
         sb.WriteString(")")
     }
