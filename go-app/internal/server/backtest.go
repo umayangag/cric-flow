@@ -565,8 +565,8 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
     // Summary and progressive
     summary := map[string]float64{"n": countMatches}
     if countMatches > 0 {
-        if sumPlayerMAE > 0 { summary["player_runs_mae_avg"] = sumPlayerMAE / countMatches }
-        if sumTeamRunsMAE > 0 { summary["team_runs_mae_avg"] = sumTeamRunsMAE / countMatches }
+        summary["player_runs_mae_avg"] = sumPlayerMAE / countMatches
+        summary["team_runs_mae_avg"] = sumTeamRunsMAE / countMatches
         // winner accuracy could be 0 across all; we still include avg (0)
         summary["team_winner_accuracy_avg"] = sumWinnerAcc / countMatches
     }
