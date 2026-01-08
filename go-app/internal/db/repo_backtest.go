@@ -212,7 +212,6 @@ if limit > 0 {
 	sb.WriteString(" LIMIT $")
 	sb.WriteString(strconv.Itoa(idx))
 	args = append(args, limit)
-	idx++
 }
 
 	q := sb.String()
