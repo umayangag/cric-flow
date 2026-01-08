@@ -208,11 +208,11 @@ func ListPlayedMatchesByFilters(
 	} else {
 		sb.WriteString(" ORDER BY md.date ASC")
 	}
-if limit > 0 {
-	sb.WriteString(" LIMIT $")
-	sb.WriteString(strconv.Itoa(idx))
-	args = append(args, limit)
-}
+	if limit > 0 {
+		sb.WriteString(" LIMIT $")
+		sb.WriteString(strconv.Itoa(idx))
+		args = append(args, limit)
+	}
 
 	q := sb.String()
 	rows, err := Pool.Query(ctx, q, args...)
