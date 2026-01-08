@@ -194,7 +194,7 @@ const Page: React.FC = () => {
 
       <section style={panel}>
         <h2>Per‑match Metrics</h2>
-        <AccuracyTrendTable rows={(data?.results as any) || []} />
+        <AccuracyTrendTable rows={data?.results || []} />
       </section>
     </div>
   );
