@@ -1,13 +1,12 @@
 # Convenience targets for local dev
-VENV:=.venv
-PY:=$(VENV)/bin/python3
-PIP:=$(VENV)/bin/pip
 
 # Common variables
 DC:=docker compose
 APP_SERVICES:=go-api ml-service
+# Absolute path to ml-service virtualenv bin (used where Python is needed from root)
+ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -94,7 +93,7 @@ precompute-asof:
 # Team predictor (happy path): requires MATCH to be provided
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
-	cd ml-service && .venv/bin/python -m ml.export_pool $(MATCH)
+	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
 	cd go-app && go run ./cmd/team-predictor -match=$(MATCH) -bat=$(BAT) -bowl=$(BOWL)
 
 # Train ML artifacts from exported CSVs
@@ -102,10 +101,10 @@ ml-install:
 	$(MAKE) -C ml-service install
 
 train-batting:
-	cd ml-service && $(PY) ml/train_batting_model.py
+	cd ml-service && $(ML_VENV_BIN)/python ml/train_batting_model.py
 
 train-bowling:
-	cd ml-service && $(PY) ml/train_bowling_model.py
+	cd ml-service && $(ML_VENV_BIN)/python ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
 
@@ -179,10 +178,10 @@ ml-test:
 
 # Tiny T20 baselines using new readers on small fixtures (structure only)
 train-batting-baseline:
-	cd ml-service && $(PY) -c "from pathlib import Path; from ml_service.baselines import train_batting_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/batting_on.csv'; res=train_batting_from_csv(str(csv)); print('batting baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
+	cd ml-service && $(ML_VENV_BIN)/python -c "from pathlib import Path; from ml_service.baselines import train_batting_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/batting_on.csv'; res=train_batting_from_csv(str(csv)); print('batting baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
 
 train-bowling-baseline:
-	cd ml-service && $(PY) -c "from pathlib import Path; from ml_service.baselines import train_bowling_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/bowling_on.csv'; res=train_bowling_from_csv(str(csv)); print('bowling baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
+	cd ml-service && $(ML_VENV_BIN)/python -c "from pathlib import Path; from ml_service.baselines import train_bowling_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/bowling_on.csv'; res=train_bowling_from_csv(str(csv)); print('bowling baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
 
 # --- End-to-end automation (format-aware) ---
 # Usage:
@@ -216,9 +215,9 @@ e2e-multi:
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
 	$(MAKE) ml-install
-	@for f in $(subst ,,$(FORMATS)); do \
+	@for f in $$(echo "$(FORMATS)" | tr ',' ' '); do \
 		echo "  Training for format $$f..."; \
-		cd ml-service && .venv/bin/python -m ml.train_batting_model --format $$f && .venv/bin/python -m ml.train_bowling_model --format $$f; \
+		cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting_model --format $$f && $(ML_VENV_BIN)/python -m ml.train_bowling_model --format $$f; \
 	done
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 

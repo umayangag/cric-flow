@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -50,6 +51,39 @@ var (
 		return matchAggregates{}, sql.ErrNoRows
 	}
 )
+
+// dashboard accuracy-trend seams (overridable in tests)
+var listPlayedMatchesByFilters = func(
+	ctx context.Context,
+	format string,
+	team1 string,
+	team2 string,
+	start time.Time,
+	end time.Time,
+	order string,
+	limit int,
+) ([]backtestCandidate, error) {
+	// Delegate to DB repository implementation; transform DB rows to server DTO.
+	rows, err := db.ListPlayedMatchesByFilters(ctx, format, team1, team2, start, end, order, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]backtestCandidate, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, backtestCandidate{
+			MatchID:        r.MatchID,
+			StableID:       nullString(r.StableID),
+			Date:           r.Date.Format(time.RFC3339),
+			Venue:          nullString(r.Venue),
+			Season:         nullString(r.Season),
+			Format:         nullString(r.FormatCode),
+			Team1:          r.Team1,
+			Team2:          r.Team2,
+			WinnerTeamCode: nullString(r.WinnerTeam),
+		})
+	}
+	return out, nil
+}
 
 type backtestSelectResponse struct {
 	Filters    map[string]any      `json:"filters"`
@@ -111,6 +145,330 @@ type backtestEvaluateResponse struct {
 		Errors    map[string]float64 `json:"errors"`
 	} `json:"players"`
 	Metrics map[string]float64 `json:"metrics"`
+}
+
+// Accuracy trend DTOs
+type accuracyTrendItem struct {
+	MatchID int64              `json:"match_id"`
+	Date    string             `json:"date"`
+	Format  string             `json:"format"`
+	Team1   string             `json:"team1"`
+	Team2   string             `json:"team2"`
+	Metrics map[string]float64 `json:"metrics"`
+}
+
+type accuracyTrendResponse struct {
+	Filters     map[string]any       `json:"filters"`
+	Count       int                  `json:"count"`
+	Results     []accuracyTrendItem  `json:"results"`
+	Summary     map[string]float64   `json:"summary"`
+	Progressive []map[string]float64 `json:"progressive"`
+}
+
+// --- Accuracy Trend: Helpers & Refactor Support ---
+
+// Parameter parsing errors (used to keep handler responses identical)
+var (
+	errInvalidStartDate = errors.New("invalid start_date")
+	errInvalidEndDate   = errors.New("invalid end_date")
+	errEndBeforeStart   = errors.New("end_date before start_date")
+)
+
+type accuracyTrendParams struct {
+	Format string
+	Team1  string
+	Team2  string
+	Order  string
+	Limit  int
+	Cache  string
+	// Metrics selection
+	IncludePlayer bool
+	IncludeTeam   bool
+	Start         time.Time
+	End           time.Time
+	HasStart      bool
+	HasEnd        bool
+	RawStart      string
+	RawEnd        string
+}
+
+func parseBacktestAccuracyTrendParams(r *http.Request) (accuracyTrendParams, error) {
+	q := r.URL.Query()
+	out := accuracyTrendParams{
+		Format:   strings.TrimSpace(q.Get("format")),
+		Team1:    strings.TrimSpace(q.Get("team1")),
+		Team2:    strings.TrimSpace(q.Get("team2")),
+		Order:    strings.TrimSpace(q.Get("order")),
+		Cache:    strings.TrimSpace(q.Get("cache")),
+		RawStart: strings.TrimSpace(q.Get("start_date")),
+		RawEnd:   strings.TrimSpace(q.Get("end_date")),
+	}
+	if out.Order == "" {
+		out.Order = "asc"
+	}
+	switch strings.ToLower(out.Cache) {
+	case "", "readwrite":
+		out.Cache = "readwrite"
+	case "read":
+		out.Cache = "read"
+	case "off":
+		out.Cache = "off"
+	default:
+		out.Cache = "readwrite"
+	}
+	if s := strings.TrimSpace(q.Get("limit")); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			out.Limit = v
+		}
+	}
+	// Enforce default limit and max cap
+	if out.Limit <= 0 {
+		out.Limit = 100
+	}
+	if out.Limit > 500 {
+		out.Limit = 500
+	}
+	// Parse dates in YYYY-MM-DD
+	if out.RawStart != "" {
+		t, err := time.Parse("2006-01-02", out.RawStart)
+		if err != nil {
+			return accuracyTrendParams{}, errInvalidStartDate
+		}
+		out.Start, out.HasStart = t, true
+	}
+	if out.RawEnd != "" {
+		t, err := time.Parse("2006-01-02", out.RawEnd)
+		if err != nil {
+			return accuracyTrendParams{}, errInvalidEndDate
+		}
+		out.End, out.HasEnd = t, true
+	}
+	if out.HasStart && out.HasEnd && out.End.Before(out.Start) {
+		return accuracyTrendParams{}, errEndBeforeStart
+	}
+
+	// Parse metrics selection
+	metrics := strings.TrimSpace(q.Get("metrics"))
+	if metrics == "" {
+		out.IncludePlayer = true
+		out.IncludeTeam = true
+	} else {
+		parts := strings.Split(metrics, ",")
+		for _, p := range parts {
+			switch strings.ToLower(strings.TrimSpace(p)) {
+			case "player":
+				out.IncludePlayer = true
+			case "team":
+				out.IncludeTeam = true
+			}
+		}
+		// If user passed unknown tokens, default to both to be safe
+		if !out.IncludePlayer && !out.IncludeTeam {
+			out.IncludePlayer = true
+			out.IncludeTeam = true
+		}
+	}
+	return out, nil
+}
+
+// Cache seams for match-level aggregates (overridable in tests)
+var (
+	getMatchPredictionAggregatesFunc    = db.GetMatchPredictionAggregates
+	upsertMatchPredictionAggregatesFunc = db.UpsertMatchPredictionAggregates
+)
+
+// computeAccuracyTrendMetrics calculates metrics for a single match candidate.
+// It mirrors the previous inline logic to avoid behavior changes.
+func computeAccuracyTrendMetrics(
+	ctx context.Context,
+	m backtestCandidate,
+	cacheMode string,
+	includePlayer, includeTeam bool,
+) map[string]float64 {
+	metrics := map[string]float64{}
+
+	// Determine cutoff (match date)
+	cutoff, cerr := getBacktestMatchDateFunc(ctx, m.MatchID)
+	if cerr != nil || cutoff.IsZero() {
+		if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
+			cutoff = t
+		}
+	}
+	if cutoff.IsZero() {
+		return metrics
+	}
+
+	// Player-level MAE on runs (optional)
+	if includePlayer {
+		if squad, err := getBacktestSquadPlayerIDsFunc(ctx, m.MatchID, cutoff, m.Format); err == nil && len(squad) > 0 {
+			preds, err1 := mlBacktestPredictFunc(ctx, cutoff, squad)
+			acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
+			if err1 == nil && err2 == nil {
+				var totalAbs, cnt float64
+				for _, pid := range squad {
+					pPred, okp := preds[pid]
+					pAct, oka := acts[pid]
+					if !okp || !oka {
+						continue
+					}
+					totalAbs += math.Abs(pPred.Runs - pAct.Runs)
+					cnt++
+				}
+				if cnt > 0 {
+					metrics["player_runs_mae"] = totalAbs / cnt
+				}
+			}
+		}
+	}
+
+	// Match/team aggregates with optional cache (optional)
+	if includeTeam && m.Team1 != "" && m.Team2 != "" {
+		var predAgg matchAggregates
+		var havePred bool
+
+		if cacheMode == "read" || cacheMode == "readwrite" {
+			if rec, err := getMatchPredictionAggregatesFunc(ctx, m.MatchID); err == nil {
+				predAgg = matchAggregates{
+					Runs:           rec.PredictedTotalRuns.Float64,
+					WinnerTeamCode: rec.PredictedWinnerCode.String,
+				}
+				havePred = true
+			}
+		}
+
+		if !havePred {
+			if p, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2}); err == nil {
+				predAgg = p
+				havePred = true
+				if cacheMode == "readwrite" {
+					if err := upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
+						MatchID:             m.MatchID,
+						Format:              m.Format,
+						Team1Code:           m.Team1,
+						Team2Code:           m.Team2,
+						PredictedWinnerCode: sqlNullString(predAgg.WinnerTeamCode),
+						PredictedTotalRuns:  sqlNullFloat64(predAgg.Runs),
+						CutoffAt:            cutoff,
+					}); err != nil {
+						// Failing to cache is not critical for the request, but should be monitored
+						slog.Warn(
+							"failed to upsert match prediction aggregates cache",
+							slog.Any("err", err),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", m.Format),
+							slog.String("team1", m.Team1),
+							slog.String("team2", m.Team2),
+							slog.Time("cutoff_at", cutoff),
+						)
+					}
+				}
+			}
+		}
+
+		if havePred {
+			if actAgg, errA := getBacktestMatchAggregatesActualsFunc(ctx, m.MatchID); errA == nil {
+				if actAgg.Runs != 0 || predAgg.Runs != 0 {
+					metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
+				}
+				if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
+					if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) {
+						metrics["team_winner_accuracy"] = 1.0
+					} else {
+						metrics["team_winner_accuracy"] = 0.0
+					}
+				}
+			}
+		}
+	}
+
+	return metrics
+}
+
+// computeAccuracyTrendSummaryAndProgressive builds the summary and progressive rows
+// from the list of result items. For each metric, averages are computed using the
+// count of matches where the metric is actually present as the denominator.
+func computeAccuracyTrendSummaryAndProgressive(items []accuracyTrendItem) (map[string]float64, []map[string]float64) {
+	var (
+		sumPlayerMAE, nPlayerMAE     float64
+		sumTeamRunsMAE, nTeamRunsMAE float64
+		sumWinnerAcc, nWinnerAcc     float64
+	)
+	nMatches := float64(len(items))
+
+	// Summary accumulators
+	for _, it := range items {
+		if v, ok := it.Metrics["player_runs_mae"]; ok {
+			sumPlayerMAE += v
+			nPlayerMAE++
+		}
+		if v, ok := it.Metrics["team_runs_mae"]; ok {
+			sumTeamRunsMAE += v
+			nTeamRunsMAE++
+		}
+		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
+			sumWinnerAcc += v
+			nWinnerAcc++
+		}
+	}
+
+	summary := map[string]float64{"n": nMatches}
+	if nPlayerMAE > 0 {
+		summary["player_runs_mae_avg"] = sumPlayerMAE / nPlayerMAE
+	}
+	if nTeamRunsMAE > 0 {
+		summary["team_runs_mae_avg"] = sumTeamRunsMAE / nTeamRunsMAE
+	}
+	if nWinnerAcc > 0 {
+		summary["team_winner_accuracy_avg"] = sumWinnerAcc / nWinnerAcc
+	}
+
+	// Progressive calculations using per-metric present counts
+	progressive := make([]map[string]float64, 0, len(items))
+	var (
+		psPlayer, pnPlayer     float64
+		psTeamRuns, pnTeamRuns float64
+		psWinner, pnWinner     float64
+	)
+	for i, it := range items {
+		n := float64(i + 1)
+		if v, ok := it.Metrics["player_runs_mae"]; ok {
+			psPlayer += v
+			pnPlayer++
+		}
+		if v, ok := it.Metrics["team_runs_mae"]; ok {
+			psTeamRuns += v
+			pnTeamRuns++
+		}
+		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
+			psWinner += v
+			pnWinner++
+		}
+		row := map[string]float64{"n": n}
+		if pnPlayer > 0 {
+			row["player_runs_mae_avg"] = psPlayer / pnPlayer
+		}
+		if pnTeamRuns > 0 {
+			row["team_runs_mae_avg"] = psTeamRuns / pnTeamRuns
+		}
+		if pnWinner > 0 {
+			row["team_winner_accuracy_avg"] = psWinner / pnWinner
+		}
+		progressive = append(progressive, row)
+	}
+
+	return summary, progressive
+}
+
+// helpers to construct sql nullable types
+func sqlNullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{Valid: false}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+func sqlNullFloat64(v float64) sql.NullFloat64 {
+	return sql.NullFloat64{Float64: v, Valid: true}
 }
 
 // backtestMatchHandler handles GET /api/backtest/match
@@ -386,6 +744,81 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// backtestAccuracyTrendHandler handles GET /api/backtest/accuracy-trend
+// Optional filters: format, start_date, end_date, team1, team2, order, limit
+func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Request) {
+	params, perr := parseBacktestAccuracyTrendParams(r)
+	if perr != nil {
+		switch perr {
+		case errInvalidStartDate:
+			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid start_date"})
+		case errInvalidEndDate:
+			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid end_date"})
+		case errEndBeforeStart:
+			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "end_date before start_date"})
+		default:
+			respondErr(w, perr)
+		}
+		return
+	}
+
+	// List candidates via seam (tests will stub this)
+	cands, err := listPlayedMatchesByFilters(
+		r.Context(),
+		params.Format, params.Team1, params.Team2,
+		params.Start, params.End, params.Order, params.Limit,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		respondErr(w, err)
+		return
+	}
+	if len(cands) == 0 {
+		resp := accuracyTrendResponse{
+			Filters: map[string]any{
+				"format": params.Format, "team1": params.Team1, "team2": params.Team2,
+				"start_date": params.RawStart, "end_date": params.RawEnd,
+				"order": params.Order, "limit": params.Limit,
+			},
+			Count:       0,
+			Results:     []accuracyTrendItem{},
+			Summary:     map[string]float64{"n": 0},
+			Progressive: []map[string]float64{},
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	// Compute per-match metrics
+	results := make([]accuracyTrendItem, 0, len(cands))
+	for _, m := range cands {
+		metrics := computeAccuracyTrendMetrics(r.Context(), m, params.Cache, params.IncludePlayer, params.IncludeTeam)
+		results = append(results, accuracyTrendItem{
+			MatchID: m.MatchID,
+			Date:    m.Date,
+			Format:  m.Format,
+			Team1:   m.Team1,
+			Team2:   m.Team2,
+			Metrics: metrics,
+		})
+	}
+
+	// Summary and progressive
+	summary, progressive := computeAccuracyTrendSummaryAndProgressive(results)
+
+	resp := accuracyTrendResponse{
+		Filters: map[string]any{
+			"format": params.Format, "team1": params.Team1, "team2": params.Team2,
+			"start_date": params.RawStart, "end_date": params.RawEnd,
+			"order": params.Order, "limit": params.Limit,
+		},
+		Count:       len(results),
+		Results:     results,
+		Summary:     summary,
+		Progressive: progressive,
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

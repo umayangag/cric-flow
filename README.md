@@ -393,3 +393,73 @@ Notes:
 A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.
 
 See docs/backtest.md for usage details, example requests, and environment variables.
+
+## Backtest Accuracy Trend API
+
+Endpoint to evaluate prediction accuracy across historical matches with optional caching of match-level aggregate predictions.
+
+- Method: `GET`
+- Path: `/api/backtest/accuracy-trend`
+
+Query parameters (all optional unless noted):
+- `format`: Match format code, e.g., `T20`, `ODI`, `TEST`.
+- `start_date`: Inclusive start date `YYYY-MM-DD`.
+- `end_date`: Inclusive end date `YYYY-MM-DD`.
+- `team1`: Team code/name (as stored in DB), e.g., `IND`.
+- `team2`: Team code/name, e.g., `AUS`.
+- `order`: `asc` (default) or `desc` by match date.
+- `limit`: Safety cap on number of matches evaluated (default `100`, max `500`).
+- `cache`: `off|read|readwrite` (default `readwrite`). Controls use of the aggregates cache:
+  - `off`: Always compute via ML seams; never read/write cache.
+  - `read`: Use cached aggregates if present; if missing, compute but do not write.
+  - `readwrite`: Use cache if present; otherwise compute and upsert into cache.
+- `metrics`: Optional subset in `player` and/or `team` (comma-separated). Defaults to both when omitted or invalid.
+
+Response (shape excerpt):
+```
+{
+  "filters": { "format": "T20", "team1": "IND", "team2": "AUS", "order": "asc", "limit": 50, "start_date": "2024-10-01", "end_date": "2024-12-31", "cache": "readwrite" },
+  "count": 12,
+  "results": [
+    {
+      "match_id": 123,
+      "date": "2024-11-03T14:00:00Z",
+      "format": "T20",
+      "team1": "IND",
+      "team2": "AUS",
+      "metrics": {
+        "player_runs_mae": 3.67,
+        "team_runs_mae": 5.0,
+        "team_winner_accuracy": 1
+      }
+    }
+  ],
+  "summary": {
+    "player_runs_mae_avg": 2.91,
+    "team_runs_mae_avg": 5.0,
+    "team_winner_accuracy_avg": 0.58,
+    "n": 12
+  },
+  "progressive": [
+    {"n": 1,  "player_runs_mae_avg": 4.10, "team_runs_mae_avg": 6.0,  "team_winner_accuracy_avg": 0.0},
+    {"n": 12, "player_runs_mae_avg": 2.91, "team_runs_mae_avg": 5.0,  "team_winner_accuracy_avg": 0.58}
+  ]
+}
+```
+
+Notes:
+- Player metrics (e.g., `player_runs_mae`) are computed live from XI predictions vs actuals.
+- Team aggregates (`team_runs_mae`, `team_winner_accuracy`) may use cached predictions when `cache` allows. Actuals are always read from DB.
+- Results are ordered by match date, which affects the progressive cumulative series.
+
+Examples:
+```
+curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&start_date=2024-10-01&end_date=2024-12-31&order=asc&limit=25&cache=readwrite" | jq '.'
+
+curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=off" | jq '.summary'
+```
+
+See docs for end‑to‑end usage and the frontend dashboard:
+
+- docs/accuracy-trend.md — endpoint parameters, examples, and dashboard instructions
+- Frontend route (when running the frontend app): `/dashboard/accuracy-trend`
