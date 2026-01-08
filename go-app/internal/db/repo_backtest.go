@@ -311,8 +311,7 @@ func UpsertMatchPredictionAggregates(ctx context.Context, row MatchPredictionAgg
             predicted_winner_code = EXCLUDED.predicted_winner_code,
             predicted_total_runs = EXCLUDED.predicted_total_runs,
             model_version = EXCLUDED.model_version,
-            cutoff_at = EXCLUDED.cutoff_at,
-            updated_at = NOW()`
+            cutoff_at = EXCLUDED.cutoff_at`
 	_, err := Pool.Exec(ctx, q,
 		row.MatchID,
 		row.Format,

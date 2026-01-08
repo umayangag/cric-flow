@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -340,7 +341,7 @@ func computeAccuracyTrendMetrics(
 				predAgg = p
 				havePred = true
 				if cacheMode == "readwrite" {
-					_ = upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
+					if err := upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
 						MatchID:             m.MatchID,
 						Format:              m.Format,
 						Team1Code:           m.Team1,
@@ -348,7 +349,18 @@ func computeAccuracyTrendMetrics(
 						PredictedWinnerCode: sqlNullString(predAgg.WinnerTeamCode),
 						PredictedTotalRuns:  sqlNullFloat64(predAgg.Runs),
 						CutoffAt:            cutoff,
-					})
+					}); err != nil {
+						// Failing to cache is not critical for the request, but should be monitored
+						slog.Warn(
+							"failed to upsert match prediction aggregates cache",
+							slog.Any("err", err),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", m.Format),
+							slog.String("team1", m.Team1),
+							slog.String("team2", m.Team2),
+							slog.Time("cutoff_at", cutoff),
+						)
+					}
 				}
 			}
 		}

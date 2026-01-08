@@ -625,6 +625,8 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 
 // cache=readwrite should compute on miss and upsert cache
 func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
+	// Track whether upsert is called on cache miss
+	called := false
 	withBacktestSeams(t, func() {
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
 			return []backtestCandidate{
@@ -661,7 +663,6 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		}
 
 		// Capture upsert invocation
-		called := false
 		upsertMatchPredictionAggregatesFunc = func(_ context.Context, row db.MatchPredictionAggregates) error {
 			called = true
 			if row.MatchID != 603 || row.Team1Code != "IND" || row.Team2Code != "AUS" {
@@ -675,7 +676,6 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 
 		// Ensure subsequent read would find cache (simulate by overriding get to return same record after upsert)
 		// Not strictly necessary for single-call verification.
-		_ = called
 	})
 
 	app := NewApp(nil)
@@ -686,6 +686,9 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
+	if !called {
+		t.Error("expected upsertMatchPredictionAggregatesFunc to be called, but it was not")
+	}
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
