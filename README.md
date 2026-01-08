@@ -408,11 +408,12 @@ Query parameters (all optional unless noted):
 - `team1`: Team code/name (as stored in DB), e.g., `IND`.
 - `team2`: Team code/name, e.g., `AUS`.
 - `order`: `asc` (default) or `desc` by match date.
-- `limit`: Safety cap on number of matches to process.
+- `limit`: Safety cap on number of matches evaluated (default `100`, max `500`).
 - `cache`: `off|read|readwrite` (default `readwrite`). Controls use of the aggregates cache:
   - `off`: Always compute via ML seams; never read/write cache.
   - `read`: Use cached aggregates if present; if missing, compute but do not write.
   - `readwrite`: Use cache if present; otherwise compute and upsert into cache.
+- `metrics`: Optional subset in `player` and/or `team` (comma-separated). Defaults to both when omitted or invalid.
 
 Response (shape excerpt):
 ```

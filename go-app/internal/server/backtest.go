@@ -385,50 +385,73 @@ func computeAccuracyTrendMetrics(
 }
 
 // computeAccuracyTrendSummaryAndProgressive builds the summary and progressive rows
-// from the list of result items.
+// from the list of result items. For each metric, averages are computed using the
+// count of matches where the metric is actually present as the denominator.
 func computeAccuracyTrendSummaryAndProgressive(items []accuracyTrendItem) (map[string]float64, []map[string]float64) {
-	var sumPlayerMAE, sumTeamRunsMAE, sumWinnerAcc float64
+	var (
+		sumPlayerMAE, nPlayerMAE     float64
+		sumTeamRunsMAE, nTeamRunsMAE float64
+		sumWinnerAcc, nWinnerAcc     float64
+	)
 	nMatches := float64(len(items))
+
+	// Summary accumulators
 	for _, it := range items {
 		if v, ok := it.Metrics["player_runs_mae"]; ok {
 			sumPlayerMAE += v
+			nPlayerMAE++
 		}
 		if v, ok := it.Metrics["team_runs_mae"]; ok {
 			sumTeamRunsMAE += v
+			nTeamRunsMAE++
 		}
 		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
 			sumWinnerAcc += v
+			nWinnerAcc++
 		}
 	}
+
 	summary := map[string]float64{"n": nMatches}
-	if nMatches > 0 {
-		summary["player_runs_mae_avg"] = sumPlayerMAE / nMatches
-		summary["team_runs_mae_avg"] = sumTeamRunsMAE / nMatches
-		summary["team_winner_accuracy_avg"] = sumWinnerAcc / nMatches
+	if nPlayerMAE > 0 {
+		summary["player_runs_mae_avg"] = sumPlayerMAE / nPlayerMAE
+	}
+	if nTeamRunsMAE > 0 {
+		summary["team_runs_mae_avg"] = sumTeamRunsMAE / nTeamRunsMAE
+	}
+	if nWinnerAcc > 0 {
+		summary["team_winner_accuracy_avg"] = sumWinnerAcc / nWinnerAcc
 	}
 
+	// Progressive calculations using per-metric present counts
 	progressive := make([]map[string]float64, 0, len(items))
-	var psPlayer, psTeamRuns, psWinner float64
+	var (
+		psPlayer, pnPlayer     float64
+		psTeamRuns, pnTeamRuns float64
+		psWinner, pnWinner     float64
+	)
 	for i, it := range items {
 		n := float64(i + 1)
 		if v, ok := it.Metrics["player_runs_mae"]; ok {
 			psPlayer += v
+			pnPlayer++
 		}
 		if v, ok := it.Metrics["team_runs_mae"]; ok {
 			psTeamRuns += v
+			pnTeamRuns++
 		}
 		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
 			psWinner += v
+			pnWinner++
 		}
-		row := map[string]float64{
-			"n":                        n,
-			"team_winner_accuracy_avg": psWinner / n,
+		row := map[string]float64{"n": n}
+		if pnPlayer > 0 {
+			row["player_runs_mae_avg"] = psPlayer / pnPlayer
 		}
-		if psPlayer > 0 {
-			row["player_runs_mae_avg"] = psPlayer / n
+		if pnTeamRuns > 0 {
+			row["team_runs_mae_avg"] = psTeamRuns / pnTeamRuns
 		}
-		if psTeamRuns > 0 {
-			row["team_runs_mae_avg"] = psTeamRuns / n
+		if pnWinner > 0 {
+			row["team_winner_accuracy_avg"] = psWinner / pnWinner
 		}
 		progressive = append(progressive, row)
 	}
