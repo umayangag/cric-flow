@@ -711,7 +711,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Match-level aggregates (optional if seams available)
- if predAgg, _, err1 := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{team1, team2}); err1 == nil {
+ if predAgg, modelVersion, err1 := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{team1, team2}); err1 == nil {
 		if actAgg, err2 := getBacktestMatchAggregatesActualsFunc(r.Context(), mid); err2 == nil {
 			// Populate response section
 			resp.MatchAggregates.Predicted = map[string]any{
