@@ -37,6 +37,10 @@ def test_backtest_predict_match_mode_schema_and_winner_present():
     r = client.post("/ml/backtest/predict", json=body)
     assert r.status_code == 200, r.text
     data = r.json()
+    # Ensure model_version is present to match Go client's expectations
+    assert "model_version" in data
+    assert isinstance(data["model_version"], str)
+    assert data["model_version"].strip() != ""
     assert "match" in data and isinstance(data["match"], dict)
     m = data["match"]
     for k in ["runs", "wickets", "extras", "winner_team_code"]:
