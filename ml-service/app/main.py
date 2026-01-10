@@ -239,7 +239,7 @@ def _resolve_model_version() -> str:
     # Fallback to FastAPI app version
     try:
         return app.version  # type: ignore[attr-defined]
-    except Exception:
+    except AttributeError:
         return "unknown"
 
 
