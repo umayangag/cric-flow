@@ -133,28 +133,29 @@ migrate-local:
 seed-fixtures:
 	# Ensure Postgres is up (compose service name: postgres)
 	$(DC) up -d postgres
-	# Wait until Postgres is accepting connections (max ~90s)
-	@echo "[SMOKE] Waiting for Postgres to be ready on $(POSTGRES_HOST):$(POSTGRES_PORT)..."; \
+	# Wait until Postgres is accepting connections (inside container; max ~90s)
+	@echo "[SMOKE] Waiting for Postgres (container) readiness..."; \
 	attempts=0; max_attempts=90; \
-	until PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c 'SELECT 1' >/dev/null 2>&1; do \
+	until $(DC) exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do \
 	  attempts=$$((attempts+1)); \
 	  if [ $$attempts -ge $$max_attempts ]; then \
 	    echo "Postgres did not become ready in time"; \
+	    $(DC) logs --no-color --tail=200 postgres || true; \
 	    exit 1; \
 	  fi; \
 	  sleep 1; \
 	done; \
-	echo "[SMOKE] Postgres is ready."
+	echo "[SMOKE] Postgres is ready (container)."
 	# Apply migrations to create schema if needed
 	$(MAKE) migrate-local
-	# Load the seed dataset
-	psql "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)" \
-		-f tests/fixtures/backtest/seed.sql
+	# Load the seed dataset (run psql inside the postgres container; no host psql required)
+	@echo "[SMOKE] Seeding fixtures via container psql..."; \
+	$(DC) exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f -" < tests/fixtures/backtest/seed.sql
 
 # End-to-end smoke: select → evaluate with jq assertions
 e2e-backtest-smoke: seed-fixtures
 	# Start services (Postgres is ensured by seed-fixtures)
-	$(DC) up -d go-api ml-service
+	$(DC) up --build -d go-api ml-service
 	# Wait for services to report healthy instead of using a fixed sleep
 	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
 	for url in http://localhost:8080/health http://localhost:8000/health; do \
