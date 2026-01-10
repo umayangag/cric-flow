@@ -92,7 +92,7 @@ func TestBacktestMLClient_PredictMatchAggregates(t *testing.T) {
 	os.Setenv("ML_SERVICE_URL", srv.URL)
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-	agg, err := c.predictMatchAggregates(t.Context(), cutoff, [2]string{"IND", "AUS"})
+	agg, _, err := c.predictMatchAggregates(t.Context(), cutoff, [2]string{"IND", "AUS"})
 	if err != nil {
 		t.Fatalf("PredictMatchAggregates error: %v", err)
 	}
