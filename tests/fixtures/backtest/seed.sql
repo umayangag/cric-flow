@@ -21,8 +21,23 @@ CREATE TABLE IF NOT EXISTS team_match (
 
 CREATE TABLE IF NOT EXISTS match_format (
     id   BIGSERIAL PRIMARY KEY,
-    code VARCHAR(16) NOT NULL UNIQUE
+    code VARCHAR(16) NOT NULL UNIQUE,
+    name VARCHAR(100)
 );
+
+-- Ensure legacy schemas get the name column; then backfill and conform
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='match_format' AND column_name='name'
+  ) THEN
+    ALTER TABLE match_format ADD COLUMN name VARCHAR(100);
+  END IF;
+END$$;
+
+-- If any rows have NULL name, set it to the code value for safety
+UPDATE match_format SET name = code WHERE name IS NULL;
 
 -- Some older schemas may not have match_details.format_id; add if missing (best-effort)
 DO $$
@@ -41,7 +56,9 @@ BEGIN
 END$$;
 
 -- Seed lookup rows
-INSERT INTO match_format(code) VALUES ('T20') ON CONFLICT (code) DO NOTHING;
+INSERT INTO match_format(code, name)
+VALUES ('T20', 'T20 (All)')
+ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
 INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
 
