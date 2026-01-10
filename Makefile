@@ -133,6 +133,18 @@ migrate-local:
 seed-fixtures:
 	# Ensure Postgres is up (compose service name: postgres)
 	$(DC) up -d postgres
+	# Wait until Postgres is accepting connections (max ~90s)
+	@echo "[SMOKE] Waiting for Postgres to be ready on $(POSTGRES_HOST):$(POSTGRES_PORT)..."; \
+	attempts=0; max_attempts=90; \
+	until PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c 'SELECT 1' >/dev/null 2>&1; do \
+	  attempts=$$((attempts+1)); \
+	  if [ $$attempts -ge $$max_attempts ]; then \
+	    echo "Postgres did not become ready in time"; \
+	    exit 1; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "[SMOKE] Postgres is ready."
 	# Apply migrations to create schema if needed
 	$(MAKE) migrate-local
 	# Load the seed dataset

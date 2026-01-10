@@ -43,10 +43,10 @@ jobs:
         with:
           go-version: '1.25.x'
 
-      - name: Install system tools (psql, jq)
+      - name: Install system tools (psql, curl, jq)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client jq
+          sudo apt-get install -y postgresql-client curl jq
 
       - name: Start Postgres (docker compose)
         run: |
