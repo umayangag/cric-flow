@@ -39,6 +39,42 @@ END$$;
 -- If any rows have NULL name, set it to the code value for safety
 UPDATE match_format SET name = code WHERE name IS NULL;
 
+-- Ensure season has a canonical column name used by the app (name)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='season' AND column_name='name'
+  ) THEN
+    ALTER TABLE season ADD COLUMN name VARCHAR(100);
+  END IF;
+  -- Backfill from season_name if present
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='season' AND column_name='season_name'
+  ) THEN
+    UPDATE season SET name = season_name WHERE name IS NULL AND season_name IS NOT NULL;
+  END IF;
+END$$;
+
+-- Ensure venue has a canonical column name used by the app (name)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='venue' AND column_name='name'
+  ) THEN
+    ALTER TABLE venue ADD COLUMN name VARCHAR(200);
+  END IF;
+  -- Backfill from venue_name if present
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='venue' AND column_name='venue_name'
+  ) THEN
+    UPDATE venue SET name = venue_name WHERE name IS NULL AND venue_name IS NOT NULL;
+  END IF;
+END$$;
+
 -- Some older schemas may not have match_details.format_id; add if missing (best-effort)
 DO $$
 BEGIN
@@ -59,8 +95,34 @@ END$$;
 INSERT INTO match_format(code, name)
 VALUES ('T20', 'T20 (All)')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
-INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
-INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
+-- Insert season/venue using whichever column layout exists, then keep 'name' in sync
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='season' AND column_name='season_name'
+  ) THEN
+    INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
+  ELSE
+    INSERT INTO season(name) VALUES ('2024') ON CONFLICT (name) DO NOTHING;
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='venue' AND column_name='venue_name'
+  ) THEN
+    INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
+  ELSE
+    INSERT INTO venue(name) VALUES ('Wankhede Stadium') ON CONFLICT (name) DO NOTHING;
+  END IF;
+END$$;
+
+-- Re-sync canonical 'name' columns after inserts
+UPDATE season SET name = COALESCE(name, season_name);
+UPDATE venue SET name = COALESCE(name, venue_name);
 
 INSERT INTO team(name) VALUES ('IND') ON CONFLICT (name) DO NOTHING;
 INSERT INTO team(name) VALUES ('AUS') ON CONFLICT (name) DO NOTHING;

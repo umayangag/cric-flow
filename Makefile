@@ -172,8 +172,21 @@ e2e-backtest-smoke: seed-fixtures
 	done
 	# Select candidates
 	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
-	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \
-	echo $$SEL | jq -e '(.candidates | length) > 0' >/dev/null
+	URL="http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"; \
+	STATUS=$$(curl -sS -o /tmp/sel.json -w "%{http_code}" "$$URL"); \
+	echo "  [SEL] HTTP $$STATUS $$URL"; \
+	if [ "$$STATUS" != "200" ]; then \
+	  echo "  [SEL] Response:"; \
+	  cat /tmp/sel.json; echo; \
+	  exit 2; \
+	fi; \
+	COUNT=$$(jq -r '(.candidates // []) | length' /tmp/sel.json); \
+	echo "  [SEL] candidates count=$$COUNT"; \
+	if [ "$$COUNT" -le 0 ]; then \
+	  echo "  [SEL] Body:"; \
+	  cat /tmp/sel.json; echo; \
+	  exit 2; \
+	fi
 	# Evaluate the seeded match (match_id known from fixtures: 9000111)
 	@echo "[SMOKE] Evaluating match_id=9000111"; \
 	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
