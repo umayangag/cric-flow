@@ -105,10 +105,10 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 			}
 			return matchAggregates{Runs: 150, WinnerTeamCode: "AUS"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			// Predict constant totals and winner for simplicity
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
-		}
+  mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+            // Predict constant totals and winner for simplicity
+            return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
+        }
 	})
 
 	app := NewApp(nil)
@@ -207,9 +207,9 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 			}
 			return matchAggregates{Runs: 150, WinnerTeamCode: "AUS"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
-		}
+  mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+            return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
+        }
 	})
 
 	app := NewApp(nil)
@@ -313,9 +313,9 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 				return matchAggregates{Runs: 140, WinnerTeamCode: "IND"}, nil
 			}
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
-		}
+  mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+            return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
+        }
 	})
 
 	app := NewApp(nil)
@@ -397,9 +397,9 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, nil
-		}
+  mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+            return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, "model-v1", nil
+        }
 	})
 
 	app := NewApp(nil)
