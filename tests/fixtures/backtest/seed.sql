@@ -48,13 +48,6 @@ BEGIN
   ) THEN
     ALTER TABLE season ADD COLUMN name VARCHAR(100);
   END IF;
-  -- Backfill from season_name if present
-  IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='season' AND column_name='season_name'
-  ) THEN
-    UPDATE season SET name = season_name WHERE name IS NULL AND season_name IS NOT NULL;
-  END IF;
 END$$;
 
 -- Ensure venue has a canonical column name used by the app (name)
@@ -65,13 +58,6 @@ BEGIN
       WHERE table_name='venue' AND column_name='name'
   ) THEN
     ALTER TABLE venue ADD COLUMN name VARCHAR(200);
-  END IF;
-  -- Backfill from venue_name if present
-  IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='venue' AND column_name='venue_name'
-  ) THEN
-    UPDATE venue SET name = venue_name WHERE name IS NULL AND venue_name IS NOT NULL;
   END IF;
 END$$;
 
