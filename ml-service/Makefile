@@ -85,14 +85,14 @@ ci-setup:
 	python -m pip install -r requirements.txt
 	python -m pip install black isort flake8 ruff pytest pytest-cov httpx
 
-# Run tests (quiet) using venv
-test: venv
+# Run tests (quiet) ensuring runtime deps are installed in venv
+test: install
 	@# Ensure pytest is available in the project venv
 	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
 	$(VENV)/bin/pytest -q
 
-# Generate coverage reports (xml + term) using venv
-coverage: venv
+# Generate coverage reports (xml + term) ensuring runtime deps are installed
+coverage: install
 	@# Ensure pytest and pytest-cov are available in the project venv
 	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
 	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
@@ -101,8 +101,8 @@ coverage: venv
 		--cov-report=xml:coverage.xml \
 		--cov-report=term
 
-# Enforce minimum coverage threshold (may re-run tests) using venv
-coverage-check: venv
+# Enforce minimum coverage threshold (may re-run tests) ensuring runtime deps are installed
+coverage-check: install
 	@# Ensure pytest and pytest-cov are available in the project venv
 	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
 	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
