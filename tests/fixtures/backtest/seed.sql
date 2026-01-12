@@ -107,8 +107,25 @@ BEGIN
 END$$;
 
 -- Re-sync canonical 'name' columns after inserts
-UPDATE season SET name = COALESCE(name, season_name);
-UPDATE venue SET name = COALESCE(name, venue_name);
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='season' AND column_name='season_name'
+  ) THEN
+    UPDATE season SET name = COALESCE(name, season_name);
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='venue' AND column_name='venue_name'
+  ) THEN
+    UPDATE venue SET name = COALESCE(name, venue_name);
+  END IF;
+END$$;
 
 INSERT INTO team(name) VALUES ('IND') ON CONFLICT (name) DO NOTHING;
 INSERT INTO team(name) VALUES ('AUS') ON CONFLICT (name) DO NOTHING;
