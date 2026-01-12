@@ -46,8 +46,8 @@ def predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[Ba
         runs = float(max(0.0, runs))
         wickets = float(max(0.0, np.round(rng.uniform(0.0, 3.0), 1)))
         economy = float(np.round(5.0 + rng.random() * 5.0, 1))
-        catches = float(int(rng.integers(0, 4)))
-        run_outs = float(int(rng.integers(0, 3)))
+        catches = float(rng.integers(0, 4))
+        run_outs = float(rng.integers(0, 3))
         out.append(
             BacktestPlayerPred(
                 player_id=int(pid),
