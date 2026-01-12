@@ -31,8 +31,6 @@ class BattingFeatures(BaseModel):
             return v
         v2 = v.strip().upper()
         # Allow empty/unknown formats by returning normalized value
-        if v2 not in {"TEST", "ODI", "T20", "T20I"}:
-            return v2
         return v2
 
 
@@ -80,16 +78,16 @@ class BacktestPredictRequest(BaseModel):
             return v
         if len(v) != 2:
             raise ValueError("teams must have exactly two items")
-        return [str(v[0]).strip().upper(), str(v[1]).strip().upper()]
+        return [v[0].strip().upper(), v[1].strip().upper()]
 
     @field_validator("player_ids")
     def _player_ids_positive(cls, v: Optional[List[int]]):
         if v is None:
             return v
         for pid in v:
-            if int(pid) <= 0:
+            if pid <= 0:
                 raise ValueError("player_ids must be positive integers")
-        return [int(pid) for pid in v]
+        return v
 
 
 class BacktestPlayerPred(BaseModel):

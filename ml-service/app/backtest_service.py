@@ -65,7 +65,8 @@ def predict_match_baseline(cutoff: datetime, teams: List[str]) -> BacktestMatchA
     a, b = teams[0].upper(), teams[1].upper()
     seed = _deterministic_rng_seed(cutoff.isoformat(), a, b)
     rng = np.random.default_rng(seed)
-    runs = float(max(50.0, runs))
+    # Aggregate team runs: sample a plausible total and enforce a sensible lower bound
+    runs = float(int(np.clip(np.round(rng.uniform(120, 190)), 50, 400)))
     wickets = float(np.clip(np.round(rng.uniform(4, 8)), 2, 10))
     extras = float(int(np.clip(np.round(rng.uniform(5, 15)), 0, 25)))
     w_seed_a = _deterministic_rng_seed(a)
