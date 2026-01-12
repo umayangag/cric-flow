@@ -87,10 +87,15 @@ ci-setup:
 
 # Run tests (quiet) using venv
 test: venv
+	@# Ensure pytest is available in the project venv
+	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
 	$(VENV)/bin/pytest -q
 
 # Generate coverage reports (xml + term) using venv
 coverage: venv
+	@# Ensure pytest and pytest-cov are available in the project venv
+	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
+	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
 	$(VENV)/bin/pytest -q \
 		--cov \
 		--cov-report=xml:coverage.xml \
@@ -98,6 +103,9 @@ coverage: venv
 
 # Enforce minimum coverage threshold (may re-run tests) using venv
 coverage-check: venv
+	@# Ensure pytest and pytest-cov are available in the project venv
+	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
+	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
 	$(VENV)/bin/pytest -q \
 		--cov \
 		--cov-report=term \
