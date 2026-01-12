@@ -15,6 +15,9 @@ from . import settings as app_settings
 from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
+from .backtest_service import predict_match_baseline as svc_predict_match_baseline
+from .backtest_service import predict_players_baseline as svc_predict_players_baseline
+from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
@@ -28,11 +31,6 @@ from .models import (
     BowlingPrediction,
     PlayerPrediction,
     TeamWinResponse,
-)
-from .backtest_service import (
-    predict_match_baseline as svc_predict_match_baseline,
-    predict_players_baseline as svc_predict_players_baseline,
-    resolve_model_version as svc_resolve_model_version,
 )
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -132,7 +130,6 @@ async def request_context_middleware(request: Request, call_next):
 # Models are imported from app.models (see imports above)
 
 
-
 @app.post("/ml/backtest/predict")
 def backtest_predict(req: BacktestPredictRequest):
     # Strict cutoff semantics are honored implicitly by not using post-cutoff data.
@@ -176,7 +173,7 @@ def backtest_predict(req: BacktestPredictRequest):
     )
 
 
- # Team win models are imported from app.models
+# Team win models are imported from app.models
 
 
 # Load artifacts (per-format if available)

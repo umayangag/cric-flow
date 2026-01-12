@@ -7,6 +7,7 @@ Precedence for models directory:
   3) Optional `svc_config.default_artifacts_dir()` when provided
   4) Built-in fallback: `../../output/ml-service`
 """
+
 import os
 import os.path as osp
 from typing import Any, Optional
