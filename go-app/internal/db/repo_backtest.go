@@ -53,7 +53,7 @@ func ListPlayedMatchesByFormatAndTeams(
             GROUP BY tm.match_id
         )
         SELECT md.match_id,
-               COALESCE(md.stable_id, '') AS stable_id,
+               CAST(md.match_id AS TEXT) AS stable_id,
                md.date,
                COALESCE(v.name, '') AS venue_name,
                COALESCE(s.name, '') AS season_name,
@@ -132,7 +132,7 @@ func ListPlayedMatchesByFilters(
             GROUP BY tm.match_id
         )
         SELECT md.match_id,
-               COALESCE(md.stable_id, '') AS stable_id,
+               CAST(md.match_id AS TEXT) AS stable_id,
                md.date,
                COALESCE(v.name, '') AS venue_name,
                COALESCE(s.name, '') AS season_name,

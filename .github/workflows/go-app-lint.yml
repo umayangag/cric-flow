@@ -1,0 +1,48 @@
+name: Go App Lint
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'go-app/**'
+      - '.github/workflows/go-app-lint.yml'
+      - 'go.mod'
+      - 'go.sum'
+  pull_request:
+    paths:
+      - 'go-app/**'
+      - '.github/workflows/go-app-lint.yml'
+      - 'go.mod'
+      - 'go.sum'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          check-latest: true
+
+      - name: Init (tools + modules)
+        run: make -C go-app init
+
+      - name: Format check
+        run: make -C go-app fmt-check
+
+      - name: Vet
+        run: make -C go-app vet
+
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: go-app
+          args: -c ../.golangci.yml

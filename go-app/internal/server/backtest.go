@@ -46,9 +46,9 @@ var (
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 		return matchAggregates{}, sql.ErrNoRows
 	}
-	// Match-level aggregates: predictions from ML given cutoff and teams
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-		return matchAggregates{}, sql.ErrNoRows
+	// Match-level aggregates: predictions from ML given cutoff and teams, with model version
+	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+		return matchAggregates{}, "", sql.ErrNoRows
 	}
 )
 
@@ -337,7 +337,7 @@ func computeAccuracyTrendMetrics(
 		}
 
 		if !havePred {
-			if p, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2}); err == nil {
+			if p, modelVersion, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2}); err == nil {
 				predAgg = p
 				havePred = true
 				if cacheMode == "readwrite" {
@@ -348,6 +348,7 @@ func computeAccuracyTrendMetrics(
 						Team2Code:           m.Team2,
 						PredictedWinnerCode: sqlNullString(predAgg.WinnerTeamCode),
 						PredictedTotalRuns:  sqlNullFloat64(predAgg.Runs),
+						ModelVersion:        sqlNullString(modelVersion),
 						CutoffAt:            cutoff,
 					}); err != nil {
 						// Failing to cache is not critical for the request, but should be monitored
@@ -710,7 +711,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Match-level aggregates (optional if seams available)
-	if predAgg, err1 := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{team1, team2}); err1 == nil {
+	if predAgg, _, err1 := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{team1, team2}); err1 == nil {
 		if actAgg, err2 := getBacktestMatchAggregatesActualsFunc(r.Context(), mid); err2 == nil {
 			// Populate response section
 			resp.MatchAggregates.Predicted = map[string]any{
@@ -930,9 +931,9 @@ func init() {
 		}
 		return mlClient.predictPlayers(ctx, cutoff, playerIDs)
 	}
-	mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoff time.Time, teams [2]string) (matchAggregates, error) {
+	mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoff time.Time, teams [2]string) (matchAggregates, string, error) {
 		if mlClient == nil {
-			return matchAggregates{}, errors.New("ml client not initialized")
+			return matchAggregates{}, "", errors.New("ml client not initialized")
 		}
 		return mlClient.predictMatchAggregates(ctx, cutoff, teams)
 	}

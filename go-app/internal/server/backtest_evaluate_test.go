@@ -317,8 +317,8 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 		}, nil
 	}
 	// Match-level seams
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-		return matchAggregates{Runs: 160, Wickets: 6, Extras: 12, WinnerTeamCode: "IND"}, nil
+	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+		return matchAggregates{Runs: 160, Wickets: 6, Extras: 12, WinnerTeamCode: "IND"}, "model-v1", nil
 	}
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 		return matchAggregates{Runs: 150, Wickets: 7, Extras: 10, WinnerTeamCode: "IND"}, nil
@@ -390,9 +390,9 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_CutoffPassed(t *testi
 	}
 
 	var receivedCutoff time.Time
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, cutoffArg time.Time, _ [2]string) (matchAggregates, error) {
+	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, cutoffArg time.Time, _ [2]string) (matchAggregates, string, error) {
 		receivedCutoff = cutoffArg
-		return matchAggregates{Runs: 100, Wickets: 5, Extras: 8, WinnerTeamCode: "IND"}, nil
+		return matchAggregates{Runs: 100, Wickets: 5, Extras: 8, WinnerTeamCode: "IND"}, "model-v1", nil
 	}
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 		return matchAggregates{Runs: 95, Wickets: 6, Extras: 6, WinnerTeamCode: "AUS"}, nil

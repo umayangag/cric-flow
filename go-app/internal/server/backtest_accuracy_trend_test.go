@@ -105,9 +105,9 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 			}
 			return matchAggregates{Runs: 150, WinnerTeamCode: "AUS"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
 			// Predict constant totals and winner for simplicity
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
+			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
 		}
 	})
 
@@ -207,8 +207,8 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 			}
 			return matchAggregates{Runs: 150, WinnerTeamCode: "AUS"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
 		}
 	})
 
@@ -313,8 +313,8 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 				return matchAggregates{Runs: 140, WinnerTeamCode: "IND"}, nil
 			}
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, nil
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+			return matchAggregates{Runs: 155, WinnerTeamCode: "IND"}, "model-v1", nil
 		}
 	})
 
@@ -397,8 +397,8 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
 		}
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, nil
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, "model-v1", nil
 		}
 	})
 
@@ -518,9 +518,9 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 		}
 
 		// Make ML match aggregates seam fail if called (should not be when cache=read)
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
 			t.Fatalf("ML match aggregates was called despite cache=read")
-			return matchAggregates{}, nil
+			return matchAggregates{}, "", nil
 		}
 
 		// Actuals for aggregates
@@ -591,8 +591,8 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 			}, nil
 		}
 		// ML returns different value to detect path: predicted 152 → MAE |152-150|=2
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, nil
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+			return matchAggregates{Runs: 152, WinnerTeamCode: "IND"}, "test-model", nil
 		}
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil
@@ -655,8 +655,8 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 			return db.MatchPredictionAggregates{}, sql.ErrNoRows
 		}
 		// ML compute path
-		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, error) {
-			return matchAggregates{Runs: 149, WinnerTeamCode: "IND"}, nil
+		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
+			return matchAggregates{Runs: 149, WinnerTeamCode: "IND"}, "test-model", nil
 		}
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 			return matchAggregates{Runs: 150, WinnerTeamCode: "IND"}, nil

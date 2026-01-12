@@ -57,7 +57,8 @@ type mlBacktestMatchAgg struct {
 }
 
 type mlBacktestMatchAggResponse struct {
-	Match mlBacktestMatchAgg `json:"match"`
+	Match        mlBacktestMatchAgg `json:"match"`
+	ModelVersion string             `json:"model_version,omitempty"`
 }
 
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
@@ -111,9 +112,9 @@ func (c *BacktestMLClient) predictMatchAggregates(
 	ctx context.Context,
 	cutoff time.Time,
 	teams [2]string,
-) (matchAggregates, error) {
+) (matchAggregates, string, error) {
 	if teams[0] == "" || teams[1] == "" {
-		return matchAggregates{}, errors.New("teams required")
+		return matchAggregates{}, "", errors.New("teams required")
 	}
 	body := mlBacktestMatchAggRequest{Cutoff: cutoff.Format(time.RFC3339), Teams: teams}
 	payload, _ := json.Marshal(body)
@@ -124,25 +125,25 @@ func (c *BacktestMLClient) predictMatchAggregates(
 		bytes.NewReader(payload),
 	)
 	if err != nil {
-		return matchAggregates{}, err
+		return matchAggregates{}, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return matchAggregates{}, err
+		return matchAggregates{}, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return matchAggregates{}, fmt.Errorf("ml backtest match http %d", resp.StatusCode)
+		return matchAggregates{}, "", fmt.Errorf("ml backtest match http %d", resp.StatusCode)
 	}
 	var out mlBacktestMatchAggResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return matchAggregates{}, err
+		return matchAggregates{}, "", err
 	}
 	return matchAggregates{
 		Runs:           out.Match.Runs,
 		Wickets:        out.Match.Wickets,
 		Extras:         out.Match.Extras,
 		WinnerTeamCode: out.Match.WinnerTeamCode,
-	}, nil
+	}, out.ModelVersion, nil
 }

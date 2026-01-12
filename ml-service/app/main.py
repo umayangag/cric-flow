@@ -222,6 +222,25 @@ class BacktestMatchAgg(BaseModel):
 
 class BacktestMatchResponse(BaseModel):
     match: BacktestMatchAgg
+    # Added to align with Go client expectations
+    model_version: str
+
+
+def _resolve_model_version() -> str:
+    """Return a model version string for responses.
+
+    Preference order:
+    1) ENV MODEL_VERSION
+    2) FastAPI app.version
+    """
+    mv = os.environ.get("MODEL_VERSION", "").strip()
+    if mv:
+        return mv
+    # Fallback to FastAPI app version
+    try:
+        return app.version  # type: ignore[attr-defined]
+    except AttributeError:
+        return "unknown"
 
 
 def _deterministic_rng_seed(*parts: str) -> int:
@@ -305,7 +324,7 @@ def backtest_predict(req: BacktestPredictRequest):
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)
         match = _predict_match_baseline(cutoff, req.teams)
-        body = BacktestMatchResponse(match=match).model_dump()
+        body = BacktestMatchResponse(match=match, model_version=_resolve_model_version()).model_dump()
         _cache_put("match", cutoff_iso, list(req.teams), body)
         return JSONResponse(status_code=200, content=body)
     raise HTTPException(

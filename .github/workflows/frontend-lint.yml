@@ -1,4 +1,4 @@
-name: Frontend CI
+name: Frontend Lint
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -6,21 +6,17 @@ concurrency:
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/frontend-lint.yml'
   pull_request:
     paths:
       - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
-  issue_comment:
-    types: [created]
+      - '.github/workflows/frontend-lint.yml'
 
 jobs:
-  node:
-    if: ${{ github.event_name != 'issue_comment' }}
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,14 +33,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Typecheck (tsc --noEmit)
+      - name: Typecheck
         working-directory: frontend
-        run: npm run typecheck
+        run: npm run -s typecheck
 
-      - name: Build (typecheck + bundle)
+      - name: Lint
         working-directory: frontend
-        run: npm run build
-
-      - name: Test (vitest)
-        working-directory: frontend
-        run: npm test --silent
+        run: |
+          if npm run | grep -q "lint"; then npm run -s lint; else echo "No lint script; skipped"; fi

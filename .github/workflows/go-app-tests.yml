@@ -1,4 +1,4 @@
-name: Go App CI
+name: Go App Tests
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -6,25 +6,21 @@ concurrency:
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - 'go-app/**'
-      - '.github/workflows/go-app-ci.yml'
+      - '.github/workflows/go-app-tests.yml'
       - 'go.mod'
       - 'go.sum'
   pull_request:
     paths:
       - 'go-app/**'
-      - '.github/workflows/go-app-ci.yml'
+      - '.github/workflows/go-app-tests.yml'
       - 'go.mod'
       - 'go.sum'
-  issue_comment:
-    types: [created]
 
 jobs:
-  go:
-    if: ${{ github.event_name != 'issue_comment' }}
+  test:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -46,14 +42,8 @@ jobs:
           go-version: '1.25.x'
           check-latest: true
 
-      - name: Init via Make (tools + modules)
+      - name: Init (tools + modules)
         run: make -C go-app init
-
-      - name: Vet
-        run: make -C go-app vet
-
-      - name: Format check
-        run: make -C go-app fmt-check
 
       - name: Apply migrations
         env:
@@ -65,20 +55,10 @@ jobs:
           POSTGRES_SSLMODE: disable
         run: make -C go-app migrate
 
-      - name: Build
-        run: make -C go-app build
-
-      - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
-          working-directory: go-app
-          args: -c ../.golangci.yml
-
-      - name: Coverage (generate)
+      - name: Run unit tests with coverage
         run: make -C go-app coverage
 
-      - name: Coverage
+      - name: Enforce coverage threshold
         env:
           COV_MIN: "30"
         run: make -C go-app coverage-check

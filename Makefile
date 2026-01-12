@@ -133,16 +133,29 @@ migrate-local:
 seed-fixtures:
 	# Ensure Postgres is up (compose service name: postgres)
 	$(DC) up -d postgres
+	# Wait until Postgres is accepting connections (inside container; max ~90s)
+	@echo "[SMOKE] Waiting for Postgres (container) readiness..."; \
+	attempts=0; max_attempts=90; \
+	until $(DC) exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do \
+	  attempts=$$((attempts+1)); \
+	  if [ $$attempts -ge $$max_attempts ]; then \
+	    echo "Postgres did not become ready in time"; \
+	    $(DC) logs --no-color --tail=200 postgres || true; \
+	    exit 1; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "[SMOKE] Postgres is ready (container)."
 	# Apply migrations to create schema if needed
 	$(MAKE) migrate-local
-	# Load the seed dataset
-	psql "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=$(POSTGRES_SSLMODE)" \
-		-f tests/fixtures/backtest/seed.sql
+	# Load the seed dataset (run psql inside the postgres container; no host psql required)
+	@echo "[SMOKE] Seeding fixtures via container psql..."; \
+	$(DC) exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f -" < tests/fixtures/backtest/seed.sql
 
 # End-to-end smoke: select → evaluate with jq assertions
 e2e-backtest-smoke: seed-fixtures
 	# Start services (Postgres is ensured by seed-fixtures)
-	$(DC) up -d go-api ml-service
+	$(DC) up --build -d go-api ml-service
 	# Wait for services to report healthy instead of using a fixed sleep
 	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
 	for url in http://localhost:8080/health http://localhost:8000/health; do \
@@ -160,8 +173,23 @@ e2e-backtest-smoke: seed-fixtures
 	done
 	# Select candidates
 	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
-	SEL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"); \
-	echo $$SEL | jq -e '(.candidates | length) > 0' >/dev/null
+	URL="http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"; \
+	SEL_JSON=$$(mktemp); \
+	trap 'rm -f "$$SEL_JSON"' EXIT; \
+	STATUS=$$(curl -sS -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
+	echo "  [SEL] HTTP $$STATUS $$URL"; \
+	if [ "$$STATUS" != "200" ]; then \
+	  echo "  [SEL] Response:"; \
+	  cat "$$SEL_JSON"; echo; \
+	  exit 2; \
+	fi; \
+	COUNT=$$(jq -r '(.candidates // []) | length' "$$SEL_JSON"); \
+	echo "  [SEL] candidates count=$$COUNT"; \
+	if [ "$$COUNT" -le 0 ]; then \
+	  echo "  [SEL] Body:"; \
+	  cat "$$SEL_JSON"; echo; \
+	  exit 2; \
+	fi
 	# Evaluate the seeded match (match_id known from fixtures: 9000111)
 	@echo "[SMOKE] Evaluating match_id=9000111"; \
 	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
