@@ -1,3 +1,17 @@
+"""Model artifact registry and loader utilities.
+
+This module keeps in-memory registries mapping a format code (e.g., "T20") to
+the tuple (scaler, model). It supports two styles of artifacts:
+- Legacy artifacts without a format suffix, stored under the special key
+  "_LEGACY_".
+- Per-format artifacts with filenames like `batting_scaler_T20.joblib` and
+  `batting_model_T20.joblib` discovered under a configured models directory.
+
+Use `reload(models_dir)` to (re)scan a directory and populate the registries.
+The lightweight `summary()` function returns a snapshot indicating which
+formats are currently loaded.
+"""
+
 import os
 from typing import Dict, Optional, Tuple
 

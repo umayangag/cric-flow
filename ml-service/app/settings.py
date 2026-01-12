@@ -1,3 +1,12 @@
+"""Resolve runtime directories and configuration for model artifacts.
+
+This module exposes helpers to determine where model files are loaded from.
+Precedence for models directory:
+  1) Environment variable `ML_SERVICE_OUTPUT_DIR`
+  2) Environment variable `MODELS_DIR`
+  3) Optional `svc_config.default_artifacts_dir()` when provided
+  4) Built-in fallback: `../../output/ml-service`
+"""
 import os
 import os.path as osp
 from typing import Any, Optional

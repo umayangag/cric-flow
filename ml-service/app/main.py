@@ -1,14 +1,13 @@
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
 
 from ml.match_win_predict import predict_for_team
 
@@ -20,9 +19,7 @@ from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
-    BacktestMatchAgg,
     BacktestMatchResponse,
-    BacktestPlayerPred,
     BacktestPlayersResponse,
     BacktestPredictRequest,
     BattingFeatures,
@@ -31,6 +28,11 @@ from .models import (
     BowlingPrediction,
     PlayerPrediction,
     TeamWinResponse,
+)
+from .backtest_service import (
+    predict_match_baseline as svc_predict_match_baseline,
+    predict_players_baseline as svc_predict_players_baseline,
+    resolve_model_version as svc_resolve_model_version,
 )
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -130,80 +132,6 @@ async def request_context_middleware(request: Request, call_next):
 # Models are imported from app.models (see imports above)
 
 
-def _resolve_model_version() -> str:
-    """Return a model version string for responses.
-
-    Preference order:
-    1) ENV MODEL_VERSION
-    2) FastAPI app.version
-    """
-    mv = os.environ.get("MODEL_VERSION", "").strip()
-    if mv:
-        return mv
-    # Fallback to FastAPI app version
-    try:
-        return app.version  # type: ignore[attr-defined]
-    except AttributeError:
-        return "unknown"
-
-
-def _deterministic_rng_seed(*parts: str) -> int:
-    """Build a stable 32-bit seed from text parts."""
-    acc = 0x345678
-    for p in parts:
-        for ch in str(p):
-            acc = (acc * 1000003) ^ ord(ch)
-        acc &= 0xFFFFFFFF
-    return acc or 42
-
-
-def _predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[BacktestPlayerPred]:
-    global BACKTEST_PLAYERS_COMPUTE_COUNT
-    BACKTEST_PLAYERS_COMPUTE_COUNT += 1
-    # Deterministic simple baseline: pseudo-random but stable per (cutoff, pid)
-    out: List[BacktestPlayerPred] = []
-    for pid in player_ids:
-        seed = _deterministic_rng_seed(cutoff.isoformat(), str(pid))
-        rng = np.random.default_rng(seed)
-        # Runs in [0, 100) but skewed
-        runs = float(np.round(rng.normal(20.0, 12.0)))
-        runs = float(max(0.0, runs))
-        # Wickets mostly 0-3
-        wickets = float(max(0.0, np.round(rng.uniform(0.0, 3.0), 1)))
-        # Economy between 5 and 10
-        economy = float(np.round(5.0 + rng.random() * 5.0, 1))
-        # Fielding: small integer counts 0–3, deterministic
-        catches = float(int(rng.integers(0, 4)))
-        run_outs = float(int(rng.integers(0, 3)))
-        out.append(
-            BacktestPlayerPred(
-                player_id=int(pid),
-                runs=runs,
-                wickets=wickets,
-                economy=economy,
-                catches=catches,
-                run_outs=run_outs,
-            )
-        )
-    return out
-
-
-def _predict_match_baseline(cutoff: datetime, teams: List[str]) -> BacktestMatchAgg:
-    global BACKTEST_MATCH_COMPUTE_COUNT
-    BACKTEST_MATCH_COMPUTE_COUNT += 1
-    a, b = teams[0].upper(), teams[1].upper()
-    seed = _deterministic_rng_seed(cutoff.isoformat(), a, b)
-    rng = np.random.default_rng(seed)
-    runs = float(np.round(120 + rng.normal(0, 20)))
-    runs = float(max(50.0, runs))
-    wickets = float(int(np.clip(np.round(rng.uniform(4, 8)), 2, 10)))
-    extras = float(int(np.clip(np.round(rng.uniform(5, 15)), 0, 25)))
-    # Winner: pick based on a stable comparison of hashed values
-    w_seed_a = _deterministic_rng_seed(a)
-    w_seed_b = _deterministic_rng_seed(b)
-    winner = a if (w_seed_a ^ seed) >= (w_seed_b ^ seed) else b
-    return BacktestMatchAgg(runs=runs, wickets=wickets, extras=extras, winner_team_code=winner)
-
 
 @app.post("/ml/backtest/predict")
 def backtest_predict(req: BacktestPredictRequest):
@@ -219,7 +147,10 @@ def backtest_predict(req: BacktestPredictRequest):
         cached = _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)
-        preds = _predict_players_baseline(cutoff, req.player_ids)
+        # Compute fresh predictions and increment compute counter once per uncached call
+        global BACKTEST_PLAYERS_COMPUTE_COUNT
+        BACKTEST_PLAYERS_COMPUTE_COUNT += 1
+        preds = svc_predict_players_baseline(cutoff, req.player_ids)
         body = BacktestPlayersResponse(players=preds).model_dump()
         _cache_put("players", cutoff_iso, list(req.player_ids), body)
         return JSONResponse(status_code=200, content=body)
@@ -227,8 +158,12 @@ def backtest_predict(req: BacktestPredictRequest):
         cached = _cache_get("match", cutoff_iso, list(req.teams))
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)
-        match = _predict_match_baseline(cutoff, req.teams)
-        body = BacktestMatchResponse(match=match, model_version=_resolve_model_version()).model_dump()
+        global BACKTEST_MATCH_COMPUTE_COUNT
+        BACKTEST_MATCH_COMPUTE_COUNT += 1
+        match = svc_predict_match_baseline(cutoff, req.teams)
+        body = BacktestMatchResponse(
+            match=match, model_version=svc_resolve_model_version(getattr(app, "version", ""))
+        ).model_dump()
         _cache_put("match", cutoff_iso, list(req.teams), body)
         return JSONResponse(status_code=200, content=body)
     raise HTTPException(
