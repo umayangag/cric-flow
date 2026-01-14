@@ -58,8 +58,6 @@ class BowlingFeatures(BaseModel):
         if v is None:
             return v
         v2 = v.strip().upper()
-        if v2 not in {"TEST", "ODI", "T20", "T20I"}:
-            return v2
         return v2
 
 

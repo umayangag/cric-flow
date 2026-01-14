@@ -8,7 +8,7 @@ UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 COV_MIN?=80
 
-.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list
+.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_formatters
 
 all: run
 
@@ -47,12 +47,8 @@ validate-exports-infer:
 	(cd ml && ../$(PY) validate_exports.py --all-formats --schema inference)
 
 # Format Python code with line wrapping (isort + black) using project venv
-fmt: venv
+fmt: venv _install_formatters
 	make lint
-	@# Ensure tools are available inside venv
-	@$(PIP) show isort >/dev/null 2>&1 || { echo "Installing isort into $(VENV)..."; $(PIP) install isort >/dev/null; }
-	@$(PIP) show black >/dev/null 2>&1 || { echo "Installing black into $(VENV)..."; $(PIP) install black >/dev/null; }
-	@$(PIP) show flake8 >/dev/null 2>&1 || { echo "Installing flake8 into $(VENV)..."; $(PIP) install flake8 >/dev/null; }
 	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
@@ -70,13 +66,16 @@ lint-check: venv
 	$(VENV)/bin/ruff check --select F401 .
 
 # Check formatting only (same as CI) using venv
-fmt-check: venv
-	@$(PIP) show isort >/dev/null 2>&1 || { echo "Installing isort into $(VENV)..."; $(PIP) install isort >/dev/null; }
-	@$(PIP) show black >/dev/null 2>&1 || { echo "Installing black into $(VENV)..."; $(PIP) install black >/dev/null; }
-	@$(PIP) show flake8 >/dev/null 2>&1 || { echo "Installing flake8 into $(VENV)..."; $(PIP) install flake8 >/dev/null; }
+fmt-check: venv _install_formatters
 	$(VENV)/bin/isort --check-only --diff --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --check --diff --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/flake8 --max-line-length=120 --extend-ignore=E203,E501,W503 --exclude=.venv
+
+# Private helper to ensure formatters are installed in the venv
+_install_formatters: venv
+	@$(PIP) show isort >/dev/null 2>&1 || { echo "Installing isort into $(VENV)..."; $(PIP) install isort >/dev/null; }
+	@$(PIP) show black >/dev/null 2>&1 || { echo "Installing black into $(VENV)..."; $(PIP) install black >/dev/null; }
+	@$(PIP) show flake8 >/dev/null 2>&1 || { echo "Installing flake8 into $(VENV)..."; $(PIP) install flake8 >/dev/null; }
 
 # --- CI convenience targets ---
 # Install dev tools needed in CI (system pip is fine on runners)
@@ -85,27 +84,24 @@ ci-setup:
 	python -m pip install -r requirements.txt
 	python -m pip install black isort flake8 ruff pytest pytest-cov httpx
 
-# Run tests (quiet) ensuring runtime deps are installed in venv
-test: install
-	@# Ensure pytest is available in the project venv
+# Helper to ensure pytest and pytest-cov are available in the project venv
+_install_test_tools: install
 	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
+	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
+
+# Run tests (quiet) ensuring runtime deps are installed in venv
+test: _install_test_tools
 	$(VENV)/bin/pytest -q
 
 # Generate coverage reports (xml + term) ensuring runtime deps are installed
-coverage: install
-	@# Ensure pytest and pytest-cov are available in the project venv
-	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
-	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
+coverage: _install_test_tools
 	$(VENV)/bin/pytest -q \
 		--cov \
 		--cov-report=xml:coverage.xml \
 		--cov-report=term
 
 # Enforce minimum coverage threshold (may re-run tests) ensuring runtime deps are installed
-coverage-check: install
-	@# Ensure pytest and pytest-cov are available in the project venv
-	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
-	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
+coverage-check: _install_test_tools
 	$(VENV)/bin/pytest -q \
 		--cov \
 		--cov-report=term \
