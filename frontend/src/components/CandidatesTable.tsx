@@ -7,30 +7,38 @@ type CandidatesTableProps = {
   onSelectMatch: (matchId: number) => void;
 };
 
+const styles: { [key: string]: React.CSSProperties } = {
+  emptyState: { color: '#666' },
+  container: { maxHeight: 240, overflow: 'auto', border: '1px solid #eee', padding: 8 },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: { textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 },
+  td: { borderBottom: '1px solid #f0f0f0', padding: 6 },
+};
+
 const CandidatesTable: React.FC<CandidatesTableProps> = ({ candidates, selectedMatchId, onSelectMatch }) => {
   if (!candidates.length) {
-    return <div style={{ color: '#666' }}>No candidates loaded yet.</div>;
+    return <div style={styles.emptyState}>No candidates loaded yet.</div>;
   }
   return (
-    <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={styles.container}>
+      <table style={styles.table}>
         <thead>
           <tr>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Date</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Match</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Venue</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Winner</th>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Action</th>
+            <th style={styles.th}>Date</th>
+            <th style={styles.th}>Match</th>
+            <th style={styles.th}>Venue</th>
+            <th style={styles.th}>Winner</th>
+            <th style={styles.th}>Action</th>
           </tr>
         </thead>
         <tbody>
           {candidates.map((c) => (
             <tr key={c.match_id}>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>{new Date(c.date).toISOString().slice(0, 10)}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>{c.team1} vs {c.team2}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>{c.venue || '-'}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>{c.winner_team_code || '-'}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
+              <td style={styles.td}>{new Date(c.date).toISOString().slice(0, 10)}</td>
+              <td style={styles.td}>{c.team1} vs {c.team2}</td>
+              <td style={styles.td}>{c.venue || '-'}</td>
+              <td style={styles.td}>{c.winner_team_code || '-'}</td>
+              <td style={styles.td}>
                 <label>
                   <input
                     type="radio"

@@ -1,6 +1,23 @@
 import React, { useMemo } from 'react';
 import type { BacktestEvaluateResponse } from '../types';
 
+// Consolidated styles to improve readability and maintainability
+const styles: Record<string, React.CSSProperties> = {
+  metricsLine: { marginBottom: 12 },
+  aggregatesContainer: { marginBottom: 12, border: '1px solid #eee', padding: 8 },
+  sectionTitle: { fontWeight: 600, marginBottom: 6 },
+  aggregatesRow: { display: 'flex', gap: 24, flexWrap: 'wrap' },
+
+  tableContainer: { maxHeight: 320, overflow: 'auto', border: '1px solid #eee', padding: 8 },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  thLeft: { textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 },
+  thRight: { textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 },
+  td: { borderBottom: '1px solid #f0f0f0', padding: 6 },
+  tdRight: { borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' },
+
+  matchInfo: { marginBottom: 8 },
+};
+
 type EvaluationResultsProps = {
   result: BacktestEvaluateResponse;
 };
@@ -20,7 +37,7 @@ const MetricsLine: React.FC<{ metrics: Record<string, number> | undefined }> = (
 
   if (!parts.length) return null;
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div style={styles.metricsLine}>
       Metrics: {parts.map((p, i) => (
         <React.Fragment key={i}>
           <strong>{p}</strong>
@@ -42,9 +59,9 @@ const MatchAggregates: React.FC<{
 }> = ({ aggregates }) => {
   if (!aggregates) return null;
   return (
-    <div style={{ marginBottom: 12, border: '1px solid #eee', padding: 8 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Match aggregates</div>
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+    <div style={styles.aggregatesContainer}>
+      <div style={styles.sectionTitle}>Match aggregates</div>
+      <div style={styles.aggregatesRow}>
         <div>
           <div style={{ fontWeight: 600 }}>Predicted</div>
           <div>runs: <strong>{String(aggregates.predicted?.runs ?? '-')}</strong></div>
@@ -73,44 +90,44 @@ const MatchAggregates: React.FC<{
 const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }) => {
   const anyWickets = result.players?.some((p) => typeof p.predicted?.wickets === 'number' || typeof p.actual?.wickets === 'number');
   const anyEconomy = result.players?.some((p) => typeof p.predicted?.economy === 'number' || typeof p.actual?.economy === 'number');
-  const anyCatches = result.players?.some((p) => typeof p.predicted?.['catches'] === 'number' || typeof p.actual?.['catches'] === 'number');
-  const anyRunOuts = result.players?.some((p) => typeof p.predicted?.['run_outs'] === 'number' || typeof p.actual?.['run_outs'] === 'number');
+  const anyCatches = result.players?.some((p) => typeof (p.predicted as any)['catches'] === 'number' || typeof (p.actual as any)['catches'] === 'number');
+  const anyRunOuts = result.players?.some((p) => typeof (p.predicted as any)['run_outs'] === 'number' || typeof (p.actual as any)['run_outs'] === 'number');
 
   return (
-    <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={styles.tableContainer}>
+      <table style={styles.table}>
         <thead>
           <tr>
-            <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>Player ID</th>
-            <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Pred Runs</th>
-            <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Actual Runs</th>
-            <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Abs Error</th>
+            <th style={styles.thLeft}>Player ID</th>
+            <th style={styles.thRight}>Pred Runs</th>
+            <th style={styles.thRight}>Actual Runs</th>
+            <th style={styles.thRight}>Abs Error</th>
             {anyWickets && (
               <>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Pred Wkts</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Actual Wkts</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Wkts Abs Err</th>
+                <th style={styles.thRight}>Pred Wkts</th>
+                <th style={styles.thRight}>Actual Wkts</th>
+                <th style={styles.thRight}>Wkts Abs Err</th>
               </>
             )}
             {anyEconomy && (
               <>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Pred Econ</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Actual Econ</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Econ Abs Err</th>
+                <th style={styles.thRight}>Pred Econ</th>
+                <th style={styles.thRight}>Actual Econ</th>
+                <th style={styles.thRight}>Econ Abs Err</th>
               </>
             )}
             {anyCatches && (
               <>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Pred Catches</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Actual Catches</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Catches Abs Err</th>
+                <th style={styles.thRight}>Pred Catches</th>
+                <th style={styles.thRight}>Actual Catches</th>
+                <th style={styles.thRight}>Catches Abs Err</th>
               </>
             )}
             {anyRunOuts && (
               <>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Pred Run Outs</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Actual Run Outs</th>
-                <th style={{ textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 }}>Run Outs Abs Err</th>
+                <th style={styles.thRight}>Pred Run Outs</th>
+                <th style={styles.thRight}>Actual Run Outs</th>
+                <th style={styles.thRight}>Run Outs Abs Err</th>
               </>
             )}
           </tr>
@@ -118,36 +135,36 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
         <tbody>
           {result.players.map((p) => (
             <tr key={p.player_id}>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>{p.player_id}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.predicted as any)?.runs?.toFixed?.(2) ?? (p.predicted as any)?.runs}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.actual as any)?.runs?.toFixed?.(2) ?? (p.actual as any)?.runs}</td>
-              <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.errors as any)?.runs_mae?.toFixed?.(2) ?? (p.errors as any)?.runs_mae}</td>
+              <td style={styles.td}>{p.player_id}</td>
+              <td style={styles.tdRight}>{(p.predicted as any)?.runs?.toFixed?.(2) ?? (p.predicted as any)?.runs}</td>
+              <td style={styles.tdRight}>{(p.actual as any)?.runs?.toFixed?.(2) ?? (p.actual as any)?.runs}</td>
+              <td style={styles.tdRight}>{(p.errors as any)?.runs_mae?.toFixed?.(2) ?? (p.errors as any)?.runs_mae}</td>
               {anyWickets && (
                 <>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.predicted as any)?.wickets?.toFixed?.(2) ?? (p.predicted as any)?.wickets}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.actual as any)?.wickets?.toFixed?.(2) ?? (p.actual as any)?.wickets}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.errors as any)?.wickets_mae?.toFixed?.(2) ?? (p.errors as any)?.wickets_mae}</td>
+                  <td style={styles.tdRight}>{(p.predicted as any)?.wickets?.toFixed?.(2) ?? (p.predicted as any)?.wickets}</td>
+                  <td style={styles.tdRight}>{(p.actual as any)?.wickets?.toFixed?.(2) ?? (p.actual as any)?.wickets}</td>
+                  <td style={styles.tdRight}>{(p.errors as any)?.wickets_mae?.toFixed?.(2) ?? (p.errors as any)?.wickets_mae}</td>
                 </>
               )}
               {anyEconomy && (
                 <>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.predicted as any)?.economy?.toFixed?.(2) ?? (p.predicted as any)?.economy}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.actual as any)?.economy?.toFixed?.(2) ?? (p.actual as any)?.economy}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.errors as any)?.economy_mae?.toFixed?.(2) ?? (p.errors as any)?.economy_mae}</td>
+                  <td style={styles.tdRight}>{(p.predicted as any)?.economy?.toFixed?.(2) ?? (p.predicted as any)?.economy}</td>
+                  <td style={styles.tdRight}>{(p.actual as any)?.economy?.toFixed?.(2) ?? (p.actual as any)?.economy}</td>
+                  <td style={styles.tdRight}>{(p.errors as any)?.economy_mae?.toFixed?.(2) ?? (p.errors as any)?.economy_mae}</td>
                 </>
               )}
               {anyCatches && (
                 <>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.predicted as any)?.catches ?? ''}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.actual as any)?.catches ?? ''}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.errors as any)?.catches_mae ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.predicted as any)?.catches ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.actual as any)?.catches ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.errors as any)?.catches_mae ?? ''}</td>
                 </>
               )}
               {anyRunOuts && (
                 <>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.predicted as any)?.run_outs ?? ''}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.actual as any)?.run_outs ?? ''}</td>
-                  <td style={{ borderBottom: '1px solid #f0f0f0', padding: 6, textAlign: 'right' }}>{(p.errors as any)?.run_outs_mae ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.predicted as any)?.run_outs ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.actual as any)?.run_outs ?? ''}</td>
+                  <td style={styles.tdRight}>{(p.errors as any)?.run_outs_mae ?? ''}</td>
                 </>
               )}
             </tr>
@@ -161,7 +178,7 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
 const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
   return (
     <div>
-      <div style={{ marginBottom: 8 }}>
+      <div style={styles.matchInfo}>
         Match: <strong>{result.match.match_id}</strong> · Date: <strong>{new Date(result.match.date).toISOString().slice(0,10)}</strong>
       </div>
       <MetricsLine metrics={result.metrics} />
