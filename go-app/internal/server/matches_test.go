@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -111,5 +112,21 @@ func TestListMatchesHandler_Success(t *testing.T) {
 	}
 	if len(resp[0].Teams) != 2 || len(resp[1].Teams) != 2 {
 		t.Fatalf("teams must have length 2")
+	}
+}
+
+func TestListMatchesHandler_DBError(t *testing.T) {
+	// stub seam returning an error
+	orig := listMatchesFunc
+	defer func() { listMatchesFunc = orig }()
+	listMatchesFunc = func(_ context.Context, _ int, _ time.Time, _ string) ([]db.MatchRow, error) {
+		return nil, errors.New("db failure")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/matches?season=2023&after=2022-12-31", nil)
+	rr := httptest.NewRecorder()
+	listMatchesHandler(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
 	}
 }

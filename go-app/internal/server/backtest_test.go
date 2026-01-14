@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,6 +67,25 @@ func TestBacktestMatchHandler_SelectMode_MissingParams(t *testing.T) {
 	app.backtestMatchHandler(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
+	// Force the DAO seam to return an error so the handler responds 500
+	orig := listPlayedByFmtTeams
+	defer func() { listPlayedByFmtTeams = orig }()
+	listPlayedByFmtTeams = func(_ context.Context, _ string, _ string, _ string) ([]db.BacktestCandidate, error) {
+		return nil, errors.New("db failure")
+	}
+
+	app := NewApp(nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS", nil)
+
+	app.backtestMatchHandler(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
 	}
 }
 
