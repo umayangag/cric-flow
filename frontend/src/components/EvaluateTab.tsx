@@ -1,29 +1,30 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../api';
 import { buildSquads, computeMetrics, determineImmediateNextSeason, parseCsv } from '../utils/eval';
+import EvaluationMetricsSummary from './EvaluationMetricsSummary';
 
 const EvaluateTab: React.FC = () => {
   const [csvText, setCsvText] = useState<string>('');
   const [cutoffDate, setCutoffDate] = useState<string>('2022-12-31');
   const [threshold, setThreshold] = useState<number>(0.5);
-  const [status, setStatus] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ReturnType<typeof computeMetrics> | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [evaluationMetrics, setEvaluationMetrics] = useState<ReturnType<typeof computeMetrics> | null>(null);
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCsvFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
     setCsvText(text);
   };
 
-  const canRun = useMemo(() => Boolean(csvText && cutoffDate), [csvText, cutoffDate]);
+  const canRunEvaluation = useMemo(() => Boolean(csvText && cutoffDate), [csvText, cutoffDate]);
 
-  const runEval = async () => {
+  const runEvaluation = async () => {
     try {
-      setError(null);
-      setResult(null);
-      setStatus('Parsing CSV…');
+      setErrorMessage(null);
+      setEvaluationMetrics(null);
+      setStatusMessage('Parsing CSV…');
       const rows = parseCsv(csvText);
       if (!rows.length) throw new Error('CSV has no rows');
       const squadsMap = buildSquads(rows);
@@ -34,18 +35,18 @@ const EvaluateTab: React.FC = () => {
       const testSquads = squads.filter((s) => s.season === nextSeason);
       if (!testSquads.length) throw new Error(`No squads found in season ${nextSeason}.`);
 
-      setStatus(`Predicting for ${testSquads.length} squads...`);
+      setStatusMessage(`Predicting for ${testSquads.length} squads...`);
       const responses = await Promise.all(testSquads.map((sq) => api.predictWin(sq.players)));
       const preds: Array<{ prob: number; actual: number }> = responses.map((resp, i) => ({
         prob: resp.team_win_probability,
         actual: testSquads[i].actual_win,
       }));
       const metrics = computeMetrics(preds, threshold);
-      setResult(metrics);
-      setStatus(`Done. Evaluated ${metrics.total} squads from season ${nextSeason}.`);
+      setEvaluationMetrics(metrics);
+      setStatusMessage(`Done. Evaluated ${metrics.total} squads from season ${nextSeason}.`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setStatus('');
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+      setStatusMessage('');
     }
   };
 
@@ -55,7 +56,7 @@ const EvaluateTab: React.FC = () => {
         Upload a CSV with player-level rows and select a cutoff date X. The app evaluates the immediate next season.
       </p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input type="file" accept=".csv,text/csv" onChange={onFileChange} />
+        <input type="file" accept=".csv,text/csv" onChange={handleCsvFileChange} />
         <label>
           Cutoff date (YYYY-MM-DD):{' '}
           <input value={cutoffDate} onChange={(e) => setCutoffDate(e.target.value)} placeholder="YYYY-MM-DD" />
@@ -72,28 +73,16 @@ const EvaluateTab: React.FC = () => {
             style={{ width: 80 }}
           />
         </label>
-        <button disabled={!canRun} onClick={runEval}>
+        <button disabled={!canRunEvaluation} onClick={runEvaluation}>
           Run Evaluation
         </button>
       </div>
 
-      {status && <div style={{ marginTop: 8 }}>{status}</div>}
-      {error && <div style={{ marginTop: 8, color: 'red' }}>Error: {error}</div>}
-      {result && (
+      {statusMessage && <div style={{ marginTop: 8 }}>{statusMessage}</div>}
+      {errorMessage && <div style={{ marginTop: 8, color: 'red' }}>Error: {errorMessage}</div>}
+      {evaluationMetrics && (
         <div style={{ marginTop: 12 }}>
-          <div>
-            Total: <strong>{result.total}</strong>, Correct: <strong>{result.correct}</strong>, Accuracy:{' '}
-            <strong>{(result.accuracy * 100).toFixed(2)}%</strong>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            Confusion Matrix (threshold {threshold}):
-            <ul>
-              <li>TP: {result.confusion.tp}</li>
-              <li>TN: {result.confusion.tn}</li>
-              <li>FP: {result.confusion.fp}</li>
-              <li>FN: {result.confusion.fn}</li>
-            </ul>
-          </div>
+          <EvaluationMetricsSummary metrics={evaluationMetrics} threshold={threshold} />
         </div>
       )}
 
