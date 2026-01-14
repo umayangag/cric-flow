@@ -88,10 +88,10 @@ const MatchAggregates: React.FC<{
 };
 
 const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }) => {
-  const anyWickets = result.players?.some((p) => typeof p.predicted?.wickets === 'number' || typeof p.actual?.wickets === 'number');
-  const anyEconomy = result.players?.some((p) => typeof p.predicted?.economy === 'number' || typeof p.actual?.economy === 'number');
-  const anyCatches = result.players?.some((p) => typeof (p.predicted as any)['catches'] === 'number' || typeof (p.actual as any)['catches'] === 'number');
-  const anyRunOuts = result.players?.some((p) => typeof (p.predicted as any)['run_outs'] === 'number' || typeof (p.actual as any)['run_outs'] === 'number');
+  const anyWickets = result.players?.some((p) => typeof p.predicted['wickets'] === 'number' || typeof p.actual['wickets'] === 'number');
+  const anyEconomy = result.players?.some((p) => typeof p.predicted['economy'] === 'number' || typeof p.actual['economy'] === 'number');
+  const anyCatches = result.players?.some((p) => typeof p.predicted['catches'] === 'number' || typeof p.actual['catches'] === 'number');
+  const anyRunOuts = result.players?.some((p) => typeof p.predicted['run_outs'] === 'number' || typeof p.actual['run_outs'] === 'number');
 
   return (
     <div style={styles.tableContainer}>
