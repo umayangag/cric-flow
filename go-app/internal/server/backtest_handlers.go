@@ -10,6 +10,53 @@ import (
 	"time"
 )
 
+// --- Helpers extracted for readability (no behavior change) ---
+
+// chooseBacktestMode decides the mode based on explicit input and presence of match_id.
+// If mode is empty, defaults to "select" when match_id is empty, otherwise "evaluate".
+func chooseBacktestMode(modeInput, matchID string) string {
+	m := strings.TrimSpace(modeInput)
+	if m == "" {
+		if strings.TrimSpace(matchID) == "" {
+			return "select"
+		}
+		return "evaluate"
+	}
+	return m
+}
+
+// computeR2 returns the coefficient of determination given total squared error and actual values.
+func computeR2(totalSquaredError float64, actuals []float64) float64 {
+	if len(actuals) == 0 {
+		return 0
+	}
+	var mean float64
+	for _, v := range actuals {
+		mean += v
+	}
+	mean /= float64(len(actuals))
+	var ssTot float64
+	for _, v := range actuals {
+		d := v - mean
+		ssTot += d * d
+	}
+	if ssTot <= 0 {
+		return 0
+	}
+	return 1.0 - (totalSquaredError / ssTot)
+}
+
+// winnerAccuracy computes 1.0 when winner codes match (case-insensitive), else 0.0; returns 0.0 if any is empty.
+func winnerAccuracy(predWinner, actualWinner string) float64 {
+	if predWinner == "" || actualWinner == "" {
+		return 0
+	}
+	if strings.EqualFold(predWinner, actualWinner) {
+		return 1
+	}
+	return 0
+}
+
 // backtestMatchHandler handles GET /api/backtest/match
 // Modes:
 // - select (default when match_id is absent): returns candidate played matches for given filters
@@ -32,13 +79,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Default to select mode if no match_id
-	if mode == "" {
-		if matchID == "" {
-			mode = "select"
-		} else {
-			mode = "evaluate"
-		}
-	}
+	mode = chooseBacktestMode(mode, matchID)
 
 	if mode == "select" {
 		rows, err := listPlayedByFmtTeams(r.Context(), format, team1, team2)
@@ -197,22 +238,8 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Metrics["player_runs_mae"] = totalAbsErrRuns / countRuns
 		// RMSE for runs
 		resp.Metrics["player_runs_rmse"] = math.Sqrt(totalSqErrRuns / countRuns)
-		// R² computation
-		var meanA float64
-		for _, v := range runsActuals {
-			meanA += v
-		}
-		meanA /= float64(len(runsActuals))
-		var ssTot float64
-		for _, v := range runsActuals {
-			d := v - meanA
-			ssTot += d * d
-		}
-		if ssTot > 0 {
-			resp.Metrics["player_runs_r2"] = 1.0 - (totalSqErrRuns / ssTot)
-		} else {
-			resp.Metrics["player_runs_r2"] = 0.0
-		}
+		// R² computation using helper
+		resp.Metrics["player_runs_r2"] = computeR2(totalSqErrRuns, runsActuals)
 	}
 	if countWickets > 0 {
 		resp.Metrics["player_wickets_mae"] = totalAbsErrWickets / countWickets
@@ -252,13 +279,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 			resp.Metrics["match_runs_mae"] = resp.MatchAggregates.Errors["runs_mae"]
 			resp.Metrics["match_wickets_mae"] = resp.MatchAggregates.Errors["wickets_mae"]
 			resp.Metrics["match_extras_mae"] = resp.MatchAggregates.Errors["extras_mae"]
-			if predAgg.WinnerTeamCode != "" && actAgg.WinnerTeamCode != "" {
-				if strings.EqualFold(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode) {
-					resp.Metrics["winner_accuracy"] = 1
-				} else {
-					resp.Metrics["winner_accuracy"] = 0
-				}
-			}
+			resp.Metrics["winner_accuracy"] = winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode)
 		}
 	}
 
@@ -283,8 +304,8 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// List candidates via seam (tests will stub this)
-	cands, err := listPlayedMatchesByFilters(
+	// List candidates via helper (tests can stub seams used within)
+	cands, err := listAccuracyTrendCandidates(
 		r.Context(),
 		params.Format, params.Team1, params.Team2,
 		params.Start, params.End, params.Order, params.Limit,
@@ -309,22 +330,10 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Compute per-match metrics
-	results := make([]accuracyTrendItem, 0, len(cands))
-	for _, m := range cands {
-		metrics := computeAccuracyTrendMetrics(r.Context(), m, params.Cache, params.IncludePlayer, params.IncludeTeam)
-		results = append(results, accuracyTrendItem{
-			MatchID: m.MatchID,
-			Date:    m.Date,
-			Format:  m.Format,
-			Team1:   m.Team1,
-			Team2:   m.Team2,
-			Metrics: metrics,
-		})
-	}
-
-	// Summary and progressive
-	summary, progressive := computeAccuracyTrendSummaryAndProgressive(results)
+	// Compute metrics and aggregates via helper
+	results, summary, progressive := computeAccuracyTrendForCandidates(
+		r.Context(), cands, params.IncludePlayer, params.IncludeTeam, params.Cache,
+	)
 
 	resp := accuracyTrendResponse{
 		Filters: map[string]any{

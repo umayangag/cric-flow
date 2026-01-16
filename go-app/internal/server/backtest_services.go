@@ -1,0 +1,254 @@
+package server
+
+import (
+	"context"
+	"database/sql"
+	"log/slog"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+)
+
+// computeAccuracyTrendMetrics calculates metrics for a single match candidate.
+// It mirrors the previous inline logic to avoid behavior changes.
+func computeAccuracyTrendMetrics(
+	ctx context.Context,
+	m backtestCandidate,
+	cacheMode string,
+	includePlayer, includeTeam bool,
+) map[string]float64 {
+	metrics := map[string]float64{}
+
+	// Determine cutoff (match date)
+	cutoff, cerr := getBacktestMatchDateFunc(ctx, m.MatchID)
+	if cerr != nil || cutoff.IsZero() {
+		if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
+			cutoff = t
+		}
+	}
+	if cutoff.IsZero() {
+		return metrics
+	}
+
+	// Player-level MAE on runs (optional)
+	if includePlayer {
+		if squad, err := getBacktestSquadPlayerIDsFunc(ctx, m.MatchID, cutoff, m.Format); err == nil && len(squad) > 0 {
+			preds, err1 := mlBacktestPredictFunc(ctx, cutoff, squad)
+			acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
+			if err1 == nil && err2 == nil {
+				var totalAbs, cnt float64
+				for _, pid := range squad {
+					pPred, okp := preds[pid]
+					pAct, oka := acts[pid]
+					if !okp || !oka {
+						continue
+					}
+					totalAbs += math.Abs(pPred.Runs - pAct.Runs)
+					cnt++
+				}
+				if cnt > 0 {
+					metrics["player_runs_mae"] = totalAbs / cnt
+				}
+			}
+		}
+	}
+
+	// Match/team aggregates with optional cache (optional)
+	if includeTeam && m.Team1 != "" && m.Team2 != "" {
+		var predAgg matchAggregates
+		var havePred bool
+
+		if cacheMode == "read" || cacheMode == "readwrite" {
+			if rec, err := getMatchPredictionAggregatesFunc(ctx, m.MatchID); err == nil {
+				predAgg = matchAggregates{
+					Runs:           rec.PredictedTotalRuns.Float64,
+					WinnerTeamCode: rec.PredictedWinnerCode.String,
+				}
+				havePred = true
+			}
+		}
+
+		if !havePred {
+			if p, modelVersion, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2}); err == nil {
+				predAgg = p
+				havePred = true
+				if cacheMode == "readwrite" {
+					if err := upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
+						MatchID:             m.MatchID,
+						Format:              m.Format,
+						Team1Code:           m.Team1,
+						Team2Code:           m.Team2,
+						PredictedWinnerCode: sqlNullString(predAgg.WinnerTeamCode),
+						PredictedTotalRuns:  sqlNullFloat64(predAgg.Runs),
+						ModelVersion:        sqlNullString(modelVersion),
+						CutoffAt:            cutoff,
+					}); err != nil {
+						// Failing to cache is not critical for the request, but should be monitored
+						slog.Warn(
+							"failed to upsert match prediction aggregates cache",
+							slog.Any("err", err),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", m.Format),
+							slog.String("team1", m.Team1),
+							slog.String("team2", m.Team2),
+							slog.Time("cutoff_at", cutoff),
+						)
+					}
+				}
+			}
+		}
+
+		if havePred {
+			if actAgg, errA := getBacktestMatchAggregatesActualsFunc(ctx, m.MatchID); errA == nil {
+				if actAgg.Runs != 0 || predAgg.Runs != 0 {
+					metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
+				}
+				if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
+					if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) {
+						metrics["team_winner_accuracy"] = 1.0
+					} else {
+						metrics["team_winner_accuracy"] = 0.0
+					}
+				}
+			}
+		}
+	}
+
+	return metrics
+}
+
+// computeAccuracyTrendSummaryAndProgressive builds the summary and progressive rows
+// from the list of result items. For each metric, averages are computed using the
+// count of matches where the metric is actually present as the denominator.
+func computeAccuracyTrendSummaryAndProgressive(items []accuracyTrendItem) (map[string]float64, []map[string]float64) {
+	var (
+		sumPlayerMAE, nPlayerMAE     float64
+		sumTeamRunsMAE, nTeamRunsMAE float64
+		sumWinnerAcc, nWinnerAcc     float64
+	)
+	nMatches := float64(len(items))
+
+	// Summary accumulators
+	for _, it := range items {
+		if v, ok := it.Metrics["player_runs_mae"]; ok {
+			sumPlayerMAE += v
+			nPlayerMAE++
+		}
+		if v, ok := it.Metrics["team_runs_mae"]; ok {
+			sumTeamRunsMAE += v
+			nTeamRunsMAE++
+		}
+		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
+			sumWinnerAcc += v
+			nWinnerAcc++
+		}
+	}
+
+	summary := map[string]float64{"n": nMatches}
+	if nPlayerMAE > 0 {
+		summary["player_runs_mae_avg"] = sumPlayerMAE / nPlayerMAE
+	}
+	if nTeamRunsMAE > 0 {
+		summary["team_runs_mae_avg"] = sumTeamRunsMAE / nTeamRunsMAE
+	}
+	if nWinnerAcc > 0 {
+		summary["team_winner_accuracy_avg"] = sumWinnerAcc / nWinnerAcc
+	}
+
+	// Progressive calculations using per-metric present counts
+	progressive := make([]map[string]float64, 0, len(items))
+	var (
+		psPlayer, pnPlayer     float64
+		psTeamRuns, pnTeamRuns float64
+		psWinner, pnWinner     float64
+	)
+	for i, it := range items {
+		n := float64(i + 1)
+		if v, ok := it.Metrics["player_runs_mae"]; ok {
+			psPlayer += v
+			pnPlayer++
+		}
+		if v, ok := it.Metrics["team_runs_mae"]; ok {
+			psTeamRuns += v
+			pnTeamRuns++
+		}
+		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
+			psWinner += v
+			pnWinner++
+		}
+		row := map[string]float64{"n": n}
+		if pnPlayer > 0 {
+			row["player_runs_mae_avg"] = psPlayer / pnPlayer
+		}
+		if pnTeamRuns > 0 {
+			row["team_runs_mae_avg"] = psTeamRuns / pnTeamRuns
+		}
+		if pnWinner > 0 {
+			row["team_winner_accuracy_avg"] = psWinner / pnWinner
+		}
+		progressive = append(progressive, row)
+	}
+
+	return summary, progressive
+}
+
+// helpers to construct sql nullable types
+func sqlNullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{Valid: false}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+func sqlNullFloat64(v float64) sql.NullFloat64 {
+	return sql.NullFloat64{Float64: v, Valid: true}
+}
+
+func nullString(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
+}
+
+// listAccuracyTrendCandidates wraps the played matches listing with clear intent.
+// It is a thin layer over the existing seam to keep handlers small and descriptive.
+func listAccuracyTrendCandidates(
+	ctx context.Context,
+	format string,
+	team1 string,
+	team2 string,
+	start time.Time,
+	end time.Time,
+	order string,
+	limit int,
+) ([]backtestCandidate, error) {
+	return listPlayedMatchesByFilters(ctx, format, team1, team2, start, end, order, limit)
+}
+
+// computeAccuracyTrendForCandidates computes metrics for each candidate and returns
+// the items along with the summary and progressive aggregates.
+func computeAccuracyTrendForCandidates(
+	ctx context.Context,
+	candidates []backtestCandidate,
+	includePlayer bool,
+	includeTeam bool,
+	cacheMode string,
+) ([]accuracyTrendItem, map[string]float64, []map[string]float64) {
+	results := make([]accuracyTrendItem, 0, len(candidates))
+	for _, m := range candidates {
+		metrics := computeAccuracyTrendMetrics(ctx, m, cacheMode, includePlayer, includeTeam)
+		results = append(results, accuracyTrendItem{
+			MatchID: m.MatchID,
+			Date:    m.Date,
+			Format:  m.Format,
+			Team1:   m.Team1,
+			Team2:   m.Team2,
+			Metrics: metrics,
+		})
+	}
+	summary, progressive := computeAccuracyTrendSummaryAndProgressive(results)
+	return results, summary, progressive
+}
