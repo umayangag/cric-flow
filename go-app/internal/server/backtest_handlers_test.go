@@ -44,7 +44,12 @@ func TestComputeR2(t *testing.T) {
 		{name: "empty actuals => 0", sse: 0, y: nil, want: 0},
 		{name: "constant actuals => 0", sse: 0, y: []float64{5, 5, 5}, want: 0},
 		{name: "perfect prediction => 1", sse: 0, y: []float64{1, 2, 3, 4}, want: 1},
-		{name: "non-perfect < 1", sse: 2, y: []float64{1, 2, 3, 4}, want: 1 - (2.0 / (5.0))}, // ssTot for [1,2,3,4] is 5
+		{
+			name: "non-perfect < 1",
+			sse:  2,
+			y:    []float64{1, 2, 3, 4},
+			want: 1 - (2.0 / (5.0)),
+		}, // ssTot for [1,2,3,4] is 5
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,7 +128,11 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 					t.Fatalf("cache=off expected, got %q", p.Cache)
 				}
 				if !p.IncludePlayer || p.IncludeTeam {
-					t.Fatalf("metrics selection expected player only, got player=%v team=%v", p.IncludePlayer, p.IncludeTeam)
+					t.Fatalf(
+						"metrics selection expected player only, got player=%v team=%v",
+						p.IncludePlayer,
+						p.IncludeTeam,
+					)
 				}
 			},
 		},

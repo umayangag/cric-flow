@@ -152,7 +152,11 @@ func parsePlayersFromCSV(header []string, rows [][]string) []predictor.PlayerPre
 
 // selectTopWithMinBowlers selects the top teamSize by probability while ensuring at least minBowlers
 // using the heuristic: bowler if deliveries>0 OR econ>0.
-func selectTopWithMinBowlers(preds []predictor.PlayerPrediction, teamSize int, minBowlers int) ([]predictor.PlayerPrediction, error) {
+func selectTopWithMinBowlers(
+	preds []predictor.PlayerPrediction,
+	teamSize int,
+	minBowlers int,
+) ([]predictor.PlayerPrediction, error) {
 	if len(preds) < teamSize {
 		return nil, fmt.Errorf("pool too small: have %d players, need %d", len(preds), teamSize)
 	}

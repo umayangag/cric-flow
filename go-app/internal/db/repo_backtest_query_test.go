@@ -105,7 +105,15 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sql, args := buildPlayedMatchesFiltersQuery(tt.format, tt.team1, tt.team2, tt.start, tt.end, tt.order, tt.limit)
+			sql, args := buildPlayedMatchesFiltersQuery(
+				tt.format,
+				tt.team1,
+				tt.team2,
+				tt.start,
+				tt.end,
+				tt.order,
+				tt.limit,
+			)
 			// Basic guard: must always include NOW() filter
 			if !strings.Contains(sql, "WHERE md.date < NOW()") {
 				t.Fatalf("SQL missing base NOW() filter: %s", sql)

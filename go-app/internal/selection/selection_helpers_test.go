@@ -1,9 +1,10 @@
 package selection
 
 import (
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 	"math"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
 )
 
 func TestSelectTopWithMinBowlers(t *testing.T) {
