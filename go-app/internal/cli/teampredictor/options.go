@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -63,4 +62,4 @@ func getenv(k, def string) string {
 	return def
 }
 
-func parseInt64(s string) (int64, error) { return strconv.ParseInt(strings.TrimSpace(s), 10, 64) }
+// parseInt64 was unused; removed to satisfy lint.

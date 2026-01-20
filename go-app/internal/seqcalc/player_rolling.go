@@ -185,41 +185,37 @@ func buildRowsForInnings(
 		rows = append(rows, row)
 	}
 
-	if batStates != nil {
-		for pid, st := range batStates {
-			for _, h := range batHorizons {
-				if agg, ok := st.last[h]; ok {
-					ph := st.phase[h]
-					emit("overall", nil, "bat", pid, ph, h, &agg, nil)
-					if opp != nil {
-						emit("opposition", opp, "bat", pid, ph, h, &agg, nil)
-					}
-					if venue != nil {
-						emit("venue", venue, "bat", pid, ph, h, &agg, nil)
-					}
-					if season != nil {
-						emit("season", season, "bat", pid, ph, h, &agg, nil)
-					}
+	for pid, st := range batStates {
+		for _, h := range batHorizons {
+			if agg, ok := st.last[h]; ok {
+				ph := st.phase[h]
+				emit("overall", nil, "bat", pid, ph, h, &agg, nil)
+				if opp != nil {
+					emit("opposition", opp, "bat", pid, ph, h, &agg, nil)
+				}
+				if venue != nil {
+					emit("venue", venue, "bat", pid, ph, h, &agg, nil)
+				}
+				if season != nil {
+					emit("season", season, "bat", pid, ph, h, &agg, nil)
 				}
 			}
 		}
 	}
 
-	if bowlStates != nil {
-		for pid, st := range bowlStates {
-			for _, h := range bowlHorizons {
-				if agg, ok := st.last[h]; ok {
-					ph := st.phase[h]
-					emit("overall", nil, "bowl", pid, ph, h, nil, &agg)
-					if opp != nil {
-						emit("opposition", opp, "bowl", pid, ph, h, nil, &agg)
-					}
-					if venue != nil {
-						emit("venue", venue, "bowl", pid, ph, h, nil, &agg)
-					}
-					if season != nil {
-						emit("season", season, "bowl", pid, ph, h, nil, &agg)
-					}
+	for pid, st := range bowlStates {
+		for _, h := range bowlHorizons {
+			if agg, ok := st.last[h]; ok {
+				ph := st.phase[h]
+				emit("overall", nil, "bowl", pid, ph, h, nil, &agg)
+				if opp != nil {
+					emit("opposition", opp, "bowl", pid, ph, h, nil, &agg)
+				}
+				if venue != nil {
+					emit("venue", venue, "bowl", pid, ph, h, nil, &agg)
+				}
+				if season != nil {
+					emit("season", season, "bowl", pid, ph, h, nil, &agg)
 				}
 			}
 		}

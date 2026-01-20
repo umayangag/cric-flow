@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-func almostEqual(a, b, eps float64) bool {
+func almostEqual(a, b float64) bool {
+	const eps = 1e-9
 	return math.Abs(a-b) <= eps
 }
 
@@ -54,7 +55,7 @@ func TestComputeR2(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := computeR2(tt.sse, tt.y)
-			if !almostEqual(got, tt.want, 1e-9) {
+			if !almostEqual(got, tt.want) {
 				t.Fatalf("computeR2(%v,%v)=%v want %v", tt.sse, tt.y, got, tt.want)
 			}
 		})
@@ -200,15 +201,15 @@ func TestComputeAccuracyTrendSummaryAndProgressive(t *testing.T) {
 		t.Fatalf("summary n expected 3, got %v", summary["n"])
 	}
 	// player_runs_mae present in 2 items: (10 + 20)/2 = 15
-	if got := summary["player_runs_mae_avg"]; !almostEqual(got, 15, 1e-9) {
+	if got := summary["player_runs_mae_avg"]; !almostEqual(got, 15) {
 		t.Fatalf("player_runs_mae_avg got %v want 15", got)
 	}
 	// team_runs_mae present in 2 items: (5 + 7)/2 = 6
-	if got := summary["team_runs_mae_avg"]; !almostEqual(got, 6, 1e-9) {
+	if got := summary["team_runs_mae_avg"]; !almostEqual(got, 6) {
 		t.Fatalf("team_runs_mae_avg got %v want 6", got)
 	}
 	// winner_accuracy present in 1 item: 1/1 = 1
-	if got := summary["team_winner_accuracy_avg"]; !almostEqual(got, 1, 1e-9) {
+	if got := summary["team_winner_accuracy_avg"]; !almostEqual(got, 1) {
 		t.Fatalf("team_winner_accuracy_avg got %v want 1", got)
 	}
 
@@ -217,17 +218,17 @@ func TestComputeAccuracyTrendSummaryAndProgressive(t *testing.T) {
 		t.Fatalf("progressive len got %d want 3", len(prog))
 	}
 	// After first item: player=10, team=5
-	if got := prog[0]["player_runs_mae_avg"]; !almostEqual(got, 10, 1e-9) {
+	if got := prog[0]["player_runs_mae_avg"]; !almostEqual(got, 10) {
 		t.Fatalf("prog0 player_runs_mae_avg got %v want 10", got)
 	}
-	if got := prog[0]["team_runs_mae_avg"]; !almostEqual(got, 5, 1e-9) {
+	if got := prog[0]["team_runs_mae_avg"]; !almostEqual(got, 5) {
 		t.Fatalf("prog0 team_runs_mae_avg got %v want 5", got)
 	}
 	// After second item: player still 10/1, team (5+7)/2 = 6, winner 1/1 = 1
-	if got := prog[1]["team_runs_mae_avg"]; !almostEqual(got, 6, 1e-9) {
+	if got := prog[1]["team_runs_mae_avg"]; !almostEqual(got, 6) {
 		t.Fatalf("prog1 team_runs_mae_avg got %v want 6", got)
 	}
-	if got := prog[1]["team_winner_accuracy_avg"]; !almostEqual(got, 1, 1e-9) {
+	if got := prog[1]["team_winner_accuracy_avg"]; !almostEqual(got, 1) {
 		t.Fatalf("prog1 winner_accuracy got %v want 1", got)
 	}
 }

@@ -28,7 +28,7 @@ func TestDoJSON_Non2xx(t *testing.T) {
 		// capture tc for closure
 		status := tc.status
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(status)
 				_, _ = w.Write([]byte("oops"))
 			}))
@@ -55,7 +55,7 @@ func TestDoJSON_Non2xx(t *testing.T) {
 }
 
 func TestDoJSON_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{invalid-json"))
 	}))
@@ -78,7 +78,7 @@ func TestDoJSON_BadJSON(t *testing.T) {
 
 func TestDefaultClient_Timeout(t *testing.T) {
 	// Server sleeps longer than client timeout
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{}"))

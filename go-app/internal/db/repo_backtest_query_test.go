@@ -7,15 +7,7 @@ import (
 	"time"
 )
 
-// containsAll reports whether s contains all substrings in parts.
-func containsAll(s string, parts ...string) bool {
-	for _, p := range parts {
-		if !strings.Contains(s, p) {
-			return false
-		}
-	}
-	return true
-}
+// helper removed: was unused; direct strings.Contains checks are used below.
 
 func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 	ts := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)

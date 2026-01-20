@@ -62,12 +62,17 @@ func TestConsistency(t *testing.T) {
 		{name: "empty", inn: nil, n: 5, wantCV: 0, wantN: 0},
 		{name: "use last n window", inn: mk(10, 20, 30, 40), n: 2, wantCV: func() float64 { // values [30,40]
 			mean := 35.0
-			std := math.Sqrt(((30-35)*(30-35) + (40-35)*(40-35)) / 2.0)
+			d1 := 30.0 - mean
+			d2 := 40.0 - mean
+			std := math.Sqrt((d1*d1 + d2*d2) / 2.0)
 			return std / mean
 		}(), wantN: 2},
 		{name: "all values when n=0", inn: mk(10, 20, 30), n: 0, wantCV: func() float64 {
 			mean := 20.0
-			std := math.Sqrt(((10-20)*(10-20) + (20-20)*(20-20) + (30-20)*(30-20)) / 3.0)
+			d1 := 10.0 - mean
+			d2 := 20.0 - mean
+			d3 := 30.0 - mean
+			std := math.Sqrt((d1*d1 + d2*d2 + d3*d3) / 3.0)
 			return std / mean
 		}(), wantN: 3},
 		{name: "zero mean fallback", inn: mk(0, 0, 0), n: 0, wantCV: 1, wantN: 3},
