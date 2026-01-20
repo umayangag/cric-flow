@@ -2,10 +2,7 @@
 package mlclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -36,27 +33,12 @@ func New() *Client {
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, in any, out any) error {
-	b, err := json.Marshal(in)
+	req, err := newRequest(ctx, http.MethodPost, c.BaseURL+path, in, c.UserAgent)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.UserAgent != "" {
-		req.Header.Set("User-Agent", c.UserAgent)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ml-service status: %s", resp.Status)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	_, err = doJSON(c.HTTP, req, out)
+	return err
 }
 
 // PredictBatting sends batting feature rows to the mlCleint service and returns predictions.

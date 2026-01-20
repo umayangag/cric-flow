@@ -1,7 +1,6 @@
 package evaluate
 
 import (
-	"errors"
 	"flag"
 )
 
@@ -26,11 +25,11 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
-	if *season == "" {
-		return Options{}, errors.New("season must not be empty")
+	if err := validateNonEmpty(*season, "season"); err != nil {
+		return Options{}, err
 	}
-	if *format == "" {
-		return Options{}, errors.New("format must not be empty")
+	if err := validateNonEmpty(*format, "format"); err != nil {
+		return Options{}, err
 	}
 	return Options{Season: *season, Format: *format}, nil
 }

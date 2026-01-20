@@ -10,6 +10,63 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
 
+// discoverFormatCodes returns the list of format codes to process. If the
+// provided slice is non-empty, it is returned as-is. Otherwise, the codes are
+// discovered from the database in stable order.
+func discoverFormatCodes(ctx context.Context, provided []string) ([]string, error) {
+	if len(provided) > 0 {
+		return provided, nil
+	}
+	rows, err := db.Pool.Query(ctx, `SELECT code FROM match_format ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list formats: %w", err)
+	}
+	defer rows.Close()
+	var codes []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes = append(codes, code)
+	}
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	return codes, nil
+}
+
+// runPhasesForFormat executes all precompute phases for a single format code.
+// It updates the in-memory status for each phase and preserves existing error
+// messages and wrapping.
+func runPhasesForFormat(ctx context.Context, season string, code string) error {
+	// 1) Seasonal form (weighted formulas)
+	setPhase("form")
+	if err := features.ComputeSeasonalFormFmt(ctx, season, code); err != nil {
+		setError(err)
+		return fmt.Errorf("compute seasonal form (%s): %w", code, err)
+	}
+	// 2) Venue effects (weighted formulas)
+	setPhase("venue")
+	if err := features.ComputeVenueEffectsFmt(ctx, code); err != nil {
+		setError(err)
+		return fmt.Errorf("compute venue effects (%s): %w", code, err)
+	}
+	// 3) Opposition effects (weighted formulas)
+	setPhase("opposition")
+	if err := features.ComputeOppositionEffectsFmt(ctx, code); err != nil {
+		setError(err)
+		return fmt.Errorf("compute opposition effects (%s): %w", code, err)
+	}
+	// 4) Consistency (mirrors Python semantics)
+	setPhase("consistency")
+	if err := features.ComputeConsistencyFmt(ctx, season, code); err != nil {
+		setError(err)
+		return fmt.Errorf("compute consistency (%s): %w", code, err)
+	}
+	return nil
+}
+
 // Run orchestrates precompute for the given season and list of format codes.
 // If season is empty, computes for all seasons. If formats is empty, computes for all formats.
 func Run(parent context.Context, season string, formats []string) error {
@@ -26,23 +83,9 @@ func Run(parent context.Context, season string, formats []string) error {
 		}
 	}
 	// Discover formats if not provided
-	codes := formats
-	if len(codes) == 0 {
-		rows, err := db.Pool.Query(ctx, `SELECT code FROM match_format ORDER BY id`)
-		if err != nil {
-			return fmt.Errorf("list formats: %w", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var code string
-			if err := rows.Scan(&code); err != nil {
-				return err
-			}
-			codes = append(codes, code)
-		}
-		if rows.Err() != nil {
-			return rows.Err()
-		}
+	codes, err := discoverFormatCodes(ctx, formats)
+	if err != nil {
+		return err
 	}
 
 	// Update status tracker
@@ -50,29 +93,8 @@ func Run(parent context.Context, season string, formats []string) error {
 	defer setDone()
 
 	for _, code := range codes {
-		// 1) Seasonal form (weighted formulas)
-		setPhase("form")
-		if err := features.ComputeSeasonalFormFmt(ctx, season, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute seasonal form (%s): %w", code, err)
-		}
-		// 2) Venue effects (weighted formulas)
-		setPhase("venue")
-		if err := features.ComputeVenueEffectsFmt(ctx, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute venue effects (%s): %w", code, err)
-		}
-		// 3) Opposition effects (weighted formulas)
-		setPhase("opposition")
-		if err := features.ComputeOppositionEffectsFmt(ctx, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute opposition effects (%s): %w", code, err)
-		}
-		// 4) Consistency (mirrors Python semantics)
-		setPhase("consistency")
-		if err := features.ComputeConsistencyFmt(ctx, season, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute consistency (%s): %w", code, err)
+		if err := runPhasesForFormat(ctx, season, code); err != nil {
+			return err
 		}
 	}
 	return nil

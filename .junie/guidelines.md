@@ -48,8 +48,8 @@
 - Branching: never to main/master; branches `type/short-slug`; Conventional Commits; focused PRs.
 - Testing:
   - Use interfaces + mockery for mocks (no fakes).
-  - For unit tests, use table-driven tests following the AAA pattern.
-  - Go: 1.25+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name `{pkg}_test.go`.
+  - For unit tests, use table-driven tests following the AAA pattern (arrange, act, assert).
+  - Go: 1.25+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name the file `{pkg}_test.go` and append `_test` to the package name`.
   - Python: 3.10+, `pytest` under `tests/` with `test_*.py`, deps via `requirements.txt`, `make test` or `pytest -q`, no ifs in tests; table‑driven.
 - Execution: Prefer Makefile targets and docker-compose. Default to unit tests; run integration via `docker compose up` only when planned.
 - Data/Artifacts (ML): small deterministic fixtures (`tests/fixtures/` or `data/sample/`), no large downloads; temp under `output/`; set seeds.
