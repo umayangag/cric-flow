@@ -131,7 +131,7 @@ var (
 // Wire default implementations for evaluate-mode seams to DB repos where available.
 func init() {
 	getBacktestMatchDateFunc = func(ctx context.Context, matchID int64) (time.Time, error) {
-		d, err := db.GetMatchDate(ctx, matchID)
+		d, err := db.GetMatchDateByID(ctx, matchID)
 		if err != nil {
 			return time.Time{}, err
 		}

@@ -113,7 +113,7 @@ func ProcessJob(ctx context.Context, job *db.WeatherJob, noop bool) (*ProcessRes
 
 	// 3) Determine date range
 	from := time.Now()
-	if d, err := db.GetMatchDate(ctx, job.MatchID); err == nil && d != nil {
+	if d, err := db.GetMatchDateByID(ctx, job.MatchID); err == nil && d != nil {
 		from = *d
 	}
 	to := from

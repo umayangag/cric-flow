@@ -13,8 +13,8 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-// TestGetMatchDate_Table refactors scenarios into table-driven subtests with AAA and require.
-func TestGetMatchDate_Table(t *testing.T) {
+// TestGetMatchDateByID_Table refactors scenarios into table-driven subtests with AAA and require.
+func TestGetMatchDateByID_Table(t *testing.T) {
 	ctx := context.Background()
 
 	type arrangeFn func(t *testing.T) (mock pgxmock.PgxPoolIface, matchID int64)
@@ -91,7 +91,7 @@ func TestGetMatchDate_Table(t *testing.T) {
 			// Arrange
 			mock, matchID := tc.arrange(t)
 			// Act
-			got, err := db.GetMatchDate(ctx, matchID)
+			got, err := db.GetMatchDateByID(ctx, matchID)
 			// Assert
 			tc.assert(t, got, err, mock)
 		})

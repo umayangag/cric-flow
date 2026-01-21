@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// GetMatchDate returns match_details.date for a match_id, if present.
-func GetMatchDate(ctx context.Context, matchID int64) (*time.Time, error) {
+// GetMatchDateByID returns match_details.date for a match_id, if present.
+func GetMatchDateByID(ctx context.Context, matchID int64) (*time.Time, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
