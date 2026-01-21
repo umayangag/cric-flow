@@ -359,3 +359,71 @@ See `.env.example` for commonly used variables. Copy to `.env` and adjust values
 - Postgres settings used by `cmd/api` and migration tooling: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_SSLMODE`
 
 Commands generally accept flags that override env and config defaults.
+
+## Internal Server Package Layout
+
+The `internal/server` package is organized for readability and testability:
+
+- `backtest_handlers.go` — HTTP handlers for backtest-related endpoints (request parsing, response writing only).
+- `backtest_services.go` — orchestration and pure helpers that implement the backtest logic; small, named functions.
+- `backtest_types.go` — DTOs, small structs, and interfaces used by handlers/services.
+- `backtest_seams.go` — overridable seams/interfaces for DB/ML calls to enable unit testing without real dependencies.
+- `matches.go` — handler for listing matches filtered by season/date/format; uses a DAO seam (`db.ListMatches`).
+- `seasons.go` — handler for querying the next season after a cutoff date; uses a DAO seam (`db.GetNextSeasonAfter`).
+- `squads.go` — handler for fetching squads and player predictions for a match; maps DB rows to response DTOs.
+- `json.go`, `response.go`, `cors.go`, `router.go`, `app.go` — shared HTTP utilities, app setup, and routing.
+
+Guidelines:
+- Handlers: validate/parse, delegate to services, never contain complex logic.
+- Services/helpers: prefer pure functions; keep them under ~80 LoC where practical.
+- Seams: define clear interfaces to decouple handlers/services from persistence and external clients.
+- Tests: use table-driven tests for parsing/aggregation with seams/mocks.
+
+## CLI Flag Helpers and Conventions
+
+The `internal/cli/flags` package provides small, reusable helpers for common
+flag parsing and validation patterns. These helpers exist to keep individual
+CLIs simple and consistent; they do not change behavior of existing commands.
+
+- `ParseDateISO(value string) (time.Time, error)` — parses `YYYY-MM-DD`.
+- `ParseRFC3339(value string) (time.Time, error)` — parses RFC3339 timestamps.
+- `ParseCSVList(value string) []string` — splits on commas, trims spaces, drops empties.
+- `RequireNonEmpty(name, value string) error` — validates required string flags.
+- `ParseDurationFlag(value string) (time.Duration, error)` — parses Go duration strings.
+
+Guidelines:
+- Prefer using these helpers for new code; when adopting in existing commands,
+  ensure error messages remain compatible with current tests and UX.
+- Keep CLI parsing functions pure (no I/O); pass in `*flag.FlagSet` and `[]string`
+  where possible to enable table-driven tests.
+
+## Logging and Config Conventions
+
+This project uses a single structured logger based on Go's `slog` via the
+`internal/logger` package.
+
+- Initialize once at application start (e.g., in `main`):
+  ```go
+  logger.SetupFromEnv() // sets the global slog default logger
+  log := logger.L()
+  log.Info("app started")
+  ```
+- Retrieve the logger in packages with `logger.L()`; prefer structured fields
+  (`log.Info("msg", "key", value)`).
+- Environment variables:
+  - `LOG_FORMAT` = `json` | `text` (default: `json`)
+  - `LOG_LEVEL` = `debug` | `info` | `warn` | `error` (default: `info`)
+
+Configuration loading follows `internal/config.Load()`, with many CLIs allowing
+environment variables to provide defaults for flags (kept for backwards
+compatibility and convenience). Typical patterns seen across `internal/cli`:
+
+- Call `config.Load()` early to ensure config cache readiness where needed.
+- Use `os.Getenv(KEY)` to populate default flag values when present (e.g.,
+  `GO_APP_OUTPUT_DIR`, `ENABLE_SEQ_FEATURES`, and tool-specific keys). This is
+  a convenience only; flags still validate explicitly.
+
+Guidelines:
+- Prefer the shared logger over ad-hoc printing; if adopting in existing code,
+  match current message text and level to avoid behavior drift.
+- Keep CLI flag parsing pure and deterministic; no logging in parsing helpers.

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -34,27 +33,24 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
-	matchID, err := parseInt64(matchStr)
-	if err != nil || matchID <= 0 {
-		return Options{}, errors.New("invalid match id")
+	matchID, err := parsePositiveInt64ForMatch(matchStr)
+	if err != nil {
+		return Options{}, err
 	}
-	format = strings.ToUpper(strings.TrimSpace(format))
-	switch format {
-	case "TEST", "ODI", "T20I", "T20":
-	default:
-		return Options{}, errors.New("invalid format")
+	if format, err = normalizeFormat(format); err != nil {
+		return Options{}, err
 	}
 	season = strings.TrimSpace(season)
 	if season == "" {
 		return Options{}, errors.New("season is required")
 	}
-	bat, err := strconv.Atoi(strings.TrimSpace(batStr))
-	if err != nil || bat < 0 {
-		return Options{}, errors.New("invalid bat")
+	bat, err := parseNonNegativeInt("bat", batStr)
+	if err != nil {
+		return Options{}, err
 	}
-	bowl, err := strconv.Atoi(strings.TrimSpace(bowlStr))
-	if err != nil || bowl < 0 {
-		return Options{}, errors.New("invalid bowl")
+	bowl, err := parseNonNegativeInt("bowl", bowlStr)
+	if err != nil {
+		return Options{}, err
 	}
 	return Options{MatchID: matchID, Format: format, Season: season, Bat: bat, Bowl: bowl}, nil
 }
@@ -66,4 +62,4 @@ func getenv(k, def string) string {
 	return def
 }
 
-func parseInt64(s string) (int64, error) { return strconv.ParseInt(strings.TrimSpace(s), 10, 64) }
+// parseInt64 was unused; removed to satisfy lint.

@@ -1,13 +1,15 @@
+// Package precompute orchestrates precompute phases and maintains in-memory
+// status for long-running feature computations. The code in this package is
+// intentionally split into small, descriptive helpers to make the execution
+// flow easier to follow for new developers.
 package precompute
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
 
 // Run orchestrates precompute for the given season and list of format codes.
@@ -26,23 +28,9 @@ func Run(parent context.Context, season string, formats []string) error {
 		}
 	}
 	// Discover formats if not provided
-	codes := formats
-	if len(codes) == 0 {
-		rows, err := db.Pool.Query(ctx, `SELECT code FROM match_format ORDER BY id`)
-		if err != nil {
-			return fmt.Errorf("list formats: %w", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var code string
-			if err := rows.Scan(&code); err != nil {
-				return err
-			}
-			codes = append(codes, code)
-		}
-		if rows.Err() != nil {
-			return rows.Err()
-		}
+	codes, err := discoverFormatCodes(ctx, formats)
+	if err != nil {
+		return err
 	}
 
 	// Update status tracker
@@ -50,29 +38,8 @@ func Run(parent context.Context, season string, formats []string) error {
 	defer setDone()
 
 	for _, code := range codes {
-		// 1) Seasonal form (weighted formulas)
-		setPhase("form")
-		if err := features.ComputeSeasonalFormFmt(ctx, season, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute seasonal form (%s): %w", code, err)
-		}
-		// 2) Venue effects (weighted formulas)
-		setPhase("venue")
-		if err := features.ComputeVenueEffectsFmt(ctx, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute venue effects (%s): %w", code, err)
-		}
-		// 3) Opposition effects (weighted formulas)
-		setPhase("opposition")
-		if err := features.ComputeOppositionEffectsFmt(ctx, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute opposition effects (%s): %w", code, err)
-		}
-		// 4) Consistency (mirrors Python semantics)
-		setPhase("consistency")
-		if err := features.ComputeConsistencyFmt(ctx, season, code); err != nil {
-			setError(err)
-			return fmt.Errorf("compute consistency (%s): %w", code, err)
+		if err := runPhasesForFormat(ctx, season, code); err != nil {
+			return err
 		}
 	}
 	return nil

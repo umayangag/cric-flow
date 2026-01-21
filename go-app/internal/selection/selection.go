@@ -41,6 +41,7 @@ func SelectTeamFromCSV(
 	_, _ string,
 	opts Options,
 ) (Result, error) {
+	// Normalize options
 	if opts.TeamSize <= 0 {
 		opts.TeamSize = 11
 	}
@@ -48,24 +49,66 @@ func SelectTeamFromCSV(
 		opts.MinBowlers = 0
 	}
 
-	file, err := os.Open(poolCSV)
+	// Read and parse CSV into player feature rows
+	records, err := readAllCSV(poolCSV)
 	if err != nil {
-		return Result{}, fmt.Errorf("open pool csv: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return Result{}, fmt.Errorf("read pool csv: %w", err)
+		return Result{}, err
 	}
 	if len(records) == 0 {
 		return Result{}, errors.New("pool csv is empty")
 	}
 	header := records[0]
+	players := parsePlayersFromCSV(header, records[1:])
+	if len(players) == 0 {
+		return Result{}, errors.New("no players parsed from CSV")
+	}
 
-	players := make([]predictor.PlayerPrediction, 0, len(records)-1)
-	for _, rec := range records[1:] {
+	cli := mlclient.New()
+	preds, err := cli.PredictWin(ctx, players)
+	if err != nil {
+		return Result{}, fmt.Errorf("predict win: %w", err)
+	}
+	// Select top team respecting minimum bowlers
+	selected, err := selectTopWithMinBowlers(preds, opts.TeamSize, opts.MinBowlers)
+	if err != nil {
+		return Result{}, err
+	}
+	avg := computeAverageWinProbability(selected)
+	// Ensure selected is sorted by probability desc
+	sort.Slice(selected, func(i, j int) bool { return selected[i].WinningProbability > selected[j].WinningProbability })
+	return Result{Players: selected, TeamWinProbability: avg}, nil
+}
+
+func parseF64(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// readAllCSV opens a CSV file path and returns all records.
+func readAllCSV(path string) ([][]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open pool csv: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	r := csv.NewReader(f)
+	recs, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read pool csv: %w", err)
+	}
+	return recs, nil
+}
+
+// parsePlayersFromCSV maps CSV header+rows into predictor.PlayerPrediction rows.
+func parsePlayersFromCSV(header []string, rows [][]string) []predictor.PlayerPrediction {
+	players := make([]predictor.PlayerPrediction, 0, len(rows))
+	for _, rec := range rows {
 		p := predictor.PlayerPrediction{}
 		for i := range header {
 			if i >= len(rec) {
@@ -99,34 +142,30 @@ func SelectTeamFromCSV(
 			case "winning_probability":
 				p.WinningProbability = parseF64(val)
 			default:
-				// ignore extra columns
+				// ignore unknown cols
 			}
 		}
 		players = append(players, p)
 	}
-	if len(players) == 0 {
-		return Result{}, errors.New("no players parsed from CSV")
-	}
+	return players
+}
 
-	cli := mlclient.New()
-	preds, err := cli.PredictWin(ctx, players)
-	if err != nil {
-		return Result{}, fmt.Errorf("predict win: %w", err)
+// selectTopWithMinBowlers selects the top teamSize by probability while ensuring at least minBowlers
+// using the heuristic: bowler if deliveries>0 OR econ>0.
+func selectTopWithMinBowlers(
+	preds []predictor.PlayerPrediction,
+	teamSize int,
+	minBowlers int,
+) ([]predictor.PlayerPrediction, error) {
+	if len(preds) < teamSize {
+		return nil, fmt.Errorf("pool too small: have %d players, need %d", len(preds), teamSize)
 	}
-	if len(preds) < opts.TeamSize {
-		return Result{}, fmt.Errorf("pool too small: have %d players, need %d", len(preds), opts.TeamSize)
-	}
-
-	// Sort by winning probability desc
-	sort.Slice(preds, func(i, j int) bool {
-		return preds[i].WinningProbability > preds[j].WinningProbability
-	})
-
-	// Enforce minimum bowlers by heuristic: deliveries>0 OR econ>0 indicates bowling capability.
-	selected := make([]predictor.PlayerPrediction, 0, opts.TeamSize)
+	// Sort by prob desc
+	sort.Slice(preds, func(i, j int) bool { return preds[i].WinningProbability > preds[j].WinningProbability })
+	selected := make([]predictor.PlayerPrediction, 0, teamSize)
 	bowlers := 0
 	for _, p := range preds {
-		if len(selected) >= opts.TeamSize {
+		if len(selected) >= teamSize {
 			break
 		}
 		selected = append(selected, p)
@@ -134,54 +173,41 @@ func SelectTeamFromCSV(
 			bowlers++
 		}
 	}
-	// If the selected set does not meet MinBowlers, try to swap in additional bowlers from the remainder.
-	if bowlers < opts.MinBowlers {
-		remaining := preds[opts.TeamSize:]
-		for _, cand := range remaining {
-			if bowlers >= opts.MinBowlers {
+	if bowlers >= minBowlers {
+		return selected, nil
+	}
+	// Try swaps from the remainder in descending order
+	remaining := preds[teamSize:]
+	for _, cand := range remaining {
+		if bowlers >= minBowlers {
+			break
+		}
+		if !(cand.Deliveries > 0 || cand.Econ > 0) {
+			continue
+		}
+		// replace the lowest-ranked non-bowler
+		idx := -1
+		for i := len(selected) - 1; i >= 0; i-- {
+			if !(selected[i].Deliveries > 0 || selected[i].Econ > 0) {
+				idx = i
 				break
 			}
-			if !(cand.Deliveries > 0 || cand.Econ > 0) {
-				continue
-			}
-			// find the lowest-ranked non-bowler in selected to replace
-			idx := -1
-			for i := len(selected) - 1; i >= 0; i-- {
-				if !(selected[i].Deliveries > 0 || selected[i].Econ > 0) {
-					idx = i
-					break
-				}
-			}
-			if idx >= 0 {
-				selected[idx] = cand
-				bowlers++
-			}
+		}
+		if idx >= 0 {
+			selected[idx] = cand
+			bowlers++
 		}
 	}
-
-	// Compute team average win probability
-	var sum float64
-	for _, p := range selected {
-		sum += p.WinningProbability
-	}
-	avg := 0.0
-	if len(selected) > 0 {
-		avg = sum / float64(len(selected))
-	}
-
-	// Keep selected sorted by prob desc
-	sort.Slice(selected, func(i, j int) bool { return selected[i].WinningProbability > selected[j].WinningProbability })
-
-	return Result{Players: selected, TeamWinProbability: avg}, nil
+	return selected, nil
 }
 
-func parseF64(s string) float64 {
-	if s == "" {
+func computeAverageWinProbability(players []predictor.PlayerPrediction) float64 {
+	if len(players) == 0 {
 		return 0
 	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
+	var sum float64
+	for _, p := range players {
+		sum += p.WinningProbability
 	}
-	return v
+	return sum / float64(len(players))
 }

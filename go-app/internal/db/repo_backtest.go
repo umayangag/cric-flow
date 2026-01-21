@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
 )
 
 // BacktestCandidate represents a played match candidate for backtesting.
@@ -22,91 +24,10 @@ type BacktestCandidate struct {
 	WinnerTeam sql.NullString
 }
 
-// ListPlayedMatchesByFormatAndTeams returns already-played matches filtered by
-// format code and two team names. Teams are order-insensitive; results are ordered by date ASC.
-// A match is considered "played" if its date is strictly before NOW().
-// Note: Adjust schema/table names if they drift; this query expects:
-//   - match_details(match_id, date, season_id, venue_id, format_id, stable_id)
-//   - season(id, name)
-//   - venue(id, name)
-//   - match_format(id, code)
-//   - team_match(match_id, team_id, result)
-//   - team(id, name)
-func ListPlayedMatchesByFormatAndTeams(
-	ctx context.Context,
-	formatCode string,
-	team1 string,
-	team2 string,
-) ([]BacktestCandidate, error) {
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-
-	q := `
-        WITH tm AS (
-            SELECT tm.match_id,
-                   MIN(t.name) AS team_a,
-                   MAX(t.name) AS team_b,
-                   MAX(CASE WHEN tm.result IN ('W','WIN','1','TRUE','T') THEN t.name ELSE NULL END) AS winner
-            FROM team_match tm
-            JOIN team t ON t.id = tm.team_id
-            GROUP BY tm.match_id
-        )
-        SELECT md.match_id,
-               CAST(md.match_id AS TEXT) AS stable_id,
-               md.date,
-               COALESCE(v.name, '') AS venue_name,
-               COALESCE(s.name, '') AS season_name,
-               COALESCE(mf.code, '') AS format_code,
-               tm.team_a,
-               tm.team_b,
-               COALESCE(tm.winner, '') AS winner
-        FROM match_details md
-        JOIN tm ON tm.match_id = md.match_id
-        LEFT JOIN venue v ON v.id = md.venue_id
-        LEFT JOIN season s ON s.id = md.season_id
-        LEFT JOIN match_format mf ON mf.id = md.format_id
-        WHERE md.date < NOW()
-          AND mf.code = $1
-          AND ((tm.team_a = $2 AND tm.team_b = $3) OR (tm.team_a = $3 AND tm.team_b = $2))
-        ORDER BY md.date ASC
-    `
-
-	rows, err := Pool.Query(ctx, q, formatCode, team1, team2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := make([]BacktestCandidate, 0)
-	for rows.Next() {
-		var c BacktestCandidate
-		if err := rows.Scan(
-			&c.MatchID,
-			&c.StableID,
-			&c.Date,
-			&c.Venue,
-			&c.Season,
-			&c.FormatCode,
-			&c.Team1,
-			&c.Team2,
-			&c.WinnerTeam,
-		); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// ListPlayedMatchesByFilters returns already-played matches filtered by optional
-// format, date range, and team codes. Results are ordered by date asc/desc and
-// can be limited.
-func ListPlayedMatchesByFilters(
-	ctx context.Context,
+// buildPlayedMatchesFiltersQuery builds the SQL and argument list for querying
+// already played matches with optional filters. This mirrors the inline builder
+// previously used in ListPlayedMatchesByFilters to keep behavior identical.
+func buildPlayedMatchesFiltersQuery(
 	formatCode string,
 	team1 string,
 	team2 string,
@@ -114,11 +35,7 @@ func ListPlayedMatchesByFilters(
 	end time.Time,
 	order string,
 	limit int,
-) ([]BacktestCandidate, error) {
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-
+) (string, []any) {
 	// Base CTE to collect team names and winner per match
 	sb := strings.Builder{}
 	sb.WriteString(`
@@ -186,8 +103,7 @@ func ListPlayedMatchesByFilters(
 		args = append(args, team1)
 		sb.WriteString("))")
 	} else if team1 != "" || team2 != "" {
-		// Single-team filter (order-insensitive): if only one of team1/team2 is provided,
-		// filter matches where either side equals that team.
+		// Single-team filter (order-insensitive)
 		team := team1
 		if team == "" {
 			team = team2
@@ -213,8 +129,111 @@ func ListPlayedMatchesByFilters(
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, limit)
 	}
+	return sb.String(), args
+}
 
-	q := sb.String()
+// scanBacktestCandidate populates a BacktestCandidate from the current row.
+func scanBacktestCandidate(rows scanx.Scanner, c *BacktestCandidate) error {
+	return rows.Scan(
+		&c.MatchID,
+		&c.StableID,
+		&c.Date,
+		&c.Venue,
+		&c.Season,
+		&c.FormatCode,
+		&c.Team1,
+		&c.Team2,
+		&c.WinnerTeam,
+	)
+}
+
+// ListPlayedMatchesByFormatAndTeams returns already-played matches filtered by
+// format code and two team names. Teams are order-insensitive; results are ordered by date ASC.
+// A match is considered "played" if its date is strictly before NOW().
+// Note: Adjust schema/table names if they drift; this query expects:
+//   - match_details(match_id, date, season_id, venue_id, format_id, stable_id)
+//   - season(id, name)
+//   - venue(id, name)
+//   - match_format(id, code)
+//   - team_match(match_id, team_id, result)
+//   - team(id, name)
+func ListPlayedMatchesByFormatAndTeams(
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
+) ([]BacktestCandidate, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+
+	q := `
+        WITH tm AS (
+            SELECT tm.match_id,
+                   MIN(t.name) AS team_a,
+                   MAX(t.name) AS team_b,
+                   MAX(CASE WHEN tm.result IN ('W','WIN','1','TRUE','T') THEN t.name ELSE NULL END) AS winner
+            FROM team_match tm
+            JOIN team t ON t.id = tm.team_id
+            GROUP BY tm.match_id
+        )
+        SELECT md.match_id,
+               CAST(md.match_id AS TEXT) AS stable_id,
+               md.date,
+               COALESCE(v.name, '') AS venue_name,
+               COALESCE(s.name, '') AS season_name,
+               COALESCE(mf.code, '') AS format_code,
+               tm.team_a,
+               tm.team_b,
+               COALESCE(tm.winner, '') AS winner
+        FROM match_details md
+        JOIN tm ON tm.match_id = md.match_id
+        LEFT JOIN venue v ON v.id = md.venue_id
+        LEFT JOIN season s ON s.id = md.season_id
+        LEFT JOIN match_format mf ON mf.id = md.format_id
+        WHERE md.date < NOW()
+          AND mf.code = $1
+          AND ((tm.team_a = $2 AND tm.team_b = $3) OR (tm.team_a = $3 AND tm.team_b = $2))
+        ORDER BY md.date ASC
+    `
+
+	rows, err := Pool.Query(ctx, q, formatCode, team1, team2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]BacktestCandidate, 0)
+	for rows.Next() {
+		var c BacktestCandidate
+		if err := scanBacktestCandidate(rows, &c); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListPlayedMatchesByFilters returns already-played matches filtered by optional
+// format, date range, and team codes. Results are ordered by date asc/desc and
+// can be limited.
+func ListPlayedMatchesByFilters(
+	ctx context.Context,
+	formatCode string,
+	team1 string,
+	team2 string,
+	start time.Time,
+	end time.Time,
+	order string,
+	limit int,
+) ([]BacktestCandidate, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	q, args := buildPlayedMatchesFiltersQuery(formatCode, team1, team2, start, end, order, limit)
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -224,17 +243,7 @@ func ListPlayedMatchesByFilters(
 	out := make([]BacktestCandidate, 0)
 	for rows.Next() {
 		var c BacktestCandidate
-		if err := rows.Scan(
-			&c.MatchID,
-			&c.StableID,
-			&c.Date,
-			&c.Venue,
-			&c.Season,
-			&c.FormatCode,
-			&c.Team1,
-			&c.Team2,
-			&c.WinnerTeam,
-		); err != nil {
+		if err := scanBacktestCandidate(rows, &c); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
