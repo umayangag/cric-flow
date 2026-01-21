@@ -4,9 +4,16 @@ package eval
 
 import "math"
 
+// validateSameLengthNonEmpty returns true when both input slices are non-empty
+// and have the same length. All metrics in this package rely on this shape
+// property; otherwise, they must return NaN to signal invalid inputs.
+func validateSameLengthNonEmpty(a, b []float64) bool {
+	return len(a) > 0 && len(a) == len(b)
+}
+
 // MAE computes mean absolute error.
 func MAE(yTrue, yPred []float64) float64 {
-	if len(yTrue) == 0 || len(yTrue) != len(yPred) {
+	if !validateSameLengthNonEmpty(yTrue, yPred) {
 		return math.NaN()
 	}
 	sum := 0.0
@@ -18,7 +25,7 @@ func MAE(yTrue, yPred []float64) float64 {
 
 // RMSE computes root mean squared error.
 func RMSE(yTrue, yPred []float64) float64 {
-	if len(yTrue) == 0 || len(yTrue) != len(yPred) {
+	if !validateSameLengthNonEmpty(yTrue, yPred) {
 		return math.NaN()
 	}
 	sum := 0.0
@@ -31,7 +38,7 @@ func RMSE(yTrue, yPred []float64) float64 {
 
 // BrierScore computes the mean squared error for probabilistic (0-1) predictions.
 func BrierScore(yTrue, yProb []float64) float64 {
-	if len(yTrue) == 0 || len(yTrue) != len(yProb) {
+	if !validateSameLengthNonEmpty(yTrue, yProb) {
 		return math.NaN()
 	}
 	sum := 0.0

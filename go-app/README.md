@@ -359,3 +359,22 @@ See `.env.example` for commonly used variables. Copy to `.env` and adjust values
 - Postgres settings used by `cmd/api` and migration tooling: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_SSLMODE`
 
 Commands generally accept flags that override env and config defaults.
+
+## Internal Server Package Layout
+
+The `internal/server` package is organized for readability and testability:
+
+- `backtest_handlers.go` — HTTP handlers for backtest-related endpoints (request parsing, response writing only).
+- `backtest_services.go` — orchestration and pure helpers that implement the backtest logic; small, named functions.
+- `backtest_types.go` — DTOs, small structs, and interfaces used by handlers/services.
+- `backtest_seams.go` — overridable seams/interfaces for DB/ML calls to enable unit testing without real dependencies.
+- `matches.go` — handler for listing matches filtered by season/date/format; uses a DAO seam (`db.ListMatches`).
+- `seasons.go` — handler for querying the next season after a cutoff date; uses a DAO seam (`db.GetNextSeasonAfter`).
+- `squads.go` — handler for fetching squads and player predictions for a match; maps DB rows to response DTOs.
+- `json.go`, `response.go`, `cors.go`, `router.go`, `app.go` — shared HTTP utilities, app setup, and routing.
+
+Guidelines:
+- Handlers: validate/parse, delegate to services, never contain complex logic.
+- Services/helpers: prefer pure functions; keep them under ~80 LoC where practical.
+- Seams: define clear interfaces to decouple handlers/services from persistence and external clients.
+- Tests: use table-driven tests for parsing/aggregation with seams/mocks.
