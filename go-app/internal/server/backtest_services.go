@@ -4,11 +4,25 @@ import (
 	"context"
 	"log/slog"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
+
+// resolveCandidateCutoff determines the cutoff timestamp for a backtest candidate.
+// Preference order:
+// 1) Database match date via seam getBacktestMatchDateFunc
+// 2) Fallback to parsing the candidate's Date (RFC3339)
+// Returns zero time if both sources are unavailable/invalid.
+func resolveCandidateCutoff(ctx context.Context, m backtestCandidate) time.Time {
+	if cutoff, err := getBacktestMatchDateFunc(ctx, m.MatchID); err == nil && !cutoff.IsZero() {
+		return cutoff
+	}
+	if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
+		return t
+	}
+	return time.Time{}
+}
 
 // getPredictedAggregates encapsulates cache read/write and ML call for match/team aggregates.
 // It returns the predicted aggregates and a boolean indicating whether a prediction is available.
@@ -110,12 +124,7 @@ func computeAccuracyTrendMetrics(
 	metrics := map[string]float64{}
 
 	// Determine cutoff (match date)
-	cutoff, cerr := getBacktestMatchDateFunc(ctx, m.MatchID)
-	if cerr != nil || cutoff.IsZero() {
-		if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
-			cutoff = t
-		}
-	}
+	cutoff := resolveCandidateCutoff(ctx, m)
 	if cutoff.IsZero() {
 		return metrics
 	}
@@ -134,12 +143,9 @@ func computeAccuracyTrendMetrics(
 				if actAgg.Runs != 0 || predAgg.Runs != 0 {
 					metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
 				}
-				if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
-					if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) {
-						metrics["team_winner_accuracy"] = 1.0
-					} else {
-						metrics["team_winner_accuracy"] = 0.0
-					}
+				if v := winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode); v > 0 || (actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "") {
+					// Only set when both are non-empty; winnerAccuracy returns 0.0 otherwise
+					metrics["team_winner_accuracy"] = v
 				}
 			}
 		}
