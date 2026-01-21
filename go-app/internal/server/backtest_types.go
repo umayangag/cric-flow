@@ -44,6 +44,15 @@ type matchAggregates struct {
 	WinnerTeamCode string
 }
 
+// Player-level result for backtest evaluate responses
+// Exported to allow reuse across handlers and tests.
+type BacktestPlayerResult struct {
+	PlayerID  int64              `json:"player_id"`
+	Predicted map[string]float64 `json:"predicted"`
+	Actual    map[string]float64 `json:"actual"`
+	Errors    map[string]float64 `json:"errors"`
+}
+
 // Backtest evaluate API response
 type backtestEvaluateResponse struct {
 	Filters map[string]any `json:"filters"`
@@ -56,13 +65,8 @@ type backtestEvaluateResponse struct {
 		Actual    map[string]any     `json:"actual"`
 		Errors    map[string]float64 `json:"errors"`
 	} `json:"match_aggregates,omitempty"`
-	Players []struct {
-		PlayerID  int64              `json:"player_id"`
-		Predicted map[string]float64 `json:"predicted"`
-		Actual    map[string]float64 `json:"actual"`
-		Errors    map[string]float64 `json:"errors"`
-	} `json:"players"`
-	Metrics map[string]float64 `json:"metrics"`
+	Players []BacktestPlayerResult `json:"players"`
+	Metrics map[string]float64     `json:"metrics"`
 }
 
 // Accuracy trend DTOs

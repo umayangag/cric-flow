@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"math"
@@ -55,6 +56,148 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 		return 1
 	}
 	return 0
+}
+
+// computePlayerResultsAndMetrics walks through the given squad, pairing predictions with
+// actuals to produce per-player results and summary metrics.
+// Metrics computed:
+// - player_runs_mae, player_runs_rmse, player_runs_r2
+// - player_wickets_mae, player_economy_mae, player_catches_mae, player_run_outs_mae
+// Behavior mirrors the inline logic previously in backtestMatchHandler.
+func computePlayerResultsAndMetrics(
+	squad []int64,
+	preds map[int64]playerPredictions,
+	actuals map[int64]playerActuals,
+) ([]BacktestPlayerResult, map[string]float64) {
+	players := make([]BacktestPlayerResult, 0, len(squad))
+	metrics := map[string]float64{}
+
+	var (
+		totalAbsErrRuns, countRuns float64
+		totalSqErrRuns             float64
+		runsActuals                []float64
+
+		totalAbsErrWickets, countWickets float64
+		totalAbsErrEcon, countEcon       float64
+		totalAbsErrCatches, countCatches float64
+		totalAbsErrRunOuts, countRunOuts float64
+	)
+
+	for _, pid := range squad {
+		pp, okP := preds[pid]
+		aa, okA := actuals[pid]
+		if !okP || !okA {
+			// Skip players without both prediction and actuals
+			continue
+		}
+
+		// Player result item
+		var pRes BacktestPlayerResult
+		pRes.PlayerID = pid
+		pRes.Predicted = map[string]float64{
+			"runs":     pp.Runs,
+			"wickets":  pp.Wickets,
+			"economy":  pp.Economy,
+			"catches":  pp.Catches,
+			"run_outs": pp.RunOuts,
+		}
+		pRes.Actual = map[string]float64{
+			"runs":     aa.Runs,
+			"wickets":  aa.Wickets,
+			"economy":  aa.Economy,
+			"catches":  aa.Catches,
+			"run_outs": aa.RunOuts,
+		}
+		diffRuns := pp.Runs - aa.Runs
+		pRes.Errors = map[string]float64{
+			"runs_mae":     math.Abs(diffRuns),
+			"wickets_mae":  math.Abs(pp.Wickets - aa.Wickets),
+			"economy_mae":  math.Abs(pp.Economy - aa.Economy),
+			"catches_mae":  math.Abs(pp.Catches - aa.Catches),
+			"run_outs_mae": math.Abs(pp.RunOuts - aa.RunOuts),
+		}
+		players = append(players, pRes)
+
+		// Aggregate for metrics
+		totalAbsErrRuns += pRes.Errors["runs_mae"]
+		totalSqErrRuns += diffRuns * diffRuns
+		countRuns++
+		runsActuals = append(runsActuals, aa.Runs)
+
+		totalAbsErrWickets += pRes.Errors["wickets_mae"]
+		countWickets++
+
+		totalAbsErrEcon += pRes.Errors["economy_mae"]
+		countEcon++
+
+		totalAbsErrCatches += pRes.Errors["catches_mae"]
+		countCatches++
+
+		totalAbsErrRunOuts += pRes.Errors["run_outs_mae"]
+		countRunOuts++
+	}
+
+	if countRuns > 0 {
+		metrics["player_runs_mae"] = totalAbsErrRuns / countRuns
+		metrics["player_runs_rmse"] = math.Sqrt(totalSqErrRuns / countRuns)
+		metrics["player_runs_r2"] = computeR2(totalSqErrRuns, runsActuals)
+	}
+	if countWickets > 0 {
+		metrics["player_wickets_mae"] = totalAbsErrWickets / countWickets
+	}
+	if countEcon > 0 {
+		metrics["player_economy_mae"] = totalAbsErrEcon / countEcon
+	}
+	if countCatches > 0 {
+		metrics["player_catches_mae"] = totalAbsErrCatches / countCatches
+	}
+	if countRunOuts > 0 {
+		metrics["player_run_outs_mae"] = totalAbsErrRunOuts / countRunOuts
+	}
+
+	return players, metrics
+}
+
+// populateMatchAggregatesAndMetrics fills the response with match-level predicted/actual aggregates
+// and associated metrics when both prediction and actuals are available. No behavior change if seams fail.
+func populateMatchAggregatesAndMetrics(
+	ctx context.Context,
+	resp *backtestEvaluateResponse,
+	cutoff time.Time,
+	team1 string,
+	team2 string,
+	matchID int64,
+) {
+	if predAgg, _, err1 := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{team1, team2}); err1 == nil {
+		if actAgg, err2 := getBacktestMatchAggregatesActualsFunc(ctx, matchID); err2 == nil {
+			// Predicted and actual sections
+			resp.MatchAggregates.Predicted = map[string]any{
+				"runs":             predAgg.Runs,
+				"wickets":          predAgg.Wickets,
+				"extras":           predAgg.Extras,
+				"winner_team_code": predAgg.WinnerTeamCode,
+			}
+			resp.MatchAggregates.Actual = map[string]any{
+				"runs":             actAgg.Runs,
+				"wickets":          actAgg.Wickets,
+				"extras":           actAgg.Extras,
+				"winner_team_code": actAgg.WinnerTeamCode,
+			}
+			// Errors and mirrored summary metrics for single match
+			resp.MatchAggregates.Errors = map[string]float64{}
+			resp.MatchAggregates.Errors["runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
+			resp.MatchAggregates.Errors["wickets_mae"] = math.Abs(predAgg.Wickets - actAgg.Wickets)
+			resp.MatchAggregates.Errors["extras_mae"] = math.Abs(predAgg.Extras - actAgg.Extras)
+
+			if resp.Metrics == nil {
+				resp.Metrics = map[string]float64{}
+			}
+			resp.Metrics["match_runs_mae"] = resp.MatchAggregates.Errors["runs_mae"]
+			resp.Metrics["match_wickets_mae"] = resp.MatchAggregates.Errors["wickets_mae"]
+			resp.Metrics["match_extras_mae"] = resp.MatchAggregates.Errors["extras_mae"]
+			resp.Metrics["winner_accuracy"] = winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode)
+		}
+	}
 }
 
 // backtestMatchHandler handles GET /api/backtest/match
@@ -164,124 +307,13 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	// Match info
 	resp.Match.MatchID = mid
 	resp.Match.Date = cutoff.Format(time.RFC3339)
-	// Players
-	for _, pid := range squad {
-		var pRes struct {
-			PlayerID  int64              `json:"player_id"`
-			Predicted map[string]float64 `json:"predicted"`
-			Actual    map[string]float64 `json:"actual"`
-			Errors    map[string]float64 `json:"errors"`
-		}
-		pRes.PlayerID = pid
-		if pp, ok := preds[pid]; ok {
-			pRes.Predicted = map[string]float64{
-				"runs":     pp.Runs,
-				"wickets":  pp.Wickets,
-				"economy":  pp.Economy,
-				"catches":  pp.Catches,
-				"run_outs": pp.RunOuts,
-			}
-		}
-		if aa, ok := actuals[pid]; ok {
-			pRes.Actual = map[string]float64{
-				"runs":     aa.Runs,
-				"wickets":  aa.Wickets,
-				"economy":  aa.Economy,
-				"catches":  aa.Catches,
-				"run_outs": aa.RunOuts,
-			}
-		}
-		// errors
-		pRes.Errors = map[string]float64{}
-		if pRes.Predicted != nil && pRes.Actual != nil {
-			pRes.Errors["runs_mae"] = math.Abs(pRes.Predicted["runs"] - pRes.Actual["runs"])
-			pRes.Errors["wickets_mae"] = math.Abs(pRes.Predicted["wickets"] - pRes.Actual["wickets"])
-			pRes.Errors["economy_mae"] = math.Abs(pRes.Predicted["economy"] - pRes.Actual["economy"])
-			pRes.Errors["catches_mae"] = math.Abs(pRes.Predicted["catches"] - pRes.Actual["catches"])
-			pRes.Errors["run_outs_mae"] = math.Abs(pRes.Predicted["run_outs"] - pRes.Actual["run_outs"])
-		}
-		resp.Players = append(resp.Players, pRes)
-	}
-
-	// Metrics (player-level averages)
-	resp.Metrics = map[string]float64{}
-	var (
-		totalAbsErrRuns, countRuns       float64
-		totalSqErrRuns                   float64
-		runsActuals                      []float64
-		totalAbsErrWickets, countWickets float64
-		totalAbsErrEcon, countEcon       float64
-		totalAbsErrCatches, countCatches float64
-		totalAbsErrRunOuts, countRunOuts float64
-	)
-	// Recompute metrics from preds/actuals to also accumulate squared errors
-	for _, pid := range squad {
-		pp, okP := preds[pid]
-		aa, okA := actuals[pid]
-		if okP && okA {
-			diff := pp.Runs - aa.Runs
-			totalAbsErrRuns += math.Abs(diff)
-			totalSqErrRuns += diff * diff
-			countRuns++
-			runsActuals = append(runsActuals, aa.Runs)
-			totalAbsErrWickets += math.Abs(pp.Wickets - aa.Wickets)
-			countWickets++
-			totalAbsErrEcon += math.Abs(pp.Economy - aa.Economy)
-			countEcon++
-			totalAbsErrCatches += math.Abs(pp.Catches - aa.Catches)
-			countCatches++
-			totalAbsErrRunOuts += math.Abs(pp.RunOuts - aa.RunOuts)
-			countRunOuts++
-		}
-	}
-	if countRuns > 0 {
-		resp.Metrics["player_runs_mae"] = totalAbsErrRuns / countRuns
-		// RMSE for runs
-		resp.Metrics["player_runs_rmse"] = math.Sqrt(totalSqErrRuns / countRuns)
-		// R² computation using helper
-		resp.Metrics["player_runs_r2"] = computeR2(totalSqErrRuns, runsActuals)
-	}
-	if countWickets > 0 {
-		resp.Metrics["player_wickets_mae"] = totalAbsErrWickets / countWickets
-	}
-	if countEcon > 0 {
-		resp.Metrics["player_economy_mae"] = totalAbsErrEcon / countEcon
-	}
-	if countCatches > 0 {
-		resp.Metrics["player_catches_mae"] = totalAbsErrCatches / countCatches
-	}
-	if countRunOuts > 0 {
-		resp.Metrics["player_run_outs_mae"] = totalAbsErrRunOuts / countRunOuts
-	}
+	// Players and Metrics (single pass)
+	players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
+	resp.Players = append(resp.Players, players...)
+	resp.Metrics = metrics
 
 	// Match-level aggregates (optional if seams available)
-	if predAgg, _, err1 := mlBacktestPredictMatchAggregatesFunc(r.Context(), cutoff, [2]string{team1, team2}); err1 == nil {
-		if actAgg, err2 := getBacktestMatchAggregatesActualsFunc(r.Context(), mid); err2 == nil {
-			// Populate response section
-			resp.MatchAggregates.Predicted = map[string]any{
-				"runs":             predAgg.Runs,
-				"wickets":          predAgg.Wickets,
-				"extras":           predAgg.Extras,
-				"winner_team_code": predAgg.WinnerTeamCode,
-			}
-			resp.MatchAggregates.Actual = map[string]any{
-				"runs":             actAgg.Runs,
-				"wickets":          actAgg.Wickets,
-				"extras":           actAgg.Extras,
-				"winner_team_code": actAgg.WinnerTeamCode,
-			}
-			// Errors (MAE for scalar aggregates)
-			resp.MatchAggregates.Errors = map[string]float64{}
-			resp.MatchAggregates.Errors["runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
-			resp.MatchAggregates.Errors["wickets_mae"] = math.Abs(predAgg.Wickets - actAgg.Wickets)
-			resp.MatchAggregates.Errors["extras_mae"] = math.Abs(predAgg.Extras - actAgg.Extras)
-			// Summary metrics mirror errors for single match
-			resp.Metrics["match_runs_mae"] = resp.MatchAggregates.Errors["runs_mae"]
-			resp.Metrics["match_wickets_mae"] = resp.MatchAggregates.Errors["wickets_mae"]
-			resp.Metrics["match_extras_mae"] = resp.MatchAggregates.Errors["extras_mae"]
-			resp.Metrics["winner_accuracy"] = winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode)
-		}
-	}
+	populateMatchAggregatesAndMetrics(r.Context(), &resp, cutoff, team1, team2, mid)
 
 	writeJSON(w, http.StatusOK, resp)
 }
