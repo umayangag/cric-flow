@@ -1,111 +1,111 @@
 package server
 
 import (
-    "context"
-    "log/slog"
-    "math"
-    "strings"
-    "time"
+	"context"
+	"log/slog"
+	"math"
+	"strings"
+	"time"
 
-    "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // getPredictedAggregates encapsulates cache read/write and ML call for match/team aggregates.
 // It returns the predicted aggregates and a boolean indicating whether a prediction is available.
 func getPredictedAggregates(
-    ctx context.Context,
-    m backtestCandidate,
-    cacheMode string,
-    cutoff time.Time,
+	ctx context.Context,
+	m backtestCandidate,
+	cacheMode string,
+	cutoff time.Time,
 ) (matchAggregates, bool) {
-    // Try cache read if enabled
-    if cacheMode == "read" || cacheMode == "readwrite" {
-        if rec, err := getMatchPredictionAggregatesFunc(ctx, m.MatchID); err == nil {
-            predAgg := matchAggregates{
-                Runs:           rec.PredictedTotalRuns.Float64,
-                WinnerTeamCode: rec.PredictedWinnerCode.String,
-            }
-            return predAgg, true
-        }
-    }
+	// Try cache read if enabled
+	if cacheMode == "read" || cacheMode == "readwrite" {
+		if rec, err := getMatchPredictionAggregatesFunc(ctx, m.MatchID); err == nil {
+			predAgg := matchAggregates{
+				Runs:           rec.PredictedTotalRuns.Float64,
+				WinnerTeamCode: rec.PredictedWinnerCode.String,
+			}
+			return predAgg, true
+		}
+	}
 
-    // Fallback to ML prediction
-    p, modelVersion, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2})
-    if err != nil {
-        return matchAggregates{}, false
-    }
+	// Fallback to ML prediction
+	p, modelVersion, err := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{m.Team1, m.Team2})
+	if err != nil {
+		return matchAggregates{}, false
+	}
 
-    // Optionally write to cache
-    if cacheMode == "readwrite" {
-        if err := upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
-            MatchID:             m.MatchID,
-            Format:              m.Format,
-            Team1Code:           m.Team1,
-            Team2Code:           m.Team2,
-            PredictedWinnerCode: sqlNullString(p.WinnerTeamCode),
-            PredictedTotalRuns:  sqlNullFloat64(p.Runs),
-            ModelVersion:        sqlNullString(modelVersion),
-            CutoffAt:            cutoff,
-        }); err != nil {
-            // Failing to cache is not critical for the request, but should be monitored
-            slog.Warn(
-                "failed to upsert match prediction aggregates cache",
-                slog.Any("err", err),
-                slog.Int64("match_id", m.MatchID),
-                slog.String("format", m.Format),
-                slog.String("team1", m.Team1),
-                slog.String("team2", m.Team2),
-                slog.Time("cutoff_at", cutoff),
-            )
-        }
-    }
+	// Optionally write to cache
+	if cacheMode == "readwrite" {
+		if err := upsertMatchPredictionAggregatesFunc(ctx, db.MatchPredictionAggregates{
+			MatchID:             m.MatchID,
+			Format:              m.Format,
+			Team1Code:           m.Team1,
+			Team2Code:           m.Team2,
+			PredictedWinnerCode: sqlNullString(p.WinnerTeamCode),
+			PredictedTotalRuns:  sqlNullFloat64(p.Runs),
+			ModelVersion:        sqlNullString(modelVersion),
+			CutoffAt:            cutoff,
+		}); err != nil {
+			// Failing to cache is not critical for the request, but should be monitored
+			slog.Warn(
+				"failed to upsert match prediction aggregates cache",
+				slog.Any("err", err),
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", m.Format),
+				slog.String("team1", m.Team1),
+				slog.String("team2", m.Team2),
+				slog.Time("cutoff_at", cutoff),
+			)
+		}
+	}
 
-    return p, true
+	return p, true
 }
 
 // computePlayerRunsMAE fetches player-level predictions and actuals and
 // returns the Mean Absolute Error (runs) along with a success flag.
 // It encapsulates the nested checks used previously to improve readability.
 func computePlayerRunsMAE(
-    ctx context.Context,
-    m backtestCandidate,
-    cutoff time.Time,
+	ctx context.Context,
+	m backtestCandidate,
+	cutoff time.Time,
 ) (float64, bool) {
-    squad, err := getBacktestSquadPlayerIDsFunc(ctx, m.MatchID, cutoff, m.Format)
-    if err != nil || len(squad) == 0 {
-        return 0, false
-    }
+	squad, err := getBacktestSquadPlayerIDsFunc(ctx, m.MatchID, cutoff, m.Format)
+	if err != nil || len(squad) == 0 {
+		return 0, false
+	}
 
-    preds, err1 := mlBacktestPredictFunc(ctx, cutoff, squad)
-    acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
-    if err1 != nil || err2 != nil {
-        return 0, false
-    }
+	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, squad)
+	acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
+	if err1 != nil || err2 != nil {
+		return 0, false
+	}
 
-    var totalAbs, cnt float64
-    for _, pid := range squad {
-        pPred, okp := preds[pid]
-        pAct, oka := acts[pid]
-        if !okp || !oka {
-            continue
-        }
-        totalAbs += math.Abs(pPred.Runs - pAct.Runs)
-        cnt++
-    }
+	var totalAbs, cnt float64
+	for _, pid := range squad {
+		pPred, okp := preds[pid]
+		pAct, oka := acts[pid]
+		if !okp || !oka {
+			continue
+		}
+		totalAbs += math.Abs(pPred.Runs - pAct.Runs)
+		cnt++
+	}
 
-    if cnt > 0 {
-        return totalAbs / cnt, true
-    }
-    return 0, false
+	if cnt > 0 {
+		return totalAbs / cnt, true
+	}
+	return 0, false
 }
 
 // computeAccuracyTrendMetrics calculates metrics for a single match candidate.
 // It mirrors the previous inline logic to avoid behavior changes.
 func computeAccuracyTrendMetrics(
-    ctx context.Context,
-    m backtestCandidate,
-    cacheMode string,
-    includePlayer, includeTeam bool,
+	ctx context.Context,
+	m backtestCandidate,
+	cacheMode string,
+	includePlayer, includeTeam bool,
 ) map[string]float64 {
 	metrics := map[string]float64{}
 
@@ -120,30 +120,30 @@ func computeAccuracyTrendMetrics(
 		return metrics
 	}
 
- // Player-level MAE on runs (optional)
- if includePlayer {
-     if mae, ok := computePlayerRunsMAE(ctx, m, cutoff); ok {
-         metrics["player_runs_mae"] = mae
-     }
- }
+	// Player-level MAE on runs (optional)
+	if includePlayer {
+		if mae, ok := computePlayerRunsMAE(ctx, m, cutoff); ok {
+			metrics["player_runs_mae"] = mae
+		}
+	}
 
-    // Match/team aggregates with optional cache (optional)
-    if includeTeam && m.Team1 != "" && m.Team2 != "" {
-        if predAgg, ok := getPredictedAggregates(ctx, m, cacheMode, cutoff); ok {
-            if actAgg, errA := getBacktestMatchAggregatesActualsFunc(ctx, m.MatchID); errA == nil {
-                if actAgg.Runs != 0 || predAgg.Runs != 0 {
-                    metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
-                }
-                if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
-                    if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) {
-                        metrics["team_winner_accuracy"] = 1.0
-                    } else {
-                        metrics["team_winner_accuracy"] = 0.0
-                    }
-                }
-            }
-        }
-    }
+	// Match/team aggregates with optional cache (optional)
+	if includeTeam && m.Team1 != "" && m.Team2 != "" {
+		if predAgg, ok := getPredictedAggregates(ctx, m, cacheMode, cutoff); ok {
+			if actAgg, errA := getBacktestMatchAggregatesActualsFunc(ctx, m.MatchID); errA == nil {
+				if actAgg.Runs != 0 || predAgg.Runs != 0 {
+					metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
+				}
+				if actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "" {
+					if strings.EqualFold(actAgg.WinnerTeamCode, predAgg.WinnerTeamCode) {
+						metrics["team_winner_accuracy"] = 1.0
+					} else {
+						metrics["team_winner_accuracy"] = 0.0
+					}
+				}
+			}
+		}
+	}
 
 	return metrics
 }
