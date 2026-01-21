@@ -38,31 +38,35 @@ type playerActuals struct {
 
 // Internal struct for match-level aggregates
 type matchAggregates struct {
-	Runs           float64
-	Wickets        float64
-	Extras         float64
-	WinnerTeamCode string
+    Runs           float64
+    Wickets        float64
+    Extras         float64
+    WinnerTeamCode string
+}
+
+// Player-level result for backtest evaluate responses
+// Exported to allow reuse across handlers and tests.
+type BacktestPlayerResult struct {
+    PlayerID  int64              `json:"player_id"`
+    Predicted map[string]float64 `json:"predicted"`
+    Actual    map[string]float64 `json:"actual"`
+    Errors    map[string]float64 `json:"errors"`
 }
 
 // Backtest evaluate API response
 type backtestEvaluateResponse struct {
-	Filters map[string]any `json:"filters"`
-	Match   struct {
-		MatchID int64  `json:"match_id"`
-		Date    string `json:"date"`
-	} `json:"match"`
-	MatchAggregates struct {
-		Predicted map[string]any     `json:"predicted"`
-		Actual    map[string]any     `json:"actual"`
-		Errors    map[string]float64 `json:"errors"`
-	} `json:"match_aggregates,omitempty"`
-	Players []struct {
-		PlayerID  int64              `json:"player_id"`
-		Predicted map[string]float64 `json:"predicted"`
-		Actual    map[string]float64 `json:"actual"`
-		Errors    map[string]float64 `json:"errors"`
-	} `json:"players"`
-	Metrics map[string]float64 `json:"metrics"`
+    Filters map[string]any `json:"filters"`
+    Match   struct {
+        MatchID int64  `json:"match_id"`
+        Date    string `json:"date"`
+    } `json:"match"`
+    MatchAggregates struct {
+        Predicted map[string]any     `json:"predicted"`
+        Actual    map[string]any     `json:"actual"`
+        Errors    map[string]float64 `json:"errors"`
+    } `json:"match_aggregates,omitempty"`
+    Players []BacktestPlayerResult `json:"players"`
+    Metrics map[string]float64 `json:"metrics"`
 }
 
 // Accuracy trend DTOs
