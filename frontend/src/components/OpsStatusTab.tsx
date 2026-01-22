@@ -4,7 +4,33 @@ import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 
-type OpsStatus = any; // Contract documented in docs/ops-status.md; keep loose for forward compatibility
+// Minimal, forward-compatible Ops Status contract.
+// Structured to match current UI needs while staying permissive for new fields.
+type ServicesStatus = {
+  api_health?: boolean;
+  api_readiness?: boolean;
+  ml_health?: boolean;
+};
+
+type PrecomputeFormats = Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
+
+type ExportFile = { name?: string; exists?: boolean };
+type ExportFormats = Record<string, { files?: ExportFile[] } | undefined>;
+
+type ArtifactUnit = { exists?: boolean; loaded?: boolean };
+type ArtifactFormats = Record<string, { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined>;
+
+export type OpsStatus = {
+  timestamp: string;
+  services?: ServicesStatus;
+  db?: unknown;
+  precompute?: { formats?: PrecomputeFormats };
+  exports?: { formats?: ExportFormats };
+  artifacts?: { formats?: ArtifactFormats };
+  suggestions?: Array<{ reason: string; commands: string[] }>;
+  // Allow additional forward-compatible fields
+  [key: string]: unknown;
+};
 
 const REFRESH_MS = 15000;
 

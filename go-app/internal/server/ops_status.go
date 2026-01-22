@@ -35,7 +35,9 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
     now := time.Now().UTC()
     resp := OpsStatusResponse{
         Timestamp:  now.Format(time.RFC3339),
-        Services:   map[string]bool{"api_health": true, "api_readiness": true, "ml_health": false},
+        // api_readiness should reflect DB connectivity; initialize to false and
+        // update after the DB section is built.
+        Services:   map[string]bool{"api_health": true, "api_readiness": false, "ml_health": false},
         DB:         map[string]any{"connected": false},
         Precompute: buildPrecomputeSection(now),
         Exports:    map[string]any{"root": "output/go-app", "formats": map[string]any{}},
@@ -46,6 +48,10 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
     // DB
     if a != nil && a.dbProbe != nil {
         resp.DB = buildDBSection(ctx, a.dbProbe)
+    }
+    // Update api_readiness based on DB connectivity per documentation.
+    if connected, ok := resp.DB["connected"].(bool); ok {
+        resp.Services["api_readiness"] = connected
     }
     // Exports
     resp.Exports = buildExportsSection("output/go-app")
