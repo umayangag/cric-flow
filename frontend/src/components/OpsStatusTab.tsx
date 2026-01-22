@@ -28,11 +28,24 @@ const OpsStatusTab: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const schedule = () => {
+      // Use recursive setTimeout to play nicer with fake timers in tests
+      timerRef.current = window.setTimeout(async () => {
+        if (cancelled) return;
+        await fetchStatus();
+        if (!cancelled) schedule();
+      }, REFRESH_MS);
+    };
+
     fetchStatus();
-    timerRef.current = window.setInterval(fetchStatus, REFRESH_MS);
+    schedule();
+
     return () => {
+      cancelled = true;
       if (timerRef.current) {
-        window.clearInterval(timerRef.current);
+        window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };

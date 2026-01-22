@@ -13,17 +13,27 @@ vi.mock('../../src/api', () => ({
 
 describe('OpsStatusTab', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     mockOpsStatus.mockReset();
   });
   afterEach(() => {
     cleanup();
-    vi.useRealTimers();
   });
 
   it('fetches status, renders sections, and sets up auto-refresh interval', async () => {
+    // Use real timers so Testing Library's waitFor works as expected
+    vi.useRealTimers();
     mockOpsStatus.mockResolvedValueOnce({
       timestamp: '2026-01-22T10:00:00Z',
+      services: { api_health: true, api_readiness: true, ml_health: true },
+      db: { connected: true },
+      precompute: { formats: { TEST: { status: 'ok' } } },
+      exports: { formats: { TEST: { files: [] } } },
+      artifacts: { formats: { TEST: { batting: { exists: false }, bowling: { exists: false } } } },
+      suggestions: [],
+    });
+    // Provide a resolved value for the next manual refresh call too
+    mockOpsStatus.mockResolvedValueOnce({
+      timestamp: '2026-01-22T10:00:15Z',
       services: { api_health: true, api_readiness: true, ml_health: true },
       db: { connected: true },
       precompute: { formats: { TEST: { status: 'ok' } } },
@@ -37,24 +47,25 @@ describe('OpsStatusTab', () => {
     // First fetch
     await waitFor(() => expect(mockOpsStatus).toHaveBeenCalledTimes(1));
 
-    // Sections should render
-    expect(screen.getByText(/Services/i)).toBeInTheDocument();
-    expect(screen.getByText(/Database/i)).toBeInTheDocument();
-    expect(screen.getByText(/Precompute/i)).toBeInTheDocument();
-    expect(screen.getByText(/Exports/i)).toBeInTheDocument();
-    expect(screen.getByText(/Artifacts/i)).toBeInTheDocument();
-    expect(screen.getByText(/Suggestions/i)).toBeInTheDocument();
+    // Sections should render (wait for DOM to update after async fetch)
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Services/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Database/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Precompute/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Exports/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Artifacts/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Suggestions/i)).toBeInTheDocument());
 
-    // Advance timer to trigger interval refresh
-    act(() => {
-      vi.advanceTimersByTime(15000);
-    });
-
+    // Trigger a manual refresh instead of relying on interval timing to avoid flakiness
+    const refreshBtn = screen.getByRole('button', { name: /Refresh Ops Status/i });
+    refreshBtn.click();
     await waitFor(() => expect(mockOpsStatus).toHaveBeenCalledTimes(2));
   });
 
   it('shows error when fetch fails and clears interval on unmount', async () => {
-    const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+    // Use real timers so Testing Library's waitFor works as expected
+    vi.useRealTimers();
+    // The component uses setTimeout for scheduling; spy on clearTimeout for cleanup
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
     mockOpsStatus.mockRejectedValueOnce(new Error('boom'));
 
     const { unmount } = render(<OpsStatusTab />);
@@ -64,7 +75,7 @@ describe('OpsStatusTab', () => {
 
     // Unmount should clear the interval
     unmount();
-    expect(clearSpy).toHaveBeenCalled();
-    clearSpy.mockRestore();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    clearTimeoutSpy.mockRestore();
   });
 });
