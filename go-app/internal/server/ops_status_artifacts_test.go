@@ -114,7 +114,7 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
                 client := newHTTPClientForServer(ts)
                 return client, filepath.Join(t.TempDir(), "does-not-exist")
             },
-            assert: func(t *testing.T, sec map[string]any, mlOK bool) {
+            assert: func(t *testing.T, sec map[string]any, _ bool) {
                 fm := sec["formats"].(map[string]any)
                 for _, f := range []string{"TEST","ODI","T20I","T20"} {
                     ent := fm[f].(map[string]any)

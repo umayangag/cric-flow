@@ -1,3 +1,6 @@
+//go:build ignore
+// +build ignore
+
 package server
 
 // Shared cricket format codes used across ops status helpers.

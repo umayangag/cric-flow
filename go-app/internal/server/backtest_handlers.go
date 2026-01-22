@@ -224,18 +224,18 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	// Default to select mode if no match_id
 	mode = chooseBacktestMode(mode, matchID)
 
-	if mode == "select" {
-		a.handleBacktestSelect(w, r.Context(), format, team1, team2)
-		return
-	}
+ if mode == "select" {
+        a.handleBacktestSelect(r.Context(), w, format, team1, team2)
+        return
+    }
 
 	// Evaluate mode
-	a.handleBacktestEvaluate(w, r.Context(), format, team1, team2, matchID)
+	a.handleBacktestEvaluate(r.Context(), w, format, team1, team2, matchID)
 }
 
 // handleBacktestSelect serves the select mode for the backtest endpoint.
 // It lists candidate played matches given format and team filters.
-func (a *App) handleBacktestSelect(w http.ResponseWriter, ctx context.Context, format, team1, team2 string) {
+func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, format, team1, team2 string) {
     rows, err := listPlayedByFmtTeams(ctx, format, team1, team2)
     if err != nil {
         respondErr(w, err)
@@ -268,7 +268,7 @@ func (a *App) handleBacktestSelect(w http.ResponseWriter, ctx context.Context, f
 
 // handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
 // It requires a valid matchID and computes per-player results and summary metrics.
-func (a *App) handleBacktestEvaluate(w http.ResponseWriter, ctx context.Context, format, team1, team2, matchID string) {
+func (a *App) handleBacktestEvaluate(ctx context.Context, w http.ResponseWriter, format, team1, team2, matchID string) {
     if matchID == "" {
         writeJSON(
             w,
