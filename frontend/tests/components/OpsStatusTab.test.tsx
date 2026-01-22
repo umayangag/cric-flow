@@ -1,4 +1,5 @@
 import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
+import { vi } from 'vitest';
 import React from 'react';
 import OpsStatusTab from '../../src/components/OpsStatusTab';
 

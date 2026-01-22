@@ -1,6 +1,6 @@
+import importlib
 import os
 import time
-import importlib
 
 
 def reload_app_with_dir(root: str):

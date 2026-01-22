@@ -125,7 +125,7 @@ func buildExportsSection(root string) map[string]any {
 
 // countCSVRowsCapped counts lines in a file up to a maximum; returns the
 // counted number and never reads the entire file if not needed.
-func countCSVRowsCapped(path string, max int) (int, error) {
+func countCSVRowsCapped(path string, maxRows int) (int, error) {
     f, err := os.Open(path)
     if err != nil {
         return 0, err
@@ -137,7 +137,7 @@ func countCSVRowsCapped(path string, max int) (int, error) {
     }()
     r := bufio.NewReaderSize(f, 64*1024)
     count := 0
-    for count < max {
+    for count < maxRows {
         line, err := r.ReadBytes('\n')
         _ = line // ignore content
         if len(line) > 0 {

@@ -45,7 +45,7 @@ func TestBuildExportsSection_EmptyOrMissingDir(t *testing.T) {
     }
 }
 
-func writeFileWithLines(t *testing.T, dir, name string, lines int) string {
+func writeFileWithLines(t *testing.T, dir, name string, lines int) {
     t.Helper()
     p := filepath.Join(dir, name)
     f, err := os.Create(p)
@@ -57,7 +57,6 @@ func writeFileWithLines(t *testing.T, dir, name string, lines int) string {
     // Ensure modtime is deterministic (set to fixed time)
     mt := time.Date(2026,1,21,12,0,0,0,time.UTC)
     if err := os.Chtimes(p, mt, mt); err != nil { t.Fatalf("chtimes: %v", err) }
-    return p
 }
 
 func TestBuildExportsSection_UnifiedFilesAppliedToAllFormats(t *testing.T) {
