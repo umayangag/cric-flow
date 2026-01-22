@@ -3,17 +3,34 @@
 # Common variables
 DC:=docker compose
 APP_SERVICES:=go-api ml-service
+# Frontend configuration (override if your dev server uses a different port)
+FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 
-# docker-compose stack (Postgres + API + ML service)
+# docker-compose stack (Postgres + API + ML service) + Frontend (Vite/React)
 dev-up:
 	$(DC) up --build -d
+	@# Start frontend dev server if a frontend exists and it's not already running
+	@if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then \
+		echo "[frontend] Ensuring dependencies..."; \
+		cd frontend && if [ ! -d "node_modules" ]; then npm install; fi; \
+		cd frontend && cp -n .env.example .env 2>/dev/null || true; \
+		if ! lsof -i :$(FRONTEND_PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+			echo "[frontend] Starting dev server on port $(FRONTEND_PORT)... (logs: /tmp/frontend-dev.log)"; \
+			cd frontend && nohup npm run dev > /tmp/frontend-dev.log 2>&1 & echo $$! > /tmp/frontend-dev.pid; \
+		else \
+			echo "[frontend] Already running on port $(FRONTEND_PORT). Skipping."; \
+		fi; \
+	else \
+		echo "[frontend] Skipped (no frontend/ or package.json)."; \
+	fi
 
 dev-down:
 	$(DC) down -v
+	@$(MAKE) frontend-stop --no-print-directory
 
 logs:
 	$(DC) logs -f --tail=200
@@ -265,7 +282,7 @@ up-all:
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
 	$(DC) restart ml-service
-	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health)."
+	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health), Frontend at http://localhost:$(FRONTEND_PORT)."
 
 # --- Frontend (React control panel) ---
 .PHONY: frontend-dev frontend-build frontend-test frontend-install
@@ -282,6 +299,28 @@ frontend-build: frontend-install
 
 frontend-test: frontend-install
 	cd frontend && npm run test
+
+# Stop frontend dev server if running
+frontend-stop:
+	@if [ -f "/tmp/frontend-dev.pid" ]; then \
+		PID=$$(cat /tmp/frontend-dev.pid); \
+		if ps -p $$PID >/dev/null 2>&1; then \
+			echo "[frontend] Stopping dev server (pid $$PID)..."; \
+			kill $$PID || true; \
+		fi; \
+		rm -f /tmp/frontend-dev.pid; \
+		echo "[frontend] Stopped."; \
+	else \
+		# Fallback: try to find process by port if pid file is missing
+		if lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+			PID=$$(lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN | head -n1); \
+			echo "[frontend] Stopping dev server on port $(FRONTEND_PORT) (pid $$PID)..."; \
+			kill $$PID || true; \
+			echo "[frontend] Stopped."; \
+		else \
+			echo "[frontend] Not running."; \
+		fi; \
+	fi
 
 # --- Formatting & hooks ---
 
@@ -408,11 +447,13 @@ help:
 	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
 	@echo
 	@echo "[Services & Logs]"
-	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
-	@echo "  dev-down           Stop and remove stack (volumes)"
+	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML) and Frontend (port $(FRONTEND_PORT))"
+	@echo "  dev-down           Stop and remove stack (volumes) and stop Frontend"
 	@echo "  logs               Tail docker-compose logs"
 	@echo "  api                Run Go API locally (outside Docker)"
 	@echo "  ml-serve           Run ML service locally (uvicorn)"
+	@echo "  frontend-dev       Run Frontend dev server in foreground (Ctrl+C to stop)"
+	@echo "  frontend-stop      Stop Frontend dev server if started in background"
 	@echo
 	@echo "[Data & Pipeline]"
 	@echo "  migrate            Run DB migrations"
@@ -448,6 +489,7 @@ help:
 	@echo "  FORMAT=$(FORMAT)  FORMATS=$(FORMATS)  MATCH=$(MATCH)  BAT=$(BAT)  BOWL=$(BOWL)  SEASON=$(SEASON)"
 	@echo "\nTips:"
 	@echo "  - Run 'make help-all' to see component-level helps"
+	@echo "  - Override frontend port via FRONTEND_PORT, e.g., 'make dev-up FRONTEND_PORT=3000'"
 	@echo "  - Run 'make list' to see all phony targets"
 
 help-all:
