@@ -5,8 +5,9 @@ import PredictTab from './components/PredictTab';
 import EvaluateTab from './components/EvaluateTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
 import MatchCompareDbTab from './components/MatchCompareDbTab';
+import OpsStatusTab from './components/OpsStatusTab';
 
-type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb' | 'compareDb';
+type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb' | 'compareDb' | 'ops';
 
 type TabButtonProps = {
   id: TabKey;
@@ -38,6 +39,9 @@ const App: React.FC = () => {
         <TabButton id="health" active={tab === 'health'} onClick={setTab}>
           Health
         </TabButton>
+        <TabButton id="ops" active={tab === 'ops'} onClick={setTab}>
+          Ops Status
+        </TabButton>
         <TabButton id="predict" active={tab === 'predict'} onClick={setTab}>
           Single Prediction
         </TabButton>
@@ -53,6 +57,7 @@ const App: React.FC = () => {
       </div>
 
       {tab === 'health' && <HealthTab />}
+      {tab === 'ops' && <OpsStatusTab />}
       {tab === 'predict' && <PredictTab />}
       {tab === 'evaluate' && <EvaluateTab />}
       {tab === 'evaluateDb' && <EvaluateDbTab />}

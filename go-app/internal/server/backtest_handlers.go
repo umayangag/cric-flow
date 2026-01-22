@@ -224,98 +224,110 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	// Default to select mode if no match_id
 	mode = chooseBacktestMode(mode, matchID)
 
-	if mode == "select" {
-		rows, err := listPlayedByFmtTeams(r.Context(), format, team1, team2)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		cands := make([]backtestCandidate, 0, len(rows))
-		for _, row := range rows {
-			cands = append(cands, backtestCandidate{
-				MatchID:        row.MatchID,
-				StableID:       nullString(row.StableID),
-				Date:           row.Date.Format("2006-01-02T15:04:05Z07:00"),
-				Venue:          nullString(row.Venue),
-				Season:         nullString(row.Season),
-				Format:         nullString(row.FormatCode),
-				Team1:          row.Team1,
-				Team2:          row.Team2,
-				WinnerTeamCode: nullString(row.WinnerTeam),
-			})
-		}
-		resp := backtestSelectResponse{
-			Filters: map[string]any{
-				"format": format,
-				"team1":  team1,
-				"team2":  team2,
-			},
-			Candidates: cands,
-		}
-		writeJSON(w, http.StatusOK, resp)
-		return
-	}
+ if mode == "select" {
+        a.handleBacktestSelect(r.Context(), w, format, team1, team2)
+        return
+    }
 
 	// Evaluate mode
-	if matchID == "" {
-		writeJSON(
-			w,
-			http.StatusBadRequest,
-			apiError{Code: "INVALID_PARAM", Message: "match_id is required for evaluate mode"},
-		)
-		return
-	}
-	mid, err := strconv.ParseInt(matchID, 10, 64)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
-		return
-	}
+	a.handleBacktestEvaluate(r.Context(), w, format, team1, team2, matchID)
+}
 
-	cutoff, err := getBacktestMatchDateFunc(r.Context(), mid)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	squad, err := getBacktestSquadPlayerIDsFunc(r.Context(), mid, cutoff, format)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	// Features currently unused in baseline; kept for future extension
-	_, _ = getBacktestFeaturesAtCutoffFunc(r.Context(), cutoff, squad)
+// handleBacktestSelect serves the select mode for the backtest endpoint.
+// It lists candidate played matches given format and team filters.
+func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, format, team1, team2 string) {
+    rows, err := listPlayedByFmtTeams(ctx, format, team1, team2)
+    if err != nil {
+        respondErr(w, err)
+        return
+    }
+    cands := make([]backtestCandidate, 0, len(rows))
+    for _, row := range rows {
+        cands = append(cands, backtestCandidate{
+            MatchID:        row.MatchID,
+            StableID:       nullString(row.StableID),
+            Date:           row.Date.Format("2006-01-02T15:04:05Z07:00"),
+            Venue:          nullString(row.Venue),
+            Season:         nullString(row.Season),
+            Format:         nullString(row.FormatCode),
+            Team1:          row.Team1,
+            Team2:          row.Team2,
+            WinnerTeamCode: nullString(row.WinnerTeam),
+        })
+    }
+    resp := backtestSelectResponse{
+        Filters: map[string]any{
+            "format": format,
+            "team1":  team1,
+            "team2":  team2,
+        },
+        Candidates: cands,
+    }
+    writeJSON(w, http.StatusOK, resp)
+}
 
-	preds, err := mlBacktestPredictFunc(r.Context(), cutoff, squad)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	actuals, err := getBacktestPlayerActualsForMatchFunc(r.Context(), mid)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
+// handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
+// It requires a valid matchID and computes per-player results and summary metrics.
+func (a *App) handleBacktestEvaluate(ctx context.Context, w http.ResponseWriter, format, team1, team2, matchID string) {
+    if matchID == "" {
+        writeJSON(
+            w,
+            http.StatusBadRequest,
+            apiError{Code: "INVALID_PARAM", Message: "match_id is required for evaluate mode"},
+        )
+        return
+    }
+    mid, err := strconv.ParseInt(matchID, 10, 64)
+    if err != nil {
+        writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
+        return
+    }
 
-	// Build response
-	resp := backtestEvaluateResponse{
-		Filters: map[string]any{
-			"format":   format,
-			"team1":    team1,
-			"team2":    team2,
-			"match_id": mid,
-		},
-	}
-	// Match info
-	resp.Match.MatchID = mid
-	resp.Match.Date = cutoff.Format(time.RFC3339)
-	// Players and Metrics (single pass)
-	players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
-	resp.Players = append(resp.Players, players...)
-	resp.Metrics = metrics
+    cutoff, err := getBacktestMatchDateFunc(ctx, mid)
+    if err != nil {
+        respondErr(w, err)
+        return
+    }
+    squad, err := getBacktestSquadPlayerIDsFunc(ctx, mid, cutoff, format)
+    if err != nil {
+        respondErr(w, err)
+        return
+    }
+    // Features currently unused in baseline; kept for future extension
+    _, _ = getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
 
-	// Match-level aggregates (optional if seams available)
-	populateMatchAggregatesAndMetrics(r.Context(), &resp, cutoff, team1, team2, mid)
+    preds, err := mlBacktestPredictFunc(ctx, cutoff, squad)
+    if err != nil {
+        respondErr(w, err)
+        return
+    }
+    actuals, err := getBacktestPlayerActualsForMatchFunc(ctx, mid)
+    if err != nil {
+        respondErr(w, err)
+        return
+    }
 
-	writeJSON(w, http.StatusOK, resp)
+    // Build response
+    resp := backtestEvaluateResponse{
+        Filters: map[string]any{
+            "format":   format,
+            "team1":    team1,
+            "team2":    team2,
+            "match_id": mid,
+        },
+    }
+    // Match info
+    resp.Match.MatchID = mid
+    resp.Match.Date = cutoff.Format(time.RFC3339)
+    // Players and Metrics (single pass)
+    players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
+    resp.Players = append(resp.Players, players...)
+    resp.Metrics = metrics
+
+    // Match-level aggregates (optional if seams available)
+    populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid)
+
+    writeJSON(w, http.StatusOK, resp)
 }
 
 // backtestAccuracyTrendHandler handles GET /api/backtest/accuracy-trend

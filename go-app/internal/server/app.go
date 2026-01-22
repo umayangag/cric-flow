@@ -4,11 +4,13 @@ package server
 // App holds long-lived application dependencies to be shared with handlers.
 // Extend this struct as new dependencies are introduced.
 type App struct {
-	mlClient Client
+    mlClient Client
+    dbProbe DBProbe
 }
 
 func NewApp(client Client) *App {
-	return &App{
-		mlClient: client,
-	}
+    return &App{
+        mlClient: client,
+        dbProbe:  newProductionDBProbe(),
+    }
 }
