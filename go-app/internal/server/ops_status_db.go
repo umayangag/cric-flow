@@ -68,6 +68,40 @@ func (productionDBProbe) MigrationInfo(ctx context.Context) (int, int, string, e
     return applied, expected, status, nil
 }
 
+// buildDBSection assembles the DB section map for /ops/status using the provided probe.
+// It mirrors the previous inline logic but keeps concerns localized and testable.
+func buildDBSection(ctx context.Context, probe DBProbe) map[string]any {
+    out := map[string]any{"connected": false}
+    if probe == nil {
+        out["migration"] = map[string]any{"status": "unknown"}
+        return out
+    }
+    // Ping with a short timeout at the callsite if needed; here we assume ctx has one.
+    if err := probe.Ping(ctx); err == nil {
+        out["connected"] = true
+        counts := map[string]int64{}
+        if n, err := probe.Count(ctx, "players"); err == nil { counts["players"] = n }
+        if n, err := probe.Count(ctx, "matches"); err == nil { counts["matches"] = n }
+        if n, err := probe.Count(ctx, "innings"); err == nil { counts["innings"] = n }
+        if len(counts) > 0 {
+            out["counts"] = counts
+        }
+        if cur, exp, status, err := probe.MigrationInfo(ctx); err == nil {
+            out["migration"] = map[string]any{"status": status, "current": cur, "expected": exp}
+        } else {
+            out["migration"] = map[string]any{"status": "unknown"}
+        }
+        return out
+    }
+    // Disconnected path: try to surface expected migrations if known
+    if _, exp, status, _ := probe.MigrationInfo(ctx); exp > 0 {
+        out["migration"] = map[string]any{"status": status, "expected": exp}
+    } else {
+        out["migration"] = map[string]any{"status": "unknown"}
+    }
+    return out
+}
+
 func countMigrationFiles() int {
     dir := os.Getenv("GO_APP_MIGRATIONS_DIR")
     if strings.TrimSpace(dir) == "" {

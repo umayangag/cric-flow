@@ -23,64 +23,40 @@ type OpsStatusResponse struct {
 // In production it points to precompute.GetStatus.
 var getPrecomputeStatus = precompute.GetStatus
 
-// opsStatusHandler returns a scaffolded ops status payload.
-// Subsequent steps will populate real values and wire dependencies.
+// opsStatusHandler assembles and returns the ops status payload.
 func (a *App) opsStatusHandler(w http.ResponseWriter, r *http.Request) {
-    now := time.Now().UTC().Format(time.RFC3339)
-    // Default response scaffold
+    resp := a.assembleOpsStatusResponse(r.Context())
+    respondJSON(w, http.StatusOK, resp)
+}
+
+// assembleOpsStatusResponse constructs the OpsStatusResponse from available sources.
+// This function exists to keep the handler concise and the logic easy to read and test.
+func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
+    now := time.Now().UTC()
     resp := OpsStatusResponse{
-        Timestamp: now,
-        Services: map[string]bool{
-            "api_health":    true,
-            "api_readiness": true,
-            "ml_health":     false,
-        },
-        DB: map[string]any{"connected": false},
-        Precompute: buildPrecomputeSection(time.Now().UTC()),
-        Exports: map[string]any{"root": "output/go-app", "formats": map[string]any{}},
-        Artifacts: map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
+        Timestamp:  now.Format(time.RFC3339),
+        Services:   map[string]bool{"api_health": true, "api_readiness": true, "ml_health": false},
+        DB:         map[string]any{"connected": false},
+        Precompute: buildPrecomputeSection(now),
+        Exports:    map[string]any{"root": "output/go-app", "formats": map[string]any{}},
+        Artifacts:  map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
         Suggestions: []map[string]any{},
     }
 
-    // Populate DB section using probe (if available)
+    // DB
     if a != nil && a.dbProbe != nil {
-        ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-        defer cancel()
-        if err := a.dbProbe.Ping(ctx); err == nil {
-            resp.DB["connected"] = true
-            // Counts: players, matches, innings
-            counts := map[string]int64{}
-            if n, err := a.dbProbe.Count(ctx, "players"); err == nil { counts["players"] = n }
-            if n, err := a.dbProbe.Count(ctx, "matches"); err == nil { counts["matches"] = n }
-            if n, err := a.dbProbe.Count(ctx, "innings"); err == nil { counts["innings"] = n }
-            resp.DB["counts"] = counts
-
-            if cur, exp, status, err := a.dbProbe.MigrationInfo(ctx); err == nil {
-                resp.DB["migration"] = map[string]any{"status": status, "current": cur, "expected": exp}
-            } else {
-                resp.DB["migration"] = map[string]any{"status": "unknown"}
-            }
-        } else {
-            // disconnected: keep connected=false, but include expected if known
-            if _, exp, status, _ := a.dbProbe.MigrationInfo(ctx); exp > 0 {
-                resp.DB["migration"] = map[string]any{"status": status, "expected": exp}
-            } else {
-                resp.DB["migration"] = map[string]any{"status": "unknown"}
-            }
-        }
+        resp.DB = buildDBSection(ctx, a.dbProbe)
     }
-    // Populate exports section from filesystem under output/go-app
+    // Exports
     resp.Exports = buildExportsSection("output/go-app")
-
-    // Populate artifacts section via ML HTTP + FS fallback under output/ml-service
+    // Artifacts + ML health
     if sec, mlOK := buildArtifactsSection(nil, "output/ml-service"); sec != nil {
         resp.Artifacts = sec
         resp.Services["ml_health"] = mlOK
     }
-    // Compute suggestions from the assembled snapshot
+    // Suggestions
     resp.Suggestions = computeSuggestions(resp.DB, resp.Precompute, resp.Exports, resp.Artifacts, resp.Services)
-
-    respondJSON(w, http.StatusOK, resp)
+    return resp
 }
 
 // buildPrecomputeSection constructs the precompute part of the ops status based on
@@ -91,7 +67,7 @@ func (a *App) opsStatusHandler(w http.ResponseWriter, r *http.Request) {
 func buildPrecomputeSection(now time.Time) map[string]any {
     stat := getPrecomputeStatus()
     // Supported cricket formats
-    formats := []string{"TEST", "ODI", "T20I", "T20"}
+    formats := getCricketFormats()
 
     section := map[string]any{
         "last_run": "",
