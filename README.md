@@ -1,64 +1,3 @@
-```
-
-Column naming (examples):
-- Batting unified columns: `bat_form_TEST_asof`, `bat_form_ODI_asof`, `bat_form_T20I_asof`, `bat_form_T20_asof`, with matching `n_samples_*` reliability columns.
-- Opposition/Venue: `bat_vs_opp_FMT_asof`, `bat_at_venue_FMT_asof` (and `bowl_*` analogues for bowling).
-- Each row also includes `format_code` for the match.
-
-### 6) Train ML artifacts (optional but recommended)
-From the exported CSVs, create `joblib` scaler/model files consumed by the ML service.
-```
-make train-all
-```
-Artifacts will be saved under `output/ml-service/`.
-
-### 7) Start ML service and check health
-```
-make ml-serve
-# in another terminal
-curl -s http://localhost:8000/health | jq
-```
-Expected: `{"status":"ok","batting_model":true,"bowling_model":true}` once artifacts are trained.
-
-### 8) Frontend (Vite + React) — ML Control Panel
-A lightweight web UI under `frontend/` to interact with the ML service and the Go API. Use it to run ad‑hoc predictions and to evaluate accuracy from CSV or DB-backed flows.
-
-Quick start (Make):
-```
-make frontend-dev
-# opens Vite dev server (default http://localhost:5173)
-```
-
-Alternative (manual):
-```
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-# Open http://localhost:5173
-```
-
-Environment variables (copy `.env.example` to `.env` if customizing):
-```
-VITE_ML_SERVICE_URL=http://localhost:8000   # FastAPI ML service
-VITE_API_URL=http://localhost:8080          # Go API for DB-backed endpoints
-```
-
-Build and test:
-```
-make frontend-build
-make frontend-test
-
-# or using npm from ./frontend
-npm test
-npm run build
-```
-
-Tabs in the UI:
-- Health: shows `GET /health` from the ML service and loaded artifacts/formats.
-- Single Prediction: paste/edit a `PlayerPrediction[]` payload and call `POST /predict/win`.
-- Evaluate From CSV: upload player-level rows for a cutoff date X; the app evaluates matches from the immediate next season only. It groups players into squads per `(match_id, team_name)`, calls `/predict/win` for each squad, and reports accuracy plus a 2x2 confusion matrix.
-- Evaluate (DB): DB-backed evaluation using Go API endpoints:
   - Determine next season after a cutoff: `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
   - List matches: `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
   - For each match, fetch squads: `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
@@ -463,3 +402,39 @@ See docs for end‑to‑end usage and the frontend dashboard:
 
 - docs/accuracy-trend.md — endpoint parameters, examples, and dashboard instructions
 - Frontend route (when running the frontend app): `/dashboard/accuracy-trend`
+
+
+### 9) Ops Status — Data & ML Readiness Dashboard
+
+A consolidated readiness view is exposed by the Go API at `GET /ops/status`. It reports:
+- Services availability (Go API and ML service)
+- Database connectivity, basic counts, and migration status
+- Precompute freshness per format (TEST, ODI, T20I, T20)
+- CSV export presence and basic stats
+- ML model artifacts presence and (when available) loaded state
+- Ordered `make` command suggestions to fix any gaps
+
+Read the full contract and examples in `docs/ops-status.md`.
+
+Quick start:
+```
+make dev-up
+curl -s http://localhost:8080/ops/status | jq
+```
+
+Simulate common gaps to see `suggestions` update:
+```
+# Remove ML artifacts then recheck
+rm -rf output/ml-service/*
+curl -s http://localhost:8080/ops/status | jq '.artifacts, .suggestions'
+
+# Remove ODI exports then recheck
+rm -f output/go-app/*ODI* 2>/dev/null || true
+curl -s http://localhost:8080/ops/status | jq '.exports.formats.ODI, .suggestions'
+```
+
+Train everything and recheck:
+```
+make train-all
+curl -s http://localhost:8080/ops/status | jq '.artifacts, .suggestions'
+```

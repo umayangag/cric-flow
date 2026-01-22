@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient  # type: ignore  # only used in tests when imported there
 
 from ml.match_win_predict import predict_for_team
 
@@ -262,6 +263,96 @@ async def health():
             "bowling_formats": len([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
         },
     }
+
+
+# -------------------- Ops: Artifacts Status Endpoint --------------------
+_FORMATS = ["TEST", "ODI", "T20I", "T20"]
+
+
+def _find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[str, float]]:
+    """Return (path, mtime) for the first matching artifact if found.
+    Preferred names: batting_<FORMAT>.joblib / bowling_<FORMAT>.joblib.
+    Fallback: files containing tokens 'bat' or 'bowl' and the format code.
+    """
+    try:
+        entries = os.listdir(models_dir)
+    except Exception:
+        return None
+    fmt_lower = fmt.lower()
+    prefer_prefix = "batting_" if batting else "bowling_"
+    token = "bat" if batting else "bowl"
+    preferred_name = f"{prefer_prefix}{fmt}.joblib"
+    # First pass: exact preferred name
+    for name in entries:
+        if name == preferred_name:
+            path = os.path.join(models_dir, name)
+            try:
+                st = os.stat(path)
+                if not os.path.isdir(path) and name.lower().endswith(".joblib"):
+                    return path, st.st_mtime
+            except Exception:
+                return None
+    # Second pass: tolerant match
+    for name in entries:
+        lower = name.lower()
+        if lower.endswith(".joblib") and (token in lower) and (fmt_lower in lower):
+            path = os.path.join(models_dir, name)
+            try:
+                st = os.stat(path)
+                if not os.path.isdir(path):
+                    return path, st.st_mtime
+            except Exception:
+                continue
+    return None
+
+
+@app.get("/artifacts/status")
+async def artifacts_status():
+    """Report presence and (optionally) loaded state of artifacts per format.
+
+    Shape:
+    {
+      "timestamp": ISO8601,
+      "root": MODELS_DIR,
+      "formats": {
+        "ODI": {"batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool?}, "bowling": {...}},
+        ...
+      }
+    }
+    """
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    root = MODELS_DIR
+    formats: Dict[str, Dict[str, Any]] = {}
+    for fmt in _FORMATS:
+        b_obj: Dict[str, Any] = {"exists": False}
+        bow_obj: Dict[str, Any] = {"exists": False}
+        # Filesystem presence
+        b_hit = _find_artifact(root, fmt, batting=True)
+        if b_hit is not None:
+            p, mt = b_hit
+            b_obj["exists"] = True
+            b_obj["path"] = p
+            b_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+        w_hit = _find_artifact(root, fmt, batting=False)
+        if w_hit is not None:
+            p, mt = w_hit
+            bow_obj["exists"] = True
+            bow_obj["path"] = p
+            bow_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+        # Loaded state (best-effort)
+        try:
+            if fmt in BAT_MODELS:
+                b_obj["loaded"] = True
+        except Exception:
+            pass
+        try:
+            if fmt in BOWL_MODELS:
+                bow_obj["loaded"] = True
+        except Exception:
+            pass
+        formats[fmt] = {"batting": b_obj, "bowling": bow_obj}
+
+    return {"timestamp": ts, "root": root, "formats": formats}
 
 
 @app.post("/predict/batting", response_model=List[BattingPrediction])

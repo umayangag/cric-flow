@@ -80,4 +80,8 @@ export const api = {
     u.searchParams.set('match_id', String(matchId));
     return httpApi(u.toString());
   },
+  // --- Ops Status (go-app API) ---
+  opsStatus(): Promise<any> {
+    return httpApi('/ops/status');
+  },
 };
