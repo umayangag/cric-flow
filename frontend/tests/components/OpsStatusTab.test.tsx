@@ -47,8 +47,8 @@ describe('OpsStatusTab', () => {
     // First fetch
     await waitFor(() => expect(mockOpsStatus).toHaveBeenCalledTimes(1));
 
-    // Evidence that data has been loaded: the debug payload section appears only after data is set
-    expect(await screen.findByText(/Raw payload \(debug\)/i)).toBeInTheDocument();
+    // Evidence that data has been loaded: the raw JSON toggle appears only after data is set
+    expect(await screen.findByText(/Show raw JSON payload/i)).toBeInTheDocument();
 
     // Trigger a manual refresh instead of relying on interval timing to avoid flakiness
     const refreshBtn = screen.getByRole('button', { name: /Refresh Ops Status/i });

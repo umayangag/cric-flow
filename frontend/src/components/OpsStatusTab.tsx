@@ -3,6 +3,13 @@ import { api } from '../api';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
+import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import Paper from '@mui/material/Paper';
+import Grid from '@mui/material/Grid';
+import StatusPill from './common/StatusPill';
+import JsonCollapse from './common/JsonCollapse';
 
 // Minimal, forward-compatible Ops Status contract.
 // Structured to match current UI needs while staying permissive for new fields.
@@ -88,65 +95,82 @@ const OpsStatusTab: React.FC = () => {
   }, [data]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <button
-          type="button"
+    <Stack spacing={2}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Button
+          variant="contained"
           onClick={fetchStatus}
           disabled={loading}
           title="Refresh Ops Status"
           aria-label="Refresh Ops Status"
         >
           {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-        <small>
+        </Button>
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>
           Auto-refresh: {REFRESH_MS / 1000}s{lastUpdated ? ` • Last updated: ${lastUpdated}` : ''}
-        </small>
-      </div>
+        </Typography>
+      </Stack>
 
       {error && (
-        <div style={{ color: 'red', marginBottom: 12 }} role="alert" aria-live="polite">
+        <Typography color="error" role="alert" aria-live="polite">
           Error: {error}
-        </div>
+        </Typography>
       )}
 
       {!data && !error && (
-        <div>
+        <Typography component="div" variant="body2" sx={{ opacity: 0.8 }}>
           <em>Loading Ops Status…</em>
-        </div>
+        </Typography>
       )}
 
       {data && (
-        <div style={{ display: 'grid', gap: 16 }}>
-          <section>
-            <h3 style={{ margin: '8px 0' }}>Services</h3>
+        <Stack spacing={2}>
+          <Paper elevation={1} sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>Services</Typography>
             <OpsBadges services={data.services} timestamp={data.timestamp} />
-          </section>
+          </Paper>
 
-          <section>
-            <h3 style={{ margin: '8px 0' }}>Database</h3>
-            <pre style={{ background: '#111', color: '#ddd', padding: 12, borderRadius: 6 }}>
-              {JSON.stringify(data.db, null, 2)}
-            </pre>
-          </section>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Paper elevation={1} sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>Database</Typography>
+                <StatusPill
+                  state={data.services?.api_readiness ? 'ok' : 'error'}
+                  label={data.services?.api_readiness ? 'DB Ready' : 'DB Not Ready'}
+                />
+                <JsonCollapse data={data.db} summary="Show database details" />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper elevation={1} sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>Migrations & Misc</Typography>
+                <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                  Additional server checks (if any) will appear here.
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
 
-          <OpsMatrix type="precompute" title="Precompute" data={data.precompute} />
+          <Paper elevation={1} sx={{ p: 2 }}>
+            <OpsMatrix type="precompute" title="Precompute" data={data.precompute} />
+          </Paper>
 
-          <OpsMatrix type="exports" title="Exports" data={data.exports} />
+          <Paper elevation={1} sx={{ p: 2 }}>
+            <OpsMatrix type="exports" title="Exports" data={data.exports} />
+          </Paper>
 
-          <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts} />
+          <Paper elevation={1} sx={{ p: 2 }}>
+            <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts} />
+          </Paper>
 
-          <OpsSuggestions suggestions={data.suggestions} />
+          <Paper elevation={1} sx={{ p: 2 }}>
+            <OpsSuggestions suggestions={data.suggestions} />
+          </Paper>
 
-          <details>
-            <summary>Raw payload (debug)</summary>
-            <pre style={{ background: '#111', color: '#ddd', padding: 12, borderRadius: 6 }}>
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </details>
-        </div>
+          <JsonCollapse data={data} summary="Show raw JSON payload" />
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

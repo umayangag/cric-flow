@@ -438,3 +438,15 @@ Train everything and recheck:
 make train-all
 curl -s http://localhost:8080/ops/status | jq '.artifacts, .suggestions'
 ```
+
+### Frontend UI/UX and Quickstart
+
+The frontend is a Vite + React app with a modern, professional UI powered by MUI (Material UI v5) with a light theme and subtle gradient AppBar.
+
+- Location: `frontend/`
+- Dev server: `cd frontend && npm install && npm run dev`
+- Tests: `cd frontend && npm test`
+- Type check: `cd frontend && npm run typecheck`
+- Production build: `cd frontend && npm run build` (output in `frontend/dist/`)
+
+MUI is installed via npm packages and applied through `ThemeProvider` and `CssBaseline` in `src/main.tsx`. The global shell (AppBar, Tabs, Paper) uses MUI components. No Bootstrap is required in `index.html`.

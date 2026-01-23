@@ -33,6 +33,9 @@ const http = createHttpClient(BASE_URL);
 const httpApi = createHttpClient(BASE_API_URL);
 
 export const api = {
+  apiHealth(): Promise<{ status: string }> {
+    return httpApi('/health');
+  },
   health(): Promise<HealthResponse> {
     return http('/health');
   },

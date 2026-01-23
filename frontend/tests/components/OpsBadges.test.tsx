@@ -11,10 +11,10 @@ describe('OpsBadges', () => {
       />
     );
 
-    expect(screen.getByText(/API: OK/i)).toBeInTheDocument();
-    expect(screen.getByText(/DB Ready: DOWN/i)).toBeInTheDocument();
-    // ML unknown shown as em dash
-    expect(screen.getByText(/ML: —/i)).toBeInTheDocument();
+    expect(screen.getByText(/API: Healthy/i)).toBeInTheDocument();
+    expect(screen.getByText(/DB Ready: Down/i)).toBeInTheDocument();
+    // ML unknown shows as Unknown
+    expect(screen.getByText(/ML: Unknown/i)).toBeInTheDocument();
     expect(screen.getByText(/Last updated:/i)).toBeInTheDocument();
   });
 });
