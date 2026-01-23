@@ -16,6 +16,8 @@ type OpsStatusResponse struct {
     Precompute map[string]any        `json:"precompute"`
     Exports   map[string]any         `json:"exports"`
     Artifacts map[string]any         `json:"artifacts"`
+    Fielding  map[string]any         `json:"fielding"`
+    Weather   map[string]any         `json:"weather"`
     Suggestions []map[string]any     `json:"suggestions"`
 }
 
@@ -42,6 +44,8 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
         Precompute: buildPrecomputeSection(now),
         Exports:    map[string]any{"root": "output/go-app", "formats": map[string]any{}},
         Artifacts:  map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
+        Fielding:  map[string]any{},
+        Weather:   map[string]any{},
         Suggestions: []map[string]any{},
     }
 
@@ -55,6 +59,9 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
     }
     // Exports
     resp.Exports = buildExportsSection("output/go-app")
+    // Fielding & Weather (DB-backed counts)
+    resp.Fielding = buildFieldingSection(ctx, a.dbProbe)
+    resp.Weather = buildWeatherSection(ctx, a.dbProbe)
     // Artifacts + ML health
     if sec, mlOK := buildArtifactsSection(nil, "output/ml-service"); sec != nil {
         resp.Artifacts = sec

@@ -19,6 +19,9 @@ type DBProbe interface {
     // MigrationInfo returns (currentApplied, expectedTotal, status)
     // status: "ok" | "unknown" | "out_of_date"
     MigrationInfo(ctx context.Context) (int, int, string, error)
+    // LastMatchImportAt returns the latest available import timestamp/date for match data
+    // based on the `match_details` table. If not available, returns zero time with error.
+    LastMatchImportAt(ctx context.Context) (time.Time, error)
 }
 
 // newProductionDBProbe returns the default production implementation.
@@ -68,6 +71,29 @@ func (productionDBProbe) MigrationInfo(ctx context.Context) (int, int, string, e
     return applied, expected, status, nil
 }
 
+func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, error) {
+    if db.Pool == nil {
+        return time.Time{}, errors.New("db pool not initialized")
+    }
+    ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+    defer cancel()
+    // `date` column is DATE; cast to timestamptz at midnight UTC for display
+    var ts time.Time
+    // Prefer a real timestamp column if exists; fall back to date
+    // Try updated_at on match_details (if present in later migrations); ignore error and fall back
+    if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(updated_at), TO_TIMESTAMP(0)) FROM match_details").Scan(&ts); err == nil && !ts.IsZero() {
+        return ts.UTC(), nil
+    }
+    // Fallback: max(date)
+    if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
+        return time.Time{}, err
+    }
+    if ts.IsZero() {
+        return time.Time{}, errors.New("no match import date")
+    }
+    return ts.UTC(), nil
+}
+
 // buildDBSection assembles the DB section map for /ops/status using the provided probe.
 // It mirrors the previous inline logic but keeps concerns localized and testable.
 func buildDBSection(ctx context.Context, probe DBProbe) map[string]any {
@@ -90,6 +116,9 @@ func buildDBSection(ctx context.Context, probe DBProbe) map[string]any {
             out["migration"] = map[string]any{"status": status, "current": cur, "expected": exp}
         } else {
             out["migration"] = map[string]any{"status": "unknown"}
+        }
+        if last, err := probe.LastMatchImportAt(ctx); err == nil && !last.IsZero() {
+            out["last_match_import_at"] = last.UTC().Format(time.RFC3339)
         }
         return out
     }

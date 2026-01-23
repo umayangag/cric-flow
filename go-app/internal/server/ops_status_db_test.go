@@ -6,6 +6,7 @@ import (
     "net/http"
     "net/http/httptest"
     "testing"
+    "time"
 )
 
 type fakeDBProbe struct {
@@ -24,6 +25,7 @@ func (f fakeDBProbe) Count(_ context.Context, table string) (int64, error) {
 func (f fakeDBProbe) MigrationInfo(_ context.Context) (int, int, string, error) {
     return f.migCurrent, f.migExpected, f.migStatus, f.migErr
 }
+func (f fakeDBProbe) LastMatchImportAt(_ context.Context) (time.Time, error) { return time.Time{}, nil }
 
 func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
     tests := []struct {
