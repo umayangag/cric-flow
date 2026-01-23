@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 
 type TileState = 'ok' | 'error' | 'neutral';
 
@@ -12,8 +12,6 @@ export type SimpleStatItem = {
 type Props = {
   items: SimpleStatItem[];
   size?: 'sm' | 'md';
-  // Desired number of columns at ≥ md viewports; collapses to 1 on small screens
-  columns?: number;
 };
 
 const bgColor = (state: TileState | undefined): string => {
@@ -46,52 +44,10 @@ const formatValue = (v: any): string => {
   return v == null ? '—' : String(v);
 };
 
-export const SimpleStatTiles: React.FC<Props> = ({ items, size = 'md', columns = 2 }) => {
+export const SimpleStatTiles: React.FC<Props> = ({ items, size = 'md' }) => {
   const list = Array.isArray(items) ? items : [];
-  // Responsive: two columns at ≥ 960px, one column at ≤ 600px
-  const [isSmall, setIsSmall] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const mq = window.matchMedia('(max-width: 600px)');
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      const m = 'matches' in e ? e.matches : e.matches;
-      setIsSmall(m);
-    };
-    // Initialize
-    handler(mq as unknown as MediaQueryList);
-    // Subscribe
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', handler as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-      return () => mq.removeEventListener('change', handler as (this: MediaQueryList, ev: MediaQueryListEvent) => any);
-    } else {
-      // Safari/older
-      // @ts-ignore deprecated
-      mq.addListener(handler);
-      return () => {
-        // @ts-ignore deprecated
-        mq.removeListener(handler);
-      };
-    }
-  }, []);
-
-  const gridTemplateColumns = useMemo(() => {
-    if (isSmall) return '1fr';
-    const cols = Math.max(1, Math.floor(columns));
-    return `repeat(${cols}, minmax(0, 1fr))`;
-  }, [isSmall, columns]);
-
   return (
-    <div
-      style={{
-        display: 'grid',
-        gap: 8,
-        gridTemplateColumns,
-        alignItems: 'stretch',
-      }}
-    >
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       {list.map((it, idx) => (
         <div key={idx} style={tileStyle(it.state, size)} title={it.title || String(it.value ?? '')} aria-label={`${it.label}: ${String(it.value ?? '')}`}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{it.label}</div>

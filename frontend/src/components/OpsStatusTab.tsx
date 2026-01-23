@@ -165,7 +165,6 @@ const OpsStatusTab: React.FC = () => {
           <SectionCard title="Services">
             <SimpleStatTiles
               size="md"
-              columns={2}
               items={[
                 { label: 'API health', value: data.services?.api_health === true, state: data.services?.api_health ? 'ok' : 'error' },
                 { label: 'API ready', value: data.services?.api_readiness === true, state: data.services?.api_readiness ? 'ok' : 'error' },
@@ -180,7 +179,6 @@ const OpsStatusTab: React.FC = () => {
               <SectionCard title="Database">
                 <SimpleStatTiles
                   size="md"
-                  columns={2}
                   items={(() => {
                     const counts: any = (data as any)?.db?.counts || {};
                     const ready = data.services?.api_readiness === true;
@@ -222,7 +220,6 @@ const OpsStatusTab: React.FC = () => {
               <SectionCard title="Precompute">
                 <SimpleStatTiles
                   size="md"
-                  columns={2}
                   items={(() => {
                     const fm: any = (data as any)?.precompute?.formats || {};
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
@@ -249,7 +246,6 @@ const OpsStatusTab: React.FC = () => {
               <SectionCard title="Exports">
                 <SimpleStatTiles
                   size="md"
-                  columns={2}
                   items={(() => {
                     const fm: any = (data as any)?.exports?.formats || {};
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
@@ -276,7 +272,6 @@ const OpsStatusTab: React.FC = () => {
               <SectionCard title="Artifacts">
                 <SimpleStatTiles
                   size="md"
-                  columns={2}
                   items={(() => {
                     const fm: any = (data as any)?.artifacts?.formats || {};
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
@@ -310,7 +305,6 @@ const OpsStatusTab: React.FC = () => {
                   const rows = typeof f?.rows === 'number' ? f.rows : undefined;
                   return (
                     <SimpleStatTiles
-                      columns={2}
                       items={[
                         { label: 'Available', value: available, state: available ? 'ok' : 'error', title: available ? 'data available' : 'no data' },
                         { label: 'Rows', value: rows ?? '—', state: 'neutral', title: rows != null ? `${rows} rows` : 'unknown' },
@@ -332,7 +326,6 @@ const OpsStatusTab: React.FC = () => {
                   const rows = typeof w?.rows === 'number' ? w.rows : undefined;
                   return (
                     <SimpleStatTiles
-                      columns={2}
                       items={[
                         { label: 'Available', value: available, state: available ? 'ok' : 'error', title: available ? 'data available' : 'no data' },
                         { label: 'Rows', value: rows ?? '—', state: 'neutral', title: rows != null ? `${rows} rows` : 'unknown' },
