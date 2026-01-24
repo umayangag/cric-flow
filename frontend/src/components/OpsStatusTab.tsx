@@ -186,7 +186,6 @@ const OpsStatusTab: React.FC = () => {
                       { label: 'Ready', value: ready, state: ready ? 'ok' : 'error', title: ready ? 'DB reachable' : 'DB not reachable' },
                       { label: 'Players', value: typeof counts.players === 'number' ? counts.players : '—', state: 'neutral' },
                       { label: 'Matches', value: typeof counts.matches === 'number' ? counts.matches : '—', state: 'neutral' },
-                      { label: 'Innings', value: typeof counts.innings === 'number' ? counts.innings : '—', state: 'neutral' },
                     ];
                   })()}
                 />

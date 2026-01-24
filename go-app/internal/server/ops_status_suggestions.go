@@ -18,6 +18,8 @@ func computeSuggestions(
     exports map[string]any,
     artifacts map[string]any,
     services map[string]bool,
+    fielding map[string]any,
+    weather map[string]any,
 ) []map[string]any {
     var out []map[string]any
 
@@ -43,7 +45,7 @@ func computeSuggestions(
                     }
                     return true // absent -> treat as zero
                 }
-                if zero("players") || zero("matches") || zero("innings") {
+                if zero("players") || zero("matches") {
                     needsDB = true
                 }
             } else {
@@ -164,6 +166,74 @@ func computeSuggestions(
             out = append(out, map[string]any{
                 "reason":   "ML service not healthy",
                 "commands": []string{"make dev-up", "# if needed", "make dev-rebuild"},
+            })
+        }
+    }
+
+    // 6) Fielding data missing — only suggest if DB looks ready (avoid noise)
+    dbReady := false
+    if db != nil {
+        if connected, _ := db["connected"].(bool); connected {
+            // consider ready if counts present and players/matches > 0 (or counts absent -> consider ready to still surface)
+            dbReady = true
+            if countsAny, ok := db["counts"].(map[string]any); ok {
+                gtZero := func(k string) bool {
+                    if v, ok := countsAny[k]; ok {
+                        switch nv := v.(type) {
+                        case float64:
+                            return int64(nv) > 0
+                        case int64:
+                            return nv > 0
+                        case int:
+                            return nv > 0
+                        }
+                    }
+                    return false
+                }
+                dbReady = gtZero("players") && gtZero("matches")
+            }
+        }
+    }
+
+    if dbReady && fielding != nil {
+        avail, _ := fielding["available"].(bool)
+        rows := int64(0)
+        if v, ok := fielding["rows"]; ok {
+            switch nv := v.(type) {
+            case float64:
+                rows = int64(nv)
+            case int64:
+                rows = nv
+            case int:
+                rows = int64(nv)
+            }
+        }
+        if !avail || rows == 0 {
+            out = append(out, map[string]any{
+                "reason":   "Fielding data missing",
+                "commands": []string{"cd go-app && make backfill-fielding", "# or", "cd go-app && go run ./cmd/backfill-fielding --all"},
+            })
+        }
+    }
+
+    // 7) Weather data missing — only suggest if DB looks ready
+    if dbReady && weather != nil {
+        avail, _ := weather["available"].(bool)
+        rows := int64(0)
+        if v, ok := weather["rows"]; ok {
+            switch nv := v.(type) {
+            case float64:
+                rows = int64(nv)
+            case int64:
+                rows = nv
+            case int:
+                rows = int64(nv)
+            }
+        }
+        if !avail || rows == 0 {
+            out = append(out, map[string]any{
+                "reason":   "Weather data missing",
+                "commands": []string{"cd go-app && go run ./cmd/weather-import", "cd go-app && go run ./cmd/weather-worker", "# optional", "cd go-app && go run ./cmd/weather-backfill --all"},
             })
         }
     }

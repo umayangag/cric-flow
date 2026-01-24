@@ -39,13 +39,31 @@ func (productionDBProbe) Ping(ctx context.Context) error {
 }
 
 func (productionDBProbe) Count(ctx context.Context, table string) (int64, error) {
+    // The Ops dashboard asks for logical entity counts: "players", "matches", "innings".
+    // Our actual schema names differ (player/match_details). Map friendly names
+    // to the correct SQL so the dashboard reflects real data after imports.
     if db.Pool == nil {
         return 0, errors.New("db pool not initialized")
     }
     ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
     defer cancel()
-    var n int64
-    row := db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM "+table)
+
+    var (
+        n   int64
+        sql string
+    )
+    switch strings.ToLower(strings.TrimSpace(table)) {
+    case "players":
+        // Schema table is singular: player
+        sql = "SELECT COUNT(*) FROM player"
+    case "matches":
+        // Distinct matches are identified by match_details.match_id
+        sql = "SELECT COUNT(DISTINCT match_id) FROM match_details"
+    default:
+        // Fallback: trust provided identifier (used only in tests/diagnostics)
+        sql = "SELECT COUNT(*) FROM " + table
+    }
+    row := db.Pool.QueryRow(ctx, sql)
     if err := row.Scan(&n); err != nil {
         return 0, err
     }
@@ -108,7 +126,6 @@ func buildDBSection(ctx context.Context, probe DBProbe) map[string]any {
         counts := map[string]int64{}
         if n, err := probe.Count(ctx, "players"); err == nil { counts["players"] = n }
         if n, err := probe.Count(ctx, "matches"); err == nil { counts["matches"] = n }
-        if n, err := probe.Count(ctx, "innings"); err == nil { counts["innings"] = n }
         if len(counts) > 0 {
             out["counts"] = counts
         }

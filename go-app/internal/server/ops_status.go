@@ -68,7 +68,7 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
         resp.Services["ml_health"] = mlOK
     }
     // Suggestions
-    resp.Suggestions = computeSuggestions(resp.DB, resp.Precompute, resp.Exports, resp.Artifacts, resp.Services)
+    resp.Suggestions = computeSuggestions(resp.DB, resp.Precompute, resp.Exports, resp.Artifacts, resp.Services, resp.Fielding, resp.Weather)
     return resp
 }
 

@@ -44,17 +44,17 @@ func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
         },
         {
             name:       "connected_out_of_date",
-            probe:      fakeDBProbe{counts: map[string]int64{"players": 5, "matches": 7, "innings": 9}, migCurrent: 5, migExpected: 10, migStatus: "out_of_date"},
+            probe:      fakeDBProbe{counts: map[string]int64{"players": 5, "matches": 7}, migCurrent: 5, migExpected: 10, migStatus: "out_of_date"},
             wantConn:   true,
             wantStatus: "out_of_date",
-            wantCounts: map[string]int64{"players": 5, "matches": 7, "innings": 9},
+            wantCounts: map[string]int64{"players": 5, "matches": 7},
         },
         {
             name:       "connected_ok",
-            probe:      fakeDBProbe{counts: map[string]int64{"players": 1, "matches": 2, "innings": 3}, migCurrent: 10, migExpected: 10, migStatus: "ok"},
+            probe:      fakeDBProbe{counts: map[string]int64{"players": 1, "matches": 2}, migCurrent: 10, migExpected: 10, migStatus: "ok"},
             wantConn:   true,
             wantStatus: "ok",
-            wantCounts: map[string]int64{"players": 1, "matches": 2, "innings": 3},
+            wantCounts: map[string]int64{"players": 1, "matches": 2},
         },
     }
 
