@@ -18,6 +18,8 @@ type OpsStatusResponse struct {
     Artifacts map[string]any         `json:"artifacts"`
     Fielding  map[string]any         `json:"fielding"`
     Weather   map[string]any         `json:"weather"`
+    DBFreshness map[string]any       `json:"db_freshness"`
+    DBCompleteness map[string]any    `json:"db_completeness"`
     Suggestions []map[string]any     `json:"suggestions"`
 }
 
@@ -46,6 +48,8 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
         Artifacts:  map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
         Fielding:  map[string]any{},
         Weather:   map[string]any{},
+        DBFreshness: map[string]any{},
+        DBCompleteness: map[string]any{},
         Suggestions: []map[string]any{},
     }
 
@@ -62,6 +66,9 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
     // Fielding & Weather (DB-backed counts)
     resp.Fielding = buildFieldingSection(ctx, a.dbProbe)
     resp.Weather = buildWeatherSection(ctx, a.dbProbe)
+    // DB insights: freshness & completeness
+    resp.DBFreshness = buildDBFreshnessSection(ctx, productionInsightsProbe{}, now)
+    resp.DBCompleteness = buildDBCompletenessSection(ctx, productionInsightsProbe{}, now)
     // Artifacts + ML health
     if sec, mlOK := buildArtifactsSection(nil, "output/ml-service"); sec != nil {
         resp.Artifacts = sec
@@ -69,6 +76,10 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
     }
     // Suggestions
     resp.Suggestions = computeSuggestions(resp.DB, resp.Precompute, resp.Exports, resp.Artifacts, resp.Services, resp.Fielding, resp.Weather)
+    // Include DB insights suggestions derived from freshness/completeness
+    if extra := buildDBInsightsSuggestions(resp.DBFreshness, resp.DBCompleteness); len(extra) > 0 {
+        resp.Suggestions = append(resp.Suggestions, extra...)
+    }
     return resp
 }
 

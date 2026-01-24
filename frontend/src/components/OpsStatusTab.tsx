@@ -13,6 +13,30 @@ import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
 
+// Local helpers for safely reading dynamic sections
+const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
+type FormatCode = typeof FORMATS[number];
+
+function asObj(v: unknown): Record<string, any> {
+  return (v && typeof v === 'object') ? (v as Record<string, any>) : {};
+}
+
+function getFormats(section: unknown): Record<string, any> {
+  const obj = asObj(section);
+  return asObj(obj.formats);
+}
+
+function readStatus(v: any): 'ok' | 'stale' | 'missing' | 'unknown' {
+  const s = typeof v === 'string' ? v : undefined;
+  if (s === 'ok' || s === 'stale' || s === 'missing' || s === 'unknown') return s;
+  return 'unknown';
+}
+
+function readNumber(v: any): number | undefined {
+  if (typeof v === 'number' && isFinite(v)) return v;
+  return undefined;
+}
+
 // Minimal, forward-compatible Ops Status contract.
 // Structured to match current UI needs while staying permissive for new fields.
 type ServicesStatus = {
@@ -211,6 +235,104 @@ const OpsStatusTab: React.FC = () => {
                 <JsonCollapse data={data.db} summary="Show database details" />
                 <OpsSuggestions suggestions={filterSuggestions('db')} />
               </SectionCard>
+            </Grid>
+          </Grid>
+
+          {/* DB Data Freshness */}
+          <Grid container spacing={2} alignItems="stretch">
+            <Grid item xs={12}>
+              {(() => {
+                const freshness: any = (data as any)?.db_freshness || {};
+                const overallSt = readStatus(asObj(freshness.overall).status);
+                const fm = getFormats(freshness);
+                return (
+                  <SectionCard
+                    title="DB Data Freshness"
+                    subtitle={
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2">Overall</Typography>
+                        <StatusPill state={overallSt} label={overallSt} />
+                      </Stack>
+                    }
+                  >
+                    {Object.keys(fm).length === 0 ? (
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>Not available</Typography>
+                    ) : (
+                      <Stack spacing={1}>
+                        {FORMATS.map((f: FormatCode) => {
+                          const row = asObj(fm[f]);
+                          const st = readStatus(row.status);
+                          const latest = typeof row.latest_match_date === 'string' ? row.latest_match_date : undefined;
+                          const days = readNumber(row.days_since);
+                          return (
+                            <Stack key={f} direction="row" alignItems="center" justifyContent="space-between">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography variant="body2" sx={{ minWidth: 48 }}>{f}</Typography>
+                                <StatusPill state={st} label={st} />
+                              </Stack>
+                              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                                {latest ? (
+                                  <>
+                                    latest {latest}{days != null ? ` · ${Math.max(0, Math.floor(days))}d ago` : ''}
+                                  </>
+                                ) : (
+                                  <>{st === 'missing' ? 'no recent matches' : 'not available'}</>
+                                )}
+                              </Typography>
+                            </Stack>
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </SectionCard>
+                );
+              })()}
+            </Grid>
+          </Grid>
+
+          {/* DB Data Completeness */}
+          <Grid container spacing={2} alignItems="stretch">
+            <Grid item xs={12}>
+              {(() => {
+                const comp: any = (data as any)?.db_completeness || {};
+                const overallSt = readStatus(asObj(comp.overall).status);
+                const fm = getFormats(comp);
+                return (
+                  <SectionCard
+                    title="DB Data Completeness (last 30d)"
+                    subtitle={
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2">Overall</Typography>
+                        <StatusPill state={overallSt} label={overallSt} />
+                      </Stack>
+                    }
+                  >
+                    {Object.keys(fm).length === 0 ? (
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>Not available</Typography>
+                    ) : (
+                      <Stack spacing={1}>
+                        {FORMATS.map((f: FormatCode) => {
+                          const row = asObj(fm[f]);
+                          const st = readStatus(row.status);
+                          const n = readNumber(row.matches_last_30d) ?? 0;
+                          const min = readNumber(row.expected_min_30d) ?? 1;
+                          return (
+                            <Stack key={f} direction="row" alignItems="center" justifyContent="space-between">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography variant="body2" sx={{ minWidth: 48 }}>{f}</Typography>
+                                <StatusPill state={st} label={st} />
+                              </Stack>
+                              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                                {`${n} of E${min} in last 30d`}
+                              </Typography>
+                            </Stack>
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </SectionCard>
+                );
+              })()}
             </Grid>
           </Grid>
 
