@@ -114,12 +114,13 @@ func buildDBFreshnessSection(ctx context.Context, probe insightsProbe, now time.
         days := int(now.Sub(t.UTC()).Hours() / 24)
         st["latest_match_date"] = t.UTC().Format("2006-01-02")
         st["days_since"] = days
-        status := "ok"
-        if days <= 7 {
+        var status string
+        switch {
+        case days <= 7:
             status = "ok"
-        } else if days <= 30 {
+        case days <= 30:
             status = "stale"
-        } else {
+        default:
             status = "missing"
         }
         st["status"] = status
@@ -236,13 +237,13 @@ func buildDBInsightsSuggestions(dbFreshness map[string]any, dbCompleteness map[s
                 if v, ok := fmAny[f].(map[string]any); ok {
                     st, _ := v["status"].(string)
                     if st == "missing" || st == "stale" {
-                        min := 1
+                        minExpected := 1
                         if m64, ok := v["expected_min_30d"].(float64); ok {
-                            min = int(m64)
+                            minExpected = int(m64)
                         }
                         n := 0
                         if n64, ok := v["matches_last_30d"].(float64); ok { n = int(n64) }
-                        low = append(low, fmt.Sprintf("%s (%d<%d)", f, n, min))
+                        low = append(low, fmt.Sprintf("%s (%d<%d)", f, n, minExpected))
                     }
                 }
             }
