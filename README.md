@@ -296,6 +296,12 @@ Notes:
 
 Multi‑format support for the new sequence feature fragments is available for ODI and TEST as well (behind the same -enable-seq flag for the exporter). Default remains OFF; these examples are structure‑only unless DB env is configured.
 
+Unified precompute (as‑of/replay + sequential), recommended:
+```
+cd go-app && go run ./cmd/precompute-all -format=ODI -replay=1
+cd go-app && go run ./cmd/precompute-all -format=TEST -as-of=2020-12-31
+```
+
 Precompute bowl-by-bowl sequence features (dry‑run):
 ```
 cd go-app && go run ./cmd/precompute-sequence-features -format=ODI  -targets=all -dry-run

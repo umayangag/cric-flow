@@ -23,7 +23,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		migrDir string
 		timeout time.Duration
 	)
-	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I")
+ fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20)")
 	fs.StringVar(&asOf, "as-of", "", "Cutoff date (YYYY-MM-DD); used only when -replay is false")
 	fs.BoolVar(
 		&replay,

@@ -1,10 +1,11 @@
 package db
 
 import (
-	"context"
-	"database/sql"
-	"errors"
-	"time"
+    "context"
+    "database/sql"
+    "errors"
+    "time"
+    "github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // MatchRow represents a minimal match listing row for API responses.
@@ -43,11 +44,12 @@ func ListMatches(ctx context.Context, season int, after time.Time, format string
         JOIN teams ON teams.match_id = md.match_id
         WHERE s.id = $1 AND md.date > $2
     `
-	args := []any{season, after}
-	if format != "" {
-		q += " AND mf.code = $3"
-		args = append(args, format)
-	}
+ args := []any{season, after}
+ if format != "" {
+     canon := formats.CanonicalizeCode(format)
+     q += " AND mf.code = $3"
+     args = append(args, canon)
+ }
 	q += " ORDER BY md.date ASC"
 
 	rows, err := Pool.Query(ctx, q, args...)
