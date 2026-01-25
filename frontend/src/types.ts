@@ -82,7 +82,11 @@ export type BacktestCandidate = {
 };
 
 export type BacktestSelectResponse = {
-  filters: Record<string, unknown> & { format: string; team1: string; team2: string };
+  filters: Record<string, unknown> & {
+    format: string;
+    team1: string;
+    team2: string;
+  };
   candidates: BacktestCandidate[];
 };
 
@@ -98,7 +102,12 @@ export type BacktestEvaluatePlayerRow = {
 };
 
 export type BacktestEvaluateResponse = {
-  filters: Record<string, unknown> & { format: string; team1: string; team2: string; match_id: number };
+  filters: Record<string, unknown> & {
+    format: string;
+    team1: string;
+    team2: string;
+    match_id: number;
+  };
   match: { match_id: number; date: string };
   players: BacktestEvaluatePlayerRow[];
   metrics: Record<string, number>; // e.g., { player_runs_mae: 3.66 }
