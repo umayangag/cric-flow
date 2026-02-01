@@ -22,7 +22,7 @@ type Options struct {
 // It returns an error describing the first invalid condition encountered.
 func (o *Options) Validate() error {
     // Normalize format to uppercase and trimmed for consistency
-    o.Format = formats.CanonicalizeCode(strings.ToUpper(strings.TrimSpace(o.Format)))
+    o.Format = formats.CanonicalizeCode(o.Format)
 
 	if o.MatchID <= 0 {
 		return errors.New("match is required and must be a positive number")
