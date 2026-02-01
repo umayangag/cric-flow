@@ -34,7 +34,8 @@ func NormalizeCode(code string) string {
 //   - IT20 -> T20I  (International T20)
 // The function also uppercases and trims the input.
 func CanonicalizeCode(code string) string {
-    switch NormalizeCode(code) {
+    normalized := NormalizeCode(code)
+    switch normalized {
     case "MDM":
         return CodeTest
     case "ODM":
@@ -42,7 +43,7 @@ func CanonicalizeCode(code string) string {
     case "IT20":
         return CodeT20I
     default:
-        return NormalizeCode(code)
+        return normalized
     }
 }
 
