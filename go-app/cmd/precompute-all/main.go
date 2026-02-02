@@ -62,6 +62,36 @@ func run() int {
 		windowN = cfg.Features.HistoryWindowMatches
 	}
 
+	// Determine as-of mode and parse as-of date exactly once
+	isAsOfMode := !opts.Replay
+	var asOf time.Time
+	haveAsOf := false
+	if isAsOfMode {
+		if strings.TrimSpace(opts.AsOf) == "" {
+			asOf = time.Now().UTC()
+			haveAsOf = true
+			slog.Info("no -as-of provided; defaulting to today (UTC)", slog.String("as_of", asOf.Format("2006-01-02")))
+		} else {
+			var parseErr error
+			asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
+			if parseErr != nil {
+				slog.Error("parse -as-of failed", slog.Any("err", parseErr))
+				return 1
+			}
+			haveAsOf = true
+		}
+	} else {
+		// In replay mode, -as-of is ignored for precompute-features but can still be used by seqcalc
+		if s := strings.TrimSpace(opts.AsOf); s != "" {
+			if t, perr := time.Parse("2006-01-02", s); perr == nil {
+				asOf = t
+				haveAsOf = true
+			} else {
+				slog.Warn("invalid -as-of provided; ignoring for seq stage", slog.String("as_of", s), slog.Any("err", perr))
+			}
+		}
+	}
+
 	// Run base precompute features first
 	runner := pfcmd.NewRunner()
 	if opts.Replay {
@@ -71,18 +101,6 @@ func run() int {
 		}
 	} else {
 		// Single-date mode (as-of)
-		var asOf time.Time
-		if strings.TrimSpace(opts.AsOf) == "" {
-			asOf = time.Now().UTC()
-			slog.Info("no -as-of provided; defaulting to today (UTC)", slog.String("as_of", asOf.Format("2006-01-02")))
-		} else {
-			var parseErr error
-			asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
-			if parseErr != nil {
-				slog.Error("parse -as-of failed", slog.Any("err", parseErr))
-				return 1
-			}
-		}
 		if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 			slog.Error("as-of precompute failed", slog.Any("err", err))
 			return 1
@@ -91,13 +109,9 @@ func run() int {
 
 	// Then run sequence features
 	params := seqcalc.Params{FormatCode: opts.Format}
-	if s := strings.TrimSpace(opts.AsOf); s != "" {
-		if t, perr := time.Parse("2006-01-02", s); perr == nil {
-			params.AsOf = t
-		} else {
-			// Should not happen because we parsed earlier when needed; log and continue without as-of
-			slog.Warn("invalid -as-of for seq stage; ignoring", slog.String("as_of", s), slog.Any("err", perr))
-		}
+	if haveAsOf {
+		// Pass the same resolved as-of to seqcalc to ensure consistency
+		params.AsOf = asOf
 	}
 
 	// Build default registry via shared helper
