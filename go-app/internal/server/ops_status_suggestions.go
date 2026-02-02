@@ -181,30 +181,33 @@ func computeSuggestions(
 		}
 	}
 
-	// 6) Fielding data missing — only suggest if DB looks ready (avoid noise)
-	dbReady := false
-	if db != nil {
-		if connected, _ := db["connected"].(bool); connected {
-			// consider ready if counts present and players/matches > 0 (or counts absent -> consider ready to still surface)
-			dbReady = true
-			if countsAny, ok := db["counts"].(map[string]any); ok {
-				gtZero := func(k string) bool {
-					if v, ok := countsAny[k]; ok {
-						switch nv := v.(type) {
-						case float64:
-							return int64(nv) > 0
-						case int64:
-							return nv > 0
-						case int:
-							return nv > 0
-						}
-					}
-					return false
-				}
-				dbReady = gtZero("players") && gtZero("matches")
-			}
-		}
-	}
+ // 6) Fielding data missing — only suggest if DB looks ready (avoid noise)
+ // Refined logic: DB is ready only if connected AND counts are present
+ // AND required tables (players, matches) have non-zero counts.
+ dbReady := false
+ if db != nil {
+     if connected, _ := db["connected"].(bool); connected {
+         if countsAny, ok := db["counts"].(map[string]any); ok {
+             gtZero := func(k string) bool {
+                 if v, ok := countsAny[k]; ok {
+                     switch nv := v.(type) {
+                     case float64:
+                         return int64(nv) > 0
+                     case int64:
+                         return nv > 0
+                     case int:
+                         return nv > 0
+                     }
+                 }
+                 return false
+             }
+             dbReady = gtZero("players") && gtZero("matches")
+         } else {
+             // Missing counts -> not ready
+             dbReady = false
+         }
+     }
+ }
 
 	if dbReady && fielding != nil {
 		avail, _ := fielding["available"].(bool)
