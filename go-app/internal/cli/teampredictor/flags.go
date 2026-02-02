@@ -31,7 +31,12 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 	fs.Int64Var(&matchID, "match", 0, "match_id to build predictions for")
 	fs.IntVar(&bat, "bat", 0, "number of batters to pick (defaults from config.team.default_batters)")
 	fs.IntVar(&bowl, "bowl", 0, "number of bowlers to pick (defaults from config.team.default_bowlers)")
-	fs.StringVar(&formatCode, "format", "", "match format code (TEST, ODI, T20, T20I)")
+	fs.StringVar(
+		&formatCode,
+		"format",
+		"",
+		"match format code (TEST, ODI, T20, T20I). Aliases: MDM→TEST, ODM→ODI, IT20→T20I",
+	)
 	fs.StringVar(&season, "season", "", "season name (e.g. 2019)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err

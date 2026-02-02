@@ -9,7 +9,7 @@ import (
 
 // NewRouter constructs and returns the API HTTP router with all routes registered.
 func NewRouter(a *App) http.Handler {
-    r := mux.NewRouter()
+	r := mux.NewRouter()
 
 	// Liveness
 	r.HandleFunc("/health", healthHandler).Methods(http.MethodGet)
@@ -32,17 +32,17 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
 	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 
- // Backtesting endpoints
- r.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
- // Accuracy trend endpoint for dashboards
- r.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet)
+	// Backtesting endpoints
+	r.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
+	// Accuracy trend endpoint for dashboards
+	r.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet)
 
- // Ops status aggregator (observability)
- r.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet)
+	// Ops status aggregator (observability)
+	r.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet)
 
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
 
-    // Wrap with CORS middleware for frontend access
-    return corsMiddleware(r)
+	// Wrap with CORS middleware for frontend access
+	return corsMiddleware(r)
 }

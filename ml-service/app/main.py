@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ml.match_win_predict import predict_for_team
@@ -49,6 +50,18 @@ CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
 _backtest_cache: Dict[Tuple[str, str, Tuple[Any, ...]], Tuple[float, Dict[str, Any]]] = {}
 BACKTEST_PLAYERS_COMPUTE_COUNT = 0
 BACKTEST_MATCH_COMPUTE_COUNT = 0
+
+# -------------------- CORS for local frontend dev --------------------
+# Allow the Vite dev server by default; can be overridden via FRONTEND_ORIGIN
+_frontend_origin_env = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+_allowed_origins = [o.strip() for o in _frontend_origin_env.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _cache_get(mode: str, cutoff_iso: str, ids: List[Any]) -> Optional[Dict[str, Any]]:

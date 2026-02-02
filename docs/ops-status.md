@@ -6,6 +6,7 @@ This document describes the `/ops/status` endpoint exposed by the Go API. It agg
 - Precompute freshness per cricket format (TEST, ODI, T20I, T20)
 - CSV exports presence and basic stats
 - ML model artifacts presence and recency
+- Fielding and Weather data availability (row counts) for observability
 - An ordered list of suggested `make` commands to get the system ready
 
 ## Endpoint
@@ -88,6 +89,14 @@ This document describes the `/ops/status` endpoint exposed by the Go API. It agg
   - First probes ML service `/artifacts/status` when available; otherwise falls back to scanning `output/ml-service/` for `*.joblib` files using tolerant patterns such as `batting_<FORMAT>.joblib` and `bowling_<FORMAT>.joblib`.
   - Per-format fields: `batting` and `bowling` objects with `exists`, optional `loaded`, optional `modified`, and `path` when discovered from FS.
 
+- `fielding`
+  - Summarizes fielding data availability from database table `fielding_data`.
+  - Keys: `available` (boolean), `rows` (total rows when connected).
+
+- `weather`
+  - Summarizes weather data availability from database table `weather_data`.
+  - Keys: `available` (boolean), `rows` (total rows when connected).
+
 - `suggestions`
   - Ordered, actionable `make` commands computed from the snapshot.
   - Priority rules: DB → Precompute → Exports → Artifacts → Services.
@@ -110,6 +119,13 @@ curl -s http://localhost:8080/health | jq
 curl -s http://localhost:8080/readiness | jq
 curl -s http://localhost:8080/ops/status | jq
 ```
+
+### Frontend visuals
+
+- In the Ops Status UI, Fielding and Weather sections render small tiles showing:
+  - Available: yes/no (green/red)
+  - Rows: total count (neutral)
+- Suggestions are displayed within each section card (DB, Precompute, Exports, Artifacts, Fielding, Weather); there is no global suggestions block.
 
 Force a gap (artifacts) and recheck:
 ```

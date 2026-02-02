@@ -1,8 +1,12 @@
-import Papa from 'papaparse';
-import type { CsvRow, PlayerPrediction } from '../types';
+import Papa from "papaparse";
+import type { CsvRow, PlayerPrediction } from "../types";
 
 export function parseCsv(text: string): CsvRow[] {
-  const parsed = Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true });
+  const parsed = Papa.parse(text, {
+    header: true,
+    dynamicTyping: true,
+    skipEmptyLines: true,
+  });
   if (parsed.errors?.length) {
     const e = parsed.errors[0];
     throw new Error(`CSV parse error at row ${e.row}: ${e.message}`);
@@ -12,15 +16,16 @@ export function parseCsv(text: string): CsvRow[] {
 }
 
 function normalizeRow(r: any): CsvRow {
-  const dateStr = String(r.date ?? '').slice(0, 10);
-  const season = r.season != null ? Number(r.season) : inferSeasonFromDate(dateStr);
+  const dateStr = String(r.date ?? "").slice(0, 10);
+  const season =
+    r.season != null ? Number(r.season) : inferSeasonFromDate(dateStr);
   const base: CsvRow = {
     match_id: r.match_id,
     date: dateStr,
     season,
     team_name: r.team_name,
     actual_win: Number(r.actual_win),
-    player_name: String(r.player_name ?? ''),
+    player_name: String(r.player_name ?? ""),
     runs_scored: toNum(r.runs_scored),
     balls_faced: toNum(r.balls_faced),
     fours_scored: toNum(r.fours_scored),
@@ -31,7 +36,8 @@ function normalizeRow(r: any): CsvRow {
     deliveries: toNum(r.deliveries),
     wickets_taken: toNum(r.wickets_taken),
     econ: toNum(r.econ),
-    winning_probability: r.winning_probability != null ? Number(r.winning_probability) : null,
+    winning_probability:
+      r.winning_probability != null ? Number(r.winning_probability) : null,
   };
   return base;
 }
@@ -94,7 +100,10 @@ function pickPlayerFields(r: CsvRow): PlayerPrediction {
   };
 }
 
-export function determineImmediateNextSeason(cutoffDate: string, seasons: number[]): number | null {
+export function determineImmediateNextSeason(
+  cutoffDate: string,
+  seasons: number[],
+): number | null {
   const base = inferSeasonFromDate(cutoffDate);
   const uniqueSorted = Array.from(new Set(seasons)).sort((a, b) => a - b);
   for (const s of uniqueSorted) {
@@ -110,8 +119,14 @@ export type EvalMetrics = {
   confusion: { tp: number; tn: number; fp: number; fn: number };
 };
 
-export function computeMetrics(preds: Array<{ prob: number; actual: number }>, threshold = 0.5): EvalMetrics {
-  let tp = 0, tn = 0, fp = 0, fn = 0;
+export function computeMetrics(
+  preds: Array<{ prob: number; actual: number }>,
+  threshold = 0.5,
+): EvalMetrics {
+  let tp = 0,
+    tn = 0,
+    fp = 0,
+    fn = 0;
   for (const { prob, actual } of preds) {
     const yhat = prob >= threshold ? 1 : 0;
     if (yhat === 1 && actual === 1) tp++;
