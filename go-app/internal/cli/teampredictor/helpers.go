@@ -4,12 +4,15 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // normalizeFormat trims and uppercases the format and validates allowed values.
 // Returns the normalized value or an error with the existing message style.
 func normalizeFormat(s string) (string, error) {
-	f := strings.ToUpper(strings.TrimSpace(s))
+	// Accept aliases (MDM, ODM, IT20) and return the canonical code.
+	f := formats.CanonicalizeCode(s)
 	switch f {
 	case "TEST", "ODI", "T20I", "T20":
 		return f, nil

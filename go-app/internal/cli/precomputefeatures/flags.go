@@ -3,6 +3,7 @@ package precomputefeatures
 import (
 	"errors"
 	"flag"
+	"os"
 	"strings"
 	"time"
 )
@@ -23,7 +24,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		migrDir string
 		timeout time.Duration
 	)
-	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I")
+	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20)")
 	fs.StringVar(&asOf, "as-of", "", "Cutoff date (YYYY-MM-DD); used only when -replay is false")
 	fs.BoolVar(
 		&replay,
@@ -33,7 +34,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	)
 	fs.Float64Var(&alpha, "ewm-alpha", 0.3, "Alpha for exponentially weighted mean (0,1]")
 	fs.IntVar(&lastN, "lastN", 10, "Last-N window size for consistency")
-	fs.StringVar(&migrDir, "migrations", "./migrations", "Directory with SQL migrations")
+	// Default migrations dir from MIGRATIONS_DIR env if set; otherwise ./migrations
+	defMig := os.Getenv("MIGRATIONS_DIR")
+	if defMig == "" {
+		defMig = "./migrations"
+	}
+	fs.StringVar(&migrDir, "migrations", defMig, "Directory with SQL migrations (can also set MIGRATIONS_DIR)")
 	fs.DurationVar(&timeout, "timeout", 30*time.Minute, "Overall timeout for the job")
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err

@@ -27,10 +27,31 @@ func NormalizeCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))
 }
 
+// CanonicalizeCode maps alternative/alias codes to the canonical ones we use in the system.
+// Supported aliases:
+//   - MDM  -> TEST  (Multi-Day Match)
+//   - ODM  -> ODI   (One Day Match)
+//   - IT20 -> T20I  (International T20)
+//
+// The function also uppercases and trims the input.
+func CanonicalizeCode(code string) string {
+	normalized := NormalizeCode(code)
+	switch normalized {
+	case "MDM":
+		return CodeTest
+	case "ODM":
+		return CodeODI
+	case "IT20":
+		return CodeT20I
+	default:
+		return normalized
+	}
+}
+
 // IDForCode maps a canonical format code to its numeric ID.
 // Supported codes: TEST, ODI, T20, T20I (case-insensitive).
 func IDForCode(code string) (int, error) {
-	switch NormalizeCode(code) {
+	switch CanonicalizeCode(code) {
 	case CodeT20:
 		return IDT20, nil
 	case CodeT20I:
@@ -54,7 +75,7 @@ func IDForCode(code string) (int, error) {
 //   - "TEST" => {1}
 //   - Any other/unrecognized => {3,4}
 func MapFormatIDs(code string) []int {
-	switch NormalizeCode(code) {
+	switch CanonicalizeCode(code) {
 	case "", CodeT20, CodeT20I:
 		return []int{IDT20, IDT20I}
 	case CodeODI:

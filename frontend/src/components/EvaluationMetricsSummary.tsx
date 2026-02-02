@@ -1,5 +1,5 @@
-import React from 'react';
-import type { EvalMetrics } from '../utils/eval';
+import React from "react";
+import type { EvalMetrics } from "../utils/eval";
 
 type Props = {
   metrics: EvalMetrics;
@@ -10,7 +10,8 @@ const EvaluationMetricsSummary: React.FC<Props> = ({ metrics, threshold }) => {
   return (
     <div>
       <div>
-        Total: <strong>{metrics.total}</strong>, Correct: <strong>{metrics.correct}</strong>, Accuracy:{' '}
+        Total: <strong>{metrics.total}</strong>, Correct:{" "}
+        <strong>{metrics.correct}</strong>, Accuracy:{" "}
         <strong>{(metrics.accuracy * 100).toFixed(2)}%</strong>
       </div>
       <div style={{ marginTop: 8 }}>

@@ -153,6 +153,32 @@ Note: Legacy hand-written fakes have been removed from tests in favor of mocks f
 
 ## Run programs
 
+### Unified precompute (features + sequential)
+Run both as-of/replay precompute features and sequential feature calculations in a single command:
+```
+# Replay mode (iterates over matches chronologically)
+cd go-app && go run ./cmd/precompute-all -format=T20 -replay=1
+
+# Point-in-time (as-of) mode
+cd go-app && go run ./cmd/precompute-all -format=ODI -as-of=2020-12-31
+
+# Options
+#   -format       TEST|ODI|T20|T20I (aliases accepted: MDM→TEST, ODM→ODI, IT20→T20I)
+#   -ewm-alpha    (0,1] (default 0.3) for as-of precompute EWM aggregates
+#   -lastN        int >= 0 (default 10) for consistency windows
+#   -seq-targets  comma-separated sequence targets or 'all' (default)
+#   -seq-dry-run  list computations without writing (false by default)
+```
+
+Makefile convenience targets from repo root:
+```
+# Single format (pass extra flags via ARGS="...")
+make precompute-all FORMAT=T20 ARGS="-replay=1"
+
+# All formats in order: TEST, ODI, T20I, T20
+make precompute-all-all-formats ARGS="-as-of=2020-12-31"
+```
+
 ### Team selection (DB-backed or CSV pool)
 Prerequisites:
 - Postgres up with imported data and precomputed metrics (see repo root README steps)

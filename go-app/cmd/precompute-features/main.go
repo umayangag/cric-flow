@@ -39,11 +39,8 @@ func run() int {
 		return 1
 	}
 
-	// Apply migrations
+	// Apply migrations (flag may override env via CLI defaults)
 	migDir := opts.MigrationsDir
-	if env := os.Getenv("MIGRATIONS_DIR"); env != "" {
-		migDir = env
-	}
 	if err := db.RunMigrations(ctx, migDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
 		return 1

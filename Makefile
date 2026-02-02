@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 
 # docker-compose stack (Postgres + API + ML service) + Frontend (Vite/React)
 dev-up:
@@ -105,6 +105,18 @@ precompute-asof:
 	for F in TEST ODI T20I T20; do \
 		echo "[as-of] Precomputing (replay) for $$F as-of $$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG"; \
 		go run ./cmd/precompute-features -format=$$F -replay=1 -as-of=$$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG || exit 1; \
+	done
+
+# Unified command: run both as-of/replay precompute and sequential features in one shot
+precompute-all:
+	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS)
+
+# Run unified command for all formats (order: TEST, ODI, T20I, T20)
+precompute-all-all-formats:
+	cd go-app; \
+	for F in TEST ODI T20I T20; do \
+		echo "[unified] precompute-all for $$F"; \
+		go run ./cmd/precompute-all -format=$$F $(ARGS) || exit 1; \
 	done
 
 # Team predictor (happy path): requires MATCH to be provided
@@ -459,6 +471,8 @@ help:
 	@echo "  migrate            Run DB migrations"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB"
 	@echo "  precompute         Trigger precompute (via API)"
+	@echo "  precompute-all        Run unified precompute (as-of/replay + sequential) for FORMAT (default T20)"
+	@echo "  precompute-all-all-formats  Run unified precompute for all formats"
 	@echo "  precompute-seq     Precompute sequence features: go-app/cmd/precompute-sequence-features (FORMAT?=$(FORMAT))"
 	@echo "  export-dataset     Export training datasets (unified)"
 	@echo "  export-off         Export without seq columns for FORMAT (default T20)"

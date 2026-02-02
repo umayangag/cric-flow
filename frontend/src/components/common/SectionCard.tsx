@@ -1,6 +1,6 @@
-import React from 'react';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
+import React from "react";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
 
 type Props = {
   title: string;
@@ -13,7 +13,10 @@ type Props = {
 // Title → optional subtitle → content (tiles/matrix/details/suggestions)
 const SectionCard: React.FC<Props> = ({ title, subtitle, children }) => {
   return (
-    <Paper elevation={1} sx={{ p: 2, height: '100%', display: 'grid', gap: 1.25 }}>
+    <Paper
+      elevation={1}
+      sx={{ p: 2, height: "100%", display: "grid", gap: 1.25 }}
+    >
       <Typography variant="h6" gutterBottom>
         {title}
       </Typography>

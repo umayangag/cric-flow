@@ -3,6 +3,8 @@ package teamselect
 import (
 	"errors"
 	"strings"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 // Options holds CLI flags for team-select.
@@ -21,7 +23,7 @@ type Options struct {
 // It returns an error describing the first invalid condition encountered.
 func (o *Options) Validate() error {
 	// Normalize format to uppercase and trimmed for consistency
-	o.Format = strings.ToUpper(strings.TrimSpace(o.Format))
+	o.Format = formats.CanonicalizeCode(o.Format)
 
 	if o.MatchID <= 0 {
 		return errors.New("match is required and must be a positive number")
@@ -33,7 +35,7 @@ func (o *Options) Validate() error {
 	case "TEST", "ODI", "T20", "T20I":
 		// ok
 	default:
-		return errors.New("invalid format: must be one of TEST, ODI, T20, T20I")
+		return errors.New("invalid format: must be one of TEST, ODI, T20, T20I (aliases: MDM, ODM, IT20)")
 	}
 	if o.TeamSize <= 0 {
 		return errors.New("team size must be a positive number")

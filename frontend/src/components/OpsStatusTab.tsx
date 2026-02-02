@@ -1,24 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api';
-import OpsBadges from './OpsBadges';
-import OpsMatrix from './OpsMatrix';
-import OpsSuggestions from './OpsSuggestions';
-import Stack from '@mui/material/Stack';
-import Button from '@mui/material/Button';
-import Typography from '@mui/material/Typography';
-import Paper from '@mui/material/Paper';
-import Grid from '@mui/material/Grid';
-import StatusPill from './common/StatusPill';
-import JsonCollapse from './common/JsonCollapse';
-import SimpleStatTiles from './common/SimpleStatTiles';
-import SectionCard from './common/SectionCard';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { api } from "../api";
+import OpsBadges from "./OpsBadges";
+import OpsMatrix from "./OpsMatrix";
+import OpsSuggestions from "./OpsSuggestions";
+import Stack from "@mui/material/Stack";
+import Button from "@mui/material/Button";
+import Typography from "@mui/material/Typography";
+import Paper from "@mui/material/Paper";
+import Grid from "@mui/material/Grid";
+import StatusPill from "./common/StatusPill";
+import JsonCollapse from "./common/JsonCollapse";
+import SimpleStatTiles from "./common/SimpleStatTiles";
+import SectionCard from "./common/SectionCard";
 
 // Local helpers for safely reading dynamic sections
-const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
-type FormatCode = typeof FORMATS[number];
+const FORMATS = ["TEST", "ODI", "T20I", "T20"] as const;
+type FormatCode = (typeof FORMATS)[number];
 
 function asObj(v: unknown): Record<string, any> {
-  return (v && typeof v === 'object') ? (v as Record<string, any>) : {};
+  return v && typeof v === "object" ? (v as Record<string, any>) : {};
 }
 
 function getFormats(section: unknown): Record<string, any> {
@@ -26,14 +32,15 @@ function getFormats(section: unknown): Record<string, any> {
   return asObj(obj.formats);
 }
 
-function readStatus(v: any): 'ok' | 'stale' | 'missing' | 'unknown' {
-  const s = typeof v === 'string' ? v : undefined;
-  if (s === 'ok' || s === 'stale' || s === 'missing' || s === 'unknown') return s;
-  return 'unknown';
+function readStatus(v: any): "ok" | "stale" | "missing" | "unknown" {
+  const s = typeof v === "string" ? v : undefined;
+  if (s === "ok" || s === "stale" || s === "missing" || s === "unknown")
+    return s;
+  return "unknown";
 }
 
 function readNumber(v: any): number | undefined {
-  if (typeof v === 'number' && isFinite(v)) return v;
+  if (typeof v === "number" && isFinite(v)) return v;
   return undefined;
 }
 
@@ -45,13 +52,19 @@ type ServicesStatus = {
   ml_health?: boolean;
 };
 
-type PrecomputeFormats = Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
+type PrecomputeFormats = Record<
+  string,
+  { status?: "ok" | "stale" | "missing" | string } | undefined
+>;
 
 type ExportFile = { name?: string; exists?: boolean };
 type ExportFormats = Record<string, { files?: ExportFile[] } | undefined>;
 
 type ArtifactUnit = { exists?: boolean; loaded?: boolean };
-type ArtifactFormats = Record<string, { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined>;
+type ArtifactFormats = Record<
+  string,
+  { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined
+>;
 
 export type OpsStatus = {
   timestamp: string;
@@ -83,7 +96,7 @@ const OpsStatusTab: React.FC = () => {
       const res = await api.opsStatus();
       setData(res);
     } catch (e: any) {
-      setError(e?.message ?? 'Failed to fetch /ops/status');
+      setError(e?.message ?? "Failed to fetch /ops/status");
     } finally {
       setLoading(false);
     }
@@ -114,7 +127,7 @@ const OpsStatusTab: React.FC = () => {
   }, [fetchStatus]);
 
   const lastUpdated = useMemo(() => {
-    if (!data?.timestamp) return '';
+    if (!data?.timestamp) return "";
     try {
       const d = new Date(data.timestamp);
       return isNaN(d.getTime()) ? String(data.timestamp) : d.toLocaleString();
@@ -124,35 +137,53 @@ const OpsStatusTab: React.FC = () => {
   }, [data]);
 
   const filterSuggestions = useCallback(
-    (kind: 'db' | 'precompute' | 'exports' | 'artifacts' | 'fielding' | 'weather') => {
+    (
+      kind:
+        | "db"
+        | "precompute"
+        | "exports"
+        | "artifacts"
+        | "fielding"
+        | "weather",
+    ) => {
       const all = Array.isArray(data?.suggestions) ? data!.suggestions : [];
-      const has = (text?: string) => (text || '').toLowerCase();
+      const has = (text?: string) => (text || "").toLowerCase();
       switch (kind) {
-        case 'db':
+        case "db":
           return all.filter(
-            (s) => has(s.reason).includes('database') || s.commands?.some((c) => c.includes('migrate') || c.includes('cricsheet'))
+            (s) =>
+              has(s.reason).includes("database") ||
+              s.commands?.some(
+                (c) => c.includes("migrate") || c.includes("cricsheet"),
+              ),
           );
-        case 'precompute':
+        case "precompute":
           return all.filter(
-            (s) => has(s.reason).includes('precompute') || s.commands?.some((c) => c.includes('precompute'))
+            (s) =>
+              has(s.reason).includes("precompute") ||
+              s.commands?.some((c) => c.includes("precompute")),
           );
-        case 'exports':
+        case "exports":
           return all.filter(
-            (s) => has(s.reason).includes('export') || s.commands?.some((c) => c.includes('export-dataset'))
+            (s) =>
+              has(s.reason).includes("export") ||
+              s.commands?.some((c) => c.includes("export-dataset")),
           );
-        case 'artifacts':
+        case "artifacts":
           return all.filter(
-            (s) => has(s.reason).includes('artifact') || s.commands?.some((c) => c.includes('train-'))
+            (s) =>
+              has(s.reason).includes("artifact") ||
+              s.commands?.some((c) => c.includes("train-")),
           );
-        case 'fielding':
-          return all.filter((s) => has(s.reason).includes('fielding'));
-        case 'weather':
-          return all.filter((s) => has(s.reason).includes('weather'));
+        case "fielding":
+          return all.filter((s) => has(s.reason).includes("fielding"));
+        case "weather":
+          return all.filter((s) => has(s.reason).includes("weather"));
         default:
           return all;
       }
     },
-    [data]
+    [data],
   );
 
   return (
@@ -165,10 +196,11 @@ const OpsStatusTab: React.FC = () => {
           title="Refresh Ops Status"
           aria-label="Refresh Ops Status"
         >
-          {loading ? 'Refreshing…' : 'Refresh'}
+          {loading ? "Refreshing…" : "Refresh"}
         </Button>
         <Typography variant="body2" sx={{ opacity: 0.8 }}>
-          Auto-refresh: {REFRESH_MS / 1000}s{lastUpdated ? ` • Last updated: ${lastUpdated}` : ''}
+          Auto-refresh: {REFRESH_MS / 1000}s
+          {lastUpdated ? ` • Last updated: ${lastUpdated}` : ""}
         </Typography>
       </Stack>
 
@@ -190,9 +222,21 @@ const OpsStatusTab: React.FC = () => {
             <SimpleStatTiles
               size="md"
               items={[
-                { label: 'API health', value: data.services?.api_health === true, state: data.services?.api_health ? 'ok' : 'error' },
-                { label: 'API ready', value: data.services?.api_readiness === true, state: data.services?.api_readiness ? 'ok' : 'error' },
-                { label: 'ML health', value: data.services?.ml_health === true, state: data.services?.ml_health ? 'ok' : 'error' },
+                {
+                  label: "API health",
+                  value: data.services?.api_health === true,
+                  state: data.services?.api_health ? "ok" : "error",
+                },
+                {
+                  label: "API ready",
+                  value: data.services?.api_readiness === true,
+                  state: data.services?.api_readiness ? "ok" : "error",
+                },
+                {
+                  label: "ML health",
+                  value: data.services?.ml_health === true,
+                  state: data.services?.ml_health ? "ok" : "error",
+                },
               ]}
             />
             <OpsBadges services={data.services} timestamp={data.timestamp} />
@@ -207,25 +251,48 @@ const OpsStatusTab: React.FC = () => {
                     const counts: any = (data as any)?.db?.counts || {};
                     const ready = data.services?.api_readiness === true;
                     return [
-                      { label: 'Ready', value: ready, state: ready ? 'ok' : 'error', title: ready ? 'DB reachable' : 'DB not reachable' },
-                      { label: 'Players', value: typeof counts.players === 'number' ? counts.players : '—', state: 'neutral' },
-                      { label: 'Matches', value: typeof counts.matches === 'number' ? counts.matches : '—', state: 'neutral' },
+                      {
+                        label: "Ready",
+                        value: ready,
+                        state: ready ? "ok" : "error",
+                        title: ready ? "DB reachable" : "DB not reachable",
+                      },
+                      {
+                        label: "Players",
+                        value:
+                          typeof counts.players === "number"
+                            ? counts.players
+                            : "—",
+                        state: "neutral",
+                      },
+                      {
+                        label: "Matches",
+                        value:
+                          typeof counts.matches === "number"
+                            ? counts.matches
+                            : "—",
+                        state: "neutral",
+                      },
                     ];
                   })()}
                 />
                 <StatusPill
-                  state={data.services?.api_readiness ? 'ok' : 'error'}
-                  label={data.services?.api_readiness ? 'DB Ready' : 'DB Not Ready'}
+                  state={data.services?.api_readiness ? "ok" : "error"}
+                  label={
+                    data.services?.api_readiness ? "DB Ready" : "DB Not Ready"
+                  }
                 />
                 <Typography variant="body2">
-                  Last match data import:{' '}
+                  Last match data import:{" "}
                   <strong>
                     {(() => {
                       const v = (data?.db as any)?.last_match_import_at;
-                      if (!v) return 'unknown';
+                      if (!v) return "unknown";
                       try {
                         const d = new Date(v);
-                        return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+                        return isNaN(d.getTime())
+                          ? String(v)
+                          : d.toLocaleString();
                       } catch {
                         return String(v);
                       }
@@ -233,7 +300,7 @@ const OpsStatusTab: React.FC = () => {
                   </strong>
                 </Typography>
                 <JsonCollapse data={data.db} summary="Show database details" />
-                <OpsSuggestions suggestions={filterSuggestions('db')} />
+                <OpsSuggestions suggestions={filterSuggestions("db")} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -256,27 +323,56 @@ const OpsStatusTab: React.FC = () => {
                     }
                   >
                     {Object.keys(fm).length === 0 ? (
-                      <Typography variant="body2" sx={{ opacity: 0.7 }}>Not available</Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                        Not available
+                      </Typography>
                     ) : (
                       <Stack spacing={1}>
                         {FORMATS.map((f: FormatCode) => {
                           const row = asObj(fm[f]);
                           const st = readStatus(row.status);
-                          const latest = typeof row.latest_match_date === 'string' ? row.latest_match_date : undefined;
+                          const latest =
+                            typeof row.latest_match_date === "string"
+                              ? row.latest_match_date
+                              : undefined;
                           const days = readNumber(row.days_since);
                           return (
-                            <Stack key={f} direction="row" alignItems="center" justifyContent="space-between">
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography variant="body2" sx={{ minWidth: 48 }}>{f}</Typography>
+                            <Stack
+                              key={f}
+                              direction="row"
+                              alignItems="center"
+                              justifyContent="space-between"
+                            >
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                              >
+                                <Typography
+                                  variant="body2"
+                                  sx={{ minWidth: 48 }}
+                                >
+                                  {f}
+                                </Typography>
                                 <StatusPill state={st} label={st} />
                               </Stack>
-                              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                              <Typography
+                                variant="body2"
+                                sx={{ opacity: 0.85 }}
+                              >
                                 {latest ? (
                                   <>
-                                    latest {latest}{days != null ? ` · ${Math.max(0, Math.floor(days))}d ago` : ''}
+                                    latest {latest}
+                                    {days != null
+                                      ? ` · ${Math.max(0, Math.floor(days))}d ago`
+                                      : ""}
                                   </>
                                 ) : (
-                                  <>{st === 'missing' ? 'no recent matches' : 'not available'}</>
+                                  <>
+                                    {st === "missing"
+                                      ? "no recent matches"
+                                      : "not available"}
+                                  </>
                                 )}
                               </Typography>
                             </Stack>
@@ -308,7 +404,9 @@ const OpsStatusTab: React.FC = () => {
                     }
                   >
                     {Object.keys(fm).length === 0 ? (
-                      <Typography variant="body2" sx={{ opacity: 0.7 }}>Not available</Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                        Not available
+                      </Typography>
                     ) : (
                       <Stack spacing={1}>
                         {FORMATS.map((f: FormatCode) => {
@@ -317,12 +415,29 @@ const OpsStatusTab: React.FC = () => {
                           const n = readNumber(row.matches_last_30d) ?? 0;
                           const min = readNumber(row.expected_min_30d) ?? 1;
                           return (
-                            <Stack key={f} direction="row" alignItems="center" justifyContent="space-between">
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography variant="body2" sx={{ minWidth: 48 }}>{f}</Typography>
+                            <Stack
+                              key={f}
+                              direction="row"
+                              alignItems="center"
+                              justifyContent="space-between"
+                            >
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                              >
+                                <Typography
+                                  variant="body2"
+                                  sx={{ minWidth: 48 }}
+                                >
+                                  {f}
+                                </Typography>
                                 <StatusPill state={st} label={st} />
                               </Stack>
-                              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                              <Typography
+                                variant="body2"
+                                sx={{ opacity: 0.85 }}
+                              >
                                 {`${n} of E${min} in last 30d`}
                               </Typography>
                             </Stack>
@@ -343,21 +458,41 @@ const OpsStatusTab: React.FC = () => {
                   size="md"
                   items={(() => {
                     const fm: any = (data as any)?.precompute?.formats || {};
-                    const formats = ['TEST', 'ODI', 'T20I', 'T20'];
-                    let ok = 0, stale = 0, missing = 0;
+                    const formats = ["TEST", "ODI", "T20I", "T20"];
+                    let ok = 0,
+                      stale = 0,
+                      missing = 0;
                     formats.forEach((f) => {
                       const st = fm?.[f]?.status as string | undefined;
-                      if (st === 'ok') ok++; else if (st === 'stale') stale++; else missing++;
+                      if (st === "ok") ok++;
+                      else if (st === "stale") stale++;
+                      else missing++;
                     });
                     return [
-                      { label: 'OK', value: ok, state: ok > 0 ? 'ok' : 'neutral' },
-                      { label: 'Stale', value: stale, state: stale > 0 ? 'error' : 'neutral' },
-                      { label: 'Missing', value: missing, state: missing > 0 ? 'error' : 'neutral' },
+                      {
+                        label: "OK",
+                        value: ok,
+                        state: ok > 0 ? "ok" : "neutral",
+                      },
+                      {
+                        label: "Stale",
+                        value: stale,
+                        state: stale > 0 ? "error" : "neutral",
+                      },
+                      {
+                        label: "Missing",
+                        value: missing,
+                        state: missing > 0 ? "error" : "neutral",
+                      },
                     ];
                   })()}
                 />
-                <OpsMatrix type="precompute" title="Precompute" data={data.precompute} />
-                <OpsSuggestions suggestions={filterSuggestions('precompute')} />
+                <OpsMatrix
+                  type="precompute"
+                  title="Precompute"
+                  data={data.precompute}
+                />
+                <OpsSuggestions suggestions={filterSuggestions("precompute")} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -369,21 +504,33 @@ const OpsStatusTab: React.FC = () => {
                   size="md"
                   items={(() => {
                     const fm: any = (data as any)?.exports?.formats || {};
-                    const formats = ['TEST', 'ODI', 'T20I', 'T20'];
-                    let present = 0, missing = 0;
-                    const hasAnyExists = (files: any): boolean => Array.isArray(files) && files.some((e: any) => !!(e && e.exists === true));
+                    const formats = ["TEST", "ODI", "T20I", "T20"];
+                    let present = 0,
+                      missing = 0;
+                    const hasAnyExists = (files: any): boolean =>
+                      Array.isArray(files) &&
+                      files.some((e: any) => !!(e && e.exists === true));
                     formats.forEach((f) => {
                       const files = fm?.[f]?.files ?? [];
-                      if (hasAnyExists(files)) present++; else missing++;
+                      if (hasAnyExists(files)) present++;
+                      else missing++;
                     });
                     return [
-                      { label: 'Present', value: present, state: present > 0 ? 'ok' : 'neutral' },
-                      { label: 'Missing', value: missing, state: missing > 0 ? 'error' : 'neutral' },
+                      {
+                        label: "Present",
+                        value: present,
+                        state: present > 0 ? "ok" : "neutral",
+                      },
+                      {
+                        label: "Missing",
+                        value: missing,
+                        state: missing > 0 ? "error" : "neutral",
+                      },
                     ];
                   })()}
                 />
                 <OpsMatrix type="exports" title="Exports" data={data.exports} />
-                <OpsSuggestions suggestions={filterSuggestions('exports')} />
+                <OpsSuggestions suggestions={filterSuggestions("exports")} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -395,67 +542,113 @@ const OpsStatusTab: React.FC = () => {
                   size="md"
                   items={(() => {
                     const fm: any = (data as any)?.artifacts?.formats || {};
-                    const formats = ['TEST', 'ODI', 'T20I', 'T20'];
-                    let complete = 0, missing = 0;
+                    const formats = ["TEST", "ODI", "T20I", "T20"];
+                    let complete = 0,
+                      missing = 0;
                     formats.forEach((f) => {
                       const bat = fm?.[f]?.batting || {};
                       const bowl = fm?.[f]?.bowling || {};
                       const ok = bat?.exists === true && bowl?.exists === true;
-                      if (ok) complete++; else missing++;
+                      if (ok) complete++;
+                      else missing++;
                     });
                     return [
-                      { label: 'Complete', value: complete, state: complete > 0 ? 'ok' : 'neutral' },
-                      { label: 'Missing', value: missing, state: missing > 0 ? 'error' : 'neutral' },
+                      {
+                        label: "Complete",
+                        value: complete,
+                        state: complete > 0 ? "ok" : "neutral",
+                      },
+                      {
+                        label: "Missing",
+                        value: missing,
+                        state: missing > 0 ? "error" : "neutral",
+                      },
                     ];
                   })()}
                 />
-                <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts} />
-                <OpsSuggestions suggestions={filterSuggestions('artifacts')} />
+                <OpsMatrix
+                  type="artifacts"
+                  title="Artifacts"
+                  data={data.artifacts}
+                />
+                <OpsSuggestions suggestions={filterSuggestions("artifacts")} />
               </SectionCard>
             </Grid>
           </Grid>
 
           <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12} md={6}>
-              <SectionCard title="Fielding Data" subtitle={(
-                <span>Summary of fielding data availability and stats.</span>
-              )}>
+              <SectionCard
+                title="Fielding Data"
+                subtitle={
+                  <span>Summary of fielding data availability and stats.</span>
+                }
+              >
                 {(() => {
                   const f: any = (data as any)?.fielding || {};
                   const available = f?.available === true;
-                  const rows = typeof f?.rows === 'number' ? f.rows : undefined;
+                  const rows = typeof f?.rows === "number" ? f.rows : undefined;
                   return (
                     <SimpleStatTiles
                       items={[
-                        { label: 'Available', value: available, state: available ? 'ok' : 'error', title: available ? 'data available' : 'no data' },
-                        { label: 'Rows', value: rows ?? '—', state: 'neutral', title: rows != null ? `${rows} rows` : 'unknown' },
+                        {
+                          label: "Available",
+                          value: available,
+                          state: available ? "ok" : "error",
+                          title: available ? "data available" : "no data",
+                        },
+                        {
+                          label: "Rows",
+                          value: rows ?? "—",
+                          state: "neutral",
+                          title: rows != null ? `${rows} rows` : "unknown",
+                        },
                       ]}
                     />
                   );
                 })()}
-                <JsonCollapse data={data.fielding} summary="Show fielding details" />
-                <OpsSuggestions suggestions={filterSuggestions('fielding')} />
+                <JsonCollapse
+                  data={data.fielding}
+                  summary="Show fielding details"
+                />
+                <OpsSuggestions suggestions={filterSuggestions("fielding")} />
               </SectionCard>
             </Grid>
             <Grid item xs={12} md={6}>
-              <SectionCard title="Weather Data" subtitle={(
-                <span>Summary of weather data availability and stats.</span>
-              )}>
+              <SectionCard
+                title="Weather Data"
+                subtitle={
+                  <span>Summary of weather data availability and stats.</span>
+                }
+              >
                 {(() => {
                   const w: any = (data as any)?.weather || {};
                   const available = w?.available === true;
-                  const rows = typeof w?.rows === 'number' ? w.rows : undefined;
+                  const rows = typeof w?.rows === "number" ? w.rows : undefined;
                   return (
                     <SimpleStatTiles
                       items={[
-                        { label: 'Available', value: available, state: available ? 'ok' : 'error', title: available ? 'data available' : 'no data' },
-                        { label: 'Rows', value: rows ?? '—', state: 'neutral', title: rows != null ? `${rows} rows` : 'unknown' },
+                        {
+                          label: "Available",
+                          value: available,
+                          state: available ? "ok" : "error",
+                          title: available ? "data available" : "no data",
+                        },
+                        {
+                          label: "Rows",
+                          value: rows ?? "—",
+                          state: "neutral",
+                          title: rows != null ? `${rows} rows` : "unknown",
+                        },
                       ]}
                     />
                   );
                 })()}
-                <JsonCollapse data={data.weather} summary="Show weather details" />
-                <OpsSuggestions suggestions={filterSuggestions('weather')} />
+                <JsonCollapse
+                  data={data.weather}
+                  summary="Show weather details"
+                />
+                <OpsSuggestions suggestions={filterSuggestions("weather")} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -466,7 +659,7 @@ const OpsStatusTab: React.FC = () => {
         </Stack>
       )}
     </Stack>
-    );
+  );
 };
 
 export default OpsStatusTab;

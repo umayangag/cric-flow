@@ -143,7 +143,8 @@ func computeAccuracyTrendMetrics(
 				if actAgg.Runs != 0 || predAgg.Runs != 0 {
 					metrics["team_runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
 				}
-				if v := winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode); v > 0 || (actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "") {
+				if v := winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode); v > 0 ||
+					(actAgg.WinnerTeamCode != "" && predAgg.WinnerTeamCode != "") {
 					// Only set when both are non-empty; winnerAccuracy returns 0.0 otherwise
 					metrics["team_winner_accuracy"] = v
 				}
