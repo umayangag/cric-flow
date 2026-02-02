@@ -8,12 +8,14 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: dev-up dev-up-with-frontend dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 
-# docker-compose stack (Postgres + API + ML service) + Frontend (Vite/React)
+# docker-compose stack (Postgres + API + ML service)
 dev-up:
 	$(DC) up --build -d
-	@# Start frontend dev server if a frontend exists and it's not already running
+
+# Optional: also start the frontend dev server (Vite/React) if present
+dev-up-with-frontend: dev-up
 	@if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then \
 		echo "[frontend] Ensuring dependencies..."; \
 		cd frontend && if [ ! -d "node_modules" ]; then npm install; fi; \
@@ -343,24 +345,18 @@ fmt: fmt-go fmt-py
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
-	# Ensure venv/dev tools exist before running Python fmt-check and expose venv bin on PATH
-	$(MAKE) -C ml-service init
+	# Assume ml-service venv is already prepared; avoid implicit bootstrapping for speed
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
 fmt-go:
-	# Auto-bootstrap Go dev tools if missing, then format using go-app Makefile
-	@if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then \
-		echo "Bootstrapping Go tools (gofumpt, golines) via 'make -C go-app init'..."; \
-		$(MAKE) -C go-app init || { echo "Failed to setup Go tools"; exit 1; }; \
-	fi
+	# Fast path: require tools to be installed; run formatting only
 	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C go-app fmt
 
 lint-go:
 	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
 
 fmt-py:
-	# Auto-bootstrap Python venv + dev tools, then format using ml-service Makefile
-	$(MAKE) -C ml-service init
+	# Fast path: require venv to be prepared; run formatting only
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt
 
 lint-py:
@@ -459,7 +455,8 @@ help:
 	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
 	@echo
 	@echo "[Services & Logs]"
-	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML) and Frontend (port $(FRONTEND_PORT))"
+	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
+	@echo "  dev-up-with-frontend  dev-up + start Frontend dev server (port $(FRONTEND_PORT))"
 	@echo "  dev-down           Stop and remove stack (volumes) and stop Frontend"
 	@echo "  logs               Tail docker-compose logs"
 	@echo "  api                Run Go API locally (outside Docker)"
@@ -487,7 +484,7 @@ help:
 	@echo "  ci                 Run both CI aggregates"
 	@echo
 	@echo "[Formatting & Lint]"
-	@echo "  fmt / fmt-check    Run formatters across Go and Python"
+	@echo "  fmt / fmt-check    Run formatters across Go and Python (no implicit installs)"
 	@echo "  lint-go / lint-py  Lint Go / Python"
 	@echo
 	@echo "[Bootstrap]"
@@ -509,6 +506,7 @@ help:
 help-all:
 	@echo "\n[Root]" && $(MAKE) help --no-print-directory || true
 	@echo "\n[Go App]" && $(MAKE) -C go-app help --no-print-directory || true
+	@echo "\n[Frontend]" && $(MAKE) -C frontend help --no-print-directory || true
 	@echo "\n[ML Service]" && $(MAKE) -C ml-service help --no-print-directory || true
 
 list:

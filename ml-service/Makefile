@@ -48,7 +48,6 @@ validate-exports-infer:
 
 # Format Python code with line wrapping (isort + black) using project venv
 fmt: venv _install_formatters
-	make lint
 	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
