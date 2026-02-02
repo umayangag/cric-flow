@@ -50,7 +50,6 @@ validate-exports-infer:
 fmt: venv _install_formatters
 	$(VENV)/bin/isort --profile black --line-length $(LINE_LENGTH) .
 	$(VENV)/bin/black --line-length $(LINE_LENGTH) .
-	$(VENV)/bin/flake8 --max-line-length=$(LINE_LENGTH) --extend-ignore=E203,W503 --exclude=.venv
 
 # Auto-fix lint: remove unused imports via ruff (F401)
 lint: venv
@@ -143,7 +142,7 @@ help:
 	@echo "  ci                 Run fmt-check, lint-check, and coverage gates"
 	@echo
 	@echo "[Quality]"
-	@echo "  fmt / fmt-check    Format / check formatting (isort, black, flake8)"
+	@echo "  fmt / fmt-check    Format (isort, black) / check formatting (isort, black, flake8)"
 	@echo "  lint / lint-check  Lint (ruff) and check-only"
 	@echo
 	@echo "[Docker]"
