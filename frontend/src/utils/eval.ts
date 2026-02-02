@@ -11,36 +11,40 @@ export function parseCsv(text: string): CsvRow[] {
     const e = parsed.errors[0];
     throw new Error(`CSV parse error at row ${e.row}: ${e.message}`);
   }
-  const rows = (parsed.data as any[]).map((r) => normalizeRow(r));
+  const rows = (parsed.data as unknown[]).map((r) => normalizeRow(r));
   return rows;
 }
 
-function normalizeRow(r: any): CsvRow {
-  const dateStr = String(r.date ?? '').slice(0, 10);
-  const season = r.season != null ? Number(r.season) : inferSeasonFromDate(dateStr);
+function normalizeRow(r: unknown): CsvRow {
+  const obj = (r && typeof r === 'object' ? (r as Record<string, unknown>) : {}) as Record<
+    string,
+    unknown
+  >;
+  const dateStr = String(obj.date ?? '').slice(0, 10);
+  const season = obj.season != null ? Number(obj.season) : inferSeasonFromDate(dateStr);
   const base: CsvRow = {
-    match_id: r.match_id,
+    match_id: (obj as Record<string, unknown>).match_id as string | number,
     date: dateStr,
     season,
-    team_name: r.team_name,
-    actual_win: Number(r.actual_win),
-    player_name: String(r.player_name ?? ''),
-    runs_scored: toNum(r.runs_scored),
-    balls_faced: toNum(r.balls_faced),
-    fours_scored: toNum(r.fours_scored),
-    sixes_scored: toNum(r.sixes_scored),
-    batting_position: toNum(r.batting_position),
-    strike_rate: toNum(r.strike_rate),
-    runs_conceded: toNum(r.runs_conceded),
-    deliveries: toNum(r.deliveries),
-    wickets_taken: toNum(r.wickets_taken),
-    econ: toNum(r.econ),
-    winning_probability: r.winning_probability != null ? Number(r.winning_probability) : null,
+    team_name: String(obj.team_name ?? ''),
+    actual_win: Number(obj.actual_win),
+    player_name: String(obj.player_name ?? ''),
+    runs_scored: toNum(obj.runs_scored),
+    balls_faced: toNum(obj.balls_faced),
+    fours_scored: toNum(obj.fours_scored),
+    sixes_scored: toNum(obj.sixes_scored),
+    batting_position: toNum(obj.batting_position),
+    strike_rate: toNum(obj.strike_rate),
+    runs_conceded: toNum(obj.runs_conceded),
+    deliveries: toNum(obj.deliveries),
+    wickets_taken: toNum(obj.wickets_taken),
+    econ: toNum(obj.econ),
+    winning_probability: obj.winning_probability != null ? Number(obj.winning_probability) : null,
   };
   return base;
 }
 
-function toNum(v: any): number {
+function toNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }

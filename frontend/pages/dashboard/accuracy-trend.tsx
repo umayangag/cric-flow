@@ -6,12 +6,12 @@ import { AccuracyTrendResponse, fetchAccuracyTrend, AccuracyTrendFilters } from 
 
 type QueryLike = Partial<AccuracyTrendFilters>;
 
-function parseQuery(qs: Record<string, any>): QueryLike {
+function parseQuery(qs: Record<string, unknown>): QueryLike {
   const out: QueryLike = {};
   const pick = (k: keyof QueryLike) => {
     const v = qs[k as string];
     if (v !== undefined && v !== null && String(v).trim() !== '') {
-      (out as any)[k] = String(v);
+      (out as Record<string, unknown>)[k as string] = String(v);
     }
   };
   pick('format');
@@ -58,18 +58,18 @@ const Page: React.FC = () => {
   useEffect(() => {
     // Next.js router.query may be empty on first pass; wait until ready
     if (!router.isReady) return;
-    const initial = { ...defaultFilters, ...parseQuery(router.query as any) };
+    const initial = { ...defaultFilters, ...parseQuery(router.query as Record<string, unknown>) };
     setFilters(initial);
-  }, [router.isReady]);
+  }, [router.isReady, router.query]);
 
   const doFetch = useCallback(async (p: QueryLike) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetchAccuracyTrend(p as any);
+      const res = await fetchAccuracyTrend(p);
       setData(res);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to fetch');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to fetch');
       setData(null);
     } finally {
       setLoading(false);

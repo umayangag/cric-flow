@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { api } from './api';
 
 // Simple fetch mock helper
-function mockFetchOnce(data: any, ok = true, status = 200) {
-  (globalThis as any).fetch = vi.fn().mockResolvedValue({
+function mockFetchOnce(data: unknown, ok = true, status = 200) {
+  (globalThis as unknown as { fetch: Mock }).fetch = vi.fn().mockResolvedValue({
     ok,
     status,
     statusText: ok ? 'OK' : 'Bad Request',
     json: async () => data,
     text: async () => JSON.stringify(data),
-  });
+  }) as unknown as Mock;
 }
 
 describe('frontend api client (DB-backed)', () => {
@@ -21,8 +22,9 @@ describe('frontend api client (DB-backed)', () => {
     mockFetchOnce({ next_season: 2023 });
     const resp = await api.seasonsNext('2022-12-31', 'T20');
     expect(resp.next_season).toBe(2023);
-    expect((globalThis as any).fetch).toHaveBeenCalledTimes(1);
-    const urlArg = (globalThis as any).fetch.mock.calls[0][0];
+    const fetchMock = (globalThis as unknown as { fetch: Mock }).fetch;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const urlArg = fetchMock.mock.calls[0][0];
     expect(String(urlArg)).toContain('/seasons/next');
     expect(String(urlArg)).toContain('cutoff=2022-12-31');
     expect(String(urlArg)).toContain('format=T20');
@@ -92,13 +94,13 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('httpApi throws on non-OK response', async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValue({
+    (globalThis as unknown as { fetch: Mock }).fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
       statusText: 'Bad Request',
       json: async () => ({ code: 'INVALID_PARAM' }),
       text: async () => '{"code":"INVALID_PARAM"}',
-    });
+    }) as unknown as Mock;
     await expect(api.seasonsNext('bad-date')).rejects.toBeInstanceOf(Error);
   });
 });

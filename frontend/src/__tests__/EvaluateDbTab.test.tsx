@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import EvaluateDbTab from '../components/EvaluateDbTab';
 
@@ -23,7 +24,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
   it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
     // Arrange mocks
-    (api.backtestSelect as any).mockResolvedValue({
+    const backtestSelectMock = api.backtestSelect as unknown as Mock;
+    backtestSelectMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
@@ -39,7 +41,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         },
       ],
     });
-    (api.backtestEvaluate as any).mockResolvedValue({
+    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
+    backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
       match: { match_id: 111, date: '2024-10-30T14:00:00Z' },
       players: [
@@ -91,7 +94,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
   });
 
   it('shows error when backtestSelect fails', async () => {
-    (api.backtestSelect as any).mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
+    const backtestSelectMock = api.backtestSelect as unknown as Mock;
+    backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
     fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
@@ -100,7 +104,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
   it('renders bowling metrics and match aggregates when present', async () => {
     // Arrange candidates
-    (api.backtestSelect as any).mockResolvedValue({
+    const backtestSelectMock = api.backtestSelect as unknown as Mock;
+    backtestSelectMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
@@ -118,7 +123,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     // Arrange evaluate with wickets/economy and match_aggregates
-    (api.backtestEvaluate as any).mockResolvedValue({
+    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
+    backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
       match: { match_id: 222, date: '2024-11-05T09:00:00Z' },
       players: [
@@ -195,7 +201,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
   it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
     // Arrange candidates
-    (api.backtestSelect as any).mockResolvedValue({
+    const backtestSelectMock = api.backtestSelect as unknown as Mock;
+    backtestSelectMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
@@ -213,7 +220,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     // Arrange evaluate with fielding keys present
-    (api.backtestEvaluate as any).mockResolvedValue({
+    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
+    backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
       match: { match_id: 333, date: '2024-11-06T09:00:00Z' },
       players: [
@@ -263,7 +271,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
   });
 
   it('disable evaluate until a candidate match is selected', async () => {
-    (api.backtestSelect as any).mockResolvedValue({
+    const backtestSelectMock = api.backtestSelect as unknown as Mock;
+    backtestSelectMock.mockResolvedValue({
       filters: {},
       candidates: [],
     });

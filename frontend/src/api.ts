@@ -8,6 +8,7 @@ import type {
   BacktestSelectResponse,
   BacktestEvaluateResponse,
 } from './types';
+import type { OpsStatusDTO } from './types';
 
 const BASE_URL = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
@@ -93,7 +94,7 @@ export const api = {
     return httpApi(u.toString());
   },
   // --- Ops Status (go-app API) ---
-  opsStatus(): Promise<any> {
+  opsStatus(): Promise<OpsStatusDTO> {
     return httpApi('/ops/status');
   },
 };

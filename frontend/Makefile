@@ -44,7 +44,7 @@ fmt-check:
 	@# Prettier check (non-zero exit on diffs)
 	npx --no-install prettier . --check
 	@# ESLint check-only if configured (fail on warnings)
-	npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --no-error-on-unmatched-pattern
+	npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --no-error-on-unmatched-pattern --max-warnings 0
 
 help:
 	@echo "\nFrontend — Make targets (grouped)"

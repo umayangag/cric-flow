@@ -6,7 +6,6 @@ import OpsSuggestions from './OpsSuggestions';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import Paper from '@mui/material/Paper';
 import Grid from '@mui/material/Grid';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
@@ -17,22 +16,22 @@ import SectionCard from './common/SectionCard';
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 type FormatCode = (typeof FORMATS)[number];
 
-function asObj(v: unknown): Record<string, any> {
-  return v && typeof v === 'object' ? (v as Record<string, any>) : {};
+function asObj(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-function getFormats(section: unknown): Record<string, any> {
+function getFormats(section: unknown): Record<string, unknown> {
   const obj = asObj(section);
-  return asObj(obj.formats);
+  return asObj((obj as { formats?: unknown }).formats);
 }
 
-function readStatus(v: any): 'ok' | 'stale' | 'missing' | 'unknown' {
+function readStatus(v: unknown): 'ok' | 'stale' | 'missing' | 'unknown' {
   const s = typeof v === 'string' ? v : undefined;
   if (s === 'ok' || s === 'stale' || s === 'missing' || s === 'unknown') return s;
   return 'unknown';
 }
 
-function readNumber(v: any): number | undefined {
+function readNumber(v: unknown): number | undefined {
   if (typeof v === 'number' && isFinite(v)) return v;
   return undefined;
 }
@@ -88,8 +87,8 @@ const OpsStatusTab: React.FC = () => {
       setError(null);
       const res = await api.opsStatus();
       setData(res);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to fetch /ops/status');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to fetch /ops/status');
     } finally {
       setLoading(false);
     }
@@ -229,7 +228,8 @@ const OpsStatusTab: React.FC = () => {
                 <SimpleStatTiles
                   size="md"
                   items={(() => {
-                    const counts: any = (data as any)?.db?.counts || {};
+                    const dbObj = asObj(data.db);
+                    const counts = asObj((dbObj as { counts?: unknown }).counts);
                     const ready = data.services?.api_readiness === true;
                     return [
                       {
@@ -240,12 +240,18 @@ const OpsStatusTab: React.FC = () => {
                       },
                       {
                         label: 'Players',
-                        value: typeof counts.players === 'number' ? counts.players : '—',
+                        value:
+                          typeof (counts as Record<string, unknown>).players === 'number'
+                            ? (counts as Record<string, unknown>).players
+                            : '—',
                         state: 'neutral',
                       },
                       {
                         label: 'Matches',
-                        value: typeof counts.matches === 'number' ? counts.matches : '—',
+                        value:
+                          typeof (counts as Record<string, unknown>).matches === 'number'
+                            ? (counts as Record<string, unknown>).matches
+                            : '—',
                         state: 'neutral',
                       },
                     ];
@@ -259,7 +265,11 @@ const OpsStatusTab: React.FC = () => {
                   Last match data import:{' '}
                   <strong>
                     {(() => {
-                      const v = (data?.db as any)?.last_match_import_at;
+                      const v = asObj(data?.db).last_match_import_at as unknown as
+                        | string
+                        | number
+                        | Date
+                        | undefined;
                       if (!v) return 'unknown';
                       try {
                         const d = new Date(v);
@@ -280,7 +290,7 @@ const OpsStatusTab: React.FC = () => {
           <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12}>
               {(() => {
-                const freshness: any = (data as any)?.db_freshness || {};
+                const freshness = asObj((data as { db_freshness?: unknown })?.db_freshness);
                 const overallSt = readStatus(asObj(freshness.overall).status);
                 const fm = getFormats(freshness);
                 return (
@@ -345,7 +355,7 @@ const OpsStatusTab: React.FC = () => {
           <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12}>
               {(() => {
-                const comp: any = (data as any)?.db_completeness || {};
+                const comp = asObj((data as { db_completeness?: unknown })?.db_completeness);
                 const overallSt = readStatus(asObj(comp.overall).status);
                 const fm = getFormats(comp);
                 return (
@@ -402,13 +412,13 @@ const OpsStatusTab: React.FC = () => {
                 <SimpleStatTiles
                   size="md"
                   items={(() => {
-                    const fm: any = (data as any)?.precompute?.formats || {};
+                    const fm = getFormats(data.precompute);
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
                     let ok = 0,
                       stale = 0,
                       missing = 0;
                     formats.forEach((f) => {
-                      const st = fm?.[f]?.status as string | undefined;
+                      const st = readStatus(asObj((fm as Record<string, unknown>)[f]).status);
                       if (st === 'ok') ok++;
                       else if (st === 'stale') stale++;
                       else missing++;
@@ -444,14 +454,19 @@ const OpsStatusTab: React.FC = () => {
                 <SimpleStatTiles
                   size="md"
                   items={(() => {
-                    const fm: any = (data as any)?.exports?.formats || {};
+                    const fm = getFormats(data.exports);
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
                     let present = 0,
                       missing = 0;
-                    const hasAnyExists = (files: any): boolean =>
-                      Array.isArray(files) && files.some((e: any) => !!(e && e.exists === true));
+                    const hasAnyExists = (files: unknown): boolean =>
+                      Array.isArray(files) &&
+                      files.some((e) => {
+                        if (!e || typeof e !== 'object') return false;
+                        const exists = (e as Record<string, unknown>).exists;
+                        return exists === true;
+                      });
                     formats.forEach((f) => {
-                      const files = fm?.[f]?.files ?? [];
+                      const files = asObj((fm as Record<string, unknown>)[f]).files as unknown;
                       if (hasAnyExists(files)) present++;
                       else missing++;
                     });
@@ -481,13 +496,14 @@ const OpsStatusTab: React.FC = () => {
                 <SimpleStatTiles
                   size="md"
                   items={(() => {
-                    const fm: any = (data as any)?.artifacts?.formats || {};
+                    const fm = getFormats(data.artifacts);
                     const formats = ['TEST', 'ODI', 'T20I', 'T20'];
                     let complete = 0,
                       missing = 0;
                     formats.forEach((f) => {
-                      const bat = fm?.[f]?.batting || {};
-                      const bowl = fm?.[f]?.bowling || {};
+                      const row = asObj((fm as Record<string, unknown>)[f]);
+                      const bat = asObj(row.batting);
+                      const bowl = asObj(row.bowling);
                       const ok = bat?.exists === true && bowl?.exists === true;
                       if (ok) complete++;
                       else missing++;
@@ -519,9 +535,10 @@ const OpsStatusTab: React.FC = () => {
                 subtitle={<span>Summary of fielding data availability and stats.</span>}
               >
                 {(() => {
-                  const f: any = (data as any)?.fielding || {};
-                  const available = f?.available === true;
-                  const rows = typeof f?.rows === 'number' ? f.rows : undefined;
+                  const f = asObj(data.fielding);
+                  const available = (f as Record<string, unknown>).available === true;
+                  const rowsVal = (f as Record<string, unknown>).rows;
+                  const rows = typeof rowsVal === 'number' ? rowsVal : undefined;
                   return (
                     <SimpleStatTiles
                       items={[
@@ -551,9 +568,10 @@ const OpsStatusTab: React.FC = () => {
                 subtitle={<span>Summary of weather data availability and stats.</span>}
               >
                 {(() => {
-                  const w: any = (data as any)?.weather || {};
-                  const available = w?.available === true;
-                  const rows = typeof w?.rows === 'number' ? w.rows : undefined;
+                  const w = asObj(data.weather);
+                  const available = (w as Record<string, unknown>).available === true;
+                  const rowsVal = (w as Record<string, unknown>).rows;
+                  const rows = typeof rowsVal === 'number' ? rowsVal : undefined;
                   return (
                     <SimpleStatTiles
                       items={[

@@ -2,15 +2,27 @@ import React from 'react';
 
 type MatrixType = 'precompute' | 'exports' | 'artifacts';
 
+type PrecomputeData = {
+  formats?: Record<string, { status?: string } | undefined>;
+};
+type ExportFile = { name?: string; exists?: boolean };
+type ExportsData = {
+  formats?: Record<string, { files?: ExportFile[] } | undefined>;
+};
+type ArtifactUnit = { exists?: boolean; loaded?: boolean };
+type ArtifactsData = {
+  formats?: Record<string, { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined>;
+};
+
 type Props = {
   type: MatrixType;
   title: string;
-  data: any;
+  data: PrecomputeData | ExportsData | ArtifactsData;
 };
 
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 
-const cellStyle = (bg: string, title?: string): React.CSSProperties => ({
+const cellStyle = (bg: string, _title?: string): React.CSSProperties => ({
   background: bg,
   color: '#eee',
   borderRadius: 6,
@@ -68,24 +80,21 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     </div>
   );
 
-  const hasAnyExists = (files: any): boolean => {
-    if (Array.isArray(files)) {
-      // files could be []map or []any; normalize
-      return files.some((e: any) => !!(e && typeof e === 'object' && e.exists === true));
-    }
-    return false;
+  const hasAnyExists = (files: unknown): boolean => {
+    if (!Array.isArray(files)) return false;
+    return files.some((e) => !!(e && typeof e === 'object' && (e as ExportFile).exists === true));
   };
 
   const renderExports = () => (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {FORMATS.map((f) => {
-          const files = data?.formats?.[f]?.files ?? [];
+          const files = (data as ExportsData)?.formats?.[f]?.files ?? [];
           const ok = hasAnyExists(files);
           const color = ok ? '#17431d' : '#4a1010';
           const titleStr = Array.isArray(files)
             ? files
-                .map((x: any) => x?.name)
+                .map((x) => (x && typeof x === 'object' ? (x as ExportFile).name : undefined))
                 .filter(Boolean)
                 .join(', ')
             : '';
@@ -131,8 +140,8 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {FORMATS.map((f) => {
-          const bat = data?.formats?.[f]?.batting ?? {};
-          const bowl = data?.formats?.[f]?.bowling ?? {};
+          const bat = (data as ArtifactsData)?.formats?.[f]?.batting ?? {};
+          const bowl = (data as ArtifactsData)?.formats?.[f]?.bowling ?? {};
           const ok = bat?.exists === true && bowl?.exists === true;
           const color = ok ? '#17431d' : '#4a1010';
           return (

@@ -179,11 +179,15 @@ const HealthTab: React.FC = () => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
-                  ] as any[];
-                  const total = all.reduce(
-                    (acc, it) => acc + (typeof it?.size_bytes === 'number' ? it.size_bytes : 0),
-                    0,
-                  );
+                  ] as unknown[];
+                  const total = all.reduce((acc, it) => {
+                    if (it && typeof it === 'object') {
+                      const val = (it as Record<string, unknown>).size_bytes;
+                      const n = typeof val === 'number' ? val : 0;
+                      return acc + n;
+                    }
+                    return acc;
+                  }, 0);
                   return {
                     label: 'Total size',
                     value: total > 0 ? formatBytes(total) : '—',
@@ -193,10 +197,16 @@ const HealthTab: React.FC = () => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
-                  ] as any[];
+                  ] as unknown[];
                   const latest = all
-                    .map((it) => (typeof it?.modified === 'number' ? it.modified : NaN))
-                    .filter((n) => isFinite(n)) as number[];
+                    .map((it) => {
+                      if (it && typeof it === 'object') {
+                        const val = (it as Record<string, unknown>).modified;
+                        return typeof val === 'number' ? val : NaN;
+                      }
+                      return NaN;
+                    })
+                    .filter((n): n is number => typeof n === 'number' && isFinite(n));
                   const max = latest.length ? Math.max(...latest) : NaN;
                   if (!isFinite(max)) return { label: 'Latest modified', value: '—' };
                   const d = new Date(max * 1000);

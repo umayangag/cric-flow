@@ -10,7 +10,7 @@ export interface AccuracyTrendItem {
 }
 
 export interface AccuracyTrendResponse {
-  filters: Record<string, any>;
+  filters: Record<string, unknown>;
   count: number;
   results: AccuracyTrendItem[];
   summary: Record<string, number>;
@@ -40,9 +40,9 @@ function buildAccuracyTrendUrl(
   let endpoint = '/api/backtest/accuracy-trend';
   const envBase =
     typeof process !== 'undefined' &&
-    (process as any).env &&
-    (process as any).env.NEXT_PUBLIC_API_BASE
-      ? (process as any).env.NEXT_PUBLIC_API_BASE
+    typeof (process as unknown as { env?: Record<string, unknown> })?.env?.NEXT_PUBLIC_API_BASE ===
+      'string'
+      ? String((process as unknown as { env?: Record<string, unknown> }).env!.NEXT_PUBLIC_API_BASE)
       : undefined;
   if (baseUrl) {
     endpoint = `${baseUrl.replace(/\/$/, '')}/api/backtest/accuracy-trend`;
@@ -51,7 +51,7 @@ function buildAccuracyTrendUrl(
   }
 
   const qs = new URLSearchParams();
-  const add = (k: string, v: any) => {
+  const add = (k: string, v: unknown) => {
     if (v === undefined || v === null) return;
     const s = String(v).trim();
     if (s.length === 0) return;

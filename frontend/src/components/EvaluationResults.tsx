@@ -190,53 +190,35 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
           {result.players.map((p) => (
             <tr key={p.player_id}>
               <td style={styles.td}>{p.player_id}</td>
-              <td style={styles.tdRight}>
-                {(p.predicted as any)?.runs?.toFixed?.(2) ?? (p.predicted as any)?.runs}
-              </td>
-              <td style={styles.tdRight}>
-                {(p.actual as any)?.runs?.toFixed?.(2) ?? (p.actual as any)?.runs}
-              </td>
-              <td style={styles.tdRight}>
-                {(p.errors as any)?.runs_mae?.toFixed?.(2) ?? (p.errors as any)?.runs_mae}
-              </td>
+              <td style={styles.tdRight}>{formatCell(p.predicted['runs'])}</td>
+              <td style={styles.tdRight}>{formatCell(p.actual['runs'])}</td>
+              <td style={styles.tdRight}>{formatCell(p.errors['runs_mae'])}</td>
               {anyWickets && (
                 <>
-                  <td style={styles.tdRight}>
-                    {(p.predicted as any)?.wickets?.toFixed?.(2) ?? (p.predicted as any)?.wickets}
-                  </td>
-                  <td style={styles.tdRight}>
-                    {(p.actual as any)?.wickets?.toFixed?.(2) ?? (p.actual as any)?.wickets}
-                  </td>
-                  <td style={styles.tdRight}>
-                    {(p.errors as any)?.wickets_mae?.toFixed?.(2) ?? (p.errors as any)?.wickets_mae}
-                  </td>
+                  <td style={styles.tdRight}>{formatCell(p.predicted['wickets'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.actual['wickets'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.errors['wickets_mae'])}</td>
                 </>
               )}
               {anyEconomy && (
                 <>
-                  <td style={styles.tdRight}>
-                    {(p.predicted as any)?.economy?.toFixed?.(2) ?? (p.predicted as any)?.economy}
-                  </td>
-                  <td style={styles.tdRight}>
-                    {(p.actual as any)?.economy?.toFixed?.(2) ?? (p.actual as any)?.economy}
-                  </td>
-                  <td style={styles.tdRight}>
-                    {(p.errors as any)?.economy_mae?.toFixed?.(2) ?? (p.errors as any)?.economy_mae}
-                  </td>
+                  <td style={styles.tdRight}>{formatCell(p.predicted['economy'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.actual['economy'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.errors['economy_mae'])}</td>
                 </>
               )}
               {anyCatches && (
                 <>
-                  <td style={styles.tdRight}>{(p.predicted as any)?.catches ?? ''}</td>
-                  <td style={styles.tdRight}>{(p.actual as any)?.catches ?? ''}</td>
-                  <td style={styles.tdRight}>{(p.errors as any)?.catches_mae ?? ''}</td>
+                  <td style={styles.tdRight}>{formatCell(p.predicted['catches'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.actual['catches'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.errors['catches_mae'])}</td>
                 </>
               )}
               {anyRunOuts && (
                 <>
-                  <td style={styles.tdRight}>{(p.predicted as any)?.run_outs ?? ''}</td>
-                  <td style={styles.tdRight}>{(p.actual as any)?.run_outs ?? ''}</td>
-                  <td style={styles.tdRight}>{(p.errors as any)?.run_outs_mae ?? ''}</td>
+                  <td style={styles.tdRight}>{formatCell(p.predicted['run_outs'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.actual['run_outs'])}</td>
+                  <td style={styles.tdRight}>{formatCell(p.errors['run_outs_mae'])}</td>
                 </>
               )}
             </tr>
@@ -260,5 +242,13 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
     </div>
   );
 };
+
+function formatCell(v: unknown): string | number {
+  if (v == null) return '';
+  if (typeof v === 'number') {
+    return Number.isInteger(v) ? v : Number.isFinite(v) ? v.toFixed(2) : '';
+  }
+  return String(v);
+}
 
 export default EvaluationResults;

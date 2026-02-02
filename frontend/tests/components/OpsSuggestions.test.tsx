@@ -6,14 +6,15 @@ import OpsSuggestions from '../../src/components/OpsSuggestions';
 describe('OpsSuggestions', () => {
   const origClipboard = global.navigator.clipboard;
   beforeEach(() => {
-    // @ts-expect-error mock clipboard
-    global.navigator.clipboard = {
+    const mockClipboard = {
       writeText: vi.fn().mockResolvedValue(undefined),
-    } as any;
+    } as unknown as Clipboard;
+    // @ts-expect-error override for test
+    global.navigator.clipboard = mockClipboard;
   });
   afterEach(() => {
     // @ts-expect-error restore clipboard
-    global.navigator.clipboard = origClipboard as any;
+    global.navigator.clipboard = origClipboard as Clipboard;
   });
 
   it('renders empty state when no suggestions', () => {

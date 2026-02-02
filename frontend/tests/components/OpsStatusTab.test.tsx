@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { vi } from 'vitest';
 import React from 'react';
 import OpsStatusTab from '../../src/components/OpsStatusTab';
@@ -7,7 +7,7 @@ import OpsStatusTab from '../../src/components/OpsStatusTab';
 const mockOpsStatus = vi.fn();
 vi.mock('../../src/api', () => ({
   api: {
-    opsStatus: (...args: any[]) => mockOpsStatus(...args),
+    opsStatus: (...args: unknown[]) => mockOpsStatus(...args),
   },
 }));
 

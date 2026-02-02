@@ -38,7 +38,7 @@ const tileStyle = (state: TileState | undefined, size: 'sm' | 'md'): React.CSSPr
   border: '1px solid rgba(255,255,255,0.06)',
 });
 
-const formatValue = (v: any): string => {
+const formatValue = (v: unknown): string => {
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return v.toLocaleString();
   return v == null ? '—' : String(v);
