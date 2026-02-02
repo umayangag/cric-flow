@@ -109,7 +109,7 @@ precompute-asof:
 
 # Unified command: run both as-of/replay precompute and sequential features in one shot
 precompute-all:
-	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS)
+	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
 # Run unified command for all formats (order: TEST, ODI, T20I, T20)
 precompute-all-all-formats:
