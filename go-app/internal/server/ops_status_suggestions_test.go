@@ -35,24 +35,24 @@ func TestComputeSuggestions_Table(t *testing.T) {
 		}
 	}
 
- noSuggestions := func() assertion {
-        return func(t *testing.T, got []map[string]any) {
-            if len(got) != 0 {
-                t.Fatalf("expected no suggestions, got %v", got)
-            }
-        }
-    }
+	noSuggestions := func() assertion {
+		return func(t *testing.T, got []map[string]any) {
+			if len(got) != 0 {
+				t.Fatalf("expected no suggestions, got %v", got)
+			}
+		}
+	}
 
-    hasNone := func(substrs ...string) assertion {
-        return func(t *testing.T, got []map[string]any) {
-            s := stringifySuggestions(got)
-            for _, sub := range substrs {
-                if strings.Contains(s, sub) {
-                    t.Fatalf("unexpected substring %q present in %s", sub, s)
-                }
-            }
-        }
-    }
+	hasNone := func(substrs ...string) assertion {
+		return func(t *testing.T, got []map[string]any) {
+			s := stringifySuggestions(got)
+			for _, sub := range substrs {
+				if strings.Contains(s, sub) {
+					t.Fatalf("unexpected substring %q present in %s", sub, s)
+				}
+			}
+		}
+	}
 
 	tests := []struct {
 		name   string
@@ -158,8 +158,8 @@ func TestComputeSuggestions_Table(t *testing.T) {
 			},
 			assert: hasAll("Weather data missing", "weather-import"),
 		},
-  {
-            name: "all_ready_no_suggestions",
+		{
+			name: "all_ready_no_suggestions",
 			setup: setup{
 				db: map[string]any{"connected": true, "counts": map[string]any{"players": 10.0, "matches": 20.0}},
 				pre: map[string]any{
@@ -202,36 +202,36 @@ func TestComputeSuggestions_Table(t *testing.T) {
 					"ml_health": true,
 				}, fielding: map[string]any{"available": true, "rows": 100.0}, weather: map[string]any{"available": true, "rows": 200.0},
 			},
-            assert: noSuggestions(),
-        },
-        {
-            name: "no_fielding_or_weather_suggestions_when_counts_missing",
-            setup: setup{
-                db:       map[string]any{"connected": true}, // counts missing entirely
-                fielding: map[string]any{"available": false, "rows": 0.0},
-                weather:  map[string]any{"available": false, "rows": 0.0},
-                services: map[string]bool{"ml_health": true},
-            },
-            // Expect DB not ready suggestion, but no fielding/weather suggestions
-            assert: func(t *testing.T, got []map[string]any) {
-                hasAll("Database not ready")(t, got)
-                hasNone("Fielding data missing", "Weather data missing")(t, got)
-            },
-        },
-        {
-            name: "no_fielding_or_weather_when_counts_zero",
-            setup: setup{
-                db:       map[string]any{"connected": true, "counts": map[string]any{"players": 0.0, "matches": 10.0}},
-                fielding: map[string]any{"available": false, "rows": 0.0},
-                weather:  map[string]any{"available": false, "rows": 0.0},
-                services: map[string]bool{"ml_health": true},
-            },
-            assert: func(t *testing.T, got []map[string]any) {
-                hasAll("Database not ready")(t, got)
-                hasNone("Fielding data missing", "Weather data missing")(t, got)
-            },
-        },
-    }
+			assert: noSuggestions(),
+		},
+		{
+			name: "no_fielding_or_weather_suggestions_when_counts_missing",
+			setup: setup{
+				db:       map[string]any{"connected": true}, // counts missing entirely
+				fielding: map[string]any{"available": false, "rows": 0.0},
+				weather:  map[string]any{"available": false, "rows": 0.0},
+				services: map[string]bool{"ml_health": true},
+			},
+			// Expect DB not ready suggestion, but no fielding/weather suggestions
+			assert: func(t *testing.T, got []map[string]any) {
+				hasAll("Database not ready")(t, got)
+				hasNone("Fielding data missing", "Weather data missing")(t, got)
+			},
+		},
+		{
+			name: "no_fielding_or_weather_when_counts_zero",
+			setup: setup{
+				db:       map[string]any{"connected": true, "counts": map[string]any{"players": 0.0, "matches": 10.0}},
+				fielding: map[string]any{"available": false, "rows": 0.0},
+				weather:  map[string]any{"available": false, "rows": 0.0},
+				services: map[string]bool{"ml_health": true},
+			},
+			assert: func(t *testing.T, got []map[string]any) {
+				hasAll("Database not ready")(t, got)
+				hasNone("Fielding data missing", "Weather data missing")(t, got)
+			},
+		},
+	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

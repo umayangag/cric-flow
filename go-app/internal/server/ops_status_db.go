@@ -1,13 +1,13 @@
 package server
 
 import (
-    "context"
-    "fmt"
-    "errors"
-    "log/slog"
-    "os"
-    "path/filepath"
-    "strings"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -53,17 +53,17 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 		n   int64
 		sql string
 	)
- switch strings.ToLower(strings.TrimSpace(table)) {
- case "players":
-     // Schema table is singular: player
-     sql = "SELECT COUNT(*) FROM player"
- case "matches":
-     // Distinct matches are identified by match_details.match_id
-     sql = "SELECT COUNT(DISTINCT match_id) FROM match_details"
- default:
-     // Reject unknown table names to avoid SQL injection risks.
-     return 0, fmt.Errorf("unsupported table for count: %s", table)
- }
+	switch strings.ToLower(strings.TrimSpace(table)) {
+	case "players":
+		// Schema table is singular: player
+		sql = "SELECT COUNT(*) FROM player"
+	case "matches":
+		// Distinct matches are identified by match_details.match_id
+		sql = "SELECT COUNT(DISTINCT match_id) FROM match_details"
+	default:
+		// Reject unknown table names to avoid SQL injection risks.
+		return 0, fmt.Errorf("unsupported table for count: %s", table)
+	}
 	row := db.Pool.QueryRow(ctx, sql)
 	if err := row.Scan(&n); err != nil {
 		return 0, err
