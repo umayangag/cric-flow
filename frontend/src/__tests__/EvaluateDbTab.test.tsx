@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import React from "react";
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
-import EvaluateDbTab from "../components/EvaluateDbTab";
+import React from 'react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import EvaluateDbTab from '../components/EvaluateDbTab';
 
 // Mock the api module to use the new backtest endpoints
-vi.mock("../api", async () => {
+vi.mock('../api', async () => {
   return {
     api: {
       backtestSelect: vi.fn(),
@@ -14,34 +14,34 @@ vi.mock("../api", async () => {
   };
 });
 
-const { api } = await import("../api");
+const { api } = await import('../api');
 
-describe("EvaluateDbTab (Backtest flow)", () => {
+describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("happy path: loads candidates, selects a match, evaluates and renders player MAE", async () => {
+  it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
     // Arrange mocks
     (api.backtestSelect as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
           match_id: 111,
-          stable_id: "x",
-          date: "2024-10-30T14:00:00Z",
-          venue: "Wankhede",
-          season: "2024",
-          format: "T20",
-          team1: "IND",
-          team2: "AUS",
-          winner_team_code: "IND",
+          stable_id: 'x',
+          date: '2024-10-30T14:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
         },
       ],
     });
     (api.backtestEvaluate as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS", match_id: 111 },
-      match: { match_id: 111, date: "2024-10-30T14:00:00Z" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
+      match: { match_id: 111, date: '2024-10-30T14:00:00Z' },
       players: [
         {
           player_id: 1,
@@ -63,72 +63,64 @@ describe("EvaluateDbTab (Backtest flow)", () => {
 
     // Inputs exist
     fireEvent.change(screen.getByLabelText(/Format/i), {
-      target: { value: "T20" },
+      target: { value: 'T20' },
     });
     fireEvent.change(screen.getByLabelText(/Team 1/i), {
-      target: { value: "IND" },
+      target: { value: 'IND' },
     });
     fireEvent.change(screen.getByLabelText(/Team 2/i), {
-      target: { value: "AUS" },
+      target: { value: 'AUS' },
     });
 
     // Load candidates
-    fireEvent.click(
-      screen.getByRole("button", { name: /Load Played Matches/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
-    const radio = screen.getByRole("radio", { name: /Select/i });
+    const radio = screen.getByRole('radio', { name: /Select/i });
     fireEvent.click(radio);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Evaluate Selected Match/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Expect results
     await screen.findByText(/Evaluation complete/i);
-    const results = await screen.findByLabelText("results-section");
+    const results = await screen.findByLabelText('results-section');
     expect(within(results).getByText(/player_runs_mae/i)).toBeInTheDocument();
     // players table should show player ids
-    expect(within(results).getByText("1")).toBeInTheDocument();
-    expect(within(results).getByText("2")).toBeInTheDocument();
+    expect(within(results).getByText('1')).toBeInTheDocument();
+    expect(within(results).getByText('2')).toBeInTheDocument();
   });
 
-  it("shows error when backtestSelect fails", async () => {
-    (api.backtestSelect as any).mockRejectedValue(
-      new Error("HTTP 500 Internal Server Error"),
-    );
+  it('shows error when backtestSelect fails', async () => {
+    (api.backtestSelect as any).mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Load Played Matches/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
     await screen.findByText(/Error:/i);
   });
 
-  it("renders bowling metrics and match aggregates when present", async () => {
+  it('renders bowling metrics and match aggregates when present', async () => {
     // Arrange candidates
     (api.backtestSelect as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
           match_id: 222,
-          stable_id: "x2",
-          date: "2024-11-05T09:00:00Z",
-          venue: "Wankhede",
-          season: "2024",
-          format: "T20",
-          team1: "IND",
-          team2: "AUS",
-          winner_team_code: "IND",
+          stable_id: 'x2',
+          date: '2024-11-05T09:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
         },
       ],
     });
 
     // Arrange evaluate with wickets/economy and match_aggregates
     (api.backtestEvaluate as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS", match_id: 222 },
-      match: { match_id: 222, date: "2024-11-05T09:00:00Z" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
+      match: { match_id: 222, date: '2024-11-05T09:00:00Z' },
       players: [
         {
           player_id: 101,
@@ -148,9 +140,9 @@ describe("EvaluateDbTab (Backtest flow)", () => {
           runs: 160,
           wickets: 6,
           extras: 12,
-          winner_team_code: "IND",
+          winner_team_code: 'IND',
         },
-        actual: { runs: 150, wickets: 7, extras: 10, winner_team_code: "IND" },
+        actual: { runs: 150, wickets: 7, extras: 10, winner_team_code: 'IND' },
         errors: { runs_mae: 10, wickets_mae: 1, extras_mae: 2 },
       },
       metrics: {
@@ -167,25 +159,17 @@ describe("EvaluateDbTab (Backtest flow)", () => {
     render(<EvaluateDbTab />);
 
     // Load candidates
-    fireEvent.click(
-      screen.getByRole("button", { name: /Load Played Matches/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
-    fireEvent.click(screen.getByRole("radio", { name: /Select/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Evaluate Selected Match/i }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Assert metrics header shows bowling and match-level metrics
-    const results = await screen.findByLabelText("results-section");
-    expect(
-      within(results).getByText(/player_wickets_mae/i),
-    ).toBeInTheDocument();
-    expect(
-      within(results).getByText(/player_economy_mae/i),
-    ).toBeInTheDocument();
+    const results = await screen.findByLabelText('results-section');
+    expect(within(results).getByText(/player_wickets_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/player_economy_mae/i)).toBeInTheDocument();
     expect(within(results).getByText(/match_runs_mae/i)).toBeInTheDocument();
     expect(within(results).getByText(/match_wickets_mae/i)).toBeInTheDocument();
     expect(within(results).getByText(/match_extras_mae/i)).toBeInTheDocument();
@@ -200,7 +184,7 @@ describe("EvaluateDbTab (Backtest flow)", () => {
     expect(within(results).getByText(/Errors/i)).toBeInTheDocument();
 
     // Assert bowling columns appear in table
-    const table = within(results).getByRole("table");
+    const table = within(results).getByRole('table');
     expect(within(table).getByText(/Pred Wkts/i)).toBeInTheDocument();
     expect(within(table).getByText(/Actual Wkts/i)).toBeInTheDocument();
     expect(within(table).getByText(/Wkts Abs Err/i)).toBeInTheDocument();
@@ -209,29 +193,29 @@ describe("EvaluateDbTab (Backtest flow)", () => {
     expect(within(table).getByText(/Econ Abs Err/i)).toBeInTheDocument();
   });
 
-  it("renders fielding metrics (catches, run_outs) and summary metrics when present", async () => {
+  it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
     // Arrange candidates
     (api.backtestSelect as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
           match_id: 333,
-          stable_id: "x3",
-          date: "2024-11-06T09:00:00Z",
-          venue: "Wankhede",
-          season: "2024",
-          format: "T20",
-          team1: "IND",
-          team2: "AUS",
-          winner_team_code: "IND",
+          stable_id: 'x3',
+          date: '2024-11-06T09:00:00Z',
+          venue: 'Wankhede',
+          season: '2024',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: 'IND',
         },
       ],
     });
 
     // Arrange evaluate with fielding keys present
     (api.backtestEvaluate as any).mockResolvedValue({
-      filters: { format: "T20", team1: "IND", team2: "AUS", match_id: 333 },
-      match: { match_id: 333, date: "2024-11-06T09:00:00Z" },
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
+      match: { match_id: 333, date: '2024-11-06T09:00:00Z' },
       players: [
         {
           player_id: 201,
@@ -256,28 +240,20 @@ describe("EvaluateDbTab (Backtest flow)", () => {
     render(<EvaluateDbTab />);
 
     // Load candidates
-    fireEvent.click(
-      screen.getByRole("button", { name: /Load Played Matches/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
-    fireEvent.click(screen.getByRole("radio", { name: /Select/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Evaluate Selected Match/i }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Assert metrics header shows fielding metrics
-    const results = await screen.findByLabelText("results-section");
-    expect(
-      within(results).getByText(/player_catches_mae/i),
-    ).toBeInTheDocument();
-    expect(
-      within(results).getByText(/player_run_outs_mae/i),
-    ).toBeInTheDocument();
+    const results = await screen.findByLabelText('results-section');
+    expect(within(results).getByText(/player_catches_mae/i)).toBeInTheDocument();
+    expect(within(results).getByText(/player_run_outs_mae/i)).toBeInTheDocument();
 
     // Assert fielding columns appear in table
-    const table = within(results).getByRole("table");
+    const table = within(results).getByRole('table');
     expect(within(table).getByText(/Pred Catches/i)).toBeInTheDocument();
     expect(within(table).getByText(/Actual Catches/i)).toBeInTheDocument();
     expect(within(table).getByText(/Catches Abs Err/i)).toBeInTheDocument();
@@ -286,17 +262,15 @@ describe("EvaluateDbTab (Backtest flow)", () => {
     expect(within(table).getByText(/Run Outs Abs Err/i)).toBeInTheDocument();
   });
 
-  it("disable evaluate until a candidate match is selected", async () => {
+  it('disable evaluate until a candidate match is selected', async () => {
     (api.backtestSelect as any).mockResolvedValue({
       filters: {},
       candidates: [],
     });
     render(<EvaluateDbTab />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Load Played Matches/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
     await screen.findByText(/No candidates loaded yet/i);
-    const btn = screen.getByRole("button", {
+    const btn = screen.getByRole('button', {
       name: /Evaluate Selected Match/i,
     }) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);

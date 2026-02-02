@@ -38,13 +38,13 @@ fmt:
 	@# Prettier write
 	npx --no-install prettier . --write
 	@# ESLint auto-fix if configured
-	npx --no-install eslint . --fix --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --max-warnings=0 --quiet --no-error-on-unmatched-pattern || true
+	npx --no-install eslint . --fix --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --quiet --no-error-on-unmatched-pattern
 
 fmt-check:
 	@# Prettier check (non-zero exit on diffs)
 	npx --no-install prettier . --check
 	@# ESLint check-only if configured (fail on warnings)
-	npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --max-warnings=0 --no-error-on-unmatched-pattern
+	npx --no-install eslint . --ext .js,.jsx,.ts,.tsx --ignore-path .gitignore --report-unused-disable-directives --no-error-on-unmatched-pattern
 
 help:
 	@echo "\nFrontend — Make targets (grouped)"

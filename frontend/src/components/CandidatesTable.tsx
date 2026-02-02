@@ -1,5 +1,5 @@
-import React from "react";
-import type { BacktestCandidate } from "../types";
+import React from 'react';
+import type { BacktestCandidate } from '../types';
 
 type CandidatesTableProps = {
   candidates: BacktestCandidate[];
@@ -8,16 +8,16 @@ type CandidatesTableProps = {
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
-  emptyState: { color: "#666" },
+  emptyState: { color: '#666' },
   container: {
     maxHeight: 240,
-    overflow: "auto",
-    border: "1px solid #eee",
+    overflow: 'auto',
+    border: '1px solid #eee',
     padding: 8,
   },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "left", borderBottom: "1px solid #ddd", padding: 6 },
-  td: { borderBottom: "1px solid #f0f0f0", padding: 6 },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: { textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 },
+  td: { borderBottom: '1px solid #f0f0f0', padding: 6 },
 };
 
 const CandidatesTable: React.FC<CandidatesTableProps> = ({
@@ -43,14 +43,12 @@ const CandidatesTable: React.FC<CandidatesTableProps> = ({
         <tbody>
           {candidates.map((c) => (
             <tr key={c.match_id}>
-              <td style={styles.td}>
-                {new Date(c.date).toISOString().slice(0, 10)}
-              </td>
+              <td style={styles.td}>{new Date(c.date).toISOString().slice(0, 10)}</td>
               <td style={styles.td}>
                 {c.team1} vs {c.team2}
               </td>
-              <td style={styles.td}>{c.venue || "-"}</td>
-              <td style={styles.td}>{c.winner_team_code || "-"}</td>
+              <td style={styles.td}>{c.venue || '-'}</td>
+              <td style={styles.td}>{c.winner_team_code || '-'}</td>
               <td style={styles.td}>
                 <label>
                   <input

@@ -1,27 +1,26 @@
-import React, { useMemo, useState } from "react";
-import { api } from "../api";
-import type { BacktestCandidate, BacktestEvaluateResponse } from "../types";
-import CandidatesTable from "./CandidatesTable";
-import EvaluationResults from "./EvaluationResults";
+import React, { useMemo, useState } from 'react';
+import { api } from '../api';
+import type { BacktestCandidate, BacktestEvaluateResponse } from '../types';
+import CandidatesTable from './CandidatesTable';
+import EvaluationResults from './EvaluationResults';
 
-const formats = ["TEST", "ODI", "T20I", "T20"] as const;
+const formats = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 
 const EvaluateDbTab: React.FC = () => {
   // Inputs for new backtest flow
-  const [format, setFormat] = useState<string>("T20");
-  const [team1, setTeam1] = useState<string>("IND");
-  const [team2, setTeam2] = useState<string>("AUS");
+  const [format, setFormat] = useState<string>('T20');
+  const [team1, setTeam1] = useState<string>('IND');
+  const [team2, setTeam2] = useState<string>('AUS');
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
-  const [evaluationResult, setEvaluationResult] =
-    useState<BacktestEvaluateResponse | null>(null);
+  const [evaluationResult, setEvaluationResult] = useState<BacktestEvaluateResponse | null>(null);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -36,7 +35,7 @@ const EvaluateDbTab: React.FC = () => {
     setCandidates([]);
     setSelectedMatchId(null);
     setEvaluationResult(null);
-    setStatusMessage("");
+    setStatusMessage('');
     setError(null);
   };
 
@@ -45,7 +44,7 @@ const EvaluateDbTab: React.FC = () => {
       setLoading(true);
       setError(null);
       setEvaluationResult(null);
-      setStatusMessage("Loading played matches…");
+      setStatusMessage('Loading played matches…');
       const resp = await api.backtestSelect(format, team1.trim(), team2.trim());
       setCandidates(resp.candidates || []);
       setStatusMessage(
@@ -53,7 +52,7 @@ const EvaluateDbTab: React.FC = () => {
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
-      setStatusMessage("");
+      setStatusMessage('');
     } finally {
       setLoading(false);
     }
@@ -64,18 +63,13 @@ const EvaluateDbTab: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      setStatusMessage("Evaluating…");
-      const resp = await api.backtestEvaluate(
-        format,
-        team1.trim(),
-        team2.trim(),
-        selectedMatchId,
-      );
+      setStatusMessage('Evaluating…');
+      const resp = await api.backtestEvaluate(format, team1.trim(), team2.trim(), selectedMatchId);
       setEvaluationResult(resp);
-      setStatusMessage("Evaluation complete.");
+      setStatusMessage('Evaluation complete.');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
-      setStatusMessage("");
+      setStatusMessage('');
     } finally {
       setLoading(false);
     }
@@ -84,16 +78,16 @@ const EvaluateDbTab: React.FC = () => {
   return (
     <div>
       <p style={{ marginTop: 0 }}>
-        Evaluate historical matches by training strictly up to the match date,
-        predicting for actual players, and comparing predictions vs actuals.
+        Evaluate historical matches by training strictly up to the match date, predicting for actual
+        players, and comparing predictions vs actuals.
       </p>
 
       <div
         style={{
-          display: "flex",
+          display: 'flex',
           gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
+          alignItems: 'center',
+          flexWrap: 'wrap',
           marginBottom: 12,
         }}
       >
@@ -145,13 +139,11 @@ const EvaluateDbTab: React.FC = () => {
           {statusMessage}
         </div>
       )}
-      {error && (
-        <div style={{ marginBottom: 12, color: "red" }}>Error: {error}</div>
-      )}
+      {error && <div style={{ marginBottom: 12, color: 'red' }}>Error: {error}</div>}
 
       {/* Candidates */}
       <section aria-label="candidates-section" style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: "8px 0" }}>Candidates</h3>
+        <h3 style={{ margin: '8px 0' }}>Candidates</h3>
         <CandidatesTable
           candidates={candidates}
           selectedMatchId={selectedMatchId}
@@ -159,16 +151,16 @@ const EvaluateDbTab: React.FC = () => {
         />
         <div style={{ marginTop: 8 }}>
           <button onClick={handleEvaluateSelectedMatch} disabled={!canEvaluate}>
-            {loading ? "Evaluating…" : "Evaluate Selected Match"}
+            {loading ? 'Evaluating…' : 'Evaluate Selected Match'}
           </button>
         </div>
       </section>
 
       {/* Results */}
       <section aria-label="results-section">
-        <h3 style={{ margin: "8px 0" }}>Results</h3>
+        <h3 style={{ margin: '8px 0' }}>Results</h3>
         {!evaluationResult ? (
-          <div style={{ color: "#666" }}>
+          <div style={{ color: '#666' }}>
             Run an evaluation to see player-level errors and summary metrics.
           </div>
         ) : (
