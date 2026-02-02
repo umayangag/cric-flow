@@ -117,3 +117,34 @@ export type BacktestEvaluateResponse = {
     errors: Record<string, number>;
   };
 };
+
+// --- Ops Status (go-app API) DTO ---
+export type OpsStatusDTO = {
+  timestamp: string;
+  services?: {
+    api_health?: boolean;
+    api_readiness?: boolean;
+    ml_health?: boolean;
+  };
+  db?: unknown;
+  precompute?: {
+    formats?: Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
+  };
+  exports?: {
+    formats?: Record<string, { files?: Array<{ name?: string; exists?: boolean }> } | undefined>;
+  };
+  artifacts?: {
+    formats?:
+      | Record<
+          string,
+          | {
+              batting?: { exists?: boolean; loaded?: boolean };
+              bowling?: { exists?: boolean; loaded?: boolean };
+            }
+          | undefined
+        >
+      | undefined;
+  };
+  suggestions?: Array<{ reason: string; commands: string[] }>;
+  [key: string]: unknown;
+};

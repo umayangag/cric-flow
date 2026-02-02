@@ -1,15 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { api } from "../api";
-import type { HealthResponse } from "../types";
-import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
-import Button from "@mui/material/Button";
-import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Grid";
-import Divider from "@mui/material/Divider";
-import StatusPill from "./common/StatusPill";
-import JsonCollapse from "./common/JsonCollapse";
-import KeyValueList from "./common/KeyValueList";
+import React, { useEffect, useMemo, useState } from 'react';
+import { api } from '../api';
+import type { HealthResponse } from '../types';
+import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import Grid from '@mui/material/Grid';
+import Divider from '@mui/material/Divider';
+import StatusPill from './common/StatusPill';
+import JsonCollapse from './common/JsonCollapse';
+import KeyValueList from './common/KeyValueList';
 
 const HealthTab: React.FC = () => {
   const [mlData, setMlData] = useState<HealthResponse | null>(null);
@@ -35,14 +35,11 @@ const HealthTab: React.FC = () => {
         return res;
       });
 
-      const [apiResp, mlResp] = await Promise.allSettled([
-        apiPromise,
-        mlPromise,
-      ]);
-      if (apiResp.status === "fulfilled") setApiHealth(apiResp.value.status);
-      if (mlResp.status === "fulfilled") setMlData(mlResp.value);
-      if (apiResp.status === "rejected" && mlResp.status === "rejected") {
-        throw new Error("Both API and ML health checks failed");
+      const [apiResp, mlResp] = await Promise.allSettled([apiPromise, mlPromise]);
+      if (apiResp.status === 'fulfilled') setApiHealth(apiResp.value.status);
+      if (mlResp.status === 'fulfilled') setMlData(mlResp.value);
+      if (apiResp.status === 'rejected' && mlResp.status === 'rejected') {
+        throw new Error('Both API and ML health checks failed');
       }
       setLastChecked(new Date().toISOString());
     } catch (e: unknown) {
@@ -57,18 +54,18 @@ const HealthTab: React.FC = () => {
   }, []);
 
   const apiState = useMemo(() => {
-    if (!apiHealth) return "pending" as const;
-    return apiHealth.toLowerCase() === "ok" ? "ok" : "error";
+    if (!apiHealth) return 'pending' as const;
+    return apiHealth.toLowerCase() === 'ok' ? 'ok' : 'error';
   }, [apiHealth]);
 
   const mlState = useMemo(() => {
-    if (!mlData) return "pending" as const;
-    return mlData.status?.toLowerCase() === "ok" ? "ok" : "warn";
+    if (!mlData) return 'pending' as const;
+    return mlData.status?.toLowerCase() === 'ok' ? 'ok' : 'warn';
   }, [mlData]);
 
   const formatBytes = (n: number): string => {
-    if (!isFinite(n) || n <= 0) return "—";
-    const units = ["B", "KB", "MB", "GB", "TB"];
+    if (!isFinite(n) || n <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let v = n;
     while (v >= 1024 && i < units.length - 1) {
@@ -79,16 +76,16 @@ const HealthTab: React.FC = () => {
   };
 
   const lastCheckedLocal = useMemo(() => {
-    if (!lastChecked) return "";
+    if (!lastChecked) return '';
     const d = new Date(lastChecked);
-    return isNaN(d.getTime()) ? "" : d.toLocaleString();
+    return isNaN(d.getTime()) ? '' : d.toLocaleString();
   }, [lastChecked]);
 
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
         <Button variant="contained" onClick={load} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
+          {loading ? 'Refreshing…' : 'Refresh'}
         </Button>
         {error && (
           <Typography color="error" role="alert" aria-live="polite">
@@ -107,26 +104,21 @@ const HealthTab: React.FC = () => {
               <StatusPill
                 state={apiState}
                 label={
-                  apiState === "ok"
-                    ? "Healthy"
-                    : apiState === "pending"
-                      ? "Checking…"
-                      : "Unhealthy"
+                  apiState === 'ok' ? 'Healthy' : apiState === 'pending' ? 'Checking…' : 'Unhealthy'
                 }
               />
               <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                Endpoint:{" "}
-                {import.meta.env.VITE_API_URL || "http://localhost:8080"}/health
+                Endpoint: {import.meta.env.VITE_API_URL || 'http://localhost:8080'}/health
               </Typography>
             </Stack>
             <Divider sx={{ my: 1 }} />
             <KeyValueList
               items={[
                 {
-                  label: "Latency",
-                  value: latencyApiMs != null ? `${latencyApiMs} ms` : "—",
+                  label: 'Latency',
+                  value: latencyApiMs != null ? `${latencyApiMs} ms` : '—',
                 },
-                { label: "Last checked", value: lastCheckedLocal || "—" },
+                { label: 'Last checked', value: lastCheckedLocal || '—' },
               ]}
             />
           </Paper>
@@ -140,16 +132,11 @@ const HealthTab: React.FC = () => {
               <StatusPill
                 state={mlState}
                 label={
-                  mlState === "ok"
-                    ? "Healthy"
-                    : mlState === "pending"
-                      ? "Checking…"
-                      : "Issues"
+                  mlState === 'ok' ? 'Healthy' : mlState === 'pending' ? 'Checking…' : 'Issues'
                 }
               />
               <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                Endpoint:{" "}
-                {import.meta.env.VITE_ML_SERVICE_URL || "http://localhost:8000"}
+                Endpoint: {import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000'}
                 /health
               </Typography>
             </Stack>
@@ -157,34 +144,26 @@ const HealthTab: React.FC = () => {
             <KeyValueList
               items={[
                 {
-                  label: "Latency",
-                  value: latencyMlMs != null ? `${latencyMlMs} ms` : "—",
+                  label: 'Latency',
+                  value: latencyMlMs != null ? `${latencyMlMs} ms` : '—',
                 },
-                { label: "Last checked", value: lastCheckedLocal || "—" },
+                { label: 'Last checked', value: lastCheckedLocal || '—' },
                 {
-                  label: "Loaded batting",
-                  value: mlData?.loaded_batting_formats?.join(", ") || "—",
-                },
-                {
-                  label: "Loaded bowling",
-                  value: mlData?.loaded_bowling_formats?.join(", ") || "—",
-                },
-                { label: "Models dir", value: mlData?.models_dir || "—" },
-                {
-                  label: "Legacy batting",
-                  value: mlData
-                    ? mlData.legacy_batting_available
-                      ? "Yes"
-                      : "No"
-                    : "—",
+                  label: 'Loaded batting',
+                  value: mlData?.loaded_batting_formats?.join(', ') || '—',
                 },
                 {
-                  label: "Legacy bowling",
-                  value: mlData
-                    ? mlData.legacy_bowling_available
-                      ? "Yes"
-                      : "No"
-                    : "—",
+                  label: 'Loaded bowling',
+                  value: mlData?.loaded_bowling_formats?.join(', ') || '—',
+                },
+                { label: 'Models dir', value: mlData?.models_dir || '—' },
+                {
+                  label: 'Legacy batting',
+                  value: mlData ? (mlData.legacy_batting_available ? 'Yes' : 'No') : '—',
+                },
+                {
+                  label: 'Legacy bowling',
+                  value: mlData ? (mlData.legacy_bowling_available ? 'Yes' : 'No') : '—',
                 },
                 (() => {
                   const bat = mlData?.artifacts?.batting || [];
@@ -192,7 +171,7 @@ const HealthTab: React.FC = () => {
                   const batCount = Array.isArray(bat) ? bat.length : 0;
                   const bowlCount = Array.isArray(bowl) ? bowl.length : 0;
                   return {
-                    label: "Artifacts",
+                    label: 'Artifacts',
                     value: `batting: ${batCount}, bowling: ${bowlCount}`,
                   };
                 })(),
@@ -200,35 +179,40 @@ const HealthTab: React.FC = () => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
-                  ] as any[];
-                  const total = all.reduce(
-                    (acc, it) =>
-                      acc +
-                      (typeof it?.size_bytes === "number" ? it.size_bytes : 0),
-                    0,
-                  );
+                  ] as unknown[];
+                  const total = all.reduce((acc, it) => {
+                    if (it && typeof it === 'object') {
+                      const val = (it as Record<string, unknown>).size_bytes;
+                      const n = typeof val === 'number' ? val : 0;
+                      return acc + n;
+                    }
+                    return acc;
+                  }, 0);
                   return {
-                    label: "Total size",
-                    value: total > 0 ? formatBytes(total) : "—",
+                    label: 'Total size',
+                    value: total > 0 ? formatBytes(total) : '—',
                   };
                 })(),
                 (() => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
-                  ] as any[];
+                  ] as unknown[];
                   const latest = all
-                    .map((it) =>
-                      typeof it?.modified === "number" ? it.modified : NaN,
-                    )
-                    .filter((n) => isFinite(n)) as number[];
+                    .map((it) => {
+                      if (it && typeof it === 'object') {
+                        const val = (it as Record<string, unknown>).modified;
+                        return typeof val === 'number' ? val : NaN;
+                      }
+                      return NaN;
+                    })
+                    .filter((n): n is number => typeof n === 'number' && isFinite(n));
                   const max = latest.length ? Math.max(...latest) : NaN;
-                  if (!isFinite(max))
-                    return { label: "Latest modified", value: "—" };
+                  if (!isFinite(max)) return { label: 'Latest modified', value: '—' };
                   const d = new Date(max * 1000);
                   return {
-                    label: "Latest modified",
-                    value: isNaN(d.getTime()) ? "—" : d.toLocaleString(),
+                    label: 'Latest modified',
+                    value: isNaN(d.getTime()) ? '—' : d.toLocaleString(),
                   };
                 })(),
               ]}
@@ -238,10 +222,7 @@ const HealthTab: React.FC = () => {
       </Grid>
 
       {(mlData || apiHealth) && (
-        <JsonCollapse
-          data={{ api: apiHealth, ml: mlData }}
-          summary="Show raw JSON"
-        />
+        <JsonCollapse data={{ api: apiHealth, ml: mlData }} summary="Show raw JSON" />
       )}
     </Stack>
   );
