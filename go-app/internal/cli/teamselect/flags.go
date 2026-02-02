@@ -63,7 +63,12 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fromDB = getenvBool("TEAM_SELECT_FROM_DB", true)
 
 	fs.Int64Var(&matchID, "match", matchID, "match_id to build predictions for")
- fs.StringVar(&format, "format", format, "match format code (TEST, ODI, T20, T20I). Aliases: MDM→TEST, ODM→ODI, IT20→T20I")
+	fs.StringVar(
+		&format,
+		"format",
+		format,
+		"match format code (TEST, ODI, T20, T20I). Aliases: MDM→TEST, ODM→ODI, IT20→T20I",
+	)
 	fs.StringVar(&season, "season", season, "season name (e.g. 2019)")
 	fs.StringVar(&pool, "pool", pool, "path to prepared pool CSV")
 	fs.IntVar(&size, "size", size, "team size to select")

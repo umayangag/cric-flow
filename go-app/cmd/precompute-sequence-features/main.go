@@ -46,20 +46,8 @@ func run(args []string, out io.Writer) error {
 		}
 	}
 
-	// Build registry: register no-ops first, then override with real calculators where available
-	reg := seqcalc.NewRegistry(append(
-		seqcalc.NewNoopCalculators(),
-		seqcalc.NewBatTransitionsCalculator(),
-		seqcalc.NewBowlSequencesCalculator(),
-		seqcalc.NewPlayerWindowsCalculator(),
-		seqcalc.NewReactionCalculator(),
-		seqcalc.NewDotStreaksCalculator(),
-		seqcalc.NewDisciplineCalculator(),
-		seqcalc.NewWicketModesCalculator(),
-		seqcalc.NewSpellsCalculator(),
-		seqcalc.NewOverPosCalculator(),
-		seqcalc.NewEndPressureCalculator(),
-	)...)
+	// Build default registry via shared helper to avoid duplication between commands
+	reg := seqcalc.NewDefaultRegistry()
 	calcs, err := reg.ResolveTargets(*targets)
 	if err != nil {
 		return err
