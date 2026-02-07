@@ -1,8 +1,8 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BacktestResults } from '../../../src/components/BacktestResults';
-import type { BacktestEvaluateResponse } from '../../../src/api/types';
+import { BacktestResults } from './BacktestResults';
+import type { BacktestEvaluateResponse } from '../api/types';
 
 describe('BacktestResults component', () => {
   it('renders metrics, match aggregates, and players table', async () => {
