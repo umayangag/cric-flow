@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Suggestion, fetchOpsSuggestions } from '../api/client';
+import { api } from '../api';
+import { Suggestion } from '../types';
 
 const codeStyle: React.CSSProperties = {
   background: '#111',
@@ -21,7 +22,7 @@ const OpsSuggestions: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchOpsSuggestions('');
+      const data = await api.opsSuggestions();
       setSuggestions(data);
       setError(null);
     } catch (e) {

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Migration, fetchOpsMigrations } from '../api/client';
+import { api } from '../api';
+import { Migration } from '../types';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 
@@ -35,7 +36,7 @@ const OpsMigrationsTable: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchOpsMigrations('');
+      const data = await api.opsMigrations();
       setMigrations(data);
       setError(null);
     } catch (e) {

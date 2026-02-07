@@ -148,3 +148,21 @@ export type OpsStatusDTO = {
   suggestions?: Array<{ reason: string; commands: string[] }>;
   [key: string]: unknown;
 };
+
+export type Migration = {
+  id: number;
+  command: string;
+  args: unknown;
+  started_at: string;
+  completed_at?: string;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  metadata?: unknown;
+  error_message?: string;
+};
+
+export type Suggestion = {
+  title: string;
+  description: string;
+  command: string;
+  priority: string;
+};
