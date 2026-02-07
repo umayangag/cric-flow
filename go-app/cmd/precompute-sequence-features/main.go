@@ -69,7 +69,7 @@ func run(args []string, out io.Writer) error {
 		"as_of":   *asOfStr,
 	})
 	if tErr != nil {
-		fmt.Fprintf(os.Stderr, "tracking start failed: %v\n", tErr)
+		slog.Warn("tracking start failed", slog.Any("err", tErr))
 	}
 
 	if err := seqcalc.Run(ctx, calcs, params, false); err != nil {
