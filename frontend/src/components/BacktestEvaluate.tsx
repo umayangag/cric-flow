@@ -11,7 +11,6 @@ export type BacktestEvaluateProps = {
   onResult?: (res: BacktestEvaluateResponse) => void;
 };
 
-
 export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
   baseUrl = '',
   matchId,
