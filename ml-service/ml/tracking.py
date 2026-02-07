@@ -49,6 +49,7 @@ class Tracker:
             print(f"[Tracking] Started {self.command} (ID: {self.id})")
         except Exception as e:
             print(f"[Tracking] Failed to start: {e}")
+            raise
 
     def complete(self, metadata=None):
         if not self.id or not self.conn:
