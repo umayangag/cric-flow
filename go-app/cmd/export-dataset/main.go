@@ -60,12 +60,16 @@ func run() int {
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
 		if tracker != nil {
-			_ = tracker.Fail(ctx, runErr.Error())
+			if trackErr := tracker.Fail(ctx, runErr.Error()); trackErr != nil {
+				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
+			}
 		}
 		return 1
 	}
 	if tracker != nil {
-		_ = tracker.Complete(ctx, map[string]string{"dir": outDir})
+		if trackErr := tracker.Complete(ctx, map[string]string{"dir": outDir}); trackErr != nil {
+			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
+		}
 	}
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))

@@ -53,12 +53,16 @@ func run() int {
 	if err != nil {
 		slog.Error("cricsheet import failed", slog.Any("err", err))
 		if tracker != nil {
-			_ = tracker.Fail(ctx, err.Error())
+			if trackErr := tracker.Fail(ctx, err.Error()); trackErr != nil {
+				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
+			}
 		}
 		return 1
 	}
 	if tracker != nil {
-		_ = tracker.Complete(ctx, map[string]int{"files": n})
+		if trackErr := tracker.Complete(ctx, map[string]int{"files": n}); trackErr != nil {
+			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
+		}
 	}
 	slog.Info("cricsheet-importer finished", slog.Int("files", n))
 	return 0

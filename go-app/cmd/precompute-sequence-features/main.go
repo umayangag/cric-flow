@@ -75,12 +75,16 @@ func run(args []string, out io.Writer) error {
 
 	if err := seqcalc.Run(ctx, calcs, params, false); err != nil {
 		if tracker != nil {
-			_ = tracker.Fail(ctx, err.Error())
+			if trackErr := tracker.Fail(ctx, err.Error()); trackErr != nil {
+				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
+			}
 		}
 		return err
 	}
 	if tracker != nil {
-		_ = tracker.Complete(ctx, nil)
+		if trackErr := tracker.Complete(ctx, nil); trackErr != nil {
+			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
+		}
 	}
 	return nil
 }

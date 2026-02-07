@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Suggestion } from '../types';
 
@@ -19,7 +19,7 @@ const OpsSuggestions: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.opsSuggestions();
@@ -34,13 +34,13 @@ const OpsSuggestions: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
     const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [load]);
 
   const onCopy = async (idx: number, cmd: string) => {
     try {

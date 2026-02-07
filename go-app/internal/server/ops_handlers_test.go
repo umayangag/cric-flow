@@ -4,84 +4,109 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func TestGenerateSuggestions(t *testing.T) {
 	now := time.Now()
-	oneHourAgo := now.Add(-1 * time.Hour)
+	hourAgo := now.Add(-1 * time.Hour)
 	twoHoursAgo := now.Add(-2 * time.Hour)
 	threeHoursAgo := now.Add(-3 * time.Hour)
 
 	tests := []struct {
-		name       string
-		migrations []tracking.Migration
-		wantTitle  string
-		wantCount  int
+		name           string
+		migrations     []tracking.Migration
+		expectedTitles []string
 	}{
 		{
 			name:       "No migrations",
 			migrations: []tracking.Migration{},
-			wantTitle:  "Initialize Data",
-			wantCount:  1,
-		},
-		{
-			name: "Import only",
-			migrations: []tracking.Migration{
-				{
-					Command:   "cricsheet-import",
-					Status:    tracking.StatusCompleted,
-					StartedAt: oneHourAgo,
-				},
+			expectedTitles: []string{
+				"Initialize Data",
 			},
-			wantTitle: "Run Precompute",
-			wantCount: 1,
 		},
 		{
-			name: "Import and Precompute (Precompute older)",
+			name: "Import done, no precompute",
 			migrations: []tracking.Migration{
-				{
-					Command:   "cricsheet-import",
-					Status:    tracking.StatusCompleted,
-					StartedAt: oneHourAgo,
-				},
-				{
-					Command:   "precompute-features",
-					Status:    tracking.StatusCompleted,
-					StartedAt: twoHoursAgo,
-				},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
 			},
-			wantTitle: "Run Precompute",
-			wantCount: 2,
+			expectedTitles: []string{
+				"Run Precompute",
+			},
 		},
 		{
-			name: "Import and Precompute (Precompute newer)",
+			name: "Import done, precompute old",
 			migrations: []tracking.Migration{
-				{
-					Command:   "precompute-features",
-					Status:    tracking.StatusCompleted,
-					StartedAt: oneHourAgo,
-				},
-				{
-					Command:   "cricsheet-import",
-					Status:    tracking.StatusCompleted,
-					StartedAt: twoHoursAgo,
-				},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 			},
-			wantTitle: "Export Dataset",
-			wantCount: 1,
+			expectedTitles: []string{
+				"Run Precompute",
+			},
 		},
 		{
-			name: "Full Chain",
+			name: "Precompute done, export old",
+			migrations: []tracking.Migration{
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+			},
+			expectedTitles: []string{
+				"Export Dataset",
+			},
+		},
+		{
+			name: "Export done, train old",
+			migrations: []tracking.Migration{
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
+				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "train-bowling", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+			},
+			expectedTitles: []string{
+				"Train Batting Model",
+				"Train Bowling Model",
+			},
+		},
+		{
+			name: "Conflict: Import new, Precompute old, Export older",
+			migrations: []tracking.Migration{
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
+			},
+			// Current logic would suggest Precompute AND Export.
+			// Desired: Only Precompute.
+			expectedTitles: []string{
+				"Run Precompute",
+			},
+		},
+		{
+			name: "Conflict: Precompute new, Export old, Train older",
+			migrations: []tracking.Migration{
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
+			},
+			// Current logic would suggest Export AND Train.
+			// Desired: Only Export.
+			expectedTitles: []string{
+				"Export Dataset",
+			},
+		},
+		{
+			name: "Everything up to date",
 			migrations: []tracking.Migration{
 				{Command: "train-bowling", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: oneHourAgo},
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: threeHoursAgo},
 			},
-			wantTitle: "", // No suggestions expected
-			wantCount: 0,
+			expectedTitles: []string{},
 		},
 		{
 			name: "Failed Import (should be ignored)",
@@ -89,33 +114,24 @@ func TestGenerateSuggestions(t *testing.T) {
 				{
 					Command:   "cricsheet-import",
 					Status:    tracking.StatusFailed,
-					StartedAt: oneHourAgo,
+					StartedAt: hourAgo,
 				},
 			},
-			wantTitle: "",
-			wantCount: 0,
+			// Behaves like no migrations
+			expectedTitles: []string{
+				"Initialize Data",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			suggestions := GenerateSuggestions(tt.migrations)
-			if len(suggestions) != tt.wantCount {
-				t.Errorf("GenerateSuggestions() count = %v, want %v", len(suggestions), tt.wantCount)
-				return
+			titles := make([]string, 0, len(suggestions))
+			for _, s := range suggestions {
+				titles = append(titles, s.Title)
 			}
-			if tt.wantCount > 0 {
-				found := false
-				for _, s := range suggestions {
-					if s.Title == tt.wantTitle {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("GenerateSuggestions() expected title %v not found", tt.wantTitle)
-				}
-			}
+			assert.ElementsMatch(t, tt.expectedTitles, titles)
 		})
 	}
 }

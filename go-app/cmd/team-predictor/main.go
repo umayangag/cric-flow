@@ -47,12 +47,16 @@ func run() int {
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
 		if tracker != nil {
-			_ = tracker.Fail(ctx, runErr.Error())
+			if trackErr := tracker.Fail(ctx, runErr.Error()); trackErr != nil {
+				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
+			}
 		}
 		return 1
 	}
 	if tracker != nil {
-		_ = tracker.Complete(ctx, map[string]int{"players_count": len(resp.Players)})
+		if trackErr := tracker.Complete(ctx, map[string]int{"players_count": len(resp.Players)}); trackErr != nil {
+			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
+		}
 	}
 	// Render simple output (players, one per line)
 	for i, p := range resp.Players {

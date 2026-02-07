@@ -58,67 +58,60 @@ func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
 	lastTrainBatting := lastRuns["train-batting"]
 	lastTrainBowling := lastRuns["train-bowling"]
 
-	var suggestions []Suggestion
-
-	// Rule 1: Import -> Precompute
-	if lastImport != nil {
-		if lastPrecompute == nil || lastPrecompute.StartedAt.Before(lastImport.StartedAt) {
-			suggestions = append(suggestions, Suggestion{
-				Title:       "Run Precompute",
-				Description: "New data imported. Run precompute features to update feature store.",
-				Command:     "make precompute-asof",
-				Priority:    "HIGH",
-			})
-		}
-	}
-
-	// Rule 2: Precompute -> Export
-	if lastPrecompute != nil {
-		if lastExport == nil || lastExport.StartedAt.Before(lastPrecompute.StartedAt) {
-			suggestions = append(suggestions, Suggestion{
-				Title:       "Export Dataset",
-				Description: "Features updated. Export dataset for training.",
-				Command:     "make export-dataset",
-				Priority:    "MEDIUM",
-			})
-		}
-	}
-
-	// Rule 3: Export -> Train
-	if lastExport != nil {
-		// Batting
-		if lastTrainBatting == nil || lastTrainBatting.StartedAt.Before(lastExport.StartedAt) {
-			suggestions = append(suggestions, Suggestion{
-				Title:       "Train Batting Model",
-				Description: "New dataset exported. Train the batting model.",
-				Command:     "make train-batting",
-				Priority:    "MEDIUM",
-			})
-		}
-		// Bowling
-		if lastTrainBowling == nil || lastTrainBowling.StartedAt.Before(lastExport.StartedAt) {
-			suggestions = append(suggestions, Suggestion{
-				Title:       "Train Bowling Model",
-				Description: "New dataset exported. Train the bowling model.",
-				Command:     "make train-bowling",
-				Priority:    "MEDIUM",
-			})
-		}
-	}
-
-	// Fallback if nothing ran
-	if len(migrations) == 0 {
-		suggestions = append(suggestions, Suggestion{
+	// Rule 0: Initialize if no successful import found
+	if lastImport == nil {
+		return []Suggestion{{
 			Title:       "Initialize Data",
 			Description: "No migrations found. Start by importing data.",
 			Command:     "make cricsheet-import",
 			Priority:    "HIGH",
+		}}
+	}
+
+	// Rule 1: Import -> Precompute
+	if lastPrecompute == nil || lastPrecompute.StartedAt.Before(lastImport.StartedAt) {
+		return []Suggestion{{
+			Title:       "Run Precompute",
+			Description: "New data imported. Run precompute features to update feature store.",
+			Command:     "make precompute-asof",
+			Priority:    "HIGH",
+		}}
+	}
+
+	// Rule 2: Precompute -> Export
+	if lastExport == nil || lastExport.StartedAt.Before(lastPrecompute.StartedAt) {
+		return []Suggestion{{
+			Title:       "Export Dataset",
+			Description: "Features updated. Export dataset for training.",
+			Command:     "make export-dataset",
+			Priority:    "MEDIUM",
+		}}
+	}
+
+	// Rule 3: Export -> Train
+	var trainSuggestions []Suggestion
+	// Batting
+	if lastTrainBatting == nil || lastTrainBatting.StartedAt.Before(lastExport.StartedAt) {
+		trainSuggestions = append(trainSuggestions, Suggestion{
+			Title:       "Train Batting Model",
+			Description: "New dataset exported. Train the batting model.",
+			Command:     "make train-batting",
+			Priority:    "MEDIUM",
+		})
+	}
+	// Bowling
+	if lastTrainBowling == nil || lastTrainBowling.StartedAt.Before(lastExport.StartedAt) {
+		trainSuggestions = append(trainSuggestions, Suggestion{
+			Title:       "Train Bowling Model",
+			Description: "New dataset exported. Train the bowling model.",
+			Command:     "make train-bowling",
+			Priority:    "MEDIUM",
 		})
 	}
 
-	if suggestions == nil {
-		suggestions = []Suggestion{}
+	if len(trainSuggestions) > 0 {
+		return trainSuggestions
 	}
 
-	return suggestions
+	return []Suggestion{}
 }
