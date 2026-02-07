@@ -48,7 +48,7 @@ class Tracker:
             self.conn.commit()
             print(f"[Tracking] Started {self.command} (ID: {self.id})")
         except Exception as e:
-            print(f"[Tracking] Failed to start: {e}")
+            logging.error(f"[Tracking] Failed to start: {e}", exc_info=True)
             raise
 
     def complete(self, metadata=None):
