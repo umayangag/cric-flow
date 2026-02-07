@@ -3,6 +3,18 @@ import { api } from '../api';
 import { Migration } from '../types';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
+import {
+  TableContainer,
+  Table,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  TableCell,
+  CodeCell,
+  ErrorMessage,
+  ErrorText,
+  EmptyStateCell,
+} from './OpsMigrationsTable.styles';
 
 // Helper to format duration or time ago
 function formatTimeAgo(dateStr: string) {
@@ -68,50 +80,48 @@ const OpsMigrationsTable: React.FC = () => {
   }, [load]);
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
-  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
+  if (error) return <ErrorText>Error: {error}</ErrorText>;
 
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid #333', borderRadius: 4 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left' }}>
-        <thead style={{ background: '#222', color: '#ccc' }}>
+    <TableContainer>
+      <Table>
+        <TableHead>
           <tr>
-            <th style={{ padding: 8 }}>ID</th>
-            <th style={{ padding: 8 }}>Command</th>
-            <th style={{ padding: 8 }}>Status</th>
-            <th style={{ padding: 8 }}>Started</th>
-            <th style={{ padding: 8 }}>Duration</th>
-            <th style={{ padding: 8 }}>Details</th>
+            <TableHeaderCell>ID</TableHeaderCell>
+            <TableHeaderCell>Command</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
+            <TableHeaderCell>Started</TableHeaderCell>
+            <TableHeaderCell>Duration</TableHeaderCell>
+            <TableHeaderCell>Details</TableHeaderCell>
           </tr>
-        </thead>
+        </TableHead>
         <tbody>
           {migrations.map((m) => (
-            <tr key={m.id} style={{ borderTop: '1px solid #333' }}>
-              <td style={{ padding: 8 }}>{m.id}</td>
-              <td style={{ padding: 8, fontFamily: 'monospace' }}>{m.command}</td>
-              <td style={{ padding: 8 }}>
+            <TableRow key={m.id}>
+              <TableCell>{m.id}</TableCell>
+              <CodeCell>{m.command}</CodeCell>
+              <TableCell>
                 <StatusPill state={getPillState(m.status)} label={m.status} />
-              </td>
-              <td style={{ padding: 8 }}>{formatTimeAgo(m.started_at)}</td>
-              <td style={{ padding: 8 }}>{formatDuration(m.started_at, m.completed_at)}</td>
-              <td style={{ padding: 8 }}>
+              </TableCell>
+              <TableCell>{formatTimeAgo(m.started_at)}</TableCell>
+              <TableCell>{formatDuration(m.started_at, m.completed_at)}</TableCell>
+              <TableCell>
                 {m.error_message ? (
-                  <div style={{ color: 'red', maxWidth: 300 }}>{m.error_message}</div>
+                  <ErrorMessage>{m.error_message}</ErrorMessage>
                 ) : (
                   <JsonCollapse summary="Meta" data={{ args: m.args, meta: m.metadata }} />
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
           {migrations.length === 0 && (
             <tr>
-              <td colSpan={6} style={{ padding: 16, textAlign: 'center', color: '#666' }}>
-                No commands executed yet.
-              </td>
+              <EmptyStateCell colSpan={6}>No commands executed yet.</EmptyStateCell>
             </tr>
           )}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    </TableContainer>
   );
 };
 
