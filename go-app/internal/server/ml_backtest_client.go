@@ -61,6 +61,71 @@ type mlBacktestMatchAggResponse struct {
 	ModelVersion string             `json:"model_version,omitempty"`
 }
 
+// ---------------- Historical match backtest DTOs ----------------
+
+type mlHistoricalMatchFilters struct {
+	Format    string `json:"format"`
+	Team1     string `json:"team1"`
+	Team2     string `json:"team2"`
+	MatchDate string `json:"match_date"`
+}
+
+type mlHistoricalBacktestRequest struct {
+	Cutoff  string                    `json:"cutoff_date"`
+	MatchID *int64                    `json:"match_id,omitempty"`
+	Filters *mlHistoricalMatchFilters `json:"filters,omitempty"`
+}
+
+type mlBacktestPlayerPoint struct {
+	Runs    float64  `json:"runs"`
+	Wickets *float64 `json:"wickets,omitempty"`
+	Economy *float64 `json:"economy,omitempty"`
+}
+
+type mlBacktestPlayerComparison struct {
+	PlayerID        int64                 `json:"player_id"`
+	PlayerName      *string               `json:"player_name,omitempty"`
+	Predicted       mlBacktestPlayerPoint `json:"predicted"`
+	Actual          mlBacktestPlayerPoint `json:"actual"`
+	AbsErrorRuns    float64               `json:"abs_error_runs"`
+	AbsErrorWickets *float64              `json:"abs_error_wickets,omitempty"`
+}
+
+type mlBacktestMatchComparison struct {
+	Predicted mlBacktestMatchAgg `json:"predicted"`
+	Actual    mlBacktestMatchAgg `json:"actual"`
+}
+
+type mlBacktestMetrics struct {
+	MAERuns       float64  `json:"mae_runs"`
+	RMSERuns      float64  `json:"rmse_runs"`
+	MAEWickets    *float64 `json:"mae_wickets,omitempty"`
+	WinnerCorrect *bool    `json:"winner_correct,omitempty"`
+}
+
+type mlHistoricalBacktestResponse struct {
+	Players      []mlBacktestPlayerComparison `json:"players"`
+	Match        mlBacktestMatchComparison    `json:"match"`
+	Metrics      mlBacktestMetrics            `json:"metrics"`
+	ModelVersion string                       `json:"model_version"`
+}
+
+// HistoricalMatchFilters represents selector parameters for a historical match.
+type HistoricalMatchFilters struct {
+	Format    string
+	Team1     string
+	Team2     string
+	MatchDate time.Time
+}
+
+// HistoricalBacktestResult is a thin wrapper of the ML response for consumers.
+type HistoricalBacktestResult struct {
+	Players      []mlBacktestPlayerComparison
+	Match        mlBacktestMatchComparison
+	Metrics      mlBacktestMetrics
+	ModelVersion string
+}
+
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
@@ -146,4 +211,60 @@ func (c *BacktestMLClient) predictMatchAggregates(
 		Extras:         out.Match.Extras,
 		WinnerTeamCode: out.Match.WinnerTeamCode,
 	}, out.ModelVersion, nil
+}
+
+// historicalMatchBacktest calls the ML service to evaluate a specific, already-played match.
+// Exactly one of matchID or filters must be provided (the other must be nil/zero).
+func (c *BacktestMLClient) historicalMatchBacktest(
+	ctx context.Context,
+	cutoff time.Time,
+	matchID *int64,
+	filters *HistoricalMatchFilters,
+) (HistoricalBacktestResult, error) {
+	// Validate selector
+	hasID := matchID != nil && *matchID > 0
+	hasFilters := filters != nil && filters.Format != "" && filters.Team1 != "" && filters.Team2 != ""
+	if (hasID && hasFilters) || (!hasID && !hasFilters) {
+		return HistoricalBacktestResult{}, errors.New("provide exactly one of matchID or filters")
+	}
+	reqBody := mlHistoricalBacktestRequest{Cutoff: cutoff.Format(time.RFC3339)}
+	if hasID {
+		reqBody.MatchID = matchID
+	} else if hasFilters {
+		reqBody.Filters = &mlHistoricalMatchFilters{
+			Format:    filters.Format,
+			Team1:     filters.Team1,
+			Team2:     filters.Team2,
+			MatchDate: filters.MatchDate.Format(time.RFC3339),
+		}
+	}
+	payload, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.BaseURL+"/ml/backtest/match",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return HistoricalBacktestResult{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return HistoricalBacktestResult{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return HistoricalBacktestResult{}, fmt.Errorf("ml historical backtest http %d", resp.StatusCode)
+	}
+	var out mlHistoricalBacktestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return HistoricalBacktestResult{}, err
+	}
+	return HistoricalBacktestResult{
+		Players:      out.Players,
+		Match:        out.Match,
+		Metrics:      out.Metrics,
+		ModelVersion: out.ModelVersion,
+	}, nil
 }

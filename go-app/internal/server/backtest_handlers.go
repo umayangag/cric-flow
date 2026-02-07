@@ -211,6 +211,8 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	team2 := strings.TrimSpace(q.Get("team2"))
 	mode := strings.TrimSpace(q.Get("mode"))
 	matchID := strings.TrimSpace(q.Get("match_id"))
+	useML := strings.TrimSpace(q.Get("use_ml"))
+	cutoff := strings.TrimSpace(q.Get("cutoff"))
 
 	if format == "" || team1 == "" || team2 == "" {
 		writeJSON(
@@ -230,7 +232,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Evaluate mode
-	a.handleBacktestEvaluate(r.Context(), w, format, team1, team2, matchID)
+	a.handleBacktestEvaluate(r.Context(), w, format, team1, team2, matchID, useML, cutoff)
 }
 
 // handleBacktestSelect serves the select mode for the backtest endpoint.
@@ -268,7 +270,13 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 
 // handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
 // It requires a valid matchID and computes per-player results and summary metrics.
-func (a *App) handleBacktestEvaluate(ctx context.Context, w http.ResponseWriter, format, team1, team2, matchID string) {
+func (a *App) handleBacktestEvaluate(
+	ctx context.Context,
+	w http.ResponseWriter,
+	format, team1, team2, matchID string,
+	useMLFlag string,
+	cutoffStr string,
+) {
 	if matchID == "" {
 		writeJSON(
 			w,
@@ -280,6 +288,104 @@ func (a *App) handleBacktestEvaluate(ctx context.Context, w http.ResponseWriter,
 	mid, err := strconv.ParseInt(matchID, 10, 64)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
+		return
+	}
+
+	// Optional delegation to ML historical backtest endpoint if requested via query flag use_ml=1
+	if strings.EqualFold(strings.TrimSpace(useMLFlag), "1") {
+		// cutoffStr provided from handler
+		if cutoffStr == "" {
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				apiError{Code: "INVALID_PARAM", Message: "cutoff (RFC3339) is required when use_ml=1"},
+			)
+			return
+		}
+		cutoff, perr := time.Parse(time.RFC3339, cutoffStr)
+		if perr != nil {
+			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid cutoff timestamp"})
+			return
+		}
+		// Delegate to ML historical backtest
+		res, herr := mlHistoricalBacktestFunc(ctx, cutoff, &mid, nil)
+		if herr != nil {
+			respondErr(w, herr)
+			return
+		}
+		// Map ML response to backtestEvaluateResponse shape
+		out := backtestEvaluateResponse{
+			Filters: map[string]any{
+				"format":        format,
+				"team1":         team1,
+				"team2":         team2,
+				"match_id":      mid,
+				"delegated":     true,
+				"model_version": res.ModelVersion,
+			},
+		}
+		out.Match.MatchID = mid
+		out.Match.Date = cutoff.Format(time.RFC3339)
+		// Players
+		players := make([]BacktestPlayerResult, 0, len(res.Players))
+		for _, p := range res.Players {
+			pr := BacktestPlayerResult{PlayerID: p.PlayerID}
+			pr.Predicted = map[string]float64{"runs": p.Predicted.Runs}
+			pr.Actual = map[string]float64{"runs": p.Actual.Runs}
+			// optional fields
+			if p.Predicted.Wickets != nil {
+				pr.Predicted["wickets"] = *p.Predicted.Wickets
+			}
+			if p.Predicted.Economy != nil {
+				pr.Predicted["economy"] = *p.Predicted.Economy
+			}
+			if p.Actual.Wickets != nil {
+				pr.Actual["wickets"] = *p.Actual.Wickets
+			}
+			if p.Actual.Economy != nil {
+				pr.Actual["economy"] = *p.Actual.Economy
+			}
+			errs := map[string]float64{"runs_mae": p.AbsErrorRuns}
+			if p.AbsErrorWickets != nil {
+				errs["wickets_mae"] = *p.AbsErrorWickets
+			}
+			pr.Errors = errs
+			players = append(players, pr)
+		}
+		out.Players = players
+		// Match aggregates
+		out.MatchAggregates.Predicted = map[string]any{
+			"runs":             res.Match.Predicted.Runs,
+			"wickets":          res.Match.Predicted.Wickets,
+			"extras":           res.Match.Predicted.Extras,
+			"winner_team_code": res.Match.Predicted.WinnerTeamCode,
+		}
+		out.MatchAggregates.Actual = map[string]any{
+			"runs":             res.Match.Actual.Runs,
+			"wickets":          res.Match.Actual.Wickets,
+			"extras":           res.Match.Actual.Extras,
+			"winner_team_code": res.Match.Actual.WinnerTeamCode,
+		}
+		out.MatchAggregates.Errors = map[string]float64{
+			"runs_mae":    math.Abs(res.Match.Predicted.Runs - res.Match.Actual.Runs),
+			"wickets_mae": math.Abs(res.Match.Predicted.Wickets - res.Match.Actual.Wickets),
+			"extras_mae":  math.Abs(res.Match.Predicted.Extras - res.Match.Actual.Extras),
+		}
+		// Summary metrics
+		out.Metrics = map[string]float64{"player_runs_mae": res.Metrics.MAERuns}
+		// include RMSE if available (typo safeguard)
+		out.Metrics["player_runs_rmse"] = res.Metrics.RMSERuns
+		if res.Metrics.MAEWickets != nil {
+			out.Metrics["player_wickets_mae"] = *res.Metrics.MAEWickets
+		}
+		if res.Metrics.WinnerCorrect != nil {
+			if *res.Metrics.WinnerCorrect {
+				out.Metrics["winner_accuracy"] = 1
+			} else {
+				out.Metrics["winner_accuracy"] = 0
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
 
@@ -329,6 +435,10 @@ func (a *App) handleBacktestEvaluate(ctx context.Context, w http.ResponseWriter,
 
 	writeJSON(w, http.StatusOK, resp)
 }
+
+// rQueryValue fetches a query parameter from the current request stored in ResponseWriter via the Hijacker interface.
+// Since http.ResponseWriter doesn't provide direct access to the request, we instead rely on the handler closure capturing r.
+// For cleanliness, we implement a small helper at the top-level handler instead of using this function elsewhere.
 
 // backtestAccuracyTrendHandler handles GET /api/backtest/accuracy-trend
 // Optional filters: format, start_date, end_date, team1, team2, order, limit

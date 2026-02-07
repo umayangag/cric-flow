@@ -100,3 +100,75 @@ func TestBacktestMLClient_PredictMatchAggregates(t *testing.T) {
 		t.Fatalf("agg = %+v, want runs=160,wickets=6,extras=12,winner=IND", agg)
 	}
 }
+
+// Test HistoricalMatchBacktest with match_id selector and with filters selector, plus validation error.
+func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ml/backtest/match" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		// Echo a fixed response body matching the ml-service schema
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"players": []map[string]any{
+				{
+					"player_id":         101,
+					"predicted":         map[string]any{"runs": 20.0, "wickets": 1.0, "economy": 6.2},
+					"actual":            map[string]any{"runs": 18.0, "wickets": 0.0, "economy": 7.0},
+					"abs_error_runs":    2.0,
+					"abs_error_wickets": 1.0,
+				},
+			},
+			"match": map[string]any{
+				"predicted": map[string]any{
+					"runs": 160.0, "wickets": 6.0, "extras": 10.0, "winner_team_code": "IND",
+				},
+				"actual": map[string]any{
+					"runs": 155.0, "wickets": 7.0, "extras": 12.0, "winner_team_code": "IND",
+				},
+			},
+			"metrics": map[string]any{
+				"mae_runs":       2.0,
+				"rmse_runs":      2.0,
+				"winner_correct": true,
+			},
+			"model_version": "v-test",
+		})
+	}))
+	defer srv.Close()
+
+	t.Setenv("ML_SERVICE_URL", srv.URL)
+	c := NewBacktestMLClient()
+	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
+
+	// Case 1: by match_id
+	mid := int64(789)
+	res, err := c.historicalMatchBacktest(t.Context(), cutoff, &mid, nil)
+	if err != nil {
+		t.Fatalf("historicalMatchBacktest by id error: %v", err)
+	}
+	if res.ModelVersion != "v-test" {
+		t.Fatalf("ModelVersion = %q, want v-test", res.ModelVersion)
+	}
+	if len(res.Players) != 1 {
+		t.Fatalf("len(players)=%d, want 1", len(res.Players))
+	}
+	if res.Match.Predicted.WinnerTeamCode != "IND" || res.Metrics.MAERuns != 2 {
+		t.Fatalf("unexpected payload: match=%+v metrics=%+v", res.Match, res.Metrics)
+	}
+
+	// Case 2: by filters
+	filters := &HistoricalMatchFilters{Format: "T20", Team1: "IND", Team2: "AUS", MatchDate: cutoff}
+	res2, err := c.historicalMatchBacktest(t.Context(), cutoff, nil, filters)
+	if err != nil {
+		t.Fatalf("historicalMatchBacktest by filters error: %v", err)
+	}
+	if res2.Match.Actual.Wickets != 7 {
+		t.Fatalf("expected actual wickets=7, got %+v", res2.Match.Actual)
+	}
+
+	// Case 3: validation error when neither provided
+	_, err = c.historicalMatchBacktest(t.Context(), cutoff, nil, nil)
+	if err == nil {
+		t.Fatalf("expected error when neither matchID nor filters provided")
+	}
+}

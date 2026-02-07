@@ -109,6 +109,25 @@ Notes:
 
 ## Notes
 - Data ingestion now uses Cricsheet JSON files (no HTML scraping or external requests during import).
+
+## Historical Backtest UI (frontend)
+The repository includes a minimal React/Vite UI to backtest already‑played matches using only data available before a cutoff and to compare predictions vs actuals.
+
+- Start stack (API + ML):
+  - make dev-up
+  - or run components individually: `make api` (Go API) and `make ml-serve` (ML service)
+- Start the frontend dev server:
+  - make frontend-dev
+  - Opens on http://localhost:5173 (by default)
+- Usage flow in the UI:
+  1. Enter filters: format (e.g., T20), team1, team2, then Search to list already‑played matches.
+  2. Select a match from the results.
+  3. Provide a cutoff timestamp (RFC3339, e.g., 2024-10-30T14:00:00Z) and click Evaluate to delegate to the ML service.
+  4. Review per‑player comparisons, match aggregates (runs/wickets/extras/winner), summary metrics (player_runs_mae, winner_accuracy), and the ML `model_version` used.
+
+Notes:
+- The Go API delegates to the ML service when `use_ml=1&cutoff=<RFC3339>` is provided. Ensure `ML_SERVICE_URL` is set if the ML base URL differs from the default `http://localhost:8000`.
+- See `frontend/README.md` for component/file map and quick commands.
 - Unique constraints and upsert logic ensure idempotent persistence.
 - Optional placeholders can be inserted by the importer: weather rows per innings and zeroed fielding rows (see Makefile target `cricsheet-import` or API `/import/cricsheet`).
 - The ML service returns non-zero predictions only when trained artifacts are present.

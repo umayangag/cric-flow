@@ -19,6 +19,10 @@ from .artifacts import summary as artifacts_summary
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import predict_players_baseline as svc_predict_players_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
+from .backtest_service import (
+    DeterministicInMemoryRepo,
+    historical_backtest as svc_historical_backtest,
+)
 from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
@@ -26,6 +30,8 @@ from .models import (
     BacktestMatchResponse,
     BacktestPlayersResponse,
     BacktestPredictRequest,
+    HistoricalMatchBacktestRequest,
+    HistoricalMatchBacktestResponse,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
@@ -184,6 +190,19 @@ def backtest_predict(req: BacktestPredictRequest):
             hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
         ),
     )
+    
+
+@app.post("/ml/backtest/match")
+def historical_backtest_match(req: HistoricalMatchBacktestRequest):
+    """Historical backtest for a specific already-played match.
+
+    Trains/predicts strictly using data before cutoff_date and compares against actuals.
+    Currently uses a deterministic in-memory repo and simple baselines; swap in a DB-backed
+    repo and true models as they become available.
+    """
+    repo = DeterministicInMemoryRepo()
+    resp = svc_historical_backtest(req, repo, svc_resolve_model_version(getattr(app, "version", "")))
+    return JSONResponse(status_code=200, content=resp.model_dump())
 
 
 # Team win models are imported from app.models

@@ -151,3 +151,85 @@ class PlayerPrediction(BaseModel):
 class TeamWinResponse(BaseModel):
     players: List[PlayerPrediction]
     team_win_probability: float
+
+
+# -------------------- Historical match backtest models --------------------
+
+
+class HistoricalMatchFilter(BaseModel):
+    format: str
+    team1: str
+    team2: str
+    match_date: datetime
+
+    @field_validator("format", mode="before")
+    def _fmt_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return v.strip().upper()
+
+    @field_validator("team1", "team2", mode="before")
+    def _teams_norm(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return v.strip().upper()
+
+
+class HistoricalMatchBacktestRequest(BaseModel):
+    cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
+    match_id: Optional[int] = Field(default=None, description="Canonical match id")
+    filters: Optional[HistoricalMatchFilter] = Field(
+        default=None,
+        description="Alternative to match_id: {format, team1, team2, match_date}",
+    )
+
+    @field_validator("match_id")
+    def _match_id_pos(cls, v: Optional[int]):
+        if v is None:
+            return v
+        if v <= 0:
+            raise ValueError("match_id must be a positive integer")
+        return v
+
+    @field_validator("filters")
+    def _exactly_one_selector(cls, v, info):
+        data = info.data
+        mid = data.get("match_id")
+        # Exactly one of match_id or filters must be provided
+        if (mid is None and v is None) or (mid is not None and v is not None):
+            raise ValueError("provide exactly one of match_id or filters")
+        return v
+
+
+class PlayerPoint(BaseModel):
+    runs: float
+    wickets: Optional[float] = None
+    economy: Optional[float] = None
+
+
+class PlayerComparison(BaseModel):
+    player_id: int
+    player_name: Optional[str] = None
+    predicted: PlayerPoint
+    actual: PlayerPoint
+    abs_error_runs: float
+    abs_error_wickets: Optional[float] = None
+
+
+class MatchComparison(BaseModel):
+    predicted: BacktestMatchAgg
+    actual: BacktestMatchAgg
+
+
+class BacktestMetrics(BaseModel):
+    mae_runs: float
+    rmse_runs: float
+    mae_wickets: Optional[float] = None
+    winner_correct: Optional[bool] = None
+
+
+class HistoricalMatchBacktestResponse(BaseModel):
+    players: List[PlayerComparison]
+    match: MatchComparison
+    metrics: BacktestMetrics
+    model_version: str
