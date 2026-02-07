@@ -51,7 +51,9 @@ export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
         useML: true,
       });
       setResult(res);
-      onResult && onResult(res);
+      if (onResult) {
+        onResult(res);
+      }
     } catch (e: unknown) {
       const err = e as { message?: string } | undefined;
       setError(err?.message || 'Failed to evaluate');

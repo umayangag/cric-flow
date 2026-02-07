@@ -78,16 +78,15 @@ const OpsMigrationsTable: React.FC = () => {
               <td style={{ padding: 8, fontFamily: 'monospace' }}>{m.command}</td>
               <td style={{ padding: 8 }}>
                 <StatusPill
-                  status={
+                  state={
                     m.status === 'COMPLETED'
                       ? 'ok'
                       : m.status === 'IN_PROGRESS'
-                        ? 'working'
+                        ? 'pending'
                         : 'error'
                   }
-                >
-                  {m.status}
-                </StatusPill>
+                  label={m.status}
+                />
               </td>
               <td style={{ padding: 8 }}>{formatTimeAgo(m.started_at)}</td>
               <td style={{ padding: 8 }}>{formatDuration(m.started_at, m.completed_at)}</td>
@@ -95,7 +94,7 @@ const OpsMigrationsTable: React.FC = () => {
                 {m.error_message ? (
                   <div style={{ color: 'red', maxWidth: 300 }}>{m.error_message}</div>
                 ) : (
-                  <JsonCollapse label="Meta" data={{ args: m.args, meta: m.metadata }} />
+                  <JsonCollapse summary="Meta" data={{ args: m.args, meta: m.metadata }} />
                 )}
               </td>
             </tr>
