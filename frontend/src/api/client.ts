@@ -10,11 +10,11 @@ type EvaluateParams = {
   useML?: boolean; // default true
 };
 
-function toUpperTrim(s: string): string {
+export function toUpperTrim(s: string): string {
   return (s || '').trim().toUpperCase();
 }
 
-function isRFC3339(s: string): boolean {
+export function isRFC3339(s: string): boolean {
   // Basic RFC3339 check; accepts time zone Z or ±hh:mm
   // Example: 2024-10-30T14:00:00Z
   const re = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
