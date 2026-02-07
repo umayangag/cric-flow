@@ -108,6 +108,33 @@ brew install mockery
 #   go install github.com/vektra/mockery/v2@latest
 ```
 
+## Historical backtest via ML service (delegation)
+
+The backtest API can delegate evaluation of an already-played match to the ML service, which trains/predicts strictly using data available before a given cutoff and returns per-player and match-level comparisons.
+
+- Environment variable:
+  - `ML_SERVICE_URL` — Base URL of the ML service. Default: `http://localhost:8000`.
+
+- Endpoint (Go API):
+  - `GET /api/backtest/match?format=<FMT>&team1=<T1>&team2=<T2>&mode=evaluate&match_id=<ID>&use_ml=1&cutoff=<RFC3339>`
+  - Required query params for delegation: `use_ml=1` and `cutoff` (RFC3339 timestamp). `match_id` identifies the match to evaluate.
+
+- Example:
+```
+curl -s \
+  "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=789&use_ml=1&cutoff=2024-10-30T14:00:00Z"
+```
+
+Response includes:
+- `players`: per-player predicted vs actual with absolute errors.
+- `match_aggregates`: predicted/actual aggregates and MAE per stat.
+- `metrics`: summary metrics including `player_runs_mae`, `player_runs_rmse` (when available), and `winner_accuracy` when provided by ML.
+- `filters.model_version`: model/artifact version used by the ML service.
+
+Notes:
+- `cutoff` should be an RFC3339 timestamp; UTC (`...Z`) recommended.
+- If `use_ml` is omitted, the handler follows the non-delegated baseline path using local seams and DB (where implemented).
+
 - Tests import mocks from `internal/*/mocks` and configure behavior with `testify/mock`:
 ```
 ml := &mlclientmocks.Predictor{}

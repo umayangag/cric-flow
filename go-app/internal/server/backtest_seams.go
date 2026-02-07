@@ -44,6 +44,11 @@ var (
 	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
 		return matchAggregates{}, "", sql.ErrNoRows
 	}
+	// Historical backtest: delegate to ml-service `/ml/backtest/match`.
+	mlHistoricalBacktestFunc = func(ctx context.Context, cutoff time.Time, matchID *int64, filters *HistoricalMatchFilters) (HistoricalBacktestResult, error) {
+		client := NewBacktestMLClient()
+		return client.historicalMatchBacktest(ctx, cutoff, matchID, filters)
+	}
 )
 
 // dashboard accuracy-trend seams (overridable in tests)

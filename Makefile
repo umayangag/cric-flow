@@ -362,6 +362,9 @@ fmt-py:
 lint-py:
 	cd ml-service && make lint-check
 
+lint-frontend:
+	$(MAKE) -C frontend fmt-check
+
 install-hooks:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit

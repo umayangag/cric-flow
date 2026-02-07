@@ -180,7 +180,7 @@ const HealthTab: React.FC = () => {
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
                   ] as unknown[];
-                  const total = all.reduce((acc, it) => {
+                  const total: number = all.reduce<number>((acc, it) => {
                     if (it && typeof it === 'object') {
                       const val = (it as Record<string, unknown>).size_bytes;
                       const n = typeof val === 'number' ? val : 0;
@@ -190,7 +190,7 @@ const HealthTab: React.FC = () => {
                   }, 0);
                   return {
                     label: 'Total size',
-                    value: total > 0 ? formatBytes(total) : '—',
+                    value: total > 0 ? formatBytes(total as number) : '—',
                   };
                 })(),
                 (() => {
