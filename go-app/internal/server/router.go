@@ -40,6 +40,11 @@ func NewRouter(a *App) http.Handler {
 	// Ops status aggregator (observability)
 	r.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet)
 
+	// Ops Migrations
+	opsHandler := &OpsHandler{}
+	r.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet)
+	r.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet)
+
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
 

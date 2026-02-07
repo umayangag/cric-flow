@@ -15,6 +15,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }
@@ -46,9 +47,17 @@ func run() int {
 		return 1
 	}
 
+	tracker, tErr := tracking.Start(ctx, "precompute-features", opts)
+	if tErr != nil {
+		slog.Warn("tracking start failed", slog.Any("err", tErr))
+	}
+
 	formatID, err := db.GetMatchFormatIDByCode(ctx, opts.Format)
 	if err != nil {
 		slog.Error("resolve format failed", slog.String("format", opts.Format), slog.Any("err", err))
+		if tracker != nil {
+			_ = tracker.Fail(ctx, err.Error())
+		}
 		return 1
 	}
 
@@ -63,7 +72,13 @@ func run() int {
 	if opts.Replay {
 		if err := runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 			slog.Error("replay failed", slog.Any("err", err))
+			if tracker != nil {
+				_ = tracker.Fail(ctx, err.Error())
+			}
 			return 1
+		}
+		if tracker != nil {
+			_ = tracker.Complete(ctx, map[string]string{"type": "replay"})
 		}
 		return 0
 	}
@@ -79,12 +94,21 @@ func run() int {
 		asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
 		if parseErr != nil {
 			slog.Error("parse -as-of failed", slog.Any("err", parseErr))
+			if tracker != nil {
+				_ = tracker.Fail(ctx, parseErr.Error())
+			}
 			return 1
 		}
 	}
 	if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 		slog.Error("as-of run failed", slog.Any("err", err))
+		if tracker != nil {
+			_ = tracker.Fail(ctx, err.Error())
+		}
 		return 1
+	}
+	if tracker != nil {
+		_ = tracker.Complete(ctx, map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")})
 	}
 	return 0
 }

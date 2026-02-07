@@ -14,6 +14,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }
@@ -47,13 +48,24 @@ func run() int {
 		return 1
 	}
 
+	tracker, tErr := tracking.Start(ctx, "export-dataset", opts)
+	if tErr != nil {
+		slog.Warn("tracking start failed", slog.Any("err", tErr))
+	}
+
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
 	bat := exportsvc.NewBattingService(nil)
 	bow := exportsvc.NewBowlingService(nil)
 	runner := expcmd.NewRunnerWithServices(bat, bow)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
+		if tracker != nil {
+			_ = tracker.Fail(ctx, runErr.Error())
+		}
 		return 1
+	}
+	if tracker != nil {
+		_ = tracker.Complete(ctx, map[string]string{"dir": outDir})
 	}
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))

@@ -3,6 +3,7 @@ import { api } from '../api';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
+import OpsMigrationsTable from './OpsMigrationsTable';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -128,45 +129,6 @@ const OpsStatusTab: React.FC = () => {
     }
   }, [data]);
 
-  const filterSuggestions = useCallback(
-    (kind: 'db' | 'precompute' | 'exports' | 'artifacts' | 'fielding' | 'weather') => {
-      const all = Array.isArray(data?.suggestions) ? data!.suggestions : [];
-      const has = (text?: string) => (text || '').toLowerCase();
-      switch (kind) {
-        case 'db':
-          return all.filter(
-            (s) =>
-              has(s.reason).includes('database') ||
-              s.commands?.some((c) => c.includes('migrate') || c.includes('cricsheet')),
-          );
-        case 'precompute':
-          return all.filter(
-            (s) =>
-              has(s.reason).includes('precompute') ||
-              s.commands?.some((c) => c.includes('precompute')),
-          );
-        case 'exports':
-          return all.filter(
-            (s) =>
-              has(s.reason).includes('export') ||
-              s.commands?.some((c) => c.includes('export-dataset')),
-          );
-        case 'artifacts':
-          return all.filter(
-            (s) =>
-              has(s.reason).includes('artifact') || s.commands?.some((c) => c.includes('train-')),
-          );
-        case 'fielding':
-          return all.filter((s) => has(s.reason).includes('fielding'));
-        case 'weather':
-          return all.filter((s) => has(s.reason).includes('weather'));
-        default:
-          return all;
-      }
-    },
-    [data],
-  );
-
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -198,6 +160,11 @@ const OpsStatusTab: React.FC = () => {
 
       {data && (
         <Stack spacing={2}>
+          <OpsSuggestions />
+          <SectionCard title="Migration History">
+            <OpsMigrationsTable />
+          </SectionCard>
+
           <SectionCard title="Services">
             <SimpleStatTiles
               size="md"
@@ -281,7 +248,6 @@ const OpsStatusTab: React.FC = () => {
                   </strong>
                 </Typography>
                 <JsonCollapse data={data.db} summary="Show database details" />
-                <OpsSuggestions suggestions={filterSuggestions('db')} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -443,7 +409,6 @@ const OpsStatusTab: React.FC = () => {
                   })()}
                 />
                 <OpsMatrix type="precompute" title="Precompute" data={data.precompute ?? {}} />
-                <OpsSuggestions suggestions={filterSuggestions('precompute')} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -485,7 +450,6 @@ const OpsStatusTab: React.FC = () => {
                   })()}
                 />
                 <OpsMatrix type="exports" title="Exports" data={data.exports ?? {}} />
-                <OpsSuggestions suggestions={filterSuggestions('exports')} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -523,7 +487,6 @@ const OpsStatusTab: React.FC = () => {
                   })()}
                 />
                 <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts ?? {}} />
-                <OpsSuggestions suggestions={filterSuggestions('artifacts')} />
               </SectionCard>
             </Grid>
           </Grid>
@@ -559,7 +522,6 @@ const OpsStatusTab: React.FC = () => {
                   );
                 })()}
                 <JsonCollapse data={data.fielding} summary="Show fielding details" />
-                <OpsSuggestions suggestions={filterSuggestions('fielding')} />
               </SectionCard>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -592,7 +554,6 @@ const OpsStatusTab: React.FC = () => {
                   );
                 })()}
                 <JsonCollapse data={data.weather} summary="Show weather details" />
-                <OpsSuggestions suggestions={filterSuggestions('weather')} />
               </SectionCard>
             </Grid>
           </Grid>

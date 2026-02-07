@@ -93,3 +93,37 @@ export async function fetchBacktestEvaluate(
   }
   return (await res.json()) as BacktestEvaluateResponse;
 }
+
+export type Migration = {
+  id: number;
+  command: string;
+  args: unknown;
+  started_at: string;
+  completed_at?: string;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  metadata?: unknown;
+  error_message?: string;
+};
+
+export type Suggestion = {
+  title: string;
+  description: string;
+  command: string;
+  priority: string;
+};
+
+export async function fetchOpsMigrations(baseUrl: string): Promise<Migration[]> {
+  const res = await fetch((baseUrl || '') + '/ops/migrations');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]> {
+  const res = await fetch((baseUrl || '') + '/ops/suggestions');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}

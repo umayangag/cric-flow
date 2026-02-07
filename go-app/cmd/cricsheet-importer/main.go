@@ -11,6 +11,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }
@@ -37,6 +38,11 @@ func run() int {
 		return 1
 	}
 
+	tracker, tErr := tracking.Start(ctx, "cricsheet-import", copts)
+	if tErr != nil {
+		slog.Warn("tracking start failed", slog.Any("err", tErr))
+	}
+
 	// Map CLI options to legacy cricsheet.Options to preserve behavior
 	opts := &cricsheet.Options{
 		PlaceholdersWeather:  copts.PlaceholdersWeather,
@@ -46,7 +52,13 @@ func run() int {
 	n, err := cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if err != nil {
 		slog.Error("cricsheet import failed", slog.Any("err", err))
+		if tracker != nil {
+			_ = tracker.Fail(ctx, err.Error())
+		}
 		return 1
+	}
+	if tracker != nil {
+		_ = tracker.Complete(ctx, map[string]int{"files": n})
 	}
 	slog.Info("cricsheet-importer finished", slog.Int("files", n))
 	return 0

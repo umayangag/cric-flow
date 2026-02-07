@@ -31,5 +31,10 @@ export type BacktestEvaluateResponse = {
     errors: Partial<{ runs_mae: number; wickets_mae: number; extras_mae: number }>;
   };
   players: BacktestPlayerResult[];
-  metrics: Partial<{ player_runs_mae: number; player_runs_rmse: number; winner_accuracy: number; player_wickets_mae: number }>;
+  metrics: Partial<{
+    player_runs_mae: number;
+    player_runs_rmse: number;
+    winner_accuracy: number;
+    player_wickets_mae: number;
+  }>;
 };
