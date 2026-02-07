@@ -61,8 +61,9 @@ export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
       });
       setResult(res);
       onResult && onResult(res);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to evaluate');
+    } catch (e: unknown) {
+      const err = e as { message?: string } | undefined;
+      setError(err?.message || 'Failed to evaluate');
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,10 @@ export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
   const playerRunsMae = (result?.metrics || {})['player_runs_mae'];
   const predictedRuns = (result?.match_aggregates?.predicted || {})['runs'] as number | undefined;
   const actualRuns = (result?.match_aggregates?.actual || {})['runs'] as number | undefined;
-  const modelVersion = (result?.filters || ({} as any))['model_version'] as string | undefined;
+  const modelVersion = (() => {
+    const f = (result?.filters || {}) as Record<string, unknown>;
+    return typeof f['model_version'] === 'string' ? (f['model_version'] as string) : undefined;
+  })();
 
   return (
     <div>
@@ -99,7 +103,9 @@ export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
       {result && (
         <div style={{ marginTop: 16 }} aria-label="evaluation-summary">
           <div>Players: {Array.isArray(result.players) ? result.players.length : 0}</div>
-          {typeof playerRunsMae === 'number' && <div>player_runs_mae: {playerRunsMae.toFixed(3)}</div>}
+          {typeof playerRunsMae === 'number' && (
+            <div>player_runs_mae: {playerRunsMae.toFixed(3)}</div>
+          )}
           {typeof winnerAccuracy === 'number' && (
             <div>winner_accuracy: {winnerAccuracy.toFixed(3)}</div>
           )}

@@ -57,7 +57,22 @@ describe('api/client fetch helpers', () => {
   });
 
   it('fetchBacktestSelect fetches and parses JSON', async () => {
-    const payload = { filters: {}, candidates: [{ match_id: 1, stable_id: '', date: '', venue: '', season: '', format: 'T20', team1: 'IND', team2: 'AUS', winner_team_code: '' }] };
+    const payload = {
+      filters: {},
+      candidates: [
+        {
+          match_id: 1,
+          stable_id: '',
+          date: '',
+          venue: '',
+          season: '',
+          format: 'T20',
+          team1: 'IND',
+          team2: 'AUS',
+          winner_team_code: '',
+        },
+      ],
+    };
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
     // @ts-expect-error override global
     global.fetch = mockFetch;

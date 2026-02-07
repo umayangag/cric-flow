@@ -11,9 +11,12 @@ function num(v: unknown): string {
 
 export const BacktestResults: React.FC<BacktestResultsProps> = ({ result }) => {
   const players: BacktestPlayerResult[] = Array.isArray(result.players) ? result.players : [];
-  const ma = result.match_aggregates as any;
-  const metrics = (result.metrics || {}) as Record<string, number>;
-  const modelVersion = (result.filters as any)?.model_version as string | undefined;
+  const ma = result.match_aggregates;
+  const metrics: Record<string, number> = (result.metrics || {}) as Record<string, number>;
+  const modelVersion = (() => {
+    const f = (result.filters || {}) as Record<string, unknown>;
+    return typeof f['model_version'] === 'string' ? (f['model_version'] as string) : undefined;
+  })();
 
   return (
     <div>
@@ -34,24 +37,58 @@ export const BacktestResults: React.FC<BacktestResultsProps> = ({ result }) => {
           <h4>Match aggregates</h4>
           <div style={{ display: 'flex', gap: 24 }}>
             <div>
-              <div><strong>Predicted</strong></div>
-              <div>runs: {num(ma.predicted?.runs)}</div>
-              <div>wickets: {num(ma.predicted?.wickets)}</div>
-              <div>extras: {num(ma.predicted?.extras)}</div>
-              <div>winner_team_code: {String(ma.predicted?.winner_team_code ?? '')}</div>
+              <div>
+                <strong>Predicted</strong>
+              </div>
+              <div>
+                runs: {num((ma.predicted as Record<string, unknown> | undefined)?.['runs'])}
+              </div>
+              <div>
+                wickets: {num((ma.predicted as Record<string, unknown> | undefined)?.['wickets'])}
+              </div>
+              <div>
+                extras: {num((ma.predicted as Record<string, unknown> | undefined)?.['extras'])}
+              </div>
+              <div>
+                winner_team_code:{' '}
+                {String(
+                  (ma.predicted as Record<string, unknown> | undefined)?.['winner_team_code'] ?? '',
+                )}
+              </div>
             </div>
             <div>
-              <div><strong>Actual</strong></div>
-              <div>runs: {num(ma.actual?.runs)}</div>
-              <div>wickets: {num(ma.actual?.wickets)}</div>
-              <div>extras: {num(ma.actual?.extras)}</div>
-              <div>winner_team_code: {String(ma.actual?.winner_team_code ?? '')}</div>
+              <div>
+                <strong>Actual</strong>
+              </div>
+              <div>runs: {num((ma.actual as Record<string, unknown> | undefined)?.['runs'])}</div>
+              <div>
+                wickets: {num((ma.actual as Record<string, unknown> | undefined)?.['wickets'])}
+              </div>
+              <div>
+                extras: {num((ma.actual as Record<string, unknown> | undefined)?.['extras'])}
+              </div>
+              <div>
+                winner_team_code:{' '}
+                {String(
+                  (ma.actual as Record<string, unknown> | undefined)?.['winner_team_code'] ?? '',
+                )}
+              </div>
             </div>
             <div>
-              <div><strong>Errors (MAE)</strong></div>
-              <div>runs_mae: {num(ma.errors?.runs_mae)}</div>
-              <div>wickets_mae: {num(ma.errors?.wickets_mae)}</div>
-              <div>extras_mae: {num(ma.errors?.extras_mae)}</div>
+              <div>
+                <strong>Errors (MAE)</strong>
+              </div>
+              <div>
+                runs_mae: {num((ma.errors as Record<string, unknown> | undefined)?.['runs_mae'])}
+              </div>
+              <div>
+                wickets_mae:{' '}
+                {num((ma.errors as Record<string, unknown> | undefined)?.['wickets_mae'])}
+              </div>
+              <div>
+                extras_mae:{' '}
+                {num((ma.errors as Record<string, unknown> | undefined)?.['extras_mae'])}
+              </div>
             </div>
           </div>
         </section>

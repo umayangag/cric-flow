@@ -16,13 +16,13 @@ from . import settings as app_settings
 from .artifacts import BAT_MODELS, BOWL_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
+from .backtest_service import (
+    DeterministicInMemoryRepo,
+)
+from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import predict_players_baseline as svc_predict_players_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
-from .backtest_service import (
-    DeterministicInMemoryRepo,
-    historical_backtest as svc_historical_backtest,
-)
 from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
@@ -30,12 +30,11 @@ from .models import (
     BacktestMatchResponse,
     BacktestPlayersResponse,
     BacktestPredictRequest,
-    HistoricalMatchBacktestRequest,
-    HistoricalMatchBacktestResponse,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
     BowlingPrediction,
+    HistoricalMatchBacktestRequest,
     PlayerPrediction,
     TeamWinResponse,
 )
@@ -190,7 +189,7 @@ def backtest_predict(req: BacktestPredictRequest):
             hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
         ),
     )
-    
+
 
 @app.post("/ml/backtest/match")
 def historical_backtest_match(req: HistoricalMatchBacktestRequest):

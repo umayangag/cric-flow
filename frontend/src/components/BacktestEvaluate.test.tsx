@@ -1,16 +1,12 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BacktestEvaluate } from './BacktestEvaluate';
 
 // Mock API client evaluate helper
-vi.mock('../api/client', async (orig) => {
-  const actual: any = await (orig as any)();
-  return {
-    ...actual,
-    fetchBacktestEvaluate: vi.fn(),
-  };
-});
+vi.mock('../api/client', () => ({
+  fetchBacktestEvaluate: vi.fn(),
+}));
 
 import { fetchBacktestEvaluate } from '../api/client';
 
@@ -22,13 +18,7 @@ describe('BacktestEvaluate component', () => {
   it('validates RFC3339 cutoff and shows error when invalid', async () => {
     const onResult = vi.fn();
     render(
-      <BacktestEvaluate
-        matchId={789}
-        format="T20"
-        team1="IND"
-        team2="AUS"
-        onResult={onResult}
-      />,
+      <BacktestEvaluate matchId={789} format="T20" team1="IND" team2="AUS" onResult={onResult} />,
     );
     // Leave cutoff empty and click evaluate
     fireEvent.click(screen.getByLabelText('evaluate'));
@@ -38,7 +28,8 @@ describe('BacktestEvaluate component', () => {
 
   it('calls evaluate and renders summary on success', async () => {
     const onResult = vi.fn();
-    (fetchBacktestEvaluate as unknown as jest.MockedFunction<any>).mockResolvedValue({
+    const mockedFetch = fetchBacktestEvaluate as unknown as Mock;
+    mockedFetch.mockResolvedValue({
       filters: { delegated: true, model_version: 'v-test' },
       match: { match_id: 789, date: '2024-10-30T14:00:00Z' },
       match_aggregates: {
@@ -53,13 +44,7 @@ describe('BacktestEvaluate component', () => {
     });
 
     render(
-      <BacktestEvaluate
-        matchId={789}
-        format="T20"
-        team1="IND"
-        team2="AUS"
-        onResult={onResult}
-      />,
+      <BacktestEvaluate matchId={789} format="T20" team1="IND" team2="AUS" onResult={onResult} />,
     );
     const cutoff = screen.getByLabelText('cutoff');
     fireEvent.change(cutoff, { target: { value: '2024-10-30T14:00:00Z' } });

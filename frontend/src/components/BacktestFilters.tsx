@@ -33,10 +33,15 @@ export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', 
     }
     try {
       setLoading(true);
-      const res: BacktestSelectResponse = await fetchBacktestSelect(baseUrl, { format: f, team1: t1, team2: t2 });
+      const res: BacktestSelectResponse = await fetchBacktestSelect(baseUrl, {
+        format: f,
+        team1: t1,
+        team2: t2,
+      });
       setCandidates(res.candidates || []);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to fetch candidates');
+    } catch (e: unknown) {
+      const err = e as { message?: string } | undefined;
+      setError(err?.message || 'Failed to fetch candidates');
     } finally {
       setLoading(false);
     }
@@ -84,7 +89,10 @@ export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', 
       )}
       <div style={{ marginTop: 16 }}>
         {candidates.length > 0 ? (
-          <table aria-label="candidates-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <table
+            aria-label="candidates-table"
+            style={{ borderCollapse: 'collapse', width: '100%' }}
+          >
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>Match ID</th>

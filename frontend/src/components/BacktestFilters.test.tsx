@@ -1,16 +1,12 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BacktestFilters } from './BacktestFilters';
 
-// Mock API client
-vi.mock('../api/client', async (orig) => {
-  const actual: any = await (orig as any)();
-  return {
-    ...actual,
-    fetchBacktestSelect: vi.fn(),
-  };
-});
+// Mock API client (avoid any)
+vi.mock('../api/client', () => ({
+  fetchBacktestSelect: vi.fn(),
+}));
 
 import { fetchBacktestSelect } from '../api/client';
 
@@ -39,7 +35,8 @@ describe('BacktestFilters component', () => {
 
   it('fetches candidates and invokes onSelect on click', async () => {
     const onSelect = vi.fn();
-    (fetchBacktestSelect as unknown as jest.MockedFunction<any>).mockResolvedValue({
+    const mockedFetch = fetchBacktestSelect as unknown as Mock;
+    mockedFetch.mockResolvedValue({
       filters: {},
       candidates: [
         {

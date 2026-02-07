@@ -2,10 +2,11 @@ import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BacktestResults } from '../../../src/components/BacktestResults';
+import type { BacktestEvaluateResponse } from '../../../src/api/types';
 
 describe('BacktestResults component', () => {
   it('renders metrics, match aggregates, and players table', async () => {
-    const result = {
+    const result: BacktestEvaluateResponse = {
       filters: { delegated: true, model_version: 'v-test' },
       match: { match_id: 789, date: '2024-10-30T14:00:00Z' },
       match_aggregates: {
@@ -18,7 +19,7 @@ describe('BacktestResults component', () => {
         { player_id: 102, predicted: { runs: 0 }, actual: { runs: 5 }, errors: { runs_mae: 5 } },
       ],
       metrics: { player_runs_mae: 3.5, player_runs_rmse: 4.2, winner_accuracy: 1 },
-    } as any;
+    };
 
     render(<BacktestResults result={result} />);
 

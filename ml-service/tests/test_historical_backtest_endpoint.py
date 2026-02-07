@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-
 client = TestClient(app)
 
 
@@ -32,9 +31,7 @@ def test_historical_backtest_requires_exactly_one_selector():
 def test_historical_backtest_accepts_match_id_or_filters_and_returns_payload():
     cutoff = "2024-10-30T14:00:00Z"
     # match_id only -> returns payload
-    r1 = client.post(
-        "/ml/backtest/match", json={"cutoff_date": cutoff, "match_id": 789}
-    )
+    r1 = client.post("/ml/backtest/match", json={"cutoff_date": cutoff, "match_id": 789})
     assert r1.status_code == 200, r1.text
     body1 = r1.json()
     assert isinstance(body1, dict)

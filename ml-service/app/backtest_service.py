@@ -7,8 +7,8 @@ import numpy as np
 
 from .models import (
     BacktestMatchAgg,
-    BacktestPlayerPred,
     BacktestMetrics,
+    BacktestPlayerPred,
     HistoricalMatchBacktestRequest,
     HistoricalMatchBacktestResponse,
     MatchComparison,
@@ -95,9 +95,7 @@ class HistoricalDataRepo(Protocol):
     Concrete implementation should fetch from the project database. Tests can provide fakes.
     """
 
-    def resolve_match_id(
-        self, *, match_id: Optional[int], filters: Optional[Dict[str, object]]
-    ) -> int:
+    def resolve_match_id(self, *, match_id: Optional[int], filters: Optional[Dict[str, object]]) -> int:
         """Return the canonical match_id given either id or filters. Must raise on not found/ambiguous."""
 
     def get_playing_eleven(self, match_id: int) -> List[int]:
@@ -239,9 +237,7 @@ class DeterministicInMemoryRepo:
     def __init__(self) -> None:
         self._teams_by_match: Dict[int, Tuple[str, str]] = {}
 
-    def resolve_match_id(
-        self, *, match_id: Optional[int], filters: Optional[Dict[str, object]]
-    ) -> int:
+    def resolve_match_id(self, *, match_id: Optional[int], filters: Optional[Dict[str, object]]) -> int:
         if match_id is not None:
             # If teams known in mapping, keep; else synthesize later from id
             return int(match_id)
