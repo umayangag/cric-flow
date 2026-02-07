@@ -33,33 +33,32 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var suggestions []Suggestion
+	suggestions := GenerateSuggestions(migrations)
 
-	// Logic to derive suggestions
-	// Find last successful run of each type
-	var lastImport, lastPrecompute, lastExport, lastTrainBatting, lastTrainBowling *tracking.Migration
+	writeJSON(w, http.StatusOK, suggestions)
+}
 
+func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
+	lastRuns := make(map[string]*tracking.Migration)
 	for i := range migrations {
 		m := &migrations[i]
 		if m.Status != tracking.StatusCompleted {
 			continue
 		}
-		if m.Command == "cricsheet-import" && lastImport == nil {
-			lastImport = m
-		}
-		if m.Command == "precompute-features" && lastPrecompute == nil {
-			lastPrecompute = m
-		}
-		if m.Command == "export-dataset" && lastExport == nil {
-			lastExport = m
-		}
-		if m.Command == "train-batting" && lastTrainBatting == nil {
-			lastTrainBatting = m
-		}
-		if m.Command == "train-bowling" && lastTrainBowling == nil {
-			lastTrainBowling = m
+		// Only store the first completed migration found for each command,
+		// since the list is sorted by most recent.
+		if _, ok := lastRuns[m.Command]; !ok {
+			lastRuns[m.Command] = m
 		}
 	}
+
+	lastImport := lastRuns["cricsheet-import"]
+	lastPrecompute := lastRuns["precompute-features"]
+	lastExport := lastRuns["export-dataset"]
+	lastTrainBatting := lastRuns["train-batting"]
+	lastTrainBowling := lastRuns["train-bowling"]
+
+	var suggestions []Suggestion
 
 	// Rule 1: Import -> Precompute
 	if lastImport != nil {
@@ -121,5 +120,5 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 		suggestions = []Suggestion{}
 	}
 
-	writeJSON(w, http.StatusOK, suggestions)
+	return suggestions
 }

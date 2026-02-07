@@ -15,6 +15,7 @@ const codeStyle: React.CSSProperties = {
 const OpsSuggestions: React.FC = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const load = async () => {
@@ -22,8 +23,13 @@ const OpsSuggestions: React.FC = () => {
     try {
       const data = await fetchOpsSuggestions('');
       setSuggestions(data);
+      setError(null);
     } catch (e) {
-      console.error(e);
+      if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError(String(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -47,6 +53,7 @@ const OpsSuggestions: React.FC = () => {
   };
 
   if (loading && suggestions.length === 0) return <div>Loading suggestions...</div>;
+  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
 
   return (
     <section>

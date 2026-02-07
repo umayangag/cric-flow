@@ -53,4 +53,10 @@ describe('OpsSuggestions', () => {
       'make migrate && make cricsheet-import',
     );
   });
+
+  it('renders error message on API failure', async () => {
+    vi.mocked(fetchOpsSuggestions).mockRejectedValue(new Error('API Error'));
+    render(<OpsSuggestions />);
+    await waitFor(() => expect(screen.getByText('Error: API Error')).toBeInTheDocument());
+  });
 });
