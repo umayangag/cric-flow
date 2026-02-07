@@ -70,9 +70,7 @@ describe('api/client fetch helpers', () => {
         },
       ],
     };
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
     vi.stubGlobal('fetch', mockFetch);
     const res = await fetchBacktestSelect('', { format: 'T20', team1: 'IND', team2: 'AUS' });
     expect(res).toEqual(payload);
@@ -95,9 +93,7 @@ describe('api/client fetch helpers', () => {
       ],
       metrics: { player_runs_mae: 2 },
     };
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
     vi.stubGlobal('fetch', mockFetch);
     const res = await fetchBacktestEvaluate('', {
       format: 'T20',
