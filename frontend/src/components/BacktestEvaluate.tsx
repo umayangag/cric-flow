@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import type { BacktestEvaluateResponse } from '../api/types';
-import { fetchBacktestEvaluate } from '../api/client';
+import { fetchBacktestEvaluate, toUpperTrim, isRFC3339 } from '../api/client';
 
 export type BacktestEvaluateProps = {
   baseUrl?: string;
@@ -11,14 +11,6 @@ export type BacktestEvaluateProps = {
   onResult?: (res: BacktestEvaluateResponse) => void;
 };
 
-function toUpperTrim(s: string): string {
-  return (s || '').trim().toUpperCase();
-}
-
-function isRFC3339(s: string): boolean {
-  const re = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-  return re.test((s || '').trim());
-}
 
 export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
   baseUrl = '',
@@ -45,7 +37,7 @@ export const BacktestEvaluate: React.FC<BacktestEvaluateProps> = ({
       setError('format, team1, team2, and a valid matchId are required');
       return;
     }
-    if (!isRFC3339(cutoff)) {
+    if (!isRFC3339(cutoff.trim())) {
       setError('cutoff must be RFC3339, e.g., 2024-10-30T14:00:00Z');
       return;
     }

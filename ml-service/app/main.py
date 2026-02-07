@@ -200,7 +200,10 @@ def historical_backtest_match(req: HistoricalMatchBacktestRequest):
     repo and true models as they become available.
     """
     repo = DeterministicInMemoryRepo()
-    resp = svc_historical_backtest(req, repo, svc_resolve_model_version(getattr(app, "version", "")))
+    try:
+        resp = svc_historical_backtest(req, repo, svc_resolve_model_version(getattr(app, "version", "")))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return JSONResponse(status_code=200, content=resp.model_dump())
 
 

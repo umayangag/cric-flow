@@ -1,15 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import type { BacktestCandidate, BacktestSelectResponse } from '../api/types';
-import { fetchBacktestSelect } from '../api/client';
+import { fetchBacktestSelect, toUpperTrim } from '../api/client';
 
 export type BacktestFiltersProps = {
   baseUrl?: string;
   onSelect: (matchId: number, candidate: BacktestCandidate) => void;
 };
-
-function toUpperTrim(s: string): string {
-  return (s || '').trim().toUpperCase();
-}
 
 export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', onSelect }) => {
   const [format, setFormat] = useState('T20');

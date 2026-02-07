@@ -241,7 +241,8 @@ class DeterministicInMemoryRepo:
         if match_id is not None:
             # If teams known in mapping, keep; else synthesize later from id
             return int(match_id)
-        assert filters is not None
+        if filters is None:
+            raise ValueError("Must provide either match_id or filters")
         fmt = str(filters.get("format", "UNK")).upper()
         t1 = str(filters.get("team1", "T1")).upper()
         t2 = str(filters.get("team2", "T2")).upper()

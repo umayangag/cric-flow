@@ -261,6 +261,5 @@ func (c *BacktestMLClient) historicalMatchBacktest(
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return HistoricalBacktestResult{}, err
 	}
-	// Types are identical; prefer direct conversion per staticcheck S1016.
 	return HistoricalBacktestResult(out), nil
 }
