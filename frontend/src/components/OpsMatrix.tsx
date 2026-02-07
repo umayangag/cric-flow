@@ -51,7 +51,7 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {FORMATS.map((f) => {
-          const st = data?.formats?.[f]?.status as string | undefined;
+          const st = (data as PrecomputeData)?.formats?.[f]?.status as string | undefined;
           const color =
             st === 'ok'
               ? '#17431d'

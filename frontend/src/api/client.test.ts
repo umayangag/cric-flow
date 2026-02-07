@@ -6,10 +6,7 @@ import {
   fetchBacktestEvaluate,
 } from './client';
 
-declare global {
-  // eslint-disable-next-line no-var
-  var fetch: typeof fetch;
-}
+// Note: use vi.stubGlobal to mock fetch to avoid duplicate global declarations
 
 describe('api/client query builders', () => {
   it('buildSelectQuery builds select URL and uppercases params', () => {
@@ -73,9 +70,10 @@ describe('api/client fetch helpers', () => {
         },
       ],
     };
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
-    // @ts-expect-error override global
-    global.fetch = mockFetch;
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    vi.stubGlobal('fetch', mockFetch);
     const res = await fetchBacktestSelect('', { format: 'T20', team1: 'IND', team2: 'AUS' });
     expect(res).toEqual(payload);
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -97,9 +95,10 @@ describe('api/client fetch helpers', () => {
       ],
       metrics: { player_runs_mae: 2 },
     };
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
-    // @ts-expect-error override global
-    global.fetch = mockFetch;
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve(payload) });
+    vi.stubGlobal('fetch', mockFetch);
     const res = await fetchBacktestEvaluate('', {
       format: 'T20',
       team1: 'IND',

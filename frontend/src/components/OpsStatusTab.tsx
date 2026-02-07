@@ -240,18 +240,18 @@ const OpsStatusTab: React.FC = () => {
                       },
                       {
                         label: 'Players',
-                        value:
-                          typeof (counts as Record<string, unknown>).players === 'number'
-                            ? (counts as Record<string, unknown>).players
-                            : '—',
+                        value: (() => {
+                          const playersVal = (counts as Record<string, unknown>).players;
+                          return typeof playersVal === 'number' ? playersVal : '—';
+                        })(),
                         state: 'neutral',
                       },
                       {
                         label: 'Matches',
-                        value:
-                          typeof (counts as Record<string, unknown>).matches === 'number'
-                            ? (counts as Record<string, unknown>).matches
-                            : '—',
+                        value: (() => {
+                          const matchesVal = (counts as Record<string, unknown>).matches;
+                          return typeof matchesVal === 'number' ? matchesVal : '—';
+                        })(),
                         state: 'neutral',
                       },
                     ];
@@ -442,7 +442,7 @@ const OpsStatusTab: React.FC = () => {
                     ];
                   })()}
                 />
-                <OpsMatrix type="precompute" title="Precompute" data={data.precompute} />
+                <OpsMatrix type="precompute" title="Precompute" data={data.precompute ?? {}} />
                 <OpsSuggestions suggestions={filterSuggestions('precompute')} />
               </SectionCard>
             </Grid>
@@ -484,7 +484,7 @@ const OpsStatusTab: React.FC = () => {
                     ];
                   })()}
                 />
-                <OpsMatrix type="exports" title="Exports" data={data.exports} />
+                <OpsMatrix type="exports" title="Exports" data={data.exports ?? {}} />
                 <OpsSuggestions suggestions={filterSuggestions('exports')} />
               </SectionCard>
             </Grid>
@@ -522,7 +522,7 @@ const OpsStatusTab: React.FC = () => {
                     ];
                   })()}
                 />
-                <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts} />
+                <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts ?? {}} />
                 <OpsSuggestions suggestions={filterSuggestions('artifacts')} />
               </SectionCard>
             </Grid>
