@@ -28,6 +28,17 @@ function formatDuration(start: string, end?: string) {
   return `${min}m ${sec % 60}s`;
 }
 
+const getPillState = (status: Migration['status']): 'ok' | 'pending' | 'error' => {
+  switch (status) {
+    case 'COMPLETED':
+      return 'ok';
+    case 'IN_PROGRESS':
+      return 'pending';
+    default:
+      return 'error';
+  }
+};
+
 const OpsMigrationsTable: React.FC = () => {
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,16 +89,7 @@ const OpsMigrationsTable: React.FC = () => {
               <td style={{ padding: 8 }}>{m.id}</td>
               <td style={{ padding: 8, fontFamily: 'monospace' }}>{m.command}</td>
               <td style={{ padding: 8 }}>
-                <StatusPill
-                  state={
-                    m.status === 'COMPLETED'
-                      ? 'ok'
-                      : m.status === 'IN_PROGRESS'
-                        ? 'pending'
-                        : 'error'
-                  }
-                  label={m.status}
-                />
+                <StatusPill state={getPillState(m.status)} label={m.status} />
               </td>
               <td style={{ padding: 8 }}>{formatTimeAgo(m.started_at)}</td>
               <td style={{ padding: 8 }}>{formatDuration(m.started_at, m.completed_at)}</td>

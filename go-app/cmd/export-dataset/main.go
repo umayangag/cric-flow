@@ -59,18 +59,10 @@ func run() int {
 	runner := expcmd.NewRunnerWithServices(bat, bow)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
-		if tracker != nil {
-			if trackErr := tracker.Fail(ctx, runErr.Error()); trackErr != nil {
-				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-			}
-		}
+		tracker.TryFail(ctx, runErr.Error())
 		return 1
 	}
-	if tracker != nil {
-		if trackErr := tracker.Complete(ctx, map[string]string{"dir": outDir}); trackErr != nil {
-			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
-		}
-	}
+	tracker.TryComplete(ctx, map[string]string{"dir": outDir})
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
 	return 0

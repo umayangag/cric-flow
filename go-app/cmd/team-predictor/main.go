@@ -46,18 +46,10 @@ func run() int {
 	resp, runErr := runner.Run(ctx, opts)
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
-		if tracker != nil {
-			if trackErr := tracker.Fail(ctx, runErr.Error()); trackErr != nil {
-				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-			}
-		}
+		tracker.TryFail(ctx, runErr.Error())
 		return 1
 	}
-	if tracker != nil {
-		if trackErr := tracker.Complete(ctx, map[string]int{"players_count": len(resp.Players)}); trackErr != nil {
-			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
-		}
-	}
+	tracker.TryComplete(ctx, map[string]int{"players_count": len(resp.Players)})
 	// Render simple output (players, one per line)
 	for i, p := range resp.Players {
 		fmt.Printf("%d. %s\n", i+1, p)

@@ -55,11 +55,7 @@ func run() int {
 	formatID, err := db.GetMatchFormatIDByCode(ctx, opts.Format)
 	if err != nil {
 		slog.Error("resolve format failed", slog.String("format", opts.Format), slog.Any("err", err))
-		if tracker != nil {
-			if trackErr := tracker.Fail(ctx, err.Error()); trackErr != nil {
-				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-			}
-		}
+		tracker.TryFail(ctx, err.Error())
 		return 1
 	}
 
@@ -74,18 +70,10 @@ func run() int {
 	if opts.Replay {
 		if err := runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 			slog.Error("replay failed", slog.Any("err", err))
-			if tracker != nil {
-				if trackErr := tracker.Fail(ctx, err.Error()); trackErr != nil {
-					slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-				}
-			}
+			tracker.TryFail(ctx, err.Error())
 			return 1
 		}
-		if tracker != nil {
-			if trackErr := tracker.Complete(ctx, map[string]string{"type": "replay"}); trackErr != nil {
-				slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
-			}
-		}
+		tracker.TryComplete(ctx, map[string]string{"type": "replay"})
 		return 0
 	}
 
@@ -100,27 +88,15 @@ func run() int {
 		asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
 		if parseErr != nil {
 			slog.Error("parse -as-of failed", slog.Any("err", parseErr))
-			if tracker != nil {
-				if trackErr := tracker.Fail(ctx, parseErr.Error()); trackErr != nil {
-					slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-				}
-			}
+			tracker.TryFail(ctx, parseErr.Error())
 			return 1
 		}
 	}
 	if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
 		slog.Error("as-of run failed", slog.Any("err", err))
-		if tracker != nil {
-			if trackErr := tracker.Fail(ctx, err.Error()); trackErr != nil {
-				slog.Warn("failed to update tracking status to FAILED", slog.Any("err", trackErr))
-			}
-		}
+		tracker.TryFail(ctx, err.Error())
 		return 1
 	}
-	if tracker != nil {
-		if trackErr := tracker.Complete(ctx, map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")}); trackErr != nil {
-			slog.Warn("failed to update tracking status to COMPLETED", slog.Any("err", trackErr))
-		}
-	}
+	tracker.TryComplete(ctx, map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")})
 	return 0
 }

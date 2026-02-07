@@ -1,0 +1,60 @@
+import sys
+import os
+import unittest
+from unittest.mock import patch, MagicMock
+
+# Add ml-service root to path
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+# Mock psycopg2
+mock_psycopg2_module = MagicMock()
+sys.modules["psycopg2"] = mock_psycopg2_module
+
+# Import modules under test
+try:
+    from ml import db, tracking
+except ImportError as e:
+    print(f"Import failed: {e}")
+    db = None
+    tracking = None
+
+class TestDBConnection(unittest.TestCase):
+    def setUp(self):
+        # Reset the mock before each test
+        mock_psycopg2_module.reset_mock()
+        
+    def test_db_connection_no_defaults(self):
+        """Verify that db.get_db_connection does NOT use insecure defaults."""
+        if db is None:
+            self.fail("Could not import ml.db")
+            
+        with patch.dict(os.environ, {}, clear=True):
+            db.get_db_connection()
+            
+            # db.py imports psycopg2 at top level, so it uses the mock we injected
+            # We can check calls on the injected mock
+            call_kwargs = mock_psycopg2_module.connect.call_args[1]
+            
+            # Check for hardcoded defaults
+            self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
+            self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
+
+    def test_tracking_connection_fallback_no_defaults(self):
+        """Verify that tracking.get_connection fallback does NOT use insecure defaults."""
+        if tracking is None:
+            self.fail("Could not import ml.tracking")
+
+        # Force db to be None in tracking to test fallback path
+        with patch("ml.tracking.db", None):
+            with patch.dict(os.environ, {}, clear=True):
+                tracking.get_connection()
+                
+                # tracking.py imports psycopg2 inside function
+                # It will get our injected mock
+                call_kwargs = mock_psycopg2_module.connect.call_args[1]
+                
+                self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
+                self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
+
+if __name__ == "__main__":
+    unittest.main()
