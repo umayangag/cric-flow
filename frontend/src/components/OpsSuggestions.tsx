@@ -57,7 +57,7 @@ const OpsSuggestions: React.FC = () => {
         <div style={{ display: 'grid', gap: 12 }}>
           {suggestions.map((s, i) => (
             <div
-              key={i}
+              key={s.command || s.title}
               style={{
                 display: 'grid',
                 gap: 6,
