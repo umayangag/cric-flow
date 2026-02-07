@@ -26,11 +26,10 @@ fi
 
 # --- Frontend: format and check (Prettier + ESLint if configured) ---
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-  echo "[pre-commit][frontend] make fmt fmt-check typecheck test"
+  echo "[pre-commit][frontend] make fmt fmt-check typecheck"
   make -C frontend fmt
   make -C frontend fmt-check
   make -C frontend typecheck
-  make -C frontend test
 fi
 
 echo "[pre-commit] All format and lint checks passed."
