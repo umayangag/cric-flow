@@ -4,9 +4,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BacktestFilters } from './BacktestFilters';
 
 // Mock API client (avoid any)
-vi.mock('../api/client', () => ({
-  fetchBacktestSelect: vi.fn(),
-}));
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    fetchBacktestSelect: vi.fn(),
+  };
+});
 
 import { fetchBacktestSelect } from '../api/client';
 

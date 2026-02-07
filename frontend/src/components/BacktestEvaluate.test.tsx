@@ -4,9 +4,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BacktestEvaluate } from './BacktestEvaluate';
 
 // Mock API client evaluate helper
-vi.mock('../api/client', () => ({
-  fetchBacktestEvaluate: vi.fn(),
-}));
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    fetchBacktestEvaluate: vi.fn(),
+  };
+});
 
 import { fetchBacktestEvaluate } from '../api/client';
 
