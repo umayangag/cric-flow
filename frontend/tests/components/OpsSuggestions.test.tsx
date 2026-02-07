@@ -2,11 +2,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import React from 'react';
 import OpsSuggestions from '../../src/components/OpsSuggestions';
-import { fetchOpsSuggestions } from '../../src/api/client';
+import { api } from '../../src/api';
 
 // Mock the API client
-vi.mock('../../src/api/client', () => ({
-  fetchOpsSuggestions: vi.fn(),
+vi.mock('../../src/api', () => ({
+  api: {
+    opsSuggestions: vi.fn(),
+  },
 }));
 
 describe('OpsSuggestions', () => {
@@ -25,7 +27,7 @@ describe('OpsSuggestions', () => {
   });
 
   it('renders empty state when no suggestions', async () => {
-    vi.mocked(fetchOpsSuggestions).mockResolvedValue([]);
+    vi.mocked(api.opsSuggestions).mockResolvedValue([]);
     render(<OpsSuggestions />);
     // Wait for the effect to run and render "No suggestions"
     await waitFor(() => expect(screen.getByText(/No suggestions/i)).toBeInTheDocument());
@@ -40,7 +42,7 @@ describe('OpsSuggestions', () => {
         priority: 'HIGH',
       },
     ];
-    vi.mocked(fetchOpsSuggestions).mockResolvedValue(suggestions);
+    vi.mocked(api.opsSuggestions).mockResolvedValue(suggestions);
 
     render(<OpsSuggestions />);
 
@@ -55,7 +57,7 @@ describe('OpsSuggestions', () => {
   });
 
   it('renders error message on API failure', async () => {
-    vi.mocked(fetchOpsSuggestions).mockRejectedValue(new Error('API Error'));
+    vi.mocked(api.opsSuggestions).mockRejectedValue(new Error('API Error'));
     render(<OpsSuggestions />);
     await waitFor(() => expect(screen.getByText('Error: API Error')).toBeInTheDocument());
   });
