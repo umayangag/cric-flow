@@ -1,43 +1,41 @@
 package indexer
 
 import (
-	"bufio"
+	"bytes"
+	_ "embed"
+	"encoding/json"
+	"fmt"
 	"os"
-	"regexp"
+	"os/exec"
 )
 
-var (
-	pyClassRegex = regexp.MustCompile(`^\s*class\s+([a-zA-Z0-9_]+)`)
-	pyDefRegex   = regexp.MustCompile(`^\s*def\s+([a-zA-Z0-9_]+)`)
-)
+//go:embed parser_script.py
+var pythonParserScript string
 
-func ParsePy(path string) []Symbol {
-	file, err := os.Open(path)
+func ParsePy(path string) ([]Symbol, error) {
+	info, err := os.Lstat(path)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	defer file.Close()
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("symlinks are not supported: %s", path)
+	}
+
+	cmd := exec.Command("python3", "-", path)
+	cmd.Stdin = bytes.NewBufferString(pythonParserScript)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("python parse error: %v, stderr: %s", err, stderr.String())
+	}
 
 	var symbols []Symbol
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		if matches := pyClassRegex.FindStringSubmatch(line); matches != nil {
-			symbols = append(symbols, Symbol{
-				Name: matches[1],
-				Kind: "class",
-				Line: lineNum,
-			})
-		} else if matches := pyDefRegex.FindStringSubmatch(line); matches != nil {
-			symbols = append(symbols, Symbol{
-				Name: matches[1],
-				Kind: "function",
-				Line: lineNum,
-			})
-		}
+	if err := json.Unmarshal(out.Bytes(), &symbols); err != nil {
+		return nil, fmt.Errorf("failed to decode symbol json: %v", err)
 	}
-	return symbols
+
+	return symbols, nil
 }

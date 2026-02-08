@@ -22,7 +22,10 @@ func (s *MyStruct) Method() {}
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols := ParseGo(tmpFile)
+	symbols, err := ParseGo(tmpFile)
+	if err != nil {
+		t.Fatalf("ParseGo failed: %v", err)
+	}
 
 	expected := []struct {
 		Name string
@@ -62,14 +65,17 @@ def my_func():
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols := ParsePy(tmpFile)
+	symbols, err := ParsePy(tmpFile)
+	if err != nil {
+		t.Fatalf("ParsePy failed: %v", err)
+	}
 
 	expected := []struct {
 		Name string
 		Kind string
 	}{
 		{"MyClass", "class"},
-		{"method", "function"},
+		{"method", "method"},
 		{"my_func", "function"},
 	}
 
@@ -84,5 +90,92 @@ def my_func():
 		if sym.Kind != expected[i].Kind {
 			t.Errorf("Symbol %d: expected kind %s, got %s", i, expected[i].Kind, sym.Kind)
 		}
+	}
+}
+
+func TestParsePy_Symlink(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetFile := filepath.Join(tmpDir, "target.py")
+	if err := os.WriteFile(targetFile, []byte("def target(): pass"), 0644); err != nil {
+		t.Fatalf("Failed to write target file: %v", err)
+	}
+
+	symlinkPath := filepath.Join(tmpDir, "link.py")
+	if err := os.Symlink(targetFile, symlinkPath); err != nil {
+		t.Skipf("Symlinks not supported on this OS: %v", err)
+	}
+
+	_, err := ParsePy(symlinkPath)
+	if err == nil {
+		t.Error("Expected error for symlink, got nil")
+	}
+}
+
+func TestParsePy_Docstrings(t *testing.T) {
+	content := `
+class MyClass:
+    """Class docstring"""
+    def method(self):
+        """Method docstring"""
+        pass
+
+def my_func():
+    """Function docstring"""
+    pass
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test_doc.py")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+
+	symbols, err := ParsePy(tmpFile)
+	if err != nil {
+		t.Fatalf("ParsePy failed: %v", err)
+	}
+
+	expected := map[string]string{
+		"MyClass": "Class docstring",
+		"method":  "Method docstring",
+		"my_func": "Function docstring",
+	}
+
+	for _, sym := range symbols {
+		if want, ok := expected[sym.Name]; ok {
+			if sym.Doc != want {
+				t.Errorf("Symbol %s: expected doc %q, got %q", sym.Name, want, sym.Doc)
+			}
+		}
+	}
+}
+
+func TestParsePy_Multiline(t *testing.T) {
+	content := `
+def my_func(
+    arg1,
+    arg2
+):
+    pass
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test_multiline.py")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+
+	symbols, err := ParsePy(tmpFile)
+	if err != nil {
+		t.Fatalf("ParsePy failed: %v", err)
+	}
+
+	found := false
+	for _, sym := range symbols {
+		if sym.Name == "my_func" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Failed to find multiline function definition")
 	}
 }

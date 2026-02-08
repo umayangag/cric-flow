@@ -153,7 +153,11 @@ func handleRequest(req *Request) {
 			Result:  res,
 			Error:   err,
 		}
-		bytes, _ := json.Marshal(response)
+		bytes, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("Error: failed to marshal response for request %v: %v", req.ID, err)
+			return
+		}
 		fmt.Printf("%s\n", bytes)
 	}
 }
@@ -180,12 +184,8 @@ func handleToolCall(params json.RawMessage) (interface{}, *RPCError) {
 			},
 		}, nil
 	case "get_summary":
-		if lastContext == nil {
-			ctx, err := indexer.ScanProject(projectRoot)
-			if err != nil {
-				return nil, &RPCError{Code: 1, Message: err.Error()}
-			}
-			lastContext = ctx
+		if err := ensureContext(); err != nil {
+			return nil, err
 		}
 
 		// Return a summarized text
@@ -213,15 +213,14 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 	}
 
 	if read.URI == "context://summary" {
-		if lastContext == nil {
-			ctx, err := indexer.ScanProject(projectRoot)
-			if err != nil {
-				return nil, &RPCError{Code: 1, Message: err.Error()}
-			}
-			lastContext = ctx
+		if err := ensureContext(); err != nil {
+			return nil, err
 		}
 
-		bytes, _ := json.MarshalIndent(lastContext, "", "  ")
+		bytes, err := json.MarshalIndent(lastContext, "", "  ")
+		if err != nil {
+			return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("Internal error: failed to marshal context: %v", err)}
+		}
 		return map[string]interface{}{
 			"contents": []map[string]interface{}{
 				{
@@ -233,4 +232,15 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 		}, nil
 	}
 	return nil, &RPCError{Code: -32602, Message: "Invalid params"}
+}
+
+func ensureContext() *RPCError {
+	if lastContext == nil {
+		ctx, err := indexer.ScanProject(projectRoot)
+		if err != nil {
+			return &RPCError{Code: 1, Message: err.Error()}
+		}
+		lastContext = ctx
+	}
+	return nil
 }

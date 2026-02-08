@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 )
 
+const maxContentSize = 20 * 1024
+
 var ignoredDirs = map[string]bool{
 	".git":         true,
 	"node_modules": true,
@@ -77,7 +79,10 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 		}
 
 		fullPath := filepath.Join(currentPath, name)
-		relPath, _ := filepath.Rel(root, fullPath)
+		relPath, err := filepath.Rel(root, fullPath)
+		if err != nil {
+			return nil, err
+		}
 
 		node := FileNode{
 			Name: name,
@@ -101,9 +106,15 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			// Parsing Logic
 			ext := filepath.Ext(name)
 			if ext == ".go" {
-				node.Symbols = ParseGo(fullPath)
+				syms, err := ParseGo(fullPath)
+				if err == nil {
+					node.Symbols = syms
+				}
 			} else if ext == ".py" {
-				node.Symbols = ParsePy(fullPath)
+				syms, err := ParsePy(fullPath)
+				if err == nil {
+					node.Symbols = syms
+				}
 			}
 
 			// Content Logic (for config/docs)
@@ -111,8 +122,8 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 				content, err := os.ReadFile(fullPath)
 				if err == nil {
 					// Truncate if too large (e.g., > 20KB)
-					if len(content) > 20*1024 {
-						node.Content = string(content[:20*1024]) + "\n... (truncated)"
+					if len(content) > maxContentSize {
+						node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
 					} else {
 						node.Content = string(content)
 					}

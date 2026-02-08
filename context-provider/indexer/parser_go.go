@@ -1,16 +1,26 @@
 package indexer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 )
 
-func ParseGo(path string) []Symbol {
+func ParseGo(path string) ([]Symbol, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("symlinks not supported: %s", path)
+	}
+
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to parse file: %w", err)
 	}
 
 	var symbols []Symbol
@@ -48,5 +58,5 @@ func ParseGo(path string) []Symbol {
 			}
 		}
 	}
-	return symbols
+	return symbols, nil
 }
