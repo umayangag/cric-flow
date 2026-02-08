@@ -289,23 +289,23 @@ func sendResponse(w io.Writer, id *json.RawMessage, result interface{}, rpcErr *
 		Result:  result,
 		Error:   rpcErr,
 	}
-	bytes, err := json.Marshal(response)
-	if err != nil {
-		log.Printf("Error: failed to marshal response for request %v: %v", id, err)
-		// Attempt to send a valid JSON-RPC error response back to the client.
-		errResponse := Response{
-			JSONRPC: "2.0",
-			ID:      id,
-			Error: &RPCError{
-				Code:    -32603, // Internal error
-				Message: fmt.Sprintf("Internal error: failed to marshal response: %v", err),
-			},
-		}
-		errorBytes, _ := json.Marshal(errResponse)
-		fmt.Fprintf(w, "%s\n", errorBytes)
-		return
+responseBytes, err := json.Marshal(response)
+if err != nil {
+	log.Printf("Error: failed to marshal response for request %v: %v", id, err)
+	// Attempt to send a valid JSON-RPC error response back to the client.
+	errResponse := Response{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error: &RPCError{
+			Code:    -32603, // Internal error
+			Message: fmt.Sprintf("Internal error: failed to marshal response: %v", err),
+		},
 	}
-	fmt.Fprintf(w, "%s\n", bytes)
+	errorBytes, _ := json.Marshal(errResponse)
+	fmt.Fprintf(w, "%s\n", errorBytes)
+	return
+}
+fmt.Fprintf(w, "%s\n", responseBytes)
 }
 
 func findProjectRoot(wd string) string {
