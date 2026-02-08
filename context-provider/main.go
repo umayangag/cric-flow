@@ -44,10 +44,10 @@ func main() {
 	log.Println("Starting Context MCP Server...")
 
 	// Determine root
-wd, err := os.Getwd()
-if err != nil {
-    log.Fatalf("Failed to get current working directory: %v", err)
-}
+    wd, err := os.Getwd()
+    if err != nil {
+        log.Fatalf("Failed to get current working directory: %v", err)
+    }
 	// Assume we run from root, or parent is root if running inside module
 	// Logic: If we see go.work in current dir, it's root.
 	// If we see go.mod and parent has go.work, parent is root.
