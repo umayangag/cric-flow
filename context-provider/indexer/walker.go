@@ -75,7 +75,7 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if ignoredDirs[name] {
+		if ignoredDirs[name] || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 
