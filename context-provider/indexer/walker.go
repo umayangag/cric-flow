@@ -88,7 +88,15 @@ func ScanProject(root string) (*ProjectContext, error) {
 		Stats: Stats{},
 	}
 
-	nodes, err := walkDir(root, root, &ctx.Stats, ignoreMatcher)
+	// Initialize python parser
+	pyParser, err := NewPythonBatchParser()
+	if err != nil {
+		log.Printf("warn: failed to initialize python parser: %v (python files will not be indexed)", err)
+	} else {
+		defer pyParser.Close()
+	}
+
+	nodes, err := walkDir(root, root, &ctx.Stats, ignoreMatcher, pyParser)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +104,7 @@ func ScanProject(root string) (*ProjectContext, error) {
 	return ctx, nil
 }
 
-func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]FileNode, error) {
+func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher, pyParser *PythonBatchParser) ([]FileNode, error) {
 	entries, err := os.ReadDir(currentPath)
 	if err != nil {
 		if currentPath == root {
@@ -136,7 +144,7 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 			log.Printf("Scanning directory: %s", relPath)
 
 			stats.increment(fullPath, true)
-			children, err := walkDir(root, fullPath, stats, matcher)
+			children, err := walkDir(root, fullPath, stats, matcher, pyParser)
 			if err != nil {
 				return nil, err
 			}
@@ -157,11 +165,13 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 					node.Symbols = syms
 				}
 			case ".py":
-				syms, err := ParsePy(fullPath)
-				if err != nil {
-					log.Printf("warn: failed to parse Python file %s: %v", relPath, err)
-				} else {
-					node.Symbols = syms
+				if pyParser != nil {
+					syms, err := pyParser.Parse(fullPath)
+					if err != nil {
+						log.Printf("warn: failed to parse Python file %s: %v", relPath, err)
+					} else {
+						node.Symbols = syms
+					}
 				}
 			}
 
@@ -176,13 +186,14 @@ if err != nil {
     // Read maxContentSize + 1 to detect truncation necessity
     limitReader := io.LimitReader(f, int64(maxContentSize)+1)
     content, err := io.ReadAll(limitReader)
-    if err != nil {
-        log.Printf("warn: could not read content of %s: %v", relPath, err)
-    } else if len(content) > maxContentSize {
-        node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
-    } else {
-        node.Content = string(content)
-    }
+				switch {
+				case err != nil:
+					log.Printf("warn: could not read content of %s: %v", relPath, err)
+				case len(content) > maxContentSize:
+					node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
+				default:
+					node.Content = string(content)
+				}
 }
 			}
 			nodes = append(nodes, node)

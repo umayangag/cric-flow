@@ -10,6 +10,15 @@ import (
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
+func parsePyHelper(_ *testing.T, path string) ([]indexer.Symbol, error) {
+	p, err := indexer.NewPythonBatchParser()
+	if err != nil {
+		return nil, err
+	}
+	defer p.Close()
+	return p.Parse(path)
+}
+
 func TestParseGo(t *testing.T) {
 	content := `package main
 
@@ -59,7 +68,7 @@ def my_func():
 	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err, "Failed to write temp file")
 
-	symbols, err := indexer.ParsePy(tmpFile)
+	symbols, err := parsePyHelper(t, tmpFile)
 	require.NoError(t, err, "ParsePy failed")
 
 	expected := []struct {
@@ -90,7 +99,7 @@ func TestParsePy_Symlink(t *testing.T) {
 		t.Skipf("Symlinks not supported on this OS: %v", err)
 	}
 
-	_, err = indexer.ParsePy(symlinkPath)
+	_, err = parsePyHelper(t, symlinkPath)
 	assert.Error(t, err, "Expected error for symlink")
 }
 
@@ -111,7 +120,7 @@ def my_func():
 	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err, "Failed to write temp file")
 
-	symbols, err := indexer.ParsePy(tmpFile)
+	symbols, err := parsePyHelper(t, tmpFile)
 	require.NoError(t, err, "ParsePy failed")
 
 	expected := map[string]string{
@@ -140,7 +149,7 @@ def my_func(
 	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err, "Failed to write temp file")
 
-	symbols, err := indexer.ParsePy(tmpFile)
+	symbols, err := parsePyHelper(t, tmpFile)
 	require.NoError(t, err, "ParsePy failed")
 
 	found := false

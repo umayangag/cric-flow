@@ -41,7 +41,7 @@ func TestLargeFileProtection(t *testing.T) {
 	err = os.WriteFile(largePyFile, []byte(pyContent), 0o600)
 	require.NoError(t, err)
 
-	_, err = indexer.ParsePy(largePyFile)
+	_, err = parsePyHelper(t, largePyFile)
 	assert.Error(t, err, "ParsePy should have failed for file larger than limit")
 
 	// 3. Test Small File (Should pass)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
@@ -35,6 +36,7 @@ type RPCError struct {
 type Server struct {
 	ProjectRoot string
 	LastContext *indexer.ProjectContext
+	mu          sync.RWMutex
 }
 
 func NewServer(root string) *Server {
@@ -44,6 +46,9 @@ func NewServer(root string) *Server {
 }
 
 func (s *Server) LoadContext() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Initialize context (Load from disk or Scan)
 	if ctx, err := indexer.LoadContext(s.ProjectRoot); err == nil {
 		s.LastContext = ctx
@@ -154,7 +159,10 @@ func (s *Server) handleToolCall(params json.RawMessage) (interface{}, *RPCError)
 		if err != nil {
 			return nil, &RPCError{Code: 1, Message: err.Error()}
 		}
+		s.mu.Lock()
 		s.LastContext = ctx
+		s.mu.Unlock()
+
 		if err := indexer.SaveContext(s.ProjectRoot, ctx); err != nil {
 			log.Printf("Failed to save refreshed context: %v", err)
 			// We don't fail the RPC, but we warn
@@ -177,13 +185,17 @@ func (s *Server) handleToolCall(params json.RawMessage) (interface{}, *RPCError)
 			return nil, err
 		}
 
+		s.mu.RLock()
+		ctx := s.LastContext
+		s.mu.RUnlock()
+
 		// Return a summarized text
 		var textBuilder strings.Builder
 		fmt.Fprintf(&textBuilder, "Project Root: %s\nStats: %+v\nStructure (Top Level):\n",
-			s.LastContext.Root,
-			s.LastContext.Stats,
+			ctx.Root,
+			ctx.Stats,
 		)
-		for _, node := range s.LastContext.Structure {
+		for _, node := range ctx.Structure {
 			fmt.Fprintf(&textBuilder, "- %s (%s)\n", node.Name, node.Type)
 		}
 		text := textBuilder.String()
@@ -211,7 +223,11 @@ func (s *Server) handleResourceRead(params json.RawMessage) (interface{}, *RPCEr
 			return nil, err
 		}
 
-		jsonBytes, err := json.MarshalIndent(s.LastContext, "", "  ")
+		s.mu.RLock()
+		ctx := s.LastContext
+		s.mu.RUnlock()
+
+		jsonBytes, err := json.MarshalIndent(ctx, "", "  ")
 		if err != nil {
 			return nil, &RPCError{
 				Code:    -32603,
@@ -232,22 +248,35 @@ func (s *Server) handleResourceRead(params json.RawMessage) (interface{}, *RPCEr
 }
 
 func (s *Server) ensureContext() *RPCError {
-	if s.LastContext == nil {
-		// Try to load from disk first
-		if ctx, err := indexer.LoadContext(s.ProjectRoot); err == nil {
-			s.LastContext = ctx
-			log.Printf("Context lazily loaded from disk")
-			return nil
-		}
+	s.mu.RLock()
+	if s.LastContext != nil {
+		s.mu.RUnlock()
+		return nil
+	}
+	s.mu.RUnlock()
 
-		ctx, err := indexer.ScanProject(s.ProjectRoot)
-		if err != nil {
-			return &RPCError{Code: 1, Message: err.Error()}
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Double check
+	if s.LastContext != nil {
+		return nil
+	}
+
+	// Try to load from disk first
+	if ctx, err := indexer.LoadContext(s.ProjectRoot); err == nil {
 		s.LastContext = ctx
-		if err := indexer.SaveContext(s.ProjectRoot, ctx); err != nil {
-			log.Printf("Failed to save lazy context: %v", err)
-		}
+		log.Printf("Context lazily loaded from disk")
+		return nil
+	}
+
+	ctx, err := indexer.ScanProject(s.ProjectRoot)
+	if err != nil {
+		return &RPCError{Code: 1, Message: err.Error()}
+	}
+	s.LastContext = ctx
+	if err := indexer.SaveContext(s.ProjectRoot, ctx); err != nil {
+		log.Printf("Failed to save lazy context: %v", err)
 	}
 	return nil
 }
