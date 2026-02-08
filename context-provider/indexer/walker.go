@@ -107,7 +107,7 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			}
 
 			// Content Logic (for config/docs)
-			if shouldReadContent(name) {
+			if shouldReadContent(name) && entry.Type()&os.ModeSymlink == 0 {
 				content, err := os.ReadFile(fullPath)
 				if err == nil {
 					// Truncate if too large (e.g., > 20KB)
