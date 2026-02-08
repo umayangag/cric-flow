@@ -18,7 +18,7 @@ func (s *MyStruct) Method() {}
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.go")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
@@ -61,7 +61,7 @@ def my_func():
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
@@ -96,7 +96,7 @@ def my_func():
 func TestParsePy_Symlink(t *testing.T) {
 	tmpDir := t.TempDir()
 	targetFile := filepath.Join(tmpDir, "target.py")
-	if err := os.WriteFile(targetFile, []byte("def target(): pass"), 0644); err != nil {
+	if err := os.WriteFile(targetFile, []byte("def target(): pass"), 0600); err != nil {
 		t.Fatalf("Failed to write target file: %v", err)
 	}
 
@@ -125,7 +125,7 @@ def my_func():
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_doc.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
@@ -159,7 +159,7 @@ def my_func(
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_multiline.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 

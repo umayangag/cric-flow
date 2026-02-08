@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -42,10 +43,10 @@ func (s *Stats) increment(path string, isDir bool) {
 		return
 	}
 	s.Files++
-	ext := filepath.Ext(path)
-	if ext == ".go" {
+	switch filepath.Ext(path) {
+	case ".go":
 		s.GoFiles++
-	} else if ext == ".py" {
+	case ".py":
 		s.PyFiles++
 	}
 }
@@ -89,7 +90,7 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			Path: relPath,
 		}
 
-if entry.IsDir() {
+		if entry.IsDir() {
 			if entry.Type()&os.ModeSymlink != 0 {
 				continue
 			}
@@ -107,15 +108,19 @@ if entry.IsDir() {
 			stats.increment(fullPath, false)
 
 			// Parsing Logic
-			ext := filepath.Ext(name)
-			if ext == ".go" {
+			switch filepath.Ext(name) {
+			case ".go":
 				syms, err := ParseGo(fullPath)
-				if err == nil {
+				if err != nil {
+					log.Printf("warn: failed to parse Go file %s: %v", relPath, err)
+				} else {
 					node.Symbols = syms
 				}
-			} else if ext == ".py" {
+			case ".py":
 				syms, err := ParsePy(fullPath)
-				if err == nil {
+				if err != nil {
+					log.Printf("warn: failed to parse Python file %s: %v", relPath, err)
+				} else {
 					node.Symbols = syms
 				}
 			}

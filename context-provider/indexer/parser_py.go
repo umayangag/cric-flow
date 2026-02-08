@@ -14,9 +14,9 @@ var pythonParserScript string
 
 func ParsePy(path string) ([]Symbol, error) {
 	info, err := os.Lstat(path)
-    if err != nil {
-        return nil, fmt.Errorf("failed to stat file: %w", err)
-    }
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("symlinks are not supported: %s", path)
 	}

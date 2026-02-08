@@ -44,10 +44,10 @@ func main() {
 	log.Println("Starting Context MCP Server...")
 
 	// Determine root
-    wd, err := os.Getwd()
-    if err != nil {
-        log.Fatalf("Failed to get current working directory: %v", err)
-    }
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("Failed to get current working directory: %v", err)
+	}
 	// Assume we run from root, or parent is root if running inside module
 	// Logic: If we see go.work in current dir, it's root.
 	// If we see go.mod and parent has go.work, parent is root.
@@ -180,7 +180,15 @@ func handleToolCall(params json.RawMessage) (interface{}, *RPCError) {
 		lastContext = ctx
 		return map[string]interface{}{
 			"content": []map[string]string{
-				{"type": "text", "text": fmt.Sprintf("Index refreshed. Files: %d, Go: %d, Py: %d", ctx.Stats.Files, ctx.Stats.GoFiles, ctx.Stats.PyFiles)},
+				{
+					"type": "text",
+					"text": fmt.Sprintf(
+						"Index refreshed. Files: %d, Go: %d, Py: %d",
+						ctx.Stats.Files,
+						ctx.Stats.GoFiles,
+						ctx.Stats.PyFiles,
+					),
+				},
 			},
 		}, nil
 	case "get_summary":
@@ -189,7 +197,11 @@ func handleToolCall(params json.RawMessage) (interface{}, *RPCError) {
 		}
 
 		// Return a summarized text
-		text := fmt.Sprintf("Project Root: %s\nStats: %+v\nStructure (Top Level):\n", lastContext.Root, lastContext.Stats)
+		text := fmt.Sprintf(
+			"Project Root: %s\nStats: %+v\nStructure (Top Level):\n",
+			lastContext.Root,
+			lastContext.Stats,
+		)
 		for _, node := range lastContext.Structure {
 			text += fmt.Sprintf("- %s (%s)\n", node.Name, node.Type)
 		}
@@ -219,7 +231,10 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 
 		bytes, err := json.MarshalIndent(lastContext, "", "  ")
 		if err != nil {
-			return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("Internal error: failed to marshal context: %v", err)}
+			return nil, &RPCError{
+				Code:    -32603,
+				Message: fmt.Sprintf("Internal error: failed to marshal context: %v", err),
+			}
 		}
 		return map[string]interface{}{
 			"contents": []map[string]interface{}{

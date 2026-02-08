@@ -340,11 +340,12 @@ frontend-stop:
 
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-# Aggregate formatters for both components
-fmt: fmt-go fmt-py
+# Aggregate formatters for all components
+fmt: fmt-go fmt-py fmt-context
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
+	$(MAKE) -C context-provider fmt-check
 	# Assume ml-service venv is already prepared; avoid implicit bootstrapping for speed
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
@@ -352,8 +353,14 @@ fmt-go:
 	# Fast path: require tools to be installed; run formatting only
 	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C go-app fmt
 
+fmt-context:
+	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C context-provider fmt
+
 lint-go:
 	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
+
+lint-context:
+	cd context-provider && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
 
 fmt-py:
 	# Fast path: require venv to be prepared; run formatting only
@@ -371,8 +378,8 @@ install-hooks:
 	@echo "Git hooks installed. On commit, gofumpt/golines (Go) and black/isort (Python) will run automatically."
 
 # --- Local environment bootstrap ---
-# Initialize both components for local development
-init: init-go init-py install-hooks
+# Initialize all components for local development
+init: init-go init-py init-context install-hooks
 	@echo "\nLocal dev environment initialized. Next steps:"
 	@echo "- For Python, activate venv: 'cd ml-service && source .venv/bin/activate'"
 	@echo "- Run format checks: 'make fmt-check'"
@@ -381,6 +388,9 @@ init: init-go init-py install-hooks
 # Initialize Go tooling and modules
 init-go:
 	$(MAKE) -C go-app init
+
+init-context:
+	$(MAKE) -C context-provider init
 
 # Initialize Python venv and dev tools
 init-py:
@@ -414,7 +424,7 @@ test:
 	cd go-app && make test
 
 # Aggregate lint target
-lint: lint-go lint-py
+lint: lint-go lint-py lint-context
 
 # Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
 dev-rebuild:
@@ -430,6 +440,7 @@ dev-rebuild-nocache:
 # --- CI aggregate helpers ---
 COV_MIN_GO ?= 80
 COV_MIN_ML ?= 80
+COV_MIN_CONTEXT ?= 40
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
@@ -444,8 +455,15 @@ ci-go:
 	$(MAKE) -C go-app coverage
 	COV_MIN=$(COV_MIN_GO) $(MAKE) -C go-app coverage-check
 
-# Run both components' CI
-ci: ci-go ci-ml
+# Run context-provider CI
+ci-context:
+	$(MAKE) -C context-provider vet
+	$(MAKE) -C context-provider fmt-check
+	$(MAKE) -C context-provider coverage
+	COV_MIN=$(COV_MIN_CONTEXT) $(MAKE) -C context-provider coverage-check
+
+# Run all components' CI
+ci: ci-go ci-ml ci-context
 
 
 # --- Help & navigation ---
