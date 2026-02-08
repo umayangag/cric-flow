@@ -241,7 +241,7 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 			return nil, err
 		}
 
-		bytes, err := json.MarshalIndent(lastContext, "", "  ")
+jsonBytes, err := json.MarshalIndent(lastContext, "", "  ")
 		if err != nil {
 			return nil, &RPCError{
 				Code:    -32603,
