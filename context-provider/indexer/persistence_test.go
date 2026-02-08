@@ -83,7 +83,7 @@ func TestSaveContext_Error(t *testing.T) {
 
 	// Create .junie directory with 000 permissions
 	junieDir := filepath.Join(tempDir, ".junie")
-	if err := os.Mkdir(junieDir, 0000); err != nil {
+	if err := os.Mkdir(junieDir, 0o000); err != nil {
 		t.Logf("Expected failure or ignoring failure to create dir: %v", err)
 	}
 	// Alternatively, use a file as directory

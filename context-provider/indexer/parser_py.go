@@ -25,6 +25,10 @@ func ParsePy(path string) ([]Symbol, error) {
 		return nil, fmt.Errorf("symlinks are not supported: %s", path)
 	}
 
+	if info.Size() > MaxParseFileSize {
+		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), MaxParseFileSize)
+	}
+
 	pythonCmd := "python3"
 	if _, err := exec.LookPath(pythonCmd); err != nil {
 		pythonCmd = "python"

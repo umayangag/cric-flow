@@ -12,6 +12,8 @@ const (
 	progressLogInterval = 100
 )
 
+var MaxParseFileSize int64 = 10 * 1024 * 1024 // 10MB limit for parsing
+
 var ignoredDirs = map[string]bool{
 	".git":         true,
 	"node_modules": true,
@@ -104,7 +106,7 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 
 	for _, entry := range entries {
 		name := entry.Name()
-if ignoredDirs[name] || sensitiveFiles[name] || (!entry.Type().IsRegular() && !entry.IsDir()) {
+		if ignoredDirs[name] || sensitiveFiles[name] || (!entry.Type().IsRegular() && !entry.IsDir()) {
 			continue
 		}
 

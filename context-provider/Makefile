@@ -58,4 +58,5 @@ init:
 	go mod download
 	go install mvdan.cc/gofumpt@latest
 	go install github.com/segmentio/golines@latest
-	@command -v golangci-lint >/dev/null 2>&1 || (echo "Tip: install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest")
+	@echo "- Installing golangci-lint"
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest

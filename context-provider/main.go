@@ -241,7 +241,7 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 			return nil, err
 		}
 
-jsonBytes, err := json.MarshalIndent(lastContext, "", "  ")
+		jsonBytes, err := json.MarshalIndent(lastContext, "", "  ")
 		if err != nil {
 			return nil, &RPCError{
 				Code:    -32603,
@@ -253,7 +253,7 @@ jsonBytes, err := json.MarshalIndent(lastContext, "", "  ")
 				{
 					"uri":      "context://summary",
 					"mimeType": "application/json",
-					"text":     string(bytes),
+					"text":     string(jsonBytes),
 				},
 			},
 		}, nil
@@ -289,23 +289,23 @@ func sendResponse(w io.Writer, id *json.RawMessage, result interface{}, rpcErr *
 		Result:  result,
 		Error:   rpcErr,
 	}
-responseBytes, err := json.Marshal(response)
-if err != nil {
-	log.Printf("Error: failed to marshal response for request %v: %v", id, err)
-	// Attempt to send a valid JSON-RPC error response back to the client.
-	errResponse := Response{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error: &RPCError{
-			Code:    -32603, // Internal error
-			Message: fmt.Sprintf("Internal error: failed to marshal response: %v", err),
-		},
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error: failed to marshal response for request %v: %v", id, err)
+		// Attempt to send a valid JSON-RPC error response back to the client.
+		errResponse := Response{
+			JSONRPC: "2.0",
+			ID:      id,
+			Error: &RPCError{
+				Code:    -32603, // Internal error
+				Message: fmt.Sprintf("Internal error: failed to marshal response: %v", err),
+			},
+		}
+		errorBytes, _ := json.Marshal(errResponse)
+		fmt.Fprintf(w, "%s\n", errorBytes)
+		return
 	}
-	errorBytes, _ := json.Marshal(errResponse)
-	fmt.Fprintf(w, "%s\n", errorBytes)
-	return
-}
-fmt.Fprintf(w, "%s\n", responseBytes)
+	fmt.Fprintf(w, "%s\n", responseBytes)
 }
 
 func findProjectRoot(wd string) string {

@@ -141,7 +141,7 @@ func TestHandleToolCall_RefreshIndex(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a file
-	if err := os.WriteFile(filepath.Join(tempDir, "test.go"), []byte("package test"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "test.go"), []byte("package test"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -229,7 +229,7 @@ func TestEnsureContext_Scan(t *testing.T) {
 	lastContext = nil
 
 	// Create a file to scan
-	if err := os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -334,17 +334,17 @@ func TestFindProjectRoot(t *testing.T) {
 
 	// Create go.work in root
 	goWorkPath := filepath.Join(tmpDir, "go.work")
-	if err := os.WriteFile(goWorkPath, []byte("go 1.21"), 0600); err != nil {
+	if err := os.WriteFile(goWorkPath, []byte("go 1.21"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	subdir := filepath.Join(tmpDir, "subdir")
-	if err := os.Mkdir(subdir, 0755); err != nil {
+	if err := os.Mkdir(subdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	deepDir := filepath.Join(subdir, "deep")
-	if err := os.Mkdir(deepDir, 0755); err != nil {
+	if err := os.Mkdir(deepDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,7 +367,7 @@ func TestFindProjectRoot(t *testing.T) {
 	tmpDirFallback, _ := os.MkdirTemp("", "cric-info-context-fallback")
 	defer os.RemoveAll(tmpDirFallback)
 	subdirFallback := filepath.Join(tmpDirFallback, "subdir")
-	if err := os.Mkdir(subdirFallback, 0755); err != nil {
+	if err := os.Mkdir(subdirFallback, 0o755); err != nil {
 		t.Fatal(err)
 	}
 

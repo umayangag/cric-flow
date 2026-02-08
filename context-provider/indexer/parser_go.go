@@ -17,6 +17,10 @@ func ParseGo(path string) ([]Symbol, error) {
 		return nil, fmt.Errorf("symlinks not supported: %s", path)
 	}
 
+	if info.Size() > MaxParseFileSize {
+		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), MaxParseFileSize)
+	}
+
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {

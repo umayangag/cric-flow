@@ -89,7 +89,10 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 				case "large.txt":
 					foundLarge = true
 					if !strings.HasSuffix(node.Content, "... (truncated)") {
-						t.Errorf("Expected large file to be truncated, got suffix: %q", node.Content[len(node.Content)-20:])
+						t.Errorf(
+							"Expected large file to be truncated, got suffix: %q",
+							node.Content[len(node.Content)-20:],
+						)
 					}
 					if len(node.Content) > maxContentSize+len("\n... (truncated)") {
 						t.Errorf("Content size %d exceeds expected limit", len(node.Content))
