@@ -7,6 +7,7 @@ import (
 )
 
 const maxContentSize = 20 * 1024
+const progressLogInterval = 100
 
 var ignoredDirs = map[string]bool{
 	".git":         true,
@@ -43,6 +44,10 @@ func (s *Stats) increment(path string, isDir bool) {
 		return
 	}
 	s.Files++
+	if s.Files%progressLogInterval == 0 {
+		log.Printf("Indexed %d files...", s.Files)
+	}
+
 	switch filepath.Ext(path) {
 	case ".go":
 		s.GoFiles++
@@ -52,6 +57,7 @@ func (s *Stats) increment(path string, isDir bool) {
 }
 
 func ScanProject(root string) (*ProjectContext, error) {
+	log.Printf("Starting scan of %s", root)
 	ctx := &ProjectContext{
 		Root:  root,
 		Stats: Stats{},
