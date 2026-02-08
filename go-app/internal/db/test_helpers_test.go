@@ -17,6 +17,7 @@ type mockRows struct{ rows pgx.Rows }
 func (r mockRows) Next() bool             { return r.rows.Next() }
 func (r mockRows) Scan(dest ...any) error { return r.rows.Scan(dest...) }
 func (r mockRows) Close()                 { r.rows.Close() }
+func (r mockRows) Err() error             { return r.rows.Err() }
 
 type mockRow struct{ row pgx.Row }
 
