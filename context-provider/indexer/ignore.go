@@ -86,14 +86,18 @@ func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
 		// Adjust pattern for OS
 		pattern := filepath.FromSlash(rule.pattern)
 
-		if rule.rooted {
+if rule.rooted {
 			// Match against relPath
-			if matchedPath, _ := filepath.Match(pattern, relPath); matchedPath {
+			if matchedPath, err := filepath.Match(pattern, relPath); err != nil {
+				log.Printf("warn: malformed .gitignore pattern '%s': %v", rule.pattern, err)
+			} else if matchedPath {
 				matched = true
 			}
 		} else {
 			// Match against name (basename)
-			if matchedName, _ := filepath.Match(pattern, name); matchedName {
+			if matchedName, err := filepath.Match(pattern, name); err != nil {
+				log.Printf("warn: malformed .gitignore pattern '%s': %v", rule.pattern, err)
+			} else if matchedName {
 				matched = true
 			}
 		}
