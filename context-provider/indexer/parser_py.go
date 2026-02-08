@@ -21,7 +21,11 @@ func ParsePy(path string) ([]Symbol, error) {
 		return nil, fmt.Errorf("symlinks are not supported: %s", path)
 	}
 
-	cmd := exec.Command("python3", "-", path)
+	pythonCmd := os.Getenv("PYTHON_CMD")
+	if pythonCmd == "" {
+		pythonCmd = "python3"
+	}
+	cmd := exec.Command(pythonCmd, "-", path)
 	cmd.Stdin = bytes.NewBufferString(pythonParserScript)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
