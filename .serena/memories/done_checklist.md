@@ -1,1 +1,0 @@
-2025-11-08: Started task to consolidate Go tests in go-app/internal/cricsheet per guidelines: table-driven and black-box where feasible; merge duplicate tests across files (DetectFormat and season collection). Will create a .junie plan file, then implement changes and run tests.

@@ -101,8 +101,8 @@ init:
 	@echo "- Installing gofumpt and golines to GOPATH/bin"
 	go install mvdan.cc/gofumpt@latest
 	go install github.com/segmentio/golines@latest
-	@echo "- (Optional) Installing golangci-lint"
-	@command -v golangci-lint >/dev/null 2>&1 || (echo "Tip: install golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest")
+	@echo "- Installing golangci-lint"
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@echo "Done. Ensure \"$(shell go env GOPATH)/bin\" is on your PATH. Try: 'make fmt-check' and 'make test'"
 
 docker-build:
@@ -138,7 +138,7 @@ GOLANGCI_VERSION ?= latest
 GOLANGCI_MODULE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 lint:
-	@bash ./scripts/golangci_lint.sh
+	$(GOLANGCI_BIN) run -c ../.golangci.yml
 
 
 # Coverage targets

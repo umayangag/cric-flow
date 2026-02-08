@@ -1,0 +1,44 @@
+name: Context Provider Lint
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'context-provider/**'
+      - '.github/workflows/context-provider-lint.yml'
+  pull_request:
+    paths:
+      - 'context-provider/**'
+      - '.github/workflows/context-provider-lint.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          check-latest: true
+
+      - name: Init (tools + modules)
+        run: make -C context-provider init
+
+      - name: Format check
+        run: make -C context-provider fmt-check
+
+      - name: Vet
+        run: make -C context-provider vet
+
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: context-provider
+          args: -c ../.golangci.yml
