@@ -17,7 +17,7 @@ venv:
 
 install: venv
 	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 $(PIP) install -r requirements.txt
 
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install

@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() {
@@ -61,5 +63,20 @@ func run(args []string, out io.Writer) error {
 	if _, err := db.Connect(ctx); err != nil {
 		return fmt.Errorf("db connect failed: %w", err)
 	}
-	return seqcalc.Run(ctx, calcs, params, false)
+
+	tracker, tErr := tracking.Start(ctx, "precompute-sequence-features", map[string]interface{}{
+		"format":  f,
+		"targets": *targets,
+		"as_of":   *asOfStr,
+	})
+	if tErr != nil {
+		slog.Warn("tracking start failed", slog.Any("err", tErr))
+	}
+
+	if err := seqcalc.Run(ctx, calcs, params, false); err != nil {
+		tracker.TryFail(ctx, err.Error())
+		return err
+	}
+	tracker.TryComplete(ctx, nil)
+	return nil
 }

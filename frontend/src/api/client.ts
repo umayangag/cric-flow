@@ -1,4 +1,5 @@
 import type { BacktestSelectResponse, BacktestEvaluateResponse } from './types';
+import type { Migration, Suggestion } from '../types';
 
 type SelectParams = { format: string; team1: string; team2: string };
 type EvaluateParams = {
@@ -92,4 +93,20 @@ export async function fetchBacktestEvaluate(
     throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
   }
   return (await res.json()) as BacktestEvaluateResponse;
+}
+
+export async function fetchOpsMigrations(baseUrl: string): Promise<Migration[]> {
+  const res = await fetch((baseUrl || '') + '/ops/migrations');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]> {
+  const res = await fetch((baseUrl || '') + '/ops/suggestions');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
 }

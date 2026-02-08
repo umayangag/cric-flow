@@ -28,10 +28,10 @@ build:
 	npm run build
 
 test:
-	npm run test --if-present
+	npm -s test --if-present
 
 typecheck:
-	npm run typecheck --if-present
+	npm run -s typecheck --if-present
 
 # Formatting: prefer local devDependencies via npx without network installs
 fmt:

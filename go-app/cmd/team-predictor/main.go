@@ -12,8 +12,10 @@ import (
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }
@@ -29,13 +31,25 @@ func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	// DB connect for tracking
+	var tracker *tracking.Tracker
+	if _, err := db.Connect(ctx); err == nil {
+		var tErr error
+		tracker, tErr = tracking.Start(ctx, "team-predictor", opts)
+		if tErr != nil {
+			slog.Warn("tracking start failed", slog.Any("err", tErr))
+		}
+	}
+
 	service := svc.NewService(nil)
 	runner := cmd.NewRunner(service)
 	resp, runErr := runner.Run(ctx, opts)
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
+		tracker.TryFail(ctx, runErr.Error())
 		return 1
 	}
+	tracker.TryComplete(ctx, map[string]int{"players_count": len(resp.Players)})
 	// Render simple output (players, one per line)
 	for i, p := range resp.Players {
 		fmt.Printf("%d. %s\n", i+1, p)

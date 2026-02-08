@@ -7,6 +7,8 @@ import type {
   MatchSquadsResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
+  Migration,
+  Suggestion,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -96,5 +98,11 @@ export const api = {
   // --- Ops Status (go-app API) ---
   opsStatus(): Promise<OpsStatusDTO> {
     return httpApi('/ops/status');
+  },
+  opsMigrations(): Promise<Migration[]> {
+    return httpApi('/ops/migrations');
+  },
+  opsSuggestions(): Promise<Suggestion[]> {
+    return httpApi('/ops/suggestions');
   },
 };
