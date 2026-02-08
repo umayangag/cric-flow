@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -39,26 +40,53 @@ var (
 )
 
 func main() {
+	rootFlag := flag.String("root", "", "Path to project root")
+	flag.Parse()
+
 	// Logging to stderr so it doesn't interfere with stdout JSON-RPC
 	log.SetOutput(os.Stderr)
 	log.Println("Starting Context MCP Server...")
 
-	// Determine root
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Failed to get current working directory: %v", err)
-	}
-	// Assume we run from root, or parent is root if running inside module
-	// Logic: If we see go.work in current dir, it's root.
-	// If we see go.mod and parent has go.work, parent is root.
-	if _, err := os.Stat(filepath.Join(wd, "go.work")); err == nil {
-		projectRoot = wd
-	} else if filepath.Base(wd) == "context-provider" {
-		projectRoot = filepath.Dir(wd)
+	if *rootFlag != "" {
+		projectRoot = *rootFlag
 	} else {
-		projectRoot = wd // Fallback
+		// Determine root
+		wd, err := os.Getwd()
+		if err != nil {
+			log.Fatalf("Failed to get current working directory: %v", err)
+		}
+		// Assume we run from root, or parent is root if running inside module
+		// Logic: If we see go.work in current dir, it's root.
+		// If we see go.mod and parent has go.work, parent is root.
+		if _, err := os.Stat(filepath.Join(wd, "go.work")); err == nil {
+			projectRoot = wd
+		} else if filepath.Base(wd) == "context-provider" {
+			projectRoot = filepath.Dir(wd)
+		} else {
+			projectRoot = wd // Fallback
+		}
 	}
 	log.Printf("Project Root: %s", projectRoot)
+
+	// Initialize context (Load from disk or Scan)
+	if ctx, err := indexer.LoadContext(projectRoot); err == nil {
+		lastContext = ctx
+		log.Printf("Context loaded from disk (%d files)", ctx.Stats.Files)
+	} else {
+		log.Printf("No existing context found or load failed: %v. Scanning now...", err)
+		// Perform initial scan
+		ctx, err := indexer.ScanProject(projectRoot)
+		if err != nil {
+			log.Printf("Initial scan failed: %v", err)
+		} else {
+			lastContext = ctx
+			if err := indexer.SaveContext(projectRoot, ctx); err != nil {
+				log.Printf("Failed to save context to disk: %v", err)
+			} else {
+				log.Printf("Context scanned and saved to disk.")
+			}
+		}
+	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	// Increase buffer size just in case
@@ -178,12 +206,16 @@ func handleToolCall(params json.RawMessage) (interface{}, *RPCError) {
 			return nil, &RPCError{Code: 1, Message: err.Error()}
 		}
 		lastContext = ctx
+		if err := indexer.SaveContext(projectRoot, ctx); err != nil {
+			log.Printf("Failed to save refreshed context: %v", err)
+			// We don't fail the RPC, but we warn
+		}
 		return map[string]interface{}{
 			"content": []map[string]string{
 				{
 					"type": "text",
 					"text": fmt.Sprintf(
-						"Index refreshed. Files: %d, Go: %d, Py: %d",
+						"Index refreshed and saved to disk. Files: %d, Go: %d, Py: %d",
 						ctx.Stats.Files,
 						ctx.Stats.GoFiles,
 						ctx.Stats.PyFiles,
@@ -251,11 +283,19 @@ func handleResourceRead(params json.RawMessage) (interface{}, *RPCError) {
 
 func ensureContext() *RPCError {
 	if lastContext == nil {
+		// Try to load from disk first
+		if ctx, err := indexer.LoadContext(projectRoot); err == nil {
+			lastContext = ctx
+			log.Printf("Context lazily loaded from disk")
+			return nil
+		}
+
 		ctx, err := indexer.ScanProject(projectRoot)
 		if err != nil {
 			return &RPCError{Code: 1, Message: err.Error()}
 		}
 		lastContext = ctx
+		indexer.SaveContext(projectRoot, ctx) // Try to save
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ __pycache__
 venv
 src/team_selection/cache
 .junie_plans/
+.junie/context_index.json
 
 go-app/api
 go-app/coverage.out
@@ -14,9 +15,21 @@ ml-service/.venv
 ml-service/.coverage
 ml-service/coverage.xml
 
+context-provider/context-provider
+
 data
 output
 
 .output.txt
 .coverage
 coverage.xml
+
+# Coverage reports
+**/coverage.out
+**/coverage.html
+
+# Binaries
+**/bin/
+
+# OS-specific
+.DS_Store

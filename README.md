@@ -482,6 +482,7 @@ A standalone tool is available to index the codebase and provide context to AI a
 - **Location**: `context-provider/`
 - **Usage**:
   ```bash
-  make context-serve
+  make context-build   # Build the binary
+  make context-serve   # Run as stdio server
   ```
 - **Documentation**: See `context-provider/README.md` for integration instructions and how to prompt Junie to use it.

@@ -6,7 +6,13 @@ COV_MIN ?= 80
 
 .PHONY: all fmt fmt-check vet test lint coverage coverage-check init
 
-all: test
+all: build test
+
+build:
+	go build -o context-provider main.go
+
+clean:
+	rm -f context-provider coverage.out
 
 # Format Go code
 fmt:

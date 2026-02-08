@@ -4,62 +4,63 @@ This tool indexes the codebase to provide context for AI agents.
 It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
 ## Features
-- Scans the project directory (respecting ignores).
-- Parses Go and Python files to extract symbols (functions, classes).
-- Reads config/docs content.
-- Exposes tools to get a summary or refresh the index.
-- Exposes a resource `context://summary` with the full structured context.
+- **Smart Indexing**: Scans the project directory (respecting ignores).
+- **Symbol Extraction**: Parses Go and Python files to extract symbols (functions, classes).
+- **Persistence**: Saves the index to `.junie/context_index.json` to avoid re-scanning on every start.
+- **MCP Support**:
+    - Tools: `get_summary`, `refresh_index`.
+    - Resources: `context://summary`.
 
 ## Usage
 
 ### Build
 ```bash
-go build -o context-provider main.go
+make context-build
+# OR
+cd context-provider && go build -o context-provider main.go
 ```
 
 ### Run
 Run as an MCP server (stdio transport):
 ```bash
-./context-provider
+./context-provider/context-provider
 ```
 
 ### Configuration
-The server automatically detects the project root (either current directory or parent if running from `context-provider` dir).
+The server automatically detects the project root. You can explicitly set it with `-root`.
 
-## MCP Capabilities
-
-### Tools
-- `get_summary`: Returns a high-level text summary.
-- `refresh_index`: Re-scans the codebase.
-
-### Resources
-- `context://summary`: JSON representation of the full codebase index.
+## Persistence
+The context index is saved to `<PROJECT_ROOT>/.junie/context_index.json`.
+- **On Start**: The server tries to load this file. If found, it starts instantly. If not, it performs a full scan.
+- **Refresh**: Calling the `refresh_index` tool forces a re-scan and updates the file.
 
 ## Integration with IDEs (e.g., JetBrains for Junie)
 
-This tool is designed to help AI agents (like Junie) efficiently understand the project context without re-reading every file.
+To add this tool permanently to Junie/JetBrains:
 
-### Setup for User
 1.  **Build the Tool**:
-    Ensure the `context-provider` binary is built.
     ```bash
-    make context-serve
-    # OR manually:
-    cd context-provider && go build -o context-provider main.go
+    make context-build
     ```
 
+2.  **Open Settings**: Go to `Settings` > `Tools` > `Model Context Protocol`.
+
+3.  **Add Server**: Add a new server definition.
+
+4.  **JSON Configuration**:
+    ```json
+    {
+      "cric-info-context": {
+        "command": "<PROJECT_ROOT>/context-provider/context-provider",
+        "args": [
+          "-root",
+          "<PROJECT_ROOT>"
+        ]
+      }
+    }
+    ```
+    *Replace `<PROJECT_ROOT>` with the absolute path to your repo.*
+
 ### How to Prompt Junie
-When working with Junie in your IDE, you can instruct it to use this tool to "get up to speed" on the project.
-
-**Sample Prompts:**
-- > "Run the context-provider to get a summary of the project structure."
-- > "Use the `context-provider` tool to list all symbols in `ml-service`."
-- > "I have a local context server running. Please query it for the project summary."
-
-**How Junie uses it (Internal):**
-Junie can execute the tool via shell to perform JSON-RPC requests:
-```bash
-# Requesting a summary
-echo '{"jsonrpc": "2.0", "method": "get_summary", "id": 1}' | ./context-provider/context-provider
-```
-The tool responds with a high-level summary of files, types, and stats, which Junie then uses to answer your questions accurately.
+- "Run the context-provider to get a summary of the project."
+- "Refresh the context index."

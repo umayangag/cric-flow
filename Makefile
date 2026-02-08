@@ -533,6 +533,15 @@ help-all:
 list:
 	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u
 
-# Run Context MCP Server
-context-serve:
-	cd context-provider && go run main.go
+# Context MCP Server
+.PHONY: context-build context-serve context-clean
+
+context-build:
+	cd context-provider && go build -o context-provider main.go
+
+context-serve: context-build
+	./context-provider/context-provider
+
+context-clean:
+	rm -f context-provider/context-provider
+	rm -f .junie/context_index.json

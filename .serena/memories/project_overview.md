@@ -1,1 +1,0 @@
-cric-info-scrapers is a monorepo with Go (go-app) and Python (ml-service). The task focuses on go-app/internal/cricsheet which contains parsing and formatting logic for cricket match data. Tests should follow table-driven style and black-box package naming ({packagename}_test).
