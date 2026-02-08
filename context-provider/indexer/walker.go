@@ -13,39 +13,6 @@ const (
 	DefaultMaxParseFileSize = 10 * 1024 * 1024 // 10MB limit for parsing
 )
 
-var ignoredDirs = map[string]bool{
-	".git":         true,
-	"node_modules": true,
-	"dist":         true,
-	"build":        true,
-	"__pycache__":  true,
-	".venv":        true,
-	"output":       true,
-	".junie":       true,
-	".junie_plans": true,
-	".idea":        true,
-	".vscode":      true,
-}
-
-var sensitiveFiles = map[string]bool{
-	"secrets.json":     true,
-	".env":             true,
-	".env.local":       true,
-	".env.development": true,
-	".env.test":        true,
-	".env.production":  true,
-	"passwd":           true,
-	"shadow":           true,
-	".htpasswd":        true,
-	".netrc":           true,
-	"id_rsa":           true,
-	"id_dsa":           true,
-	"id_ed25519":       true,
-	"id_ecdsa":         true,
-	".pypirc":          true,
-	".npmrc":           true,
-}
-
 var textExtensions = map[string]bool{
 	".md":        true,
 	".txt":       true,
@@ -123,7 +90,7 @@ func walkDir(
 	for _, entry := range entries {
 		name := entry.Name()
 		// Check for symlinks explicitly to avoid escaping the project root
-		if ignoredDirs[name] || sensitiveFiles[name] || (entry.Type()&os.ModeSymlink != 0) ||
+		if (entry.Type()&os.ModeSymlink != 0) ||
 			(!entry.Type().IsRegular() && !entry.IsDir()) {
 			continue
 		}

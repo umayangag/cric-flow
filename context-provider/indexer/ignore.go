@@ -2,73 +2,68 @@ package indexer
 
 import (
 	"bufio"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 )
 
 type IgnoreMatcher struct {
-	root  string
-	rules []ignoreRule
-}
-
-type ignoreRule struct {
-	pattern string
-	dirOnly bool
-	rooted  bool // true if pattern contains separator (implies relative to root)
-	negate  bool
+	root    string
+	matcher gitignore.Matcher
 }
 
 func NewIgnoreMatcher(root string) *IgnoreMatcher {
-	matcher := &IgnoreMatcher{
+	m := &IgnoreMatcher{
 		root: root,
 	}
-	matcher.loadGitIgnore()
-	return matcher
+	m.loadRules()
+	return m
 }
 
-func (m *IgnoreMatcher) loadGitIgnore() {
-	path := filepath.Join(m.root, ".gitignore")
-	file, err := os.Open(path)
-	if err != nil {
-		return // No .gitignore or can't open
+func (m *IgnoreMatcher) loadRules() {
+	var patterns []gitignore.Pattern
+
+	// 1. Defaults
+	// Directories
+	defaultDirs := []string{
+		".git", "node_modules", "dist", "build", "__pycache__",
+		".venv", "output", ".junie", ".junie_plans", ".idea", ".vscode",
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse rule
-		negate := false
-		if strings.HasPrefix(line, "!") {
-			negate = true
-			line = strings.TrimPrefix(line, "!")
-		}
-
-		rule := ignoreRule{
-			pattern: line,
-			negate:  negate,
-		}
-
-		if strings.HasSuffix(line, "/") {
-			rule.dirOnly = true
-			rule.pattern = strings.TrimSuffix(line, "/")
-		}
-
-		// If it contains a slash (and it's not just at the end which we removed), it's rooted
-		if strings.Contains(rule.pattern, "/") {
-			rule.rooted = true
-			// Handle leading slash
-			rule.pattern = strings.TrimPrefix(rule.pattern, "/")
-		}
-
-		m.rules = append(m.rules, rule)
+	for _, d := range defaultDirs {
+		// Appending slash to match directories only, consistent with gitignore
+		patterns = append(patterns, gitignore.ParsePattern(d+"/", nil))
 	}
+
+	// Sensitive Files
+	defaultFiles := []string{
+		"secrets.json",
+		".env", ".env.local", ".env.development", ".env.test", ".env.production",
+		"passwd", "shadow", ".htpasswd", ".netrc",
+		"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
+		".pypirc", ".npmrc",
+	}
+	for _, f := range defaultFiles {
+		patterns = append(patterns, gitignore.ParsePattern(f, nil))
+	}
+
+	// 2. .gitignore
+	gitIgnorePath := filepath.Join(m.root, ".gitignore")
+	file, err := os.Open(gitIgnorePath)
+	if err == nil {
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			patterns = append(patterns, gitignore.ParsePattern(line, nil))
+		}
+	}
+
+	m.matcher = gitignore.NewMatcher(patterns)
 }
 
 func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
@@ -77,40 +72,14 @@ func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
 	if err != nil {
 		return false
 	}
-
-	name := filepath.Base(path)
-
-	// Iterate backwards to support negation and overrides
-	for i := len(m.rules) - 1; i >= 0; i-- {
-		rule := m.rules[i]
-		if rule.dirOnly && !isDir {
-			continue
-		}
-
-		matched := false
-
-		// Adjust pattern for OS
-		pattern := filepath.FromSlash(rule.pattern)
-
-		if rule.rooted {
-			// Match against relPath
-			if matchedPath, err := filepath.Match(pattern, relPath); err != nil {
-				log.Printf("warn: malformed gitignore pattern '%s': %v", rule.pattern, err)
-			} else if matchedPath {
-				matched = true
-			}
-		} else {
-			// Match against name (basename)
-			if matchedName, err := filepath.Match(pattern, name); err != nil {
-				log.Printf("warn: malformed gitignore pattern '%s': %v", rule.pattern, err)
-			} else if matchedName {
-				matched = true
-			}
-		}
-
-		if matched {
-			return !rule.negate
-		}
+	if relPath == "." {
+		return false
 	}
-	return false
+
+	// go-git matcher expects path components split by slash
+	// Ensure we use forward slashes for the split even on Windows
+	slashPath := filepath.ToSlash(relPath)
+	pathParts := strings.Split(slashPath, "/")
+
+	return m.matcher.Match(pathParts, isDir)
 }

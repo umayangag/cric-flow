@@ -7,6 +7,7 @@
 - Never loop on edits; pause and ask to adjust plan.
 - Never commit to main/master; always use a feature branch.
 - Do not contact support; solve with provided tools.
+- Use exiting packages and tools from opensource sources to avoid reinventing the wheel.
 
 ## SOP (do this order)
 1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit and token usage and improve productivity.
