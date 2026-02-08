@@ -6,9 +6,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
@@ -20,9 +21,8 @@ func TestScanProject_LogsProgress(t *testing.T) {
 	// Assuming the interval will be 100, we create 105 files.
 	for i := 0; i < 105; i++ {
 		fname := filepath.Join(tmpDir, fmt.Sprintf("file_%d.txt", i))
-		if err := os.WriteFile(fname, []byte("content"), 0o600); err != nil {
-			t.Fatalf("Failed to create file: %v", err)
-		}
+		err := os.WriteFile(fname, []byte("content"), 0o600)
+		require.NoError(t, err, "Failed to create file")
 	}
 
 	// Capture logs
@@ -34,16 +34,12 @@ func TestScanProject_LogsProgress(t *testing.T) {
 
 	// Run ScanProject
 	_, err := indexer.ScanProject(tmpDir)
-	if err != nil {
-		t.Fatalf("ScanProject failed unexpectedly: %v", err)
-	}
+	require.NoError(t, err, "ScanProject failed unexpectedly")
 
 	// Check logs
 	output := buf.String()
 	// We expect to see a log message indicating progress.
 	// The exact message depends on implementation, but let's assume "Indexed X files"
 	expectedSubstring := "Indexed 100 files"
-	if !strings.Contains(output, expectedSubstring) {
-		t.Errorf("Expected progress log containing '%s', got:\n%s", expectedSubstring, output)
-	}
+	assert.Contains(t, output, expectedSubstring, "Expected progress log containing '%s'", expectedSubstring)
 }

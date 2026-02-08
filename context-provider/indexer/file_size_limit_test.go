@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
@@ -24,14 +26,11 @@ func TestLargeFileProtection(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		content += "// some comment to fill space\n"
 	}
-	if err := os.WriteFile(largeGoFile, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	err := os.WriteFile(largeGoFile, []byte(content), 0o600)
+	require.NoError(t, err)
 
-	_, err := indexer.ParseGo(largeGoFile)
-	if err == nil {
-		t.Error("ParseGo should have failed for file larger than limit")
-	}
+	_, err = indexer.ParseGo(largeGoFile)
+	assert.Error(t, err, "ParseGo should have failed for file larger than limit")
 
 	// 2. Test Large Py File
 	largePyFile := filepath.Join(tmpDir, "large.py")
@@ -39,26 +38,20 @@ func TestLargeFileProtection(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		pyContent += "# some comment to fill space\n"
 	}
-	if err := os.WriteFile(largePyFile, []byte(pyContent), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	err = os.WriteFile(largePyFile, []byte(pyContent), 0o600)
+	require.NoError(t, err)
 
 	_, err = indexer.ParsePy(largePyFile)
-	if err == nil {
-		t.Error("ParsePy should have failed for file larger than limit")
-	}
+	assert.Error(t, err, "ParsePy should have failed for file larger than limit")
 
 	// 3. Test Small File (Should pass)
 	smallGoFile := filepath.Join(tmpDir, "small.go")
 	smallContent := "package main\nfunc Foo() {}\n"
-	if err := os.WriteFile(smallGoFile, []byte(smallContent), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	err = os.WriteFile(smallGoFile, []byte(smallContent), 0o600)
+	require.NoError(t, err)
 
 	// Reset limit to allow small file
 	indexer.MaxParseFileSize = int64(len(smallContent) + 100)
 	_, err = indexer.ParseGo(smallGoFile)
-	if err != nil {
-		t.Errorf("ParseGo failed for small file: %v", err)
-	}
+	require.NoError(t, err, "ParseGo failed for small file")
 }

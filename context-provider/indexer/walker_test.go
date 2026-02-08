@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
@@ -17,15 +19,13 @@ func TestScanProject_LogsErrors(t *testing.T) {
 
 	// 1. Create a malformed Go file
 	badGoFile := filepath.Join(tmpDir, "bad.go")
-	if err := os.WriteFile(badGoFile, []byte("package"), 0o600); err != nil { // Incomplete package decl
-		t.Fatalf("Failed to create bad go file: %v", err)
-	}
+	err := os.WriteFile(badGoFile, []byte("package"), 0o600) // Incomplete package decl
+	require.NoError(t, err, "Failed to create bad go file")
 
 	// 2. Create a malformed Python file
 	badPyFile := filepath.Join(tmpDir, "bad.py")
-	if err := os.WriteFile(badPyFile, []byte("def"), 0o600); err != nil { // Incomplete def
-		t.Fatalf("Failed to create bad py file: %v", err)
-	}
+	err = os.WriteFile(badPyFile, []byte("def"), 0o600) // Incomplete def
+	require.NoError(t, err, "Failed to create bad py file")
 
 	// Capture logs
 	var buf bytes.Buffer
@@ -35,20 +35,14 @@ func TestScanProject_LogsErrors(t *testing.T) {
 	}()
 
 	// Run ScanProject
-	_, err := indexer.ScanProject(tmpDir)
-	if err != nil {
-		t.Fatalf("ScanProject failed unexpectedly: %v", err)
-	}
+	_, err = indexer.ScanProject(tmpDir)
+	require.NoError(t, err, "ScanProject failed unexpectedly")
 
 	// Check logs
 	output := buf.String()
 
-	if !strings.Contains(output, "warn: failed to parse Go file") {
-		t.Errorf("Expected log warning for Go file, got: %s", output)
-	}
-	if !strings.Contains(output, "warn: failed to parse Python file") {
-		t.Errorf("Expected log warning for Python file, got: %s", output)
-	}
+	assert.Contains(t, output, "warn: failed to parse Go file", "Expected log warning for Go file")
+	assert.Contains(t, output, "warn: failed to parse Python file", "Expected log warning for Python file")
 }
 
 func TestScanProject_LargeFileTruncation(t *testing.T) {
@@ -62,22 +56,18 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 		largeContent[i] = 'a'
 	}
 	largeFile := filepath.Join(tmpDir, "large.txt")
-	if err := os.WriteFile(largeFile, largeContent, 0o600); err != nil {
-		t.Fatalf("Failed to create large file: %v", err)
-	}
+	err := os.WriteFile(largeFile, largeContent, 0o600)
+	require.NoError(t, err, "Failed to create large file")
 
 	// 2. Create a small file
 	smallContent := []byte("small content")
 	smallFile := filepath.Join(tmpDir, "small.txt")
-	if err := os.WriteFile(smallFile, smallContent, 0o600); err != nil {
-		t.Fatalf("Failed to create small file: %v", err)
-	}
+	err = os.WriteFile(smallFile, smallContent, 0o600)
+	require.NoError(t, err, "Failed to create small file")
 
 	// Run ScanProject
 	ctx, err := indexer.ScanProject(tmpDir)
-	if err != nil {
-		t.Fatalf("ScanProject failed: %v", err)
-	}
+	require.NoError(t, err, "ScanProject failed")
 
 	// Find the files in the result
 	var foundLarge, foundSmall bool
@@ -90,20 +80,11 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 				switch node.Name {
 				case "large.txt":
 					foundLarge = true
-					if !strings.HasSuffix(node.Content, "... (truncated)") {
-						t.Errorf(
-							"Expected large file to be truncated, got suffix: %q",
-							node.Content[len(node.Content)-20:],
-						)
-					}
-					if len(node.Content) > indexer.MaxContentSize+len("\n... (truncated)") {
-						t.Errorf("Content size %d exceeds expected limit", len(node.Content))
-					}
+					assert.True(t, strings.HasSuffix(node.Content, "... (truncated)"), "Expected large file to be truncated")
+					assert.LessOrEqual(t, len(node.Content), indexer.MaxContentSize+len("\n... (truncated)"), "Content size exceeds expected limit")
 				case "small.txt":
 					foundSmall = true
-					if node.Content != string(smallContent) {
-						t.Errorf("Expected small file content %q, got %q", string(smallContent), node.Content)
-					}
+					assert.Equal(t, string(smallContent), node.Content, "Expected small file content match")
 				}
 			}
 			if len(node.Children) > 0 {
@@ -114,12 +95,8 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 
 	checkNodes(ctx.Structure)
 
-	if !foundLarge {
-		t.Error("large.txt not found in scan results")
-	}
-	if !foundSmall {
-		t.Error("small.txt not found in scan results")
-	}
+	assert.True(t, foundLarge, "large.txt not found in scan results")
+	assert.True(t, foundSmall, "small.txt not found in scan results")
 }
 
 func TestScanProject_SensitiveFiles(t *testing.T) {
@@ -130,22 +107,18 @@ func TestScanProject_SensitiveFiles(t *testing.T) {
 	sensitive := []string{"secrets.json", ".env", "id_rsa"}
 	for _, name := range sensitive {
 		path := filepath.Join(tmpDir, name)
-		if err := os.WriteFile(path, []byte("secret"), 0o600); err != nil {
-			t.Fatalf("Failed to create %s: %v", name, err)
-		}
+		err := os.WriteFile(path, []byte("secret"), 0o600)
+		require.NoError(t, err, "Failed to create %s", name)
 	}
 
 	// Create a normal file
 	normalFile := filepath.Join(tmpDir, "normal.txt")
-	if err := os.WriteFile(normalFile, []byte("normal"), 0o600); err != nil {
-		t.Fatalf("Failed to create normal file: %v", err)
-	}
+	err := os.WriteFile(normalFile, []byte("normal"), 0o600)
+	require.NoError(t, err, "Failed to create normal file")
 
 	// Run ScanProject
 	ctx, err := indexer.ScanProject(tmpDir)
-	if err != nil {
-		t.Fatalf("ScanProject failed: %v", err)
-	}
+	require.NoError(t, err, "ScanProject failed")
 
 	// Check results
 	foundNormal := false
@@ -157,7 +130,7 @@ func TestScanProject_SensitiveFiles(t *testing.T) {
 			}
 			for _, s := range sensitive {
 				if node.Name == s {
-					t.Errorf("Found sensitive file %s in scan results", s)
+					t.Errorf("Found sensitive file %s in scan results", s) // keeping this as it loops inside checkNodes, but could be asserting not equal
 				}
 			}
 			if len(node.Children) > 0 {
@@ -167,7 +140,5 @@ func TestScanProject_SensitiveFiles(t *testing.T) {
 	}
 	checkNodes(ctx.Structure)
 
-	if !foundNormal {
-		t.Error("normal.txt not found")
-	}
+	assert.True(t, foundNormal, "normal.txt not found")
 }

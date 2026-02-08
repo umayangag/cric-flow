@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
@@ -18,9 +20,8 @@ ignored_dir/
 secret.txt
 *.log
 `
-	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitIgnoreContent), 0o600); err != nil {
-		t.Fatalf("Failed to create .gitignore: %v", err)
-	}
+	err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitIgnoreContent), 0o600)
+	require.NoError(t, err, "Failed to create .gitignore")
 
 	// 2. Create structure
 	// tmpDir/
@@ -43,53 +44,36 @@ secret.txt
 
 	// 3. Scan
 	ctx, err := indexer.ScanProject(tmpDir)
-	if err != nil {
-		t.Fatalf("ScanProject failed: %v", err)
-	}
+	require.NoError(t, err, "ScanProject failed")
 
 	// 4. Verify
 	// Check if secret.txt exists
-	if findNode(ctx.Structure, "secret.txt") {
-		t.Errorf("Found secret.txt, should be ignored")
-	}
+	assert.False(t, findNode(ctx.Structure, "secret.txt"), "Found secret.txt, should be ignored")
 	// Check if app.log exists
-	if findNode(ctx.Structure, "app.log") {
-		t.Errorf("Found app.log, should be ignored")
-	}
+	assert.False(t, findNode(ctx.Structure, "app.log"), "Found app.log, should be ignored")
 	// Check if ignored_dir exists
-	if findNode(ctx.Structure, "ignored_dir") {
-		t.Errorf("Found ignored_dir, should be ignored")
-	}
+	assert.False(t, findNode(ctx.Structure, "ignored_dir"), "Found ignored_dir, should be ignored")
 	// Check if nested.go exists (it shouldn't if parent is ignored)
-	if findNode(ctx.Structure, "nested.go") {
-		t.Errorf("Found nested.go in ignored_dir, should be ignored")
-	}
+	assert.False(t, findNode(ctx.Structure, "nested.go"), "Found nested.go in ignored_dir, should be ignored")
+
 	// Check if main.go exists
-	if !findNode(ctx.Structure, "main.go") {
-		t.Errorf("Missing main.go, should be included")
-	}
+	assert.True(t, findNode(ctx.Structure, "main.go"), "Missing main.go, should be included")
 	// Check if included_dir exists
-	if !findNode(ctx.Structure, "included_dir") {
-		t.Errorf("Missing included_dir, should be included")
-	}
+	assert.True(t, findNode(ctx.Structure, "included_dir"), "Missing included_dir, should be included")
 	// Check if utils.go exists
-	if !findNode(ctx.Structure, "utils.go") {
-		t.Errorf("Missing utils.go, should be included")
-	}
+	assert.True(t, findNode(ctx.Structure, "utils.go"), "Missing utils.go, should be included")
 }
 
 func createFile(t *testing.T, root, path string) {
 	fullPath := filepath.Join(root, path)
-	if err := os.WriteFile(fullPath, []byte("package main"), 0o600); err != nil {
-		t.Fatalf("Failed to create file %s: %v", path, err)
-	}
+	err := os.WriteFile(fullPath, []byte("package main"), 0o600)
+	require.NoError(t, err, "Failed to create file %s", path)
 }
 
 func createDir(t *testing.T, root, path string) {
 	fullPath := filepath.Join(root, path)
-	if err := os.MkdirAll(fullPath, 0o700); err != nil {
-		t.Fatalf("Failed to create dir %s: %v", path, err)
-	}
+	err := os.MkdirAll(fullPath, 0o700)
+	require.NoError(t, err, "Failed to create dir %s", path)
 }
 
 func findNode(nodes []indexer.FileNode, name string) bool {

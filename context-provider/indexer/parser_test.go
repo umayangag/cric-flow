@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
@@ -20,14 +22,11 @@ func (s *MyStruct) Method() {}
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.go")
-	if err := os.WriteFile(tmpFile, []byte(content), 0o600); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
+	require.NoError(t, err, "Failed to write temp file")
 
 	symbols, err := indexer.ParseGo(tmpFile)
-	if err != nil {
-		t.Fatalf("ParseGo failed: %v", err)
-	}
+	require.NoError(t, err, "ParseGo failed")
 
 	expected := []struct {
 		Name string
@@ -38,17 +37,11 @@ func (s *MyStruct) Method() {}
 		{"Method", "method"},
 	}
 
-	if len(symbols) != len(expected) {
-		t.Fatalf("Expected %d symbols, got %d", len(expected), len(symbols))
-	}
+	require.Equal(t, len(expected), len(symbols), "Expected %d symbols, got %d", len(expected), len(symbols))
 
 	for i, sym := range symbols {
-		if sym.Name != expected[i].Name {
-			t.Errorf("Symbol %d: expected name %s, got %s", i, expected[i].Name, sym.Name)
-		}
-		if sym.Kind != expected[i].Kind {
-			t.Errorf("Symbol %d: expected kind %s, got %s", i, expected[i].Kind, sym.Kind)
-		}
+		assert.Equal(t, expected[i].Name, sym.Name, "Symbol %d: name mismatch", i)
+		assert.Equal(t, expected[i].Kind, sym.Kind, "Symbol %d: kind mismatch", i)
 	}
 }
 
@@ -63,14 +56,11 @@ def my_func():
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0o600); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
+	require.NoError(t, err, "Failed to write temp file")
 
 	symbols, err := indexer.ParsePy(tmpFile)
-	if err != nil {
-		t.Fatalf("ParsePy failed: %v", err)
-	}
+	require.NoError(t, err, "ParsePy failed")
 
 	expected := []struct {
 		Name string
@@ -81,36 +71,27 @@ def my_func():
 		{"my_func", "function"},
 	}
 
-	if len(symbols) != len(expected) {
-		t.Fatalf("Expected %d symbols, got %d", len(expected), len(symbols))
-	}
+	require.Equal(t, len(expected), len(symbols), "Expected %d symbols, got %d", len(expected), len(symbols))
 
 	for i, sym := range symbols {
-		if sym.Name != expected[i].Name {
-			t.Errorf("Symbol %d: expected name %s, got %s", i, expected[i].Name, sym.Name)
-		}
-		if sym.Kind != expected[i].Kind {
-			t.Errorf("Symbol %d: expected kind %s, got %s", i, expected[i].Kind, sym.Kind)
-		}
+		assert.Equal(t, expected[i].Name, sym.Name, "Symbol %d: name mismatch", i)
+		assert.Equal(t, expected[i].Kind, sym.Kind, "Symbol %d: kind mismatch", i)
 	}
 }
 
 func TestParsePy_Symlink(t *testing.T) {
 	tmpDir := t.TempDir()
 	targetFile := filepath.Join(tmpDir, "target.py")
-	if err := os.WriteFile(targetFile, []byte("def target(): pass"), 0o600); err != nil {
-		t.Fatalf("Failed to write target file: %v", err)
-	}
+	err := os.WriteFile(targetFile, []byte("def target(): pass"), 0o600)
+	require.NoError(t, err, "Failed to write target file")
 
 	symlinkPath := filepath.Join(tmpDir, "link.py")
 	if err := os.Symlink(targetFile, symlinkPath); err != nil {
 		t.Skipf("Symlinks not supported on this OS: %v", err)
 	}
 
-	_, err := indexer.ParsePy(symlinkPath)
-	if err == nil {
-		t.Error("Expected error for symlink, got nil")
-	}
+	_, err = indexer.ParsePy(symlinkPath)
+	assert.Error(t, err, "Expected error for symlink")
 }
 
 func TestParsePy_Docstrings(t *testing.T) {
@@ -127,14 +108,11 @@ def my_func():
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_doc.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0o600); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
+	require.NoError(t, err, "Failed to write temp file")
 
 	symbols, err := indexer.ParsePy(tmpFile)
-	if err != nil {
-		t.Fatalf("ParsePy failed: %v", err)
-	}
+	require.NoError(t, err, "ParsePy failed")
 
 	expected := map[string]string{
 		"MyClass": "Class docstring",
@@ -144,9 +122,7 @@ def my_func():
 
 	for _, sym := range symbols {
 		if want, ok := expected[sym.Name]; ok {
-			if sym.Doc != want {
-				t.Errorf("Symbol %s: expected doc %q, got %q", sym.Name, want, sym.Doc)
-			}
+			assert.Equal(t, want, sym.Doc, "Symbol %s: docstring mismatch", sym.Name)
 		}
 	}
 }
@@ -161,14 +137,11 @@ def my_func(
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_multiline.py")
-	if err := os.WriteFile(tmpFile, []byte(content), 0o600); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
+	require.NoError(t, err, "Failed to write temp file")
 
 	symbols, err := indexer.ParsePy(tmpFile)
-	if err != nil {
-		t.Fatalf("ParsePy failed: %v", err)
-	}
+	require.NoError(t, err, "ParsePy failed")
 
 	found := false
 	for _, sym := range symbols {
@@ -177,7 +150,5 @@ def my_func(
 			break
 		}
 	}
-	if !found {
-		t.Error("Failed to find multiline function definition")
-	}
+	assert.True(t, found, "Failed to find multiline function definition")
 }
