@@ -5,12 +5,9 @@ from datetime import timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-from ml.match_win_predict import predict_for_team
 
 from . import settings as app_settings
 from .artifacts import BAT_MODELS, BOWL_MODELS
@@ -35,8 +32,6 @@ from .models import (
     BowlingFeatures,
     BowlingPrediction,
     HistoricalMatchBacktestRequest,
-    PlayerPrediction,
-    TeamWinResponse,
 )
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
@@ -555,58 +550,6 @@ async def predict_bowling(features: List[BowlingFeatures]):
                 hint="See server logs for stacktrace using request_id",
             ),
         )
-
-
-@app.post("/predict-win", response_model=List[PlayerPrediction])
-async def predict_win(players: List[PlayerPrediction]):
-    if not players:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="EMPTY_BATCH",
-                message="Empty players list",
-                hint="Send at least one player with the required fields.",
-            ),
-        )
-
-    logger.info("predict.win.start", players=len(players))
-    try:
-        df = pd.DataFrame([p.model_dump() for p in players])
-        predictions, _ = predict_for_team(df)
-        out = [PlayerPrediction(**p) for p in predictions.to_dict("records")]
-        logger.info("predict.win.success", players=len(out))
-        return out
-    except Exception as exc:
-        logger.exception("predict.win.error", error=str(exc))
-        raise HTTPException(
-            status_code=500,
-            detail=error_payload(
-                code="PREDICT_FAILED",
-                message="Team win prediction failed",
-                hint="See server logs for stacktrace using request_id",
-            ),
-        )
-
-
-@app.post("/predict/win", response_model=TeamWinResponse)
-async def predict_win_wrapped(players: List[PlayerPrediction]):
-    if not players:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="EMPTY_BATCH",
-                message="Empty players list",
-                hint="Send at least one player with the required fields.",
-            ),
-        )
-
-    df = pd.DataFrame([p.model_dump() for p in players])
-    predictions, team_mean = predict_for_team(df)
-    wrapped = TeamWinResponse(
-        players=[PlayerPrediction(**p) for p in predictions.to_dict("records")],
-        team_win_probability=float(team_mean),
-    )
-    return wrapped
 
 
 @app.post("/admin/reload")

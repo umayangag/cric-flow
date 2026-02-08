@@ -3,7 +3,7 @@
 Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. Precomputation of features is now owned by the Go app; this service no longer exposes a /precompute endpoint. The original `src/` prototype remains for reference.
 
 Components:
-- `app/main.py`: FastAPI app exposing health, prediction endpoints for batting and bowling, and team win probability.
+- `app/main.py`: FastAPI app exposing health and prediction endpoints for batting and bowling.
 - `ml/export_pool.py`: Script to generate `pool.csv` for team prediction.
 - `ml/train_batting_model.py`: Script to train the batting prediction model.
 - `ml/train_bowling_model.py`: Script to train the bowling prediction model.
@@ -80,8 +80,6 @@ make docker-run
 - `GET /health` → service status and whether artifacts are loaded
 - `POST /predict/batting` → array of `BattingFeatures` rows → array of `BattingPrediction`
 - `POST /predict/bowling` → array of `BowlingFeatures` rows → array of `BowlingPrediction`
-- `POST /predict-win` → array of `PlayerPrediction` → array of `PlayerPrediction` (enriched with `winning_probability`)
-  - Note: team-level win probability is the mean of `winning_probability` on the client side.
 - `POST /admin/reload` → reload artifacts (enable with `ENABLE_HOT_RELOAD=1`)
 
 ## Model loading

@@ -1,9 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import HealthTab from './components/HealthTab';
-import PredictTab from './components/PredictTab';
-import EvaluateTab from './components/EvaluateTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
-import MatchCompareDbTab from './components/MatchCompareDbTab';
 import OpsStatusTab from './components/OpsStatusTab';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
@@ -16,7 +13,7 @@ import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Fade from '@mui/material/Fade';
 
-type TabKey = 'health' | 'predict' | 'evaluate' | 'evaluateDb' | 'compareDb' | 'ops';
+type TabKey = 'health' | 'evaluateDb' | 'ops';
 
 const App: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('health');
@@ -73,10 +70,7 @@ const App: React.FC = () => {
         >
           <Tab value="health" label="Health" />
           <Tab value="ops" label="Ops Status" />
-          <Tab value="predict" label="Single Prediction" />
-          <Tab value="evaluate" label="Evaluate From CSV" />
           <Tab value="evaluateDb" label="Evaluate (DB)" />
-          <Tab value="compareDb" label="Match Compare (DB)" />
         </Tabs>
 
         {/* Content Card */}
@@ -84,10 +78,7 @@ const App: React.FC = () => {
           <Paper elevation={2} sx={{ p: 2 }}>
             {tab === 'health' && <HealthTab />}
             {tab === 'ops' && <OpsStatusTab />}
-            {tab === 'predict' && <PredictTab />}
-            {tab === 'evaluate' && <EvaluateTab />}
             {tab === 'evaluateDb' && <EvaluateDbTab />}
-            {tab === 'compareDb' && <MatchCompareDbTab />}
           </Paper>
         </Fade>
       </Container>

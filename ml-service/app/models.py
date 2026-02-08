@@ -133,26 +133,6 @@ class BowlingPrediction(BaseModel):
     econ: float
 
 
-class PlayerPrediction(BaseModel):
-    player_name: str
-    runs_scored: float
-    balls_faced: float
-    fours_scored: float
-    sixes_scored: float
-    batting_position: float
-    strike_rate: float
-    runs_conceded: float
-    deliveries: float
-    wickets_taken: float
-    econ: float
-    winning_probability: Optional[float] = None
-
-
-class TeamWinResponse(BaseModel):
-    players: List[PlayerPrediction]
-    team_win_probability: float
-
-
 # -------------------- Historical match backtest models --------------------
 
 

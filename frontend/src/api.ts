@@ -1,10 +1,5 @@
 import type {
   HealthResponse,
-  PlayerPrediction,
-  TeamWinResponse,
-  SeasonsNextResponse,
-  MatchListItem,
-  MatchSquadsResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
   Migration,
@@ -41,36 +36,6 @@ export const api = {
   },
   health(): Promise<HealthResponse> {
     return http('/health');
-  },
-  predictWin(players: PlayerPrediction[]): Promise<TeamWinResponse> {
-    return http('/predict/win', {
-      method: 'POST',
-      body: JSON.stringify(players),
-    });
-  },
-  // --- DB-backed endpoints (go-app API) ---
-  seasonsNext(cutoff: string, format?: string): Promise<SeasonsNextResponse> {
-    const u = new URL('/seasons/next', BASE_API_URL);
-    u.searchParams.set('cutoff', cutoff);
-    if (format) u.searchParams.set('format', format);
-    return httpApi(u.toString());
-  },
-  listMatches(season: number, after: string, format?: string): Promise<MatchListItem[]> {
-    const u = new URL('/matches', BASE_API_URL);
-    u.searchParams.set('season', String(season));
-    u.searchParams.set('after', after);
-    if (format) u.searchParams.set('format', format);
-    return httpApi(u.toString());
-  },
-  getMatchSquads(
-    matchId: number | string,
-    asof: string,
-    format?: string,
-  ): Promise<MatchSquadsResponse> {
-    const u = new URL(`/match/${matchId}/squads`, BASE_API_URL);
-    u.searchParams.set('asof', asof);
-    if (format) u.searchParams.set('format', format);
-    return httpApi(u.toString());
   },
   // --- Backtest API (select and evaluate) ---
   backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {
