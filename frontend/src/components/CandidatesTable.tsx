@@ -64,6 +64,7 @@ const CandidatesTable: React.FC<CandidatesTableProps> = ({
                   value={c.match_id}
                   name="candidate-radio"
                   size="small"
+                  inputProps={{ 'aria-label': 'Select' }}
                 />
               </TableCell>
             </TableRow>

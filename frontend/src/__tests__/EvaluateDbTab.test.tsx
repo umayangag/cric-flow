@@ -11,6 +11,8 @@ vi.mock('../api', async () => {
     api: {
       backtestSelect: vi.fn(),
       backtestEvaluate: vi.fn(),
+      getFormats: vi.fn(),
+      getTeams: vi.fn(),
     },
   };
 });
@@ -20,6 +22,8 @@ const { api } = await import('../api');
 describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.getFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
+    (api.getTeams as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
   });
 
   it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
@@ -64,19 +68,21 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     render(<EvaluateDbTab />);
 
-    // Inputs exist
-    fireEvent.change(screen.getByLabelText(/Format/i), {
-      target: { value: 'T20' },
-    });
-    fireEvent.change(screen.getByLabelText(/Team 1/i), {
-      target: { value: 'IND' },
-    });
-    fireEvent.change(screen.getByLabelText(/Team 2/i), {
-      target: { value: 'AUS' },
-    });
+    // Inputs exist - interaction with MUI Select
+    // Format
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'T20' }));
+    
+    // Team 1
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 1/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'IND' }));
+    
+    // Team 2
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 2/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'AUS' }));
 
     // Load candidates
-    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
@@ -98,8 +104,8 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
-    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
-    await screen.findByText(/Error:/i);
+    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await screen.findByText(/HTTP 500/i);
   });
 
   it('renders bowling metrics and match aggregates when present', async () => {
@@ -165,7 +171,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     render(<EvaluateDbTab />);
 
     // Load candidates
-    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
@@ -248,7 +254,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     render(<EvaluateDbTab />);
 
     // Load candidates
-    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i);
 
     // Select and evaluate
@@ -277,7 +283,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       candidates: [],
     });
     render(<EvaluateDbTab />);
-    fireEvent.click(screen.getByRole('button', { name: /Load Played Matches/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/No candidates loaded yet/i);
     const btn = screen.getByRole('button', {
       name: /Evaluate Selected Match/i,
