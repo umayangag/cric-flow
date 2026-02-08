@@ -30,9 +30,12 @@ vet:
 test:
 	go test ./...
 
+# Lint Go code using golangci-lint
+GOLANGCI_BIN := $(shell command -v golangci-lint 2>/dev/null || echo $$(go env GOPATH)/bin/golangci-lint)
+
 # Run lint
 lint:
-	@bash ./scripts/golangci_lint.sh
+	$(GOLANGCI_BIN) run -c ../.golangci.yml
 
 # Generate coverage
 coverage:
