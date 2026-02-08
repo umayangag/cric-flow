@@ -16,6 +16,7 @@ type ignoreRule struct {
 	pattern string
 	dirOnly bool
 	rooted  bool // true if pattern contains separator (implies relative to root)
+	negate  bool
 }
 
 func NewIgnoreMatcher(root string) *IgnoreMatcher {
@@ -42,13 +43,15 @@ func (m *IgnoreMatcher) loadGitIgnore() {
 		}
 
 		// Parse rule
-		// Negation (!) is not supported in this simple version
+		negate := false
 		if strings.HasPrefix(line, "!") {
-			continue
+			negate = true
+			line = strings.TrimPrefix(line, "!")
 		}
 
 		rule := ignoreRule{
 			pattern: line,
+			negate:  negate,
 		}
 
 		if strings.HasSuffix(line, "/") {
@@ -76,7 +79,9 @@ func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
 
 	name := filepath.Base(path)
 
-	for _, rule := range m.rules {
+	// Iterate backwards to support negation and overrides
+	for i := len(m.rules) - 1; i >= 0; i-- {
+		rule := m.rules[i]
 		if rule.dirOnly && !isDir {
 			continue
 		}
@@ -86,24 +91,20 @@ func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
 		// Adjust pattern for OS
 		pattern := filepath.FromSlash(rule.pattern)
 
-if rule.rooted {
+		if rule.rooted {
 			// Match against relPath
-			if matchedPath, err := filepath.Match(pattern, relPath); err != nil {
-				log.Printf("warn: malformed .gitignore pattern '%s': %v", rule.pattern, err)
-			} else if matchedPath {
+			if matchedPath, _ := filepath.Match(pattern, relPath); matchedPath {
 				matched = true
 			}
 		} else {
 			// Match against name (basename)
-			if matchedName, err := filepath.Match(pattern, name); err != nil {
-				log.Printf("warn: malformed .gitignore pattern '%s': %v", rule.pattern, err)
-			} else if matchedName {
+			if matchedName, _ := filepath.Match(pattern, name); matchedName {
 				matched = true
 			}
 		}
 
 		if matched {
-			return true
+			return !rule.negate
 		}
 	}
 	return false

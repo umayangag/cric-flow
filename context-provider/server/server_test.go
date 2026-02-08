@@ -158,7 +158,7 @@ func TestHandleToolCall_RefreshIndex(t *testing.T) {
 	var res server.Response
 	err = json.Unmarshal(buf.Bytes(), &res)
 	require.NoError(t, err, "Failed to unmarshal response")
-	
+
 	require.Nil(t, res.Error, "Unexpected error")
 
 	// Check if LastContext is updated
@@ -212,7 +212,7 @@ func TestHandleResourceRead(t *testing.T) {
 	}
 	buf.Reset()
 	srv.HandleRequest(&buf, &reqInvalid)
-	
+
 	err = json.Unmarshal(buf.Bytes(), &res)
 	require.NoError(t, err)
 	assert.NotNil(t, res.Error, "Expected error for invalid URI")
@@ -277,21 +277,21 @@ func TestHandleToolCall_InvalidJSON(t *testing.T) {
 	// The parsing inside handleToolCall: json.Unmarshal(params, &call)
 	// If we pass `{"name": ...}` it works.
 	// If we pass `[]` it might fail unmarshal to struct.
-	
+
 	req := server.Request{
 		JSONRPC: "2.0",
 		Method:  "tools/call",
 		Params:  json.RawMessage(`[]`), // Array instead of object
 		ID:      jsonRawMessage("1"),
 	}
-	
+
 	var buf bytes.Buffer
 	srv.HandleRequest(&buf, &req)
-	
+
 	var res server.Response
 	err := json.Unmarshal(buf.Bytes(), &res)
 	require.NoError(t, err, "Failed to unmarshal response")
-	
+
 	assert.NotNil(t, res.Error, "Expected error for invalid params structure")
 }
 
@@ -305,7 +305,7 @@ func TestHandleToolCall_RefreshIndex_Error(t *testing.T) {
 		Params:  json.RawMessage(`{"name": "refresh_index", "arguments": {}}`),
 		ID:      jsonRawMessage("1"),
 	}
-	
+
 	var buf bytes.Buffer
 	srv.HandleRequest(&buf, &req)
 

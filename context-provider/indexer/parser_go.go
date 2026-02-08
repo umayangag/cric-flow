@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"strings"
 )
 
 func ParseGo(path string) ([]Symbol, error) {
@@ -45,17 +46,42 @@ func ParseGo(path string) ([]Symbol, error) {
 			}
 			symbols = append(symbols, sym)
 		case *ast.GenDecl:
-			if d.Tok == token.TYPE {
-				for _, spec := range d.Specs {
-					if ts, ok := spec.(*ast.TypeSpec); ok {
+			var kind string
+			switch d.Tok {
+			case token.TYPE:
+				kind = "type"
+			case token.CONST:
+				kind = "const"
+			case token.VAR:
+				kind = "var"
+			default:
+				continue
+			}
+
+			for _, spec := range d.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok && kind == "type" {
+					sym := Symbol{
+						Name: ts.Name.Name,
+						Kind: kind,
+						Line: fset.Position(ts.Pos()).Line,
+					}
+					if ts.Doc != nil {
+						sym.Doc = ts.Doc.Text()
+					}
+					symbols = append(symbols, sym)
+				} else if vs, ok := spec.(*ast.ValueSpec); ok && (kind == "var" || kind == "const") {
+					for _, name := range vs.Names {
 						sym := Symbol{
-							Name: ts.Name.Name,
-							Kind: "type",
-							Line: fset.Position(ts.Pos()).Line,
+							Name: name.Name,
+							Kind: kind,
+							Line: fset.Position(name.Pos()).Line,
 						}
-						if ts.Doc != nil {
-							sym.Doc = ts.Doc.Text()
+						if vs.Doc != nil {
+							sym.Doc = vs.Doc.Text()
+						} else if d.Doc != nil {
+							sym.Doc = d.Doc.Text()
 						}
+						sym.Doc = strings.TrimSpace(sym.Doc)
 						symbols = append(symbols, sym)
 					}
 				}

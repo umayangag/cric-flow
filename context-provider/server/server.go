@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
