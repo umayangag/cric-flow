@@ -70,4 +70,11 @@ export const api = {
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
   },
+  // --- Options ---
+  getTeams(): Promise<string[]> {
+    return httpApi('/api/options/teams');
+  },
+  getFormats(): Promise<string[]> {
+    return httpApi('/api/options/formats');
+  },
 };

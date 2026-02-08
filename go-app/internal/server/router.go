@@ -45,6 +45,11 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet)
 	r.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet)
 
+	// Options
+	optionsHandler := &OptionsHandler{}
+	r.HandleFunc("/api/options/teams", optionsHandler.HandleGetTeams).Methods(http.MethodGet)
+	r.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).Methods(http.MethodGet)
+
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
 

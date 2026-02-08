@@ -1,16 +1,44 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import {
+  Box,
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Typography,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
 import { api } from '../api';
 import type { BacktestCandidate, BacktestEvaluateResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
-
-const formats = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 
 const EvaluateDbTab: React.FC = () => {
   // Inputs for new backtest flow
   const [format, setFormat] = useState<string>('T20');
   const [team1, setTeam1] = useState<string>('IND');
   const [team2, setTeam2] = useState<string>('AUS');
+
+  // Options
+  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
+  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [f, t] = await Promise.all([api.getFormats(), api.getTeams()]);
+        setAvailableFormats(f);
+        setAvailableTeams(t);
+        // Optionally set defaults if current selection is invalid, but keeping it simple for now
+      } catch (e) {
+        console.error('Failed to fetch options', e);
+      }
+    };
+    fetchData();
+  }, []);
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false);
@@ -76,98 +104,124 @@ const EvaluateDbTab: React.FC = () => {
   };
 
   return (
-    <div>
-      <p style={{ marginTop: 0 }}>
+    <Stack spacing={3} sx={{ mt: 2 }}>
+      <Typography variant="body1">
         Evaluate historical matches by training strictly up to the match date, predicting for actual
         players, and comparing predictions vs actuals.
-      </p>
+      </Typography>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          marginBottom: 12,
-        }}
-      >
-        <label>
-          Format:&nbsp;
-          <select
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+        <FormControl fullWidth size="small">
+          <InputLabel id="format-select-label">Format</InputLabel>
+          <Select
+            labelId="format-select-label"
             value={format}
+            label="Format"
             onChange={(e) => {
               setFormat(e.target.value);
               resetOutputs();
             }}
           >
-            {formats.map((f) => (
-              <option key={f} value={f}>
+            {availableFormats.length === 0 && <MenuItem value={format}>{format}</MenuItem>}
+            {availableFormats.map((f) => (
+              <MenuItem key={f} value={f}>
                 {f}
-              </option>
+              </MenuItem>
             ))}
-          </select>
-        </label>
-        <label>
-          Team 1:&nbsp;
-          <input
+          </Select>
+        </FormControl>
+
+        <FormControl fullWidth size="small">
+          <InputLabel id="team1-select-label">Team 1</InputLabel>
+          <Select
+            labelId="team1-select-label"
             value={team1}
+            label="Team 1"
             onChange={(e) => {
               setTeam1(e.target.value);
               resetOutputs();
             }}
-            placeholder="e.g., IND"
-          />
-        </label>
-        <label>
-          Team 2:&nbsp;
-          <input
+          >
+            {availableTeams.length === 0 && <MenuItem value={team1}>{team1}</MenuItem>}
+            {availableTeams.map((t) => (
+              <MenuItem key={t} value={t}>
+                {t}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <FormControl fullWidth size="small">
+          <InputLabel id="team2-select-label">Team 2</InputLabel>
+          <Select
+            labelId="team2-select-label"
             value={team2}
+            label="Team 2"
             onChange={(e) => {
               setTeam2(e.target.value);
               resetOutputs();
             }}
-            placeholder="e.g., AUS"
-          />
-        </label>
-        <button onClick={handleLoadCandidates} disabled={!canLoad}>
-          Load Played Matches
-        </button>
-      </div>
+          >
+            {availableTeams.length === 0 && <MenuItem value={team2}>{team2}</MenuItem>}
+            {availableTeams.map((t) => (
+              <MenuItem key={t} value={t}>
+                {t}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
 
-      {statusMessage && (
-        <div style={{ marginBottom: 12 }} aria-live="polite" aria-atomic="true">
-          {statusMessage}
-        </div>
-      )}
-      {error && <div style={{ marginBottom: 12, color: 'red' }}>Error: {error}</div>}
+        <Button
+          variant="contained"
+          onClick={handleLoadCandidates}
+          disabled={!canLoad}
+          sx={{ minWidth: 180, height: 40 }}
+        >
+          {loading && !candidates.length ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+          Load Matches
+        </Button>
+      </Stack>
+
+      {statusMessage && <Alert severity="info">{statusMessage}</Alert>}
+      {error && <Alert severity="error">{error}</Alert>}
 
       {/* Candidates */}
-      <section aria-label="candidates-section" style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: '8px 0' }}>Candidates</h3>
+      <Box component="section" aria-label="candidates-section">
+        <Typography variant="h6" gutterBottom>
+          Candidates
+        </Typography>
         <CandidatesTable
           candidates={candidates}
           selectedMatchId={selectedMatchId}
           onSelectMatch={setSelectedMatchId}
         />
-        <div style={{ marginTop: 8 }}>
-          <button onClick={handleEvaluateSelectedMatch} disabled={!canEvaluate}>
-            {loading ? 'Evaluating…' : 'Evaluate Selected Match'}
-          </button>
-        </div>
-      </section>
+        <Box sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={handleEvaluateSelectedMatch}
+            disabled={!canEvaluate}
+          >
+            {loading && candidates.length ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+            Evaluate Selected Match
+          </Button>
+        </Box>
+      </Box>
 
       {/* Results */}
-      <section aria-label="results-section">
-        <h3 style={{ margin: '8px 0' }}>Results</h3>
+      <Box component="section" aria-label="results-section">
+        <Typography variant="h6" gutterBottom>
+          Results
+        </Typography>
         {!evaluationResult ? (
-          <div style={{ color: '#666' }}>
+          <Typography variant="body2" color="text.secondary">
             Run an evaluation to see player-level errors and summary metrics.
-          </div>
+          </Typography>
         ) : (
           <EvaluationResults result={evaluationResult} />
         )}
-      </section>
-    </div>
+      </Box>
+    </Stack>
   );
 };
 
