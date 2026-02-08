@@ -99,7 +99,11 @@ func ScanProject(root string) (*ProjectContext, error) {
 func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]FileNode, error) {
 	entries, err := os.ReadDir(currentPath)
 	if err != nil {
-		return nil, err
+		if currentPath == root {
+			return nil, err
+		}
+		log.Printf("warn: skipping directory %s: %v", currentPath, err)
+		return nil, nil
 	}
 
 	var nodes []FileNode
