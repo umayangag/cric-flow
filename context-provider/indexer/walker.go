@@ -183,10 +183,13 @@ func walkDir(
 
 			// Content Logic (for config/docs)
 			if shouldReadContent(name) {
-				f, err := os.Open(fullPath)
-				if err != nil {
-					log.Printf("warn: could not open %s to read content: %v", relPath, err)
-				} else {
+				// Use a closure to ensure file handle is closed immediately
+				func() {
+					f, err := os.Open(fullPath)
+					if err != nil {
+						log.Printf("warn: could not open %s to read content: %v", relPath, err)
+						return
+					}
 					defer f.Close()
 
 					// Read maxContentSize + 1 to detect truncation necessity
@@ -200,7 +203,7 @@ func walkDir(
 					default:
 						node.Content = string(content)
 					}
-				}
+				}()
 			}
 			nodes = append(nodes, node)
 		}
@@ -210,8 +213,5 @@ func walkDir(
 
 func shouldReadContent(name string) bool {
 	ext := filepath.Ext(name)
-	if textExtensions[ext] || textExtensions[name] {
-		return true
-	}
-	return false
+	return textExtensions[ext] || textExtensions[name]
 }
