@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 )
 
@@ -21,6 +22,7 @@ type PythonBatchParser struct {
 	stdout    *bufio.Scanner
 	mu        sync.Mutex
 	scriptTmp string
+	pythonCmd string
 }
 
 func NewPythonBatchParser() (*PythonBatchParser, error) {
@@ -47,21 +49,34 @@ func NewPythonBatchParser() (*PythonBatchParser, error) {
 		}
 	}
 
+	parser := &PythonBatchParser{
+		scriptTmp: tmpPath,
+		pythonCmd: pythonCmd,
+	}
+
 	// 3. Start process
+	if err := parser.startProcess(); err != nil {
+		os.Remove(tmpPath)
+		return nil, err
+	}
+
+	return parser, nil
+}
+
+func (p *PythonBatchParser) startProcess() error {
 	// No arguments -> loop mode
-	cmd := exec.Command(pythonCmd, tmpPath)
+	//nolint:gosec // p.pythonCmd is resolved via LookPath and p.scriptTmp is a created temp file
+	cmd := exec.Command(p.pythonCmd, p.scriptTmp)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		os.Remove(tmpPath)
-		return nil, fmt.Errorf("failed to get stdin pipe: %w", err)
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		stdin.Close()
-		os.Remove(tmpPath)
-		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
 	// Inherit stderr for logging
@@ -69,16 +84,29 @@ func NewPythonBatchParser() (*PythonBatchParser, error) {
 
 	if err := cmd.Start(); err != nil {
 		stdin.Close()
-		os.Remove(tmpPath)
-		return nil, fmt.Errorf("failed to start python process: %w", err)
+		return fmt.Errorf("failed to start python process: %w", err)
 	}
 
-	return &PythonBatchParser{
-		cmd:       cmd,
-		stdin:     stdin,
-		stdout:    bufio.NewScanner(stdoutPipe),
-		scriptTmp: tmpPath,
-	}, nil
+	p.cmd = cmd
+	p.stdin = stdin
+	p.stdout = bufio.NewScanner(stdoutPipe)
+	// Increase buffer size to handle large JSON outputs
+	buf := make([]byte, 1024*1024)
+	p.stdout.Buffer(buf, 10*1024*1024)
+	return nil
+}
+
+func (p *PythonBatchParser) restartProcess() error {
+	// Cleanup old process
+	if p.stdin != nil {
+		p.stdin.Close()
+	}
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+		_ = p.cmd.Wait()
+	}
+
+	return p.startProcess()
 }
 
 func (p *PythonBatchParser) Parse(path string) ([]Symbol, error) {
@@ -97,43 +125,71 @@ func (p *PythonBatchParser) Parse(path string) ([]Symbol, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
-		return nil, fmt.Errorf("python process exited unexpectedly")
-	}
-
-	// Write path
-	if _, err := fmt.Fprintln(p.stdin, path); err != nil {
-		return nil, fmt.Errorf("failed to write to python process: %w", err)
-	}
-
-	// Read response
-	// Note: Scanner may have buffer limit, but JSON response for symbols shouldn't be massive usually.
-	// Default scanner buffer is 64KB. If symbols are huge, this might fail.
-	// But let's assume it's fine for now or we can increase buffer.
-	if !p.stdout.Scan() {
-		if err := p.stdout.Err(); err != nil {
-			return nil, fmt.Errorf("error reading from python: %w", err)
+	// Helper to perform parsing
+	doParse := func() ([]Symbol, error) {
+		if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
+			return nil, fmt.Errorf("python process exited unexpectedly")
 		}
-		return nil, fmt.Errorf("python process closed stdout")
-	}
 
-	line := p.stdout.Bytes()
-	trimmed := bytes.TrimSpace(line)
-	if len(trimmed) > 0 && trimmed[0] == '{' {
-		var errObj struct {
-			Error string `json:"error"`
+		// Write path
+		if _, err := fmt.Fprintln(p.stdin, path); err != nil {
+			return nil, fmt.Errorf("failed to write to python process: %w", err)
 		}
-		if err := json.Unmarshal(trimmed, &errObj); err == nil && errObj.Error != "" {
-			return nil, fmt.Errorf("%s", errObj.Error)
+
+		// Read response
+		if !p.stdout.Scan() {
+			if err := p.stdout.Err(); err != nil {
+				return nil, fmt.Errorf("error reading from python: %w", err)
+			}
+			return nil, fmt.Errorf("python process closed stdout")
 		}
+
+		line := p.stdout.Bytes()
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) > 0 && trimmed[0] == '{' {
+			var errObj struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(trimmed, &errObj); err == nil && errObj.Error != "" {
+				return nil, fmt.Errorf("%s", errObj.Error)
+			}
+		}
+
+		var symbols []Symbol
+		if err := json.Unmarshal(line, &symbols); err != nil {
+			return nil, fmt.Errorf("failed to decode symbol json: %v", err)
+		}
+
+		return symbols, nil
 	}
 
-	var symbols []Symbol
-	if err := json.Unmarshal(line, &symbols); err != nil {
-		return nil, fmt.Errorf("failed to decode symbol json: %v", err)
+	// Attempt 1
+	symbols, err := doParse()
+	if err == nil {
+		return symbols, nil
 	}
 
-	return symbols, nil
+	// Retry logic
+	isTransportError := false
+	errMsg := err.Error()
+	if (p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited()) ||
+		errMsg == "python process exited unexpectedly" ||
+		errMsg == "python process closed stdout" ||
+		strings.Contains(errMsg, "failed to write") ||
+		strings.Contains(errMsg, "error reading") {
+		isTransportError = true
+	}
+
+	if isTransportError {
+		// Attempt restart
+		if restartErr := p.restartProcess(); restartErr != nil {
+			return nil, fmt.Errorf("failed to restart python process: %v (original error: %v)", restartErr, err)
+		}
+		// Attempt 2
+		return doParse()
+	}
+
+	return nil, err
 }
 
 func (p *PythonBatchParser) Close() {

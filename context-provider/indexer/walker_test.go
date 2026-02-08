@@ -80,8 +80,17 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 				switch node.Name {
 				case "large.txt":
 					foundLarge = true
-					assert.True(t, strings.HasSuffix(node.Content, "... (truncated)"), "Expected large file to be truncated")
-					assert.LessOrEqual(t, len(node.Content), indexer.MaxContentSize+len("\n... (truncated)"), "Content size exceeds expected limit")
+					assert.True(
+						t,
+						strings.HasSuffix(node.Content, "... (truncated)"),
+						"Expected large file to be truncated",
+					)
+					assert.LessOrEqual(
+						t,
+						len(node.Content),
+						indexer.MaxContentSize+len("\n... (truncated)"),
+						"Content size exceeds expected limit",
+					)
 				case "small.txt":
 					foundSmall = true
 					assert.Equal(t, string(smallContent), node.Content, "Expected small file content match")
@@ -130,7 +139,10 @@ func TestScanProject_SensitiveFiles(t *testing.T) {
 			}
 			for _, s := range sensitive {
 				if node.Name == s {
-					t.Errorf("Found sensitive file %s in scan results", s) // keeping this as it loops inside checkNodes, but could be asserting not equal
+					t.Errorf(
+						"Found sensitive file %s in scan results",
+						s,
+					) // keeping this as it loops inside checkNodes, but could be asserting not equal
 				}
 			}
 			if len(node.Children) > 0 {

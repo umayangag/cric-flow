@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bufio"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,7 +101,9 @@ func (m *IgnoreMatcher) ShouldIgnore(path string, isDir bool) bool {
             }
 		} else {
 			// Match against name (basename)
-			if matchedName, _ := filepath.Match(pattern, name); matchedName {
+			if matchedName, err := filepath.Match(pattern, name); err != nil {
+				log.Printf("warn: malformed gitignore pattern '%s': %v", rule.pattern, err)
+			} else if matchedName {
 				matched = true
 			}
 		}

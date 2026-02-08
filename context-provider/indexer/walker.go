@@ -104,7 +104,12 @@ func ScanProject(root string) (*ProjectContext, error) {
 	return ctx, nil
 }
 
-func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher, pyParser *PythonBatchParser) ([]FileNode, error) {
+func walkDir(
+	root, currentPath string,
+	stats *Stats,
+	matcher *IgnoreMatcher,
+	pyParser *PythonBatchParser,
+) ([]FileNode, error) {
 	entries, err := os.ReadDir(currentPath)
 	if err != nil {
 		if currentPath == root {
