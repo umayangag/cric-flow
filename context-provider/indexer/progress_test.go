@@ -1,4 +1,4 @@
-package indexer
+package indexer_test
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestScanProject_LogsProgress(t *testing.T) {
@@ -31,7 +33,7 @@ func TestScanProject_LogsProgress(t *testing.T) {
 	}()
 
 	// Run ScanProject
-	_, err := ScanProject(tmpDir)
+	_, err := indexer.ScanProject(tmpDir)
 	if err != nil {
 		t.Fatalf("ScanProject failed unexpectedly: %v", err)
 	}

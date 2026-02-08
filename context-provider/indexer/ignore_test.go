@@ -1,9 +1,11 @@
-package indexer
+package indexer_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestScanProject_RespectsGitIgnore(t *testing.T) {
@@ -40,7 +42,7 @@ secret.txt
 	createFile(t, tmpDir, "included_dir/utils.go")
 
 	// 3. Scan
-	ctx, err := ScanProject(tmpDir)
+	ctx, err := indexer.ScanProject(tmpDir)
 	if err != nil {
 		t.Fatalf("ScanProject failed: %v", err)
 	}
@@ -90,7 +92,7 @@ func createDir(t *testing.T, root, path string) {
 	}
 }
 
-func findNode(nodes []FileNode, name string) bool {
+func findNode(nodes []indexer.FileNode, name string) bool {
 	for _, node := range nodes {
 		if node.Name == name {
 			return true

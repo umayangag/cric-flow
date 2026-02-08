@@ -1,18 +1,20 @@
-package indexer
+package indexer_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestLargeFileProtection(t *testing.T) {
 	// Save original limit and restore after test
-	originalLimit := MaxParseFileSize
-	defer func() { MaxParseFileSize = originalLimit }()
+	originalLimit := indexer.MaxParseFileSize
+	defer func() { indexer.MaxParseFileSize = originalLimit }()
 
 	// Set a small limit for testing
-	MaxParseFileSize = 100
+	indexer.MaxParseFileSize = 100
 
 	tmpDir := t.TempDir()
 
@@ -26,7 +28,7 @@ func TestLargeFileProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := ParseGo(largeGoFile)
+	_, err := indexer.ParseGo(largeGoFile)
 	if err == nil {
 		t.Error("ParseGo should have failed for file larger than limit")
 	}
@@ -41,7 +43,7 @@ func TestLargeFileProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = ParsePy(largePyFile)
+	_, err = indexer.ParsePy(largePyFile)
 	if err == nil {
 		t.Error("ParsePy should have failed for file larger than limit")
 	}
@@ -54,8 +56,8 @@ func TestLargeFileProtection(t *testing.T) {
 	}
 
 	// Reset limit to allow small file
-	MaxParseFileSize = int64(len(smallContent) + 100)
-	_, err = ParseGo(smallGoFile)
+	indexer.MaxParseFileSize = int64(len(smallContent) + 100)
+	_, err = indexer.ParseGo(smallGoFile)
 	if err != nil {
 		t.Errorf("ParseGo failed for small file: %v", err)
 	}

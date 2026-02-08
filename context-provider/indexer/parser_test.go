@@ -1,9 +1,11 @@
-package indexer
+package indexer_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestParseGo(t *testing.T) {
@@ -22,7 +24,7 @@ func (s *MyStruct) Method() {}
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols, err := ParseGo(tmpFile)
+	symbols, err := indexer.ParseGo(tmpFile)
 	if err != nil {
 		t.Fatalf("ParseGo failed: %v", err)
 	}
@@ -65,7 +67,7 @@ def my_func():
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols, err := ParsePy(tmpFile)
+	symbols, err := indexer.ParsePy(tmpFile)
 	if err != nil {
 		t.Fatalf("ParsePy failed: %v", err)
 	}
@@ -105,7 +107,7 @@ func TestParsePy_Symlink(t *testing.T) {
 		t.Skipf("Symlinks not supported on this OS: %v", err)
 	}
 
-	_, err := ParsePy(symlinkPath)
+	_, err := indexer.ParsePy(symlinkPath)
 	if err == nil {
 		t.Error("Expected error for symlink, got nil")
 	}
@@ -129,7 +131,7 @@ def my_func():
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols, err := ParsePy(tmpFile)
+	symbols, err := indexer.ParsePy(tmpFile)
 	if err != nil {
 		t.Fatalf("ParsePy failed: %v", err)
 	}
@@ -163,7 +165,7 @@ def my_func(
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	symbols, err := ParsePy(tmpFile)
+	symbols, err := indexer.ParsePy(tmpFile)
 	if err != nil {
 		t.Fatalf("ParsePy failed: %v", err)
 	}

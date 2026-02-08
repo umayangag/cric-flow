@@ -1,9 +1,11 @@
-package indexer
+package indexer_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestSaveAndLoadContext(t *testing.T) {
@@ -15,32 +17,32 @@ func TestSaveAndLoadContext(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a dummy context
-	originalCtx := &ProjectContext{
+	originalCtx := &indexer.ProjectContext{
 		Root: tempDir,
-		Stats: Stats{
+		Stats: indexer.Stats{
 			Files:   10,
 			GoFiles: 5,
 			PyFiles: 5,
 		},
-		Structure: []FileNode{
+		Structure: []indexer.FileNode{
 			{Name: "main.go", Type: "file"},
 		},
 	}
 
 	// Test SaveContext
-	err = SaveContext(tempDir, originalCtx)
+	err = indexer.SaveContext(tempDir, originalCtx)
 	if err != nil {
 		t.Fatalf("SaveContext failed: %v", err)
 	}
 
 	// Verify file exists
-	indexPath := GetIndexPath(tempDir)
+	indexPath := indexer.GetIndexPath(tempDir)
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 		t.Errorf("Index file was not created at %s", indexPath)
 	}
 
 	// Test LoadContext
-	loadedCtx, err := LoadContext(tempDir)
+	loadedCtx, err := indexer.LoadContext(tempDir)
 	if err != nil {
 		t.Fatalf("LoadContext failed: %v", err)
 	}
@@ -67,7 +69,7 @@ func TestLoadContext_NotFound(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	_, err = LoadContext(tempDir)
+	_, err = indexer.LoadContext(tempDir)
 	if err == nil {
 		t.Error("Expected error when loading non-existent context, got nil")
 	}
@@ -89,7 +91,7 @@ func TestSaveContext_Error(t *testing.T) {
 	// Alternatively, use a file as directory
 	// Create a file at 'dir' so MkdirAll fails?
 	// MkdirAll returns nil if path exists as dir, but error if exists as file.
-
+	
 	// Let's create a file where the directory should be.
 	// .junie is a directory.
 	// If we create a file named .junie, GetIndexPath returns .../.junie/context_index.json
@@ -99,8 +101,8 @@ func TestSaveContext_Error(t *testing.T) {
 	f, _ := os.Create(junieDir)
 	f.Close()
 
-	ctx := &ProjectContext{}
-	err = SaveContext(tempDir, ctx)
+	ctx := &indexer.ProjectContext{}
+	err = indexer.SaveContext(tempDir, ctx)
 	if err == nil {
 		t.Error("Expected error when saving to invalid directory structure")
 	}

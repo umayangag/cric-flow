@@ -1,4 +1,4 @@
-package indexer
+package indexer_test
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/umayangag/cric-info-scrapers/context-provider/indexer"
 )
 
 func TestScanProject_LogsErrors(t *testing.T) {
@@ -33,7 +35,7 @@ func TestScanProject_LogsErrors(t *testing.T) {
 	}()
 
 	// Run ScanProject
-	_, err := ScanProject(tmpDir)
+	_, err := indexer.ScanProject(tmpDir)
 	if err != nil {
 		t.Fatalf("ScanProject failed unexpectedly: %v", err)
 	}
@@ -55,7 +57,7 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 
 	// 1. Create a large file (> maxContentSize)
 	// maxContentSize is 20KB (20 * 1024). Let's create 25KB.
-	largeContent := make([]byte, maxContentSize+5*1024)
+	largeContent := make([]byte, indexer.MaxContentSize+5*1024)
 	for i := range largeContent {
 		largeContent[i] = 'a'
 	}
@@ -72,7 +74,7 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 	}
 
 	// Run ScanProject
-	ctx, err := ScanProject(tmpDir)
+	ctx, err := indexer.ScanProject(tmpDir)
 	if err != nil {
 		t.Fatalf("ScanProject failed: %v", err)
 	}
@@ -81,8 +83,8 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 	var foundLarge, foundSmall bool
 
 	// Helper to walk the result nodes
-	var checkNodes func([]FileNode)
-	checkNodes = func(nodes []FileNode) {
+	var checkNodes func([]indexer.FileNode)
+	checkNodes = func(nodes []indexer.FileNode) {
 		for _, node := range nodes {
 			if node.Type == "file" {
 				switch node.Name {
@@ -94,7 +96,7 @@ func TestScanProject_LargeFileTruncation(t *testing.T) {
 							node.Content[len(node.Content)-20:],
 						)
 					}
-					if len(node.Content) > maxContentSize+len("\n... (truncated)") {
+					if len(node.Content) > indexer.MaxContentSize+len("\n... (truncated)") {
 						t.Errorf("Content size %d exceeds expected limit", len(node.Content))
 					}
 				case "small.txt":
@@ -140,15 +142,15 @@ func TestScanProject_SensitiveFiles(t *testing.T) {
 	}
 
 	// Run ScanProject
-	ctx, err := ScanProject(tmpDir)
+	ctx, err := indexer.ScanProject(tmpDir)
 	if err != nil {
 		t.Fatalf("ScanProject failed: %v", err)
 	}
 
 	// Check results
 	foundNormal := false
-	var checkNodes func([]FileNode)
-	checkNodes = func(nodes []FileNode) {
+	var checkNodes func([]indexer.FileNode)
+	checkNodes = func(nodes []indexer.FileNode) {
 		for _, node := range nodes {
 			if node.Name == "normal.txt" {
 				foundNormal = true
