@@ -148,11 +148,6 @@ class PlayerPrediction(BaseModel):
     winning_probability: Optional[float] = None
 
 
-class TeamWinResponse(BaseModel):
-    players: List[PlayerPrediction]
-    team_win_probability: float
-
-
 # -------------------- Historical match backtest models --------------------
 
 
