@@ -143,11 +143,13 @@ const EvaluateDbTab: React.FC = () => {
             }}
           >
             {availableTeams.length === 0 && <MenuItem value={team1}>{team1}</MenuItem>}
-            {availableTeams.filter((t) => t !== team2).map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
+            {availableTeams
+              .filter((t) => t !== team2)
+              .map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
           </Select>
         </FormControl>
 
@@ -163,11 +165,13 @@ const EvaluateDbTab: React.FC = () => {
             }}
           >
             {availableTeams.length === 0 && <MenuItem value={team2}>{team2}</MenuItem>}
-            {availableTeams.filter((t) => t !== team1).map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
+            {availableTeams
+              .filter((t) => t !== team1)
+              .map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
           </Select>
         </FormControl>
 
