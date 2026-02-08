@@ -36,7 +36,7 @@ class SymbolVisitor(ast.NodeVisitor):
 
 def parse(path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             source = f.read()
         
         tree = ast.parse(source, filename=path)
