@@ -32,6 +32,9 @@ func ParsePy(path string) ([]Symbol, error) {
 	pythonCmd := "python3"
 	if _, err := exec.LookPath(pythonCmd); err != nil {
 		pythonCmd = "python"
+		if _, err := exec.LookPath(pythonCmd); err != nil {
+			return nil, fmt.Errorf("neither 'python3' nor 'python' were found in PATH")
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pythonParseTimeout)
 	defer cancel()

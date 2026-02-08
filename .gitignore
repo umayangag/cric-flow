@@ -5,6 +5,7 @@ venv
 src/team_selection/cache
 .junie_plans/
 .junie/context_index.json
+gemini
 
 go-app/api
 go-app/coverage.out
@@ -33,3 +34,4 @@ coverage.xml
 
 # OS-specific
 .DS_Store
+tools/

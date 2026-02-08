@@ -61,6 +61,7 @@
 - CI: align with existing; if none and needed, propose minimal workflow in plan.
 - Runtime config: prefer env vars; CLIs support flags; put config files under `configs/`.
 - Docs: when behavior/commands change, update `README.md` and `docs/` in same branch and plan.
+- at the completion of a plan, make sure all unit tests and linters pass.
 
 ## Project-Specific
 - `src/` is prototype reference; do not modify.
