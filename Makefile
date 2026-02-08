@@ -514,3 +514,7 @@ help-all:
 
 list:
 	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u
+
+# Run Context MCP Server
+context-serve:
+	cd context-provider && go run main.go

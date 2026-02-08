@@ -1,0 +1,133 @@
+package indexer
+
+import (
+	"os"
+	"path/filepath"
+)
+
+var ignoredDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"dist":         true,
+	"build":        true,
+	"__pycache__":  true,
+	".venv":        true,
+	"output":       true,
+	".junie":       true,
+	".junie_plans": true,
+	".idea":        true,
+	".vscode":      true,
+}
+
+var textExtensions = map[string]bool{
+	".md":        true,
+	".txt":       true,
+	".json":      true,
+	".yml":       true,
+	".yaml":      true,
+	".toml":      true,
+	".ini":       true,
+	"Dockerfile": true,
+	"Makefile":   true,
+	"go.mod":     true,
+	"go.sum":     true,
+	"go.work":    true,
+}
+
+func (s *Stats) increment(path string, isDir bool) {
+	if isDir {
+		s.Directories++
+		return
+	}
+	s.Files++
+	ext := filepath.Ext(path)
+	if ext == ".go" {
+		s.GoFiles++
+	} else if ext == ".py" {
+		s.PyFiles++
+	}
+}
+
+func ScanProject(root string) (*ProjectContext, error) {
+	ctx := &ProjectContext{
+		Root:  root,
+		Stats: Stats{},
+	}
+
+	nodes, err := walkDir(root, root, &ctx.Stats)
+	if err != nil {
+		return nil, err
+	}
+	ctx.Structure = nodes
+	return ctx, nil
+}
+
+func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
+	entries, err := os.ReadDir(currentPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var nodes []FileNode
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if ignoredDirs[name] {
+			continue
+		}
+
+		fullPath := filepath.Join(currentPath, name)
+		relPath, _ := filepath.Rel(root, fullPath)
+
+		node := FileNode{
+			Name: name,
+			Path: relPath,
+		}
+
+		if entry.IsDir() {
+			node.Type = "dir"
+			stats.increment(fullPath, true)
+			children, err := walkDir(root, fullPath, stats)
+			if err != nil {
+				return nil, err
+			}
+			node.Children = children
+			// We keep empty directories if they are not ignored, to show structure
+			nodes = append(nodes, node)
+		} else {
+			node.Type = "file"
+			stats.increment(fullPath, false)
+
+			// Parsing Logic
+			ext := filepath.Ext(name)
+			if ext == ".go" {
+				node.Symbols = ParseGo(fullPath)
+			} else if ext == ".py" {
+				node.Symbols = ParsePy(fullPath)
+			}
+
+			// Content Logic (for config/docs)
+			if shouldReadContent(name) {
+				content, err := os.ReadFile(fullPath)
+				if err == nil {
+					// Truncate if too large (e.g., > 20KB)
+					if len(content) > 20*1024 {
+						node.Content = string(content[:20*1024]) + "\n... (truncated)"
+					} else {
+						node.Content = string(content)
+					}
+				}
+			}
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes, nil
+}
+
+func shouldReadContent(name string) bool {
+	ext := filepath.Ext(name)
+	if textExtensions[ext] || textExtensions[name] {
+		return true
+	}
+	return false
+}
