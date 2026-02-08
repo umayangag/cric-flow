@@ -48,7 +48,7 @@
 - Branching: never to main/master; branches `type/short-slug`; Conventional Commits; focused PRs.
 - Testing:
   - Use interfaces + mockery for mocks (no fakes).
-  - For unit tests, use table-driven tests following the AAA pattern (arrange, act, assert).
+  - For unit tests, use table-driven tests following the AAA pattern (arrange, act, assert). Also prefer using *_test package for unit tests.
   - error handling and error logging is a must. do not suppress errors.
   - Go: 1.25+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name the file `{pkg}_test.go` and append `_test` to the package name`.
   - Python: 3.10+, `pytest` under `tests/` with `test_*.py`, deps via `requirements.txt`, `make test` or `pytest -q`, no ifs in tests; table‑driven.

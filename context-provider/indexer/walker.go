@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,6 +24,25 @@ var ignoredDirs = map[string]bool{
 	".junie_plans": true,
 	".idea":        true,
 	".vscode":      true,
+}
+
+var sensitiveFiles = map[string]bool{
+	"secrets.json":     true,
+	".env":             true,
+	".env.local":       true,
+	".env.development": true,
+	".env.test":        true,
+	".env.production":  true,
+	"passwd":           true,
+	"shadow":           true,
+	".htpasswd":        true,
+	".netrc":           true,
+	"id_rsa":           true,
+	"id_dsa":           true,
+	"id_ed25519":       true,
+	"id_ecdsa":         true,
+	".pypirc":          true,
+	".npmrc":           true,
 }
 
 var textExtensions = map[string]bool{
@@ -84,7 +104,7 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if ignoredDirs[name] || entry.Type()&os.ModeSymlink != 0 {
+		if ignoredDirs[name] || sensitiveFiles[name] || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 
@@ -105,9 +125,6 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 		}
 
 		if entry.IsDir() {
-			if entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
 			node.Type = "dir"
 
 			log.Printf("Scanning directory: %s", relPath)
@@ -144,13 +161,20 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 
 			// Content Logic (for config/docs)
 			if shouldReadContent(name) {
-				content, err := os.ReadFile(fullPath)
+				f, err := os.Open(fullPath)
 				if err == nil {
-					// Truncate if too large (e.g., > 20KB)
-					if len(content) > maxContentSize {
-						node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
-					} else {
-						node.Content = string(content)
+					// Read maxContentSize + 1 to detect truncation necessity
+					limitReader := io.LimitReader(f, int64(maxContentSize)+1)
+					content, err := io.ReadAll(limitReader)
+					f.Close()
+
+					if err == nil {
+						// Truncate if too large (e.g., > 20KB)
+						if len(content) > maxContentSize {
+							node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
+						} else {
+							node.Content = string(content)
+						}
 					}
 				}
 			}

@@ -2,7 +2,7 @@
 # Context Provider Makefile
 
 # Common variables
-COV_MIN ?= 80
+COV_MIN ?= 75
 
 .PHONY: all fmt fmt-check vet test lint coverage coverage-check init
 

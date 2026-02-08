@@ -55,16 +55,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to get current working directory: %v", err)
 		}
-		// Assume we run from root, or parent is root if running inside module
-		// Logic: If we see go.work in current dir, it's root.
-		// If we see go.mod and parent has go.work, parent is root.
-		if _, err := os.Stat(filepath.Join(wd, "go.work")); err == nil {
-			projectRoot = wd
-		} else if filepath.Base(wd) == "context-provider" {
-			projectRoot = filepath.Dir(wd)
-		} else {
-			projectRoot = wd // Fallback
-		}
+		projectRoot = findProjectRoot(wd)
 	}
 	log.Printf("Project Root: %s", projectRoot)
 
@@ -315,4 +306,19 @@ func sendResponse(w io.Writer, id *json.RawMessage, result interface{}, rpcErr *
 		return
 	}
 	fmt.Fprintf(w, "%s\n", bytes)
+}
+
+func findProjectRoot(wd string) string {
+	// Logic: find go.work to determine project root by walking up from the current directory.
+	dir := wd
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir { // Reached filesystem root
+			return wd // Fallback to current directory
+		}
+		dir = parent
+	}
 }

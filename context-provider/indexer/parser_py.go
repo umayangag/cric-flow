@@ -2,15 +2,19 @@ package indexer
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 //go:embed parser_script.py
 var pythonParserScript string
+
+const pythonParseTimeout = 30 * time.Second
 
 func ParsePy(path string) ([]Symbol, error) {
 	info, err := os.Lstat(path)
@@ -25,7 +29,10 @@ func ParsePy(path string) ([]Symbol, error) {
 	if _, err := exec.LookPath(pythonCmd); err != nil {
 		pythonCmd = "python"
 	}
-	cmd := exec.Command(pythonCmd, "-", path)
+	ctx, cancel := context.WithTimeout(context.Background(), pythonParseTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, pythonCmd, "-", path)
 	cmd.Stdin = bytes.NewBufferString(pythonParserScript)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -33,6 +40,9 @@ func ParsePy(path string) ([]Symbol, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("python parse timed out after %v", pythonParseTimeout)
+		}
 		return nil, fmt.Errorf("python parse error: %v, stderr: %s", err, stderr.String())
 	}
 
