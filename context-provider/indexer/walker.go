@@ -104,7 +104,7 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if ignoredDirs[name] || sensitiveFiles[name] || entry.Type()&os.ModeSymlink != 0 {
+if ignoredDirs[name] || sensitiveFiles[name] || (!entry.Type().IsRegular() && !entry.IsDir()) {
 			continue
 		}
 
