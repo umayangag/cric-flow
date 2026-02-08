@@ -163,7 +163,7 @@ const EvaluateDbTab: React.FC = () => {
             }}
           >
             {availableTeams.length === 0 && <MenuItem value={team2}>{team2}</MenuItem>}
-            {availableTeams.map((t) => (
+            {availableTeams.filter((t) => t !== team1).map((t) => (
               <MenuItem key={t} value={t}>
                 {t}
               </MenuItem>
