@@ -45,9 +45,12 @@ type RowsMock struct {
 	mock.Mock
 	vals []string
 	idx  int
+	err  error
 }
 
 func NewRowsMock(vals []string) *RowsMock { return &RowsMock{vals: vals} }
+
+func (r *RowsMock) SetErr(err error) { r.err = err }
 
 func (r *RowsMock) Next() bool {
 	if r.idx < len(r.vals) {
@@ -73,7 +76,7 @@ func (r *RowsMock) Scan(dest ...any) error {
 
 func (r *RowsMock) Close() { r.Called() }
 
-func (r *RowsMock) Err() error { return nil }
+func (r *RowsMock) Err() error { return r.err }
 
 func TestGetUniqueTeams(t *testing.T) {
 	// Restore defaultDB after test
@@ -109,6 +112,22 @@ func TestGetUniqueTeams(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, teams)
 		assert.Equal(t, "query failed", err.Error())
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("rows error", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		rows := NewRowsMock(nil)
+		rows.SetErr(errors.New("rows error"))
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, mock.Anything).Return(rows, nil)
+
+		_, err := GetUniqueTeams(context.Background())
+		assert.Error(t, err)
+		assert.Equal(t, "rows error", err.Error())
 		mockDB.AssertExpectations(t)
 	})
 }

@@ -61,6 +61,7 @@ const CandidatesTable: React.FC<CandidatesTableProps> = ({
                 <Radio
                   checked={selectedMatchId === c.match_id}
                   onChange={() => onSelectMatch(c.match_id)}
+                  onClick={(e) => e.stopPropagation()}
                   value={c.match_id}
                   name="candidate-radio"
                   size="small"
