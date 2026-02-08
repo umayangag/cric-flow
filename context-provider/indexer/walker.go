@@ -89,7 +89,10 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			Path: relPath,
 		}
 
-		if entry.IsDir() {
+if entry.IsDir() {
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 			node.Type = "dir"
 			stats.increment(fullPath, true)
 			children, err := walkDir(root, fullPath, stats)
