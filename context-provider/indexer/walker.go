@@ -167,23 +167,23 @@ func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]
 
 			// Content Logic (for config/docs)
 			if shouldReadContent(name) {
-				func() {
-					f, err := os.Open(fullPath)
-					if err == nil {
-						defer f.Close()
-						// Read maxContentSize + 1 to detect truncation necessity
-						limitReader := io.LimitReader(f, int64(maxContentSize)+1)
-						content, err := io.ReadAll(limitReader)
-						if err == nil {
-							// Truncate if too large (e.g., > 20KB)
-							if len(content) > maxContentSize {
-								node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
-							} else {
-								node.Content = string(content)
-							}
-						}
-					}
-				}()
+f, err := os.Open(fullPath)
+if err != nil {
+    log.Printf("warn: could not open %s to read content: %v", relPath, err)
+} else {
+    defer f.Close()
+
+    // Read maxContentSize + 1 to detect truncation necessity
+    limitReader := io.LimitReader(f, int64(maxContentSize)+1)
+    content, err := io.ReadAll(limitReader)
+    if err != nil {
+        log.Printf("warn: could not read content of %s: %v", relPath, err)
+    } else if len(content) > maxContentSize {
+        node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
+    } else {
+        node.Content = string(content)
+    }
+}
 			}
 			nodes = append(nodes, node)
 		}
