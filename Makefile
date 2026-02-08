@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -31,6 +31,10 @@ dev-up-with-frontend: dev-up
 	fi
 
 dev-down:
+	$(DC) down
+	@$(MAKE) frontend-stop --no-print-directory
+
+dev-destroy:
 	$(DC) down -v
 	@$(MAKE) frontend-stop --no-print-directory
 
@@ -478,7 +482,8 @@ help:
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
 	@echo "  dev-up-with-frontend  dev-up + start Frontend dev server (port $(FRONTEND_PORT))"
-	@echo "  dev-down           Stop and remove stack (volumes) and stop Frontend"
+	@echo "  dev-down           Stop stack (preserve volumes) and stop Frontend"
+	@echo "  dev-destroy        Stop and remove stack (delete volumes!) and stop Frontend"
 	@echo "  logs               Tail docker-compose logs"
 	@echo "  api                Run Go API locally (outside Docker)"
 	@echo "  ml-serve           Run ML service locally (uvicorn)"

@@ -72,11 +72,11 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     // Format
     fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
     fireEvent.click(screen.getByRole('option', { name: 'T20' }));
-    
+
     // Team 1
     fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 1/i }));
     fireEvent.click(screen.getByRole('option', { name: 'IND' }));
-    
+
     // Team 2
     fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 2/i }));
     fireEvent.click(screen.getByRole('option', { name: 'AUS' }));
