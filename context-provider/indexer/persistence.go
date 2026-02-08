@@ -14,7 +14,7 @@ func GetIndexPath(root string) string {
 func SaveContext(root string, ctx *ProjectContext) error {
 	path := GetIndexPath(root)
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 

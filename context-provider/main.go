@@ -100,14 +100,14 @@ func main() {
 			log.Printf("Error unmarshaling: %v", err)
 			continue
 		}
-		handleRequest(&req)
+		handleRequest(os.Stdout, &req)
 	}
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		log.Printf("Scanner error: %v", err)
 	}
 }
 
-func handleRequest(req *Request) {
+func handleRequest(w io.Writer, req *Request) {
 	var res interface{}
 	var err *RPCError
 
@@ -175,18 +175,7 @@ func handleRequest(req *Request) {
 	}
 
 	if req.ID != nil {
-		response := Response{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Result:  res,
-			Error:   err,
-		}
-		bytes, err := json.Marshal(response)
-		if err != nil {
-			log.Printf("Error: failed to marshal response for request %v: %v", req.ID, err)
-			return
-		}
-		fmt.Printf("%s\n", bytes)
+		sendResponse(w, req.ID, res, err)
 	}
 }
 
@@ -295,7 +284,35 @@ func ensureContext() *RPCError {
 			return &RPCError{Code: 1, Message: err.Error()}
 		}
 		lastContext = ctx
-		indexer.SaveContext(projectRoot, ctx) // Try to save
+		if err := indexer.SaveContext(projectRoot, ctx); err != nil {
+			log.Printf("Failed to save lazy context: %v", err)
+		}
 	}
 	return nil
+}
+
+func sendResponse(w io.Writer, id *json.RawMessage, result interface{}, rpcErr *RPCError) {
+	response := Response{
+		JSONRPC: "2.0",
+		ID:      id,
+		Result:  result,
+		Error:   rpcErr,
+	}
+	bytes, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error: failed to marshal response for request %v: %v", id, err)
+		// Attempt to send a valid JSON-RPC error response back to the client.
+		errResponse := Response{
+			JSONRPC: "2.0",
+			ID:      id,
+			Error: &RPCError{
+				Code:    -32603, // Internal error
+				Message: fmt.Sprintf("Internal error: failed to marshal response: %v", err),
+			},
+		}
+		errorBytes, _ := json.Marshal(errResponse)
+		fmt.Fprintf(w, "%s\n", errorBytes)
+		return
+	}
+	fmt.Fprintf(w, "%s\n", bytes)
 }
