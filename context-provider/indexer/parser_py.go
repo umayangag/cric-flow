@@ -17,15 +17,16 @@ import (
 var pythonParserScript string
 
 type PythonBatchParser struct {
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stdout    *bufio.Scanner
-	mu        sync.Mutex
-	scriptTmp string
-	pythonCmd string
+	cmd         *exec.Cmd
+	stdin       io.WriteCloser
+	stdout      *bufio.Scanner
+	mu          sync.Mutex
+	scriptTmp   string
+	pythonCmd   string
+	MaxFileSize int64
 }
 
-func NewPythonBatchParser() (*PythonBatchParser, error) {
+func NewPythonBatchParser(maxFileSize int64) (*PythonBatchParser, error) {
 	// 1. Write script to temp file
 	tmpFile, err := os.CreateTemp("", "parser_script_*.py")
 	if err != nil {
@@ -50,8 +51,9 @@ func NewPythonBatchParser() (*PythonBatchParser, error) {
 	}
 
 	parser := &PythonBatchParser{
-		scriptTmp: tmpPath,
-		pythonCmd: pythonCmd,
+		scriptTmp:   tmpPath,
+		pythonCmd:   pythonCmd,
+		MaxFileSize: maxFileSize,
 	}
 
 	// 3. Start process
@@ -110,6 +112,10 @@ func (p *PythonBatchParser) restartProcess() error {
 }
 
 func (p *PythonBatchParser) Parse(path string) ([]Symbol, error) {
+	if strings.Contains(path, "\n") {
+		return nil, fmt.Errorf("path contains newline")
+	}
+
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
@@ -118,8 +124,8 @@ func (p *PythonBatchParser) Parse(path string) ([]Symbol, error) {
 		return nil, fmt.Errorf("symlinks are not supported: %s", path)
 	}
 
-	if info.Size() > MaxParseFileSize {
-		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), MaxParseFileSize)
+	if info.Size() > p.MaxFileSize {
+		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), p.MaxFileSize)
 	}
 
 	p.mu.Lock()

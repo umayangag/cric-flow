@@ -11,7 +11,7 @@ import (
 )
 
 func TestPythonBatchParser_RestartOnCrash(t *testing.T) {
-	parser, err := NewPythonBatchParser()
+	parser, err := NewPythonBatchParser(DefaultMaxParseFileSize)
 	if err != nil {
 		t.Skipf("Skipping test, python environment not set up: %v", err)
 	}

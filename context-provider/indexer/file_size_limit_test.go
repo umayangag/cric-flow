@@ -11,12 +11,8 @@ import (
 )
 
 func TestLargeFileProtection(t *testing.T) {
-	// Save original limit and restore after test
-	originalLimit := indexer.MaxParseFileSize
-	defer func() { indexer.MaxParseFileSize = originalLimit }()
-
-	// Set a small limit for testing
-	indexer.MaxParseFileSize = 100
+	// Set a small limit for testing via parameter, not global
+	limit := int64(100)
 
 	tmpDir := t.TempDir()
 
@@ -29,7 +25,7 @@ func TestLargeFileProtection(t *testing.T) {
 	err := os.WriteFile(largeGoFile, []byte(content), 0o600)
 	require.NoError(t, err)
 
-	_, err = indexer.ParseGo(largeGoFile)
+	_, err = indexer.ParseGo(largeGoFile, limit)
 	assert.Error(t, err, "ParseGo should have failed for file larger than limit")
 
 	// 2. Test Large Py File
@@ -41,7 +37,11 @@ func TestLargeFileProtection(t *testing.T) {
 	err = os.WriteFile(largePyFile, []byte(pyContent), 0o600)
 	require.NoError(t, err)
 
-	_, err = parsePyHelper(t, largePyFile)
+	p, err := indexer.NewPythonBatchParser(limit)
+	require.NoError(t, err)
+	defer p.Close()
+
+	_, err = p.Parse(largePyFile)
 	assert.Error(t, err, "ParsePy should have failed for file larger than limit")
 
 	// 3. Test Small File (Should pass)
@@ -50,8 +50,8 @@ func TestLargeFileProtection(t *testing.T) {
 	err = os.WriteFile(smallGoFile, []byte(smallContent), 0o600)
 	require.NoError(t, err)
 
-	// Reset limit to allow small file
-	indexer.MaxParseFileSize = int64(len(smallContent) + 100)
-	_, err = indexer.ParseGo(smallGoFile)
+	// Use a limit that allows the file
+	safeLimit := int64(len(smallContent) + 100)
+	_, err = indexer.ParseGo(smallGoFile, safeLimit)
 	require.NoError(t, err, "ParseGo failed for small file")
 }

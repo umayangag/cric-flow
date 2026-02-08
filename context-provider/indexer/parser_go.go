@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func ParseGo(path string) ([]Symbol, error) {
+func ParseGo(path string, maxFileSize int64) ([]Symbol, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
@@ -18,8 +18,8 @@ func ParseGo(path string) ([]Symbol, error) {
 		return nil, fmt.Errorf("symlinks not supported: %s", path)
 	}
 
-	if info.Size() > MaxParseFileSize {
-		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), MaxParseFileSize)
+	if info.Size() > maxFileSize {
+		return nil, fmt.Errorf("file too large to parse: %d bytes (limit: %d)", info.Size(), maxFileSize)
 	}
 
 	fset := token.NewFileSet()

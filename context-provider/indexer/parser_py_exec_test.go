@@ -12,7 +12,7 @@ func TestParsePy_NoPython(t *testing.T) {
 	// Set PATH to empty to ensure no python executable is found
 	t.Setenv("PATH", "")
 
-	_, err := indexer.NewPythonBatchParser()
+	_, err := indexer.NewPythonBatchParser(indexer.DefaultMaxParseFileSize)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "neither 'python3' nor 'python' were found in PATH")
 }

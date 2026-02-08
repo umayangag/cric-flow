@@ -11,7 +11,7 @@ import (
 )
 
 func parsePyHelper(_ *testing.T, path string) ([]indexer.Symbol, error) {
-	p, err := indexer.NewPythonBatchParser()
+	p, err := indexer.NewPythonBatchParser(indexer.DefaultMaxParseFileSize)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (s *MyStruct) Method() {}
 	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	require.NoError(t, err, "Failed to write temp file")
 
-	symbols, err := indexer.ParseGo(tmpFile)
+	symbols, err := indexer.ParseGo(tmpFile, indexer.DefaultMaxParseFileSize)
 	require.NoError(t, err, "ParseGo failed")
 
 	expected := []struct {

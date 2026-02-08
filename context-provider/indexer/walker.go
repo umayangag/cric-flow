@@ -8,11 +8,10 @@ import (
 )
 
 const (
-	maxContentSize      = 20 * 1024
-	progressLogInterval = 100
+	maxContentSize          = 20 * 1024
+	progressLogInterval     = 100
+	DefaultMaxParseFileSize = 10 * 1024 * 1024 // 10MB limit for parsing
 )
-
-var MaxParseFileSize int64 = 10 * 1024 * 1024 // 10MB limit for parsing
 
 var ignoredDirs = map[string]bool{
 	".git":         true,
@@ -89,7 +88,7 @@ func ScanProject(root string) (*ProjectContext, error) {
 	}
 
 	// Initialize python parser
-	pyParser, err := NewPythonBatchParser()
+	pyParser, err := NewPythonBatchParser(DefaultMaxParseFileSize)
 	if err != nil {
 		log.Printf("warn: failed to initialize python parser: %v (python files will not be indexed)", err)
 	} else {
@@ -123,7 +122,9 @@ func walkDir(
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if ignoredDirs[name] || sensitiveFiles[name] || (!entry.Type().IsRegular() && !entry.IsDir()) {
+		// Check for symlinks explicitly to avoid escaping the project root
+		if ignoredDirs[name] || sensitiveFiles[name] || (entry.Type()&os.ModeSymlink != 0) ||
+			(!entry.Type().IsRegular() && !entry.IsDir()) {
 			continue
 		}
 
@@ -163,7 +164,7 @@ func walkDir(
 			// Parsing Logic
 			switch filepath.Ext(name) {
 			case ".go":
-				syms, err := ParseGo(fullPath)
+				syms, err := ParseGo(fullPath, DefaultMaxParseFileSize)
 				if err != nil {
 					log.Printf("warn: failed to parse Go file %s: %v", relPath, err)
 				} else {
@@ -182,24 +183,24 @@ func walkDir(
 
 			// Content Logic (for config/docs)
 			if shouldReadContent(name) {
-                f, err := os.Open(fullPath)
-                if err != nil {
-                    log.Printf("warn: could not open %s to read content: %v", relPath, err)
-                } else {
-                    defer f.Close()
+				f, err := os.Open(fullPath)
+				if err != nil {
+					log.Printf("warn: could not open %s to read content: %v", relPath, err)
+				} else {
+					defer f.Close()
 
-                    // Read maxContentSize + 1 to detect truncation necessity
-                    limitReader := io.LimitReader(f, int64(maxContentSize)+1)
-                    content, err := io.ReadAll(limitReader)
-                    switch {
-                    case err != nil:
-                        log.Printf("warn: could not read content of %s: %v", relPath, err)
-                    case len(content) > maxContentSize:
-                        node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
-                    default:
-                        node.Content = string(content)
-                    }
-                }
+					// Read maxContentSize + 1 to detect truncation necessity
+					limitReader := io.LimitReader(f, int64(maxContentSize)+1)
+					content, err := io.ReadAll(limitReader)
+					switch {
+					case err != nil:
+						log.Printf("warn: could not read content of %s: %v", relPath, err)
+					case len(content) > maxContentSize:
+						node.Content = string(content[:maxContentSize]) + "\n... (truncated)"
+					default:
+						node.Content = string(content)
+					}
+				}
 			}
 			nodes = append(nodes, node)
 		}
