@@ -49,9 +49,9 @@ func ParseGo(path string) ([]Symbol, error) {
 							Kind: "type",
 							Line: fset.Position(ts.Pos()).Line,
 						}
-						if d.Doc != nil {
-							sym.Doc = d.Doc.Text()
-						}
+                        if ts.Doc != nil {
+                            sym.Doc = ts.Doc.Text()
+                        }
 						symbols = append(symbols, sym)
 					}
 				}
