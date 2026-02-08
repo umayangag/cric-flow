@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 )
 
-const maxContentSize = 20 * 1024
-const progressLogInterval = 100
+const (
+	maxContentSize      = 20 * 1024
+	progressLogInterval = 100
+)
 
 var ignoredDirs = map[string]bool{
 	".git":         true,
@@ -58,12 +60,13 @@ func (s *Stats) increment(path string, isDir bool) {
 
 func ScanProject(root string) (*ProjectContext, error) {
 	log.Printf("Starting scan of %s", root)
+	ignoreMatcher := NewIgnoreMatcher(root)
 	ctx := &ProjectContext{
 		Root:  root,
 		Stats: Stats{},
 	}
 
-	nodes, err := walkDir(root, root, &ctx.Stats)
+	nodes, err := walkDir(root, root, &ctx.Stats, ignoreMatcher)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +74,7 @@ func ScanProject(root string) (*ProjectContext, error) {
 	return ctx, nil
 }
 
-func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
+func walkDir(root, currentPath string, stats *Stats, matcher *IgnoreMatcher) ([]FileNode, error) {
 	entries, err := os.ReadDir(currentPath)
 	if err != nil {
 		return nil, err
@@ -91,6 +94,11 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			return nil, err
 		}
 
+		// Check .gitignore
+		if matcher.ShouldIgnore(fullPath, entry.IsDir()) {
+			continue
+		}
+
 		node := FileNode{
 			Name: name,
 			Path: relPath,
@@ -101,8 +109,11 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 				continue
 			}
 			node.Type = "dir"
+
+			log.Printf("Scanning directory: %s", relPath)
+
 			stats.increment(fullPath, true)
-			children, err := walkDir(root, fullPath, stats)
+			children, err := walkDir(root, fullPath, stats, matcher)
 			if err != nil {
 				return nil, err
 			}
@@ -132,7 +143,7 @@ func walkDir(root, currentPath string, stats *Stats) ([]FileNode, error) {
 			}
 
 			// Content Logic (for config/docs)
-if shouldReadContent(name) {
+			if shouldReadContent(name) {
 				content, err := os.ReadFile(fullPath)
 				if err == nil {
 					// Truncate if too large (e.g., > 20KB)

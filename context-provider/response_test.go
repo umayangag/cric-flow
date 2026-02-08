@@ -87,7 +87,7 @@ func TestSendResponse_Success(t *testing.T) {
 	if string(*resp.ID) != "1" {
 		t.Errorf("Expected ID 1, got %s", string(*resp.ID))
 	}
-	
+
 	// Check result
 	resMap, ok := resp.Result.(map[string]interface{})
 	if !ok {
@@ -96,7 +96,7 @@ func TestSendResponse_Success(t *testing.T) {
 	if resMap["status"] != "ok" {
 		t.Errorf("Expected status ok, got %v", resMap["status"])
 	}
-	
+
 	if resp.Error != nil {
 		t.Errorf("Expected no error, got %v", resp.Error)
 	}
@@ -112,23 +112,23 @@ func TestHandleRequest(t *testing.T) {
 			ID:      &idRaw,
 			Method:  "ping",
 		}
-		
+
 		handleRequest(&buf, &req)
-		
+
 		output := buf.String()
 		if output == "" {
 			t.Fatal("Expected response, got empty output")
 		}
-		
+
 		var resp Response
 		if err := json.Unmarshal([]byte(output), &resp); err != nil {
 			t.Fatalf("Failed to unmarshal response: %v", err)
 		}
-		
+
 		if resp.Error != nil {
 			t.Errorf("Expected no error, got %v", resp.Error)
 		}
-		
+
 		// Check if result is empty map
 		resMap, ok := resp.Result.(map[string]interface{})
 		if !ok {
@@ -148,25 +148,25 @@ func TestHandleRequest(t *testing.T) {
 			ID:      &idRaw,
 			Method:  "initialize",
 		}
-		
+
 		handleRequest(&buf, &req)
-		
+
 		output := buf.String()
 		var resp Response
 		if err := json.Unmarshal([]byte(output), &resp); err != nil {
 			t.Fatalf("Failed to unmarshal response: %v", err)
 		}
-		
+
 		resMap, ok := resp.Result.(map[string]interface{})
 		if !ok {
 			t.Fatal("Expected result to be a map")
 		}
-		
+
 		if resMap["protocolVersion"] != "2024-11-05" {
 			t.Errorf("Expected protocolVersion 2024-11-05, got %v", resMap["protocolVersion"])
 		}
 	})
-	
+
 	// Test unknown method
 	t.Run("UnknownMethod", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -176,15 +176,15 @@ func TestHandleRequest(t *testing.T) {
 			ID:      &idRaw,
 			Method:  "unknown/method",
 		}
-		
+
 		handleRequest(&buf, &req)
-		
+
 		output := buf.String()
 		var resp Response
 		if err := json.Unmarshal([]byte(output), &resp); err != nil {
 			t.Fatalf("Failed to unmarshal response: %v", err)
 		}
-		
+
 		if resp.Error == nil {
 			t.Fatal("Expected error, got nil")
 		}
