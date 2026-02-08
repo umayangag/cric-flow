@@ -177,14 +177,15 @@ func (s *Server) handleToolCall(params json.RawMessage) (interface{}, *RPCError)
 		}
 
 		// Return a summarized text
-		text := fmt.Sprintf(
-			"Project Root: %s\nStats: %+v\nStructure (Top Level):\n",
+		var textBuilder strings.Builder
+		fmt.Fprintf(&textBuilder, "Project Root: %s\nStats: %+v\nStructure (Top Level):\n",
 			s.LastContext.Root,
 			s.LastContext.Stats,
 		)
 		for _, node := range s.LastContext.Structure {
-			text += fmt.Sprintf("- %s (%s)\n", node.Name, node.Type)
+			fmt.Fprintf(&textBuilder, "- %s (%s)\n", node.Name, node.Type)
 		}
+		text := textBuilder.String()
 
 		return map[string]interface{}{
 			"content": []map[string]string{
