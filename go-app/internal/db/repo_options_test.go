@@ -89,26 +89,27 @@ func TestGetUniqueTeams(t *testing.T) {
 		// We expect Close to be called
 		rows.On("Close").Return()
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name", mock.Anything).
+		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(rows, nil)
 
 		teams, err := GetUniqueTeams(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, expectedTeams, teams)
-		// mockDB.AssertExpectations(t)
+		mockDB.AssertExpectations(t)
 	})
 
 	t.Run("query error", func(t *testing.T) {
 		mockDB := new(DBMock)
 		SetDB(mockDB)
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name", mock.Anything).
+		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(nil, errors.New("query failed"))
 
 		teams, err := GetUniqueTeams(context.Background())
 		assert.Error(t, err)
 		assert.Nil(t, teams)
 		assert.Equal(t, "query failed", err.Error())
+		mockDB.AssertExpectations(t)
 	})
 }
 
@@ -125,11 +126,12 @@ func TestGetUniqueFormats(t *testing.T) {
 		rows := NewRowsMock(expectedFormats)
 		rows.On("Close").Return()
 
-		mockDB.On("Query", mock.Anything, "SELECT code FROM match_format ORDER BY code", mock.Anything).
+		mockDB.On("Query", mock.Anything, "SELECT code FROM match_format ORDER BY code").
 			Return(rows, nil)
 
 		formats, err := GetUniqueFormats(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, expectedFormats, formats)
+		mockDB.AssertExpectations(t)
 	})
 }

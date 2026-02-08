@@ -27,17 +27,26 @@ const EvaluateDbTab: React.FC = () => {
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
 
   useEffect(() => {
+    let active = true;
     const fetchData = async () => {
       try {
         const [f, t] = await Promise.all([api.getFormats(), api.getTeams()]);
-        setAvailableFormats(f);
-        setAvailableTeams(t);
+        if (active) {
+          setAvailableFormats(f);
+          setAvailableTeams(t);
+        }
         // Optionally set defaults if current selection is invalid, but keeping it simple for now
       } catch (e) {
-        console.error('Failed to fetch options', e);
+        if (active) {
+          setError(`Failed to load form options: ${e instanceof Error ? e.message : String(e)}`);
+          console.error('Failed to fetch options', e);
+        }
       }
     };
     fetchData();
+    return () => {
+      active = false;
+    };
   }, []);
 
   // UI state
