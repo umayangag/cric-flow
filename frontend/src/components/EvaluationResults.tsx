@@ -139,6 +139,13 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
     (p) => typeof p.predicted['run_outs'] === 'number' || typeof p.actual['run_outs'] === 'number',
   );
 
+  const optionalMetrics = [
+    { key: 'wickets', label: 'Wkts', maeKey: 'wickets_mae', enabled: anyWickets },
+    { key: 'economy', label: 'Econ', maeKey: 'economy_mae', enabled: anyEconomy },
+    { key: 'catches', label: 'Catches', maeKey: 'catches_mae', enabled: anyCatches },
+    { key: 'run_outs', label: 'Run Outs', maeKey: 'run_outs_mae', enabled: anyRunOuts },
+  ].filter((m) => m.enabled);
+
   return (
     <TableContainer component={Paper} sx={{ maxHeight: 320 }}>
       <Table stickyHeader size="small" aria-label="players results table">
@@ -148,34 +155,13 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
             <TableCell align="right">Pred Runs</TableCell>
             <TableCell align="right">Actual Runs</TableCell>
             <TableCell align="right">Abs Error</TableCell>
-            {anyWickets && (
-              <>
-                <TableCell align="right">Pred Wkts</TableCell>
-                <TableCell align="right">Actual Wkts</TableCell>
-                <TableCell align="right">Wkts Abs Err</TableCell>
-              </>
-            )}
-            {anyEconomy && (
-              <>
-                <TableCell align="right">Pred Econ</TableCell>
-                <TableCell align="right">Actual Econ</TableCell>
-                <TableCell align="right">Econ Abs Err</TableCell>
-              </>
-            )}
-            {anyCatches && (
-              <>
-                <TableCell align="right">Pred Catches</TableCell>
-                <TableCell align="right">Actual Catches</TableCell>
-                <TableCell align="right">Catches Abs Err</TableCell>
-              </>
-            )}
-            {anyRunOuts && (
-              <>
-                <TableCell align="right">Pred Run Outs</TableCell>
-                <TableCell align="right">Actual Run Outs</TableCell>
-                <TableCell align="right">Run Outs Abs Err</TableCell>
-              </>
-            )}
+            {optionalMetrics.map((m) => (
+              <React.Fragment key={m.key}>
+                <TableCell align="right">Pred {m.label}</TableCell>
+                <TableCell align="right">Actual {m.label}</TableCell>
+                <TableCell align="right">{m.label} Abs Err</TableCell>
+              </React.Fragment>
+            ))}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -185,34 +171,13 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
               <TableCell align="right">{formatCell(p.predicted['runs'])}</TableCell>
               <TableCell align="right">{formatCell(p.actual['runs'])}</TableCell>
               <TableCell align="right">{formatCell(p.errors['runs_mae'])}</TableCell>
-              {anyWickets && (
-                <>
-                  <TableCell align="right">{formatCell(p.predicted['wickets'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.actual['wickets'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.errors['wickets_mae'])}</TableCell>
-                </>
-              )}
-              {anyEconomy && (
-                <>
-                  <TableCell align="right">{formatCell(p.predicted['economy'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.actual['economy'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.errors['economy_mae'])}</TableCell>
-                </>
-              )}
-              {anyCatches && (
-                <>
-                  <TableCell align="right">{formatCell(p.predicted['catches'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.actual['catches'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.errors['catches_mae'])}</TableCell>
-                </>
-              )}
-              {anyRunOuts && (
-                <>
-                  <TableCell align="right">{formatCell(p.predicted['run_outs'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.actual['run_outs'])}</TableCell>
-                  <TableCell align="right">{formatCell(p.errors['run_outs_mae'])}</TableCell>
-                </>
-              )}
+              {optionalMetrics.map((m) => (
+                <React.Fragment key={m.key}>
+                  <TableCell align="right">{formatCell(p.predicted[m.key])}</TableCell>
+                  <TableCell align="right">{formatCell(p.actual[m.key])}</TableCell>
+                  <TableCell align="right">{formatCell(p.errors[m.maeKey])}</TableCell>
+                </React.Fragment>
+              ))}
             </TableRow>
           ))}
         </TableBody>
