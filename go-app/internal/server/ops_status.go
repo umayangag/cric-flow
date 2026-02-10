@@ -10,17 +10,16 @@ import (
 
 // OpsStatusResponse is the top-level JSON returned by /ops/status.
 type OpsStatusResponse struct {
-	Timestamp      string           `json:"timestamp"`
-	Services       map[string]bool  `json:"services"`
-	DB             map[string]any   `json:"db"`
-	Precompute     map[string]any   `json:"precompute"`
-	Exports        map[string]any   `json:"exports"`
-	Artifacts      map[string]any   `json:"artifacts"`
-	Fielding       map[string]any   `json:"fielding"`
-	Weather        map[string]any   `json:"weather"`
-	DBFreshness    map[string]any   `json:"db_freshness"`
-	DBCompleteness map[string]any   `json:"db_completeness"`
-	Suggestions    []map[string]any `json:"suggestions"`
+	Timestamp      string          `json:"timestamp"`
+	Services       map[string]bool `json:"services"`
+	DB             map[string]any  `json:"db"`
+	Precompute     map[string]any  `json:"precompute"`
+	Exports        map[string]any  `json:"exports"`
+	Artifacts      map[string]any  `json:"artifacts"`
+	Fielding       map[string]any  `json:"fielding"`
+	Weather        map[string]any  `json:"weather"`
+	DBFreshness    map[string]any  `json:"db_freshness"`
+	DBCompleteness map[string]any  `json:"db_completeness"`
 }
 
 // getPrecomputeStatus is a function variable to allow test-time substitution.
@@ -50,7 +49,6 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 		Weather:        map[string]any{},
 		DBFreshness:    map[string]any{},
 		DBCompleteness: map[string]any{},
-		Suggestions:    []map[string]any{},
 	}
 
 	// DB
@@ -73,20 +71,6 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 	if sec, mlOK := buildArtifactsSection(nil, "output/ml-service"); sec != nil {
 		resp.Artifacts = sec
 		resp.Services["ml_health"] = mlOK
-	}
-	// Suggestions
-	resp.Suggestions = computeSuggestions(
-		resp.DB,
-		resp.Precompute,
-		resp.Exports,
-		resp.Artifacts,
-		resp.Services,
-		resp.Fielding,
-		resp.Weather,
-	)
-	// Include DB insights suggestions derived from freshness/completeness
-	if extra := buildDBInsightsSuggestions(resp.DBFreshness, resp.DBCompleteness); len(extra) > 0 {
-		resp.Suggestions = append(resp.Suggestions, extra...)
 	}
 	return resp
 }

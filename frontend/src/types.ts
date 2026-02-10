@@ -92,7 +92,6 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
-  suggestions?: Array<{ reason: string; commands: string[] }>;
   [key: string]: unknown;
 };
 

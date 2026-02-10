@@ -42,7 +42,4 @@ func TestOpsStatusHandler_ScaffoldShape(t *testing.T) {
 	if _, ok := body["artifacts"]; !ok {
 		t.Fatalf("missing artifacts field")
 	}
-	if _, ok := body["suggestions"]; !ok {
-		t.Fatalf("missing suggestions field")
-	}
 }
