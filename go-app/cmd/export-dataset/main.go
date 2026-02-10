@@ -12,6 +12,7 @@ import (
 	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
@@ -54,8 +55,9 @@ func run() int {
 	}
 
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
-	bat := exportsvc.NewBattingService(nil)
-	bow := exportsvc.NewBowlingService(nil)
+	repo := &exportqueries.Repo{}
+	bat := exportsvc.NewBattingService(repo)
+	bow := exportsvc.NewBowlingService(repo)
 	runner := expcmd.NewRunnerWithServices(bat, bow)
 	if runErr := runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
