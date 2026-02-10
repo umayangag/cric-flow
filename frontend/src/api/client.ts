@@ -95,7 +95,11 @@ export async function fetchBacktestEvaluate(
   return (await res.json()) as BacktestEvaluateResponse;
 }
 
-export async function fetchOpsMigrations(baseUrl: string, page = 1, limit = 10): Promise<PaginatedResponse<Migration>> {
+export async function fetchOpsMigrations(
+  baseUrl: string,
+  page = 1,
+  limit = 10,
+): Promise<PaginatedResponse<Migration>> {
   const qp = new URLSearchParams({ page: String(page), limit: String(limit) });
   const res = await fetch((baseUrl || '') + '/ops/migrations?' + qp.toString());
   if (!res.ok) {

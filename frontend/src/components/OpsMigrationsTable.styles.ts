@@ -72,7 +72,7 @@ export const PaginationButton = styled.button`
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
+
   &:hover:not(:disabled) {
     background: #444;
   }

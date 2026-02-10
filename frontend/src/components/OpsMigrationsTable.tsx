@@ -61,23 +61,26 @@ const OpsMigrationsTable: React.FC = () => {
   const [total, setTotal] = useState(0);
   const limit = 10;
 
-  const load = useCallback(async (isPolling = false) => {
-    if (!isPolling) setLoading(true);
-    try {
-      const data = await api.opsMigrations(page, limit);
-      setMigrations(data.items || []);
-      setTotal(data.total);
-      setError(null);
-    } catch (e) {
-      if (e instanceof Error) {
-        setError(e.message);
-      } else {
-        setError(String(e));
+  const load = useCallback(
+    async (isPolling = false) => {
+      if (!isPolling) setLoading(true);
+      try {
+        const data = await api.opsMigrations(page, limit);
+        setMigrations(data.items || []);
+        setTotal(data.total);
+        setError(null);
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e.message);
+        } else {
+          setError(String(e));
+        }
+      } finally {
+        if (!isPolling) setLoading(false);
       }
-    } finally {
-      if (!isPolling) setLoading(false);
-    }
-  }, [page]);
+    },
+    [page],
+  );
 
   useEffect(() => {
     load(false);
@@ -130,19 +133,13 @@ const OpsMigrationsTable: React.FC = () => {
         </tbody>
       </Table>
       <PaginationContainer>
-        <PaginationButton
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
+        <PaginationButton disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           Previous
         </PaginationButton>
         <span>
           Page {page} of {totalPages || 1}
         </span>
-        <PaginationButton
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
+        <PaginationButton disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
           Next
         </PaginationButton>
       </PaginationContainer>
