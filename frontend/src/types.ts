@@ -66,6 +66,12 @@ export type BacktestEvaluateResponse = {
 };
 
 // --- Ops Status (go-app API) DTO ---
+export type TableStat = {
+  table_name: string;
+  row_count: number;
+  last_record?: string;
+};
+
 export type OpsStatusDTO = {
   timestamp: string;
   services?: {
@@ -73,7 +79,18 @@ export type OpsStatusDTO = {
     api_readiness?: boolean;
     ml_health?: boolean;
   };
-  db?: unknown;
+  db?: {
+    connected?: boolean;
+    counts?: Record<string, number>;
+    migration?: {
+      status?: string;
+      current?: number;
+      expected?: number;
+    };
+    last_match_import_at?: string;
+    table_stats?: TableStat[];
+    [key: string]: unknown;
+  };
   precompute?: {
     formats?: Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
   };

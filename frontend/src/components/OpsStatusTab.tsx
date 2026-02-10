@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { TableStat } from '../types';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 import OpsMigrationsTable from './OpsMigrationsTable';
+import OpsTableStats from './OpsTableStats';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -247,6 +249,9 @@ const OpsStatusTab: React.FC = () => {
                     })()}
                   </strong>
                 </Typography>
+                <OpsTableStats
+                  stats={(asObj(data?.db) as { table_stats?: TableStat[] }).table_stats}
+                />
                 <JsonCollapse data={data.db} summary="Show database details" />
               </SectionCard>
             </Grid>
