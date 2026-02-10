@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 type fakeDBProbe struct {
@@ -16,6 +18,7 @@ type fakeDBProbe struct {
 	migExpected int
 	migStatus   string
 	migErr      error
+	tableStats  []db.TableStat
 }
 
 func (f fakeDBProbe) Ping(_ context.Context) error { return f.pingErr }
@@ -27,6 +30,9 @@ func (f fakeDBProbe) MigrationInfo(_ context.Context) (int, int, string, error) 
 	return f.migCurrent, f.migExpected, f.migStatus, f.migErr
 }
 func (f fakeDBProbe) LastMatchImportAt(_ context.Context) (time.Time, error) { return time.Time{}, nil }
+func (f fakeDBProbe) TableStats(_ context.Context) ([]db.TableStat, error) {
+	return f.tableStats, nil
+}
 
 func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
 	tests := []struct {
