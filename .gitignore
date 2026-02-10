@@ -4,6 +4,7 @@ __pycache__
 venv
 src/team_selection/cache
 .junie_plans/
+.junie/plans
 .junie/context_index.json
 gemini
 
