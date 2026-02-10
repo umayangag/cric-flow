@@ -10,11 +10,15 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  TextField,
 } from '@mui/material';
+import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
 import type { BacktestCandidate, BacktestEvaluateResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
+
+const filter = createFilterOptions<string>();
 
 const EvaluateDbTab: React.FC = () => {
   // Inputs for new backtest flow
@@ -140,49 +144,47 @@ const EvaluateDbTab: React.FC = () => {
           </Select>
         </FormControl>
 
-        <FormControl fullWidth size="small">
-          <InputLabel id="team1-select-label">Team 1</InputLabel>
-          <Select
-            labelId="team1-select-label"
-            value={team1}
-            label="Team 1"
-            onChange={(e) => {
-              setTeam1(e.target.value);
-              resetOutputs();
-            }}
-          >
-            {availableTeams.length === 0 && <MenuItem value={team1}>{team1}</MenuItem>}
-            {availableTeams
-              .filter((t) => t !== team2)
-              .map((t) => (
-                <MenuItem key={t} value={t}>
-                  {t}
-                </MenuItem>
-              ))}
-          </Select>
-        </FormControl>
+        <Autocomplete
+          fullWidth
+          size="small"
+          disableClearable
+          options={availableTeams.filter((t) => t !== team2)}
+          value={team1}
+          onChange={(_e, newValue) => {
+            setTeam1(newValue);
+            resetOutputs();
+          }}
+          filterOptions={(options, params) => {
+            const filtered = filter(options, params);
+            if (params.inputValue !== '' && params.inputValue.length < 3) {
+              return [];
+            }
+            return filtered;
+          }}
+          renderInput={(params) => <TextField {...params} label="Team 1" />}
+          noOptionsText="Type at least 3 characters"
+        />
 
-        <FormControl fullWidth size="small">
-          <InputLabel id="team2-select-label">Team 2</InputLabel>
-          <Select
-            labelId="team2-select-label"
-            value={team2}
-            label="Team 2"
-            onChange={(e) => {
-              setTeam2(e.target.value);
-              resetOutputs();
-            }}
-          >
-            {availableTeams.length === 0 && <MenuItem value={team2}>{team2}</MenuItem>}
-            {availableTeams
-              .filter((t) => t !== team1)
-              .map((t) => (
-                <MenuItem key={t} value={t}>
-                  {t}
-                </MenuItem>
-              ))}
-          </Select>
-        </FormControl>
+        <Autocomplete
+          fullWidth
+          size="small"
+          disableClearable
+          options={availableTeams.filter((t) => t !== team1)}
+          value={team2}
+          onChange={(_e, newValue) => {
+            setTeam2(newValue);
+            resetOutputs();
+          }}
+          filterOptions={(options, params) => {
+            const filtered = filter(options, params);
+            if (params.inputValue !== '' && params.inputValue.length < 3) {
+              return [];
+            }
+            return filtered;
+          }}
+          renderInput={(params) => <TextField {...params} label="Team 2" />}
+          noOptionsText="Type at least 3 characters"
+        />
 
         <Button
           variant="contained"
@@ -215,25 +217,20 @@ const EvaluateDbTab: React.FC = () => {
             onClick={handleEvaluateSelectedMatch}
             disabled={!canEvaluate}
           >
-            {loading && candidates.length ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
             Evaluate Selected Match
           </Button>
         </Box>
       </Box>
 
       {/* Results */}
-      <Box component="section" aria-label="results-section">
-        <Typography variant="h6" gutterBottom>
-          Results
-        </Typography>
-        {!evaluationResult ? (
-          <Typography variant="body2" color="text.secondary">
-            Run an evaluation to see player-level errors and summary metrics.
+      {evaluationResult && (
+        <Box component="section" aria-label="results-section">
+          <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+            Evaluation Results
           </Typography>
-        ) : (
           <EvaluationResults result={evaluationResult} />
-        )}
-      </Box>
+        </Box>
+      )}
     </Stack>
   );
 };

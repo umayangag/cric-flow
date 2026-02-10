@@ -68,18 +68,24 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     render(<EvaluateDbTab />);
 
-    // Inputs exist - interaction with MUI Select
-    // Format
+    // Inputs exist - interaction with MUI Select / Autocomplete
+    // Format (Select)
     fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
     fireEvent.click(screen.getByRole('option', { name: 'T20' }));
 
-    // Team 1
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 1/i }));
-    fireEvent.click(screen.getByRole('option', { name: 'IND' }));
+    // Team 1 (Autocomplete)
+    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
+    team1Input.focus();
+    fireEvent.change(team1Input, { target: { value: 'IND' } });
+    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByText('IND'));
 
-    // Team 2
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Team 2/i }));
-    fireEvent.click(screen.getByRole('option', { name: 'AUS' }));
+    // Team 2 (Autocomplete)
+    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
+    team2Input.focus();
+    fireEvent.change(team2Input, { target: { value: 'AUS' } });
+    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByText('AUS'));
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
