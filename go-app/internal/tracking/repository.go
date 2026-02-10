@@ -83,3 +83,48 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 	}
 	return migrations, nil
 }
+
+func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
+	if db.Pool == nil {
+		return nil, 0, errors.New("db pool not initialized")
+	}
+
+	// Get total count
+	var total int
+	err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
+		FROM data_migrations
+		ORDER BY started_at DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	migrations := []Migration{}
+	for rows.Next() {
+		var m Migration
+		var args []byte
+		var metadata []byte
+		var errMsg *string
+		var completedAt *time.Time
+
+		if err := rows.Scan(&m.ID, &m.Command, &args, &m.StartedAt, &completedAt, &m.Status, &metadata, &errMsg); err != nil {
+			return nil, 0, err
+		}
+		m.Args = args
+		m.Metadata = metadata
+		m.CompletedAt = completedAt
+		if errMsg != nil {
+			m.ErrorMessage = *errMsg
+		}
+		migrations = append(migrations, m)
+	}
+	return migrations, total, nil
+}

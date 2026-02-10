@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
@@ -10,12 +11,40 @@ type OpsHandler struct{}
 
 func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	migrations, err := tracking.GetRecentMigrations(ctx, 50)
+
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	page := 1
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	limit := 10
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	offset := (page - 1) * limit
+
+	migrations, total, err := tracking.GetMigrationsPaginated(ctx, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, migrations)
+
+	response := map[string]interface{}{
+		"items": migrations,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 type Suggestion struct {

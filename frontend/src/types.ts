@@ -113,3 +113,10 @@ export type Suggestion = {
   command: string;
   priority: string;
 };
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
