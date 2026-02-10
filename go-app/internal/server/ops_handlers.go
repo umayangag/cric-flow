@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
@@ -62,12 +63,20 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	suggestions := GenerateSuggestions(migrations)
+	seqPopulated, err := db.IsSequenceFeaturesPopulated(ctx)
+	if err != nil {
+		// If check fails, assume populated to avoid blocking UI, or treat as missing.
+		// Treating as missing (false) is safer to prompt a fix if DB is accessible.
+		// If DB is down, IsSequenceFeaturesPopulated fails, but GetRecentMigrations likely failed too.
+		seqPopulated = false
+	}
+
+	suggestions := GenerateSuggestions(migrations, seqPopulated)
 
 	writeJSON(w, http.StatusOK, suggestions)
 }
 
-func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
+func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []Suggestion {
 	lastRuns := make(map[string]*tracking.Migration)
 	for i := range migrations {
 		m := &migrations[i]
@@ -93,6 +102,17 @@ func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
 			Title:       "Initialize Data",
 			Description: "No migrations found. Start by importing data.",
 			Command:     "make cricsheet-import",
+			Priority:    "HIGH",
+		}}
+	}
+
+	// Rule: Missing Sequence Data (Critical fix)
+	// Even if precompute is recent, if data is missing, we must re-run.
+	if !seqPopulated {
+		return []Suggestion{{
+			Title:       "Fix Missing Sequence Features",
+			Description: "Sequence feature tables are empty. Run precompute to populate them.",
+			Command:     "make precompute-asof",
 			Priority:    "HIGH",
 		}}
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
 
 // Runner executes precompute-features workflows.
@@ -150,6 +151,13 @@ func (Runner) RunReplay(
 			slog.Info("progress", slog.Int("player_snapshots", processed), slog.String("format", formatCode))
 		}
 	}
+
+	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
+	slog.Info("precompute-features(replay): triggering sequence calculations", slog.String("format", formatCode))
+	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
+		return fmt.Errorf("sequence calculations failed: %w", err)
+	}
+
 	slog.Info("done (replay)", slog.Int("matches", len(matches)), slog.String("format", formatCode))
 	return nil
 }
@@ -223,5 +231,24 @@ func (Runner) RunPointInTime(
 		slog.String("format", formatCode),
 		slog.String("as_of", asOf.Format("2006-01-02")),
 	)
+
+	// Trigger sequence features calculation
+	slog.Info("precompute-features(as-of): triggering sequence calculations", slog.String("format", formatCode))
+	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
+		return fmt.Errorf("sequence calculations failed: %w", err)
+	}
+
+	return nil
+}
+
+func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) error {
+	reg := seqcalc.NewDefaultRegistry()
+	calcs, err := reg.ResolveTargets("all")
+	if err != nil {
+		return fmt.Errorf("resolve seqcalc targets: %w", err)
+	}
+	if err := seqcalc.Run(ctx, calcs, seqcalc.Params{FormatCode: formatCode, AsOf: asOf}, false); err != nil {
+		return fmt.Errorf("seqcalc run: %w", err)
+	}
 	return nil
 }

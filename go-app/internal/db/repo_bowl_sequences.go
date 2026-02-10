@@ -169,3 +169,16 @@ func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
 	}
 	return nil
 }
+
+// IsSequenceFeaturesPopulated checks if bowling_sequence_features has any data.
+func IsSequenceFeaturesPopulated(ctx context.Context) (bool, error) {
+	if PoolAPI == nil {
+		return false, errors.New("db pool not initialized")
+	}
+	var exists bool
+	err := PoolAPI.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM bowling_sequence_features LIMIT 1)").Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
