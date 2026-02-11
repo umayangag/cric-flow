@@ -40,7 +40,7 @@ echo "[pre-commit] optimized check on modified files..."
 
 # --- Go App ---
 GO_FILES_ARR=()
-for f in "${STAGED_FILES[@]}"; do
+for f in "${STAGED_FILES[@]:-}"; do
   if [[ "$f" == go-app/*.go ]]; then
     GO_FILES_ARR+=("$f")
   fi
@@ -92,7 +92,7 @@ fi
 
 # --- Python (ml-service) ---
 PY_FILES_ARR=()
-for f in "${STAGED_FILES[@]}"; do
+for f in "${STAGED_FILES[@]:-}"; do
   if [[ "$f" == ml-service/*.py ]]; then
     PY_FILES_ARR+=("$f")
   fi
@@ -124,7 +124,7 @@ fi
 
 # --- Frontend ---
 FE_FILES_ARR=()
-for f in "${STAGED_FILES[@]}"; do
+for f in "${STAGED_FILES[@]:-}"; do
   case "$f" in
     frontend/*.js|frontend/*.jsx|frontend/*.ts|frontend/*.tsx|frontend/*.json|frontend/*.css|frontend/*.scss|frontend/*.md)
       FE_FILES_ARR+=("$f")

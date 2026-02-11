@@ -242,12 +242,23 @@ func (Runner) RunPointInTime(
 }
 
 func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) error {
+	// Sequence calculations can take significantly longer than the overall
+	// precompute timeout. Allow them to run without being bound to the
+	// caller's deadline. We still want to cancel if the parent context is
+	// explicitly canceled for other reasons, so we forward cancellation.
+	ctxNoDeadline, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+
 	reg := seqcalc.NewDefaultRegistry()
 	calcs, err := reg.ResolveTargets("all")
 	if err != nil {
 		return fmt.Errorf("resolve seqcalc targets: %w", err)
 	}
-	if err := seqcalc.Run(ctx, calcs, seqcalc.Params{FormatCode: formatCode, AsOf: asOf}, false); err != nil {
+	if err := seqcalc.Run(ctxNoDeadline, calcs, seqcalc.Params{FormatCode: formatCode, AsOf: asOf}, false); err != nil {
 		return fmt.Errorf("seqcalc run: %w", err)
 	}
 	return nil

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { TableStat } from '../types';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
@@ -249,9 +248,7 @@ const OpsStatusTab: React.FC = () => {
                     })()}
                   </strong>
                 </Typography>
-                <OpsTableStats
-                  stats={data?.db?.table_stats}
-                />
+                <OpsTableStats stats={data?.db?.table_stats} />
                 <JsonCollapse data={data.db} summary="Show database details" />
               </SectionCard>
             </Grid>
