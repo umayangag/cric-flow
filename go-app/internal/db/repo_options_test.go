@@ -123,7 +123,8 @@ func TestGetUniqueTeams(t *testing.T) {
 		rows.SetErr(errors.New("rows error"))
 		rows.On("Close").Return()
 
-		mockDB.On("Query", mock.Anything, mock.Anything).Return(rows, nil)
+		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+			Return(rows, nil)
 
 		_, err := GetUniqueTeams(context.Background())
 		assert.Error(t, err)
