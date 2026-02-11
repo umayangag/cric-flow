@@ -81,6 +81,9 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 		}
 		migrations = append(migrations, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return migrations, nil
 }
 
@@ -125,6 +128,9 @@ func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration
 			m.ErrorMessage = *errMsg
 		}
 		migrations = append(migrations, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
 	}
 	return migrations, total, nil
 }
