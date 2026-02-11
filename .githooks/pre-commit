@@ -78,9 +78,9 @@ if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
         if [ -f "$CONFIG" ]; then
              echo "[go-app] Linting (and fixing) modified packages..."
              # Run on packages (directories) to ensure typechecking works
-             GO_DIRS=$(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
+             mapfile -t GO_DIRS_ARR < <(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
              # shellcheck disable=SC2086
-             golangci-lint run --fix -c "$CONFIG" $GO_DIRS
+             golangci-lint run --fix -c "$CONFIG" "${GO_DIRS_ARR[@]}"
 
              # Stage changes (re-stage modified files)
              printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add

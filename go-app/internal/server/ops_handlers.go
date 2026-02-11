@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -42,14 +43,20 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
-		"items": migrations,
-		"total": total,
-		"page":  page,
-		"limit": limit,
+	type listResponse struct {
+		Items []tracking.Migration `json:"items"`
+		Total int                  `json:"total"`
+		Page  int                  `json:"page"`
+		Limit int                  `json:"limit"`
+	}
+	resp := listResponse{
+		Items: migrations,
+		Total: total,
+		Page:  page,
+		Limit: limit,
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type Suggestion struct {
@@ -69,9 +76,7 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 
 	seqPopulated, err := db.IsSequenceFeaturesPopulated(ctx)
 	if err != nil {
-		// If check fails, assume populated to avoid blocking UI, or treat as missing.
-		// Treating as missing (false) is safer to prompt a fix if DB is accessible.
-		// If DB is down, IsSequenceFeaturesPopulated fails, but GetRecentMigrations likely failed too.
+		slog.Error("ops: IsSequenceFeaturesPopulated check failed", slog.Any("err", err))
 		seqPopulated = false
 	}
 

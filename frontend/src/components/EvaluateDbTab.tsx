@@ -151,8 +151,10 @@ const EvaluateDbTab: React.FC = () => {
           options={availableTeams.filter((t) => t !== team2)}
           value={team1}
           onChange={(_e, newValue) => {
-            setTeam1(newValue);
-            resetOutputs();
+            if (newValue) {
+              setTeam1(newValue);
+              resetOutputs();
+            }
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);
@@ -172,8 +174,10 @@ const EvaluateDbTab: React.FC = () => {
           options={availableTeams.filter((t) => t !== team1)}
           value={team2}
           onChange={(_e, newValue) => {
-            setTeam2(newValue);
-            resetOutputs();
+            if (newValue) {
+              setTeam2(newValue);
+              resetOutputs();
+            }
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);
