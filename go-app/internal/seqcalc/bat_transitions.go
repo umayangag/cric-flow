@@ -71,7 +71,7 @@ func runBatTransitionsQueryAndUpsert(ctx context.Context, formatIDs []int) error
 		SELECT
 		  be.match_id, be.innings, be.ball_seq, be.phase,
 		  be.striker_id, be.runs_batter, be.runs_total, be.wicket_kind, be.player_out_id,
-		  md.match_date, md.format_id
+		  COALESCE(md.match_date, md.date, CURRENT_DATE) AS match_date, md.format_id
 		FROM ball_event be
 		JOIN match_details md ON md.match_id = be.match_id
 		WHERE md.format_id IN (%s)

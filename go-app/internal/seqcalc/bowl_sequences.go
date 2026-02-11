@@ -45,7 +45,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 	r, err := db.Query(ctx, `
 		SELECT be.match_id, be.innings, be.over, be.ball, be.bowler_id, be.phase,
 		       be.runs_total, (be.wicket_kind IS NOT NULL) AS is_wicket, (be.runs_total = 0) AS is_dot,
-		       md.match_date, md.format_id
+		       COALESCE(md.match_date, md.date, CURRENT_DATE) AS match_date, md.format_id
 		FROM ball_event be
 		JOIN match_details md ON md.match_id = be.match_id
 		WHERE md.format_id = $1 AND be.is_legal = TRUE AND be.bowler_id IS NOT NULL
