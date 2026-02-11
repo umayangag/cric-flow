@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type TableStat struct {
@@ -90,9 +92,11 @@ func GetTableStats(ctx context.Context) ([]TableStat, error) {
 	for i := range stats {
 		s := &stats[i]
 		if col, ok := tableDateCol[s.TableName]; ok {
-			// Construct query safely.
-			// Note: We use the column name as is, but we wrap it in quotes to handle keywords/case.
-			q := fmt.Sprintf(`SELECT MAX("%s")::text FROM "%s"`, col, s.TableName)
+			// Construct query using identifier sanitization to avoid SQL injection via identifiers.
+			// Table and column names originate from the database catalog, but we still sanitize.
+			colIdent := pgx.Identifier{col}.Sanitize()
+			tblIdent := pgx.Identifier{s.TableName}.Sanitize()
+			q := fmt.Sprintf("SELECT MAX(%s)::text FROM %s", colIdent, tblIdent)
 
 			// We use QueryRow. Since we are in a loop, this is N queries.
 			// For ~20 tables this is negligible.

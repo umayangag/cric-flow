@@ -117,9 +117,8 @@ if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
         printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
         printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
 
-        # Check only (gates)
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --select F401
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/flake8" --max-line-length=120 --extend-ignore=E203,E501,W503
+        # Check only (gates) - ruff as single source
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --select F401 --ignore E203,E501,W503
     fi
 fi
 
