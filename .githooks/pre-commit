@@ -5,17 +5,22 @@ set -euo pipefail
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-# Get staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+# Get staged files (NUL-delimited for safety)
+STAGED_FILES_NUL=$(git diff --cached --name-only -z --diff-filter=ACM)
 
-if [ -z "$STAGED_FILES" ]; then
+# Early exit if nothing staged
+if [ -z "${STAGED_FILES_NUL}" ]; then
     exit 0
 fi
 
 # Check for partially staged files to prevent accidental staging of unstaged changes
-UNSTAGED_FILES=$(git diff --name-only)
-# Find intersection
-PARTIALLY_STAGED=$(comm -12 <(echo "$STAGED_FILES" | sort) <(echo "$UNSTAGED_FILES" | sort))
+UNSTAGED_FILES_NUL=$(git diff --name-only -z)
+
+# Convert to newline lists for intersection (safe: git paths won't contain newlines)
+STAGED_NEWLINE=$(printf '%s' "$STAGED_FILES_NUL" | tr '\0' '\n' | sed '/^$/d')
+UNSTAGED_NEWLINE=$(printf '%s' "$UNSTAGED_FILES_NUL" | tr '\0' '\n' | sed '/^$/d')
+
+PARTIALLY_STAGED=$(comm -12 <(printf '%s\n' "$STAGED_NEWLINE" | sort) <(printf '%s\n' "$UNSTAGED_NEWLINE" | sort))
 
 if [ -n "$PARTIALLY_STAGED" ]; then
     echo "[pre-commit] ⚠️  WARNING: Partially staged files detected:"
@@ -25,13 +30,25 @@ if [ -n "$PARTIALLY_STAGED" ]; then
     exit 1
 fi
 
+# Build arrays for category processing
+STAGED_FILES=()
+while IFS= read -r -d '' f; do
+  STAGED_FILES+=("$f")
+done < <(printf '%s' "$STAGED_FILES_NUL")
+
 echo "[pre-commit] optimized check on modified files..."
 
 # --- Go App ---
-GO_FILES=$(echo "$STAGED_FILES" | grep "^go-app/.*\.go$" || true)
-if [ -n "$GO_FILES" ]; then
-    echo "[go-app] Processing $(echo "$GO_FILES" | wc -l | xargs) Go files..."
-    
+GO_FILES_ARR=()
+for f in "${STAGED_FILES[@]}"; do
+  if [[ "$f" == go-app/*.go ]]; then
+    GO_FILES_ARR+=("$f")
+  fi
+done
+
+if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
+    echo "[go-app] Processing ${#GO_FILES_ARR[@]} Go files..."
+
     # Ensure tools are in PATH (match Makefile behavior)
     GOBIN="$(go env GOPATH)/bin"
     export PATH="${GOBIN}:$PATH"
@@ -47,11 +64,11 @@ if [ -n "$GO_FILES" ]; then
     fi
 
     # Format
-    echo "$GO_FILES" | xargs gofumpt -w
-    echo "$GO_FILES" | xargs golines -w -m 120
-    
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 gofumpt -w
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 golines -w -m 120
+
     # Stage changes
-    echo "$GO_FILES" | xargs git add
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
 
     # Lint (golangci-lint)
     if command -v golangci-lint >/dev/null 2>&1; then
@@ -59,11 +76,12 @@ if [ -n "$GO_FILES" ]; then
         if [ -f "$CONFIG" ]; then
              echo "[go-app] Linting (and fixing) modified packages..."
              # Run on packages (directories) to ensure typechecking works
-             GO_DIRS=$(echo "$GO_FILES" | xargs -n1 dirname | sort -u | xargs)
+             GO_DIRS=$(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
+             # shellcheck disable=SC2086
              golangci-lint run --fix -c "$CONFIG" $GO_DIRS
-             
+
              # Stage changes (re-stage modified files)
-             echo "$GO_FILES" | xargs git add
+             printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
         else
              echo "[go-app] No .golangci.yml found, skipping lint."
         fi
@@ -73,57 +91,80 @@ if [ -n "$GO_FILES" ]; then
 fi
 
 # --- Python (ml-service) ---
-PY_FILES=$(echo "$STAGED_FILES" | grep "^ml-service/.*\.py$" || true)
-if [ -n "$PY_FILES" ]; then
-    echo "[ml-service] Processing $(echo "$PY_FILES" | wc -l | xargs) Python files..."
-    
+PY_FILES_ARR=()
+for f in "${STAGED_FILES[@]}"; do
+  if [[ "$f" == ml-service/*.py ]]; then
+    PY_FILES_ARR+=("$f")
+  fi
+done
+if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
+    echo "[ml-service] Processing ${#PY_FILES_ARR[@]} Python files..."
+
     VENV="ml-service/.venv"
     BIN="$VENV/bin"
-    
+
     if [ ! -d "$VENV" ]; then
         echo "[ml-service] Virtualenv not found at $VENV. Skipping (run 'make init-py' to fix)."
     else
         # Format: isort -> black
-        echo "$PY_FILES" | xargs "$BIN/isort" --profile black --line-length 120
-        echo "$PY_FILES" | xargs "$BIN/black" --line-length 120
-        
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/isort" --profile black --line-length 120
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/black" --line-length 120
+
         # Stage changes
-        echo "$PY_FILES" | xargs git add
-        
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
+
         # Lint: ruff check --fix
-        echo "$PY_FILES" | xargs "$BIN/ruff" check --fix
-        echo "$PY_FILES" | xargs git add
-        
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
+
         # Check only (gates)
-        echo "$PY_FILES" | xargs "$BIN/ruff" check --select F401
-        echo "$PY_FILES" | xargs "$BIN/flake8" --max-line-length=120 --extend-ignore=E203,E501,W503
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --select F401
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/flake8" --max-line-length=120 --extend-ignore=E203,E501,W503
     fi
 fi
 
 # --- Frontend ---
-FE_FILES=$(echo "$STAGED_FILES" | grep "^frontend/.*\.\(js\|jsx\|ts\|tsx\|json\|css\|scss\|md\)$" || true)
-if [ -n "$FE_FILES" ]; then
-    echo "[frontend] Processing $(echo "$FE_FILES" | wc -l | xargs) files..."
-    
+FE_FILES_ARR=()
+for f in "${STAGED_FILES[@]}"; do
+  case "$f" in
+    frontend/*.js|frontend/*.jsx|frontend/*.ts|frontend/*.tsx|frontend/*.json|frontend/*.css|frontend/*.scss|frontend/*.md)
+      FE_FILES_ARR+=("$f")
+      ;;
+  esac
+done
+if [ ${#FE_FILES_ARR[@]} -gt 0 ]; then
+    echo "[frontend] Processing ${#FE_FILES_ARR[@]} files..."
+
     if [ ! -d "frontend/node_modules" ]; then
         echo "[frontend] node_modules not found. Skipping (run 'make -C frontend install' to fix)."
     else
-        REL_FILES=$(echo "$FE_FILES" | sed 's/^frontend\///')
-        
+        # Build relative list (strip leading frontend/)
+        REL_FILES_ARR=()
+        for f in "${FE_FILES_ARR[@]}"; do
+          REL_FILES_ARR+=("${f#frontend/}")
+        done
+
         pushd frontend >/dev/null
-        
+
         # Prettier (write)
-        echo "$REL_FILES" | xargs npx --no-install prettier --write
-        
-        # ESLint (fix)
-        CODE_FILES=$(echo "$REL_FILES" | grep "\.\(js\|jsx\|ts\|tsx\)$" || true)
-        if [ -n "$CODE_FILES" ]; then
-            echo "$CODE_FILES" | xargs npx --no-install eslint --fix --quiet --no-error-on-unmatched-pattern
+        printf '%s\0' "${REL_FILES_ARR[@]}" | xargs -0 npx --no-install prettier --write
+
+        # ESLint (fix) - only code files
+        CODE_FILES_ARR=()
+        for f in "${REL_FILES_ARR[@]}"; do
+          case "$f" in
+            *.js|*.jsx|*.ts|*.tsx)
+              CODE_FILES_ARR+=("$f")
+              ;;
+          esac
+        done
+        if [ ${#CODE_FILES_ARR[@]} -gt 0 ]; then
+            printf '%s\0' "${CODE_FILES_ARR[@]}" | xargs -0 npx --no-install eslint --fix --quiet --no-error-on-unmatched-pattern
         fi
-        
+
         # Stage changes
-        echo "$REL_FILES" | xargs git add
-        
+        printf '%s\0' "${REL_FILES_ARR[@]}" | xargs -0 git add
+
         popd >/dev/null
     fi
 fi
