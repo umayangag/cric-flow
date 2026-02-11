@@ -36,11 +36,14 @@ if [ -n "$GO_FILES" ]; then
     GOBIN="$(go env GOPATH)/bin"
     export PATH="${GOBIN}:$PATH"
 
-    # Check for tools
-    if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then
-        echo "[go-app] Installing formatters (gofumpt, golines)..."
-        go install mvdan.cc/gofumpt@latest
-        go install github.com/segmentio/golines@latest
+    # Check for required tools (do not auto-install in hooks to avoid network calls during commits)
+    MISSING_TOOLS=()
+    command -v gofumpt >/dev/null 2>&1 || MISSING_TOOLS+=(gofumpt)
+    command -v golines >/dev/null 2>&1 || MISSING_TOOLS+=(golines)
+    if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+        echo "[go-app] Missing required tools: ${MISSING_TOOLS[*]}" >&2
+        echo "[go-app] Please run 'make init-go' (or install tools manually) and retry the commit." >&2
+        exit 1
     fi
 
     # Format
