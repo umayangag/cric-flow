@@ -250,7 +250,7 @@ const OpsStatusTab: React.FC = () => {
                   </strong>
                 </Typography>
                 <OpsTableStats
-                  stats={(asObj(data?.db) as { table_stats?: TableStat[] }).table_stats}
+                  stats={data?.db?.table_stats}
                 />
                 <JsonCollapse data={data.db} summary="Show database details" />
               </SectionCard>
