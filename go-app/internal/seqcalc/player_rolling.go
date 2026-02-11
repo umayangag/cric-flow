@@ -283,15 +283,15 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
 	}
 	// Fetch required sequence with match context for scopes.
 	r, err := db.Query(ctx, `
-		SELECT be.match_id, be.innings, be.ball_seq, be.is_legal, be.phase,
-		       be.striker_id, be.bowler_id, be.runs_batter, be.runs_total,
-		       be.extras_kind, be.wicket_kind, be.player_out_id,
-		       md.match_date, md.format_id, md.opposition_id, md.venue_id, md.season_id
-		FROM ball_event be
-		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id = $1
-		ORDER BY be.match_id, be.innings, be.ball_seq
-	`, formatID)
+        SELECT be.match_id, be.innings, be.ball_seq, be.is_legal, be.phase,
+               be.striker_id, be.bowler_id, be.runs_batter, be.runs_total,
+               be.extras_kind, be.wicket_kind, be.player_out_id,
+               COALESCE(md.match_date, md.date, CURRENT_DATE) AS match_date, md.format_id, md.opposition_id, md.venue_id, md.season_id
+        FROM ball_event be
+        JOIN match_details md ON md.match_id = be.match_id
+        WHERE md.format_id = $1
+        ORDER BY be.match_id, be.innings, be.ball_seq
+    `, formatID)
 	if err != nil {
 		return err
 	}
