@@ -7,5 +7,5 @@ When the user types `/review pr {{pr_number}}`, perform these steps using github
 5. fix the latest unresolved review comments from gemini code assist.
 6. fix unit tests and lint errors using `make lint` and `make test`.
 7. then commit the changes to the PR and add a new comment "/gemini review".
-8. resolve the comments in the PR you already addressed.
+8. resolve the conversations in the PR you already addressed.
 
