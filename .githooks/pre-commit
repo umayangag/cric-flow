@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+# Safer IFS to avoid word-splitting issues
+IFS=$'\n\t'
 
 # Root of repo
 ROOT_DIR="$(git rev-parse --show-toplevel)"

@@ -154,4 +154,35 @@ func TestGetUniqueFormats(t *testing.T) {
 		assert.Equal(t, expectedFormats, formats)
 		mockDB.AssertExpectations(t)
 	})
+
+	t.Run("query error", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		mockDB.On("Query", mock.Anything, "SELECT code FROM match_format ORDER BY code").
+			Return(nil, errors.New("query failed"))
+
+		formats, err := GetUniqueFormats(context.Background())
+		assert.Error(t, err)
+		assert.Nil(t, formats)
+		assert.Equal(t, "query failed", err.Error())
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("rows error", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		rows := NewRowsMock(nil)
+		rows.SetErr(errors.New("rows error"))
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, "SELECT code FROM match_format ORDER BY code").
+			Return(rows, nil)
+
+		_, err := GetUniqueFormats(context.Background())
+		assert.Error(t, err)
+		assert.Equal(t, "rows error", err.Error())
+		mockDB.AssertExpectations(t)
+	})
 }
