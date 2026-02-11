@@ -13,6 +13,7 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
+import { TableStat } from '../types';
 
 // Local helpers for safely reading dynamic sections
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
@@ -248,7 +249,13 @@ const OpsStatusTab: React.FC = () => {
                     })()}
                   </strong>
                 </Typography>
-                <OpsTableStats stats={data?.db?.table_stats} />
+                {(() => {
+                  const dbObj = asObj(data?.db);
+                  const ts = Array.isArray((dbObj as { table_stats?: unknown }).table_stats)
+                    ? ((dbObj as { table_stats?: unknown }).table_stats as unknown as TableStat[])
+                    : undefined;
+                  return <OpsTableStats stats={ts} />;
+                })()}
                 <JsonCollapse data={data.db} summary="Show database details" />
               </SectionCard>
             </Grid>
