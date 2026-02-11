@@ -86,3 +86,6 @@ Finally, post a comment to trigger a new Gemini review:
 ```bash
 gh pr comment $PR --body "/gemini review"
 ```
+
+Notes:
+- use the same branch for fixes. do not create a new branch.
