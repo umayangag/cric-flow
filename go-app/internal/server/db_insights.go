@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -24,16 +25,18 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
 	var ts time.Time
 	// Try updated_at; if column missing, query error will occur and we fall back to date
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COALESCE(MAX(updated_at), TO_TIMESTAMP(0))
-        FROM match_details
-        WHERE format = $1
+        SELECT COALESCE(MAX(md.updated_at), TO_TIMESTAMP(0))
+        FROM match_details md
+        JOIN match_format mf ON md.format_id = mf.id
+        WHERE mf.code = $1
     `, format).Scan(&ts); err == nil && !ts.IsZero() {
 		return ts.UTC(), nil
 	}
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COALESCE(MAX(date), DATE '0001-01-01')
-        FROM match_details
-        WHERE format = $1
+        SELECT COALESCE(MAX(md.date), DATE '0001-01-01')
+        FROM match_details md
+        JOIN match_format mf ON md.format_id = mf.id
+        WHERE mf.code = $1
     `, format).Scan(&ts); err != nil {
 		return time.Time{}, err
 	}
@@ -55,19 +58,21 @@ func (productionInsightsProbe) CountMatchesSinceByFormat(
 	var n int64
 	// Try updated_at first
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COUNT(DISTINCT match_id)
-        FROM match_details
-        WHERE format = $1 AND (
-            (updated_at IS NOT NULL AND updated_at >= $2)
-            OR (updated_at IS NULL AND date >= $3::date)
+        SELECT COUNT(DISTINCT md.match_id)
+        FROM match_details md
+        JOIN match_format mf ON md.format_id = mf.id
+        WHERE mf.code = $1 AND (
+            (md.updated_at IS NOT NULL AND md.updated_at >= $2)
+            OR (md.updated_at IS NULL AND md.date >= $3::date)
         )
     `, format, since, since).Scan(&n); err == nil {
 		return n, nil
 	}
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COUNT(DISTINCT match_id)
-        FROM match_details
-        WHERE format = $1 AND date >= $2::date
+        SELECT COUNT(DISTINCT md.match_id)
+        FROM match_details md
+        JOIN match_format mf ON md.format_id = mf.id
+        WHERE mf.code = $1 AND md.date >= $2::date
     `, format, since).Scan(&n); err != nil {
 		return 0, err
 	}
@@ -101,6 +106,7 @@ func buildDBFreshnessSection(ctx context.Context, probe insightsProbe, now time.
 		}
 		t, err := probe.LatestMatchDateByFormat(ctx, f)
 		if err != nil {
+			slog.Error("failed to get latest match date", "format", f, "err", err)
 			st["status"] = "unknown"
 			fm[f] = st
 			worst = worseStatus(worst, "unknown")
@@ -154,6 +160,7 @@ func buildDBCompletenessSection(ctx context.Context, probe insightsProbe, now ti
 		}
 		n, err := probe.CountMatchesSinceByFormat(ctx, f, since)
 		if err != nil {
+			slog.Error("failed to count matches since", "format", f, "since", since, "err", err)
 			st["status"] = "unknown"
 			fm[f] = st
 			worst = worseStatus(worst, "unknown")
