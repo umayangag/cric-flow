@@ -29,6 +29,10 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 			limit = l
 		}
 	}
+	// Enforce an upper bound to prevent resource exhaustion
+	if limit > 100 {
+		limit = 100
+	}
 
 	offset := (page - 1) * limit
 
