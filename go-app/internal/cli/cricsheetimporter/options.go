@@ -54,7 +54,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
 
 	var timeout time.Duration
-	fs.DurationVar(&timeout, "timeout", 5*time.Hour, "operation timeout")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err

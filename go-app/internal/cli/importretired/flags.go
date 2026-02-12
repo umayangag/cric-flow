@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // ParseArgs parses CLI args into Options. Pure and testable.
@@ -17,7 +19,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.StringVar(&file, "file", "", "CSV file path (required)")
 	fs.BoolVar(&apply, "apply", false, "apply changes (default is dry-run)")
 	fs.BoolVar(&othersZero, "others-zero", false, "set is_retired=0 for players not listed in CSV")
-	fs.DurationVar(&timeout, "timeout", 5*time.Hour, "operation timeout")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}

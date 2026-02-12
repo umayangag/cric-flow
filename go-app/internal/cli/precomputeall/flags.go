@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // ParseArgs parses CLI args into Options. Pure and testable.
@@ -39,7 +41,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		defMig = "./migrations"
 	}
 	fs.StringVar(&migrDir, "migrations", defMig, "Directory with SQL migrations (can also set MIGRATIONS_DIR)")
-	fs.DurationVar(&timeout, "timeout", 5*time.Hour, "Overall timeout for the job")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "Overall timeout for the job")
 
 	fs.StringVar(&seqTargets, "seq-targets", "all", "Sequence targets to compute: comma-separated list or 'all'")
 	fs.BoolVar(&seqDryRun, "seq-dry-run", false, "If true, list sequence computations without writing")

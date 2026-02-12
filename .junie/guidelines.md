@@ -5,7 +5,7 @@
 
 ## Hard Rules
 - Never loop on edits; pause and ask to adjust plan.
-- Never commit to main/master; always use a feature branch.
+- Never commit to main/master; always use a feature branch if not on a feature branch already.
 - Do not contact support; solve with provided tools.
 - Use existing packages and tools from opensource sources to avoid reinventing the wheel.
 - use context_index.json to as the entry point to understand the project structure and context when needed. use it smartly to minimize token usage.

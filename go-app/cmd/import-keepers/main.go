@@ -9,10 +9,10 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/importkeepers"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/importkeepers"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/csvx"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
@@ -31,7 +31,7 @@ func run() int {
 
 	logger.SetupFromEnv()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Hour)
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultTimeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

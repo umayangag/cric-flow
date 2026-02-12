@@ -134,6 +134,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		if winner != "" {
 			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
 				winnerID = &id
+			} else {
+				slog.Warn("get/create opposition for winner failed", slog.String("name", winner), slog.Any("err", e))
 			}
 		}
 	}
@@ -335,23 +337,23 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			target = &firRuns
 		}
 		upd := &db.MatchInfoUpdate{
-			Score:          &runs,
-			Wickets:        &wkts,
-			Overs:          &oversFloat,
 			Balls:          &balls,
-			RPO:            &rpo,
-			Target:         target,
-			Inning:         &inningNo,
-			Result:         winnerID,
-			OppositionID:   oppositionID,
-			MatchDate:      &dateISO,
 			BattingSession: &batTeam,
 			BowlingSession: &oppTeam,
-			VenueID:        venueID,
 			Extras:         &extras,
-			Toss:           &toss,
-			SeasonID:       seasonID,
+			Inning:         &inningNo,
+			MatchDate:      &dateISO,
 			MatchNumber:    matchNumber,
+			OppositionID:   oppositionID,
+			Overs:          &oversFloat,
+			RPO:            &rpo,
+			Result:         winnerID,
+			Score:          &runs,
+			SeasonID:       seasonID,
+			Target:         target,
+			Toss:           &toss,
+			VenueID:        venueID,
+			Wickets:        &wkts,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))
