@@ -16,14 +16,14 @@ function createHttpClient(baseUrl: string) {
   return async function httpClient<T>(pathOrUrl: string, options?: RequestInit): Promise<T> {
     const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${baseUrl}${pathOrUrl}`;
 
-    // Read API key from sessionStorage for go-app requests
+    // Read API key from localStorage for go-app requests
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
     // Improved detection: matches BASE_API_URL, has go-app port, or final URL has go-app port
     const isGoApp = baseUrl === BASE_API_URL || baseUrl.includes(':8080') || url.includes(':8080');
 
     if (isGoApp) {
-      const apiKey = sessionStorage.getItem('cric_info_api_key');
+      const apiKey = localStorage.getItem('cric_info_api_key');
       if (apiKey) {
         headers['X-API-Key'] = apiKey;
       }

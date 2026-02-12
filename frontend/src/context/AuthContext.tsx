@@ -13,7 +13,7 @@ const STORAGE_KEY = 'cric_info_api_key';
 
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [apiKey, setApiKey] = useState<string | null>(sessionStorage.getItem(STORAGE_KEY));
+  const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem(STORAGE_KEY));
 
   const login = async (password: string): Promise<boolean> => {
     // In local development, the API key is used as the password.
@@ -28,7 +28,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
 
         if (res.ok) {
-          sessionStorage.setItem(STORAGE_KEY, password);
+          localStorage.setItem(STORAGE_KEY, password);
           setApiKey(password);
           return true;
         }
@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
     setApiKey(null);
   };
 

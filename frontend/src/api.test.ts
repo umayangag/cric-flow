@@ -19,9 +19,9 @@ describe('frontend api client (DB-backed)', () => {
     await expect(api.apiHealth()).rejects.toBeInstanceOf(Error);
   });
 
-  it('includes X-API-Key header when stored in sessionStorage', async () => {
+  it('includes X-API-Key header when stored in localStorage', async () => {
     const mockStorage: Record<string, string> = { cric_info_api_key: 'test-key' };
-    vi.stubGlobal('sessionStorage', {
+    vi.stubGlobal('localStorage', {
       getItem: (key: string) => mockStorage[key] || null,
       setItem: (key: string, value: string) => {
         mockStorage[key] = value;
