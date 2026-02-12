@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 # Safer IFS to avoid word-splitting issues
 IFS=$'\n\t'
