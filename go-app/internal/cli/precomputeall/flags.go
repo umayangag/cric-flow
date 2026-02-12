@@ -39,7 +39,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		defMig = "./migrations"
 	}
 	fs.StringVar(&migrDir, "migrations", defMig, "Directory with SQL migrations (can also set MIGRATIONS_DIR)")
-	fs.DurationVar(&timeout, "timeout", 30*time.Minute, "Overall timeout for the job")
+	fs.DurationVar(&timeout, "timeout", 5*time.Hour, "Overall timeout for the job")
 
 	fs.StringVar(&seqTargets, "seq-targets", "all", "Sequence targets to compute: comma-separated list or 'all'")
 	fs.BoolVar(&seqDryRun, "seq-dry-run", false, "If true, list sequence computations without writing")

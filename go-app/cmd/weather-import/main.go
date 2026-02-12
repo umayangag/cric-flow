@@ -31,7 +31,7 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Hour)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

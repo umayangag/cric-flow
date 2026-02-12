@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
@@ -19,6 +20,7 @@ type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
 	WeatherEnqueue       bool
+	Timeout              time.Duration
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -51,6 +53,9 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	)
 	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
 
+	var timeout time.Duration
+	fs.DurationVar(&timeout, "timeout", 5*time.Hour, "operation timeout")
+
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
@@ -69,6 +74,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		PlaceholdersWeather:  placeholdersWeather,
 		PlaceholdersFielding: placeholdersFielding,
 		WeatherEnqueue:       weatherEnqueue,
+		Timeout:              timeout,
 	}, nil
 }
 
