@@ -8,23 +8,23 @@ import (
 // MatchInfoUpdate carries optional fields to update in match_details.
 // Use nil to skip updating a field (keep existing value).
 type MatchInfoUpdate struct {
-	Score          *int
-	Wickets        *int
-	Overs          *float32
-	Balls          *int
-	RPO            *float32
-	Target         *int
-	Inning         *int
-	Result         *int64
-	OppositionID   *int64
-	MatchDate      *string // YYYY-MM-DD
-	BattingSession *string
-	BowlingSession *string
-	VenueID        *int64
-	Extras         *int
-	Toss           *string
-	SeasonID       *int64
-	MatchNumber    *int
+	Score             *int
+	Wickets           *int
+	Overs             *float32
+	Balls             *int
+	RPO               *float32
+	Target            *int
+	Inning            *int
+	Result            *int64
+	OppositionID      *int64
+	MatchDate         *string // YYYY-MM-DD
+	BattingSession    *string
+	BowlingSession    *string
+	VenueID           *int64
+	Extras            *int
+	Toss              *string
+	SeasonID          *int64
+	MatchNumber       *int
 	OriginalMatchType *string
 }
 

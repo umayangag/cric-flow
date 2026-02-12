@@ -44,7 +44,11 @@ func (r Runner) Preview(ctx context.Context, targets map[string]int, othersZero 
 
 // Apply performs the updates. When othersZero is true, sets is_wicket_keeper=0 for players not listed.
 func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bool) error {
-	slog.Info("starting wicket-keeper status update", slog.Int("targets", len(targets)), slog.Bool("others_zero", othersZero))
+	slog.Info(
+		"starting wicket-keeper status update",
+		slog.Int("targets", len(targets)),
+		slog.Bool("others_zero", othersZero),
+	)
 	for name, v := range targets {
 		if _, err := r.Repo.SetIsWicketKeeperByLowerName(ctx, v, name); err != nil {
 			return fmt.Errorf("update keeper for '%s': %w", name, err)

@@ -121,7 +121,7 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 	// DB expectations and behaviors
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, "T20").Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string")).
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string")).
 		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
@@ -216,7 +216,7 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mweather := &tmocks.WeatherClientMock{}
 	// DB expectations minimal for directory import
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string")).
+	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string")).
 		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)

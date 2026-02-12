@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
-import ReactFlow, { 
-  Node, 
-  Edge, 
-  Background, 
-  Controls, 
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
   ConnectionLineType,
   Position,
-  Handle
+  Handle,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
@@ -59,28 +59,28 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
   const { nodes, edges } = useMemo(() => {
     const initialNodes: Node[] = [];
     const initialEdges: Edge[] = [];
-    
+
     if (!hierarchy) return { nodes: initialNodes, edges: initialEdges };
 
     const HORIZONTAL_SPACING = 250;
     const VERTICAL_SPACING = 150;
 
     const flatten = (
-      node: FormatHierarchyNode, 
-      x: number, 
-      y: number, 
+      node: FormatHierarchyNode,
+      x: number,
+      y: number,
       parentId?: string,
-      level: number = 0
+      level: number = 0,
     ) => {
       const id = `${node.code}-${level}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       initialNodes.push({
         id,
         type: 'custom',
-        data: { 
-          label: node.name, 
+        data: {
+          label: node.name,
           code: node.code,
-          isBucket: node.code === 'T20' && level === 0
+          isBucket: node.code === 'T20' && level === 0,
         },
         position: { x, y },
       });
@@ -121,7 +121,16 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
   }
 
   return (
-    <Box sx={{ width: '100%', height: 400, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+    <Box
+      sx={{
+        width: '100%',
+        height: 400,
+        bgcolor: 'grey.50',
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}

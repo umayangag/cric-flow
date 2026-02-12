@@ -90,7 +90,10 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if opts.concurrency != 1 {
-		slog.Warn("only concurrency=1 is supported currently; proceeding sequentially", slog.Int("requested", opts.concurrency))
+		slog.Warn(
+			"only concurrency=1 is supported currently; proceeding sequentially",
+			slog.Int("requested", opts.concurrency),
+		)
 	}
 
 	// Connect DB
@@ -144,12 +147,16 @@ func run(ctx context.Context, args []string) error {
 			continue
 		}
 		if opts.dryRun {
-			slog.Info("DRY-RUN: would backfill match", slog.Int64("match_id", stableID), slog.String("file", filepath.Base(f)))
+			slog.Info(
+				"DRY-RUN: would backfill match",
+				slog.Int64("match_id", stableID),
+				slog.String("file", filepath.Base(f)),
+			)
 			total++
 			continue
 		}
 		slog.Info("backfilling ball_event", slog.Int64("match_id", stableID), slog.String("file", filepath.Base(f)))
-		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID, meta.dateISO); err != nil {
+		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID, meta.dateISO, meta.matchType); err != nil {
 			return fmt.Errorf("ensure match failed id=%d: %w", stableID, err)
 		}
 		if err := cricsheet.EmitBallEvents(ctx, m, int(formatID), stableID); err != nil {
@@ -157,7 +164,11 @@ func run(ctx context.Context, args []string) error {
 		}
 		total++
 	}
-	slog.Info("backfill completed", slog.Int("matches", total), slog.Duration("elapsed", time.Since(start).Round(time.Millisecond)))
+	slog.Info(
+		"backfill completed",
+		slog.Int("matches", total),
+		slog.Duration("elapsed", time.Since(start).Round(time.Millisecond)),
+	)
 	return nil
 }
 

@@ -11,7 +11,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'cric_info_api_key';
 
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem(STORAGE_KEY));
 

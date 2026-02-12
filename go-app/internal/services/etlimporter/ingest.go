@@ -50,7 +50,13 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 		return Stats{}, err
 	}
 	st := Stats{Files: len(matches)}
-	slog.Info("starting ETL ingestion", slog.Int("files", st.Files), slog.String("dir", dir), slog.String("pattern", pattern), slog.Bool("apply", apply))
+	slog.Info(
+		"starting ETL ingestion",
+		slog.Int("files", st.Files),
+		slog.String("dir", dir),
+		slog.String("pattern", pattern),
+		slog.Bool("apply", apply),
+	)
 	var allBat []db.EtlBattingRow
 	var allBowl []db.EtlBowlingRow
 	for _, p := range matches {
@@ -89,6 +95,11 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 			}
 		}
 	}
-	slog.Info("ETL ingestion finished", slog.Int("files", st.Files), slog.Int("batting_rows", st.BattingRows), slog.Int("bowling_rows", st.BowlingRows))
+	slog.Info(
+		"ETL ingestion finished",
+		slog.Int("files", st.Files),
+		slog.Int("batting_rows", st.BattingRows),
+		slog.Int("bowling_rows", st.BowlingRows),
+	)
 	return st, nil
 }
