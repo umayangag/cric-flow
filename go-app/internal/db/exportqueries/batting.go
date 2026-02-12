@@ -12,11 +12,12 @@ import (
 // BattingUnifiedRows returns CSV-shaped rows for the unified batting export.
 // Mirrors legacy exportBattingUnified: base batting row + per-format as-of features and fielding.
 func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
+	cache := db.GetGlobalCache()
 	// Resolve known format ids (some may be missing depending on data)
 	ids := make([]any, 0, 4)
 	codes := []string{"TEST", "ODI", "T20I", "T20"}
 	for _, code := range codes {
-		id, err := db.GetMatchFormatIDByCode(ctx, code)
+		id, err := cache.GetFormatID(ctx, code)
 		if err != nil || id <= 0 {
 			ids = append(ids, nil)
 			continue
@@ -287,10 +288,11 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 // BattingInferenceRows returns CSV-shaped rows for the batting inference export filtered by format.
 // Mirrors legacy exportBattingFormatInference headers and order.
 func BattingInferenceRows(ctx context.Context, format string) ([][]string, error) {
-	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
 	if err != nil {
 		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
 	}
+	formatID := id
 	q := `SELECT  
 		COALESCE(tc.batting_consistency, 0) AS batting_consistency,
 		COALESCE(tf.batting_form, 0) AS batting_form,
@@ -406,10 +408,11 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 // BattingFormatRows returns CSV-shaped rows for the per-format training batting export.
 // Mirrors legacy exportBattingFormat headers and order.
 func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
-	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
 	if err != nil {
 		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
 	}
+	formatID := id
 	q := `SELECT  
 		bd.runs,
 		bd.balls,
