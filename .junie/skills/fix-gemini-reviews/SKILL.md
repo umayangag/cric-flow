@@ -7,6 +7,7 @@ Description: Fetch unresolved PR review threads authored by `gemini-code-assist`
 - GitHub CLI (gh) authenticated: `gh auth status` should show a token with `repo` scope for the target repo.
 - Ensure repo context is correct (run inside the repo or pass `-R owner/repo`).
 - Have the PR number handy (e.g., `53`). You can also fetch it from current branch: `gh pr view --json number -q .number`.
+- Stay in the same branch for fixes.
 
 ## 1) Fetch unresolved Gemini review threads (exact, working)
 Use a single GraphQL query via `gh api graphql`. Important details we learned:
