@@ -36,3 +36,5 @@ coverage.xml
 # OS-specific
 .DS_Store
 tools/
+
+pr_reviews.json
