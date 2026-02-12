@@ -11,7 +11,7 @@ import (
 // nolint:revive // name stutter is intentional to match package domain terms
 type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
-	EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error
+	EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string, originalMatchType string) error
 	GetOrCreateVenue(ctx context.Context, name string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	GetOrCreateOpposition(ctx context.Context, name string) (int64, error)
@@ -57,8 +57,8 @@ func (realDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, e
 	return db.GetMatchFormatIDByCode(ctx, code)
 }
 
-func (realDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error {
-	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate)
+func (realDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string, originalMatchType string) error {
+	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate, originalMatchType)
 }
 
 func (realDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {

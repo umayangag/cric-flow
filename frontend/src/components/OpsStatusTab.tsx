@@ -4,6 +4,7 @@ import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 import OpsMigrationsTable from './OpsMigrationsTable';
+import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsTableStats from './OpsTableStats';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
@@ -71,9 +72,16 @@ export type OpsStatus = {
   // New optional sections surfaced by backend as raw objects
   fielding?: unknown;
   weather?: unknown;
+  hierarchy?: FormatHierarchyNode[];
   suggestions?: Array<{ reason: string; commands: string[] }>;
   // Allow additional forward-compatible fields
   [key: string]: unknown;
+};
+
+type FormatHierarchyNode = {
+  code: string;
+  name: string;
+  children?: FormatHierarchyNode[];
 };
 
 const REFRESH_MS = 15000;
@@ -163,6 +171,9 @@ const OpsStatusTab: React.FC = () => {
       {data && (
         <Stack spacing={2}>
           <OpsSuggestions />
+          <SectionCard title="Match Type Hierarchy">
+            <OpsFormatHierarchy hierarchy={data.hierarchy} />
+          </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />
           </SectionCard>

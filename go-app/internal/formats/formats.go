@@ -86,3 +86,45 @@ func MapFormatIDs(code string) []int {
 		return []int{IDT20, IDT20I}
 	}
 }
+
+// FormatHierarchyNode represents a node in the format hierarchy.
+type FormatHierarchyNode struct {
+	Code     string                `json:"code"`
+	Name     string                `json:"name"`
+	Children []FormatHierarchyNode `json:"children,omitempty"`
+}
+
+// GetHierarchy returns the structural hierarchy of match types as used in the system.
+// This matches the logic in CanonicalizeCode and MapFormatIDs.
+func GetHierarchy() []FormatHierarchyNode {
+	return []FormatHierarchyNode{
+		{
+			Code: CodeTest,
+			Name: "Test Matches",
+			Children: []FormatHierarchyNode{
+				{Code: "MDM", Name: "Multi-Day Match"},
+			},
+		},
+		{
+			Code: CodeODI,
+			Name: "One Day International",
+			Children: []FormatHierarchyNode{
+				{Code: "ODM", Name: "One Day Match"},
+			},
+		},
+		{
+			Code: CodeT20,
+			Name: "T20 (Bucket)",
+			Children: []FormatHierarchyNode{
+				{Code: CodeT20, Name: "Domestic T20"},
+				{
+					Code: CodeT20I,
+					Name: "T20 International",
+					Children: []FormatHierarchyNode{
+						{Code: "IT20", Name: "International T20"},
+					},
+				},
+			},
+		},
+	}
+}
