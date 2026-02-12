@@ -119,6 +119,9 @@ The repository includes a minimal React/Vite UI to backtest already‑played mat
 - Start the frontend dev server:
   - make frontend-dev
   - Opens on http://localhost:5173 (by default)
+- Login (Local Dev):
+  - The UI is protected by a simple login for administrative access.
+  - Default credentials: `admin` / `admin`.
 - Usage flow in the UI:
   1. Enter filters: format (e.g., T20), team1, team2, then Search to list already‑played matches.
   2. Select a match from the results.
@@ -127,7 +130,7 @@ The repository includes a minimal React/Vite UI to backtest already‑played mat
 
 Notes:
 - The Go API delegates to the ML service when `use_ml=1&cutoff=<RFC3339>` is provided. Ensure `ML_SERVICE_URL` is set if the ML base URL differs from the default `http://localhost:8000`.
-- See `frontend/README.md` for component/file map and quick commands.
+- See `frontend/` directory for component/file map and quick commands.
 - Unique constraints and upsert logic ensure idempotent persistence.
 - Optional placeholders can be inserted by the importer: weather rows per innings and zeroed fielding rows (see Makefile target `cricsheet-import` or API `/import/cricsheet`).
 - The ML service returns non-zero predictions only when trained artifacts are present.
@@ -473,6 +476,12 @@ The frontend is a Vite + React app with a modern, professional UI powered by MUI
 - Tests: `cd frontend && npm test`
 - Type check: `cd frontend && npm run typecheck`
 - Production build: `cd frontend && npm run build` (output in `frontend/dist/`)
+
+### Authentication (Local Development)
+Administrative endpoints and UI tabs (Ops Status, Evaluate) are protected. In local development:
+- **Default Credentials**: `admin` / `admin`
+- **Mechanism**: The frontend stores a `dev-local-key` in `localStorage` and sends it via the `X-API-Key` header to the Go API.
+- **Backend**: If the `API_KEY` environment variable is not set, the Go API defaults to accepting `dev-local-key`.
 
 MUI is installed via npm packages and applied through `ThemeProvider` and `CssBaseline` in `src/main.tsx`. The global shell (AppBar, Tabs, Paper) uses MUI components. No Bootstrap is required in `index.html`.
 
