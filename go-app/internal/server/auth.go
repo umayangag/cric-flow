@@ -11,6 +11,11 @@ import (
 // If API_KEY is not set, the middleware blocks all requests for safety (fail-secure).
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		expectedKey := os.Getenv("API_KEY")
 		if expectedKey == "" {
 			// In local development, use a hardcoded default key if API_KEY is not set.

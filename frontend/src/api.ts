@@ -18,7 +18,8 @@ function createHttpClient(baseUrl: string) {
 
     // Read API key from localStorage for go-app requests
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (baseUrl.includes(':8080') || baseUrl.includes(import.meta.env.VITE_API_URL)) {
+    const isGoApp = baseUrl.includes(':8080') || (import.meta.env.VITE_API_URL && baseUrl.includes(import.meta.env.VITE_API_URL));
+    if (isGoApp) {
       const apiKey = localStorage.getItem('cric_info_api_key');
       if (apiKey) {
         headers['X-API-Key'] = apiKey;
