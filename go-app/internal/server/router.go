@@ -18,7 +18,7 @@ func NewRouter(a *App) http.Handler {
 	r.HandleFunc("/readiness", readinessHandler).Methods(http.MethodGet)
 
 	// Admin/Ops routes (protected by auth)
-	admin := r.PathPrefix("").Subrouter()
+	admin := r.NewRoute().Subrouter()
 	admin.Use(authMiddleware)
 
 	// Precompute controls

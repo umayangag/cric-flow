@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 	"os"
 )
@@ -21,6 +22,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		if r.Method == http.MethodOptions {
 			// Preflight response
+			log.Printf("CORS Preflight: method=%s path=%s origin=%s", r.Method, r.URL.Path, r.Header.Get("Origin"))
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
