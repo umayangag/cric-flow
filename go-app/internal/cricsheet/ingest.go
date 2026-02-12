@@ -133,7 +133,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		if winner != "" {
 			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
 				winnerID = &id
-            } else {
+			} else {
 				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
 			}
 		}
