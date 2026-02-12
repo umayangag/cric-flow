@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,9 +50,11 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 		return Stats{}, err
 	}
 	st := Stats{Files: len(matches)}
+	slog.Info("starting ETL ingestion", slog.Int("files", st.Files), slog.String("dir", dir), slog.String("pattern", pattern), slog.Bool("apply", apply))
 	var allBat []db.EtlBattingRow
 	var allBowl []db.EtlBowlingRow
 	for _, p := range matches {
+		slog.Info("processing ETL file", slog.String("path", p))
 		b, rerr := os.ReadFile(p)
 		if rerr != nil {
 			return Stats{}, rerr
@@ -74,15 +77,18 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	}
 	if apply {
 		if len(allBat) > 0 {
+			slog.Info("upserting batting rows", slog.Int("count", len(allBat)))
 			if err := s.Repository.UpsertBatting(ctx, allBat); err != nil {
 				return Stats{}, err
 			}
 		}
 		if len(allBowl) > 0 {
+			slog.Info("upserting bowling rows", slog.Int("count", len(allBowl)))
 			if err := s.Repository.UpsertBowling(ctx, allBowl); err != nil {
 				return Stats{}, err
 			}
 		}
 	}
+	slog.Info("ETL ingestion finished", slog.Int("files", st.Files), slog.Int("batting_rows", st.BattingRows), slog.Int("bowling_rows", st.BowlingRows))
 	return st, nil
 }

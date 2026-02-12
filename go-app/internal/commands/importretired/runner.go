@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 )
 
@@ -37,11 +38,15 @@ func (r *Runner) DryRun(names []string, othersZero bool, out io.Writer) error {
 // Apply executes updates for retired flags.
 // Returns (changed, zeroed) counts, mirroring legacy behavior.
 func (r *Runner) Apply(ctx context.Context, names []string, othersZero bool) (int64, int64, error) {
+	slog.Info("starting retired players import", slog.Int("count", len(names)), slog.Bool("others_zero", othersZero))
 	var changed int64
 	for _, nm := range names {
 		ct, err := r.DB.Exec(ctx, `UPDATE player SET is_retired = 1 WHERE lower(player_name) = lower($1)`, nm)
 		if err != nil {
-			return changed, 0, err
+			return changed, 0, fmt.Errorf("update player '%s': %w", nm, err)
+		}
+		if ct > 0 {
+			slog.Debug("marked player as retired", slog.String("name", nm))
 		}
 		changed += ct
 	}

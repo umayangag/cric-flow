@@ -52,12 +52,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	for _, f := range files {
 		f := f // capture
 		g.Go(func() error {
+			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
-				slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
-				return nil // don't abort entire group on single file failure, mirroring legacy behavior
+				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
 			}
 			atomic.AddInt64(&count, 1)
-			slog.Info("imported file", slog.String("file", filepath.Base(f)))
 			return nil
 		})
 	}
@@ -146,18 +145,22 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
-		_ = cricDB.Exec(
+		if err := cricDB.Exec(
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
 			"inning1",
-		)
-		_ = cricDB.Exec(
+		); err != nil {
+			return fmt.Errorf("insert weather placeholder 1: %w", err)
+		}
+		if err := cricDB.Exec(
 			ctx,
 			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
 			"inning2",
-		)
+		); err != nil {
+			return fmt.Errorf("insert weather placeholder 2: %w", err)
+		}
 	}
 	playersSeen := map[string]bool{}
 	for i, inng := range m.Innings {

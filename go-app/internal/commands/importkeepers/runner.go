@@ -44,10 +44,12 @@ func (r Runner) Preview(ctx context.Context, targets map[string]int, othersZero 
 
 // Apply performs the updates. When othersZero is true, sets is_wicket_keeper=0 for players not listed.
 func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bool) error {
+	slog.Info("starting wicket-keeper status update", slog.Int("targets", len(targets)), slog.Bool("others_zero", othersZero))
 	for name, v := range targets {
 		if _, err := r.Repo.SetIsWicketKeeperByLowerName(ctx, v, name); err != nil {
 			return fmt.Errorf("update keeper for '%s': %w", name, err)
 		}
+		slog.Debug("updated wicket-keeper status", slog.String("name", name), slog.Int("value", v))
 	}
 	if othersZero {
 		// Build list of lower-case names to exclude from zeroing.
@@ -58,6 +60,8 @@ func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bo
 		if _, err := r.Repo.ZeroKeepersExcept(ctx, names); err != nil {
 			return fmt.Errorf("zero others: %w", err)
 		}
+		slog.Info("zeroed wicket-keeper status for other players")
 	}
+	slog.Info("wicket-keeper status update finished")
 	return nil
 }
