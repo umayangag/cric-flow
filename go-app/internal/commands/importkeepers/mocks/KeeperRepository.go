@@ -209,6 +209,62 @@ type MockKeeperRepository_ZeroKeepersExcept_Call struct {
 // ZeroKeepersExcept is a helper method to define mock.On call
 //   - ctx context.Context
 //   - lowerNames []string
+
+// BatchSetIsWicketKeeper provides a mock function for the type MockKeeperRepository
+func (_mock *MockKeeperRepository) BatchSetIsWicketKeeper(ctx context.Context, targets map[string]int) (int64, error) {
+	ret := _mock.Called(ctx, targets)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BatchSetIsWicketKeeper")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]int) (int64, error)); ok {
+		return returnFunc(ctx, targets)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]int) int64); ok {
+		r0 = returnFunc(ctx, targets)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]int) error); ok {
+		r1 = returnFunc(ctx, targets)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockKeeperRepository_BatchSetIsWicketKeeper_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BatchSetIsWicketKeeper'
+type MockKeeperRepository_BatchSetIsWicketKeeper_Call struct {
+	*mock.Call
+}
+
+// BatchSetIsWicketKeeper is a helper method to define mock.On call
+//   - ctx context.Context
+//   - targets map[string]int
+func (_e *MockKeeperRepository_Expecter) BatchSetIsWicketKeeper(ctx interface{}, targets interface{}) *MockKeeperRepository_BatchSetIsWicketKeeper_Call {
+	return &MockKeeperRepository_BatchSetIsWicketKeeper_Call{Call: _e.mock.On("BatchSetIsWicketKeeper", ctx, targets)}
+}
+
+func (_c *MockKeeperRepository_BatchSetIsWicketKeeper_Call) Run(run func(ctx context.Context, targets map[string]int)) *MockKeeperRepository_BatchSetIsWicketKeeper_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(map[string]int))
+	})
+	return _c
+}
+
+func (_c *MockKeeperRepository_BatchSetIsWicketKeeper_Call) Return(n int64, err error) *MockKeeperRepository_BatchSetIsWicketKeeper_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockKeeperRepository_BatchSetIsWicketKeeper_Call) RunAndReturn(run func(ctx context.Context, targets map[string]int) (int64, error)) *MockKeeperRepository_BatchSetIsWicketKeeper_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 func (_e *MockKeeperRepository_Expecter) ZeroKeepersExcept(ctx interface{}, lowerNames interface{}) *MockKeeperRepository_ZeroKeepersExcept_Call {
 	return &MockKeeperRepository_ZeroKeepersExcept_Call{Call: _e.mock.On("ZeroKeepersExcept", ctx, lowerNames)}
 }

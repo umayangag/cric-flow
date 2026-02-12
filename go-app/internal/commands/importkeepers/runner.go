@@ -10,6 +10,7 @@ import (
 type KeeperRepository interface {
 	CountPlayersByLowerName(ctx context.Context, lowerName string) (int64, error)
 	SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName string) (int64, error)
+	BatchSetIsWicketKeeper(ctx context.Context, targets map[string]int) (int64, error)
 	ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error)
 }
 
@@ -49,12 +50,15 @@ func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bo
 		slog.Int("targets", len(targets)),
 		slog.Bool("others_zero", othersZero),
 	)
-	for name, v := range targets {
-		if _, err := r.Repo.SetIsWicketKeeperByLowerName(ctx, v, name); err != nil {
-			return fmt.Errorf("update keeper for '%s': %w", name, err)
+
+	if len(targets) > 0 {
+		count, err := r.Repo.BatchSetIsWicketKeeper(ctx, targets)
+		if err != nil {
+			return fmt.Errorf("batch update keepers: %w", err)
 		}
-		slog.Debug("updated wicket-keeper status", slog.String("name", name), slog.Int("value", v))
+		slog.Info("updated wicket-keeper status", slog.Int64("count", count))
 	}
+
 	if othersZero {
 		// Build list of lower-case names to exclude from zeroing.
 		names := make([]string, 0, len(targets))
