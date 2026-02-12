@@ -56,7 +56,8 @@ process_category() {
 
     if [ ${#files_arr[@]} -gt 0 ]; then
         echo "[$category] Processing ${#files_arr[@]} files..."
-        eval "$result_var=(\"\${files_arr[@]}\")"
+        local -n ref="$result_var"
+        ref=("${files_arr[@]}")
         return 0 # Found files
     fi
     return 1 # No files found
@@ -94,7 +95,7 @@ if process_category "go-app" "^go-app/.*\.go$" "GO_FILES_ARR"; then
              # Run on packages (directories) to ensure typechecking works
              mapfile -t GO_DIRS_ARR < <(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
              # shellcheck disable=SC2086
-             golangci-lint run --fix -c "$CONFIG" "${GO_DIRS_ARR[@]}"
+             golangci-lint run --fix -c "$CONFIG" -- "${GO_DIRS_ARR[@]}"
 
              # Stage changes (re-stage modified files)
              printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
