@@ -91,7 +91,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID); err != nil {
+	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO); err != nil {
 		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))

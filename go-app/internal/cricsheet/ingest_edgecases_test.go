@@ -108,7 +108,7 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 
 	// Expectations
 	dbMock.On("GetMatchFormatIDByCode", ctx, "T20").Return(int64(1), nil)
-	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything).Return(nil)
+	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	dbMock.On("GetOrCreateSeason", ctx, "2025").Return(int64(200), nil)
 	dbMock.On("UpdateMatchDetails", ctx, mock.Anything, mock.Anything).Return(nil)
 	dbMock.On("GetOrCreateOpposition", ctx, mock.Anything).Return(int64(300), nil)

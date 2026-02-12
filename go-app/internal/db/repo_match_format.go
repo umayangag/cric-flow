@@ -20,12 +20,12 @@ func GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error) {
 	return id, err
 }
 
-// EnsureMatchWithFormat inserts a match_details row with required format_id if it doesn't exist.
-func EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error {
+// EnsureMatchWithFormat inserts a match_details row with required format_id and match_date if it doesn't exist.
+func EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `INSERT INTO match_details(match_id, format_id) VALUES($1, $2)
-		ON CONFLICT (match_id) DO NOTHING`, matchID, formatID)
+	_, err := Pool.Exec(ctx, `INSERT INTO match_details(match_id, format_id, match_date) VALUES($1, $2, $3)
+		ON CONFLICT (match_id) DO NOTHING`, matchID, formatID, matchDate)
 	return err
 }

@@ -149,7 +149,7 @@ func run(ctx context.Context, args []string) error {
 			total++
 			continue
 		}
-		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID); err != nil {
+		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID, meta.dateISO); err != nil {
 			log.Printf("[error] ensure match failed id=%d: %v", stableID, err)
 			continue
 		}
