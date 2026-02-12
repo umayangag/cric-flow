@@ -147,19 +147,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if opts != nil && opts.PlaceholdersWeather {
 		if err := cricDB.Exec(
 			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
+			`INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
-			"inning1",
 		); err != nil {
-			return fmt.Errorf("insert weather placeholder 1: %w", err)
-		}
-		if err := cricDB.Exec(
-			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
-			mid,
-			"inning2",
-		); err != nil {
-			return fmt.Errorf("insert weather placeholder 2: %w", err)
+			return fmt.Errorf("insert weather placeholders: %w", err)
 		}
 	}
 	playersSeen := map[string]bool{}

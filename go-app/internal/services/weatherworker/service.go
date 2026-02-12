@@ -8,8 +8,8 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
 )
 
-// Service coordinates fetching weather for match IDs from a job source and,
-// when apply==true, upserting the resulting records via the WeatherRepo.
+// Service coordinates fetching weather for match IDs from a job source and
+// upserting the resulting records via the Repository.
 type Service struct {
 	Jobs       jobs.Source
 	Provider   Provider
