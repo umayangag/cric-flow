@@ -87,7 +87,9 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: false,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().BatchSetIsWicketKeeper(mock.Anything, map[string]int{"sam": 1, "max": 0}).Return(int64(2), nil)
+				m.EXPECT().
+					BatchSetIsWicketKeeper(mock.Anything, map[string]int{"sam": 1, "max": 0}).
+					Return(int64(2), nil)
 			},
 		},
 		{
@@ -97,7 +99,9 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: true,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().BatchSetIsWicketKeeper(mock.Anything, map[string]int{"x": 1, "y": 1, "z": 0}).Return(int64(3), nil)
+				m.EXPECT().
+					BatchSetIsWicketKeeper(mock.Anything, map[string]int{"x": 1, "y": 1, "z": 0}).
+					Return(int64(3), nil)
 				m.EXPECT().ZeroKeepersExcept(mock.Anything, mock.MatchedBy(func(names []string) bool {
 					set := map[string]struct{}{}
 					for _, n := range names {
