@@ -11,7 +11,7 @@
 - use context_index.json to as the entry point to understand the project structure and context when needed. use it smartly to minimize token usage.
 - always keep the code clean and readable for humans. use descriptive names for files, variables, methods, functions. short functions are better than long ones.
 - never suppress errors. Log errors and return.
-- use the available tools to minimize token usage and improve productivity.,
+- use the available tools to minimize token usage and improve productivity.
 
 ## SOP (do this order)
 1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit and token usage and improve productivity.
