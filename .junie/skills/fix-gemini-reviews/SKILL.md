@@ -82,7 +82,12 @@ gh api graphql \
 ## 5) Reporting
 - Summarize how many Gemini comments were addressed, which files were modified, and attach `pr_reviews.json` as an artifact if useful.
 
-## 6) Trigger re-review
+## 6) Push the fixes
+```bash
+git add .
+git commit -m "Fix Gemini comments"
+
+## 7) Trigger re-review
 Finally, post a comment to trigger a new Gemini review:
 ```bash
 gh pr comment $PR --body "/gemini review"
