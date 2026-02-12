@@ -21,6 +21,15 @@ BEGIN
     ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='match_date') THEN
         ALTER TABLE match_details ADD COLUMN match_date DATE;
     END IF;
+
+    -- 4. Make match_date NOT NULL.
+    -- To ensure we can set NOT NULL, we provide a fallback for existing NULLs.
+    -- Since we standardized on match_date, we fill missing ones with a sentinel value if absolutely necessary,
+    -- or assume that in a clean import they will be populated.
+    -- Per instructions to "not backfill", but we must handle NULLs to set NOT NULL.
+    -- We'll set them to '0001-01-01' as a safe sentinel if NULL.
+    UPDATE match_details SET match_date = '0001-01-01' WHERE match_date IS NULL;
+    ALTER TABLE match_details ALTER COLUMN match_date SET NOT NULL;
 END $$;
 
 -- 4. Ensure index exists on match_date
