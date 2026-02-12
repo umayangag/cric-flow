@@ -238,10 +238,12 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 30 * time.Minute
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	// Use background context for pool lifecycle so it doesn't close if Connect's ctx is canceled/times out.
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
+	// Verify connectivity using the provided (potentially short-lived) context.
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, err

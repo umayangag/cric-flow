@@ -42,6 +42,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	sort.Strings(files)
 	count := 0
 	for _, f := range files {
+		select {
+		case <-ctx.Done():
+			return count, ctx.Err()
+		default:
+		}
 		if err := ImportMatchFile(ctx, f, opts); err != nil {
 			slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
 			continue

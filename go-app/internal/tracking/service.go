@@ -13,13 +13,17 @@ type Tracker struct {
 }
 
 func Start(ctx context.Context, command string, args any) (*Tracker, error) {
+	// Use background context for start so it doesn't fail if ctx is canceled (e.g. timeout during initialization)
+	updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	argsBytes, err := json.Marshal(args)
 	if err != nil {
 		slog.Error("failed to marshal args", "err", err)
 		argsBytes = []byte("{}")
 	}
 
-	id, err := CreateMigration(ctx, command, argsBytes)
+	id, err := CreateMigration(updateCtx, command, argsBytes)
 	if err != nil {
 		return nil, err
 	}
