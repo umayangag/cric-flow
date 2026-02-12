@@ -230,7 +230,7 @@ const OpsStatusTab: React.FC = () => {
                   state={data.services?.api_readiness ? 'ok' : 'error'}
                   label={data.services?.api_readiness ? 'DB Ready' : 'DB Not Ready'}
                 />
-                <Typography variant="body2">
+                <Typography variant="body2" component="div">
                   Last match data import:{' '}
                   <strong>
                     {(() => {
@@ -273,7 +273,7 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Freshness"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2">Overall</Typography>
+                        <Typography variant="body2" component="div">Overall</Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }
@@ -338,7 +338,7 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Completeness (last 30d)"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2">Overall</Typography>
+                        <Typography variant="body2" component="div">Overall</Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }
