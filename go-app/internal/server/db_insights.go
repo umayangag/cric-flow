@@ -32,7 +32,7 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
     `, format).Scan(&ts); err == nil && !ts.IsZero() {
 		return ts.UTC(), nil
 	}
- if err := db.Pool.QueryRow(ctx, `
+	if err := db.Pool.QueryRow(ctx, `
         SELECT COALESCE(MAX(md.match_date), DATE '0001-01-01')
         FROM match_details md
         JOIN match_format mf ON md.format_id = mf.id

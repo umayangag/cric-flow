@@ -93,7 +93,10 @@ func GetTableStats(ctx context.Context) ([]TableStat, error) {
 	for tName, col := range tableDateCol {
 		colIdent := pgx.Identifier{col}.Sanitize()
 		tblIdent := pgx.Identifier{tName}.Sanitize()
-		unionQueries = append(unionQueries, fmt.Sprintf("SELECT '%s' as tname, MAX(%s)::text as max_val FROM %s", tName, colIdent, tblIdent))
+		unionQueries = append(
+			unionQueries,
+			fmt.Sprintf("SELECT '%s' as tname, MAX(%s)::text as max_val FROM %s", tName, colIdent, tblIdent),
+		)
 	}
 
 	if len(unionQueries) > 0 {

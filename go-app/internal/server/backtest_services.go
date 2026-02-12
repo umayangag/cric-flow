@@ -260,12 +260,12 @@ func computeAccuracyTrendForCandidates(
 	for _, m := range candidates {
 		metrics := computeAccuracyTrendMetrics(ctx, m, cacheMode, includePlayer, includeTeam)
 		results = append(results, accuracyTrendItem{
-			MatchID: m.MatchID,
-			MatchDate:    m.MatchDate,
-			Format:  m.Format,
-			Team1:   m.Team1,
-			Team2:   m.Team2,
-			Metrics: metrics,
+			MatchID:   m.MatchID,
+			MatchDate: m.MatchDate,
+			Format:    m.Format,
+			Team1:     m.Team1,
+			Team2:     m.Team2,
+			Metrics:   metrics,
 		})
 	}
 	summary, progressive := computeAccuracyTrendSummaryAndProgressive(results)

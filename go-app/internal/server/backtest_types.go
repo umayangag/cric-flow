@@ -57,8 +57,8 @@ type BacktestPlayerResult struct {
 type backtestEvaluateResponse struct {
 	Filters map[string]any `json:"filters"`
 	Match   struct {
-		MatchID int64  `json:"match_id"`
-		MatchDate    string `json:"match_date"`
+		MatchID   int64  `json:"match_id"`
+		MatchDate string `json:"match_date"`
 	} `json:"match"`
 	MatchAggregates struct {
 		Predicted map[string]any     `json:"predicted"`
@@ -71,12 +71,12 @@ type backtestEvaluateResponse struct {
 
 // Accuracy trend DTOs
 type accuracyTrendItem struct {
-	MatchID int64              `json:"match_id"`
-	MatchDate    string             `json:"match_date"`
-	Format  string             `json:"format"`
-	Team1   string             `json:"team1"`
-	Team2   string             `json:"team2"`
-	Metrics map[string]float64 `json:"metrics"`
+	MatchID   int64              `json:"match_id"`
+	MatchDate string             `json:"match_date"`
+	Format    string             `json:"format"`
+	Team1     string             `json:"team1"`
+	Team2     string             `json:"team2"`
+	Metrics   map[string]float64 `json:"metrics"`
 }
 
 type accuracyTrendResponse struct {
