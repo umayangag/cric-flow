@@ -32,6 +32,7 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 	}
 	// Enforce an upper bound to prevent resource exhaustion
 	if limit > 100 {
+		slog.Warn("pagination limit capped", "requested", limit, "capped_at", 100)
 		limit = 100
 	}
 

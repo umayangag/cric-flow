@@ -51,14 +51,8 @@ func (Runner) RunReplay(
 				return fmt.Errorf("bowling history pid=%d: %w", pid, err)
 			}
 
-			batInn := make([]features.Innings, 0, len(batHist))
-			for _, iv := range batHist {
-				batInn = append(batInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-			}
-			bowlInn := make([]features.Innings, 0, len(bowlHist))
-			for _, iv := range bowlHist {
-				bowlInn = append(bowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-			}
+			batInn := toFeatureInnings(batHist)
+			bowlInn := toFeatureInnings(bowlHist)
 			batInn = features.SortAndClip(batInn, asOf)
 			bowlInn = features.SortAndClip(bowlInn, asOf)
 			if windowN > 0 {
@@ -89,14 +83,8 @@ func (Runner) RunReplay(
 				oppID := m.OppositionID
 				oppBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, &oppID, nil)
 				oppBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, &oppID, nil)
-				oppBatInn := make([]features.Innings, 0, len(oppBat))
-				for _, iv := range oppBat {
-					oppBatInn = append(oppBatInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-				}
-				oppBowlInn := make([]features.Innings, 0, len(oppBowl))
-				for _, iv := range oppBowl {
-					oppBowlInn = append(oppBowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-				}
+				oppBatInn := toFeatureInnings(oppBat)
+				oppBowlInn := toFeatureInnings(oppBowl)
 				oppBatInn = features.SortAndClip(oppBatInn, asOf)
 				oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
 				if windowN > 0 {
@@ -120,14 +108,8 @@ func (Runner) RunReplay(
 				venueID := m.VenueID
 				venBat, _ := db.ListBattingBefore(ctx, pid, asOf, formatID, nil, &venueID)
 				venBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, &venueID)
-				venBatInn := make([]features.Innings, 0, len(venBat))
-				for _, iv := range venBat {
-					venBatInn = append(venBatInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-				}
-				venBowlInn := make([]features.Innings, 0, len(venBowl))
-				for _, iv := range venBowl {
-					venBowlInn = append(venBowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-				}
+				venBatInn := toFeatureInnings(venBat)
+				venBowlInn := toFeatureInnings(venBowl)
 				venBatInn = features.SortAndClip(venBatInn, asOf)
 				venBowlInn = features.SortAndClip(venBowlInn, asOf)
 				if windowN > 0 {
@@ -192,14 +174,8 @@ func (Runner) RunPointInTime(
 		if err != nil {
 			return fmt.Errorf("bowling history pid=%d: %w", pid, err)
 		}
-		batInn := make([]features.Innings, 0, len(batHist))
-		for _, iv := range batHist {
-			batInn = append(batInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-		}
-		bowlInn := make([]features.Innings, 0, len(bowlHist))
-		for _, iv := range bowlHist {
-			bowlInn = append(bowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
-		}
+		batInn := toFeatureInnings(batHist)
+		bowlInn := toFeatureInnings(bowlHist)
 		batInn = features.SortAndClip(batInn, asOf)
 		bowlInn = features.SortAndClip(bowlInn, asOf)
 		if windowN > 0 {
@@ -239,6 +215,14 @@ func (Runner) RunPointInTime(
 	}
 
 	return nil
+}
+
+func toFeatureInnings(in []db.InnVal) []features.Innings {
+	out := make([]features.Innings, 0, len(in))
+	for _, iv := range in {
+		out = append(out, features.Innings{Date: iv.MatchDate, Value: iv.Value})
+	}
+	return out
 }
 
 func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) error {
