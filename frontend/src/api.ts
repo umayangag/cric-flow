@@ -15,8 +15,18 @@ const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localho
 function createHttpClient(baseUrl: string) {
   return async function httpClient<T>(pathOrUrl: string, options?: RequestInit): Promise<T> {
     const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${baseUrl}${pathOrUrl}`;
+
+    // Read API key from localStorage for go-app requests
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (baseUrl.includes(':8080') || baseUrl.includes(import.meta.env.VITE_API_URL)) {
+      const apiKey = localStorage.getItem('cric_info_api_key');
+      if (apiKey) {
+        headers['X-API-Key'] = apiKey;
+      }
+    }
+
     const res = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       ...options,
     });
     if (!res.ok) {

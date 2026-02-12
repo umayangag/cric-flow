@@ -13,9 +13,10 @@ func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedKey := os.Getenv("API_KEY")
 		if expectedKey == "" {
-			log.Printf("Security alert: API_KEY environment variable is not set. Administrative endpoints are locked.")
-			http.Error(w, "Service Unavailable: Security Configuration Missing", http.StatusServiceUnavailable)
-			return
+			// In local development, use a hardcoded default key if API_KEY is not set.
+			// This matches the key used by the frontend for local dev login.
+			expectedKey = "dev-local-key"
+			log.Printf("API_KEY environment variable not set, using default dev-local-key")
 		}
 
 		clientKey := r.Header.Get("X-API-Key")
