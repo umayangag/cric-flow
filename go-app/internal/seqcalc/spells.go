@@ -74,7 +74,7 @@ func queryEventsForSpells(ctx context.Context, formatIDs []int) ([]evRowSpell, e
     md.match_date, md.format_id
 		FROM ball_event be
 		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id IN (%s)
+		WHERE md.format_id IN (%s) AND md.match_date IS NOT NULL
 		ORDER BY be.match_id, be.innings, be.ball_seq
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)

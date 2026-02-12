@@ -11,11 +11,9 @@ BEGIN
        NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='match_date') THEN
         ALTER TABLE match_details RENAME COLUMN date TO match_date;
     
-    -- 2. If both exist, we drop 'date' (as per previous instructions to not backfill, 
-    -- but user now wants to preserve data via rename, so this case assumes 'match_date' already has data or is the intended target)
+    -- 2. If both exist, copy data from 'date' to 'match_date' where 'match_date' is NULL to prevent data loss, then drop 'date'.
     ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='date') AND
           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='match_date') THEN
-        -- Copy data from 'date' to 'match_date' for any rows where match_date is NULL.
         UPDATE match_details SET match_date = date WHERE match_date IS NULL;
         ALTER TABLE match_details DROP COLUMN date;
     
@@ -34,7 +32,7 @@ BEGIN
     ALTER TABLE match_details ALTER COLUMN match_date SET NOT NULL;
 END $$;
 
--- 4. Ensure index exists on match_date
+-- 5. Ensure index exists on match_date
 CREATE INDEX IF NOT EXISTS idx_match_details_match_date ON match_details(match_date);
 
 COMMIT;
