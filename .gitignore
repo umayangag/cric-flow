@@ -38,3 +38,4 @@ coverage.xml
 tools/
 
 pr_reviews.json
+**/test_output.txt
