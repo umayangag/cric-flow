@@ -117,8 +117,9 @@ The repository includes a minimal React/Vite UI to backtest already‑played mat
   - make frontend-dev
   - Opens on http://localhost:5173 (by default)
 - Login (Local Dev):
-  - The UI is protected by a simple login for administrative access.
-  - Default credentials: `admin` / `admin`.
+  - The UI is protected by an API key for administrative access.
+  - Enter your `API_KEY` (as defined in your backend environment) into the API Key field on the login page.
+  - In local development (e.g., via `make dev-up`), the default API key is typically defined in your `.env` file or environment. If `API_KEY` is not set in the backend, administrative endpoints will be locked.
 - Usage flow in the UI:
   1. Enter filters: format (e.g., T20), team1, team2, then Search to list already‑played matches.
   2. Select a match from the results.

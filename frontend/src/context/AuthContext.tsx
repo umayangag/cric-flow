@@ -17,11 +17,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (password: string): Promise<boolean> => {
     // In local development, the API key is used as the password.
-    // This allows users to set their own API key via the login form.
+    // We validate the key by making a request to a protected endpoint.
     if (password) {
-      sessionStorage.setItem(STORAGE_KEY, password);
-      setApiKey(password);
-      return true;
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+        const res = await fetch(`${baseUrl}/ops/status`, {
+          headers: {
+            'X-API-Key': password,
+          },
+        });
+
+        if (res.ok) {
+          sessionStorage.setItem(STORAGE_KEY, password);
+          setApiKey(password);
+          return true;
+        }
+      } catch (err) {
+        console.error('Login validation failed:', err);
+      }
     }
     return false;
   };

@@ -24,7 +24,7 @@ const Login: React.FC = () => {
     if (success) {
       navigate(from, { replace: true });
     } else {
-      setError('Invalid password');
+      setError('Invalid API key or server not configured');
     }
   };
 

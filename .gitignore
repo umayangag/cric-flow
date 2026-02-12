@@ -25,6 +25,7 @@ output
 .output.txt
 .coverage
 coverage.xml
+.env
 
 # Coverage reports
 **/coverage.out
@@ -40,7 +41,6 @@ team-predictor
 
 # Go specific
 go-app/go-app
-context-provider/context-provider
 *.test
 *.exe
 *.exe~
