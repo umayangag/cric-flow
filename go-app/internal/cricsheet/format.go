@@ -8,19 +8,19 @@ import (
 
 // DetectFormat returns one of standardized codes: TEST, ODI, T20, T20I
 // Rules:
-// - matchType "Test" -> TEST
-// - matchType "ODI"  -> ODI
-// - matchType "T20I" -> T20I
+// - matchType "Test" or "MDM" -> TEST
+// - matchType "ODI"  or "ODM" -> ODI
+// - matchType "T20I" or "IT20" -> T20I
 // - matchType "T20"  -> if both teams are international (per config) and TreatT20ISubset is true, classify as T20I; else T20
 // If matchType is unrecognized, returns empty string.
 func DetectFormat(matchType string, teams []string, cfg *config.Config) string {
 	mt := strings.ToUpper(strings.TrimSpace(matchType))
 	switch mt {
-	case "TEST":
+	case "TEST", "MDM":
 		return "TEST"
-	case "ODI":
+	case "ODI", "ODM":
 		return "ODI"
-	case "T20I":
+	case "T20I", "IT20":
 		return "T20I"
 	case "T20":
 		if cfg != nil && cfg.Formats.TreatT20ISubset && bothInternational(teams, cfg) {
