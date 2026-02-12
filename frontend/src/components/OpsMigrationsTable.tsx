@@ -139,7 +139,7 @@ const OpsMigrationsTable: React.FC = () => {
         <span>
           Page {page} of {totalPages || 1}
         </span>
-        <PaginationButton disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+        <PaginationButton disabled={migrations.length < limit} onClick={() => setPage((p) => p + 1)}>
           Next
         </PaginationButton>
       </PaginationContainer>
