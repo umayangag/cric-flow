@@ -86,6 +86,8 @@ ml-serve:
 # Variables for convenience (override like: make team-predictor MATCH=123 BAT=6 BOWL=5)
 SEASON ?= 2019
 FORMAT ?= T20
+# Recognized formats: TEST, ODI, T20, T20I
+# Aliases: MDM -> TEST, ODM -> ODI, IT20 -> T20I
 MATCH ?= 0
 BAT ?= 6
 BOWL ?= 5
@@ -114,10 +116,12 @@ precompute-asof:
 	done
 
 # Unified command: run both as-of/replay precompute and sequential features in one shot
+# For T20/T20I, the system automatically combines domestic T20 and international T20I data.
 precompute-all:
 	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
 # Run unified command for all formats (order: TEST, ODI, T20I, T20)
+# Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
 precompute-all-all-formats:
 	cd go-app; \
 	for F in TEST ODI T20I T20; do \
