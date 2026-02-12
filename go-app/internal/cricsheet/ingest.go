@@ -68,10 +68,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		return fmt.Errorf("parse: %w", err)
 	}
 	info := m.Info
-	dateISO := "1970-01-01"
-	if len(info.Dates) > 0 {
-		dateISO = info.Dates[0]
-	}
+	dateISO := info.MatchDate()
 	teamA, teamB := "Team A", "Team B"
 	if len(info.Teams) >= 1 {
 		teamA = info.Teams[0]

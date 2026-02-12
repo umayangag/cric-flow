@@ -33,6 +33,35 @@ type Info struct {
 	Outcome      *Outcome `json:"outcome"`
 }
 
+// MatchDate returns the primary match date (the first entry in Dates).
+// It defaults to "1970-01-01" if no dates are available.
+func (i Info) MatchDate() string {
+	if len(i.Dates) > 0 {
+		return i.Dates[0]
+	}
+	return "1970-01-01"
+}
+
+// UnmarshalJSON allows Info to flexibly decode from Cricsheet JSON variations.
+// It maps both `dates` and `match_date` to the `Dates` field.
+func (i *Info) UnmarshalJSON(data []byte) error {
+	type Alias Info
+	aux := &struct {
+		MatchDate []string `json:"match_date"`
+		*Alias
+	}{
+		Alias: (*Alias)(i),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	// If dates is missing but match_date is present, use match_date
+	if len(i.Dates) == 0 && len(aux.MatchDate) > 0 {
+		i.Dates = aux.MatchDate
+	}
+	return nil
+}
+
 // Event contains optional tournament information like match number.
 type Event struct {
 	MatchNumber *int `json:"match_number"`
