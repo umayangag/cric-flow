@@ -145,9 +145,10 @@ func (Runner) RunReplay(
 			return err
 		}
 
-		atomic.AddInt64(&processed, int64(len(players)))
-		if processed >= 1000 && processed%1000 < int64(len(players)) {
-			slog.Info("progress", slog.Int64("player_snapshots", processed), slog.String("format", formatCode))
+		newValue := atomic.AddInt64(&processed, int64(len(players)))
+		oldValue := newValue - int64(len(players))
+		if oldValue/1000 < newValue/1000 {
+			slog.Info("progress", slog.Int64("player_snapshots", newValue), slog.String("format", formatCode))
 		}
 	}
 

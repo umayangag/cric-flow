@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,7 +33,6 @@ if clientKey == "" || subtle.ConstantTimeCompare([]byte(clientKey), []byte(expec
 				slog.String("remote", r.RemoteAddr),
 				slog.Bool("has_key", clientKey != ""),
 				slog.Int("client_key_len", len(clientKey)),
-				slog.Int("expected_key_len", len(expectedKey)),
 			)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
