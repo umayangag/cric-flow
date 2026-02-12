@@ -89,7 +89,7 @@ git add .
 git commit -m "Fix Gemini comments"
 
 ## 7) Trigger re-review
-Finally, post a comment to trigger a new Gemini review:
+Finally, once you ensure all local changes are commited and pushed, post a comment to trigger a new Gemini review:
 ```bash
 gh pr comment $PR --body "/gemini review"
 ```

@@ -73,12 +73,41 @@ func UpsertBowlingBatch(ctx context.Context, rows []Bowling) error {
 	}
 
 	// 2. Use CopyFrom to bulk insert into the temporary table.
-	_, err = tx.CopyFrom(ctx,
+	_, err = tx.CopyFrom(
+		ctx,
 		pgx.Identifier{"bowling_data_tmp"},
-		[]string{"match_id", "player_id", "overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls"},
+		[]string{
+			"match_id",
+			"player_id",
+			"overs",
+			"balls",
+			"maidens",
+			"runs",
+			"wickets",
+			"dots",
+			"fours",
+			"sixes",
+			"econ",
+			"wides",
+			"no_balls",
+		},
 		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
 			r := rows[i]
-			return []any{r.MatchID, r.PlayerID, r.Overs, r.Balls, r.Maidens, r.Runs, r.Wickets, r.Dots, r.Fours, r.Sixes, r.Econ, r.Wides, r.NoBalls}, nil
+			return []any{
+				r.MatchID,
+				r.PlayerID,
+				r.Overs,
+				r.Balls,
+				r.Maidens,
+				r.Runs,
+				r.Wickets,
+				r.Dots,
+				r.Fours,
+				r.Sixes,
+				r.Econ,
+				r.Wides,
+				r.NoBalls,
+			}, nil
 		}),
 	)
 	if err != nil {

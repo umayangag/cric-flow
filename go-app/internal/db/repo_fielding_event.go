@@ -115,9 +115,22 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 	}
 
 	// 2. Use CopyFrom to bulk insert into the temporary table.
-	_, err = tx.CopyFrom(ctx,
+	_, err = tx.CopyFrom(
+		ctx,
 		pgx.Identifier{"fielding_event_tmp"},
-		[]string{"match_id", "innings", "over", "ball", "batter_out_id", "fielder_id", "bowler_id", "kind", "assist_role", "is_direct_hit", "notes"},
+		[]string{
+			"match_id",
+			"innings",
+			"over",
+			"ball",
+			"batter_out_id",
+			"fielder_id",
+			"bowler_id",
+			"kind",
+			"assist_role",
+			"is_direct_hit",
+			"notes",
+		},
 		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
 			r := rows[i]
 			// assist_role is stored as empty string if not provided for idempotency
@@ -125,7 +138,19 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 			if role == "" {
 				role = "" // Already empty string
 			}
-			return []any{r.MatchID, r.Innings, r.Over, r.Ball, r.BatterOutID, r.FielderID, r.BowlerID, r.Kind, role, r.IsDirectHit, r.Notes}, nil
+			return []any{
+				r.MatchID,
+				r.Innings,
+				r.Over,
+				r.Ball,
+				r.BatterOutID,
+				r.FielderID,
+				r.BowlerID,
+				r.Kind,
+				role,
+				r.IsDirectHit,
+				r.Notes,
+			}, nil
 		}),
 	)
 	if err != nil {
