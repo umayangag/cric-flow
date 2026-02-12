@@ -3,6 +3,9 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // FieldingEvent represents a row in fielding_event.
@@ -89,7 +92,7 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 	return nil
 }
 
-// InsertFieldingEventsBatch inserts multiple fielding_event rows idempotently.
+// InsertFieldingEventsBatch inserts multiple fielding_event rows idempotently using pgx.CopyFrom and a temporary table.
 func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error {
 	if PoolAPI == nil {
 		return errors.New("db pool not initialized")
@@ -97,27 +100,48 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 	if len(rows) == 0 {
 		return nil
 	}
-	// Use a transaction for the batch
+
+	// Use a temporary table and then INSERT ... ON CONFLICT DO NOTHING for an atomic and performant bulk insert.
 	tx, err := PoolAPI.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
+	defer tx.Rollback(ctx)
 
-	for _, e := range rows {
-		// assist_role is stored as empty string if not provided for idempotency
-		err := tx.Exec(ctx, `
-            INSERT INTO fielding_event(
-                match_id, innings, over, ball, batter_out_id, fielder_id, bowler_id,
-                kind, assist_role, is_direct_hit, notes
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,''),$10,$11)
-            ON CONFLICT (match_id, innings, over, ball, fielder_id, kind, assist_role) DO NOTHING
-        `, e.MatchID, e.Innings, e.Over, e.Ball, e.BatterOutID, e.FielderID, e.BowlerID, e.Kind, e.AssistRole, e.IsDirectHit, e.Notes)
-		if err != nil {
-			return err
-		}
+	// 1. Create a temporary table with the same structure.
+	err = tx.Exec(ctx, `CREATE TEMP TABLE fielding_event_tmp (LIKE fielding_event INCLUDING DEFAULTS) ON COMMIT DROP`)
+	if err != nil {
+		return fmt.Errorf("create temp table: %w", err)
 	}
+
+	// 2. Use CopyFrom to bulk insert into the temporary table.
+	_, err = tx.CopyFrom(ctx,
+		pgx.Identifier{"fielding_event_tmp"},
+		[]string{"match_id", "innings", "over", "ball", "batter_out_id", "fielder_id", "bowler_id", "kind", "assist_role", "is_direct_hit", "notes"},
+		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
+			r := rows[i]
+			// assist_role is stored as empty string if not provided for idempotency
+			role := r.AssistRole
+			if role == "" {
+				role = "" // Already empty string
+			}
+			return []any{r.MatchID, r.Innings, r.Over, r.Ball, r.BatterOutID, r.FielderID, r.BowlerID, r.Kind, role, r.IsDirectHit, r.Notes}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("copy from: %w", err)
+	}
+
+	// 3. Insert from the temporary table into the main table idempotently.
+	err = tx.Exec(ctx, `
+		INSERT INTO fielding_event (match_id, innings, over, ball, batter_out_id, fielder_id, bowler_id, kind, assist_role, is_direct_hit, notes)
+		SELECT match_id, innings, over, ball, batter_out_id, fielder_id, bowler_id, kind, COALESCE(assist_role, ''), is_direct_hit, notes
+		FROM fielding_event_tmp
+		ON CONFLICT (match_id, innings, over, ball, fielder_id, kind, assist_role) DO NOTHING
+	`)
+	if err != nil {
+		return fmt.Errorf("merge temp table: %w", err)
+	}
+
 	return tx.Commit(ctx)
 }

@@ -19,9 +19,9 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		expectedKey := strings.TrimSpace(os.Getenv("API_KEY"))
 		if expectedKey == "" {
-			// In local development, use a hardcoded default key if API_KEY is not set.
-			// This matches the key used by the frontend for local dev login.
-			expectedKey = "dev-local-key"
+			slog.Error("API_KEY environment variable not set. Access denied.")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
 
 		clientKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
