@@ -92,7 +92,7 @@ BOWL ?= 5
 
 # Run preprocessing computations (happy path)
 precompute:
-	curl -X POST http://localhost:8080/precompute
+	curl -X POST -H "X-API-Key: test-api-key" http://localhost:8080/precompute
 
 # Precompute time-indexed (as-of) features for ALL formats with one command
 # ASOF is optional (defaults to today's date in UTC). You can override:
@@ -211,7 +211,7 @@ e2e-backtest-smoke: seed-fixtures
 	URL="http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"; \
 	SEL_JSON=$$(mktemp); \
 	trap 'rm -f "$$SEL_JSON"' EXIT; \
-	STATUS=$$(curl -sS -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
+	STATUS=$$(curl -sS -H "X-API-Key: test-api-key" -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
 	echo "  [SEL] HTTP $$STATUS $$URL"; \
 	if [ "$$STATUS" != "200" ]; then \
 	  echo "  [SEL] Response:"; \
@@ -227,7 +227,7 @@ e2e-backtest-smoke: seed-fixtures
 	fi
 	# Evaluate the seeded match (match_id known from fixtures: 9000111)
 	@echo "[SMOKE] Evaluating match_id=9000111"; \
-	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
+	EVAL=$$(curl -s -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
 	echo $$EVAL | jq -e '(.players | length) > 0' >/dev/null; \
 	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
