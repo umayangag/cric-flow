@@ -171,9 +171,6 @@ const OpsStatusTab: React.FC = () => {
       {data && (
         <Stack spacing={2}>
           <OpsSuggestions />
-          <SectionCard title="Match Type Hierarchy">
-            <OpsFormatHierarchy hierarchy={data.hierarchy} />
-          </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />
           </SectionCard>
@@ -583,6 +580,10 @@ const OpsStatusTab: React.FC = () => {
           </Grid>
 
           {/* Removed global suggestions block to keep suggestions within each section */}
+
+          <SectionCard title="Match Type Hierarchy">
+            <OpsFormatHierarchy hierarchy={data.hierarchy} />
+          </SectionCard>
 
           <JsonCollapse data={data} summary="Show raw JSON payload" />
         </Stack>

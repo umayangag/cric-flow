@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import ReactFlow, { 
+  Node, 
+  Edge, 
+  Background, 
+  Controls, 
+  ConnectionLineType,
+  Position,
+  Handle
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Tooltip from '@mui/material/Tooltip';
 
 type FormatHierarchyNode = {
   code: string;
@@ -15,76 +23,95 @@ interface Props {
   hierarchy?: FormatHierarchyNode[];
 }
 
-const NodeBox: React.FC<{ node: FormatHierarchyNode; level: number }> = ({ node, level }) => {
-  const isBucket = node.code === 'T20' && level === 0;
-
+// Custom Node component to use MUI Paper
+const CustomNode = ({ data }: { data: { label: string; code: string; isBucket: boolean } }) => {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-      <Tooltip title={`Code: ${node.code}`}>
-        <Paper
-          elevation={2}
-          sx={{
-            p: 1.5,
-            minWidth: 140,
-            textAlign: 'center',
-            bgcolor: isBucket ? 'primary.light' : 'background.paper',
-            color: isBucket ? 'primary.contrastText' : 'text.primary',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 2,
-            zIndex: 1,
-            mb: node.children && node.children.length > 0 ? 4 : 0,
-          }}
-        >
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-            {node.name}
-          </Typography>
-          <Typography variant="caption" sx={{ opacity: 0.8 }}>
-            {node.code}
-          </Typography>
-        </Paper>
-      </Tooltip>
-
-      {node.children && node.children.length > 0 && (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: 4,
-            position: 'relative',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: -32,
-              left: '50%',
-              width: 1,
-              height: 32,
-              bgcolor: 'divider',
-            },
-          }}
-        >
-          {node.children.length > 1 && (
-             <Box
-               sx={{
-                 position: 'absolute',
-                 top: -32,
-                 left: `${100 / (node.children.length * 2)}%`,
-                 right: `${100 / (node.children.length * 2)}%`,
-                 height: 1,
-                 bgcolor: 'divider',
-               }}
-             />
-          )}
-          {node.children.map((child, idx) => (
-            <NodeBox key={`${child.code}-${idx}`} node={child} level={level + 1} />
-          ))}
-        </Box>
-      )}
-    </Box>
+    <Paper
+      elevation={3}
+      sx={{
+        p: 1.5,
+        minWidth: 150,
+        textAlign: 'center',
+        bgcolor: data.isBucket ? 'primary.light' : 'background.paper',
+        color: data.isBucket ? 'primary.contrastText' : 'text.primary',
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 2,
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
+      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+        {data.label}
+      </Typography>
+      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+        {data.code}
+      </Typography>
+      <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+    </Paper>
   );
 };
 
+const nodeTypes = {
+  custom: CustomNode,
+};
+
 const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
+  const { nodes, edges } = useMemo(() => {
+    const initialNodes: Node[] = [];
+    const initialEdges: Edge[] = [];
+    
+    if (!hierarchy) return { nodes: initialNodes, edges: initialEdges };
+
+    const HORIZONTAL_SPACING = 250;
+    const VERTICAL_SPACING = 150;
+
+    const flatten = (
+      node: FormatHierarchyNode, 
+      x: number, 
+      y: number, 
+      parentId?: string,
+      level: number = 0
+    ) => {
+      const id = `${node.code}-${level}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      initialNodes.push({
+        id,
+        type: 'custom',
+        data: { 
+          label: node.name, 
+          code: node.code,
+          isBucket: node.code === 'T20' && level === 0
+        },
+        position: { x, y },
+      });
+
+      if (parentId) {
+        initialEdges.push({
+          id: `e-${parentId}-${id}`,
+          source: parentId,
+          target: id,
+          type: ConnectionLineType.SmoothStep,
+          animated: true,
+          style: { stroke: '#999' },
+        });
+      }
+
+      if (node.children) {
+        const totalWidth = (node.children.length - 1) * HORIZONTAL_SPACING;
+        node.children.forEach((child, index) => {
+          const childX = x - totalWidth / 2 + index * HORIZONTAL_SPACING;
+          flatten(child, childX, y + VERTICAL_SPACING, id, level + 1);
+        });
+      }
+    };
+
+    hierarchy.forEach((root, index) => {
+      flatten(root, index * HORIZONTAL_SPACING * 1.5, 0);
+    });
+
+    return { nodes: initialNodes, edges: initialEdges };
+  }, [hierarchy]);
+
   if (!hierarchy || hierarchy.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -94,21 +121,19 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
   }
 
   return (
-    <Box
-      sx={{
-        p: 3,
-        overflowX: 'auto',
-        display: 'flex',
-        justifyContent: 'center',
-        bgcolor: 'grey.50',
-        borderRadius: 1,
-      }}
-    >
-      <Stack direction="row" spacing={8} alignItems="flex-start">
-        {hierarchy.map((rootNode) => (
-          <NodeBox key={rootNode.code} node={rootNode} level={0} />
-        ))}
-      </Stack>
+    <Box sx={{ width: '100%', height: 400, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        nodesDraggable={true}
+        nodesConnectable={false}
+        elementsSelectable={true}
+      >
+        <Background color="#aaa" gap={16} />
+        <Controls />
+      </ReactFlow>
     </Box>
   );
 };

@@ -99,17 +99,17 @@ type FormatHierarchyNode struct {
 func GetHierarchy() []FormatHierarchyNode {
 	return []FormatHierarchyNode{
 		{
-			Code: CodeTest,
-			Name: "Test Matches",
+			Code: "MDM",
+			Name: "Multi-Day Match",
 			Children: []FormatHierarchyNode{
-				{Code: "MDM", Name: "Multi-Day Match"},
+				{Code: CodeTest, Name: "Test Matches"},
 			},
 		},
 		{
-			Code: CodeODI,
-			Name: "One Day International",
+			Code: "ODM",
+			Name: "One Day Match",
 			Children: []FormatHierarchyNode{
-				{Code: "ODM", Name: "One Day Match"},
+				{Code: CodeODI, Name: "One Day International"},
 			},
 		},
 		{
