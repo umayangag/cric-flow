@@ -45,17 +45,18 @@ echo "[pre-commit] optimized check on modified files..."
 process_category() {
     local category="$1"
     local pattern="$2"
-    local -n result_arr=$3 # Nameref to caller's array variable
+    local result_var="$3"
 
-    result_arr=()
+    local files_arr=()
     for f in "${STAGED_FILES[@]:-}"; do
         if [[ "$f" =~ $pattern ]]; then
-            result_arr+=("$f")
+            files_arr+=("$f")
         fi
     done
 
-    if [ ${#result_arr[@]} -gt 0 ]; then
-        echo "[$category] Processing ${#result_arr[@]} files..."
+    if [ ${#files_arr[@]} -gt 0 ]; then
+        echo "[$category] Processing ${#files_arr[@]} files..."
+        eval "$result_var=(\"\${files_arr[@]}\")"
         return 0 # Found files
     fi
     return 1 # No files found
