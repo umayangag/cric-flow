@@ -72,7 +72,7 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
       parentId?: string,
       level: number = 0,
     ) => {
-      const id = `${node.code}-${level}-${Math.random().toString(36).substr(2, 9)}`;
+      const id = parentId ? `${parentId}-${node.code}-${level}` : `${node.code}-${level}`;
 
       initialNodes.push({
         id,
