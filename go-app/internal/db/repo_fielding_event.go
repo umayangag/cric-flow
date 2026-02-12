@@ -102,7 +102,9 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	for _, e := range rows {
 		// assist_role is stored as empty string if not provided for idempotency

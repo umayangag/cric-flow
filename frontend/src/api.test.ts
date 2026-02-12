@@ -20,11 +20,15 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('includes X-API-Key header when stored in localStorage', async () => {
-    const mockStorage: Record<string, string> = { 'cric_info_api_key': 'test-key' };
+    const mockStorage: Record<string, string> = { cric_info_api_key: 'test-key' };
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => mockStorage[key] || null,
-      setItem: (key: string, value: string) => { mockStorage[key] = value; },
-      removeItem: (key: string) => { delete mockStorage[key]; },
+      setItem: (key: string, value: string) => {
+        mockStorage[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete mockStorage[key];
+      },
     });
 
     const fetchMock = vi.fn().mockResolvedValue({
@@ -41,7 +45,7 @@ describe('frontend api client (DB-backed)', () => {
         headers: expect.objectContaining({
           'X-API-Key': 'test-key',
         }),
-      })
+      }),
     );
     vi.unstubAllGlobals();
   });

@@ -60,7 +60,9 @@ func UpsertBowlingBatch(ctx context.Context, rows []Bowling) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	for _, b := range rows {
 		_, err := tx.Exec(ctx, `INSERT INTO bowling_data(

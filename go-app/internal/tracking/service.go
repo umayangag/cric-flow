@@ -12,7 +12,7 @@ type Tracker struct {
 	ID int
 }
 
-func Start(ctx context.Context, command string, args any) (*Tracker, error) {
+func Start(_ context.Context, command string, args any) (*Tracker, error) {
 	// Use background context for start so it doesn't fail if ctx is canceled (e.g. timeout during initialization)
 	updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

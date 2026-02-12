@@ -45,7 +45,11 @@ const Login: React.FC = () => {
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
           Use admin/admin for local development
         </Typography>
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
         <Box component="form" onSubmit={handleSubmit}>
           <TextField
             fullWidth

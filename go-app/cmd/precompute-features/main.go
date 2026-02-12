@@ -7,7 +7,9 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	pfcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/precomputefeatures"
@@ -16,8 +18,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
-	"os/signal"
-	"syscall"
 )
 
 func main() { os.Exit(run()) }

@@ -50,7 +50,9 @@ func UpsertFieldingBatch(ctx context.Context, rows []Fielding) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	for _, f := range rows {
 		_, err := tx.Exec(ctx, `INSERT INTO fielding_data(

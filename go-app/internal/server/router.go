@@ -39,7 +39,8 @@ func NewRouter(a *App) http.Handler {
 	// Options
 	optionsHandler := &OptionsHandler{}
 	admin.HandleFunc("/api/options/teams", optionsHandler.HandleGetTeams).Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Domain queries
 	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet, http.MethodOptions)
@@ -52,7 +53,8 @@ func NewRouter(a *App) http.Handler {
 	// Backtesting endpoints
 	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Accuracy trend endpoint for dashboards
-	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).

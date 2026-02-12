@@ -273,7 +273,9 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Freshness"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" component="div">Overall</Typography>
+                        <Typography variant="body2" component="div">
+                          Overall
+                        </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }
@@ -338,7 +340,9 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Completeness (last 30d)"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2" component="div">Overall</Typography>
+                        <Typography variant="body2" component="div">
+                          Overall
+                        </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }

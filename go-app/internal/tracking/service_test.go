@@ -38,7 +38,8 @@ func TestTracker_CaptureExit(t *testing.T) {
 
 		mockDB.On("Exec", mock.Anything, mock.Anything, 1, StatusFailed, mock.Anything, mock.MatchedBy(func(s *string) bool {
 			return s != nil && *s == "boom"
-		})).Return(nil)
+		})).
+			Return(nil)
 
 		// Act
 		tracker.CaptureExit(ctx, &runErr, nil)

@@ -115,7 +115,12 @@ func GetTableStats(ctx context.Context) ([]TableStat, error) {
 			}
 			// Use pgx.Identifier for table and column names to prevent SQL injection.
 			// Values retrieved from information_schema are used to build the query parts.
-			fullQuery += fmt.Sprintf("SELECT $%d as tname, MAX(%s)::text as max_val FROM %s", len(params)+1, p.colIdent, p.tblIdent)
+			fullQuery += fmt.Sprintf(
+				"SELECT $%d as tname, MAX(%s)::text as max_val FROM %s",
+				len(params)+1,
+				p.colIdent,
+				p.tblIdent,
+			)
 			params = append(params, p.tName)
 		}
 

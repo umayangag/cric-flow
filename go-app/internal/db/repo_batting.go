@@ -54,7 +54,9 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	for _, b := range rows {
 		_, err := tx.Exec(ctx, `INSERT INTO batting_data(

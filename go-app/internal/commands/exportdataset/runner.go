@@ -71,10 +71,18 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 
 		if opts.Unified {
 			g.Go(func() error {
-				return r.writeUsing(opts.OutDir, "batting_encoded_all.csv", func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) })
+				return r.writeUsing(
+					opts.OutDir,
+					"batting_encoded_all.csv",
+					func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) },
+				)
 			})
 			g.Go(func() error {
-				return r.writeUsing(opts.OutDir, "bowling_encoded_all.csv", func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) })
+				return r.writeUsing(
+					opts.OutDir,
+					"bowling_encoded_all.csv",
+					func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) },
+				)
 			})
 			return g.Wait()
 		}
@@ -87,21 +95,37 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					continue
 				}
 				g.Go(func() error {
-					return r.writeUsing(opts.OutDir, "batting_encoded.csv", func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						"batting_encoded.csv",
+						func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) },
+					)
 				})
 				g.Go(func() error {
-					return r.writeUsing(opts.OutDir, "bowling_encoded.csv", func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						"bowling_encoded.csv",
+						func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) },
+					)
 				})
 				continue
 			}
 			if opts.InferenceOnly {
 				g.Go(func() error {
 					bat := fmt.Sprintf("batting_infer_%s.csv", f)
-					return r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						bat,
+						func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) },
+					)
 				})
 				g.Go(func() error {
 					bow := fmt.Sprintf("bowling_infer_%s.csv", f)
-					return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						bow,
+						func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) },
+					)
 				})
 				continue
 			}
