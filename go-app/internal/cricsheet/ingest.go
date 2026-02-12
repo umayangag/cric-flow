@@ -128,10 +128,15 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		toss = info.Toss.Winner
 	}
 	winner := ""
+	var winnerID *int64
 	if info.Outcome != nil {
-		winner = info.Outcome.Winner
+		winner = strings.TrimSpace(info.Outcome.Winner)
+		if winner != "" {
+			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
+				winnerID = &id
+			}
+		}
 	}
-	_ = winner // currently unused, but kept for possible result mapping
 
 	ballsPerOver := info.BallsPerOver
 	if ballsPerOver <= 0 {
@@ -330,20 +335,23 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			target = &firRuns
 		}
 		upd := &db.MatchInfoUpdate{
-			Score:        &runs,
-			Wickets:      &wkts,
-			Overs:        &oversFloat,
-			Balls:        &balls,
-			RPO:          &rpo,
-			Target:       target,
-			Inning:       &inningNo,
-			OppositionID: oppositionID,
-			MatchDate:    &dateISO,
-			VenueID:      venueID,
-			Extras:       &extras,
-			Toss:         &toss,
-			SeasonID:     seasonID,
-			MatchNumber:  matchNumber,
+			Score:          &runs,
+			Wickets:        &wkts,
+			Overs:          &oversFloat,
+			Balls:          &balls,
+			RPO:            &rpo,
+			Target:         target,
+			Inning:         &inningNo,
+			Result:         winnerID,
+			OppositionID:   oppositionID,
+			MatchDate:      &dateISO,
+			BattingSession: &batTeam,
+			BowlingSession: &oppTeam,
+			VenueID:        venueID,
+			Extras:         &extras,
+			Toss:           &toss,
+			SeasonID:       seasonID,
+			MatchNumber:    matchNumber,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))

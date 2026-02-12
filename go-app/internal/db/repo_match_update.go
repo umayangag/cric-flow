@@ -15,7 +15,7 @@ type MatchInfoUpdate struct {
 	RPO            *float32
 	Target         *int
 	Inning         *int
-	Result         *int
+	Result         *int64
 	OppositionID   *int64
 	MatchDate      *string // YYYY-MM-DD
 	BattingSession *string
