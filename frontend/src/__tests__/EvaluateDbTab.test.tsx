@@ -35,7 +35,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         {
           match_id: 111,
           stable_id: 'x',
-          date: '2024-10-30T14:00:00Z',
+          match_date: '2024-10-30T14:00:00Z',
           venue: 'Wankhede',
           season: '2024',
           format: 'T20',
@@ -48,7 +48,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
     backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
-      match: { match_id: 111, date: '2024-10-30T14:00:00Z' },
+      match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
       players: [
         {
           player_id: 1,
@@ -89,7 +89,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/Loaded 1 candidates/i);
+    await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
     const radio = screen.getByRole('radio', { name: /Select/i });
@@ -123,7 +123,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         {
           match_id: 222,
           stable_id: 'x2',
-          date: '2024-11-05T09:00:00Z',
+          match_date: '2024-11-05T09:00:00Z',
           venue: 'Wankhede',
           season: '2024',
           format: 'T20',
@@ -138,7 +138,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
     backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
-      match: { match_id: 222, date: '2024-11-05T09:00:00Z' },
+      match: { match_id: 222, match_date: '2024-11-05T09:00:00Z' },
       players: [
         {
           player_id: 101,
@@ -178,7 +178,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/Loaded 1 candidates/i);
+    await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
     fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
@@ -220,7 +220,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         {
           match_id: 333,
           stable_id: 'x3',
-          date: '2024-11-06T09:00:00Z',
+          match_date: '2024-11-06T09:00:00Z',
           venue: 'Wankhede',
           season: '2024',
           format: 'T20',
@@ -235,7 +235,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
     backtestEvaluateMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
-      match: { match_id: 333, date: '2024-11-06T09:00:00Z' },
+      match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
       players: [
         {
           player_id: 201,
@@ -261,7 +261,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/Loaded 1 candidates/i);
+    await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
     fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
