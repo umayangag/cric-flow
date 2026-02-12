@@ -248,7 +248,7 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 		cands = append(cands, backtestCandidate{
 			MatchID:        row.MatchID,
 			StableID:       nullString(row.StableID),
-			Date:           row.Date.Format("2006-01-02T15:04:05Z07:00"),
+			Date:           row.MatchDate.Format("2006-01-02T15:04:05Z07:00"),
 			Venue:          nullString(row.Venue),
 			Season:         nullString(row.Season),
 			Format:         nullString(row.FormatCode),

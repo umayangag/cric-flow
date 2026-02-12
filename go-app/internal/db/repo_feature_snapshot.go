@@ -10,7 +10,7 @@ import (
 type MatchLite struct {
 	ID           int64
 	MatchID      int64
-	Date         time.Time
+	MatchDate    time.Time
 	FormatID     int64
 	OppositionID int64
 	VenueID      int64
@@ -81,7 +81,7 @@ func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time
 	var res []MatchLite
 	for rows.Next() {
 		var m MatchLite
-		if err := rows.Scan(&m.ID, &m.MatchID, &m.Date, &m.FormatID, &m.OppositionID, &m.VenueID); err != nil {
+		if err := rows.Scan(&m.ID, &m.MatchID, &m.MatchDate, &m.FormatID, &m.OppositionID, &m.VenueID); err != nil {
 			return nil, err
 		}
 		res = append(res, m)
@@ -116,8 +116,8 @@ func ListPlayersInMatch(ctx context.Context, matchID int64) ([]int64, error) {
 
 // InnVal is a minimal row for historical performance values with date.
 type InnVal struct {
-	Date  time.Time
-	Value float64
+	MatchDate time.Time
+	Value     float64
 }
 
 // ListBattingBefore returns batting values (runs as Value) for a player strictly before cutoff date, filtered by optional format/opposition/venue.
@@ -157,7 +157,7 @@ func ListBattingBefore(
 	var res []InnVal
 	for rows.Next() {
 		var iv InnVal
-		if err := rows.Scan(&iv.Date, &iv.Value); err != nil {
+		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
 			return nil, err
 		}
 		res = append(res, iv)
@@ -202,7 +202,7 @@ func ListBowlingBefore(
 	var res []InnVal
 	for rows.Next() {
 		var iv InnVal
-		if err := rows.Scan(&iv.Date, &iv.Value); err != nil {
+		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
 			return nil, err
 		}
 		res = append(res, iv)

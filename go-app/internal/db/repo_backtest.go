@@ -15,7 +15,7 @@ import (
 type BacktestCandidate struct {
 	MatchID    int64
 	StableID   sql.NullString
-	Date       time.Time
+	MatchDate  time.Time
 	Venue      sql.NullString
 	Season     sql.NullString
 	FormatCode sql.NullString
@@ -137,7 +137,7 @@ func scanBacktestCandidate(rows scanx.Scanner, c *BacktestCandidate) error {
 	return rows.Scan(
 		&c.MatchID,
 		&c.StableID,
-		&c.Date,
+		&c.MatchDate,
 		&c.Venue,
 		&c.Season,
 		&c.FormatCode,
