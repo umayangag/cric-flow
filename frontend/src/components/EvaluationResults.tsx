@@ -191,7 +191,7 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
     <Box>
       <Typography variant="body2" sx={{ mb: 2 }}>
         Match: <strong>{result.match.match_id}</strong> · Date:{' '}
-        <strong>{new Date(result.match.date).toISOString().slice(0, 10)}</strong>
+        <strong>{new Date(result.match.match_date).toISOString().slice(0, 10)}</strong>
       </Typography>
       <MetricsLine metrics={result.metrics} />
       <MatchAggregates aggregates={result.match_aggregates} />

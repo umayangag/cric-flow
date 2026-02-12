@@ -42,17 +42,17 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).Methods(http.MethodGet)
 
 	// Domain queries
-	r.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet)
-	r.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet)
+	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet)
+	admin.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet)
 
 	// ML predictions
-	r.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
-	r.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
+	admin.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost)
+	admin.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost)
 
 	// Backtesting endpoints
-	r.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
+	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet)
 	// Accuracy trend endpoint for dashboards
-	r.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet)
+	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).Methods(http.MethodGet)
 
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).

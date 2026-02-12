@@ -24,6 +24,12 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Prevent extremely large page values which can cause expensive OFFSET operations
+	if page > 10000 {
+		slog.Warn("pagination page capped", "requested", page, "capped_at", 10000)
+		page = 10000
+	}
+
 	limit := 10
 	if limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {

@@ -51,7 +51,7 @@ const CandidatesTable: React.FC<CandidatesTableProps> = ({
               onClick={() => onSelectMatch(c.match_id)}
               sx={{ cursor: 'pointer' }}
             >
-              <TableCell>{new Date(c.date).toISOString().slice(0, 10)}</TableCell>
+              <TableCell>{new Date(c.match_date).toISOString().slice(0, 10)}</TableCell>
               <TableCell>
                 {c.team1} vs {c.team2}
               </TableCell>

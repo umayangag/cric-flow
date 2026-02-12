@@ -64,7 +64,7 @@ process_category() {
 if process_category "go-app" "^go-app/.*\.go$"; then
     GO_FILES_ARR=()
     for f in "${STAGED_FILES[@]:-}"; do
-      if [[ "$f" =~ ^go-app/.*\.go$ ]]; then
+      if [[ "$f" == go-app/* && "$f" == *.go ]]; then
         GO_FILES_ARR+=("$f")
       fi
     done
@@ -114,7 +114,7 @@ fi
 if process_category "ml-service" "^ml-service/.*\.py$"; then
     PY_FILES_ARR=()
     for f in "${STAGED_FILES[@]:-}"; do
-      if [[ "$f" =~ ^ml-service/.*\.py$ ]]; then
+      if [[ "$f" == ml-service/* && "$f" == *.py ]]; then
         PY_FILES_ARR+=("$f")
       fi
     done
@@ -145,8 +145,12 @@ fi
 if process_category "frontend" "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$"; then
     FE_FILES_ARR=()
     for f in "${STAGED_FILES[@]:-}"; do
-      if [[ "$f" =~ ^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$ ]]; then
-        FE_FILES_ARR+=("$f")
+      if [[ "$f" == frontend/* ]]; then
+        case "$f" in
+          *.js|*.jsx|*.ts|*.tsx|*.json|*.css|*.scss|*.md)
+            FE_FILES_ARR+=("$f")
+            ;;
+        esac
       fi
     done
 
