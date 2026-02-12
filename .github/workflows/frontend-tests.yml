@@ -11,12 +11,14 @@ on:
       - 'frontend/**'
       - '.github/workflows/frontend-tests.yml'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-tests.yml'
 
 jobs:
   test:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

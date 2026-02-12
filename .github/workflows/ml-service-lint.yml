@@ -12,6 +12,7 @@ on:
       - '.github/workflows/ml-service-lint.yml'
       - 'ml-service/requirements.txt'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ml-service/**'
       - '.github/workflows/ml-service-lint.yml'
@@ -19,6 +20,7 @@ on:
 
 jobs:
   lint:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
