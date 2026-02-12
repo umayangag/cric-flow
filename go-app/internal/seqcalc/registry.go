@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sort"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Registry holds available calculators keyed by target name.
@@ -90,12 +93,22 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 	return nil
 }
 
-// Run executes calculators with the given params.
+// Run executes calculators with the given params concurrently.
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
-	for _, c := range calcs {
-		if err := c.Compute(ctx, params, dry); err != nil {
-			return err
-		}
+	g, ctx := errgroup.WithContext(ctx)
+	// Limit concurrency to avoid overloading the DB with too many simultaneous heavy queries
+	// if we have many calculators. Most of these perform significant scans.
+	limit := runtime.NumCPU()
+	if limit > 4 {
+		limit = 4 // Cap at 4 to be conservative with DB connections and I/O
 	}
-	return nil
+	g.SetLimit(limit)
+
+	for _, c := range calcs {
+		c := c // capture
+		g.Go(func() error {
+			return c.Compute(ctx, params, dry)
+		})
+	}
+	return g.Wait()
 }

@@ -6,8 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -20,7 +24,7 @@ type Options struct {
 	WeatherEnqueue       bool
 }
 
-// ImportDir reads all .json files in dir and imports them into the DB.
+// ImportDir reads all .json files in dir and imports them into the DB concurrently.
 func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	if opts == nil {
 		opts = &Options{}
@@ -40,21 +44,28 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 		}
 	}
 	sort.Strings(files)
-	count := 0
+
+	var count int64
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(runtime.NumCPU())
+
 	for _, f := range files {
-		select {
-		case <-ctx.Done():
-			return count, ctx.Err()
-		default:
-		}
-		if err := ImportMatchFile(ctx, f, opts); err != nil {
-			slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
-			continue
-		}
-		count++
-		slog.Info("imported file", slog.String("file", filepath.Base(f)))
+		f := f // capture
+		g.Go(func() error {
+			if err := ImportMatchFile(ctx, f, opts); err != nil {
+				slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
+				return nil // don't abort entire group on single file failure, mirroring legacy behavior
+			}
+			atomic.AddInt64(&count, 1)
+			slog.Info("imported file", slog.String("file", filepath.Base(f)))
+			return nil
+		})
 	}
-	return count, nil
+
+	if err := g.Wait(); err != nil {
+		return int(count), err
+	}
+	return int(count), nil
 }
 
 // ImportMatchFile parses a single Cricsheet JSON file and upserts stats into DB.
