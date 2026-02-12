@@ -9,7 +9,6 @@ import Alert from '@mui/material/Alert';
 import Paper from '@mui/material/Paper';
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
@@ -21,11 +20,11 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const success = await login(username, password);
+    const success = await login(password);
     if (success) {
       navigate(from, { replace: true });
     } else {
-      setError('Invalid username or password');
+      setError('Invalid password');
     }
   };
 
@@ -53,15 +52,7 @@ const Login: React.FC = () => {
         <Box component="form" onSubmit={handleSubmit}>
           <TextField
             fullWidth
-            label="Username"
-            margin="normal"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-          <TextField
-            fullWidth
-            label="Password"
+            label="API Key"
             type="password"
             margin="normal"
             value={password}
