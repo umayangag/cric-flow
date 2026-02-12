@@ -58,7 +58,7 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Create a temporary table with the same structure.
 	// ON COMMIT DROP ensures it is cleaned up when the transaction ends.

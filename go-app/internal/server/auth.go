@@ -19,8 +19,8 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		expectedKey := strings.TrimSpace(os.Getenv("API_KEY"))
 		if expectedKey == "" {
-			slog.Error("API_KEY environment variable not set. Access denied.")
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			slog.Error("Security alert: API_KEY environment variable is not set. Administrative endpoints are locked.")
+			http.Error(w, "Service Unavailable: Security Configuration Missing", http.StatusServiceUnavailable)
 			return
 		}
 

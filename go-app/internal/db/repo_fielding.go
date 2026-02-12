@@ -54,7 +54,7 @@ func UpsertFieldingBatch(ctx context.Context, rows []Fielding) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Create a temporary table with the same structure.
 	err = tx.Exec(ctx, `CREATE TEMP TABLE fielding_data_tmp (LIKE fielding_data INCLUDING DEFAULTS) ON COMMIT DROP`)

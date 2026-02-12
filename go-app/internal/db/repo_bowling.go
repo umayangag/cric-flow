@@ -64,7 +64,7 @@ func UpsertBowlingBatch(ctx context.Context, rows []Bowling) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Create a temporary table with the same structure.
 	err = tx.Exec(ctx, `CREATE TEMP TABLE bowling_data_tmp (LIKE bowling_data INCLUDING DEFAULTS) ON COMMIT DROP`)

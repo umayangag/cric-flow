@@ -106,7 +106,7 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Create a temporary table with the same structure.
 	err = tx.Exec(ctx, `CREATE TEMP TABLE fielding_event_tmp (LIKE fielding_event INCLUDING DEFAULTS) ON COMMIT DROP`)
