@@ -248,7 +248,7 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 		cands = append(cands, backtestCandidate{
 			MatchID:        row.MatchID,
 			StableID:       nullString(row.StableID),
-			Date:           row.MatchDate.Format("2006-01-02T15:04:05Z07:00"),
+			MatchDate:      row.MatchDate.Format("2006-01-02T15:04:05Z07:00"),
 			Venue:          nullString(row.Venue),
 			Season:         nullString(row.Season),
 			Format:         nullString(row.FormatCode),
@@ -354,7 +354,7 @@ func (a *App) handleBacktestEvaluate(
 	}
 	// Match info
 	resp.Match.MatchID = mid
-	resp.Match.Date = cutoff.Format(time.RFC3339)
+	resp.Match.MatchDate = cutoff.Format(time.RFC3339)
 	// Players and Metrics (single pass)
 	players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
 	resp.Players = append(resp.Players, players...)
@@ -447,7 +447,7 @@ func mapMLResponseToBacktestResponse(
 		},
 	}
 	out.Match.MatchID = matchID
-	out.Match.Date = cutoff.Format(time.RFC3339)
+	out.Match.MatchDate = cutoff.Format(time.RFC3339)
 	// Players
 	players := make([]BacktestPlayerResult, 0, len(res.Players))
 	for _, p := range res.Players {

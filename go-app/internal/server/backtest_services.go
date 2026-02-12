@@ -18,7 +18,7 @@ func resolveCandidateCutoff(ctx context.Context, m backtestCandidate) time.Time 
 	if cutoff, err := getBacktestMatchDateFunc(ctx, m.MatchID); err == nil && !cutoff.IsZero() {
 		return cutoff
 	}
-	if t, err := time.Parse(time.RFC3339, m.Date); err == nil {
+	if t, err := time.Parse(time.RFC3339, m.MatchDate); err == nil {
 		return t
 	}
 	return time.Time{}
@@ -261,7 +261,7 @@ func computeAccuracyTrendForCandidates(
 		metrics := computeAccuracyTrendMetrics(ctx, m, cacheMode, includePlayer, includeTeam)
 		results = append(results, accuracyTrendItem{
 			MatchID: m.MatchID,
-			Date:    m.Date,
+			MatchDate:    m.MatchDate,
 			Format:  m.Format,
 			Team1:   m.Team1,
 			Team2:   m.Team2,

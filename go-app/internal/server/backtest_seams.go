@@ -72,7 +72,7 @@ var listPlayedMatchesByFilters = func(
 		out = append(out, backtestCandidate{
 			MatchID:        r.MatchID,
 			StableID:       nullString(r.StableID),
-			Date:           r.MatchDate.Format(time.RFC3339),
+			MatchDate:      r.MatchDate.Format(time.RFC3339),
 			Venue:          nullString(r.Venue),
 			Season:         nullString(r.Season),
 			Format:         nullString(r.FormatCode),

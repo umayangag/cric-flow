@@ -17,7 +17,7 @@ type MatchInfoUpdate struct {
 	Inning         *int
 	Result         *int
 	OppositionID   *int64
-	Date           *string // YYYY-MM-DD
+	MatchDate      *string // YYYY-MM-DD
 	BattingSession *string
 	BowlingSession *string
 	VenueID        *int64
@@ -63,7 +63,7 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		u.Inning,
 		u.Result,
 		u.OppositionID,
-		u.Date,
+		u.MatchDate,
 		u.BattingSession,
 		u.BowlingSession,
 		u.VenueID,

@@ -15,6 +15,8 @@ BEGIN
     -- but user now wants to preserve data via rename, so this case assumes 'match_date' already has data or is the intended target)
     ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='date') AND
           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='match_details' AND column_name='match_date') THEN
+        -- Copy data from 'date' to 'match_date' for any rows where match_date is NULL.
+        UPDATE match_details SET match_date = date WHERE match_date IS NULL;
         ALTER TABLE match_details DROP COLUMN date;
     
     -- 3. If neither exists (unlikely), add 'match_date'
