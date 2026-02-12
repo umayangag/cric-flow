@@ -102,7 +102,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO); err != nil {
+	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO, info.MatchType); err != nil {
 		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
@@ -340,23 +340,24 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			target = &firRuns
 		}
 		upd := &db.MatchInfoUpdate{
-			Balls:          &balls,
-			BattingSession: &batTeam,
-			BowlingSession: &oppTeam,
-			Extras:         &extras,
-			Inning:         &inningNo,
-			MatchDate:      &dateISO,
-			MatchNumber:    matchNumber,
-			OppositionID:   oppositionID,
-			Overs:          &oversFloat,
-			RPO:            &rpo,
-			Result:         winnerID,
-			Score:          &runs,
-			SeasonID:       seasonID,
-			Target:         target,
-			Toss:           &toss,
-			VenueID:        venueID,
-			Wickets:        &wkts,
+			Balls:             &balls,
+			BattingSession:    &batTeam,
+			BowlingSession:    &oppTeam,
+			Extras:            &extras,
+			Inning:            &inningNo,
+			MatchDate:         &dateISO,
+			MatchNumber:       matchNumber,
+			OppositionID:      oppositionID,
+			Overs:             &oversFloat,
+			RPO:               &rpo,
+			Result:            winnerID,
+			Score:             &runs,
+			SeasonID:          seasonID,
+			Target:            target,
+			Toss:              &toss,
+			VenueID:           venueID,
+			Wickets:           &wkts,
+			OriginalMatchType: &info.MatchType,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))

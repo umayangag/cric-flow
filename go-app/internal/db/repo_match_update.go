@@ -25,6 +25,7 @@ type MatchInfoUpdate struct {
 	Toss           *string
 	SeasonID       *int64
 	MatchNumber    *int
+	OriginalMatchType *string
 }
 
 // UpdateMatchDetails updates match_details for a given match_id using COALESCE logic.
@@ -51,7 +52,8 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		extras = COALESCE($15, extras),
 		toss = COALESCE($16, toss),
 		season_id = COALESCE($17, season_id),
-		match_number = COALESCE($18, match_number)
+		match_number = COALESCE($18, match_number),
+		original_match_type = COALESCE($19, original_match_type)
 		WHERE match_id = $1`,
 		matchID,
 		u.Score,
@@ -71,6 +73,7 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		u.Toss,
 		u.SeasonID,
 		u.MatchNumber,
+		u.OriginalMatchType,
 	)
 	return err
 }
