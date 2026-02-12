@@ -98,15 +98,8 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	// `date` column is DATE; cast to timestamptz at midnight UTC for display
+	// Use match_date for latest available match record date.
 	var ts time.Time
-	// Prefer a real timestamp column if exists; fall back to date
-	// Try updated_at on match_details (if present in later migrations); ignore error and fall back
-	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(updated_at), TO_TIMESTAMP(0)) FROM match_details").Scan(&ts); err == nil &&
-		!ts.IsZero() {
-		return ts.UTC(), nil
-	}
-	// Fallback: max(match_date)
 	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(match_date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
 		return time.Time{}, err
 	}

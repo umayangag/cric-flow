@@ -21,17 +21,10 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
 	if db.Pool == nil {
 		return time.Time{}, errDBNotInitialized
 	}
-	// Prefer updated_at if present, else fall back to date
+	// Prefer match_date for latest activity.
+	// We don't use updated_at here anymore to avoid complexity if column is missing,
+	// and match_date is more accurate for "freshness" of the data content itself.
 	var ts time.Time
-	// Try updated_at; if column missing, query error will occur and we fall back to date
-	if err := db.Pool.QueryRow(ctx, `
-        SELECT COALESCE(MAX(md.updated_at), TO_TIMESTAMP(0))
-        FROM match_details md
-        JOIN match_format mf ON md.format_id = mf.id
-        WHERE mf.code = $1
-    `, format).Scan(&ts); err == nil && !ts.IsZero() {
-		return ts.UTC(), nil
-	}
 	if err := db.Pool.QueryRow(ctx, `
         SELECT COALESCE(MAX(md.match_date), DATE '0001-01-01')
         FROM match_details md
@@ -54,20 +47,8 @@ func (productionInsightsProbe) CountMatchesSinceByFormat(
 	if db.Pool == nil {
 		return 0, errDBNotInitialized
 	}
-	// Count distinct matches since the provided boundary, using updated_at if exists; else date
+	// Count distinct matches since the provided boundary using match_date.
 	var n int64
-	// Try updated_at first
-	if err := db.Pool.QueryRow(ctx, `
-        SELECT COUNT(DISTINCT md.match_id)
-        FROM match_details md
-        JOIN match_format mf ON md.format_id = mf.id
-        WHERE mf.code = $1 AND (
-            (md.updated_at IS NOT NULL AND md.updated_at >= $2)
-            OR (md.updated_at IS NULL AND md.match_date >= $3::date)
-        )
-    `, format, since, since).Scan(&n); err == nil {
-		return n, nil
-	}
 	if err := db.Pool.QueryRow(ctx, `
         SELECT COUNT(DISTINCT md.match_id)
         FROM match_details md
