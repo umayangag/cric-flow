@@ -18,8 +18,11 @@ type CricsheetDB interface {
 	UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error
 	GetOrCreateByName(ctx context.Context, name string) (int64, error)
 	UpsertBatting(ctx context.Context, b *db.Batting) error
+	UpsertBattingBatch(ctx context.Context, rows []db.Batting) error
 	UpsertBowling(ctx context.Context, b *db.Bowling) error
+	UpsertBowlingBatch(ctx context.Context, rows []db.Bowling) error
 	UpsertFielding(ctx context.Context, f *db.Fielding) error
+	UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error
 	Exec(ctx context.Context, sql string, args ...any) error
 }
 
@@ -34,6 +37,7 @@ var (
 	weatherClient      WeatherClient = realWeather{}
 	recomputeFn                      = db.RecomputeFieldingAggregates
 	insertBallEventsFn               = db.InsertBallEvents
+	insertFieldingEventsBatchFn      = db.InsertFieldingEventsBatch
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.
@@ -81,12 +85,24 @@ func (realDB) UpsertBatting(ctx context.Context, b *db.Batting) error {
 	return db.UpsertBatting(ctx, b)
 }
 
+func (realDB) UpsertBattingBatch(ctx context.Context, rows []db.Batting) error {
+	return db.UpsertBattingBatch(ctx, rows)
+}
+
 func (realDB) UpsertBowling(ctx context.Context, b *db.Bowling) error {
 	return db.UpsertBowling(ctx, b)
 }
 
+func (realDB) UpsertBowlingBatch(ctx context.Context, rows []db.Bowling) error {
+	return db.UpsertBowlingBatch(ctx, rows)
+}
+
 func (realDB) UpsertFielding(ctx context.Context, f *db.Fielding) error {
 	return db.UpsertFielding(ctx, f)
+}
+
+func (realDB) UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error {
+	return db.UpsertFieldingBatch(ctx, rows)
 }
 
 func (realDB) Exec(ctx context.Context, sql string, args ...any) error {

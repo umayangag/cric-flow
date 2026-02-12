@@ -134,26 +134,29 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 			c := *upd
 			updates = append(updates, &c)
 		})
-	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).
+	mdb.On("UpsertBattingBatch", mock.Anything, mock.AnythingOfType("[]db.Batting")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			b := args.Get(1).(*db.Batting)
-			c := *b
-			batting = append(batting, &c)
+			b := args.Get(1).([]db.Batting)
+			for i := range b {
+				batting = append(batting, &b[i])
+			}
 		})
-	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).
+	mdb.On("UpsertBowlingBatch", mock.Anything, mock.AnythingOfType("[]db.Bowling")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			b := args.Get(1).(*db.Bowling)
-			c := *b
-			bowling = append(bowling, &c)
+			b := args.Get(1).([]db.Bowling)
+			for i := range b {
+				bowling = append(bowling, &b[i])
+			}
 		})
-	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).
+	mdb.On("UpsertFieldingBatch", mock.Anything, mock.AnythingOfType("[]db.Fielding")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			f := args.Get(1).(*db.Fielding)
-			c := *f
-			fielding = append(fielding, &c)
+			f := args.Get(1).([]db.Fielding)
+			for i := range f {
+				fielding = append(fielding, &f[i])
+			}
 		})
 	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).
 		Return(nil).
@@ -221,9 +224,9 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).
 		Return(nil)
-	mdb.On("UpsertBatting", mock.Anything, mock.AnythingOfType("*db.Batting")).Return(nil)
-	mdb.On("UpsertBowling", mock.Anything, mock.AnythingOfType("*db.Bowling")).Return(nil)
-	mdb.On("UpsertFielding", mock.Anything, mock.AnythingOfType("*db.Fielding")).Return(nil)
+	mdb.On("UpsertBattingBatch", mock.Anything, mock.AnythingOfType("[]db.Batting")).Return(nil)
+	mdb.On("UpsertBowlingBatch", mock.Anything, mock.AnythingOfType("[]db.Bowling")).Return(nil)
+	mdb.On("UpsertFieldingBatch", mock.Anything, mock.AnythingOfType("[]db.Fielding")).Return(nil)
 	mdb.On("Exec", mock.Anything, mock.AnythingOfType("string"), mock.Anything).Return(nil)
 	mweather.On("EnqueueJob", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).
 		Return(nil)

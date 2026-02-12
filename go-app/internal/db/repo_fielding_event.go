@@ -88,3 +88,34 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 	}
 	return nil
 }
+
+// InsertFieldingEventsBatch inserts multiple fielding_event rows idempotently.
+func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error {
+	if PoolAPI == nil {
+		return errors.New("db pool not initialized")
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	// Use a transaction for the batch
+	tx, err := PoolAPI.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, e := range rows {
+		// assist_role is stored as empty string if not provided for idempotency
+		err := tx.Exec(ctx, `
+            INSERT INTO fielding_event(
+                match_id, innings, over, ball, batter_out_id, fielder_id, bowler_id,
+                kind, assist_role, is_direct_hit, notes
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,''),$10,$11)
+            ON CONFLICT (match_id, innings, over, ball, fielder_id, kind, assist_role) DO NOTHING
+        `, e.MatchID, e.Innings, e.Over, e.Ball, e.BatterOutID, e.FielderID, e.BowlerID, e.Kind, e.AssistRole, e.IsDirectHit, e.Notes)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
