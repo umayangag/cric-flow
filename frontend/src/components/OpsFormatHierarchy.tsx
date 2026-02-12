@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { FormatHierarchyNode } from '../types';
 import ReactFlow, {
   Node,
   Edge,
@@ -12,12 +13,6 @@ import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
-
-type FormatHierarchyNode = {
-  code: string;
-  name: string;
-  children?: FormatHierarchyNode[];
-};
 
 interface Props {
   hierarchy?: FormatHierarchyNode[];

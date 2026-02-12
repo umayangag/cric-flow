@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormatHierarchyNode } from '../types';
 import { api } from '../api';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
@@ -76,12 +77,6 @@ export type OpsStatus = {
   suggestions?: Array<{ reason: string; commands: string[] }>;
   // Allow additional forward-compatible fields
   [key: string]: unknown;
-};
-
-type FormatHierarchyNode = {
-  code: string;
-  name: string;
-  children?: FormatHierarchyNode[];
 };
 
 const REFRESH_MS = 15000;
