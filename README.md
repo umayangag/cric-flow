@@ -15,8 +15,8 @@ Notes:
 - Ensure both the Go API (`go-app`) and the ML service (`ml-service`) are running for DB-backed tabs.
 - The frontend calls the ML service from the browser. Allow CORS from the frontend origin (e.g., http://localhost:5173) or serve behind the same origin/reverse proxy.
 
-### 9) Run API (optional orchestration)
-```
+### 9) Run API
+```bash
 make api
 # liveness/readiness
 curl -s http://localhost:8080/health
@@ -25,16 +25,13 @@ curl -s http://localhost:8080/readiness
 
 ### 10) Predict team (DB-backed, end-to-end)
 Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
-```
-cd go-app
-GO_APP_CONFIG=./config.json \
-POSTGRES_HOST=localhost POSTGRES_DB=cricket_data POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres \
-go run ./cmd/team-select -match <match_id> -format T20 -season 2019 -size 11 -min-bowlers 5 --require-keeper --from-db=true
+```bash
+make team-select MATCH=<match_id> SEASON=2019 FORMAT=T20
 ```
 Output shows the ranked XI and the team average winning probability.
 
 Alternative (CSV pool path, prototype-style):
-```
+```bash
 # generate pool.csv with the Python helper and then call the win model via service
 make team-predictor MATCH=<match_id>
 ```
@@ -491,7 +488,8 @@ A standalone tool is available to index the codebase and provide context to AI a
 - **Location**: `context-provider/`
 - **Usage**:
   ```bash
+  make init-context    # Initialize (download tools)
   make context-build   # Build the binary
-  make context-serve   # Run as stdio server
+  make context-serve   # Run as stdio server (re-builds if needed)
   ```
 - **Documentation**: See `context-provider/README.md` for integration instructions and how to prompt Junie to use it.

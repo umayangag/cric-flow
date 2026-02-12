@@ -57,18 +57,18 @@ Notes:
 make run
 ```
 - Train artifacts from exported CSVs (uses defaults above):
-```
+```bash
 make train-all
 # or directly
-python -m ml.train_batting_model
-python -m ml.train_bowling_model
+python3 -m ml.train_batting_model
+python3 -m ml.train_bowling_model
 ```
 - Generate a player pool CSV for team prediction (writes to `ml/pool.csv`):
-```
+```bash
 # requires DB to be populated and accessible via env (POSTGRES_*)
 make export-pool MATCH=1193505
 # or directly
-python -m ml.export_pool 1193505
+python3 -m ml.export_pool 1193505
 ```
 - Docker image and container:
 ```

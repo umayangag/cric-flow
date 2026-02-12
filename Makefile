@@ -52,7 +52,7 @@ go-test-int:
 
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
-	cd go-app && go run ./cmd/migrate -dir=./migrations
+	cd go-app && make migrate
 
 # Export datasets (unified exports only)
 export-dataset:
@@ -77,7 +77,7 @@ export-on:
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
-	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations go run ./cmd/api
+	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations make run-api
 
 # Run ML service locally
 ml-serve:
@@ -129,7 +129,7 @@ precompute-all-all-formats:
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
-	cd go-app && go run ./cmd/team-predictor -match=$(MATCH) -bat=$(BAT) -bowl=$(BOWL)
+	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
 # Train ML artifacts from exported CSVs
 ml-install:
@@ -295,7 +295,7 @@ up-all:
 	@echo "[4/7] Precomputing metrics..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[5/7] Exporting datasets..."
-	$(MAKE) export-dataset || (echo "Export failed" && exit 1)
+	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
@@ -402,7 +402,7 @@ init-py:
 
 # Import Cricsheet JSON into DB using Go importer
 cricsheet-import:
-	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet go run ./cmd/cricsheet-importer
+	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet make cricsheet-import
 
 
 # Helper targets to avoid duplication
@@ -423,9 +423,11 @@ mock:
 	# Use pinned mockery via go run to avoid local binary/version drift
 	cd go-app && go run github.com/vektra/mockery/v3@v3.6.0 --config .mockery.yml
 
-# Aggregate test target (Go only by default)
+# Aggregate test target (all components)
 test:
 	cd go-app && make test
+	cd ml-service && make test
+	cd context-provider && make test
 
 # Aggregate lint target
 lint: lint-go lint-py lint-context
