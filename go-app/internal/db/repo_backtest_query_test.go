@@ -30,33 +30,33 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 			name:      "no filters => asc order, no limit",
 			order:     "",
 			limit:     0,
-			wantParts: []string{"WHERE md.date < NOW()", "ORDER BY md.date ASC"},
+   wantParts: []string{"WHERE md.match_date < NOW()", "ORDER BY md.match_date ASC"},
 			notParts:  []string{" LIMIT $"},
 			wantArgs:  []any{},
 		},
 		{
 			name:      "format only",
 			format:    "odi",
-			wantParts: []string{"mf.code = $1", "ORDER BY md.date ASC"},
+   wantParts: []string{"mf.code = $1", "ORDER BY md.match_date ASC"},
 			wantArgs:  []any{"odi"},
 		},
 		{
 			name:      "start only",
 			start:     ts,
-			wantParts: []string{"md.date >= $1"},
+   wantParts: []string{"md.match_date >= $1"},
 			wantArgs:  []any{ts},
 		},
 		{
 			name:      "end only",
 			end:       te,
-			wantParts: []string{"md.date <= $1"},
+   wantParts: []string{"md.match_date <= $1"},
 			wantArgs:  []any{te},
 		},
 		{
 			name:      "start and end",
 			start:     ts,
 			end:       te,
-			wantParts: []string{"md.date >= $1", "md.date <= $2"},
+   wantParts: []string{"md.match_date >= $1", "md.match_date <= $2"},
 			wantArgs:  []any{ts, te},
 		},
 		{
@@ -76,7 +76,7 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 			name:      "desc order with limit",
 			order:     "desc",
 			limit:     10,
-			wantParts: []string{"ORDER BY md.date DESC", " LIMIT $1"},
+   wantParts: []string{"ORDER BY md.match_date DESC", " LIMIT $1"},
 			wantArgs:  []any{10},
 		},
 		{
@@ -90,7 +90,7 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 			limit:  25,
 			// We do not assert the exact placeholder indices beyond relative ordering pieces;
 			// we validate argument list ordering precisely.
-			wantParts: []string{"mf.code = $1", "md.date >= $2", "md.date <= $3", "ORDER BY md.date DESC", " LIMIT $"},
+   wantParts: []string{"mf.code = $1", "md.match_date >= $2", "md.match_date <= $3", "ORDER BY md.match_date DESC", " LIMIT $"},
 			wantArgs:  []any{"t20", ts, te, "IND", "AUS", "AUS", "IND", 25},
 		},
 	}
@@ -107,7 +107,7 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 				tt.limit,
 			)
 			// Basic guard: must always include NOW() filter
-			if !strings.Contains(sql, "WHERE md.date < NOW()") {
+   if !strings.Contains(sql, "WHERE md.match_date < NOW()") {
 				t.Fatalf("SQL missing base NOW() filter: %s", sql)
 			}
 			for _, p := range tt.wantParts {

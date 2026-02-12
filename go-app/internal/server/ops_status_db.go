@@ -106,8 +106,8 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 		!ts.IsZero() {
 		return ts.UTC(), nil
 	}
-	// Fallback: max(date)
-	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
+	// Fallback: max(match_date)
+	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(match_date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
 		return time.Time{}, err
 	}
 	if ts.IsZero() {

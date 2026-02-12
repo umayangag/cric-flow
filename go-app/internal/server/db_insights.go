@@ -32,8 +32,8 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
     `, format).Scan(&ts); err == nil && !ts.IsZero() {
 		return ts.UTC(), nil
 	}
-	if err := db.Pool.QueryRow(ctx, `
-        SELECT COALESCE(MAX(md.date), DATE '0001-01-01')
+ if err := db.Pool.QueryRow(ctx, `
+        SELECT COALESCE(MAX(md.match_date), DATE '0001-01-01')
         FROM match_details md
         JOIN match_format mf ON md.format_id = mf.id
         WHERE mf.code = $1
@@ -63,7 +63,7 @@ func (productionInsightsProbe) CountMatchesSinceByFormat(
         JOIN match_format mf ON md.format_id = mf.id
         WHERE mf.code = $1 AND (
             (md.updated_at IS NOT NULL AND md.updated_at >= $2)
-            OR (md.updated_at IS NULL AND md.date >= $3::date)
+            OR (md.updated_at IS NULL AND md.match_date >= $3::date)
         )
     `, format, since, since).Scan(&n); err == nil {
 		return n, nil
@@ -72,7 +72,7 @@ func (productionInsightsProbe) CountMatchesSinceByFormat(
         SELECT COUNT(DISTINCT md.match_id)
         FROM match_details md
         JOIN match_format mf ON md.format_id = mf.id
-        WHERE mf.code = $1 AND md.date >= $2::date
+        WHERE mf.code = $1 AND md.match_date >= $2::date
     `, format, since).Scan(&n); err != nil {
 		return 0, err
 	}
