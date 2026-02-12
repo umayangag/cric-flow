@@ -64,6 +64,10 @@ This repo standardizes file IO locations and makes them configurable via JSON, e
 See `docs/CONFIG.md` for full schema and examples.
 
 ## Formatting and linting
+- Run all quality checks (lint, fmt, typecheck, tests) for all components:
+```bash
+make check-all
+```
 - Aggregate format both components:
 ```
 make fmt
