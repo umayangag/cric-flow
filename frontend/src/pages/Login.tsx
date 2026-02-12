@@ -43,7 +43,7 @@ const Login: React.FC = () => {
           Admin Login
         </Typography>
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
-          Use admin/admin for local development
+          Enter your API key as the password
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>

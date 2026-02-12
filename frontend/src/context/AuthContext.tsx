@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -11,18 +11,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'cric_info_api_key';
 
-// In a real local dev environment, we'd probably get this from a .env file
-// but the requirement says hardcoded for now.
-const HARDCODED_API_KEY = 'dev-local-key';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem(LOCAL_STORAGE_KEY));
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    // Simple hardcoded check as requested
-    if (username === 'admin' && password === 'admin') {
-      localStorage.setItem(LOCAL_STORAGE_KEY, HARDCODED_API_KEY);
-      setApiKey(HARDCODED_API_KEY);
+    // In local development, the API key is used as the password.
+    // This allows users to set their own API key via the login form.
+    if (password) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, password);
+      setApiKey(password);
       return true;
     }
     return false;
