@@ -23,6 +23,8 @@ type DBProbe interface {
 	// LastMatchImportAt returns the latest available import timestamp/date for match data
 	// based on the `match_details` table. If not available, returns zero time with error.
 	LastMatchImportAt(ctx context.Context) (time.Time, error)
+	// TableStats returns row counts and last record info for all tables.
+	TableStats(ctx context.Context) ([]db.TableStat, error)
 }
 
 // newProductionDBProbe returns the default production implementation.
@@ -104,14 +106,23 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 		!ts.IsZero() {
 		return ts.UTC(), nil
 	}
-	// Fallback: max(date)
-	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
+	// Fallback: max(match_date)
+	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(match_date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
 		return time.Time{}, err
 	}
 	if ts.IsZero() {
 		return time.Time{}, errors.New("no match import date")
 	}
 	return ts.UTC(), nil
+}
+
+func (productionDBProbe) TableStats(ctx context.Context) ([]db.TableStat, error) {
+	if db.Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return db.GetTableStats(ctx)
 }
 
 // buildDBSection assembles the DB section map for /ops/status using the provided probe.
@@ -142,6 +153,9 @@ func buildDBSection(ctx context.Context, probe DBProbe) map[string]any {
 		}
 		if last, err := probe.LastMatchImportAt(ctx); err == nil && !last.IsZero() {
 			out["last_match_import_at"] = last.UTC().Format(time.RFC3339)
+		}
+		if stats, err := probe.TableStats(ctx); err == nil {
+			out["table_stats"] = stats
 		}
 		return out
 	}

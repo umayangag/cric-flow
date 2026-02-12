@@ -4,6 +4,7 @@ import type {
   BacktestEvaluateResponse,
   Migration,
   Suggestion,
+  PaginatedResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -64,10 +65,20 @@ export const api = {
   opsStatus(): Promise<OpsStatusDTO> {
     return httpApi('/ops/status');
   },
-  opsMigrations(): Promise<Migration[]> {
-    return httpApi('/ops/migrations');
+  opsMigrations(page = 1, limit = 10): Promise<PaginatedResponse<Migration>> {
+    const u = new URL('/ops/migrations', BASE_API_URL);
+    u.searchParams.set('page', String(page));
+    u.searchParams.set('limit', String(limit));
+    return httpApi(u.toString());
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
+  },
+  // --- Options ---
+  getTeams(): Promise<string[]> {
+    return httpApi('/api/options/teams');
+  },
+  getFormats(): Promise<string[]> {
+    return httpApi('/api/options/formats');
   },
 };

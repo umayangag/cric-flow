@@ -52,18 +52,18 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, order string, _ int) ([]backtestCandidate, error) {
 			// We ignore ctx type in test; handler passes context.Context, which satisfies interface{}
 			m1 := backtestCandidate{
-				MatchID: 101,
-				Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   101,
+				MatchDate: time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			m2 := backtestCandidate{
-				MatchID: 102,
-				Date:    time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   102,
+				MatchDate: time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			if order == "desc" {
 				return []backtestCandidate{m2, m1}, nil
@@ -167,18 +167,18 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 		// Arrange candidates in desc order based on query
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, order string, _ int) ([]backtestCandidate, error) {
 			m1 := backtestCandidate{
-				MatchID: 201,
-				Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   201,
+				MatchDate: time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			m2 := backtestCandidate{
-				MatchID: 202,
-				Date:    time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   202,
+				MatchDate: time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			if order == "desc" {
 				return []backtestCandidate{m2, m1}, nil
@@ -255,25 +255,25 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 		// Return three candidates but honor the limit argument
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, order string, limit int) ([]backtestCandidate, error) {
 			m1 := backtestCandidate{
-				MatchID: 301,
-				Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   301,
+				MatchDate: time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			m2 := backtestCandidate{
-				MatchID: 302,
-				Date:    time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   302,
+				MatchDate: time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			m3 := backtestCandidate{
-				MatchID: 303,
-				Date:    time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   303,
+				MatchDate: time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}
 			all := []backtestCandidate{m1, m2, m3}
 			if order == "desc" {
@@ -357,14 +357,14 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 			d2 := time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC)
 			d3 := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 			all := []backtestCandidate{
-				{MatchID: 401, Date: d1.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
-				{MatchID: 402, Date: d2.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
-				{MatchID: 403, Date: d3.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
+				{MatchID: 401, MatchDate: d1.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
+				{MatchID: 402, MatchDate: d2.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
+				{MatchID: 403, MatchDate: d3.Format(time.RFC3339), Format: "T20", Team1: "IND", Team2: "AUS"},
 			}
 			// Simulate repo applying date filter
 			filtered := make([]backtestCandidate, 0, 1)
 			for _, c := range all {
-				cd, _ := time.Parse(time.RFC3339, c.Date)
+				cd, _ := time.Parse(time.RFC3339, c.MatchDate)
 				if (cd.Equal(start) || cd.After(start)) && (cd.Equal(end) || cd.Before(end)) {
 					filtered = append(filtered, c)
 				}
@@ -434,11 +434,11 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 			if team1 == "IND" && team2 == "AUS" {
 				return []backtestCandidate{
 					{
-						MatchID: 501,
-						Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-						Format:  "T20",
-						Team1:   "IND",
-						Team2:   "AUS",
+						MatchID:   501,
+						MatchDate: time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+						Format:    "T20",
+						Team1:     "IND",
+						Team2:     "AUS",
 					},
 				}, nil
 			}
@@ -482,11 +482,11 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 		// One candidate
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
 			return []backtestCandidate{{
-				MatchID: 601,
-				Date:    time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				Format:  "T20",
-				Team1:   "IND",
-				Team2:   "AUS",
+				MatchID:   601,
+				MatchDate: time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+				Format:    "T20",
+				Team1:     "IND",
+				Team2:     "AUS",
 			}}, nil
 		}
 
@@ -559,11 +559,11 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
 			return []backtestCandidate{
 				{
-					MatchID: 602,
-					Date:    time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-					Format:  "T20",
-					Team1:   "IND",
-					Team2:   "AUS",
+					MatchID:   602,
+					MatchDate: time.Date(2024, 10, 11, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+					Format:    "T20",
+					Team1:     "IND",
+					Team2:     "AUS",
 				},
 			}, nil
 		}
@@ -631,11 +631,11 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, _ time.Time, _ time.Time, _ string, _ int) ([]backtestCandidate, error) {
 			return []backtestCandidate{
 				{
-					MatchID: 603,
-					Date:    time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
-					Format:  "T20",
-					Team1:   "IND",
-					Team2:   "AUS",
+					MatchID:   603,
+					MatchDate: time.Date(2024, 10, 12, 14, 0, 0, 0, time.UTC).Format(time.RFC3339),
+					Format:    "T20",
+					Team1:     "IND",
+					Team2:     "AUS",
 				},
 			}, nil
 		}

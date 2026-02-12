@@ -1,35 +1,171 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+# Safer IFS to avoid word-splitting issues
+IFS=$'\n\t'
 
 # Root of repo
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-echo "[pre-commit] Running project formatters and linters via Makefiles..."
+# Get staged files (NUL-delimited for safety)
+STAGED_FILES_NUL=$(git diff --cached --name-only -z --diff-filter=ACM)
 
-# --- Go app: format, check, lint ---
-if [ -d "go-app" ]; then
-  echo "[pre-commit][go-app] make fmt fmt-check lint"
-  make -C go-app fmt
-  make -C go-app fmt-check
-  make -C go-app lint
+# Early exit if nothing staged
+if [ -z "${STAGED_FILES_NUL}" ]; then
+    exit 0
 fi
 
-# --- Python (ml-service): lint autofix (ruff F401), format, then check gates ---
-if [ -d "ml-service" ]; then
-  echo "[pre-commit][ml-service] make lint fmt fmt-check lint-check"
-  make -C ml-service lint
-  make -C ml-service fmt
-  make -C ml-service fmt-check
-  make -C ml-service lint-check
+# Check for partially staged files to prevent accidental staging of unstaged changes
+UNSTAGED_FILES_NUL=$(git diff --name-only -z)
+
+# Convert to newline lists for intersection (safe: git paths won't contain newlines)
+STAGED_NEWLINE=$(printf '%s' "$STAGED_FILES_NUL" | tr '\0' '\n' | sed '/^$/d')
+UNSTAGED_NEWLINE=$(printf '%s' "$UNSTAGED_FILES_NUL" | tr '\0' '\n' | sed '/^$/d')
+
+PARTIALLY_STAGED=$(comm -12 <(printf '%s\n' "$STAGED_NEWLINE" | sort) <(printf '%s\n' "$UNSTAGED_NEWLINE" | sort))
+
+if [ -n "$PARTIALLY_STAGED" ]; then
+    echo "[pre-commit] ⚠️  WARNING: Partially staged files detected:"
+    echo "$PARTIALLY_STAGED" | sed 's/^/  - /'
+    echo "[pre-commit] Auto-formatting is disabled for these files to avoid staging unstaged changes."
+    echo "[pre-commit] Please stage the full file or stash unstaged changes and try again."
+    exit 1
 fi
 
-# --- Frontend: format and check (Prettier + ESLint if configured) ---
-if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-  echo "[pre-commit][frontend] make fmt fmt-check typecheck"
-  make -C frontend fmt
-  make -C frontend fmt-check
-  make -C frontend typecheck
+# Build arrays for category processing
+STAGED_FILES=()
+while IFS= read -r -d '' f; do
+  STAGED_FILES+=("$f")
+done < <(printf '%s' "$STAGED_FILES_NUL")
+
+echo "[pre-commit] optimized check on modified files..."
+
+# Helper function to process file categories
+# Usage: process_category "Category Name" "output_array_name" "pattern"
+process_category() {
+    local category="$1"
+    local -n files_arr_ref=$2 # Use nameref to modify array in caller's scope
+    local pattern="$3"
+    
+    files_arr_ref=() # Clear the array
+
+    for f in "${STAGED_FILES[@]:-}"; do
+        if [[ "$f" =~ $pattern ]]; then
+            files_arr_ref+=("$f")
+        fi
+    done
+
+    if [ ${#files_arr_ref[@]} -gt 0 ]; then
+        echo "[$category] Processing ${#files_arr_ref[@]} files..."
+        return 0 # Found files
+    fi
+    return 1 # No files found
+}
+
+# --- Go App ---
+GO_FILES_ARR=()
+if process_category "go-app" GO_FILES_ARR "^go-app/.*\.go$"; then
+    # Ensure tools are in PATH (match Makefile behavior)
+    GOBIN="$(go env GOPATH)/bin"
+    export PATH="${GOBIN}:$PATH"
+
+    # Check for required tools (do not auto-install in hooks to avoid network calls during commits)
+    MISSING_TOOLS=()
+    command -v gofumpt >/dev/null 2>&1 || MISSING_TOOLS+=(gofumpt)
+    command -v golines >/dev/null 2>&1 || MISSING_TOOLS+=(golines)
+    if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+        echo "[go-app] Missing required tools: ${MISSING_TOOLS[*]}" >&2
+        echo "[go-app] Please run 'make init-go' (or install tools manually) and retry the commit." >&2
+        exit 1
+    fi
+
+    # Format
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 gofumpt -w
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 golines -w -m 120
+
+    # Stage changes
+    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
+
+    # Lint (golangci-lint)
+    if command -v golangci-lint >/dev/null 2>&1; then
+        CONFIG=".golangci.yml"
+        if [ -f "$CONFIG" ]; then
+             echo "[go-app] Linting (and fixing) modified packages..."
+             # Run on packages (directories) to ensure typechecking works
+             mapfile -t GO_DIRS_ARR < <(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
+             # shellcheck disable=SC2086
+             golangci-lint run --fix -c "$CONFIG" -- "${GO_DIRS_ARR[@]}"
+
+             # Stage changes (re-stage modified files)
+             printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
+        else
+             echo "[go-app] No .golangci.yml found, skipping lint."
+        fi
+    else
+        echo "[go-app] golangci-lint not found, skipping lint."
+    fi
 fi
 
-echo "[pre-commit] All format and lint checks passed."
+# --- Python (ml-service) ---
+PY_FILES_ARR=()
+if process_category "ml-service" PY_FILES_ARR "^ml-service/.*\.py$"; then
+    VENV="ml-service/.venv"
+    BIN="$VENV/bin"
+
+    if [ ! -d "$VENV" ]; then
+        echo "[ml-service] Virtualenv not found at $VENV. Skipping (run 'make init-py' to fix)."
+    else
+        # Format: isort -> black
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/isort" --profile black --line-length 120
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/black" --line-length 120
+
+        # Stage changes
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
+
+        # Lint: ruff check --fix
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
+
+        # Check only (gates) - ruff as single source
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --select F401 --ignore E203,E501,W503
+    fi
+fi
+
+# --- Frontend ---
+FE_FILES_ARR=()
+if process_category "frontend" FE_FILES_ARR "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$"; then
+    if [ ! -d "frontend/node_modules" ]; then
+        echo "[frontend] node_modules not found. Skipping (run 'make -C frontend install' to fix)."
+    else
+        # Build relative list (strip leading frontend/)
+        REL_FILES_ARR=()
+        for f in "${FE_FILES_ARR[@]}"; do
+          REL_FILES_ARR+=("${f#frontend/}")
+        done
+
+        pushd frontend >/dev/null
+
+        # Prettier (write)
+        printf '%s\0' "${REL_FILES_ARR[@]}" | xargs -0 npx --no-install prettier --write
+
+        # ESLint (fix) - only code files
+        CODE_FILES_ARR=()
+        for f in "${REL_FILES_ARR[@]}"; do
+          case "$f" in
+            *.js|*.jsx|*.ts|*.tsx)
+              CODE_FILES_ARR+=("$f")
+              ;;
+          esac
+        done
+        if [ ${#CODE_FILES_ARR[@]} -gt 0 ]; then
+            printf '%s\0' "${CODE_FILES_ARR[@]}" | xargs -0 npx --no-install eslint --fix --quiet --no-error-on-unmatched-pattern
+        fi
+
+        # Stage changes
+        printf '%s\0' "${REL_FILES_ARR[@]}" | xargs -0 git add
+
+        popd >/dev/null
+    fi
+fi
+
+echo "[pre-commit] Done."

@@ -14,6 +14,8 @@ import {
   ErrorMessage,
   ErrorText,
   EmptyStateCell,
+  PaginationContainer,
+  PaginationButton,
 } from './OpsMigrationsTable.styles';
 
 // Helper to format duration or time ago
@@ -55,29 +57,38 @@ const OpsMigrationsTable: React.FC = () => {
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 10;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.opsMigrations();
-      setMigrations(data);
-      setError(null);
-    } catch (e) {
-      if (e instanceof Error) {
-        setError(e.message);
-      } else {
-        setError(String(e));
+  const load = useCallback(
+    async (isPolling = false) => {
+      if (!isPolling) setLoading(true);
+      try {
+        const data = await api.opsMigrations(page, limit);
+        setMigrations(data.items || []);
+        setTotal(data.total);
+        setError(null);
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e.message);
+        } else {
+          setError(String(e));
+        }
+      } finally {
+        if (!isPolling) setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [page],
+  );
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 5000); // Poll every 5s
+    load(false);
+    const interval = setInterval(() => load(true), 5000); // Poll every 5s
     return () => clearInterval(interval);
   }, [load]);
+
+  const totalPages = Math.ceil(total / limit);
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
   if (error) return <ErrorText>Error: {error}</ErrorText>;
@@ -121,6 +132,17 @@ const OpsMigrationsTable: React.FC = () => {
           )}
         </tbody>
       </Table>
+      <PaginationContainer>
+        <PaginationButton disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+          Previous
+        </PaginationButton>
+        <span>
+          Page {page} of {totalPages || 1}
+        </span>
+        <PaginationButton disabled={migrations.length < limit} onClick={() => setPage((p) => p + 1)}>
+          Next
+        </PaginationButton>
+      </PaginationContainer>
     </TableContainer>
   );
 };

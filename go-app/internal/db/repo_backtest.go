@@ -15,7 +15,7 @@ import (
 type BacktestCandidate struct {
 	MatchID    int64
 	StableID   sql.NullString
-	Date       time.Time
+	MatchDate  time.Time
 	Venue      sql.NullString
 	Season     sql.NullString
 	FormatCode sql.NullString
@@ -50,7 +50,7 @@ func buildPlayedMatchesFiltersQuery(
         )
         SELECT md.match_id,
                CAST(md.match_id AS TEXT) AS stable_id,
-               md.date,
+               md.match_date,
                COALESCE(v.name, '') AS venue_name,
                COALESCE(s.name, '') AS season_name,
                COALESCE(mf.code, '') AS format_code,
@@ -62,7 +62,7 @@ func buildPlayedMatchesFiltersQuery(
         LEFT JOIN venue v ON v.id = md.venue_id
         LEFT JOIN season s ON s.id = md.season_id
         LEFT JOIN match_format mf ON mf.id = md.format_id
-        WHERE md.date < NOW()`)
+        WHERE md.match_date < NOW()`)
 
 	args := []any{}
 	idx := 1
@@ -74,13 +74,13 @@ func buildPlayedMatchesFiltersQuery(
 		idx++
 	}
 	if !start.IsZero() {
-		sb.WriteString(" AND md.date >= $")
+		sb.WriteString(" AND md.match_date >= $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, start)
 		idx++
 	}
 	if !end.IsZero() {
-		sb.WriteString(" AND md.date <= $")
+		sb.WriteString(" AND md.match_date <= $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, end)
 		idx++
@@ -120,9 +120,9 @@ func buildPlayedMatchesFiltersQuery(
 
 	// Ordering
 	if strings.ToLower(order) == "desc" {
-		sb.WriteString(" ORDER BY md.date DESC")
+		sb.WriteString(" ORDER BY md.match_date DESC")
 	} else {
-		sb.WriteString(" ORDER BY md.date ASC")
+		sb.WriteString(" ORDER BY md.match_date ASC")
 	}
 	if limit > 0 {
 		sb.WriteString(" LIMIT $")
@@ -137,7 +137,7 @@ func scanBacktestCandidate(rows scanx.Scanner, c *BacktestCandidate) error {
 	return rows.Scan(
 		&c.MatchID,
 		&c.StableID,
-		&c.Date,
+		&c.MatchDate,
 		&c.Venue,
 		&c.Season,
 		&c.FormatCode,
@@ -179,7 +179,7 @@ func ListPlayedMatchesByFormatAndTeams(
         )
         SELECT md.match_id,
                CAST(md.match_id AS TEXT) AS stable_id,
-               md.date,
+               md.match_date,
                COALESCE(v.name, '') AS venue_name,
                COALESCE(s.name, '') AS season_name,
                COALESCE(mf.code, '') AS format_code,
@@ -191,10 +191,10 @@ func ListPlayedMatchesByFormatAndTeams(
         LEFT JOIN venue v ON v.id = md.venue_id
         LEFT JOIN season s ON s.id = md.season_id
         LEFT JOIN match_format mf ON mf.id = md.format_id
-        WHERE md.date < NOW()
+        WHERE md.match_date < NOW()
           AND mf.code = $1
           AND ((tm.team_a = $2 AND tm.team_b = $3) OR (tm.team_a = $3 AND tm.team_b = $2))
-        ORDER BY md.date ASC
+        ORDER BY md.match_date ASC
     `
 
 	rows, err := Pool.Query(ctx, q, formatCode, team1, team2)

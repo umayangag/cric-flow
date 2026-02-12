@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -31,6 +31,10 @@ dev-up-with-frontend: dev-up
 	fi
 
 dev-down:
+	$(DC) down
+	@$(MAKE) frontend-stop --no-print-directory
+
+dev-destroy:
 	$(DC) down -v
 	@$(MAKE) frontend-stop --no-print-directory
 
@@ -88,7 +92,7 @@ BOWL ?= 5
 
 # Run preprocessing computations (happy path)
 precompute:
-	curl -X POST http://localhost:8080/precompute
+	curl -X POST -H "X-API-Key: test-api-key" http://localhost:8080/precompute
 
 # Precompute time-indexed (as-of) features for ALL formats with one command
 # ASOF is optional (defaults to today's date in UTC). You can override:
@@ -207,7 +211,7 @@ e2e-backtest-smoke: seed-fixtures
 	URL="http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"; \
 	SEL_JSON=$$(mktemp); \
 	trap 'rm -f "$$SEL_JSON"' EXIT; \
-	STATUS=$$(curl -sS -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
+	STATUS=$$(curl -sS -H "X-API-Key: test-api-key" -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
 	echo "  [SEL] HTTP $$STATUS $$URL"; \
 	if [ "$$STATUS" != "200" ]; then \
 	  echo "  [SEL] Response:"; \
@@ -223,7 +227,7 @@ e2e-backtest-smoke: seed-fixtures
 	fi
 	# Evaluate the seeded match (match_id known from fixtures: 9000111)
 	@echo "[SMOKE] Evaluating match_id=9000111"; \
-	EVAL=$$(curl -s "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
+	EVAL=$$(curl -s -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111"); \
 	echo $$EVAL | jq -e '(.players | length) > 0' >/dev/null; \
 	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
@@ -478,7 +482,8 @@ help:
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
 	@echo "  dev-up-with-frontend  dev-up + start Frontend dev server (port $(FRONTEND_PORT))"
-	@echo "  dev-down           Stop and remove stack (volumes) and stop Frontend"
+	@echo "  dev-down           Stop stack (preserve volumes) and stop Frontend"
+	@echo "  dev-destroy        Stop and remove stack (delete volumes!) and stop Frontend"
 	@echo "  logs               Tail docker-compose logs"
 	@echo "  api                Run Go API locally (outside Docker)"
 	@echo "  ml-serve           Run ML service locally (uvicorn)"

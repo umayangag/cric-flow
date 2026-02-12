@@ -65,16 +65,16 @@ func queryEventsForEndPressure(ctx context.Context, formatIDs []int) ([]evRowEP,
 		args = append(args, id)
 	}
 	q := fmt.Sprintf(`
-		SELECT
-		  be.match_id, be.innings, be.over, be.ball_seq, be.phase,
-		  be.is_legal,
-		  be.bowler_id, be.runs_batter, be.runs_total, be.player_out_id,
-		  COALESCE(md.match_date, md.date) AS match_date, md.format_id
-		FROM ball_event be
-		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id IN (%s)
-		ORDER BY be.match_id, be.innings, be.ball_seq
-	`, place)
+        SELECT
+          be.match_id, be.innings, be.over, be.ball_seq, be.phase,
+          be.is_legal,
+          be.bowler_id, be.runs_batter, be.runs_total, be.player_out_id,
+          md.match_date, md.format_id
+        FROM ball_event be
+        JOIN match_details md ON md.match_id = be.match_id
+        WHERE md.format_id IN (%s) AND md.match_date IS NOT NULL
+        ORDER BY be.match_id, be.innings, be.ball_seq
+    `, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

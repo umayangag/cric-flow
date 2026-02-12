@@ -1,8 +1,11 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
+	"strconv"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
@@ -10,12 +13,57 @@ type OpsHandler struct{}
 
 func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	migrations, err := tracking.GetRecentMigrations(ctx, 50)
+
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	page := 1
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	// Prevent extremely large page values which can cause expensive OFFSET operations
+	if page > 10000 {
+		slog.Warn("pagination page capped", "requested", page, "capped_at", 10000)
+		page = 10000
+	}
+
+	limit := 10
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+	// Enforce an upper bound to prevent resource exhaustion
+	if limit > 100 {
+		slog.Warn("pagination limit capped", "requested", limit, "capped_at", 100)
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
+	migrations, total, err := tracking.GetMigrationsPaginated(ctx, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, migrations)
+
+	type listResponse struct {
+		Items []tracking.Migration `json:"items"`
+		Total int                  `json:"total"`
+		Page  int                  `json:"page"`
+		Limit int                  `json:"limit"`
+	}
+	resp := listResponse{
+		Items: migrations,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type Suggestion struct {
@@ -33,12 +81,18 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	suggestions := GenerateSuggestions(migrations)
+	seqPopulated, err := db.IsSequenceFeaturesPopulated(ctx)
+	if err != nil {
+		slog.Error("ops: IsSequenceFeaturesPopulated check failed", slog.Any("err", err))
+		seqPopulated = false
+	}
+
+	suggestions := GenerateSuggestions(migrations, seqPopulated)
 
 	writeJSON(w, http.StatusOK, suggestions)
 }
 
-func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
+func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []Suggestion {
 	lastRuns := make(map[string]*tracking.Migration)
 	for i := range migrations {
 		m := &migrations[i]
@@ -64,6 +118,17 @@ func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
 			Title:       "Initialize Data",
 			Description: "No migrations found. Start by importing data.",
 			Command:     "make cricsheet-import",
+			Priority:    "HIGH",
+		}}
+	}
+
+	// Rule: Missing Sequence Data (Critical fix)
+	// Even if precompute is recent, if data is missing, we must re-run.
+	if !seqPopulated {
+		return []Suggestion{{
+			Title:       "Fix Missing Sequence Features",
+			Description: "Sequence feature tables are empty. Run precompute to populate them.",
+			Command:     "make precompute-asof",
 			Priority:    "HIGH",
 		}}
 	}

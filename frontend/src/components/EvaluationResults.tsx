@@ -1,35 +1,21 @@
 import React, { useMemo } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  Grid,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
 import type { BacktestEvaluateResponse } from '../types';
-
-// Consolidated styles to improve readability and maintainability
-const styles: Record<string, React.CSSProperties> = {
-  metricsLine: { marginBottom: 12 },
-  aggregatesContainer: {
-    marginBottom: 12,
-    border: '1px solid #eee',
-    padding: 8,
-  },
-  sectionTitle: { fontWeight: 600, marginBottom: 6 },
-  aggregatesRow: { display: 'flex', gap: 24, flexWrap: 'wrap' },
-
-  tableContainer: {
-    maxHeight: 320,
-    overflow: 'auto',
-    border: '1px solid #eee',
-    padding: 8,
-  },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  thLeft: { textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 },
-  thRight: { textAlign: 'right', borderBottom: '1px solid #ddd', padding: 6 },
-  td: { borderBottom: '1px solid #f0f0f0', padding: 6 },
-  tdRight: {
-    borderBottom: '1px solid #f0f0f0',
-    padding: 6,
-    textAlign: 'right',
-  },
-
-  matchInfo: { marginBottom: 8 },
-};
 
 type EvaluationResultsProps = {
   result: BacktestEvaluateResponse;
@@ -60,15 +46,11 @@ const MetricsLine: React.FC<{
 
   if (!parts.length) return null;
   return (
-    <div style={styles.metricsLine}>
-      Metrics:{' '}
+    <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
       {parts.map((p, i) => (
-        <React.Fragment key={i}>
-          <strong>{p}</strong>
-          {i < parts.length - 1 ? ' · ' : ''}
-        </React.Fragment>
+        <Chip key={i} label={p} variant="outlined" size="small" sx={{ mb: 1 }} />
       ))}
-    </div>
+    </Stack>
   );
 };
 
@@ -83,53 +65,63 @@ const MatchAggregates: React.FC<{
 }> = ({ aggregates }) => {
   if (!aggregates) return null;
   return (
-    <div style={styles.aggregatesContainer}>
-      <div style={styles.sectionTitle}>Match aggregates</div>
-      <div style={styles.aggregatesRow}>
-        <div>
-          <div style={{ fontWeight: 600 }}>Predicted</div>
-          <div>
-            runs: <strong>{String(aggregates.predicted?.runs ?? '-')}</strong>
-          </div>
-          <div>
-            wickets: <strong>{String(aggregates.predicted?.wickets ?? '-')}</strong>
-          </div>
-          <div>
-            extras: <strong>{String(aggregates.predicted?.extras ?? '-')}</strong>
-          </div>
-          <div>
-            winner: <strong>{String(aggregates.predicted?.winner_team_code ?? '-')}</strong>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Actual</div>
-          <div>
-            runs: <strong>{String(aggregates.actual?.runs ?? '-')}</strong>
-          </div>
-          <div>
-            wickets: <strong>{String(aggregates.actual?.wickets ?? '-')}</strong>
-          </div>
-          <div>
-            extras: <strong>{String(aggregates.actual?.extras ?? '-')}</strong>
-          </div>
-          <div>
-            winner: <strong>{String(aggregates.actual?.winner_team_code ?? '-')}</strong>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Errors</div>
-          <div>
-            runs_mae: <strong>{String(aggregates.errors?.runs_mae ?? '-')}</strong>
-          </div>
-          <div>
-            wickets_mae: <strong>{String(aggregates.errors?.wickets_mae ?? '-')}</strong>
-          </div>
-          <div>
-            extras_mae: <strong>{String(aggregates.errors?.extras_mae ?? '-')}</strong>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Card variant="outlined" sx={{ mb: 2 }}>
+      <CardContent>
+        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+          Match aggregates
+        </Typography>
+        <Grid container spacing={4}>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="subtitle2" fontWeight={600} color="primary">
+              Predicted
+            </Typography>
+            <Typography variant="body2">
+              runs: <strong>{String(aggregates.predicted?.runs ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              wickets: <strong>{String(aggregates.predicted?.wickets ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              extras: <strong>{String(aggregates.predicted?.extras ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              winner: <strong>{String(aggregates.predicted?.winner_team_code ?? '-')}</strong>
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="subtitle2" fontWeight={600} color="secondary">
+              Actual
+            </Typography>
+            <Typography variant="body2">
+              runs: <strong>{String(aggregates.actual?.runs ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              wickets: <strong>{String(aggregates.actual?.wickets ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              extras: <strong>{String(aggregates.actual?.extras ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              winner: <strong>{String(aggregates.actual?.winner_team_code ?? '-')}</strong>
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="subtitle2" fontWeight={600} color="error">
+              Errors
+            </Typography>
+            <Typography variant="body2">
+              runs_mae: <strong>{String(aggregates.errors?.runs_mae ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              wickets_mae: <strong>{String(aggregates.errors?.wickets_mae ?? '-')}</strong>
+            </Typography>
+            <Typography variant="body2">
+              extras_mae: <strong>{String(aggregates.errors?.extras_mae ?? '-')}</strong>
+            </Typography>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -147,99 +139,64 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
     (p) => typeof p.predicted['run_outs'] === 'number' || typeof p.actual['run_outs'] === 'number',
   );
 
+  const optionalMetrics = [
+    { key: 'wickets', label: 'Wkts', maeKey: 'wickets_mae', enabled: anyWickets },
+    { key: 'economy', label: 'Econ', maeKey: 'economy_mae', enabled: anyEconomy },
+    { key: 'catches', label: 'Catches', maeKey: 'catches_mae', enabled: anyCatches },
+    { key: 'run_outs', label: 'Run Outs', maeKey: 'run_outs_mae', enabled: anyRunOuts },
+  ].filter((m) => m.enabled);
+
   return (
-    <div style={styles.tableContainer}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.thLeft}>Player ID</th>
-            <th style={styles.thRight}>Pred Runs</th>
-            <th style={styles.thRight}>Actual Runs</th>
-            <th style={styles.thRight}>Abs Error</th>
-            {anyWickets && (
-              <>
-                <th style={styles.thRight}>Pred Wkts</th>
-                <th style={styles.thRight}>Actual Wkts</th>
-                <th style={styles.thRight}>Wkts Abs Err</th>
-              </>
-            )}
-            {anyEconomy && (
-              <>
-                <th style={styles.thRight}>Pred Econ</th>
-                <th style={styles.thRight}>Actual Econ</th>
-                <th style={styles.thRight}>Econ Abs Err</th>
-              </>
-            )}
-            {anyCatches && (
-              <>
-                <th style={styles.thRight}>Pred Catches</th>
-                <th style={styles.thRight}>Actual Catches</th>
-                <th style={styles.thRight}>Catches Abs Err</th>
-              </>
-            )}
-            {anyRunOuts && (
-              <>
-                <th style={styles.thRight}>Pred Run Outs</th>
-                <th style={styles.thRight}>Actual Run Outs</th>
-                <th style={styles.thRight}>Run Outs Abs Err</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
+    <TableContainer component={Paper} sx={{ maxHeight: 320 }}>
+      <Table stickyHeader size="small" aria-label="players results table">
+        <TableHead>
+          <TableRow>
+            <TableCell>Player ID</TableCell>
+            <TableCell align="right">Pred Runs</TableCell>
+            <TableCell align="right">Actual Runs</TableCell>
+            <TableCell align="right">Abs Error</TableCell>
+            {optionalMetrics.map((m) => (
+              <React.Fragment key={m.key}>
+                <TableCell align="right">Pred {m.label}</TableCell>
+                <TableCell align="right">Actual {m.label}</TableCell>
+                <TableCell align="right">{m.label} Abs Err</TableCell>
+              </React.Fragment>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {result.players.map((p) => (
-            <tr key={p.player_id}>
-              <td style={styles.td}>{p.player_id}</td>
-              <td style={styles.tdRight}>{formatCell(p.predicted['runs'])}</td>
-              <td style={styles.tdRight}>{formatCell(p.actual['runs'])}</td>
-              <td style={styles.tdRight}>{formatCell(p.errors['runs_mae'])}</td>
-              {anyWickets && (
-                <>
-                  <td style={styles.tdRight}>{formatCell(p.predicted['wickets'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.actual['wickets'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.errors['wickets_mae'])}</td>
-                </>
-              )}
-              {anyEconomy && (
-                <>
-                  <td style={styles.tdRight}>{formatCell(p.predicted['economy'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.actual['economy'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.errors['economy_mae'])}</td>
-                </>
-              )}
-              {anyCatches && (
-                <>
-                  <td style={styles.tdRight}>{formatCell(p.predicted['catches'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.actual['catches'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.errors['catches_mae'])}</td>
-                </>
-              )}
-              {anyRunOuts && (
-                <>
-                  <td style={styles.tdRight}>{formatCell(p.predicted['run_outs'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.actual['run_outs'])}</td>
-                  <td style={styles.tdRight}>{formatCell(p.errors['run_outs_mae'])}</td>
-                </>
-              )}
-            </tr>
+            <TableRow key={p.player_id} hover>
+              <TableCell>{p.player_id}</TableCell>
+              <TableCell align="right">{formatCell(p.predicted['runs'])}</TableCell>
+              <TableCell align="right">{formatCell(p.actual['runs'])}</TableCell>
+              <TableCell align="right">{formatCell(p.errors['runs_mae'])}</TableCell>
+              {optionalMetrics.map((m) => (
+                <React.Fragment key={m.key}>
+                  <TableCell align="right">{formatCell(p.predicted[m.key])}</TableCell>
+                  <TableCell align="right">{formatCell(p.actual[m.key])}</TableCell>
+                  <TableCell align="right">{formatCell(p.errors[m.maeKey])}</TableCell>
+                </React.Fragment>
+              ))}
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
 
 const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
   return (
-    <div>
-      <div style={styles.matchInfo}>
+    <Box>
+      <Typography variant="body2" sx={{ mb: 2 }}>
         Match: <strong>{result.match.match_id}</strong> · Date:{' '}
-        <strong>{new Date(result.match.date).toISOString().slice(0, 10)}</strong>
-      </div>
+        <strong>{new Date(result.match.match_date).toISOString().slice(0, 10)}</strong>
+      </Typography>
       <MetricsLine metrics={result.metrics} />
       <MatchAggregates aggregates={result.match_aggregates} />
       <PlayersTable result={result} />
-    </div>
+    </Box>
   );
 };
 

@@ -327,7 +327,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			Target:       target,
 			Inning:       &inningNo,
 			OppositionID: oppositionID,
-			Date:         &dateISO,
+			MatchDate:    &dateISO,
 			VenueID:      venueID,
 			Extras:       &extras,
 			Toss:         &toss,

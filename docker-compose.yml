@@ -32,6 +32,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_SSLMODE: disable
+      API_KEY: ${API_KEY:-test-api-key}
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000

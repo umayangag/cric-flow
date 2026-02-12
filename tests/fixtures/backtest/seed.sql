@@ -139,7 +139,7 @@ WITH s AS (
   SELECT id AS format_id FROM match_format WHERE code='T20'
 )
 -- Insert a deterministic played match with totals
-INSERT INTO match_details(id, score, wickets, overs, balls, rpo, target, inning, result, opposition_id, date, match_id,
+INSERT INTO match_details(id, score, wickets, overs, balls, rpo, target, inning, result, opposition_id, match_date, match_id,
                           batting_session, bowling_session, venue_id, extras, toss, season_id, match_number, format_id)
 SELECT
   999001,

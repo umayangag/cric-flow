@@ -67,7 +67,12 @@ func TestScanProject_ResourceLeak(t *testing.T) {
 				count++
 				// Check if content matches what we wrote
 				if node.Content != "some content" {
-					t.Errorf("File %s content mismatch. Content: %q, Expected: %q. (Possibly due to 'too many open files')", node.Name, node.Content, "some content")
+					t.Errorf(
+						"File %s content mismatch. Content: %q, Expected: %q. (Possibly due to 'too many open files')",
+						node.Name,
+						node.Content,
+						"some content",
+					)
 				}
 			}
 			if len(node.Children) > 0 {
@@ -76,7 +81,7 @@ func TestScanProject_ResourceLeak(t *testing.T) {
 		}
 	}
 	checkNodes(ctx.Structure)
-	
+
 	if count != 500 {
 		t.Errorf("Expected 500 files, found %d", count)
 	}

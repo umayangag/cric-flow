@@ -1,5 +1,5 @@
 import type { BacktestSelectResponse, BacktestEvaluateResponse } from './types';
-import type { Migration, Suggestion } from '../types';
+import type { Migration, Suggestion, PaginatedResponse } from '../types';
 
 type SelectParams = { format: string; team1: string; team2: string };
 type EvaluateParams = {
@@ -95,8 +95,13 @@ export async function fetchBacktestEvaluate(
   return (await res.json()) as BacktestEvaluateResponse;
 }
 
-export async function fetchOpsMigrations(baseUrl: string): Promise<Migration[]> {
-  const res = await fetch((baseUrl || '') + '/ops/migrations');
+export async function fetchOpsMigrations(
+  baseUrl: string,
+  page = 1,
+  limit = 10,
+): Promise<PaginatedResponse<Migration>> {
+  const qp = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const res = await fetch((baseUrl || '') + '/ops/migrations?' + qp.toString());
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }

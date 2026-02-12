@@ -1,4 +1,15 @@
 import React from 'react';
+import {
+  Paper,
+  Radio,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
 import type { BacktestCandidate } from '../types';
 
 type CandidatesTableProps = {
@@ -7,64 +18,61 @@ type CandidatesTableProps = {
   onSelectMatch: (matchId: number) => void;
 };
 
-const styles: { [key: string]: React.CSSProperties } = {
-  emptyState: { color: '#666' },
-  container: {
-    maxHeight: 240,
-    overflow: 'auto',
-    border: '1px solid #eee',
-    padding: 8,
-  },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 },
-  td: { borderBottom: '1px solid #f0f0f0', padding: 6 },
-};
-
 const CandidatesTable: React.FC<CandidatesTableProps> = ({
   candidates,
   selectedMatchId,
   onSelectMatch,
 }) => {
   if (!candidates.length) {
-    return <div style={styles.emptyState}>No candidates loaded yet.</div>;
+    return (
+      <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+        No candidates loaded yet.
+      </Typography>
+    );
   }
   return (
-    <div style={styles.container}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Date</th>
-            <th style={styles.th}>Match</th>
-            <th style={styles.th}>Venue</th>
-            <th style={styles.th}>Winner</th>
-            <th style={styles.th}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
+    <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+      <Table stickyHeader size="small" aria-label="candidates table">
+        <TableHead>
+          <TableRow>
+            <TableCell>Date</TableCell>
+            <TableCell>Match</TableCell>
+            <TableCell>Venue</TableCell>
+            <TableCell>Winner</TableCell>
+            <TableCell align="center">Select</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
           {candidates.map((c) => (
-            <tr key={c.match_id}>
-              <td style={styles.td}>{new Date(c.date).toISOString().slice(0, 10)}</td>
-              <td style={styles.td}>
+            <TableRow
+              key={c.match_id}
+              hover
+              selected={selectedMatchId === c.match_id}
+              onClick={() => onSelectMatch(c.match_id)}
+              sx={{ cursor: 'pointer' }}
+            >
+              <TableCell>{new Date(c.match_date).toISOString().slice(0, 10)}</TableCell>
+              <TableCell>
                 {c.team1} vs {c.team2}
-              </td>
-              <td style={styles.td}>{c.venue || '-'}</td>
-              <td style={styles.td}>{c.winner_team_code || '-'}</td>
-              <td style={styles.td}>
-                <label>
-                  <input
-                    type="radio"
-                    name="selectedMatch"
-                    checked={selectedMatchId === c.match_id}
-                    onChange={() => onSelectMatch(c.match_id)}
-                  />
-                  &nbsp;Select
-                </label>
-              </td>
-            </tr>
+              </TableCell>
+              <TableCell>{c.venue || '-'}</TableCell>
+              <TableCell>{c.winner_team_code || '-'}</TableCell>
+              <TableCell align="center">
+                <Radio
+                  checked={selectedMatchId === c.match_id}
+                  onChange={() => onSelectMatch(c.match_id)}
+                  onClick={(e) => e.stopPropagation()}
+                  value={c.match_id}
+                  name="candidate-radio"
+                  size="small"
+                  inputProps={{ 'aria-label': 'Select' }}
+                />
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
 

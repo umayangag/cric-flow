@@ -17,41 +17,68 @@ func TestGenerateSuggestions(t *testing.T) {
 	tests := []struct {
 		name           string
 		migrations     []tracking.Migration
+		seqPopulated   bool
 		expectedTitles []string
 	}{
 		{
-			name:       "No migrations",
-			migrations: []tracking.Migration{},
+			name:         "No migrations",
+			migrations:   []tracking.Migration{},
+			seqPopulated: false, // Ignored because no import
 			expectedTitles: []string{
 				"Initialize Data",
 			},
 		},
 		{
-			name: "Import done, no precompute",
+			name: "Import done, no precompute, no seq data",
 			migrations: []tracking.Migration{
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
 			},
+			seqPopulated: false,
+			expectedTitles: []string{
+				"Fix Missing Sequence Features",
+			},
+		},
+		{
+			name: "Import done, no precompute, seq data somehow exists (unlikely but possible)",
+			migrations: []tracking.Migration{
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
+			},
+			seqPopulated: true,
 			expectedTitles: []string{
 				"Run Precompute",
 			},
 		},
 		{
-			name: "Import done, precompute old",
+			name: "Import done, precompute old, seq data ok",
 			migrations: []tracking.Migration{
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 			},
+			seqPopulated: true,
 			expectedTitles: []string{
 				"Run Precompute",
 			},
 		},
 		{
-			name: "Precompute done, export old",
+			name: "Precompute done, export old, seq data missing",
 			migrations: []tracking.Migration{
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 			},
+			seqPopulated: false,
+			expectedTitles: []string{
+				"Fix Missing Sequence Features",
+			},
+		},
+		{
+			name: "Precompute done, export old, seq data ok",
+			migrations: []tracking.Migration{
+				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+			},
+			seqPopulated: true,
 			expectedTitles: []string{
 				"Export Dataset",
 			},
@@ -65,6 +92,7 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "train-bowling", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 			},
+			seqPopulated: true,
 			expectedTitles: []string{
 				"Train Batting Model",
 				"Train Bowling Model",
@@ -77,6 +105,7 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 			},
+			seqPopulated: true,
 			// Current logic would suggest Precompute AND Export.
 			// Desired: Only Precompute.
 			expectedTitles: []string{
@@ -91,6 +120,7 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 			},
+			seqPopulated: true,
 			// Current logic would suggest Export AND Train.
 			// Desired: Only Export.
 			expectedTitles: []string{
@@ -106,6 +136,7 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: threeHoursAgo},
 			},
+			seqPopulated:   true,
 			expectedTitles: []string{},
 		},
 		{
@@ -117,6 +148,7 @@ func TestGenerateSuggestions(t *testing.T) {
 					StartedAt: hourAgo,
 				},
 			},
+			seqPopulated: false,
 			// Behaves like no migrations
 			expectedTitles: []string{
 				"Initialize Data",
@@ -126,7 +158,7 @@ func TestGenerateSuggestions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			suggestions := GenerateSuggestions(tt.migrations)
+			suggestions := GenerateSuggestions(tt.migrations, tt.seqPopulated)
 			titles := make([]string, 0, len(suggestions))
 			for _, s := range suggestions {
 				titles = append(titles, s.Title)

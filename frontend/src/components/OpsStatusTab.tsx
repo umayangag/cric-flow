@@ -4,6 +4,7 @@ import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 import OpsMigrationsTable from './OpsMigrationsTable';
+import OpsTableStats from './OpsTableStats';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -12,6 +13,7 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
+import { TableStat } from '../types';
 
 // Local helpers for safely reading dynamic sections
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
@@ -247,6 +249,13 @@ const OpsStatusTab: React.FC = () => {
                     })()}
                   </strong>
                 </Typography>
+                {(() => {
+                  const dbObj = asObj(data?.db);
+                  const ts = Array.isArray((dbObj as { table_stats?: unknown }).table_stats)
+                    ? ((dbObj as { table_stats?: unknown }).table_stats as unknown as TableStat[])
+                    : undefined;
+                  return <OpsTableStats stats={ts} />;
+                })()}
                 <JsonCollapse data={data.db} summary="Show database details" />
               </SectionCard>
             </Grid>

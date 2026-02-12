@@ -25,7 +25,7 @@ func TestDynamicIgnores(t *testing.T) {
 
 	dirs := []string{"node_modules", "src", "dist"}
 	for _, d := range dirs {
-		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, d), 0755))
+		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, d), 0o755))
 	}
 
 	files := map[string]string{
@@ -35,7 +35,7 @@ func TestDynamicIgnores(t *testing.T) {
 		"dist/bundle.js":        "console.log('hi')",
 	}
 	for p, content := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, p), []byte(content), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, p), []byte(content), 0o600))
 	}
 
 	// 2. Scan (Expect defaults to work)
@@ -55,7 +55,7 @@ func TestDynamicIgnores(t *testing.T) {
 !node_modules/
 !.env
 `
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitIgnoreContent), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitIgnoreContent), 0o600))
 
 	// 4. Scan again
 	ctx2, err := indexer.ScanProject(tmpDir)
@@ -63,17 +63,17 @@ func TestDynamicIgnores(t *testing.T) {
 
 	// Verify overrides
 	assertFileExists(t, ctx2.Structure, "src/main.go")
-	
-    // These assertions are expected to FAIL currently because of hardcoded ignores
-    // But PASS after refactor.
-    // To confirm current behavior (that they fail to be unignored), I could invert assertion or just comment them out 
-    // but the plan says "Create reproduction/verification test".
-    // I will leave them as positive assertions of the DESIRED behavior. 
-    // When I run this test *before* refactor, it should FAIL (which confirms the issue/lack of flexibility).
-	assertFileExists(t, ctx2.Structure, "node_modules/pkg.json") 
-	assertFileExists(t, ctx2.Structure, ".env")                  
-	
-    assertFileNotExists(t, ctx2.Structure, "dist/bundle.js")     // Still ignored
+
+	// These assertions are expected to FAIL currently because of hardcoded ignores
+	// But PASS after refactor.
+	// To confirm current behavior (that they fail to be unignored), I could invert assertion or just comment them out
+	// but the plan says "Create reproduction/verification test".
+	// I will leave them as positive assertions of the DESIRED behavior.
+	// When I run this test *before* refactor, it should FAIL (which confirms the issue/lack of flexibility).
+	assertFileExists(t, ctx2.Structure, "node_modules/pkg.json")
+	assertFileExists(t, ctx2.Structure, ".env")
+
+	assertFileNotExists(t, ctx2.Structure, "dist/bundle.js") // Still ignored
 }
 
 func assertFileExists(t *testing.T, nodes []indexer.FileNode, path string) {

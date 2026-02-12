@@ -91,6 +91,7 @@ type nopRows struct{}
 func (nopRows) Next() bool          { return false }
 func (nopRows) Scan(_ ...any) error { return nil }
 func (nopRows) Close()              {}
+func (nopRows) Err() error          { return nil }
 
 type nopRow struct{}
 

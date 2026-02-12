@@ -74,6 +74,8 @@ func (r *RowsMock) Scan(dest ...any) error {
 
 func (r *RowsMock) Close() { r.Called() }
 
+func (r *RowsMock) Err() error { return nil }
+
 // RowMock implements db.Row (unused in these tests).
 type RowMock struct{ mock.Mock }
 

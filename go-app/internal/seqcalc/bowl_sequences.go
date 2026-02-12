@@ -48,7 +48,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 		       md.match_date, md.format_id
 		FROM ball_event be
 		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id = $1 AND be.is_legal = TRUE AND be.bowler_id IS NOT NULL
+		WHERE md.format_id = $1 AND be.is_legal = TRUE AND be.bowler_id IS NOT NULL AND md.match_date IS NOT NULL
 		ORDER BY be.match_id, be.innings, be.over, be.ball
 	`, formatID)
 	if err != nil {

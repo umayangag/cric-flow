@@ -67,6 +67,7 @@ type Rows interface {
 	Next() bool
 	Scan(dest ...any) error
 	Close()
+	Err() error
 }
 
 // defaultDB is the package-level DB used by helpers; set by Connect or tests.

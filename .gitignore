@@ -4,6 +4,7 @@ __pycache__
 venv
 src/team_selection/cache
 .junie_plans/
+.junie/plans
 .junie/context_index.json
 gemini
 
@@ -35,3 +36,6 @@ coverage.xml
 # OS-specific
 .DS_Store
 tools/
+
+pr_reviews.json
+**/test_output.txt

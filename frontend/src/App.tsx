@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import HealthTab from './components/HealthTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
 import OpsStatusTab from './components/OpsStatusTab';
@@ -13,14 +14,22 @@ import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Fade from '@mui/material/Fade';
 
-type TabKey = 'health' | 'evaluateDb' | 'ops';
-
 const App: React.FC = () => {
-  const [tab, setTab] = useState<TabKey>('health');
+  const location = useLocation();
+  const navigate = useNavigate();
   const baseUrl = useMemo(() => import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000', []);
 
-  const handleChange = (_: React.SyntheticEvent, newValue: TabKey) => {
-    setTab(newValue);
+  // Determine active tab from path
+  const currentTab = (() => {
+    if (location.pathname.startsWith('/ops')) return 'ops';
+    if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
+    return 'health';
+  })();
+
+  const handleChange = (_: React.SyntheticEvent, newValue: string) => {
+    if (newValue === 'health') navigate('/health');
+    else if (newValue === 'ops') navigate('/ops');
+    else if (newValue === 'evaluateDb') navigate('/evaluate');
   };
 
   return (
@@ -61,7 +70,7 @@ const App: React.FC = () => {
       <Container maxWidth="lg" sx={{ my: 3, flexGrow: 1, width: '100%' }}>
         {/* Tabs */}
         <Tabs
-          value={tab}
+          value={currentTab}
           onChange={handleChange}
           variant="scrollable"
           scrollButtons="auto"
@@ -76,9 +85,13 @@ const App: React.FC = () => {
         {/* Content Card */}
         <Fade in timeout={240}>
           <Paper elevation={2} sx={{ p: 2 }}>
-            {tab === 'health' && <HealthTab />}
-            {tab === 'ops' && <OpsStatusTab />}
-            {tab === 'evaluateDb' && <EvaluateDbTab />}
+            <Routes>
+              <Route path="/" element={<Navigate to="/health" replace />} />
+              <Route path="/health" element={<HealthTab />} />
+              <Route path="/ops" element={<OpsStatusTab />} />
+              <Route path="/evaluate" element={<EvaluateDbTab />} />
+              <Route path="*" element={<Navigate to="/health" replace />} />
+            </Routes>
           </Paper>
         </Fade>
       </Container>

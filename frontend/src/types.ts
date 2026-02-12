@@ -19,7 +19,7 @@ export type HealthResponse = {
 export type BacktestCandidate = {
   match_id: number;
   stable_id: string;
-  date: string; // RFC3339
+  match_date: string; // RFC3339
   venue: string;
   season: string;
   format: string;
@@ -55,7 +55,7 @@ export type BacktestEvaluateResponse = {
     team2: string;
     match_id: number;
   };
-  match: { match_id: number; date: string };
+  match: { match_id: number; match_date: string };
   players: BacktestEvaluatePlayerRow[];
   metrics: Record<string, number>; // e.g., { player_runs_mae: 3.66 }
   match_aggregates?: {
@@ -66,6 +66,12 @@ export type BacktestEvaluateResponse = {
 };
 
 // --- Ops Status (go-app API) DTO ---
+export type TableStat = {
+  table_name: string;
+  row_count: number;
+  last_record?: string;
+};
+
 export type OpsStatusDTO = {
   timestamp: string;
   services?: {
@@ -73,7 +79,18 @@ export type OpsStatusDTO = {
     api_readiness?: boolean;
     ml_health?: boolean;
   };
-  db?: unknown;
+  db?: {
+    connected?: boolean;
+    counts?: Record<string, number>;
+    migration?: {
+      status?: string;
+      current?: number;
+      expected?: number;
+    };
+    last_match_import_at?: string;
+    table_stats?: TableStat[];
+    [key: string]: unknown;
+  };
   precompute?: {
     formats?: Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
   };
@@ -92,7 +109,6 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
-  suggestions?: Array<{ reason: string; commands: string[] }>;
   [key: string]: unknown;
 };
 
@@ -113,3 +129,10 @@ export type Suggestion = {
   command: string;
   priority: string;
 };
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}

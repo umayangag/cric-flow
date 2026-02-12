@@ -48,3 +48,32 @@ export const EmptyStateCell = styled(TableCell)`
   text-align: center;
   color: #666;
 `;
+
+export const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px;
+  gap: 8px;
+  background: #222;
+  border-top: 1px solid #333;
+`;
+
+export const PaginationButton = styled.button`
+  background: #333;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:hover:not(:disabled) {
+    background: #444;
+  }
+`;
