@@ -41,7 +41,7 @@ Tips:
 - If your repo is private and token lacks access, `gh` will error; fix by `gh auth login --scopes repo`.
 
 ## 2) Implement fixes
-- For each entry in `pr_reviews.json`, open `path:line`, read `body` for context or a ```suggestion``` block, and apply the change.
+- For each entry in `pr_reviews.json`, open `path:line`, read `body` for context or a ```suggestion``` block, and apply the change. If the fix is suspicious or not needed confirm with the user.
 - Run linters/tests as usual (`make lint && make test`).
 
 ## 3) Resolve fixed threads (GraphQL mutation)
