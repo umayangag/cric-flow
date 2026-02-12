@@ -19,7 +19,7 @@ export type HealthResponse = {
 export type BacktestCandidate = {
   match_id: number;
   stable_id: string;
-  date: string; // RFC3339
+  match_date: string; // RFC3339
   venue: string;
   season: string;
   format: string;
@@ -55,7 +55,7 @@ export type BacktestEvaluateResponse = {
     team2: string;
     match_id: number;
   };
-  match: { match_id: number; date: string };
+  match: { match_id: number; match_date: string };
   players: BacktestEvaluatePlayerRow[];
   metrics: Record<string, number>; // e.g., { player_runs_mae: 3.66 }
   match_aggregates?: {

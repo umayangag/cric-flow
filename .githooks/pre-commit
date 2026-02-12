@@ -40,16 +40,34 @@ done < <(printf '%s' "$STAGED_FILES_NUL")
 
 echo "[pre-commit] optimized check on modified files..."
 
-# --- Go App ---
-GO_FILES_ARR=()
-for f in "${STAGED_FILES[@]:-}"; do
-  if [[ "$f" == go-app/*.go ]]; then
-    GO_FILES_ARR+=("$f")
-  fi
-done
+# Helper function to process file categories
+# Usage: process_category "Category Name" "^path/to/files/.*\.ext$" "commands to run"
+process_category() {
+    local category="$1"
+    local pattern="$2"
+    local files_arr=()
 
-if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
-    echo "[go-app] Processing ${#GO_FILES_ARR[@]} Go files..."
+    for f in "${STAGED_FILES[@]:-}"; do
+        if [[ "$f" =~ $pattern ]]; then
+            files_arr+=("$f")
+        fi
+    done
+
+    if [ ${#files_arr[@]} -gt 0 ]; then
+        echo "[$category] Processing ${#files_arr[@]} files..."
+        return 0 # Found files
+    fi
+    return 1 # No files found
+}
+
+# --- Go App ---
+if process_category "go-app" "^go-app/.*\.go$"; then
+    GO_FILES_ARR=()
+    for f in "${STAGED_FILES[@]:-}"; do
+      if [[ "$f" == go-app/* && "$f" == *.go ]]; then
+        GO_FILES_ARR+=("$f")
+      fi
+    done
 
     # Ensure tools are in PATH (match Makefile behavior)
     GOBIN="$(go env GOPATH)/bin"
@@ -93,14 +111,13 @@ if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
 fi
 
 # --- Python (ml-service) ---
-PY_FILES_ARR=()
-for f in "${STAGED_FILES[@]:-}"; do
-  if [[ "$f" == ml-service/*.py ]]; then
-    PY_FILES_ARR+=("$f")
-  fi
-done
-if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
-    echo "[ml-service] Processing ${#PY_FILES_ARR[@]} Python files..."
+if process_category "ml-service" "^ml-service/.*\.py$"; then
+    PY_FILES_ARR=()
+    for f in "${STAGED_FILES[@]:-}"; do
+      if [[ "$f" == ml-service/* && "$f" == *.py ]]; then
+        PY_FILES_ARR+=("$f")
+      fi
+    done
 
     VENV="ml-service/.venv"
     BIN="$VENV/bin"
@@ -125,16 +142,17 @@ if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
 fi
 
 # --- Frontend ---
-FE_FILES_ARR=()
-for f in "${STAGED_FILES[@]:-}"; do
-  case "$f" in
-    frontend/*.js|frontend/*.jsx|frontend/*.ts|frontend/*.tsx|frontend/*.json|frontend/*.css|frontend/*.scss|frontend/*.md)
-      FE_FILES_ARR+=("$f")
-      ;;
-  esac
-done
-if [ ${#FE_FILES_ARR[@]} -gt 0 ]; then
-    echo "[frontend] Processing ${#FE_FILES_ARR[@]} files..."
+if process_category "frontend" "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$"; then
+    FE_FILES_ARR=()
+    for f in "${STAGED_FILES[@]:-}"; do
+      if [[ "$f" == frontend/* ]]; then
+        case "$f" in
+          *.js|*.jsx|*.ts|*.tsx|*.json|*.css|*.scss|*.md)
+            FE_FILES_ARR+=("$f")
+            ;;
+        esac
+      fi
+    done
 
     if [ ! -d "frontend/node_modules" ]; then
         echo "[frontend] node_modules not found. Skipping (run 'make -C frontend install' to fix)."

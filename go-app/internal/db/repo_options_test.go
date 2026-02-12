@@ -43,14 +43,17 @@ func (m *DBMock) Begin(ctx context.Context) (Tx, error) {
 // RowsMock locally defined
 type RowsMock struct {
 	mock.Mock
-	vals []string
-	idx  int
-	err  error
+	vals    []string
+	idx     int
+	err     error
+	scanErr error
 }
 
 func NewRowsMock(vals []string) *RowsMock { return &RowsMock{vals: vals} }
 
 func (r *RowsMock) SetErr(err error) { r.err = err }
+
+func (r *RowsMock) SetScanErr(err error) { r.scanErr = err }
 
 func (r *RowsMock) Next() bool {
 	if r.idx < len(r.vals) {
@@ -61,6 +64,9 @@ func (r *RowsMock) Next() bool {
 }
 
 func (r *RowsMock) Scan(dest ...any) error {
+	if r.scanErr != nil {
+		return r.scanErr
+	}
 	if r.idx == 0 || r.idx > len(r.vals) {
 		return errors.New("scan called out of range")
 	}
@@ -131,6 +137,23 @@ func TestGetUniqueTeams(t *testing.T) {
 		assert.Equal(t, "rows error", err.Error())
 		mockDB.AssertExpectations(t)
 	})
+
+	t.Run("scan error", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		rows := NewRowsMock([]string{"Australia"})
+		rows.SetScanErr(errors.New("scan failed"))
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+			Return(rows, nil)
+
+		_, err := GetUniqueTeams(context.Background())
+		assert.Error(t, err)
+		assert.Equal(t, "scan failed", err.Error())
+		mockDB.AssertExpectations(t)
+	})
 }
 
 func TestGetUniqueFormats(t *testing.T) {
@@ -183,6 +206,23 @@ func TestGetUniqueFormats(t *testing.T) {
 		_, err := GetUniqueFormats(context.Background())
 		assert.Error(t, err)
 		assert.Equal(t, "rows error", err.Error())
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("scan error", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		rows := NewRowsMock([]string{"ODI"})
+		rows.SetScanErr(errors.New("scan failed"))
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, "SELECT code FROM match_format ORDER BY code").
+			Return(rows, nil)
+
+		_, err := GetUniqueFormats(context.Background())
+		assert.Error(t, err)
+		assert.Equal(t, "scan failed", err.Error())
 		mockDB.AssertExpectations(t)
 	})
 }

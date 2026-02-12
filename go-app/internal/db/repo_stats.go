@@ -88,27 +88,48 @@ func GetTableStats(ctx context.Context) ([]TableStat, error) {
 		return nil, err
 	}
 
-	// 3. Query MAX(date) for relevant tables
-	for i := range stats {
-		s := &stats[i]
-		if col, ok := tableDateCol[s.TableName]; ok {
-			// Construct query using identifier sanitization to avoid SQL injection via identifiers.
-			// Table and column names originate from the database catalog, but we still sanitize.
-			colIdent := pgx.Identifier{col}.Sanitize()
-			tblIdent := pgx.Identifier{s.TableName}.Sanitize()
-			q := fmt.Sprintf("SELECT MAX(%s)::text FROM %s", colIdent, tblIdent)
+	// 3. Query MAX(date) for relevant tables using a single UNION ALL query to optimize.
+	var unionQueries []string
+	for tName, col := range tableDateCol {
+		colIdent := pgx.Identifier{col}.Sanitize()
+		tblIdent := pgx.Identifier{tName}.Sanitize()
+		unionQueries = append(unionQueries, fmt.Sprintf("SELECT '%s' as tname, MAX(%s)::text as max_val FROM %s", tName, colIdent, tblIdent))
+	}
 
-			// We use QueryRow. Since we are in a loop, this is N queries.
-			// For ~20 tables this is negligible.
+	if len(unionQueries) > 0 {
+		fullQuery := ""
+		for i, q := range unionQueries {
+			if i > 0 {
+				fullQuery += " UNION ALL "
+			}
+			fullQuery += q
+		}
+
+		mRows, err := PoolAPI.Query(ctx, fullQuery)
+		if err != nil {
+			return nil, fmt.Errorf("query max dates: %w", err)
+		}
+		defer mRows.Close()
+
+		maxDates := make(map[string]string)
+		for mRows.Next() {
+			var tName string
 			var maxVal *string
-			// Scan into *string to handle NULLs
-			if err := PoolAPI.QueryRow(ctx, q).Scan(&maxVal); err == nil && maxVal != nil {
-				// Truncate to YYYY-MM-DD if longer (e.g. timestamp)
+			if err := mRows.Scan(&tName, &maxVal); err != nil {
+				return nil, err
+			}
+			if maxVal != nil {
 				val := *maxVal
 				if len(val) > 10 {
 					val = val[:10]
 				}
-				s.LastRecord = &val
+				maxDates[tName] = val
+			}
+		}
+
+		for i := range stats {
+			if val, ok := maxDates[stats[i].TableName]; ok {
+				stats[i].LastRecord = &val
 			}
 		}
 	}
