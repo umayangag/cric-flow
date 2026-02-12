@@ -12,7 +12,6 @@ import (
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherworker"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherworker"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker"
@@ -29,7 +28,7 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

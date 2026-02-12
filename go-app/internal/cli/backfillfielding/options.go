@@ -5,6 +5,9 @@ import (
 	"flag"
 	"os"
 	"strconv"
+	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // Options captures CLI options for backfill-fielding.
@@ -14,6 +17,7 @@ type Options struct {
 	MatchID     int64
 	Apply       bool
 	Concurrency int
+	Timeout     time.Duration
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -24,6 +28,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		matchStr    string
 		apply       bool
 		concurrency int
+		timeout     time.Duration
 	)
 
 	defConc := getenvInt("BACKFILL_CONCURRENCY", 4)
@@ -32,6 +37,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.StringVar(&matchStr, "match", "", "process a single match id (int)")
 	fs.BoolVar(&apply, "apply", false, "apply changes; if false, dry-run")
 	fs.IntVar(&concurrency, "concurrency", defConc, "number of concurrent workers (>=1)")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -57,7 +63,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, errors.New("concurrency must be >= 1")
 	}
 
-	return Options{All: all, MatchID: matchID, Apply: apply, Concurrency: concurrency}, nil
+	return Options{All: all, MatchID: matchID, Apply: apply, Concurrency: concurrency, Timeout: timeout}, nil
 }
 
 func getenvInt(key string, def int) int {

@@ -11,7 +11,6 @@ import (
 
 	etlcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/etlimporter"
 	etlcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	etlsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/etlimporter"
@@ -29,7 +28,7 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

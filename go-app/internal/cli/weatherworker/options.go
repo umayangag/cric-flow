@@ -6,6 +6,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // Options captures CLI options for weather-worker.
@@ -13,6 +16,7 @@ type Options struct {
 	Provider string
 	Apply    bool
 	MaxJobs  int // 0 => unlimited
+	Timeout  time.Duration
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -22,12 +26,14 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		provider string
 		apply    bool
 		maxStr   string
+		timeout  time.Duration
 	)
 	provider = getenv("WEATHER_PROVIDER", "dummy")
 
 	fs.StringVar(&provider, "provider", provider, "weather provider name (e.g., dummy)")
 	fs.BoolVar(&apply, "apply", false, "apply changes; if false, dry-run")
 	fs.StringVar(&maxStr, "max", "0", "max jobs to process (0 = unlimited)")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -40,7 +46,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if err != nil || maxJobs < 0 {
 		return Options{}, errors.New("invalid max")
 	}
-	return Options{Provider: provider, Apply: apply, MaxJobs: maxJobs}, nil
+	return Options{Provider: provider, Apply: apply, MaxJobs: maxJobs, Timeout: timeout}, nil
 }
 
 func getenv(k, def string) string {
