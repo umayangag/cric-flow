@@ -16,6 +16,8 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"os/signal"
+	"syscall"
 )
 
 func main() { os.Exit(run()) }
@@ -31,7 +33,10 @@ func run() int {
 
 	logger.SetupFromEnv()
 
-	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
+	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(baseCtx, opts.Timeout)
 	defer cancel()
 
 	// Ensure DB connection
@@ -52,10 +57,16 @@ func run() int {
 		slog.Warn("tracking start failed", slog.Any("err", tErr))
 	}
 
+	var runErr error
+	var meta map[string]string
+	defer func() {
+		tracker.CaptureExit(ctx, &runErr, meta)
+	}()
+
 	formatID, err := db.GetMatchFormatIDByCode(ctx, opts.Format)
 	if err != nil {
 		slog.Error("resolve format failed", slog.String("format", opts.Format), slog.Any("err", err))
-		tracker.TryFail(ctx, err.Error())
+		runErr = err
 		return 1
 	}
 
@@ -68,12 +79,11 @@ func run() int {
 
 	runner := pfcmd.NewRunner()
 	if opts.Replay {
-		if err := runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); err != nil {
-			slog.Error("replay failed", slog.Any("err", err))
-			tracker.TryFail(ctx, err.Error())
+		if runErr = runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); runErr != nil {
+			slog.Error("replay failed", slog.Any("err", runErr))
 			return 1
 		}
-		tracker.TryComplete(ctx, map[string]string{"type": "replay"})
+		meta = map[string]string{"type": "replay"}
 		return 0
 	}
 
@@ -88,15 +98,14 @@ func run() int {
 		asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
 		if parseErr != nil {
 			slog.Error("parse -as-of failed", slog.Any("err", parseErr))
-			tracker.TryFail(ctx, parseErr.Error())
+			runErr = parseErr
 			return 1
 		}
 	}
-	if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
-		slog.Error("as-of run failed", slog.Any("err", err))
-		tracker.TryFail(ctx, err.Error())
+	if runErr = runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); runErr != nil {
+		slog.Error("as-of run failed", slog.Any("err", runErr))
 		return 1
 	}
-	tracker.TryComplete(ctx, map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")})
+	meta = map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")}
 	return 0
 }

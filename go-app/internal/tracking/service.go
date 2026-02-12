@@ -3,7 +3,9 @@ package tracking
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"time"
 )
 
 type Tracker struct {
@@ -56,5 +58,43 @@ func (t *Tracker) TryFail(ctx context.Context, errStr string) {
 	}
 	if err := t.Fail(ctx, errStr); err != nil {
 		slog.Warn("failed to update tracking status to FAILED", "id", t.ID, "err", err)
+	}
+}
+
+// CaptureExit is intended to be used with defer to automatically update the
+// tracking status based on the error pointer and context state.
+func (t *Tracker) CaptureExit(ctx context.Context, errPtr *error, metadata any) {
+	if t == nil {
+		return
+	}
+
+	// Use a fresh background context for the update to ensure it completes
+	// even if the original context was cancelled.
+	updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if errPtr != nil && *errPtr != nil {
+		if errors.Is(*errPtr, context.Canceled) || errors.Is(*errPtr, context.DeadlineExceeded) {
+			if err := t.Cancel(updateCtx); err != nil {
+				slog.Warn("failed to update tracking status to CANCELLED", "id", t.ID, "err", err)
+			}
+			return
+		}
+		if err := t.Fail(updateCtx, (*errPtr).Error()); err != nil {
+			slog.Warn("failed to update tracking status to FAILED", "id", t.ID, "err", err)
+		}
+		return
+	}
+
+	// Check if context was cancelled even if no error was returned
+	if ctx.Err() != nil {
+		if err := t.Cancel(updateCtx); err != nil {
+			slog.Warn("failed to update tracking status to CANCELLED", "id", t.ID, "err", err)
+		}
+		return
+	}
+
+	if err := t.Complete(updateCtx, metadata); err != nil {
+		slog.Warn("failed to update tracking status to COMPLETED", "id", t.ID, "err", err)
 	}
 }
