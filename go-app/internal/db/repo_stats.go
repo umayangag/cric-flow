@@ -89,26 +89,35 @@ func GetTableStats(ctx context.Context) ([]TableStat, error) {
 	}
 
 	// 3. Query MAX(date) for relevant tables using a single UNION ALL query to optimize.
-	var unionQueries []string
+	type queryPart struct {
+		tName    string
+		colIdent string
+		tblIdent string
+	}
+	var unionParts []queryPart
 	for tName, col := range tableDateCol {
-		colIdent := pgx.Identifier{col}.Sanitize()
-		tblIdent := pgx.Identifier{tName}.Sanitize()
-		unionQueries = append(
-			unionQueries,
-			fmt.Sprintf("SELECT '%s' as tname, MAX(%s)::text as max_val FROM %s", tName, colIdent, tblIdent),
+		unionParts = append(
+			unionParts,
+			queryPart{
+				tName:    tName,
+				colIdent: pgx.Identifier{col}.Sanitize(),
+				tblIdent: pgx.Identifier{tName}.Sanitize(),
+			},
 		)
 	}
 
-	if len(unionQueries) > 0 {
+	if len(unionParts) > 0 {
 		fullQuery := ""
-		for i, q := range unionQueries {
+		var params []any
+		for i, p := range unionParts {
 			if i > 0 {
 				fullQuery += " UNION ALL "
 			}
-			fullQuery += q
+			fullQuery += fmt.Sprintf("SELECT $%d as tname, MAX(%s)::text as max_val FROM %s", len(params)+1, p.colIdent, p.tblIdent)
+			params = append(params, p.tName)
 		}
 
-		mRows, err := PoolAPI.Query(ctx, fullQuery)
+		mRows, err := PoolAPI.Query(ctx, fullQuery, params...)
 		if err != nil {
 			return nil, fmt.Errorf("query max dates: %w", err)
 		}

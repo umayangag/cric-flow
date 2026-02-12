@@ -92,9 +92,14 @@ func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration
 		return nil, 0, errors.New("db pool not initialized")
 	}
 
-	// Get total count
+	// Get total count (approximate for performance on large tables)
 	var total int
-	err := db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
+	err := db.Pool.QueryRow(ctx, `
+		SELECT reltuples::bigint 
+		FROM pg_class 
+		WHERE relname = 'data_migrations' 
+		  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+	`).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
