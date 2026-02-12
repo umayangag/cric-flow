@@ -78,70 +78,70 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		-- TEST laterals
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
 		-- ODI laterals
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) of ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) oc ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) ovo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) ovv ON TRUE
 		-- T20I laterals
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) iif ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) iic ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) iivo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) iivv ON TRUE
 		-- T20 laterals
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) t20f ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) t20c ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) t20vo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date ORDER BY as_of_date DESC LIMIT 1
+		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
 		) t20vv ON TRUE`
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
 	if IsSeqEnabled(ctx) {
@@ -211,28 +211,28 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_form
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		-- Latest overall bowling consistency as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_consistency
 		  FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		-- Latest bowling form vs opposition as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_opposition
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		-- Latest bowling form at venue as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_venue
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE`
 
@@ -317,26 +317,26 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_form
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_consistency
 		  FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		-- Latest bowling form vs opposition and at venue
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_opposition
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_venue
 		  FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id WHERE md.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
@@ -417,22 +417,22 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		LEFT JOIN season s ON s.id = md.season_id
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_opposition, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.date
+		  WHERE player_id=b.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE 
 		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id 

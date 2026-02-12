@@ -23,7 +23,7 @@ func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
 			{
 				MatchID:    111,
 				StableID:   sql.NullString{Valid: true, String: "2024-10-30-IND-AUS"},
-				Date:       time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC),
+				MatchDate:  time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC),
 				Venue:      sql.NullString{Valid: true, String: "Wankhede Stadium"},
 				Season:     sql.NullString{Valid: true, String: "2024"},
 				FormatCode: sql.NullString{Valid: true, String: "T20"},

@@ -17,7 +17,7 @@ type MatchInfoUpdate struct {
 	Inning         *int
 	Result         *int
 	OppositionID   *int64
-	Date           *string // YYYY-MM-DD
+	MatchDate      *string // YYYY-MM-DD
 	BattingSession *string
 	BowlingSession *string
 	VenueID        *int64
@@ -44,7 +44,7 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		inning = COALESCE($8, inning),
 		result = COALESCE($9, result),
 		opposition_id = COALESCE($10, opposition_id),
-		date = COALESCE($11, date),
+		match_date = COALESCE($11, match_date),
 		batting_session = COALESCE($12, batting_session),
 		bowling_session = COALESCE($13, bowling_session),
 		venue_id = COALESCE($14, venue_id),
@@ -63,7 +63,7 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		u.Inning,
 		u.Result,
 		u.OppositionID,
-		u.Date,
+		u.MatchDate,
 		u.BattingSession,
 		u.BowlingSession,
 		u.VenueID,

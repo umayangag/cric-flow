@@ -35,7 +35,7 @@ func (Runner) RunReplay(
 	// Optional history window from config is provided by caller via windowN.
 	processed := 0
 	for _, m := range matches {
-		asOf := m.Date
+		asOf := m.MatchDate
 		players, err := db.ListPlayersInMatch(ctx, m.MatchID)
 		if err != nil {
 			return fmt.Errorf("list players in match %d: %w", m.MatchID, err)
@@ -53,11 +53,11 @@ func (Runner) RunReplay(
 
 			batInn := make([]features.Innings, 0, len(batHist))
 			for _, iv := range batHist {
-				batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
+				batInn = append(batInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 			}
 			bowlInn := make([]features.Innings, 0, len(bowlHist))
 			for _, iv := range bowlHist {
-				bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+				bowlInn = append(bowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 			}
 			batInn = features.SortAndClip(batInn, asOf)
 			bowlInn = features.SortAndClip(bowlInn, asOf)
@@ -91,11 +91,11 @@ func (Runner) RunReplay(
 				oppBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, &oppID, nil)
 				oppBatInn := make([]features.Innings, 0, len(oppBat))
 				for _, iv := range oppBat {
-					oppBatInn = append(oppBatInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					oppBatInn = append(oppBatInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 				}
 				oppBowlInn := make([]features.Innings, 0, len(oppBowl))
 				for _, iv := range oppBowl {
-					oppBowlInn = append(oppBowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					oppBowlInn = append(oppBowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 				}
 				oppBatInn = features.SortAndClip(oppBatInn, asOf)
 				oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
@@ -122,11 +122,11 @@ func (Runner) RunReplay(
 				venBowl, _ := db.ListBowlingBefore(ctx, pid, asOf, formatID, nil, &venueID)
 				venBatInn := make([]features.Innings, 0, len(venBat))
 				for _, iv := range venBat {
-					venBatInn = append(venBatInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					venBatInn = append(venBatInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 				}
 				venBowlInn := make([]features.Innings, 0, len(venBowl))
 				for _, iv := range venBowl {
-					venBowlInn = append(venBowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+					venBowlInn = append(venBowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 				}
 				venBatInn = features.SortAndClip(venBatInn, asOf)
 				venBowlInn = features.SortAndClip(venBowlInn, asOf)
@@ -194,11 +194,11 @@ func (Runner) RunPointInTime(
 		}
 		batInn := make([]features.Innings, 0, len(batHist))
 		for _, iv := range batHist {
-			batInn = append(batInn, features.Innings{Date: iv.Date, Value: iv.Value})
+			batInn = append(batInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 		}
 		bowlInn := make([]features.Innings, 0, len(bowlHist))
 		for _, iv := range bowlHist {
-			bowlInn = append(bowlInn, features.Innings{Date: iv.Date, Value: iv.Value})
+			bowlInn = append(bowlInn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 		}
 		batInn = features.SortAndClip(batInn, asOf)
 		bowlInn = features.SortAndClip(bowlInn, asOf)

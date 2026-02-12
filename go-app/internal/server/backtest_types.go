@@ -10,7 +10,7 @@ type backtestSelectResponse struct {
 type backtestCandidate struct {
 	MatchID        int64  `json:"match_id"`
 	StableID       string `json:"stable_id"`
-	Date           string `json:"date"`
+	MatchDate      string `json:"match_date"`
 	Venue          string `json:"venue"`
 	Season         string `json:"season"`
 	Format         string `json:"format"`
@@ -58,7 +58,7 @@ type backtestEvaluateResponse struct {
 	Filters map[string]any `json:"filters"`
 	Match   struct {
 		MatchID int64  `json:"match_id"`
-		Date    string `json:"date"`
+		MatchDate    string `json:"match_date"`
 	} `json:"match"`
 	MatchAggregates struct {
 		Predicted map[string]any     `json:"predicted"`
@@ -72,7 +72,7 @@ type backtestEvaluateResponse struct {
 // Accuracy trend DTOs
 type accuracyTrendItem struct {
 	MatchID int64              `json:"match_id"`
-	Date    string             `json:"date"`
+	MatchDate    string             `json:"match_date"`
 	Format  string             `json:"format"`
 	Team1   string             `json:"team1"`
 	Team2   string             `json:"team2"`

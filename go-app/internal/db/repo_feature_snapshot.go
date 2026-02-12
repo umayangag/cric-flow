@@ -10,7 +10,7 @@ import (
 type MatchLite struct {
 	ID           int64
 	MatchID      int64
-	Date         time.Time
+	MatchDate    time.Time
 	FormatID     int64
 	OppositionID int64
 	VenueID      int64
@@ -28,12 +28,12 @@ func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff ti
 		  SELECT b.player_id
 		  FROM batting_data b
 		  JOIN match_details md ON md.match_id = b.match_id
-		  WHERE md.format_id = $1 AND md.date < $2
+		  WHERE md.format_id = $1 AND md.match_date < $2
 		  UNION
 		  SELECT w.player_id
 		  FROM bowling_data w
 		  JOIN match_details md ON md.match_id = w.match_id
-		  WHERE md.format_id = $1 AND md.date < $2
+		  WHERE md.format_id = $1 AND md.match_date < $2
 		) t
 		ORDER BY player_id ASC`, formatID, cutoff)
 	if err != nil {
@@ -56,23 +56,23 @@ func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT id, match_id, date, format_id, COALESCE(opposition_id,0), COALESCE(venue_id,0)
+	q := `SELECT id, match_id, match_date, format_id, COALESCE(opposition_id,0), COALESCE(venue_id,0)
 		FROM match_details
 		WHERE format_id = $1`
 	args := []any{formatID}
 	if from != nil {
-		q += ` AND date >= $2`
+		q += ` AND match_date >= $2`
 		args = append(args, *from)
 	}
 	if to != nil {
 		if len(args) == 1 {
-			q += ` AND date <= $2`
+			q += ` AND match_date <= $2`
 		} else {
-			q += ` AND date <= $3`
+			q += ` AND match_date <= $3`
 		}
 		args = append(args, *to)
 	}
-	q += ` ORDER BY date ASC, id ASC`
+	q += ` ORDER BY match_date ASC, id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time
 	var res []MatchLite
 	for rows.Next() {
 		var m MatchLite
-		if err := rows.Scan(&m.ID, &m.MatchID, &m.Date, &m.FormatID, &m.OppositionID, &m.VenueID); err != nil {
+		if err := rows.Scan(&m.ID, &m.MatchID, &m.MatchDate, &m.FormatID, &m.OppositionID, &m.VenueID); err != nil {
 			return nil, err
 		}
 		res = append(res, m)
@@ -116,8 +116,8 @@ func ListPlayersInMatch(ctx context.Context, matchID int64) ([]int64, error) {
 
 // InnVal is a minimal row for historical performance values with date.
 type InnVal struct {
-	Date  time.Time
-	Value float64
+	MatchDate time.Time
+	Value     float64
 }
 
 // ListBattingBefore returns batting values (runs as Value) for a player strictly before cutoff date, filtered by optional format/opposition/venue.
@@ -131,10 +131,10 @@ func ListBattingBefore(
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT md.date, COALESCE(b.runs,0)::float8
+	q := `SELECT md.match_date, COALESCE(b.runs,0)::float8
 		FROM batting_data b
 		JOIN match_details md ON md.match_id = b.match_id
-		WHERE b.player_id = $1 AND md.date < $2 AND md.format_id = $3`
+		WHERE b.player_id = $1 AND md.match_date < $2 AND md.format_id = $3`
 	args := []any{playerID, cutoff, formatID}
 	if oppID != nil {
 		q += ` AND md.opposition_id = $4`
@@ -148,7 +148,7 @@ func ListBattingBefore(
 		}
 		args = append(args, *venueID)
 	}
-	q += ` ORDER BY md.date ASC, b.id ASC`
+	q += ` ORDER BY md.match_date ASC, b.id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func ListBattingBefore(
 	var res []InnVal
 	for rows.Next() {
 		var iv InnVal
-		if err := rows.Scan(&iv.Date, &iv.Value); err != nil {
+		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
 			return nil, err
 		}
 		res = append(res, iv)
@@ -176,10 +176,10 @@ func ListBowlingBefore(
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT md.date, COALESCE(w.wickets,0)::float8
+	q := `SELECT md.match_date, COALESCE(w.wickets,0)::float8
 		FROM bowling_data w
 		JOIN match_details md ON md.match_id = w.match_id
-		WHERE w.player_id = $1 AND md.date < $2 AND md.format_id = $3`
+		WHERE w.player_id = $1 AND md.match_date < $2 AND md.format_id = $3`
 	args := []any{playerID, cutoff, formatID}
 	if oppID != nil {
 		q += ` AND md.opposition_id = $4`
@@ -193,7 +193,7 @@ func ListBowlingBefore(
 		}
 		args = append(args, *venueID)
 	}
-	q += ` ORDER BY md.date ASC, w.id ASC`
+	q += ` ORDER BY md.match_date ASC, w.id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -202,7 +202,7 @@ func ListBowlingBefore(
 	var res []InnVal
 	for rows.Next() {
 		var iv InnVal
-		if err := rows.Scan(&iv.Date, &iv.Value); err != nil {
+		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
 			return nil, err
 		}
 		res = append(res, iv)
