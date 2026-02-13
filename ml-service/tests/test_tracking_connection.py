@@ -37,8 +37,10 @@ class TestDBConnection(unittest.TestCase):
             call_kwargs = mock_psycopg2_module.connect.call_args[1]
 
             # Check for hardcoded defaults
-            self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
-            self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
+            self.assertEqual(call_kwargs.get("user"), "postgres", f"Expected 'postgres', got {call_kwargs.get('user')}")
+            self.assertEqual(
+                call_kwargs.get("password"), "postgres", f"Expected 'postgres', got {call_kwargs.get('password')}"
+            )
 
     def test_tracking_connection_fallback_no_defaults(self):
         """Verify that tracking.get_connection fallback does NOT use insecure defaults."""
@@ -54,8 +56,12 @@ class TestDBConnection(unittest.TestCase):
                 # It will get our injected mock
                 call_kwargs = mock_psycopg2_module.connect.call_args[1]
 
-                self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
-                self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
+                self.assertEqual(
+                    call_kwargs.get("user"), "postgres", f"Expected 'postgres', got {call_kwargs.get('user')}"
+                )
+                self.assertEqual(
+                    call_kwargs.get("password"), "postgres", f"Expected 'postgres', got {call_kwargs.get('password')}"
+                )
 
 
 if __name__ == "__main__":

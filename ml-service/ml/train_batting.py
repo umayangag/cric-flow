@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import config as svc_config  # loaded from ml-service/config.json if present
 import joblib

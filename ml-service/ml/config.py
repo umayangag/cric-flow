@@ -2,7 +2,6 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-
 # Simple JSON config loader for ml-service
 # Precedence elsewhere should be: flag/arg > env > config.json > built-in defaults
 
