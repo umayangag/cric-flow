@@ -3,27 +3,11 @@ import logging
 import os
 from contextlib import contextmanager
 
-# Try importing db, handle failure gracefully if running outside context
-try:
-    import db
-except ImportError:
-    db = None
+from db import get_db_connection
 
 
 def get_connection():
-    if db and hasattr(db, "get_db_connection"):
-        return db.get_db_connection()
-
-    # Fallback/Direct connection
-    import psycopg2
-
-    return psycopg2.connect(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=os.environ.get("POSTGRES_PORT", "5432"),
-        dbname=os.environ.get("POSTGRES_DB", "cricket_data"),
-        user=os.environ.get("POSTGRES_USER"),
-        password=os.environ.get("POSTGRES_PASSWORD"),
-    )
+    return get_db_connection()
 
 
 class Tracker:
