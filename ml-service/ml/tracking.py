@@ -4,11 +4,10 @@ from contextlib import contextmanager
 
 from dotenv import load_dotenv
 
+from ml.db import get_db_connection
+
 # Load environment variables from .env file if it exists
 load_dotenv()
-
-
-from ml.db import get_db_connection
 
 
 def get_connection():
