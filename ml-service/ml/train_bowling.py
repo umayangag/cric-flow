@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from typing import Any, Dict, Optional
 
 import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
@@ -40,6 +41,9 @@ TARGET_COLS = [
     "wickets",  # wickets_taken
     # econ may be absent; derive if missing
 ]
+
+
+from typing import Any, Dict, Optional
 
 
 def load_dataset(path: str):
@@ -94,8 +98,8 @@ def train_and_save(
     Y,
     out_dir: str,
     rf_params: dict,
-    suffix: str | None = None,
-    metadata: dict | None = None,
+    suffix: Optional[str] = None,
+    metadata: Optional[dict] = None,
 ):
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
