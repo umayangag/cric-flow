@@ -58,7 +58,6 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		opts := &cricsheet.Options{FailFast: false}
 		count, err := cricsheet.ImportDir(ctx, tmpDir, opts)
 		
-		// In current implementation, this will FAIL and return error because it uses errgroup.WithContext
 		require.NoError(t, err, "Should not return error when FailFast is disabled")
 		require.Equal(t, 0, count, "Count should be 0 as both failed, but process should have continued")
 	})

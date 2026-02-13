@@ -1,33 +1,63 @@
-package formats
+package formats_test
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
 func TestGetHierarchy(t *testing.T) {
-	hierarchy := GetHierarchy()
-	if len(hierarchy) != 3 {
-		t.Fatalf("expected 3 root nodes, got %d", len(hierarchy))
+	hierarchy := formats.GetHierarchy()
+
+	tests := []struct {
+		name          string
+		index         int
+		expectedCode  string
+		expectedName  string
+		expectedChild *formats.FormatHierarchyNode
+	}{
+		{
+			name:         "MDM Node",
+			index:        0,
+			expectedCode: "MDM",
+			expectedName: "Multi-Day Match",
+			expectedChild: &formats.FormatHierarchyNode{
+				Code: formats.CodeTest,
+				Name: "Test Matches",
+			},
+		},
+		{
+			name:         "ODM Node",
+			index:        1,
+			expectedCode: "ODM",
+			expectedName: "One Day Match",
+			expectedChild: &formats.FormatHierarchyNode{
+				Code: formats.CodeODI,
+				Name: "One Day International",
+			},
+		},
+		{
+			name:         "T20 Bucket Node",
+			index:        2,
+			expectedCode: formats.CodeT20,
+			expectedName: "T20 (Bucket)",
+		},
 	}
 
-	// Check MDM -> TEST
-	if hierarchy[0].Code != "MDM" {
-		t.Errorf("expected hierarchy[0] to be MDM, got %s", hierarchy[0].Code)
-	}
-	if len(hierarchy[0].Children) != 1 || hierarchy[0].Children[0].Code != CodeTest {
-		t.Errorf("expected MDM to have child TEST, got %v", hierarchy[0].Children)
-	}
+	require.Equal(t, 3, len(hierarchy), "Hierarchy should have 3 root nodes")
 
-	// Check ODM -> ODI
-	if hierarchy[1].Code != "ODM" {
-		t.Errorf("expected hierarchy[1] to be ODM, got %s", hierarchy[1].Code)
-	}
-	if len(hierarchy[1].Children) != 1 || hierarchy[1].Children[0].Code != CodeODI {
-		t.Errorf("expected ODM to have child ODI, got %v", hierarchy[1].Children)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := hierarchy[tt.index]
+			require.Equal(t, tt.expectedCode, node.Code)
+			require.Equal(t, tt.expectedName, node.Name)
 
-	// Check T20 Bucket
-	if hierarchy[2].Name != "T20 (Bucket)" {
-		t.Errorf("expected hierarchy[2] to be T20 (Bucket), got %s", hierarchy[2].Name)
+			if tt.expectedChild != nil {
+				require.NotEmpty(t, node.Children)
+				require.Equal(t, tt.expectedChild.Code, node.Children[0].Code)
+				require.Equal(t, tt.expectedChild.Name, node.Children[0].Name)
+			}
+		})
 	}
 }
