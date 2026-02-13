@@ -3,10 +3,19 @@ import logging
 import os
 from contextlib import contextmanager
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
+
 
 def get_connection():
     try:
-        from ml.db import get_db_connection
+        try:
+            from ml.db import get_db_connection
+        except ImportError:
+            # If we're running from within ml/ directory, 'ml' might not be in path
+            from db import get_db_connection
 
         return get_db_connection()
     except ImportError:
