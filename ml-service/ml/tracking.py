@@ -3,15 +3,15 @@ import logging
 import os
 from contextlib import contextmanager
 
-from ml.db import get_db_connection
-
 
 def get_connection():
     try:
         from ml.db import get_db_connection
+
         return get_db_connection()
     except ImportError:
         import psycopg2
+
         return psycopg2.connect(
             host=os.environ.get("POSTGRES_HOST", "localhost"),
             port=os.environ.get("POSTGRES_PORT", "5432"),

@@ -39,9 +39,7 @@ class TestDBConnection(unittest.TestCase):
 
             # Check for hardcoded defaults
             self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
-            self.assertIsNone(
-                call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}"
-            )
+            self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
 
     def test_tracking_connection_fallback_no_defaults(self):
         """Verify that tracking.get_connection fallback does NOT use insecure defaults."""
@@ -49,7 +47,7 @@ class TestDBConnection(unittest.TestCase):
             self.fail("Could not import ml.tracking")
 
         # Mock get_db_connection to raise ImportError when called to simulate missing module
-        with patch("ml.tracking.get_db_connection", side_effect=ImportError):
+        with patch("ml.db.get_db_connection", side_effect=ImportError):
             with patch.dict(os.environ, {}, clear=True):
                 tracking.get_connection()
 
@@ -57,12 +55,8 @@ class TestDBConnection(unittest.TestCase):
                 # It will get our injected mock
                 call_kwargs = mock_psycopg2_module.connect.call_args[1]
 
-                self.assertIsNone(
-                    call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}"
-                )
-                self.assertIsNone(
-                    call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}"
-                )
+                self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
+                self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
 
 
 if __name__ == "__main__":
