@@ -11,12 +11,14 @@ on:
       - 'context-provider/**'
       - '.github/workflows/context-provider-tests.yml'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'context-provider/**'
       - '.github/workflows/context-provider-tests.yml'
 
 jobs:
   test:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

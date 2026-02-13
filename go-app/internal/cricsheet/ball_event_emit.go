@@ -13,6 +13,7 @@ import (
 // EmitBallEvents emits ball_event rows
 // It computes is_legal, maintains a legal-only ball_seq per innings, and assigns phase via phase.PhaseFor.
 func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) error {
+	cache := db.GetGlobalCache()
 	for i, inng := range m.Innings {
 		inningNo := i + 1
 		// Pre-compute total legal deliveries in innings for phase clamping
@@ -43,20 +44,20 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 				if legal {
 					ballSeq++
 				}
-				// Resolve IDs (best-effort; keep nils on error)
+				// Resolve IDs (best-effort; use cache; keep nils on error)
 				var strikerID, nonStrikerID, bowlerID *int64
 				if s := strings.TrimSpace(d.Batter); s != "" {
-					if id, err := cricDB.GetOrCreateByName(ctx, s); err == nil {
+					if id, err := cache.GetPlayerID(ctx, s); err == nil {
 						strikerID = &id
 					}
 				}
 				if s := strings.TrimSpace(d.NonStriker); s != "" {
-					if id, err := cricDB.GetOrCreateByName(ctx, s); err == nil {
+					if id, err := cache.GetPlayerID(ctx, s); err == nil {
 						nonStrikerID = &id
 					}
 				}
 				if s := strings.TrimSpace(d.Bowler); s != "" {
-					if id, err := cricDB.GetOrCreateByName(ctx, s); err == nil {
+					if id, err := cache.GetPlayerID(ctx, s); err == nil {
 						bowlerID = &id
 					} else {
 						slog.Error("get/create bowler failed", slog.String("name", s), slog.Any("err", err))
@@ -90,7 +91,7 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 					}
 					name := strings.TrimSpace((*d.Wickets)[0].PlayerOut)
 					if name != "" {
-						if id, err := cricDB.GetOrCreateByName(ctx, name); err == nil {
+						if id, err := cache.GetPlayerID(ctx, name); err == nil {
 							playerOutID = &id
 						} else {
 							slog.Error("get/create player failed", slog.String("name", name), slog.Any("err", err))

@@ -3,18 +3,14 @@ package tracking
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 func CreateMigration(ctx context.Context, command string, args json.RawMessage) (int, error) {
-	if db.Pool == nil {
-		return 0, errors.New("db pool not initialized")
-	}
 	var id int
-	err := db.Pool.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		INSERT INTO data_migrations (command, args, status, started_at)
 		VALUES ($1, $2, $3, NOW())
 		RETURNING id
@@ -29,29 +25,21 @@ func UpdateMigrationStatus(
 	metadata json.RawMessage,
 	errorMsg string,
 ) error {
-	if db.Pool == nil {
-		return errors.New("db pool not initialized")
-	}
-
 	// Prepare optional error message
 	var errMsgPtr *string
 	if errorMsg != "" {
 		errMsgPtr = &errorMsg
 	}
 
-	_, err := db.Pool.Exec(ctx, `
+	return db.Exec(ctx, `
 		UPDATE data_migrations
 		SET status = $2, completed_at = NOW(), metadata = $3, error_message = $4
 		WHERE id = $1
 	`, id, status, metadata, errMsgPtr)
-	return err
 }
 
 func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
-	if db.Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	rows, err := db.Pool.Query(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
 		FROM data_migrations
 		ORDER BY started_at DESC
@@ -88,13 +76,9 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 }
 
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
-	if db.Pool == nil {
-		return nil, 0, errors.New("db pool not initialized")
-	}
-
 	// Get total count (approximate for performance on large tables)
 	var total int
-	err := db.Pool.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT reltuples::bigint 
 		FROM pg_class 
 		WHERE relname = 'data_migrations' 
@@ -104,7 +88,7 @@ func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration
 		return nil, 0, err
 	}
 
-	rows, err := db.Pool.Query(ctx, `
+	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
 		FROM data_migrations
 		ORDER BY started_at DESC

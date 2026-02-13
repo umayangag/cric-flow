@@ -12,11 +12,12 @@ import (
 // BowlingUnifiedRows returns CSV-shaped rows for the unified bowling export.
 // Mirrors legacy exportBowlingUnified: base bowling row + per-format as-of features and fielding.
 func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
+	cache := db.GetGlobalCache()
 	// Resolve known format ids similar to legacy
 	ids := make([]any, 0, 4)
 	codes := []string{"TEST", "ODI", "T20I", "T20"}
 	for _, code := range codes {
-		id, err := db.GetMatchFormatIDByCode(ctx, code)
+		id, err := cache.GetFormatID(ctx, code)
 		if err != nil || id <= 0 {
 			ids = append(ids, int64(0))
 			continue
@@ -266,10 +267,11 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 // BowlingInferenceRows returns CSV-shaped rows for the bowling inference export filtered by format.
 // Mirrors legacy exportBowlingFormatInference headers and order.
 func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error) {
-	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
 	if err != nil {
 		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
 	}
+	formatID := id
 	q := `SELECT  
 		COALESCE(tc.bowling_consistency, 0) AS bowling_consistency,
 		COALESCE(tf.bowling_form, 0) AS bowling_form,
@@ -385,10 +387,11 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 // BowlingFormatRows returns CSV-shaped rows for the per-format training bowling export.
 // Mirrors legacy exportBowlingFormat headers and order (including a trailing format_code column).
 func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
-	formatID, err := db.GetMatchFormatIDByCode(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
 	if err != nil {
 		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
 	}
+	formatID := id
 	q := `SELECT  
 		b.runs,
 		b.balls,

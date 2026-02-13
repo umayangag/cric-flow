@@ -11,15 +11,24 @@ import (
 // nolint:revive // name stutter is intentional to match package domain terms
 type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
-	EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error
+	EnsureMatchWithFormat(
+		ctx context.Context,
+		matchID int64,
+		formatID int64,
+		matchDate string,
+		originalMatchType string,
+	) error
 	GetOrCreateVenue(ctx context.Context, name string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	GetOrCreateOpposition(ctx context.Context, name string) (int64, error)
 	UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error
 	GetOrCreateByName(ctx context.Context, name string) (int64, error)
 	UpsertBatting(ctx context.Context, b *db.Batting) error
+	UpsertBattingBatch(ctx context.Context, rows []db.Batting) error
 	UpsertBowling(ctx context.Context, b *db.Bowling) error
+	UpsertBowlingBatch(ctx context.Context, rows []db.Bowling) error
 	UpsertFielding(ctx context.Context, f *db.Fielding) error
+	UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error
 	Exec(ctx context.Context, sql string, args ...any) error
 }
 
@@ -30,10 +39,11 @@ type WeatherClient interface {
 
 // Default adapters
 var (
-	cricDB             CricsheetDB   = realDB{}
-	weatherClient      WeatherClient = realWeather{}
-	recomputeFn                      = db.RecomputeFieldingAggregates
-	insertBallEventsFn               = db.InsertBallEvents
+	cricDB                      CricsheetDB   = realDB{}
+	weatherClient               WeatherClient = realWeather{}
+	recomputeFn                               = db.RecomputeFieldingAggregates
+	insertBallEventsFn                        = db.InsertBallEvents
+	insertFieldingEventsBatchFn               = db.InsertFieldingEventsBatch
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.
@@ -41,6 +51,12 @@ func SetCricsheetDB(d CricsheetDB) { cricDB = d }
 
 // SetWeatherClient allows tests to inject a fake weather client.
 func SetWeatherClient(w WeatherClient) { weatherClient = w }
+
+// GetCricsheetDB returns the current DB implementation (for tests).
+func GetCricsheetDB() CricsheetDB { return cricDB }
+
+// GetWeatherClient returns the current weather client (for tests).
+func GetWeatherClient() WeatherClient { return weatherClient }
 
 // SetRecomputeFn allows tests to stub out the recompute function.
 func SetRecomputeFn(f func(ctx context.Context, matchID int64) error) { recomputeFn = f }
@@ -53,8 +69,14 @@ func (realDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, e
 	return db.GetMatchFormatIDByCode(ctx, code)
 }
 
-func (realDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error {
-	return db.EnsureMatchWithFormat(ctx, matchID, formatID)
+func (realDB) EnsureMatchWithFormat(
+	ctx context.Context,
+	matchID int64,
+	formatID int64,
+	matchDate string,
+	originalMatchType string,
+) error {
+	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate, originalMatchType)
 }
 
 func (realDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {
@@ -81,12 +103,24 @@ func (realDB) UpsertBatting(ctx context.Context, b *db.Batting) error {
 	return db.UpsertBatting(ctx, b)
 }
 
+func (realDB) UpsertBattingBatch(ctx context.Context, rows []db.Batting) error {
+	return db.UpsertBattingBatch(ctx, rows)
+}
+
 func (realDB) UpsertBowling(ctx context.Context, b *db.Bowling) error {
 	return db.UpsertBowling(ctx, b)
 }
 
+func (realDB) UpsertBowlingBatch(ctx context.Context, rows []db.Bowling) error {
+	return db.UpsertBowlingBatch(ctx, rows)
+}
+
 func (realDB) UpsertFielding(ctx context.Context, f *db.Fielding) error {
 	return db.UpsertFielding(ctx, f)
+}
+
+func (realDB) UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error {
+	return db.UpsertFieldingBatch(ctx, rows)
 }
 
 func (realDB) Exec(ctx context.Context, sql string, args ...any) error {

@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
+	tpcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
@@ -28,7 +31,11 @@ func run() int {
 		return 2
 	}
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+
+	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
 	defer cancel()
 
 	// DB connect for tracking
@@ -41,15 +48,23 @@ func run() int {
 		}
 	}
 
+	var runErr error
+	var resp mlclient.PredictResponse
+	defer func() {
+		var meta map[string]int
+		if len(resp.Players) > 0 {
+			meta = map[string]int{"players_count": len(resp.Players)}
+		}
+		tracker.CaptureExit(ctx, &runErr, meta)
+	}()
+
 	service := svc.NewService(nil)
-	runner := cmd.NewRunner(service)
-	resp, runErr := runner.Run(ctx, opts)
+	runner := tpcmd.NewRunner(service)
+	resp, runErr = runner.Run(ctx, opts)
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
-		tracker.TryFail(ctx, runErr.Error())
 		return 1
 	}
-	tracker.TryComplete(ctx, map[string]int{"players_count": len(resp.Players)})
 	// Render simple output (players, one per line)
 	for i, p := range resp.Players {
 		fmt.Printf("%d. %s\n", i+1, p)

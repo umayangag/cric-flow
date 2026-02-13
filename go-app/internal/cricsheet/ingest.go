@@ -6,8 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -18,9 +22,10 @@ type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
 	WeatherEnqueue       bool
+	FailFast             bool
 }
 
-// ImportDir reads all .json files in dir and imports them into the DB.
+// ImportDir reads all .json files in dir and imports them into the DB concurrently.
 func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	if opts == nil {
 		opts = &Options{}
@@ -40,20 +45,41 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 		}
 	}
 	sort.Strings(files)
-	count := 0
-	for _, f := range files {
-		if err := ImportMatchFile(ctx, f, opts); err != nil {
-			slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
-			continue
-		}
-		count++
-		slog.Info("imported file", slog.String("file", filepath.Base(f)))
+
+	var count int64
+	var g *errgroup.Group
+	if opts.FailFast {
+		g, ctx = errgroup.WithContext(ctx)
+	} else {
+		g = new(errgroup.Group)
 	}
-	return count, nil
+	g.SetLimit(runtime.NumCPU())
+
+	for _, f := range files {
+		f := f // capture
+		g.Go(func() error {
+			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
+			if err := ImportMatchFile(ctx, f, opts); err != nil {
+				if opts.FailFast {
+					return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				}
+				slog.Error("import match file failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
+				return nil
+			}
+			atomic.AddInt64(&count, 1)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return int(count), err
+	}
+	return int(count), nil
 }
 
 // ImportMatchFile parses a single Cricsheet JSON file and upserts stats into DB.
 func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
+	cache := db.GetGlobalCache()
 	fh, err := os.Open(path)
 	if err != nil {
 		return err
@@ -68,10 +94,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		return fmt.Errorf("parse: %w", err)
 	}
 	info := m.Info
-	dateISO := "1970-01-01"
-	if len(info.Dates) > 0 {
-		dateISO = info.Dates[0]
-	}
+	dateISO := info.MatchDate()
 	teamA, teamB := "Team A", "Team B"
 	if len(info.Teams) >= 1 {
 		teamA = info.Teams[0]
@@ -85,23 +108,23 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if formatCode == "" {
 		return fmt.Errorf("unsupported match_type: %s", info.MatchType)
 	}
-	formatID, err := cricDB.GetMatchFormatIDByCode(ctx, formatCode)
+	formatID, err := cache.GetFormatID(ctx, formatCode)
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID); err != nil {
+	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO, info.MatchType); err != nil {
 		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
 	var venueID *int64
 	if venueName != "" {
-		if id, e := cricDB.GetOrCreateVenue(ctx, venueName); e == nil {
+		if id, e := cache.GetVenueID(ctx, venueName); e == nil {
 			venueID = &id
 		}
 	}
 	var seasonID *int64
 	if s := strings.TrimSpace(string(info.Season)); s != "" {
-		if id, e := cricDB.GetOrCreateSeason(ctx, s); e == nil {
+		if id, e := cache.GetSeasonID(ctx, s); e == nil {
 			seasonID = &id
 		}
 	}
@@ -114,10 +137,17 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		toss = info.Toss.Winner
 	}
 	winner := ""
+	var winnerID *int64
 	if info.Outcome != nil {
-		winner = info.Outcome.Winner
+		winner = strings.TrimSpace(info.Outcome.Winner)
+		if winner != "" {
+			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
+				winnerID = &id
+			} else {
+				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
+			}
+		}
 	}
-	_ = winner // currently unused, but kept for possible result mapping
 
 	ballsPerOver := info.BallsPerOver
 	if ballsPerOver <= 0 {
@@ -125,18 +155,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
-		_ = cricDB.Exec(
+		if err := cricDB.Exec(
 			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
+			`INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
-			"inning1",
-		)
-		_ = cricDB.Exec(
-			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
-			mid,
-			"inning2",
-		)
+		); err != nil {
+			return fmt.Errorf("insert weather placeholders: %w", err)
+		}
 	}
 	playersSeen := map[string]bool{}
 	for i, inng := range m.Innings {
@@ -145,7 +170,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		oppTeam := otherTeam(batTeam, teamA, teamB)
 		var oppositionID *int64
 		if oppTeam != "" {
-			if id, e := cricDB.GetOrCreateOpposition(ctx, oppTeam); e == nil {
+			if id, e := cache.GetOppositionID(ctx, oppTeam); e == nil {
 				oppositionID = &id
 			}
 		}
@@ -155,6 +180,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		dismissals := map[string]string{}
 		bowlAgg := map[string]*bowlRow{}
 		overTotalsByBowler := map[string]map[int]int{}
+		var fieldingEvents []db.FieldingEvent
 		for _, over := range inng.Overs {
 			overNo := over.Over
 			perBowler := map[string]int{}
@@ -206,7 +232,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						}
 
 						if len(fNames) > 0 {
-							batterID, err := cricDB.GetOrCreateByName(ctx, w.PlayerOut)
+							batterID, err := cache.GetPlayerID(ctx, w.PlayerOut)
 							if err != nil {
 								slog.Warn(
 									"get/create player failed",
@@ -218,7 +244,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 							var bowlerID *int64
 							// Bowler is only associated with 'caught' dismissals.
 							if isCaught && d.Bowler != "" {
-								bid, err := cricDB.GetOrCreateByName(ctx, d.Bowler)
+								bid, err := cache.GetPlayerID(ctx, d.Bowler)
 								if err != nil {
 									slog.Warn(
 										"get/create player failed",
@@ -230,12 +256,12 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 								bowlerID = &bid
 							}
 							for _, fn := range fNames {
-								fid, err := cricDB.GetOrCreateByName(ctx, fn)
+								fid, err := cache.GetPlayerID(ctx, fn)
 								if err != nil {
 									slog.Warn("get/create player failed", slog.String("name", fn), slog.Any("err", err))
 									continue
 								}
-								err = db.InsertFieldingEvent(ctx, &db.FieldingEvent{
+								fieldingEvents = append(fieldingEvents, db.FieldingEvent{
 									MatchID:     mid,
 									Innings:     inningNo,
 									Over:        overNo,
@@ -248,13 +274,6 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 									IsDirectHit: false,
 									Notes:       nil,
 								})
-								if err != nil {
-									slog.Warn(
-										"insert fielding_event failed",
-										slog.Int64("match_id", mid),
-										slog.Any("err", err),
-									)
-								}
 							}
 						}
 					}
@@ -308,6 +327,9 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				overTotalsByBowler[bowler][overNo] += t
 			}
 		}
+		if err := insertFieldingEventsBatchFn(ctx, fieldingEvents); err != nil {
+			slog.Warn("insert fielding_events failed", slog.Int64("match_id", mid), slog.Any("err", err))
+		}
 		oversFloat := oversFromBalls(balls, ballsPerOver)
 		rpo := float32(0)
 		if balls > 0 {
@@ -319,20 +341,24 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			target = &firRuns
 		}
 		upd := &db.MatchInfoUpdate{
-			Score:        &runs,
-			Wickets:      &wkts,
-			Overs:        &oversFloat,
-			Balls:        &balls,
-			RPO:          &rpo,
-			Target:       target,
-			Inning:       &inningNo,
-			OppositionID: oppositionID,
-			MatchDate:    &dateISO,
-			VenueID:      venueID,
-			Extras:       &extras,
-			Toss:         &toss,
-			SeasonID:     seasonID,
-			MatchNumber:  matchNumber,
+			Balls:             &balls,
+			BattingSession:    &batTeam,
+			BowlingSession:    &oppTeam,
+			Extras:            &extras,
+			Inning:            &inningNo,
+			MatchDate:         &dateISO,
+			MatchNumber:       matchNumber,
+			OppositionID:      oppositionID,
+			Overs:             &oversFloat,
+			RPO:               &rpo,
+			Result:            winnerID,
+			Score:             &runs,
+			SeasonID:          seasonID,
+			Target:            target,
+			Toss:              &toss,
+			VenueID:           venueID,
+			Wickets:           &wkts,
+			OriginalMatchType: &info.MatchType,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))
@@ -344,16 +370,17 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 		order = battingOrderFromInnings(inng, order)
 		pos := 1
+		var batBatch []db.Batting
 		for _, name := range order {
 			b := batAgg[name]
-			pid, _ := cricDB.GetOrCreateByName(ctx, name)
+			pid, _ := cache.GetPlayerID(ctx, name)
 			sr := strikeRate(b.Runs, b.Balls)
 			desc := dismissals[name]
 			if desc == "" {
 				desc = "not out"
 			}
 			mins := 0
-			_ = cricDB.UpsertBatting(ctx, &db.Batting{
+			batBatch = append(batBatch, db.Batting{
 				MatchID:         mid,
 				PlayerID:        pid,
 				Description:     strPtr(desc),
@@ -367,6 +394,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			})
 			pos++
 		}
+		if err := cricDB.UpsertBattingBatch(ctx, batBatch); err != nil {
+			slog.Warn("upsert batting batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+		}
+
+		var bowlBatch []db.Bowling
 		for name, s := range bowlAgg {
 			maidens := maidenCount(overTotalsByBowler[name])
 			o := oversFromBalls(s.Balls, ballsPerOver)
@@ -374,8 +406,8 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			if s.Balls > 0 {
 				econ = float32(float64(s.Runs) / float64(s.Balls) * float64(ballsPerOver))
 			}
-			pid, _ := cricDB.GetOrCreateByName(ctx, name)
-			_ = cricDB.UpsertBowling(ctx, &db.Bowling{
+			pid, _ := cache.GetPlayerID(ctx, name)
+			bowlBatch = append(bowlBatch, db.Bowling{
 				MatchID:  mid,
 				PlayerID: pid,
 				Overs:    &o,
@@ -391,27 +423,28 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				NoBalls:  &s.NoBalls,
 			})
 		}
+		if err := cricDB.UpsertBowlingBatch(ctx, bowlBatch); err != nil {
+			slog.Warn("upsert bowling batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+		}
 	}
 	// Optional: insert placeholder fielding rows for all players seen in the match
 	if opts != nil && opts.PlaceholdersFielding {
 		zero := 0
+		var fieldingBatch []db.Fielding
 		for name := range playersSeen {
-			pid, _ := cricDB.GetOrCreateByName(ctx, name)
-			if err = cricDB.UpsertFielding(ctx, &db.Fielding{
+			pid, _ := cache.GetPlayerID(ctx, name)
+			fieldingBatch = append(fieldingBatch, db.Fielding{
 				MatchID:        mid,
 				PlayerID:       pid,
 				Catches:        &zero,
 				RunOuts:        &zero,
 				DroppedCatches: &zero,
 				MissedRunOuts:  &zero,
-			}); err != nil {
-				slog.Error(
-					"failed to insert placeholder fielding row",
-					slog.String("player", name),
-					slog.Any("err", err),
-				)
-				return err
-			}
+			})
+		}
+		if err = cricDB.UpsertFieldingBatch(ctx, fieldingBatch); err != nil {
+			slog.Error("failed to insert placeholder fielding batch", slog.Int64("match_id", mid), slog.Any("err", err))
+			return err
 		}
 	}
 	// Enqueue async weather job (non-blocking)

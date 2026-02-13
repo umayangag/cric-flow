@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormatHierarchyNode } from '../types';
 import { api } from '../api';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 import OpsMigrationsTable from './OpsMigrationsTable';
+import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsTableStats from './OpsTableStats';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
@@ -71,6 +73,7 @@ export type OpsStatus = {
   // New optional sections surfaced by backend as raw objects
   fielding?: unknown;
   weather?: unknown;
+  hierarchy?: FormatHierarchyNode[];
   suggestions?: Array<{ reason: string; commands: string[] }>;
   // Allow additional forward-compatible fields
   [key: string]: unknown;
@@ -230,7 +233,7 @@ const OpsStatusTab: React.FC = () => {
                   state={data.services?.api_readiness ? 'ok' : 'error'}
                   label={data.services?.api_readiness ? 'DB Ready' : 'DB Not Ready'}
                 />
-                <Typography variant="body2">
+                <Typography variant="body2" component="div">
                   Last match data import:{' '}
                   <strong>
                     {(() => {
@@ -273,7 +276,9 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Freshness"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2">Overall</Typography>
+                        <Typography variant="body2" component="div">
+                          Overall
+                        </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }
@@ -338,7 +343,9 @@ const OpsStatusTab: React.FC = () => {
                     title="DB Data Completeness (last 30d)"
                     subtitle={
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="body2">Overall</Typography>
+                        <Typography variant="body2" component="div">
+                          Overall
+                        </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
                       </Stack>
                     }
@@ -568,6 +575,10 @@ const OpsStatusTab: React.FC = () => {
           </Grid>
 
           {/* Removed global suggestions block to keep suggestions within each section */}
+
+          <SectionCard title="Match Type Hierarchy">
+            <OpsFormatHierarchy hierarchy={data.hierarchy} />
+          </SectionCard>
 
           <JsonCollapse data={data} summary="Show raw JSON payload" />
         </Stack>

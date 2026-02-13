@@ -3,6 +3,7 @@ package fielding
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -47,19 +48,23 @@ func (s *Service) BackfillAll(ctx context.Context, apply bool, concurrency int) 
 	if concurrency < 1 {
 		return 0, errors.New("concurrency must be >= 1")
 	}
+	slog.Info("starting fielding backfill for all matches")
 	events, err := s.Repo.ListFieldingEvents(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	aggs := aggregate(events)
+	slog.Info("aggregated fielding events", slog.Int("matches", len(aggs)))
 	// count total rows
 	total := 0
 	for _, rows := range aggs {
 		total += len(rows)
 	}
 	if !apply {
+		slog.Info("dry-run: would upsert fielding aggregates", slog.Int("rows", total))
 		return total, nil
 	}
+	slog.Info("upserting fielding aggregates", slog.Int("rows", total), slog.Int("concurrency", concurrency))
 
 	// upsert per match with simple worker pool
 	type task struct{ rows []db.FieldingAggregateRow }
@@ -84,7 +89,8 @@ func (s *Service) BackfillAll(ctx context.Context, apply bool, concurrency int) 
 	for i := 0; i < concurrency; i++ {
 		go worker()
 	}
-	for _, rows := range aggs {
+	for mid, rows := range aggs {
+		slog.Debug("upserting match aggregates", slog.Int64("match_id", mid), slog.Int("rows", len(rows)))
 		// If an error already occurred, stop scheduling further work
 		mu.Lock()
 		err := firstErr
@@ -99,6 +105,7 @@ func (s *Service) BackfillAll(ctx context.Context, apply bool, concurrency int) 
 	if firstErr != nil {
 		return 0, firstErr
 	}
+	slog.Info("fielding backfill finished", slog.Int("total_rows", total))
 	return total, nil
 }
 

@@ -8,7 +8,6 @@ import (
 	"flag"
 	"log/slog"
 	"os"
-	"time"
 
 	bfcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/backfillfielding"
 	bfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/backfillfielding"
@@ -29,7 +28,7 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

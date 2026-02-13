@@ -2,6 +2,7 @@ package cricsheet_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,6 +72,55 @@ func TestCollection_UnmarshalJSON_GarbageFallback(t *testing.T) {
 	err := c.UnmarshalJSON([]byte(`{"foo":"bar"}`))
 	require.NoError(t, err)
 	require.Len(t, c, 0)
+}
+
+func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		in       string
+		wantDate string
+	}{
+		{
+			"standard dates field",
+			`{"dates": ["2025-11-07"]}`,
+			"2025-11-07",
+		},
+		{
+			"match_date field",
+			`{"match_date": ["2025-12-25"]}`,
+			"2025-12-25",
+		},
+		{
+			"both fields - dates takes precedence",
+			`{"dates": ["2025-11-07"], "match_date": ["2025-12-25"]}`,
+			"2025-11-07",
+		},
+		{
+			"neither field",
+			`{"venue": "Some Stadium"}`,
+			"1970-01-01",
+		},
+		{
+			"multiple dates",
+			`{"dates": ["2025-11-07", "2025-11-08"]}`,
+			"2025-11-07",
+		},
+		{
+			"empty dates array",
+			`{"dates": []}`,
+			"1970-01-01",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var info cricsheet.Info
+			err := json.Unmarshal([]byte(tc.in), &info)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantDate, info.MatchDate())
+		})
+	}
 }
 
 func TestParse_DoesNotPanicOnMinimalJSON(t *testing.T) {

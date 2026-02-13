@@ -3,13 +3,13 @@ package weatherworker
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
 )
 
-// Service coordinates fetching weather for match IDs from a job source and,
-// when apply==true, upserting the resulting records via the WeatherRepo.
-// It is deterministic and testable; no logging here.
+// Service coordinates fetching weather for match IDs from a job source and
+// upserting the resulting records via the Repository.
 type Service struct {
 	Jobs       jobs.Source
 	Provider   Provider
@@ -52,12 +52,14 @@ func (s *Service) Run(ctx context.Context, maxJobs int, apply bool) (int, error)
 			if maxJobs > 0 && remaining == 0 {
 				return processed, nil
 			}
+			slog.Debug("fetching weather", slog.Int64("match_id", id))
 			// Fetch all weather records for this match (e.g., batting/bowling sessions)
 			recs, err := s.Provider.Fetch(ctx, id)
 			if err != nil {
 				return processed, err
 			}
 			if apply {
+				slog.Info("upserting weather", slog.Int64("match_id", id), slog.Int("records", len(recs)))
 				for _, r := range recs {
 					if err := s.Repository.UpsertWeather(ctx, r); err != nil {
 						return processed, err

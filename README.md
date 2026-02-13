@@ -15,8 +15,8 @@ Notes:
 - Ensure both the Go API (`go-app`) and the ML service (`ml-service`) are running for DB-backed tabs.
 - The frontend calls the ML service from the browser. Allow CORS from the frontend origin (e.g., http://localhost:5173) or serve behind the same origin/reverse proxy.
 
-### 9) Run API (optional orchestration)
-```
+### 9) Run API
+```bash
 make api
 # liveness/readiness
 curl -s http://localhost:8080/health
@@ -25,16 +25,18 @@ curl -s http://localhost:8080/readiness
 
 ### 10) Predict team (DB-backed, end-to-end)
 Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
-```
-cd go-app
-GO_APP_CONFIG=./config.json \
-POSTGRES_HOST=localhost POSTGRES_DB=cricket_data POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres \
-go run ./cmd/team-select -match <match_id> -format T20 -season 2019 -size 11 -min-bowlers 5 --require-keeper --from-db=true
+
+**Supported Formats:** `TEST`, `ODI`, `T20`, `T20I`.
+- **Aliases:** `MDM` (TEST), `ODM` (ODI), `IT20` (T20I) are automatically mapped to their canonical counterparts.
+- **T20/T20I Bucket:** For many feature calculations, `T20` (domestic) and `T20I` (international) are treated as a single bucket to ensure richer feature vectors.
+
+```bash
+make team-select MATCH=<match_id> SEASON=2019 FORMAT=T20
 ```
 Output shows the ranked XI and the team average winning probability.
 
 Alternative (CSV pool path, prototype-style):
-```
+```bash
 # generate pool.csv with the Python helper and then call the win model via service
 make team-predictor MATCH=<match_id>
 ```
@@ -62,6 +64,10 @@ This repo standardizes file IO locations and makes them configurable via JSON, e
 See `docs/CONFIG.md` for full schema and examples.
 
 ## Formatting and linting
+- Run all quality checks (lint, fmt, typecheck, tests) for all components:
+```bash
+make check-all
+```
 - Aggregate format both components:
 ```
 make fmt
@@ -119,6 +125,10 @@ The repository includes a minimal React/Vite UI to backtest already‑played mat
 - Start the frontend dev server:
   - make frontend-dev
   - Opens on http://localhost:5173 (by default)
+- Login (Local Dev):
+  - The UI is protected by an API key for administrative access.
+  - Enter your `API_KEY` (as defined in your backend environment) into the API Key field on the login page.
+  - In local development (e.g., via `make dev-up`), the default API key is typically defined in your `.env` file or environment. If `API_KEY` is not set in the backend, administrative endpoints will be locked.
 - Usage flow in the UI:
   1. Enter filters: format (e.g., T20), team1, team2, then Search to list already‑played matches.
   2. Select a match from the results.
@@ -127,7 +137,7 @@ The repository includes a minimal React/Vite UI to backtest already‑played mat
 
 Notes:
 - The Go API delegates to the ML service when `use_ml=1&cutoff=<RFC3339>` is provided. Ensure `ML_SERVICE_URL` is set if the ML base URL differs from the default `http://localhost:8000`.
-- See `frontend/README.md` for component/file map and quick commands.
+- See `frontend/` directory for component/file map and quick commands.
 - Unique constraints and upsert logic ensure idempotent persistence.
 - Optional placeholders can be inserted by the importer: weather rows per innings and zeroed fielding rows (see Makefile target `cricsheet-import` or API `/import/cricsheet`).
 - The ML service returns non-zero predictions only when trained artifacts are present.
@@ -162,6 +172,7 @@ Notes and parameters:
 Examples:
 ```
 # Snapshots as of today (UTC) for all formats (TEST, ODI, T20I, T20)
+# Note: T20 and T20I features are often computed from a shared data bucket.
 make precompute-asof
 
 # Snapshots as of a specific date
@@ -474,6 +485,12 @@ The frontend is a Vite + React app with a modern, professional UI powered by MUI
 - Type check: `cd frontend && npm run typecheck`
 - Production build: `cd frontend && npm run build` (output in `frontend/dist/`)
 
+### Authentication (Local Development)
+Administrative endpoints and UI tabs (Ops Status, Evaluate) are protected. In local development:
+- **Default Credentials**: `admin` / `admin`
+- **Mechanism**: The frontend stores a `dev-local-key` in `localStorage` and sends it via the `X-API-Key` header to the Go API.
+- **Backend**: If the `API_KEY` environment variable is not set, the Go API defaults to accepting `dev-local-key`.
+
 MUI is installed via npm packages and applied through `ThemeProvider` and `CssBaseline` in `src/main.tsx`. The global shell (AppBar, Tabs, Paper) uses MUI components. No Bootstrap is required in `index.html`.
 
 ## Context Provider (AI Integration)
@@ -482,7 +499,8 @@ A standalone tool is available to index the codebase and provide context to AI a
 - **Location**: `context-provider/`
 - **Usage**:
   ```bash
+  make init-context    # Initialize (download tools)
   make context-build   # Build the binary
-  make context-serve   # Run as stdio server
+  make context-serve   # Run as stdio server (re-builds if needed)
   ```
 - **Documentation**: See `context-provider/README.md` for integration instructions and how to prompt Junie to use it.

@@ -15,15 +15,17 @@ It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io
 
 ### Build
 ```bash
+make build
+# OR (from repo root)
 make context-build
-# OR
-cd context-provider && go build -o context-provider main.go
 ```
 
 ### Run
 Run as an MCP server (stdio transport):
 ```bash
-./context-provider/context-provider
+./context-provider
+# OR (from repo root)
+make context-serve
 ```
 
 ### Configuration
@@ -59,7 +61,7 @@ To add this tool permanently to Junie/JetBrains:
       }
     }
     ```
-    *Replace `<PROJECT_ROOT>` with the absolute path to your repo.*
+    *Replace `<PROJECT_ROOT>` with the absolute path to your repo. Note that the binary name is `context-provider` and it's located in the `context-provider/` subdirectory.*
 
 ### How to Prompt Junie
 - "Run the context-provider to get a summary of the project."

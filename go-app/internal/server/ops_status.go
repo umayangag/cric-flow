@@ -5,21 +5,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
 )
 
 // OpsStatusResponse is the top-level JSON returned by /ops/status.
 type OpsStatusResponse struct {
-	Timestamp      string          `json:"timestamp"`
-	Services       map[string]bool `json:"services"`
-	DB             map[string]any  `json:"db"`
-	Precompute     map[string]any  `json:"precompute"`
-	Exports        map[string]any  `json:"exports"`
-	Artifacts      map[string]any  `json:"artifacts"`
-	Fielding       map[string]any  `json:"fielding"`
-	Weather        map[string]any  `json:"weather"`
-	DBFreshness    map[string]any  `json:"db_freshness"`
-	DBCompleteness map[string]any  `json:"db_completeness"`
+	Timestamp      string                        `json:"timestamp"`
+	Services       map[string]bool               `json:"services"`
+	DB             map[string]any                `json:"db"`
+	Precompute     map[string]any                `json:"precompute"`
+	Exports        map[string]any                `json:"exports"`
+	Artifacts      map[string]any                `json:"artifacts"`
+	Fielding       map[string]any                `json:"fielding"`
+	Weather        map[string]any                `json:"weather"`
+	DBFreshness    map[string]any                `json:"db_freshness"`
+	DBCompleteness map[string]any                `json:"db_completeness"`
+	Hierarchy      []formats.FormatHierarchyNode `json:"hierarchy"`
 }
 
 // getPrecomputeStatus is a function variable to allow test-time substitution.
@@ -49,6 +51,7 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 		Weather:        map[string]any{},
 		DBFreshness:    map[string]any{},
 		DBCompleteness: map[string]any{},
+		Hierarchy:      formats.GetHierarchy(),
 	}
 
 	// DB

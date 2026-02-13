@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/weatherworker"
 	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/weatherworker"
@@ -29,7 +28,7 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))

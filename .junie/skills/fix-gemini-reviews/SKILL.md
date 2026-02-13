@@ -43,7 +43,7 @@ Tips:
 
 ## 2) Implement fixes
 - For each entry in `pr_reviews.json`, open `path:line`, read `body` for context or a ```suggestion``` block, and apply the change. If the fix is suspicious or not needed confirm with the user.
-- Run linters/tests as usual (`make lint && make test`).
+- Run `make check-all` to verify no new errors.
 
 ## 3) Resolve fixed threads (GraphQL mutation)
 Resolution is only available via GraphQL. Use the exact mutation below. Single thread:
@@ -89,7 +89,7 @@ git add .
 git commit -m "Fix Gemini comments"
 
 ## 7) Trigger re-review
-Finally, post a comment to trigger a new Gemini review:
+Finally, once you ensure all local changes are commited and pushed, post a comment to trigger a new Gemini review:
 ```bash
 gh pr comment $PR --body "/gemini review"
 ```

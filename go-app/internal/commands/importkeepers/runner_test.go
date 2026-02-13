@@ -87,8 +87,9 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: false,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 1, "sam").Return(int64(1), nil)
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 0, "max").Return(int64(1), nil)
+				m.EXPECT().
+					BatchSetIsWicketKeeper(mock.Anything, map[string]int{"sam": 1, "max": 0}).
+					Return(int64(2), nil)
 			},
 		},
 		{
@@ -98,9 +99,9 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: true,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 1, "x").Return(int64(1), nil)
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 1, "y").Return(int64(1), nil)
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 0, "z").Return(int64(1), nil)
+				m.EXPECT().
+					BatchSetIsWicketKeeper(mock.Anything, map[string]int{"x": 1, "y": 1, "z": 0}).
+					Return(int64(3), nil)
 				m.EXPECT().ZeroKeepersExcept(mock.Anything, mock.MatchedBy(func(names []string) bool {
 					set := map[string]struct{}{}
 					for _, n := range names {
@@ -120,10 +121,9 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: false,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().SetIsWicketKeeperByLowerName(
+				m.EXPECT().BatchSetIsWicketKeeper(
 					mock.Anything,
-					mock.AnythingOfType("int"),
-					mock.AnythingOfType("string"),
+					mock.Anything,
 				).Return(int64(0), errors.New("update failed"))
 			},
 			wantErr: errors.New("update failed"),
@@ -135,8 +135,7 @@ func TestRunner_Apply(t *testing.T) {
 				zeroOthers: true,
 			},
 			arrange: func(m *mocks.MockKeeperRepository) {
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 1, "a").Return(int64(1), nil)
-				m.EXPECT().SetIsWicketKeeperByLowerName(mock.Anything, 0, "b").Return(int64(1), nil)
+				m.EXPECT().BatchSetIsWicketKeeper(mock.Anything, map[string]int{"a": 1, "b": 0}).Return(int64(2), nil)
 				m.EXPECT().ZeroKeepersExcept(mock.Anything, mock.Anything).Return(int64(0), errors.New("zero failed"))
 			},
 			wantErr: errors.New("zero failed"),

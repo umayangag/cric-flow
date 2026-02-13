@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 	"os"
 )
@@ -17,10 +18,11 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-API-Key")
 
 		if r.Method == http.MethodOptions {
 			// Preflight response
+			log.Printf("CORS Preflight: method=%s path=%s origin=%s", r.Method, r.URL.Path, r.Header.Get("Origin"))
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

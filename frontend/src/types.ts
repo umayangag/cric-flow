@@ -130,6 +130,12 @@ export type Suggestion = {
   priority: string;
 };
 
+export type FormatHierarchyNode = {
+  code: string;
+  name: string;
+  children?: FormatHierarchyNode[];
+};
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

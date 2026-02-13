@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -58,7 +60,9 @@ func run(args []string, out io.Writer) error {
 	if *dryRun {
 		return seqcalc.DryRun(out, calcs, params)
 	}
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// Establish DB connection so calculators can write results.
 	if _, err := db.Connect(ctx); err != nil {
 		return fmt.Errorf("db connect failed: %w", err)
@@ -73,10 +77,13 @@ func run(args []string, out io.Writer) error {
 		slog.Warn("tracking start failed", slog.Any("err", tErr))
 	}
 
-	if err := seqcalc.Run(ctx, calcs, params, false); err != nil {
-		tracker.TryFail(ctx, err.Error())
-		return err
+	var runErr error
+	defer func() {
+		tracker.CaptureExit(ctx, &runErr, nil)
+	}()
+
+	if runErr = seqcalc.Run(ctx, calcs, params, false); runErr != nil {
+		return runErr
 	}
-	tracker.TryComplete(ctx, nil)
 	return nil
 }

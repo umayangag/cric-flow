@@ -18,7 +18,7 @@ const SectionCard: React.FC<Props> = ({ title, subtitle, children }) => {
         {title}
       </Typography>
       {subtitle ? (
-        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+        <Typography variant="body2" sx={{ opacity: 0.8 }} component="div">
           {subtitle}
         </Typography>
       ) : null}

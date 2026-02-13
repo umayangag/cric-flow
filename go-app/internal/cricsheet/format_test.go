@@ -49,6 +49,10 @@ func TestDetectFormat_Table(t *testing.T) {
 		{name: "TEST basic", matchType: "Test", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
 		{name: "ODI basic", matchType: "ODI", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
 		{name: "T20I basic", matchType: "T20I", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
+		// Aliases
+		{name: "IT20 alias", matchType: "IT20", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
+		{name: "ODM alias", matchType: "ODM", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
+		{name: "MDM alias", matchType: "MDM", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
 		// T20 subset rule
 		{
 			name:      "T20 subset -> T20I (intl vs intl)",

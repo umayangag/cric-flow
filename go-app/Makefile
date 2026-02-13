@@ -11,7 +11,7 @@ export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
 
-.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks
+.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
 
 all: build
 
@@ -60,12 +60,13 @@ team-predictor:
 	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
 	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
 
-# Weather import (scaffold)
-# Example: make weather-import MATCH=1193505 PROVIDER=dummy APPLY=1
-weather-import:
-	@if [ "$(MATCH)" = "0" ]; then echo "Please set MATCH=<id>"; exit 2; fi
-	PROVIDER?=dummy; APPLY?=0; \
-	go run ./cmd/weather-import -match=$(MATCH) -provider=$$PROVIDER -apply=$$APPLY
+# Import Cricsheet JSON into DB
+# Usage: make cricsheet-import [DIR=path/to/json] [PLACEHOLDERS=1]
+cricsheet-import:
+	@DIR=$${GO_APP_INPUT_DIR:-../data/go-app/cricsheet}; \
+	PLACEHOLDERS_FLAG=""; \
+	if [ "$(PLACEHOLDERS)" = "1" ]; then PLACEHOLDERS_FLAG="--placeholders-weather --placeholders-fielding"; fi; \
+	go run ./cmd/cricsheet-importer -dir="$$DIR" $$PLACEHOLDERS_FLAG
 
 # Evaluate (scaffold)
 # Example: make evaluate SEASON=2019 FORMAT=T20
@@ -235,6 +236,7 @@ help:
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
+	@echo "  cricsheet-import   Import Cricsheet JSON into DB (DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
 	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"

@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -52,7 +52,7 @@ go-test-int:
 
 # Apply DB migrations against local Postgres (env vars can override defaults)
 migrate:
-	cd go-app && go run ./cmd/migrate -dir=./migrations
+	cd go-app && make migrate
 
 # Export datasets (unified exports only)
 export-dataset:
@@ -77,7 +77,7 @@ export-on:
 
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
-	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations go run ./cmd/api
+	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations make run-api
 
 # Run ML service locally
 ml-serve:
@@ -86,6 +86,8 @@ ml-serve:
 # Variables for convenience (override like: make team-predictor MATCH=123 BAT=6 BOWL=5)
 SEASON ?= 2019
 FORMAT ?= T20
+# Recognized formats: TEST, ODI, T20, T20I
+# Aliases: MDM -> TEST, ODM -> ODI, IT20 -> T20I
 MATCH ?= 0
 BAT ?= 6
 BOWL ?= 5
@@ -114,10 +116,12 @@ precompute-asof:
 	done
 
 # Unified command: run both as-of/replay precompute and sequential features in one shot
+# For T20/T20I, the system automatically combines domestic T20 and international T20I data.
 precompute-all:
 	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
 # Run unified command for all formats (order: TEST, ODI, T20I, T20)
+# Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
 precompute-all-all-formats:
 	cd go-app; \
 	for F in TEST ODI T20I T20; do \
@@ -129,7 +133,7 @@ precompute-all-all-formats:
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
-	cd go-app && go run ./cmd/team-predictor -match=$(MATCH) -bat=$(BAT) -bowl=$(BOWL)
+	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
 # Train ML artifacts from exported CSVs
 ml-install:
@@ -295,7 +299,7 @@ up-all:
 	@echo "[4/7] Precomputing metrics..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[5/7] Exporting datasets..."
-	$(MAKE) export-dataset || (echo "Export failed" && exit 1)
+	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
@@ -339,6 +343,29 @@ frontend-stop:
 			echo "[frontend] Not running."; \
 		fi; \
 	fi
+
+# --- Unified Quality Checks ---
+
+# Run all quality checks for all components
+check-all: frontend-check go-app-check ml-service-check context-provider-check
+	@echo "All quality checks passed!"
+
+frontend-check: frontend-install
+	@echo "[frontend] Running lint, fmt check, typecheck, build and tests..."
+	cd frontend && npm run lint && npm run format:check && npm run typecheck && npm run build && npm run test
+
+go-app-check:
+	@echo "[go-app] Running lint, fmt check, tests and coverage..."
+	$(MAKE) -C go-app vet fmt-check lint coverage
+
+ml-service-check:
+	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
+	# Assumes venv is initialized
+	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service lint-check fmt-check coverage coverage-check
+
+context-provider-check:
+	@echo "[context-provider] Running lint, fmt check, tests and coverage..."
+	$(MAKE) -C context-provider vet fmt-check lint coverage coverage-check
 
 # --- Formatting & hooks ---
 
@@ -402,7 +429,7 @@ init-py:
 
 # Import Cricsheet JSON into DB using Go importer
 cricsheet-import:
-	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet go run ./cmd/cricsheet-importer
+	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet make cricsheet-import
 
 
 # Helper targets to avoid duplication
@@ -423,9 +450,11 @@ mock:
 	# Use pinned mockery via go run to avoid local binary/version drift
 	cd go-app && go run github.com/vektra/mockery/v3@v3.6.0 --config .mockery.yml
 
-# Aggregate test target (Go only by default)
+# Aggregate test target (all components)
 test:
 	cd go-app && make test
+	cd ml-service && make test
+	cd context-provider && make test
 
 # Aggregate lint target
 lint: lint-go lint-py lint-context
@@ -503,6 +532,7 @@ help:
 	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"
 	@echo
 	@echo "[Testing & CI]"
+	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"
 	@echo "  go-test            Run Go unit tests"
 	@echo "  go-test-int        Run Go integration tests (requires DB)"
 	@echo "  ci-go              Go CI aggregate (vet, fmt-check, coverage gate)"

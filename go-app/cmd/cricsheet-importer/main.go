@@ -6,6 +6,8 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	cricsheetcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
@@ -16,7 +18,7 @@ import (
 
 func main() { os.Exit(run()) }
 
-func run() int {
+func run() (exitCode int) {
 	// Parse flags via internal CLI to unify behavior and enable testing
 	fs := flag.NewFlagSet("cricsheet-importer", flag.ContinueOnError)
 	copts, perr := cricsheetcli.ParseArgs(fs, os.Args[1:])
@@ -26,8 +28,12 @@ func run() int {
 	}
 
 	logger.SetupFromEnv()
+	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(baseCtx, copts.Timeout)
+	defer cancel()
+
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
 		return 1
@@ -43,19 +49,24 @@ func run() int {
 		slog.Warn("tracking start failed", slog.Any("err", tErr))
 	}
 
+	var runErr error
+	var importedCount int
+	defer func() {
+		tracker.CaptureExit(ctx, &runErr, map[string]int{"files": importedCount})
+	}()
+
 	// Map CLI options to legacy cricsheet.Options to preserve behavior
 	opts := &cricsheet.Options{
 		PlaceholdersWeather:  copts.PlaceholdersWeather,
 		PlaceholdersFielding: copts.PlaceholdersFielding,
 		WeatherEnqueue:       copts.WeatherEnqueue,
+		FailFast:             copts.FailFast,
 	}
-	n, err := cricsheet.ImportDir(ctx, copts.InDir, opts)
-	if err != nil {
-		slog.Error("cricsheet import failed", slog.Any("err", err))
-		tracker.TryFail(ctx, err.Error())
+	importedCount, runErr = cricsheet.ImportDir(ctx, copts.InDir, opts)
+	if runErr != nil {
+		slog.Error("cricsheet import failed", slog.Any("err", runErr))
 		return 1
 	}
-	tracker.TryComplete(ctx, map[string]int{"files": n})
-	slog.Info("cricsheet-importer finished", slog.Int("files", n))
+	slog.Info("cricsheet-importer finished", slog.Int("files", importedCount))
 	return 0
 }

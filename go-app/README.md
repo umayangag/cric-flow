@@ -54,15 +54,14 @@ make build
 make run-api
 ```
 - Import Cricsheet JSON into the DB (from repo root or here):
-```
-make -C .. cricsheet-import
-# or directly (uses GO_APP_INPUT_DIR or config.json default)
-GO_APP_INPUT_DIR=../data/go-app/cricsheet \
-  go run ./cmd/cricsheet-importer -dir=$GO_APP_INPUT_DIR --placeholders-weather --placeholders-fielding
+```bash
+make cricsheet-import
+# or with placeholders and custom dir
+make cricsheet-import DIR=../data/go-app/cricsheet PLACEHOLDERS=1
 ```
 - Export model datasets (writes to output/go-app by default). Unified cross-format is recommended:
-```
-make -C .. export-dataset
+```bash
+make export-dataset
 # or directly (uses GO_APP_OUTPUT_DIR or config.json default)
 GO_APP_OUTPUT_DIR=../output/go-app \
   go run ./cmd/export-dataset -unified=1 -out=$GO_APP_OUTPUT_DIR

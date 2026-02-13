@@ -6,6 +6,8 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
@@ -39,7 +41,10 @@ func run() int {
 
 	logger.SetupFromEnv()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(baseCtx, 90*time.Second)
 	defer cancel()
 
 	// Prepare filesystem via internal runner (creates outDir). Remove direct os.MkdirAll.
@@ -54,17 +59,20 @@ func run() int {
 		slog.Warn("tracking start failed", slog.Any("err", tErr))
 	}
 
+	var runErr error
+	defer func() {
+		tracker.CaptureExit(ctx, &runErr, map[string]string{"dir": outDir})
+	}()
+
 	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
 	repo := &exportqueries.Repo{}
 	bat := exportsvc.NewBattingService(repo)
 	bow := exportsvc.NewBowlingService(repo)
 	runner := expcmd.NewRunnerWithServices(bat, bow)
-	if runErr := runner.Run(ctx, opts); runErr != nil {
+	if runErr = runner.Run(ctx, opts); runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
-		tracker.TryFail(ctx, runErr.Error())
 		return 1
 	}
-	tracker.TryComplete(ctx, map[string]string{"dir": outDir})
 	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
 	return 0

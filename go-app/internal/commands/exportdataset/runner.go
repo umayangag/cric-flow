@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/sync/errgroup"
+
 	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
@@ -64,50 +66,80 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		// Inject the exporter sequence flag into context so lower layers can gate joins.
 		ctx = exq.WithSeqEnabled(ctx, opts.EnableSeq)
 		formats := ResolveFormats(opts, config.Load())
+
+		g, ctx := errgroup.WithContext(ctx)
+
 		if opts.Unified {
-			if err := r.writeUsing(opts.OutDir, "batting_encoded_all.csv", func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) }); err != nil {
-				return err
-			}
-			if err := r.writeUsing(opts.OutDir, "bowling_encoded_all.csv", func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) }); err != nil {
-				return err
-			}
-			return nil
+			g.Go(func() error {
+				return r.writeUsing(
+					opts.OutDir,
+					"batting_encoded_all.csv",
+					func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) },
+				)
+			})
+			g.Go(func() error {
+				return r.writeUsing(
+					opts.OutDir,
+					"bowling_encoded_all.csv",
+					func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) },
+				)
+			})
+			return g.Wait()
 		}
+
 		for _, f := range formats {
+			f := f // capture
 			if f == "" {
 				if opts.InferenceOnly {
 					// Legacy note: inference-only requires explicit formats; skip combined.
 					continue
 				}
-				if err := r.writeUsing(opts.OutDir, "batting_encoded.csv", func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) }); err != nil {
-					return err
-				}
-				if err := r.writeUsing(opts.OutDir, "bowling_encoded.csv", func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) }); err != nil {
-					return err
-				}
+				g.Go(func() error {
+					return r.writeUsing(
+						opts.OutDir,
+						"batting_encoded.csv",
+						func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) },
+					)
+				})
+				g.Go(func() error {
+					return r.writeUsing(
+						opts.OutDir,
+						"bowling_encoded.csv",
+						func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) },
+					)
+				})
 				continue
 			}
 			if opts.InferenceOnly {
-				bat := fmt.Sprintf("batting_infer_%s.csv", f)
-				bow := fmt.Sprintf("bowling_infer_%s.csv", f)
-				if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) }); err != nil {
-					return err
-				}
-				if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) }); err != nil {
-					return err
-				}
+				g.Go(func() error {
+					bat := fmt.Sprintf("batting_infer_%s.csv", f)
+					return r.writeUsing(
+						opts.OutDir,
+						bat,
+						func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) },
+					)
+				})
+				g.Go(func() error {
+					bow := fmt.Sprintf("bowling_infer_%s.csv", f)
+					return r.writeUsing(
+						opts.OutDir,
+						bow,
+						func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) },
+					)
+				})
 				continue
 			}
 			// Per-format training exports (non-inference)
-			bat := fmt.Sprintf("batting_encoded_%s.csv", f)
-			bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
-			if err := r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) }); err != nil {
-				return err
-			}
-			if err := r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) }); err != nil {
-				return err
-			}
+			g.Go(func() error {
+				bat := fmt.Sprintf("batting_encoded_%s.csv", f)
+				return r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) })
+			})
+			g.Go(func() error {
+				bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
+				return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) })
+			})
 		}
+		return g.Wait()
 	}
 	return nil
 }

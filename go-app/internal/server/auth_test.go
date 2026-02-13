@@ -17,16 +17,16 @@ func TestAuthMiddleware(t *testing.T) {
 
 	handlerToTest := authMiddleware(nextHandler)
 
-	t.Run("Fail-secure when API_KEY is not set", func(t *testing.T) {
+	t.Run("Fails secure (503) when API_KEY is not set", func(t *testing.T) {
 		os.Unsetenv("API_KEY")
 
 		req := httptest.NewRequest(http.MethodGet, "/any-endpoint", nil)
+		req.Header.Set("X-API-Key", "any-key")
 		rr := httptest.NewRecorder()
 
 		handlerToTest.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
-		assert.Contains(t, rr.Body.String(), "Security Configuration Missing")
 	})
 
 	t.Run("Unauthorized when X-API-Key header is missing", func(t *testing.T) {

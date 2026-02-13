@@ -25,6 +25,7 @@ output
 .output.txt
 .coverage
 coverage.xml
+.env
 
 # Coverage reports
 **/coverage.out
@@ -32,10 +33,34 @@ coverage.xml
 
 # Binaries
 **/bin/
+cricsheet-importer
+export-dataset
+precompute-features
+precompute-sequence-features
+team-predictor
+
+# Go specific
+go-app/go-app
+*.test
+*.exe
+*.exe~
+*.prof
+
+# Python specific
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
 
 # OS-specific
 .DS_Store
-tools/
+# tools/ - Not ignoring tools/ directory if it contains scripts/source
 
 pr_reviews.json
 **/test_output.txt

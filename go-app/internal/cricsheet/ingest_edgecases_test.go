@@ -107,14 +107,10 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	file := writeJSON(t, d, "good.json", good)
 
 	// Expectations
-	dbMock.On("GetMatchFormatIDByCode", ctx, "T20").Return(int64(1), nil)
-	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything).Return(nil)
-	dbMock.On("GetOrCreateSeason", ctx, "2025").Return(int64(200), nil)
+	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	dbMock.On("UpdateMatchDetails", ctx, mock.Anything, mock.Anything).Return(nil)
-	dbMock.On("GetOrCreateOpposition", ctx, mock.Anything).Return(int64(300), nil)
-	dbMock.On("GetOrCreateByName", ctx, mock.Anything).Return(int64(0), nil)
-	dbMock.On("UpsertBatting", ctx, mock.Anything).Return(nil)
-	dbMock.On("UpsertBowling", ctx, mock.Anything).Return(nil)
+	dbMock.On("UpsertBattingBatch", ctx, mock.Anything).Return(nil)
+	dbMock.On("UpsertBowlingBatch", ctx, mock.Anything).Return(nil)
 
 	// Act
 	_ = cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})

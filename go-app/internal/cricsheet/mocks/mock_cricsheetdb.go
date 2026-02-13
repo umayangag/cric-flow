@@ -16,8 +16,8 @@ func (m *CricsheetDBMock) GetMatchFormatIDByCode(ctx context.Context, code strin
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *CricsheetDBMock) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64) error {
-	args := m.Called(ctx, matchID, formatID)
+func (m *CricsheetDBMock) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string, originalMatchType string) error {
+	args := m.Called(ctx, matchID, formatID, matchDate, originalMatchType)
 	return args.Error(0)
 }
 
@@ -51,13 +51,28 @@ func (m *CricsheetDBMock) UpsertBatting(ctx context.Context, b *db.Batting) erro
 	return args.Error(0)
 }
 
+func (m *CricsheetDBMock) UpsertBattingBatch(ctx context.Context, rows []db.Batting) error {
+	args := m.Called(ctx, rows)
+	return args.Error(0)
+}
+
 func (m *CricsheetDBMock) UpsertBowling(ctx context.Context, b *db.Bowling) error {
 	args := m.Called(ctx, b)
 	return args.Error(0)
 }
 
+func (m *CricsheetDBMock) UpsertBowlingBatch(ctx context.Context, rows []db.Bowling) error {
+	args := m.Called(ctx, rows)
+	return args.Error(0)
+}
+
 func (m *CricsheetDBMock) UpsertFielding(ctx context.Context, f *db.Fielding) error {
 	args := m.Called(ctx, f)
+	return args.Error(0)
+}
+
+func (m *CricsheetDBMock) UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error {
+	args := m.Called(ctx, rows)
 	return args.Error(0)
 }
 

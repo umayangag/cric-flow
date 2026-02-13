@@ -33,6 +33,36 @@ func SetIsWicketKeeperByLowerName(ctx context.Context, value int, lowerName stri
 	return scanx.CountReturningOnes(rows)
 }
 
+// BatchSetIsWicketKeeper updates multiple players' wicket-keeper status in two batches (one for value 0, one for value 1).
+func BatchSetIsWicketKeeper(ctx context.Context, targets map[string]int) (int64, error) {
+	var total int64
+	groups := map[int][]string{}
+	for name, v := range targets {
+		groups[v] = append(groups[v], strings.ToLower(name))
+	}
+
+	for v, names := range groups {
+		if len(names) == 0 {
+			continue
+		}
+		rows, err := Query(
+			ctx,
+			`UPDATE player SET is_wicket_keeper = $1 WHERE lower(player_name) = ANY($2) RETURNING 1`,
+			v,
+			names,
+		)
+		if err != nil {
+			return total, err
+		}
+		count, err := scanx.CountReturningOnes(rows)
+		if err != nil {
+			return total, err
+		}
+		total += count
+	}
+	return total, nil
+}
+
 // ZeroKeepersExcept sets is_wicket_keeper=0 where lower(player_name) NOT IN list.
 func ZeroKeepersExcept(ctx context.Context, lowerNames []string) (int64, error) {
 	if len(lowerNames) == 0 {
