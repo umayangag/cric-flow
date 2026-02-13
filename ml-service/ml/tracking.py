@@ -3,11 +3,22 @@ import logging
 import os
 from contextlib import contextmanager
 
-from db import get_db_connection
+from ml.db import get_db_connection
 
 
 def get_connection():
-    return get_db_connection()
+    try:
+        from ml.db import get_db_connection
+        return get_db_connection()
+    except ImportError:
+        import psycopg2
+        return psycopg2.connect(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=os.environ.get("POSTGRES_PORT", "5432"),
+            dbname=os.environ.get("POSTGRES_DB", "cricket_data"),
+            user=os.environ.get("POSTGRES_USER"),
+            password=os.environ.get("POSTGRES_PASSWORD"),
+        )
 
 
 class Tracker:

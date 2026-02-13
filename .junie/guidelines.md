@@ -12,6 +12,7 @@
 - Always keep the code clean and readable for humans. Use descriptive names for files, variables, methods, and functions. Short functions are better than long ones.
 - Never suppress errors. Log errors and return.
 - Use the available tools to minimize token usage and improve productivity.
+- Try to run all commands from root directory at all times to avoid losing track of current directory.
 
 ## SOP (do this order)
 1) Use the available MCPs like serena, sequential-thinking, gopls and gemini-cli to minimize credit and token usage and improve productivity.
