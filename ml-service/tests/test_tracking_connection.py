@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 # Add ml-service root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # Mock psycopg2
 mock_psycopg2_module = MagicMock()
@@ -40,23 +39,6 @@ class TestDBConnection(unittest.TestCase):
             # Check for hardcoded defaults
             self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
             self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
-
-    def test_tracking_connection_fallback_no_defaults(self):
-        """Verify that tracking.get_connection fallback does NOT use insecure defaults."""
-        if tracking is None:
-            self.fail("Could not import ml.tracking")
-
-        # Mock get_db_connection to raise ImportError when called to simulate missing module
-        with patch("ml.db.get_db_connection", side_effect=ImportError):
-            with patch.dict(os.environ, {}, clear=True):
-                tracking.get_connection()
-
-                # tracking.py imports psycopg2 inside function
-                # It will get our injected mock
-                call_kwargs = mock_psycopg2_module.connect.call_args[1]
-
-                self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
-                self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
 
 
 if __name__ == "__main__":

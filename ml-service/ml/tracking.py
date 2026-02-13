@@ -9,25 +9,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+from ml.db import get_db_connection
+
+
 def get_connection():
-    try:
-        try:
-            from ml.db import get_db_connection
-        except ImportError:
-            # If we're running from within ml/ directory, 'ml' might not be in path
-            from db import get_db_connection
-
-        return get_db_connection()
-    except ImportError:
-        import psycopg2
-
-        return psycopg2.connect(
-            host=os.environ.get("POSTGRES_HOST", "localhost"),
-            port=os.environ.get("POSTGRES_PORT", "5432"),
-            dbname=os.environ.get("POSTGRES_DB", "cricket_data"),
-            user=os.environ.get("POSTGRES_USER"),
-            password=os.environ.get("POSTGRES_PASSWORD"),
-        )
+    return get_db_connection()
 
 
 class Tracker:
