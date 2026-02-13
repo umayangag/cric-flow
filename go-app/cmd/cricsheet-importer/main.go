@@ -60,6 +60,7 @@ func run() (exitCode int) {
 		PlaceholdersWeather:  copts.PlaceholdersWeather,
 		PlaceholdersFielding: copts.PlaceholdersFielding,
 		WeatherEnqueue:       copts.WeatherEnqueue,
+		FailFast:             copts.FailFast,
 	}
 	importedCount, runErr = cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if runErr != nil {

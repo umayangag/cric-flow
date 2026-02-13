@@ -20,6 +20,7 @@ type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
 	WeatherEnqueue       bool
+	FailFast             bool
 	Timeout              time.Duration
 }
 
@@ -44,6 +45,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var placeholdersWeather bool
 	var placeholdersFielding bool
 	var weatherEnqueue bool
+	var failFast bool
 	fs.BoolVar(&placeholdersWeather, "placeholders-weather", false, "insert placeholder weather rows per match")
 	fs.BoolVar(
 		&placeholdersFielding,
@@ -52,6 +54,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		"insert zeroed fielding rows for all players seen",
 	)
 	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
+	fs.BoolVar(&failFast, "fail-fast", false, "abort on first file error (default: false)")
 
 	var timeout time.Duration
 	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
@@ -74,6 +77,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		PlaceholdersWeather:  placeholdersWeather,
 		PlaceholdersFielding: placeholdersFielding,
 		WeatherEnqueue:       weatherEnqueue,
+		FailFast:             failFast,
 		Timeout:              timeout,
 	}, nil
 }

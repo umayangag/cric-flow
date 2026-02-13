@@ -22,6 +22,7 @@ type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
 	WeatherEnqueue       bool
+	FailFast             bool
 }
 
 // ImportDir reads all .json files in dir and imports them into the DB concurrently.
@@ -46,7 +47,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	sort.Strings(files)
 
 	var count int64
-	g, ctx := errgroup.WithContext(ctx)
+	var g *errgroup.Group
+	if opts.FailFast {
+		g, ctx = errgroup.WithContext(ctx)
+	} else {
+		g = new(errgroup.Group)
+	}
 	g.SetLimit(runtime.NumCPU())
 
 	for _, f := range files {
@@ -54,7 +60,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 		g.Go(func() error {
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
-				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				if opts.FailFast {
+					return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				}
+				slog.Error("import match file failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
+				return nil
 			}
 			atomic.AddInt64(&count, 1)
 			return nil

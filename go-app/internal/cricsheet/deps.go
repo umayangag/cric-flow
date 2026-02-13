@@ -52,6 +52,12 @@ func SetCricsheetDB(d CricsheetDB) { cricDB = d }
 // SetWeatherClient allows tests to inject a fake weather client.
 func SetWeatherClient(w WeatherClient) { weatherClient = w }
 
+// GetCricsheetDB returns the current DB implementation (for tests).
+func GetCricsheetDB() CricsheetDB { return cricDB }
+
+// GetWeatherClient returns the current weather client (for tests).
+func GetWeatherClient() WeatherClient { return weatherClient }
+
 // SetRecomputeFn allows tests to stub out the recompute function.
 func SetRecomputeFn(f func(ctx context.Context, matchID int64) error) { recomputeFn = f }
 
