@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -32,9 +31,7 @@ func main() {
 	}
 
 	if *dryRun {
-		// In dry-run, estimate count by running the insert in a rolled-back tx would be ideal; keep it simple:
-		// We will not modify the DB; instruct the user how to run without dry-run.
-		fmt.Println("dry-run: no changes made. Run without --dry-run to enqueue missing weather jobs.")
+		slog.Info("dry-run: no changes made. Run without --dry-run to enqueue missing weather jobs.")
 		return
 	}
 
@@ -43,5 +40,5 @@ func main() {
 		slog.Error("enqueue missing jobs failed", slog.Any("err", err))
 		os.Exit(1)
 	}
-	fmt.Printf("enqueued %d weather jobs (limit=%d)\n", added, *limit)
+	slog.Info("enqueued weather jobs", slog.Int64("count", added), slog.Int("limit", *limit))
 }

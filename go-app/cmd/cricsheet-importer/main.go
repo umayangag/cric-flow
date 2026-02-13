@@ -28,9 +28,11 @@ func run() (exitCode int) {
 	}
 
 	logger.SetupFromEnv()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	ctx, cancel := context.WithTimeout(baseCtx, copts.Timeout)
+	defer cancel()
 
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
@@ -58,6 +60,7 @@ func run() (exitCode int) {
 		PlaceholdersWeather:  copts.PlaceholdersWeather,
 		PlaceholdersFielding: copts.PlaceholdersFielding,
 		WeatherEnqueue:       copts.WeatherEnqueue,
+		FailFast:             copts.FailFast,
 	}
 	importedCount, runErr = cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if runErr != nil {

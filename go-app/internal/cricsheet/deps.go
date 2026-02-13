@@ -11,7 +11,13 @@ import (
 // nolint:revive // name stutter is intentional to match package domain terms
 type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
-	EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error
+	EnsureMatchWithFormat(
+		ctx context.Context,
+		matchID int64,
+		formatID int64,
+		matchDate string,
+		originalMatchType string,
+	) error
 	GetOrCreateVenue(ctx context.Context, name string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	GetOrCreateOpposition(ctx context.Context, name string) (int64, error)
@@ -46,6 +52,12 @@ func SetCricsheetDB(d CricsheetDB) { cricDB = d }
 // SetWeatherClient allows tests to inject a fake weather client.
 func SetWeatherClient(w WeatherClient) { weatherClient = w }
 
+// GetCricsheetDB returns the current DB implementation (for tests).
+func GetCricsheetDB() CricsheetDB { return cricDB }
+
+// GetWeatherClient returns the current weather client (for tests).
+func GetWeatherClient() WeatherClient { return weatherClient }
+
 // SetRecomputeFn allows tests to stub out the recompute function.
 func SetRecomputeFn(f func(ctx context.Context, matchID int64) error) { recomputeFn = f }
 
@@ -57,8 +69,14 @@ func (realDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, e
 	return db.GetMatchFormatIDByCode(ctx, code)
 }
 
-func (realDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error {
-	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate)
+func (realDB) EnsureMatchWithFormat(
+	ctx context.Context,
+	matchID int64,
+	formatID int64,
+	matchDate string,
+	originalMatchType string,
+) error {
+	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate, originalMatchType)
 }
 
 func (realDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {

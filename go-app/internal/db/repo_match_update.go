@@ -8,23 +8,24 @@ import (
 // MatchInfoUpdate carries optional fields to update in match_details.
 // Use nil to skip updating a field (keep existing value).
 type MatchInfoUpdate struct {
-	Score          *int
-	Wickets        *int
-	Overs          *float32
-	Balls          *int
-	RPO            *float32
-	Target         *int
-	Inning         *int
-	Result         *int
-	OppositionID   *int64
-	MatchDate      *string // YYYY-MM-DD
-	BattingSession *string
-	BowlingSession *string
-	VenueID        *int64
-	Extras         *int
-	Toss           *string
-	SeasonID       *int64
-	MatchNumber    *int
+	Score             *int
+	Wickets           *int
+	Overs             *float32
+	Balls             *int
+	RPO               *float32
+	Target            *int
+	Inning            *int
+	Result            *int64
+	OppositionID      *int64
+	MatchDate         *string // YYYY-MM-DD
+	BattingSession    *string
+	BowlingSession    *string
+	VenueID           *int64
+	Extras            *int
+	Toss              *string
+	SeasonID          *int64
+	MatchNumber       *int
+	OriginalMatchType *string
 }
 
 // UpdateMatchDetails updates match_details for a given match_id using COALESCE logic.
@@ -51,7 +52,8 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		extras = COALESCE($15, extras),
 		toss = COALESCE($16, toss),
 		season_id = COALESCE($17, season_id),
-		match_number = COALESCE($18, match_number)
+		match_number = COALESCE($18, match_number),
+		original_match_type = COALESCE($19, original_match_type)
 		WHERE match_id = $1`,
 		matchID,
 		u.Score,
@@ -71,6 +73,7 @@ func UpdateMatchDetails(ctx context.Context, matchID int64, u *MatchInfoUpdate) 
 		u.Toss,
 		u.SeasonID,
 		u.MatchNumber,
+		u.OriginalMatchType,
 	)
 	return err
 }

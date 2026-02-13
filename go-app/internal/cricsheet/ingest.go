@@ -22,6 +22,7 @@ type Options struct {
 	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
 	WeatherEnqueue       bool
+	FailFast             bool
 }
 
 // ImportDir reads all .json files in dir and imports them into the DB concurrently.
@@ -46,18 +47,26 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	sort.Strings(files)
 
 	var count int64
-	g, ctx := errgroup.WithContext(ctx)
+	var g *errgroup.Group
+	if opts.FailFast {
+		g, ctx = errgroup.WithContext(ctx)
+	} else {
+		g = new(errgroup.Group)
+	}
 	g.SetLimit(runtime.NumCPU())
 
 	for _, f := range files {
 		f := f // capture
 		g.Go(func() error {
+			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
-				slog.Warn("import failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
-				return nil // don't abort entire group on single file failure, mirroring legacy behavior
+				if opts.FailFast {
+					return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				}
+				slog.Error("import match file failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
+				return nil
 			}
 			atomic.AddInt64(&count, 1)
-			slog.Info("imported file", slog.String("file", filepath.Base(f)))
 			return nil
 		})
 	}
@@ -103,7 +112,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO); err != nil {
+	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO, info.MatchType); err != nil {
 		return fmt.Errorf("ensure match with format: %w", err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
@@ -128,10 +137,17 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		toss = info.Toss.Winner
 	}
 	winner := ""
+	var winnerID *int64
 	if info.Outcome != nil {
-		winner = info.Outcome.Winner
+		winner = strings.TrimSpace(info.Outcome.Winner)
+		if winner != "" {
+			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
+				winnerID = &id
+			} else {
+				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
+			}
+		}
 	}
-	_ = winner // currently unused, but kept for possible result mapping
 
 	ballsPerOver := info.BallsPerOver
 	if ballsPerOver <= 0 {
@@ -139,18 +155,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
-		_ = cricDB.Exec(
+		if err := cricDB.Exec(
 			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
+			`INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`,
 			mid,
-			"inning1",
-		)
-		_ = cricDB.Exec(
-			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1,$2) ON CONFLICT (match_id, session) DO NOTHING`,
-			mid,
-			"inning2",
-		)
+		); err != nil {
+			return fmt.Errorf("insert weather placeholders: %w", err)
+		}
 	}
 	playersSeen := map[string]bool{}
 	for i, inng := range m.Innings {
@@ -330,20 +341,24 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			target = &firRuns
 		}
 		upd := &db.MatchInfoUpdate{
-			Score:        &runs,
-			Wickets:      &wkts,
-			Overs:        &oversFloat,
-			Balls:        &balls,
-			RPO:          &rpo,
-			Target:       target,
-			Inning:       &inningNo,
-			OppositionID: oppositionID,
-			MatchDate:    &dateISO,
-			VenueID:      venueID,
-			Extras:       &extras,
-			Toss:         &toss,
-			SeasonID:     seasonID,
-			MatchNumber:  matchNumber,
+			Balls:             &balls,
+			BattingSession:    &batTeam,
+			BowlingSession:    &oppTeam,
+			Extras:            &extras,
+			Inning:            &inningNo,
+			MatchDate:         &dateISO,
+			MatchNumber:       matchNumber,
+			OppositionID:      oppositionID,
+			Overs:             &oversFloat,
+			RPO:               &rpo,
+			Result:            winnerID,
+			Score:             &runs,
+			SeasonID:          seasonID,
+			Target:            target,
+			Toss:              &toss,
+			VenueID:           venueID,
+			Wickets:           &wkts,
+			OriginalMatchType: &info.MatchType,
 		}
 		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
 			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))

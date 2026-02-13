@@ -25,6 +25,11 @@ curl -s http://localhost:8080/readiness
 
 ### 10) Predict team (DB-backed, end-to-end)
 Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
+
+**Supported Formats:** `TEST`, `ODI`, `T20`, `T20I`.
+- **Aliases:** `MDM` (TEST), `ODM` (ODI), `IT20` (T20I) are automatically mapped to their canonical counterparts.
+- **T20/T20I Bucket:** For many feature calculations, `T20` (domestic) and `T20I` (international) are treated as a single bucket to ensure richer feature vectors.
+
 ```bash
 make team-select MATCH=<match_id> SEASON=2019 FORMAT=T20
 ```
@@ -59,6 +64,10 @@ This repo standardizes file IO locations and makes them configurable via JSON, e
 See `docs/CONFIG.md` for full schema and examples.
 
 ## Formatting and linting
+- Run all quality checks (lint, fmt, typecheck, tests) for all components:
+```bash
+make check-all
+```
 - Aggregate format both components:
 ```
 make fmt
@@ -163,6 +172,7 @@ Notes and parameters:
 Examples:
 ```
 # Snapshots as of today (UTC) for all formats (TEST, ODI, T20I, T20)
+# Note: T20 and T20I features are often computed from a shared data bucket.
 make precompute-asof
 
 # Snapshots as of a specific date

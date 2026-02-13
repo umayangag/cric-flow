@@ -43,7 +43,7 @@ Tips:
 
 ## 2) Implement fixes
 - For each entry in `pr_reviews.json`, open `path:line`, read `body` for context or a ```suggestion``` block, and apply the change. If the fix is suspicious or not needed confirm with the user.
-- Run linters/tests as usual (`make lint && make test`).
+- Run `make check-all` to verify no new errors.
 
 ## 3) Resolve fixed threads (GraphQL mutation)
 Resolution is only available via GraphQL. Use the exact mutation below. Single thread:

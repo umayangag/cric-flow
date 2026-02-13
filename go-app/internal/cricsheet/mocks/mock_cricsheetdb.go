@@ -16,8 +16,8 @@ func (m *CricsheetDBMock) GetMatchFormatIDByCode(ctx context.Context, code strin
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *CricsheetDBMock) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error {
-	args := m.Called(ctx, matchID, formatID, matchDate)
+func (m *CricsheetDBMock) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string, originalMatchType string) error {
+	args := m.Called(ctx, matchID, formatID, matchDate, originalMatchType)
 	return args.Error(0)
 }
 

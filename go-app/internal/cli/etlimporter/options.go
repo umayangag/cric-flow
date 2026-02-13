@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
@@ -17,6 +18,7 @@ type Options struct {
 	Apply       bool
 	Concurrency int
 	Pattern     string
+	Timeout     time.Duration
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -26,6 +28,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var apply bool
 	var concurrency int
 	var pattern string
+	var timeout time.Duration
 
 	// Environment defaults
 	defIn := getenv("GO_APP_ETL_DIR", "")
@@ -39,6 +42,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.BoolVar(&apply, "apply", false, "apply changes (upsert to DB); if false, dry-run")
 	fs.IntVar(&concurrency, "concurrency", defConc, "number of concurrent workers (>=1)")
 	fs.StringVar(&pattern, "pattern", defPattern, "glob pattern to select files (e.g., *.csv)")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -54,7 +58,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, errors.New("pattern must be non-empty")
 	}
 
-	return Options{InDir: inDir, Apply: apply, Concurrency: concurrency, Pattern: pattern}, nil
+	return Options{InDir: inDir, Apply: apply, Concurrency: concurrency, Pattern: pattern, Timeout: timeout}, nil
 }
 
 func getenv(key, def string) string {

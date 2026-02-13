@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +15,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 )
 
 // options holds CLI flags for backfilling ball_event rows.
@@ -75,9 +76,11 @@ type noopWriter struct{}
 func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func main() {
+	logger.SetupFromEnv()
 	ctx := context.Background()
 	if err := run(ctx, os.Args[1:]); err != nil {
-		log.Fatalf("backfill failed: %v", err)
+		slog.Error("backfill failed", slog.Any("err", err))
+		os.Exit(1)
 	}
 }
 
@@ -87,9 +90,9 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if opts.concurrency != 1 {
-		log.Printf(
-			"[warn] only concurrency=1 is supported currently; proceeding sequentially (requested %d)",
-			opts.concurrency,
+		slog.Warn(
+			"only concurrency=1 is supported currently; proceeding sequentially",
+			slog.Int("requested", opts.concurrency),
 		)
 	}
 
@@ -120,7 +123,7 @@ func run(ctx context.Context, args []string) error {
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		log.Printf("no files found in %s", opts.inDir)
+		slog.Info("no files found in input directory", slog.String("dir", opts.inDir))
 		return nil
 	}
 
@@ -130,8 +133,7 @@ func run(ctx context.Context, args []string) error {
 	for _, f := range files {
 		m, meta, perr := parseMatchFile(f)
 		if perr != nil {
-			log.Printf("[error] parse failed %s: %v", filepath.Base(f), perr)
-			continue
+			return fmt.Errorf("parse match file %s: %w", filepath.Base(f), perr)
 		}
 		fmtCode := cricsheet.DetectFormat(meta.matchType, meta.teams, cfg)
 		if strings.ToUpper(fmtCode) != opts.format {
@@ -145,22 +147,28 @@ func run(ctx context.Context, args []string) error {
 			continue
 		}
 		if opts.dryRun {
-			log.Printf("[dry] would backfill match_id=%d from %s", stableID, filepath.Base(f))
+			slog.Info(
+				"DRY-RUN: would backfill match",
+				slog.Int64("match_id", stableID),
+				slog.String("file", filepath.Base(f)),
+			)
 			total++
 			continue
 		}
-		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID, meta.dateISO); err != nil {
-			log.Printf("[error] ensure match failed id=%d: %v", stableID, err)
-			continue
+		slog.Info("backfilling ball_event", slog.Int64("match_id", stableID), slog.String("file", filepath.Base(f)))
+		if err := db.EnsureMatchWithFormat(ctx, stableID, formatID, meta.dateISO, meta.matchType); err != nil {
+			return fmt.Errorf("ensure match failed id=%d: %w", stableID, err)
 		}
 		if err := cricsheet.EmitBallEvents(ctx, m, int(formatID), stableID); err != nil {
-			log.Printf("[error] emit failed for id=%d: %v", stableID, err)
-			continue
+			return fmt.Errorf("emit failed for id=%d: %w", stableID, err)
 		}
-		log.Printf("[ok] backfilled ball_event for id=%d from %s", stableID, filepath.Base(f))
 		total++
 	}
-	log.Printf("done. matches=%d elapsed=%s", total, time.Since(start).Round(time.Millisecond))
+	slog.Info(
+		"backfill completed",
+		slog.Int("matches", total),
+		slog.Duration("elapsed", time.Since(start).Round(time.Millisecond)),
+	)
 	return nil
 }
 

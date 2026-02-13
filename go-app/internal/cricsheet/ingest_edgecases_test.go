@@ -107,7 +107,7 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	file := writeJSON(t, d, "good.json", good)
 
 	// Expectations
-	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	dbMock.On("UpdateMatchDetails", ctx, mock.Anything, mock.Anything).Return(nil)
 	dbMock.On("UpsertBattingBatch", ctx, mock.Anything).Return(nil)
 	dbMock.On("UpsertBowlingBatch", ctx, mock.Anything).Return(nil)

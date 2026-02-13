@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
@@ -17,6 +18,7 @@ type Options struct {
 	MatchID  int64
 	Provider string
 	Apply    bool
+	Timeout  time.Duration
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
@@ -26,6 +28,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		matchStr string
 		provider string
 		apply    bool
+		timeout  time.Duration
 	)
 
 	// Defaults from env/config
@@ -38,6 +41,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.StringVar(&matchStr, "match", "", "match id (required)")
 	fs.StringVar(&provider, "provider", defProvider, "weather provider name (e.g., dummy)")
 	fs.BoolVar(&apply, "apply", false, "apply changes; if false, dry-run")
+	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -59,7 +63,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		return Options{}, errors.New("provider is required")
 	}
 
-	return Options{MatchID: matchID, Provider: provider, Apply: apply}, nil
+	return Options{MatchID: matchID, Provider: provider, Apply: apply, Timeout: timeout}, nil
 }
 
 func getenv(key, def string) string {
