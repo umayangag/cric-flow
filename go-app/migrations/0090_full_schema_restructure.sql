@@ -80,7 +80,9 @@ CREATE INDEX idx_match_inning_bowling_team ON match_inning(bowling_team_oppositi
 
 -- 6) Add inning_number to batting_data, update unique constraint
 ALTER TABLE batting_data ADD COLUMN inning_number SMALLINT NOT NULL DEFAULT 1;
+-- Drop both explicit (0002) and auto-generated (0001) old constraints
 ALTER TABLE batting_data DROP CONSTRAINT IF EXISTS uq_batting_match_player;
+ALTER TABLE batting_data DROP CONSTRAINT IF EXISTS batting_data_match_id_player_id_key;
 ALTER TABLE batting_data DROP CONSTRAINT IF EXISTS uq_batting_match_inning_player;
 ALTER TABLE batting_data ADD CONSTRAINT uq_batting_match_inning_player UNIQUE (match_id, inning_number, player_id);
 
@@ -88,7 +90,9 @@ CREATE INDEX IF NOT EXISTS idx_batting_data_match_inning ON batting_data(match_i
 
 -- 7) Add inning_number to bowling_data, update unique constraint
 ALTER TABLE bowling_data ADD COLUMN inning_number SMALLINT NOT NULL DEFAULT 1;
+-- Drop both explicit (0002) and auto-generated (0001) old constraints
 ALTER TABLE bowling_data DROP CONSTRAINT IF EXISTS uq_bowling_match_player;
+ALTER TABLE bowling_data DROP CONSTRAINT IF EXISTS bowling_data_match_id_player_id_key;
 ALTER TABLE bowling_data DROP CONSTRAINT IF EXISTS uq_bowling_match_inning_player;
 ALTER TABLE bowling_data ADD CONSTRAINT uq_bowling_match_inning_player UNIQUE (match_id, inning_number, player_id);
 

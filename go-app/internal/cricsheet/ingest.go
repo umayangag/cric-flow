@@ -47,12 +47,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	sort.Strings(files)
 
 	var count int64
-	var g *errgroup.Group
-	if opts.FailFast {
-		g, ctx = errgroup.WithContext(ctx)
-	} else {
-		g = new(errgroup.Group)
-	}
+	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.NumCPU())
 
 	for _, f := range files {
@@ -60,11 +55,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 		g.Go(func() error {
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
-				if opts.FailFast {
-					return fmt.Errorf("file %s: %w", filepath.Base(f), err)
-				}
-				slog.Error("import match file failed", slog.String("file", filepath.Base(f)), slog.Any("err", err))
-				return nil
+				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
 			}
 			atomic.AddInt64(&count, 1)
 			return nil
@@ -272,32 +263,21 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						if len(fNames) > 0 {
 							batterID, err := cache.GetPlayerID(ctx, w.PlayerOut)
 							if err != nil {
-								slog.Warn(
-									"get/create player failed",
-									slog.String("name", w.PlayerOut),
-									slog.Any("err", err),
-								)
-								continue
+								return fmt.Errorf("get/create player for batter %q: %w", w.PlayerOut, err)
 							}
 							var bowlerID *int64
 							// Bowler is only associated with 'caught' dismissals.
 							if isCaught && d.Bowler != "" {
 								bid, err := cache.GetPlayerID(ctx, d.Bowler)
 								if err != nil {
-									slog.Warn(
-										"get/create player failed",
-										slog.String("name", d.Bowler),
-										slog.Any("err", err),
-									)
-									continue
+									return fmt.Errorf("get/create player for bowler %q: %w", d.Bowler, err)
 								}
 								bowlerID = &bid
 							}
 							for _, fn := range fNames {
 								fid, err := cache.GetPlayerID(ctx, fn)
 								if err != nil {
-									slog.Warn("get/create player failed", slog.String("name", fn), slog.Any("err", err))
-									continue
+									return fmt.Errorf("get/create player for fielder %q: %w", fn, err)
 								}
 								fieldingEvents = append(fieldingEvents, db.FieldingEvent{
 									MatchID:     mid,
@@ -366,7 +346,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			}
 		}
 		if err := insertFieldingEventsBatchFn(ctx, fieldingEvents); err != nil {
-			slog.Warn("insert fielding_events failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			return fmt.Errorf("insert fielding_events: %w", err)
 		}
 		oversFloat := oversFromBalls(balls, ballsPerOver)
 		rpo := float32(0)
@@ -393,12 +373,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			WinnerOppositionID:      winnerID,
 		}
 		if err := cricDB.UpsertMatchInning(ctx, mi); err != nil {
-			slog.Warn(
-				"upsert match_inning failed",
-				slog.Int64("match_id", mid),
-				slog.Int("inning", inningNo),
-				slog.Any("err", err),
-			)
+			return fmt.Errorf("upsert match_inning (match_id=%d, inning=%d): %w", mid, inningNo, err)
 		}
 		order := make([]string, 0, len(batAgg))
 		for name, b := range batAgg {
@@ -410,7 +385,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		var batBatch []db.Batting
 		for _, name := range order {
 			b := batAgg[name]
-			pid, _ := cache.GetPlayerID(ctx, name)
+			pid, err := cache.GetPlayerID(ctx, name)
+			if err != nil {
+				return fmt.Errorf("get/create player %q for batting: %w", name, err)
+			}
 			sr := strikeRate(b.Runs, b.Balls)
 			desc := dismissals[name]
 			if desc == "" {
@@ -433,7 +411,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			pos++
 		}
 		if err := cricDB.UpsertBattingBatch(ctx, batBatch); err != nil {
-			slog.Warn("upsert batting batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			return fmt.Errorf("upsert batting batch (match_id=%d, inning=%d): %w", mid, inningNo, err)
 		}
 
 		var bowlBatch []db.Bowling
@@ -444,7 +422,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			if s.Balls > 0 {
 				econ = float32(float64(s.Runs) / float64(s.Balls) * float64(ballsPerOver))
 			}
-			pid, _ := cache.GetPlayerID(ctx, name)
+			pid, err := cache.GetPlayerID(ctx, name)
+			if err != nil {
+				return fmt.Errorf("get/create player %q for bowling: %w", name, err)
+			}
 			bowlBatch = append(bowlBatch, db.Bowling{
 				MatchID:      mid,
 				InningNumber: inningNo,
@@ -463,7 +444,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			})
 		}
 		if err := cricDB.UpsertBowlingBatch(ctx, bowlBatch); err != nil {
-			slog.Warn("upsert bowling batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			return fmt.Errorf("upsert bowling batch (match_id=%d, inning=%d): %w", mid, inningNo, err)
 		}
 	}
 	// Optional: insert placeholder fielding rows for all players seen in the match
@@ -471,7 +452,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		zero := 0
 		var fieldingBatch []db.Fielding
 		for name := range playersSeen {
-			pid, _ := cache.GetPlayerID(ctx, name)
+			pid, err := cache.GetPlayerID(ctx, name)
+			if err != nil {
+				return fmt.Errorf("get/create player %q for fielding placeholder: %w", name, err)
+			}
 			fieldingBatch = append(fieldingBatch, db.Fielding{
 				MatchID:        mid,
 				PlayerID:       pid,

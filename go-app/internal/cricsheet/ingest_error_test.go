@@ -122,40 +122,13 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 	)
 
 	anyCtx := mock.MatchedBy(func(c context.Context) bool { return c != nil })
-	t.Run("FailFast_Enabled", func(t *testing.T) {
+	t.Run("stops_at_first_DB_error", func(t *testing.T) {
 		// Ingest uses db cache for format/venue/season/opposition/players; only UpsertMatch (and below) hit cricDB
 		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(matchInsertMatcher("T20"))).Return(fmt.Errorf("db error"))
 
-		opts := &cricsheet.Options{FailFast: true}
-		_, err := cricsheet.ImportDir(ctx, tmpDir, opts)
+		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{})
 
-		require.Error(t, err, "FailFast should propagate UpsertMatch error")
-		mdb.AssertExpectations(t)
-	})
-
-	t.Run("FailFast_Disabled", func(t *testing.T) {
-		mdb.ExpectedCalls = nil
-		mdb.On("GetMatchFormatIDByCode", anyCtx, "T20").Return(int64(1), nil).Maybe()
-		mdb.On("GetOrCreateVenue", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
-		mdb.On("GetOrCreateSeason", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
-		mdb.On("GetOrCreateOpposition", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
-		mdb.On("GetOrCreateByName", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
-		// Fail for one file (match1 2024-01-01), succeed for the other (match2 2024-01-02)
-		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool {
-			return m != nil && m.OriginalMatchType == "T20" && m.MatchDate == "2024-01-01"
-		})).Return(fmt.Errorf("db error")).Once()
-		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool {
-			return m != nil && m.OriginalMatchType == "T20" && m.MatchDate == "2024-01-02"
-		})).Return(nil).Once()
-		mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).Return(nil).Maybe()
-		mdb.On("UpsertBattingBatch", anyCtx, mock.MatchedBy(func(_ []db.Batting) bool { return true })).Return(nil).Maybe()
-		mdb.On("UpsertBowlingBatch", anyCtx, mock.MatchedBy(func(_ []db.Bowling) bool { return true })).Return(nil).Maybe()
-
-		opts := &cricsheet.Options{FailFast: false}
-		count, err := cricsheet.ImportDir(ctx, tmpDir, opts)
-
-		require.NoError(t, err, "ImportDir should not return error when FailFast is disabled")
-		require.Equal(t, 1, count, "Only the file that succeeded should be counted")
+		require.Error(t, err, "ImportDir must stop and return on first DB error")
 		mdb.AssertExpectations(t)
 	})
 }

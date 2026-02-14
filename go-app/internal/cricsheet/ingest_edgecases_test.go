@@ -153,8 +153,9 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 		cricsheet.SetWeatherClient(new(mocks.MockWeatherClient))
 	}()
 
-	// stub recompute to avoid touching real DB in unit tests
+	// stub recompute and fielding events to avoid touching real DB in unit tests
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
+	cricsheet.SetInsertFieldingEventsBatchFn(func(_ context.Context, _ []db.FieldingEvent) error { return nil })
 
 	good := `{
       "info": {

@@ -55,6 +55,11 @@ func GetWeatherClient() WeatherClient { return weatherClient }
 // SetRecomputeFn allows tests to stub out the recompute function.
 func SetRecomputeFn(f func(ctx context.Context, matchID int64) error) { recomputeFn = f }
 
+// SetInsertFieldingEventsBatchFn allows tests to stub fielding event inserts (uses real DB by default).
+func SetInsertFieldingEventsBatchFn(f func(ctx context.Context, rows []db.FieldingEvent) error) {
+	insertFieldingEventsBatchFn = f
+}
+
 type realDB struct{}
 
 type realWeather struct{}

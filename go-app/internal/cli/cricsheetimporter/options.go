@@ -54,7 +54,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		"insert zeroed fielding rows for all players seen",
 	)
 	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
-	fs.BoolVar(&failFast, "fail-fast", false, "abort on first file error (default: false)")
+	fs.BoolVar(&failFast, "fail-fast", true, "abort on first file or DB error (default: true)")
 
 	var timeout time.Duration
 	fs.DurationVar(&timeout, "timeout", config.DefaultTimeout, "operation timeout")
