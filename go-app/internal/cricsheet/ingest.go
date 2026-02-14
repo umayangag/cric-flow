@@ -58,6 +58,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
 				slog.Error("import failed, stopping",
 					slog.String("file", filepath.Base(f)),
+					slog.String("path", f),
 					slog.Any("err", err))
 				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
 			}
@@ -86,7 +87,10 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}()
 	m, err := Parse(fh)
 	if err != nil {
-		return fmt.Errorf("parse: %w", err)
+		slog.Error("parse failed",
+			slog.String("file", path),
+			slog.Any("err", err))
+		return fmt.Errorf("parse %s: %w", path, err)
 	}
 	info := m.Info
 	dateISO := info.MatchDate()
@@ -101,10 +105,20 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	cfg := config.Load()
 	formatCode := DetectFormat(info.MatchType, info.Teams, cfg)
 	if formatCode == "" {
+		slog.Error("unsupported match_type",
+			slog.String("file", path),
+			slog.String("match_type", info.MatchType),
+			slog.String("teams", fmt.Sprintf("%v", info.Teams)))
 		return fmt.Errorf("unsupported match_type: %s", info.MatchType)
 	}
 	formatID, err := cache.GetFormatID(ctx, formatCode)
 	if err != nil {
+		slog.Error("lookup format_id failed",
+			slog.String("file", path),
+			slog.String("format", formatCode),
+			slog.String("match_date", dateISO),
+			slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+			slog.Any("err", err))
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
@@ -136,6 +150,12 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			if id, e := cache.GetOppositionID(ctx, winner); e == nil {
 				winnerID = &id
 			} else {
+				slog.Error("get/create opposition for winner failed",
+					slog.String("file", path),
+					slog.Int64("match_id", mid),
+					slog.String("winner", winner),
+					slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+					slog.Any("err", e))
 				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
 			}
 		}
@@ -185,17 +205,43 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		oppTeam := otherTeam(batTeam, teamA, teamB)
 		// Validate inning team names match match teams to avoid creating opposition rows with empty name
 		if batTeam == "" {
+			slog.Error("inning has no team name",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.Int("inning", inningNo))
 			return fmt.Errorf("inning %d has no team name", inningNo)
 		}
 		if oppTeam == "" {
+			slog.Error("inning team does not match match teams",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.Int("inning", inningNo),
+				slog.String("inning_team", batTeam),
+				slog.String("match_teams", fmt.Sprintf("%q and %q", teamA, teamB)))
 			return fmt.Errorf("inning %d team %q does not match match teams %q and %q", inningNo, batTeam, teamA, teamB)
 		}
 		battingTeamOppositionID, err := cache.GetOppositionID(ctx, batTeam)
 		if err != nil {
+			slog.Error("get/create opposition for batting team failed",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.Int("inning", inningNo),
+				slog.String("batting_team", batTeam),
+				slog.Any("err", err))
 			return fmt.Errorf("get/create opposition for batting team %q: %w", batTeam, err)
 		}
 		bowlingTeamOppositionID, err := cache.GetOppositionID(ctx, oppTeam)
 		if err != nil {
+			slog.Error("get/create opposition for bowling team failed",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.Int("inning", inningNo),
+				slog.String("bowling_team", oppTeam),
+				slog.Any("err", err))
 			return fmt.Errorf("get/create opposition for bowling team %q: %w", oppTeam, err)
 		}
 		// totals and aggregates
@@ -258,6 +304,14 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						if len(fNames) > 0 {
 							batterID, err := cache.GetPlayerID(ctx, w.PlayerOut)
 							if err != nil {
+								slog.Error("get/create player for batter (fielding_event) failed",
+									slog.String("file", path),
+									slog.Int64("match_id", mid),
+									slog.Int("inning", inningNo),
+									slog.Int("over", overNo),
+									slog.String("batter", w.PlayerOut),
+									slog.String("kind", kindLower),
+									slog.Any("err", err))
 								return fmt.Errorf("get/create player for batter %q: %w", w.PlayerOut, err)
 							}
 							var bowlerID *int64
@@ -265,6 +319,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 							if isCaught && d.Bowler != "" {
 								bid, err := cache.GetPlayerID(ctx, d.Bowler)
 								if err != nil {
+									slog.Error("get/create player for bowler (fielding_event) failed",
+										slog.String("file", path),
+										slog.Int64("match_id", mid),
+										slog.Int("inning", inningNo),
+										slog.String("bowler", d.Bowler),
+										slog.String("batter_out", w.PlayerOut),
+										slog.Any("err", err))
 									return fmt.Errorf("get/create player for bowler %q: %w", d.Bowler, err)
 								}
 								bowlerID = &bid
@@ -272,6 +333,15 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 							for _, fn := range fNames {
 								fid, err := cache.GetPlayerID(ctx, fn)
 								if err != nil {
+									slog.Error("get/create player for fielder failed",
+										slog.String("file", path),
+										slog.Int64("match_id", mid),
+										slog.Int("inning", inningNo),
+										slog.Int("over", overNo),
+										slog.String("fielder", fn),
+										slog.String("batter_out", w.PlayerOut),
+										slog.String("kind", kindLower),
+										slog.Any("err", err))
 									return fmt.Errorf("get/create player for fielder %q: %w", fn, err)
 								}
 								fieldingEvents = append(fieldingEvents, db.FieldingEvent{
@@ -378,6 +448,14 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			b := batAgg[name]
 			pid, err := cache.GetPlayerID(ctx, name)
 			if err != nil {
+				slog.Error("get/create player for batting failed",
+					slog.String("file", path),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", dateISO),
+					slog.Int("inning", inningNo),
+					slog.String("batting_team", batTeam),
+					slog.String("player", name),
+					slog.Any("err", err))
 				return fmt.Errorf("get/create player %q for batting: %w", name, err)
 			}
 			sr := strikeRate(b.Runs, b.Balls)
@@ -413,6 +491,14 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			}
 			pid, err := cache.GetPlayerID(ctx, name)
 			if err != nil {
+				slog.Error("get/create player for bowling failed",
+					slog.String("file", path),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", dateISO),
+					slog.Int("inning", inningNo),
+					slog.String("bowling_team", oppTeam),
+					slog.String("player", name),
+					slog.Any("err", err))
 				return fmt.Errorf("get/create player %q for bowling: %w", name, err)
 			}
 			bowlBatch = append(bowlBatch, db.Bowling{
@@ -437,7 +523,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	// Build ball event rows (requires cache; done before tx)
 	ballEventRows, err := BuildBallEventRows(ctx, m, int(formatID), mid)
 	if err != nil {
-		slog.Error("failed to build ball_event rows", slog.Int64("match_id", mid), slog.Any("err", err))
+		slog.Error("failed to build ball_event rows",
+			slog.String("file", path),
+			slog.Int64("match_id", mid),
+			slog.String("match_date", dateISO),
+			slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+			slog.Int("innings_count", len(m.Innings)),
+			slog.Any("err", err))
 		return fmt.Errorf("build ball events: %w", err)
 	}
 	// Build fielding placeholder batch if needed
@@ -447,6 +539,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		for name := range playersSeen {
 			pid, err := cache.GetPlayerID(ctx, name)
 			if err != nil {
+				slog.Error("get/create player for fielding placeholder failed",
+					slog.String("file", path),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", dateISO),
+					slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+					slog.String("player", name),
+					slog.Any("err", err))
 				return fmt.Errorf("get/create player %q for fielding placeholder: %w", name, err)
 			}
 			fieldingBatch = append(fieldingBatch, db.Fielding{
@@ -464,48 +563,115 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if runInTxFn != nil {
 		runTx = runInTxFn
 	}
+	matchCtx := struct {
+		file, date, teams string
+	}{path, dateISO, fmt.Sprintf("%s vs %s", teamA, teamB)}
 	if err := runTx(ctx, func(ctx context.Context, tx db.CopyFromTx) error {
 		if err := db.UpsertMatchTx(ctx, tx, matchInsert); err != nil {
-			slog.Error("upsert match failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			slog.Error("upsert match failed",
+				slog.String("file", matchCtx.file),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", matchCtx.date),
+				slog.String("teams", matchCtx.teams),
+				slog.String("match_type", info.MatchType),
+				slog.Any("err", err))
 			return fmt.Errorf("upsert match: %w", err)
 		}
 		if opts != nil && opts.PlaceholdersWeather {
 			if e := tx.Exec(ctx, `INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`, mid); e != nil {
-				slog.Error("insert weather placeholders failed", slog.Int64("match_id", mid), slog.Any("err", e))
+				slog.Error("insert weather placeholders failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.String("teams", matchCtx.teams),
+					slog.Any("err", e))
 				return fmt.Errorf("insert weather placeholders: %w", e)
 			}
 		}
 		for i := range allMatchInnings {
+			inn := allMatchInnings[i]
 			if err := db.InsertFieldingEventsBatchTx(ctx, tx, allFieldingEvents[i]); err != nil {
-				slog.Error("insert fielding_events failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+				slog.Error("insert fielding_events failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("inning", inn.InningNumber),
+					slog.Int("events_count", len(allFieldingEvents[i])),
+					slog.Any("err", err))
 				return fmt.Errorf("insert fielding_events: %w", err)
 			}
-			if err := db.UpsertMatchInningTx(ctx, tx, allMatchInnings[i]); err != nil {
-				slog.Error("upsert match_inning failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+			if err := db.UpsertMatchInningTx(ctx, tx, inn); err != nil {
+				slog.Error("upsert match_inning failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("inning", inn.InningNumber),
+					slog.Int("runs_scored", inn.RunsScored),
+					slog.Int("wickets_lost", inn.WicketsLost),
+					slog.Any("err", err))
 				return fmt.Errorf("upsert match_inning: %w", err)
 			}
-			if err := db.UpsertBattingBatchTx(ctx, tx, allBatBatches[i]); err != nil {
-				slog.Error("upsert batting batch failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+			batBatch := allBatBatches[i]
+			if err := db.UpsertBattingBatchTx(ctx, tx, batBatch); err != nil {
+				firstPlayer := ""
+				if len(batBatch) > 0 && batBatch[0].PlayerID != 0 {
+					firstPlayer = fmt.Sprintf("player_id=%d", batBatch[0].PlayerID)
+				}
+				slog.Error("upsert batting batch failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("inning", inn.InningNumber),
+					slog.Int("batch_size", len(batBatch)),
+					slog.String("first_row", firstPlayer),
+					slog.Any("err", err))
 				return fmt.Errorf("upsert batting batch: %w", err)
 			}
-			if err := db.UpsertBowlingBatchTx(ctx, tx, allBowlBatches[i]); err != nil {
-				slog.Error("upsert bowling batch failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+			bowlBatch := allBowlBatches[i]
+			if err := db.UpsertBowlingBatchTx(ctx, tx, bowlBatch); err != nil {
+				firstPlayer := ""
+				if len(bowlBatch) > 0 && bowlBatch[0].PlayerID != 0 {
+					firstPlayer = fmt.Sprintf("player_id=%d", bowlBatch[0].PlayerID)
+				}
+				slog.Error("upsert bowling batch failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("inning", inn.InningNumber),
+					slog.Int("batch_size", len(bowlBatch)),
+					slog.String("first_row", firstPlayer),
+					slog.Any("err", err))
 				return fmt.Errorf("upsert bowling batch: %w", err)
 			}
 		}
 		if len(fieldingBatch) > 0 {
 			if err := db.UpsertFieldingBatchTx(ctx, tx, fieldingBatch); err != nil {
-				slog.Error("upsert fielding batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+				slog.Error("upsert fielding batch failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("batch_size", len(fieldingBatch)),
+					slog.Any("err", err))
 				return fmt.Errorf("upsert fielding batch: %w", err)
 			}
 		}
 		if err := db.RecomputeFieldingAggregatesTx(ctx, tx, mid); err != nil {
-			slog.Error("recompute fielding aggregates failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			slog.Error("recompute fielding aggregates failed",
+				slog.String("file", matchCtx.file),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", matchCtx.date),
+				slog.String("teams", matchCtx.teams),
+				slog.Any("err", err))
 			return fmt.Errorf("recompute fielding aggregates: %w", err)
 		}
 		if len(ballEventRows) > 0 {
 			if err := db.InsertBallEventsTx(ctx, tx, ballEventRows); err != nil {
-				slog.Error("insert ball_event failed", slog.Int64("match_id", mid), slog.Any("err", err))
+				slog.Error("insert ball_event failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("rows_count", len(ballEventRows)),
+					slog.Any("err", err))
 				return fmt.Errorf("insert ball events: %w", err)
 			}
 		}
@@ -516,7 +682,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
 		if err := weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings)); err != nil {
-			slog.Error("failed to enqueue weather job", slog.Int64("match_id", mid), slog.Any("err", err))
+			slog.Error("failed to enqueue weather job",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.String("venue", info.Venue),
+				slog.String("city", info.City),
+				slog.Any("err", err))
 			return err
 		}
 	}
