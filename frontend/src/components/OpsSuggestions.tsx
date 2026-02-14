@@ -11,6 +11,8 @@ const codeStyle: React.CSSProperties = {
   fontSize: 12,
   overflowX: 'auto',
   border: '1px solid rgba(255,255,255,0.06)',
+  userSelect: 'all',
+  cursor: 'text',
 };
 
 const OpsSuggestions: React.FC = () => {
@@ -57,8 +59,7 @@ const OpsSuggestions: React.FC = () => {
   if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
 
   return (
-    <section>
-      <h3 style={{ margin: '8px 0' }}>Suggestions</h3>
+    <>
       {suggestions.length === 0 ? (
         <div style={{ opacity: 0.9 }}>No suggestions.</div>
       ) : (
@@ -111,7 +112,7 @@ const OpsSuggestions: React.FC = () => {
           ))}
         </div>
       )}
-    </section>
+    </>
   );
 };
 

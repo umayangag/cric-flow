@@ -116,8 +116,8 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastImport == nil {
 		return []Suggestion{{
 			Title:       "Initialize Data",
-			Description: "No migrations found. Start by importing data.",
-			Command:     "make cricsheet-import",
+			Description: "No migrations found. Run from project root: migrate schema, then import Cricsheet JSON.",
+			Command:     "make migrate && make cricsheet-import",
 			Priority:    "HIGH",
 		}}
 	}
@@ -127,7 +127,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if !seqPopulated {
 		return []Suggestion{{
 			Title:       "Fix Missing Sequence Features",
-			Description: "Sequence feature tables are empty. Run precompute to populate them.",
+			Description: "Sequence feature tables are empty. Run from project root. Uses today's date; add ASOF=YYYY-MM-DD for a specific date.",
 			Command:     "make precompute-asof",
 			Priority:    "HIGH",
 		}}
@@ -137,7 +137,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastPrecompute == nil || lastPrecompute.StartedAt.Before(lastImport.StartedAt) {
 		return []Suggestion{{
 			Title:       "Run Precompute",
-			Description: "New data imported. Run precompute features to update feature store.",
+			Description: "New data imported. Run from project root. Uses today's date; add ASOF=YYYY-MM-DD for a specific date.",
 			Command:     "make precompute-asof",
 			Priority:    "HIGH",
 		}}
@@ -147,7 +147,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastExport == nil || lastExport.StartedAt.Before(lastPrecompute.StartedAt) {
 		return []Suggestion{{
 			Title:       "Export Dataset",
-			Description: "Features updated. Export dataset for training.",
+			Description: "Features updated. Run from project root. Exports unified cross-format CSVs to output/go-app.",
 			Command:     "make export-dataset",
 			Priority:    "MEDIUM",
 		}}
@@ -159,7 +159,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastTrainBatting == nil || lastTrainBatting.StartedAt.Before(lastExport.StartedAt) {
 		trainSuggestions = append(trainSuggestions, Suggestion{
 			Title:       "Train Batting Model",
-			Description: "New dataset exported. Train the batting model.",
+			Description: "New dataset exported. Run from project root. Run make ml-install first if venv deps are missing.",
 			Command:     "make train-batting",
 			Priority:    "MEDIUM",
 		})
@@ -168,7 +168,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastTrainBowling == nil || lastTrainBowling.StartedAt.Before(lastExport.StartedAt) {
 		trainSuggestions = append(trainSuggestions, Suggestion{
 			Title:       "Train Bowling Model",
-			Description: "New dataset exported. Train the bowling model.",
+			Description: "New dataset exported. Run from project root. Run make ml-install first if venv deps are missing.",
 			Command:     "make train-bowling",
 			Priority:    "MEDIUM",
 		})

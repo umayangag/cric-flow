@@ -66,7 +66,7 @@ cricsheet-import:
 	@DIR=$${GO_APP_INPUT_DIR:-../data/go-app/cricsheet}; \
 	PLACEHOLDERS_FLAG=""; \
 	if [ "$(PLACEHOLDERS)" = "1" ]; then PLACEHOLDERS_FLAG="--placeholders-weather --placeholders-fielding"; fi; \
-	go run ./cmd/cricsheet-importer -dir="$$DIR" $$PLACEHOLDERS_FLAG
+	go run ./cmd/cricsheet-importer -in="$$DIR" $$PLACEHOLDERS_FLAG
 
 # Evaluate (scaffold)
 # Example: make evaluate SEASON=2019 FORMAT=T20

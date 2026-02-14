@@ -165,7 +165,12 @@ const OpsStatusTab: React.FC = () => {
 
       {data && (
         <Stack spacing={2}>
-          <OpsSuggestions />
+          <SectionCard
+            title="Suggested Commands"
+            subtitle="Copy and run from project root. Commands include required flags."
+          >
+            <OpsSuggestions />
+          </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />
           </SectionCard>

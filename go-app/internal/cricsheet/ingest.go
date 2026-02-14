@@ -138,7 +138,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if info.Outcome != nil {
 		winner = strings.TrimSpace(info.Outcome.Winner)
 		if winner != "" {
-			if id, e := cricDB.GetOrCreateOpposition(ctx, winner); e == nil {
+			if id, e := cache.GetOppositionID(ctx, winner); e == nil {
 				winnerID = &id
 			} else {
 				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
