@@ -226,3 +226,61 @@ func TestGetUniqueFormats(t *testing.T) {
 		mockDB.AssertExpectations(t)
 	})
 }
+
+func TestGetTeamsByFormat(t *testing.T) {
+	originalDB := defaultDB
+	defer func() { defaultDB = originalDB }()
+
+	t.Run("success", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		expectedTeams := []string{"Australia", "India"}
+		rows := NewRowsMock(expectedTeams)
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, mock.Anything, "T20").
+			Return(rows, nil)
+
+		teams, err := GetTeamsByFormat(context.Background(), "T20")
+		assert.NoError(t, err)
+		assert.Equal(t, expectedTeams, teams)
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("db pool not initialized", func(t *testing.T) {
+		SetDB(nil)
+		_, err := GetTeamsByFormat(context.Background(), "T20")
+		assert.Error(t, err)
+		assert.Equal(t, "db pool not initialized", err.Error())
+	})
+}
+
+func TestGetOpponentsByFormatAndTeam(t *testing.T) {
+	originalDB := defaultDB
+	defer func() { defaultDB = originalDB }()
+
+	t.Run("success", func(t *testing.T) {
+		mockDB := new(DBMock)
+		SetDB(mockDB)
+
+		expectedOpponents := []string{"England", "New Zealand"}
+		rows := NewRowsMock(expectedOpponents)
+		rows.On("Close").Return()
+
+		mockDB.On("Query", mock.Anything, mock.Anything, "ODI", "India").
+			Return(rows, nil)
+
+		opponents, err := GetOpponentsByFormatAndTeam(context.Background(), "ODI", "India")
+		assert.NoError(t, err)
+		assert.Equal(t, expectedOpponents, opponents)
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("db pool not initialized", func(t *testing.T) {
+		SetDB(nil)
+		_, err := GetOpponentsByFormatAndTeam(context.Background(), "ODI", "India")
+		assert.Error(t, err)
+		assert.Equal(t, "db pool not initialized", err.Error())
+	})
+}

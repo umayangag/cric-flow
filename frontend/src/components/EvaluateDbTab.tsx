@@ -22,24 +22,24 @@ const filter = createFilterOptions<string>();
 
 const EvaluateDbTab: React.FC = () => {
   // Inputs for new backtest flow
-  const [format, setFormat] = useState<string>('T20');
-  const [team1, setTeam1] = useState<string>('IND');
-  const [team2, setTeam2] = useState<string>('AUS');
+  const [format, setFormat] = useState<string>('');
+  const [team1, setTeam1] = useState<string>('');
+  const [team2, setTeam2] = useState<string>('');
 
   // Options
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
-  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
+  const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
+  const [availableTeam2s, setAvailableTeam2s] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
     const fetchData = async () => {
       try {
-        const [f, t] = await Promise.all([api.getFormats(), api.getTeams()]);
+        const f = await api.getFormats();
         if (active) {
           setAvailableFormats(f);
-          setAvailableTeams(t);
+          // Don't auto-select format on initial load
         }
-        // Optionally set defaults if current selection is invalid, but keeping it simple for now
       } catch (e) {
         if (active) {
           setError(`Failed to load form options: ${e instanceof Error ? e.message : String(e)}`);
@@ -52,6 +52,66 @@ const EvaluateDbTab: React.FC = () => {
       active = false;
     };
   }, []);
+
+  // Fetch Team 1 when format changes
+  useEffect(() => {
+    if (!format) {
+      setAvailableTeam1s([]);
+      setTeam1('');
+      return;
+    }
+    let active = true;
+    api
+      .getTeamsByFormat(format)
+      .then((teams) => {
+        if (active) {
+          setAvailableTeam1s(teams);
+          // Don't auto-select team1; keep it empty until user selects
+          // Only clear if current selection is invalid
+          if (team1 && !teams.includes(team1)) {
+            setTeam1('');
+          }
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(`Failed to fetch teams: ${err.message}`);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [format, team1]);
+
+  // Fetch Team 2 when Team 1 or format changes
+  useEffect(() => {
+    if (!format || !team1) {
+      setAvailableTeam2s([]);
+      setTeam2('');
+      return;
+    }
+    let active = true;
+    api
+      .getOpponents(format, team1)
+      .then((opps) => {
+        if (active) {
+          setAvailableTeam2s(opps);
+          // Don't auto-select team2; keep it empty until user selects
+          // Only clear if current selection is invalid
+          if (team2 && !opps.includes(team2)) {
+            setTeam2('');
+          }
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(`Failed to fetch opponents: ${err.message}`);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [format, team1, team2]);
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false);
@@ -148,7 +208,7 @@ const EvaluateDbTab: React.FC = () => {
           fullWidth
           size="small"
           disableClearable
-          options={availableTeams.filter((t) => t !== team2)}
+          options={(availableTeam1s || []).filter((t) => t !== team2)}
           value={team1}
           onChange={(_e, newValue) => {
             if (newValue) {
@@ -158,20 +218,25 @@ const EvaluateDbTab: React.FC = () => {
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);
-            if (params.inputValue !== '' && params.inputValue.length < 3) {
+            // Show all options when input is empty (no user input required)
+            if (params.inputValue === '') {
+              return filtered;
+            }
+            // Require at least 3 characters when user starts typing
+            if (params.inputValue.length < 3) {
               return [];
             }
             return filtered;
           }}
           renderInput={(params) => <TextField {...params} label="Team 1" />}
-          noOptionsText="Type at least 3 characters"
+          noOptionsText={team1 ? "No matching teams" : "Type to search or select from dropdown"}
         />
 
         <Autocomplete
           fullWidth
           size="small"
           disableClearable
-          options={availableTeams.filter((t) => t !== team1)}
+          options={(availableTeam2s || []).filter((t) => t !== team1)}
           value={team2}
           onChange={(_e, newValue) => {
             if (newValue) {
@@ -181,13 +246,18 @@ const EvaluateDbTab: React.FC = () => {
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);
-            if (params.inputValue !== '' && params.inputValue.length < 3) {
+            // Show all options when input is empty (no user input required)
+            if (params.inputValue === '') {
+              return filtered;
+            }
+            // Require at least 3 characters when user starts typing
+            if (params.inputValue.length < 3) {
               return [];
             }
             return filtered;
           }}
           renderInput={(params) => <TextField {...params} label="Team 2" />}
-          noOptionsText="Type at least 3 characters"
+          noOptionsText={team2 ? "No matching teams" : "Type to search or select from dropdown"}
         />
 
         <Button

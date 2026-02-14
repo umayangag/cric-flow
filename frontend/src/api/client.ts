@@ -115,3 +115,29 @@ export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]
   }
   return res.json();
 }
+
+export async function fetchFormats(baseUrl: string): Promise<string[]> {
+  const res = await fetch((baseUrl || '') + '/api/options/formats');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchTeamsByFormat(baseUrl: string, format: string): Promise<string[]> {
+  const qp = new URLSearchParams({ format });
+  const res = await fetch((baseUrl || '') + '/api/options/teams-by-format?' + qp.toString());
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchOpponents(baseUrl: string, format: string, team: string): Promise<string[]> {
+  const qp = new URLSearchParams({ format, team });
+  const res = await fetch((baseUrl || '') + '/api/options/opponents?' + qp.toString());
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}

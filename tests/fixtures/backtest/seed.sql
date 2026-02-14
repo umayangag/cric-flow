@@ -3,20 +3,14 @@
 -- do not already exist (for dev environments that don’t have them yet), and
 -- inserts a single played T20 match IND vs AUS with a handful of player rows
 -- and batting/bowling actuals. It is safe to run multiple times.
+-- Updated to match real database structure using opposition table.
 
 BEGIN;
 
 -- Minimal tables that some environments may be missing (no-ops if they exist)
-CREATE TABLE IF NOT EXISTS team (
-    id   BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS team_match (
-    match_id BIGINT NOT NULL,
-    team_id  BIGINT NOT NULL REFERENCES team(id),
-    result   VARCHAR(16),
-    UNIQUE(match_id, team_id)
+CREATE TABLE IF NOT EXISTS opposition (
+    id BIGSERIAL PRIMARY KEY,
+    opposition_name VARCHAR(100) NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS match_format (
@@ -127,53 +121,83 @@ BEGIN
   END IF;
 END$$;
 
-INSERT INTO team(name) VALUES ('IND') ON CONFLICT (name) DO NOTHING;
-INSERT INTO team(name) VALUES ('AUS') ON CONFLICT (name) DO NOTHING;
+-- Insert opposition teams
+INSERT INTO opposition(opposition_name) VALUES ('IND') ON CONFLICT (opposition_name) DO NOTHING;
+INSERT INTO opposition(opposition_name) VALUES ('AUS') ON CONFLICT (opposition_name) DO NOTHING;
 
 -- Resolve IDs
 WITH s AS (
-  SELECT id AS season_id FROM season WHERE season_name='2024'
+  SELECT id AS season_id FROM season WHERE COALESCE(name, season_name)='2024'
 ), v AS (
-  SELECT id AS venue_id FROM venue WHERE venue_name='Wankhede Stadium'
+  SELECT id AS venue_id FROM venue WHERE COALESCE(name, venue_name)='Wankhede Stadium'
 ), f AS (
   SELECT id AS format_id FROM match_format WHERE code='T20'
+), ind AS (
+  SELECT id AS ind_id FROM opposition WHERE opposition_name='IND'
+), aus AS (
+  SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS'
 )
--- Insert a deterministic played match with totals
+-- Insert match_details rows: one row per inning, each with different opposition_id
+-- Row 1: IND batting (opposition_id = IND)
 INSERT INTO match_details(id, score, wickets, overs, balls, rpo, target, inning, result, opposition_id, match_date, match_id,
                           batting_session, bowling_session, venue_id, extras, toss, season_id, match_number, format_id)
 SELECT
   999001,
   150,         -- score (runs)
   7,           -- wickets
-  20.0,        -- overs (optional)
-  120,         -- balls (optional)
-  7.5,         -- rpo (optional)
-  0,           -- target (not used in backtest metrics)
-  1,
-  1,           -- result (arbitrary)
-  NULL,        -- opposition_id unused in backtest
+  20.0,        -- overs
+  120,         -- balls
+  7.5,         -- rpo
+  0,           -- target
+  1,           -- inning 1
+  (SELECT ind_id FROM ind),  -- result points to winner (IND)
+  (SELECT ind_id FROM ind),  -- opposition_id = IND (batting team)
   NOW() - INTERVAL '30 days',
   9000111,     -- match_id
   'A', 'B',
   (SELECT venue_id FROM v),
   10,          -- extras
-  'IND',       -- toss (arbitrary)
+  'IND',       -- toss
   (SELECT season_id FROM s),
   1,
   (SELECT format_id FROM f)
-WHERE NOT EXISTS (SELECT 1 FROM match_details WHERE match_id = 9000111);
+WHERE NOT EXISTS (SELECT 1 FROM match_details WHERE match_id = 9000111 AND inning = 1);
 
--- Link teams and mark winner (IND)
-WITH ind AS (SELECT id AS team_id FROM team WHERE name='IND'),
-     aus AS (SELECT id AS team_id FROM team WHERE name='AUS')
-INSERT INTO team_match(match_id, team_id, result)
-SELECT 9000111, (SELECT team_id FROM ind), 'W'
-ON CONFLICT DO NOTHING;
-
-WITH aus AS (SELECT id AS team_id FROM team WHERE name='AUS')
-INSERT INTO team_match(match_id, team_id, result)
-SELECT 9000111, (SELECT team_id FROM aus), 'L'
-ON CONFLICT DO NOTHING;
+-- Row 2: AUS batting (opposition_id = AUS)
+WITH s AS (
+  SELECT id AS season_id FROM season WHERE COALESCE(name, season_name)='2024'
+), v AS (
+  SELECT id AS venue_id FROM venue WHERE COALESCE(name, venue_name)='Wankhede Stadium'
+), f AS (
+  SELECT id AS format_id FROM match_format WHERE code='T20'
+), ind AS (
+  SELECT id AS ind_id FROM opposition WHERE opposition_name='IND'
+), aus AS (
+  SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS'
+)
+INSERT INTO match_details(id, score, wickets, overs, balls, rpo, target, inning, result, opposition_id, match_date, match_id,
+                          batting_session, bowling_session, venue_id, extras, toss, season_id, match_number, format_id)
+SELECT
+  999002,
+  140,         -- score (runs) - AUS scored less
+  9,           -- wickets
+  20.0,        -- overs
+  120,         -- balls
+  7.0,         -- rpo
+  151,         -- target (IND's score + 1)
+  2,           -- inning 2
+  (SELECT ind_id FROM ind),  -- result points to winner (IND)
+  (SELECT aus_id FROM aus),  -- opposition_id = AUS (batting team)
+  NOW() - INTERVAL '30 days',
+  9000111,     -- match_id (same match)
+  'C', 'D',
+  (SELECT venue_id FROM v),
+  8,           -- extras
+  'IND',       -- toss
+  (SELECT season_id FROM s),
+  1,
+  (SELECT format_id FROM f)
+WHERE NOT EXISTS (SELECT 1 FROM match_details WHERE match_id = 9000111 AND inning = 2);
 
 -- Players
 INSERT INTO player(player_name, is_wicket_keeper, is_retired)
