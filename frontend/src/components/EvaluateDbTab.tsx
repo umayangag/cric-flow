@@ -81,7 +81,8 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
-    // team1 excluded: only used to validate/clear selection; API call depends only on format
+    // team1 excluded: only used to validate/clear selection; API call depends only on format.
+    // If effect logic evolves, prefer useRef or function setState to avoid stale closure bugs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [format]);
 
@@ -113,7 +114,8 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
-    // team2 excluded: only used to validate/clear selection; API call depends only on format+team1
+    // team2 excluded: only used to validate/clear selection; API call depends only on format+team1.
+    // If effect logic evolves, prefer useRef or function setState to avoid stale closure bugs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [format, team1]);
 

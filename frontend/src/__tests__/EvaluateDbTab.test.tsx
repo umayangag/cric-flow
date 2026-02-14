@@ -20,6 +20,26 @@ vi.mock('../api', async () => {
 
 const { api } = await import('../api');
 
+async function selectFilters(team1 = 'IND', team2 = 'AUS') {
+  await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
+  fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
+
+  await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
+  const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
+  team1Input.focus();
+  fireEvent.change(team1Input, { target: { value: team1 } });
+  fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByText(team1));
+
+  await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', team1));
+  const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
+  team2Input.focus();
+  fireEvent.change(team2Input, { target: { value: team2 } });
+  fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByText(team2));
+}
+
 describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,29 +89,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    // Wait for formats to load, then open Format dropdown and select T20
-    await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
-
-    // Wait for teams to load after format selection
-    await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
-    // Team 1 (Autocomplete)
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-
-    // Wait for opponents to load after team1 selection
-    await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', 'IND'));
-    // Team 2 (Autocomplete)
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
@@ -116,21 +114,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
-    await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
-    await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-    await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', 'IND'));
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/HTTP 500/i);
   });
@@ -196,22 +180,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
-    await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-    await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', 'IND'));
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
@@ -293,22 +262,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
-    await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-    await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', 'IND'));
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
@@ -338,21 +292,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       candidates: [],
     });
     render(<EvaluateDbTab />);
-    await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
-    await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-    await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', 'IND'));
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 0 candidates/i);
     const btn = screen.getByRole('button', {

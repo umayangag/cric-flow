@@ -28,10 +28,10 @@ func GetMatchContext(ctx context.Context, matchID int64) (*MatchContext, error) 
 			mi.inning_number,
 			0 AS session,
 			CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END,
-			m.venue_id, mi.batting_team_opposition_id, m.season_id, m.match_number
+			m.venue_id, mi.bowling_team_opposition_id, m.season_id, m.match_number
 		FROM match m
 		LEFT JOIN LATERAL (
-			SELECT inning_number, batting_team_opposition_id
+			SELECT inning_number, bowling_team_opposition_id
 			FROM match_inning WHERE match_id = m.match_id ORDER BY inning_number LIMIT 1
 		) mi ON true
 		WHERE m.match_id = $1

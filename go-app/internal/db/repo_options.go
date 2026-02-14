@@ -5,14 +5,37 @@ import (
 	"errors"
 )
 
+// getUniqueStringsWithParams runs a query that returns a single string column and returns distinct values.
+// Use for option lists (teams, formats, opponents). Pass query args after the query.
+func getUniqueStringsWithParams(ctx context.Context, query string, args ...any) ([]string, error) {
+	if defaultDB == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	rows, err := Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		results = append(results, s)
+	}
+	return results, rows.Err()
+}
+
 // GetUniqueTeams returns a list of unique team names from the opposition table.
 func GetUniqueTeams(ctx context.Context) ([]string, error) {
-	return getUniqueStrings(ctx, "SELECT opposition_name FROM opposition ORDER BY opposition_name")
+	return getUniqueStringsWithParams(ctx, "SELECT opposition_name FROM opposition ORDER BY opposition_name")
 }
 
 // GetUniqueFormats returns a list of unique match format codes from the match_format table.
 func GetUniqueFormats(ctx context.Context) ([]string, error) {
-	return getUniqueStrings(ctx, "SELECT code FROM match_format ORDER BY code")
+	return getUniqueStringsWithParams(ctx, "SELECT code FROM match_format ORDER BY code")
 }
 
 // GetTeamsByFormat returns a list of unique team names that played in the given format.
@@ -38,24 +61,7 @@ func GetTeamsByFormat(ctx context.Context, format string) ([]string, error) {
 		) t
 		ORDER BY team_name
 	`
-	if defaultDB == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	rows, err := Query(ctx, query, format)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []string
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, err
-		}
-		results = append(results, s)
-	}
-	return results, rows.Err()
+	return getUniqueStringsWithParams(ctx, query, format)
 }
 
 // GetOpponentsByFormatAndTeam returns team names that played against the given team in the given format.
@@ -75,46 +81,5 @@ func GetOpponentsByFormatAndTeam(ctx context.Context, format, teamName string) (
 		  AND o_bowl.opposition_name IS NOT NULL AND o_bowl.opposition_name != ''
 		ORDER BY opponent
 	`
-	if defaultDB == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	rows, err := Query(ctx, query, format, teamName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []string
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, err
-		}
-		results = append(results, s)
-	}
-	return results, rows.Err()
-}
-
-func getUniqueStrings(ctx context.Context, query string) ([]string, error) {
-	if defaultDB == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	rows, err := Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []string
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return nil, err
-		}
-		results = append(results, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return results, nil
+	return getUniqueStringsWithParams(ctx, query, format, teamName)
 }

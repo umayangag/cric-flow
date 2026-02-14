@@ -103,8 +103,6 @@ WITH s AS (
   SELECT id AS format_id FROM match_format WHERE code='T20' LIMIT 1
 ), ind AS (
   SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' LIMIT 1
-), aus AS (
-  SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS' LIMIT 1
 )
 INSERT INTO match (
   match_id, format_id, match_date, original_match_type, venue_id, season_id,

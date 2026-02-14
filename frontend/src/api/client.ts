@@ -117,18 +117,28 @@ export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]
 }
 
 export async function fetchFormats(baseUrl: string): Promise<string[]> {
-  const res = await fetch((baseUrl || '') + '/api/options/formats');
+  const url =
+    baseUrl && baseUrl.startsWith('http')
+      ? new URL('/api/options/formats', baseUrl).toString()
+      : (baseUrl || '') + '/api/options/formats';
+  const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
   }
   return res.json();
 }
 
 export async function fetchTeamsByFormat(baseUrl: string, format: string): Promise<string[]> {
   const qp = new URLSearchParams({ format });
-  const res = await fetch((baseUrl || '') + '/api/options/teams-by-format?' + qp.toString());
+  const url =
+    baseUrl && baseUrl.startsWith('http')
+      ? new URL(`/api/options/teams-by-format?${qp.toString()}`, baseUrl).toString()
+      : (baseUrl || '') + '/api/options/teams-by-format?' + qp.toString();
+  const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
   }
   return res.json();
 }
@@ -139,9 +149,14 @@ export async function fetchOpponents(
   team: string,
 ): Promise<string[]> {
   const qp = new URLSearchParams({ format, team });
-  const res = await fetch((baseUrl || '') + '/api/options/opponents?' + qp.toString());
+  const url =
+    baseUrl && baseUrl.startsWith('http')
+      ? new URL(`/api/options/opponents?${qp.toString()}`, baseUrl).toString()
+      : (baseUrl || '') + '/api/options/opponents?' + qp.toString();
+  const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
   }
   return res.json();
 }
