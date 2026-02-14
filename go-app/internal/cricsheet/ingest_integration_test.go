@@ -94,22 +94,40 @@ type offlineSpyTx struct {
 	sawBattingCopy, sawBowlingCopy, sawFieldingCopy bool
 }
 
+// Column indexes for match_inning INSERT in db.UpsertMatchInningTx (repo_match.go).
+// Update these if the INSERT column order changes.
+const (
+	matchInningArgMatchID                 = 0
+	matchInningArgInningNumber            = 1
+	matchInningArgBattingTeamOppositionID = 2
+	matchInningArgBowlingTeamOppositionID = 3
+	matchInningArgRunsScored              = 4
+	matchInningArgWicketsLost             = 5
+	matchInningArgOversBowled             = 6
+	matchInningArgBallsBowled             = 7
+	matchInningArgRunRate                 = 8
+	matchInningArgTargetRuns              = 9
+	matchInningArgExtras                  = 10
+	matchInningArgWinnerOppositionID      = 11
+	matchInningArgCount                   = 12
+)
+
 func (t *offlineSpyTx) Exec(_ context.Context, sql string, args ...any) error {
 	t.execs = append(t.execs, sql)
-	if strings.Contains(sql, "match_inning") && strings.Contains(sql, "INSERT") && len(args) >= 12 {
+	if strings.Contains(sql, "match_inning") && strings.Contains(sql, "INSERT") && len(args) >= matchInningArgCount {
 		mi := db.MatchInningInsert{
-			MatchID:                 toInt64(args[0]),
-			InningNumber:            toInt(args[1]),
-			BattingTeamOppositionID: toInt64(args[2]),
-			BowlingTeamOppositionID: toInt64(args[3]),
-			RunsScored:              toInt(args[4]),
-			WicketsLost:             toInt(args[5]),
-			OversBowled:             toFloat32(args[6]),
-			BallsBowled:             toInt(args[7]),
-			RunRate:                 toFloat32Ptr(args[8]),
-			TargetRuns:              toIntPtr(args[9]),
-			Extras:                  toInt(args[10]),
-			WinnerOppositionID:      toInt64Ptr(args[11]),
+			MatchID:                 toInt64(args[matchInningArgMatchID]),
+			InningNumber:            toInt(args[matchInningArgInningNumber]),
+			BattingTeamOppositionID: toInt64(args[matchInningArgBattingTeamOppositionID]),
+			BowlingTeamOppositionID: toInt64(args[matchInningArgBowlingTeamOppositionID]),
+			RunsScored:              toInt(args[matchInningArgRunsScored]),
+			WicketsLost:             toInt(args[matchInningArgWicketsLost]),
+			OversBowled:             toFloat32(args[matchInningArgOversBowled]),
+			BallsBowled:             toInt(args[matchInningArgBallsBowled]),
+			RunRate:                 toFloat32Ptr(args[matchInningArgRunRate]),
+			TargetRuns:              toIntPtr(args[matchInningArgTargetRuns]),
+			Extras:                  toInt(args[matchInningArgExtras]),
+			WinnerOppositionID:      toInt64Ptr(args[matchInningArgWinnerOppositionID]),
 		}
 		t.innings = append(t.innings, mi)
 	}
