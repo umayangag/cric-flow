@@ -140,7 +140,13 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		mdb.On("GetOrCreateSeason", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
 		mdb.On("GetOrCreateOpposition", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
 		mdb.On("GetOrCreateByName", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
-		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(matchInsertMatcher("T20"))).Return(nil).Twice()
+		// Fail for one file (match1 2024-01-01), succeed for the other (match2 2024-01-02)
+		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool {
+			return m != nil && m.OriginalMatchType == "T20" && m.MatchDate == "2024-01-01"
+		})).Return(fmt.Errorf("db error")).Once()
+		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool {
+			return m != nil && m.OriginalMatchType == "T20" && m.MatchDate == "2024-01-02"
+		})).Return(nil).Once()
 		mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).Return(nil).Maybe()
 		mdb.On("UpsertBattingBatch", anyCtx, mock.MatchedBy(func(_ []db.Batting) bool { return true })).Return(nil).Maybe()
 		mdb.On("UpsertBowlingBatch", anyCtx, mock.MatchedBy(func(_ []db.Bowling) bool { return true })).Return(nil).Maybe()
@@ -148,8 +154,8 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		opts := &cricsheet.Options{FailFast: false}
 		count, err := cricsheet.ImportDir(ctx, tmpDir, opts)
 
-		require.NoError(t, err, "Should not return error when FailFast is disabled")
-		require.Equal(t, 2, count, "Both files should complete successfully")
+		require.NoError(t, err, "ImportDir should not return error when FailFast is disabled")
+		require.Equal(t, 1, count, "Only the file that succeeded should be counted")
 		mdb.AssertExpectations(t)
 	})
 }
