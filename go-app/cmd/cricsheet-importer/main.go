@@ -64,9 +64,11 @@ func run() (exitCode int) {
 	}
 	importedCount, runErr = cricsheet.ImportDir(ctx, copts.InDir, opts)
 	if runErr != nil {
-		slog.Error("cricsheet import failed", slog.Any("err", runErr))
+		slog.Error("cricsheet import failed, stopping",
+			slog.Any("err", runErr),
+			slog.Int("files_imported", importedCount))
 		return 1
 	}
-	slog.Info("cricsheet-importer finished", slog.Int("files", importedCount))
+	slog.Info("cricsheet-importer finished successfully", slog.Int("files", importedCount))
 	return 0
 }

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -46,15 +45,20 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	}
 	sort.Strings(files)
 
+	// Concurrency 1 ensures no partial data: when one file fails, no other is mid-import.
+	// Each file's DB writes run in a single transaction (all-or-nothing).
 	var count int64
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.NumCPU())
+	g.SetLimit(1)
 
 	for _, f := range files {
 		f := f // capture
 		g.Go(func() error {
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
+				slog.Error("import failed, stopping",
+					slog.String("file", filepath.Base(f)),
+					slog.Any("err", err))
 				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
 			}
 			atomic.AddInt64(&count, 1)
@@ -170,20 +174,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		BallsPerOver:              ballsPerOver,
 		ScheduledOversPerInnings:  scheduledOvers,
 	}
-	if err := cricDB.UpsertMatch(ctx, matchInsert); err != nil {
-		return fmt.Errorf("upsert match: %w", err)
-	}
-	// Optional: insert placeholder weather rows once per match
-	if opts != nil && opts.PlaceholdersWeather {
-		if err := cricDB.Exec(
-			ctx,
-			`INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`,
-			mid,
-		); err != nil {
-			return fmt.Errorf("insert weather placeholders: %w", err)
-		}
-	}
 	playersSeen := map[string]bool{}
+	var allFieldingEvents [][]db.FieldingEvent
+	var allMatchInnings []*db.MatchInningInsert
+	var allBatBatches [][]db.Batting
+	var allBowlBatches [][]db.Bowling
 	for i, inng := range m.Innings {
 		inningNo := i + 1
 		batTeam := strings.TrimSpace(inng.Team)
@@ -345,9 +340,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				overTotalsByBowler[bowler][overNo] += t
 			}
 		}
-		if err := insertFieldingEventsBatchFn(ctx, fieldingEvents); err != nil {
-			return fmt.Errorf("insert fielding_events: %w", err)
-		}
+		allFieldingEvents = append(allFieldingEvents, fieldingEvents)
 		oversFloat := oversFromBalls(balls, ballsPerOver)
 		rpo := float32(0)
 		if balls > 0 {
@@ -372,9 +365,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			Extras:                  extras,
 			WinnerOppositionID:      winnerID,
 		}
-		if err := cricDB.UpsertMatchInning(ctx, mi); err != nil {
-			return fmt.Errorf("upsert match_inning (match_id=%d, inning=%d): %w", mid, inningNo, err)
-		}
+		allMatchInnings = append(allMatchInnings, mi)
 		order := make([]string, 0, len(batAgg))
 		for name, b := range batAgg {
 			b.Name = name
@@ -410,9 +401,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			})
 			pos++
 		}
-		if err := cricDB.UpsertBattingBatch(ctx, batBatch); err != nil {
-			return fmt.Errorf("upsert batting batch (match_id=%d, inning=%d): %w", mid, inningNo, err)
-		}
+		allBatBatches = append(allBatBatches, batBatch)
 
 		var bowlBatch []db.Bowling
 		for name, s := range bowlAgg {
@@ -443,14 +432,18 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				NoBalls:      &s.NoBalls,
 			})
 		}
-		if err := cricDB.UpsertBowlingBatch(ctx, bowlBatch); err != nil {
-			return fmt.Errorf("upsert bowling batch (match_id=%d, inning=%d): %w", mid, inningNo, err)
-		}
+		allBowlBatches = append(allBowlBatches, bowlBatch)
 	}
-	// Optional: insert placeholder fielding rows for all players seen in the match
+	// Build ball event rows (requires cache; done before tx)
+	ballEventRows, err := BuildBallEventRows(ctx, m, int(formatID), mid)
+	if err != nil {
+		slog.Error("failed to build ball_event rows", slog.Int64("match_id", mid), slog.Any("err", err))
+		return fmt.Errorf("build ball events: %w", err)
+	}
+	// Build fielding placeholder batch if needed
+	var fieldingBatch []db.Fielding
 	if opts != nil && opts.PlaceholdersFielding {
 		zero := 0
-		var fieldingBatch []db.Fielding
 		for name := range playersSeen {
 			pid, err := cache.GetPlayerID(ctx, name)
 			if err != nil {
@@ -465,10 +458,60 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				MissedRunOuts:  &zero,
 			})
 		}
-		if err = cricDB.UpsertFieldingBatch(ctx, fieldingBatch); err != nil {
-			slog.Error("failed to insert placeholder fielding batch", slog.Int64("match_id", mid), slog.Any("err", err))
-			return err
+	}
+	// Run all match-specific DB writes in a single transaction (all-or-nothing)
+	runTx := db.RunInTx
+	if runInTxFn != nil {
+		runTx = runInTxFn
+	}
+	if err := runTx(ctx, func(ctx context.Context, tx db.CopyFromTx) error {
+		if err := db.UpsertMatchTx(ctx, tx, matchInsert); err != nil {
+			slog.Error("upsert match failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			return fmt.Errorf("upsert match: %w", err)
 		}
+		if opts != nil && opts.PlaceholdersWeather {
+			if e := tx.Exec(ctx, `INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`, mid); e != nil {
+				slog.Error("insert weather placeholders failed", slog.Int64("match_id", mid), slog.Any("err", e))
+				return fmt.Errorf("insert weather placeholders: %w", e)
+			}
+		}
+		for i := range allMatchInnings {
+			if err := db.InsertFieldingEventsBatchTx(ctx, tx, allFieldingEvents[i]); err != nil {
+				slog.Error("insert fielding_events failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+				return fmt.Errorf("insert fielding_events: %w", err)
+			}
+			if err := db.UpsertMatchInningTx(ctx, tx, allMatchInnings[i]); err != nil {
+				slog.Error("upsert match_inning failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+				return fmt.Errorf("upsert match_inning: %w", err)
+			}
+			if err := db.UpsertBattingBatchTx(ctx, tx, allBatBatches[i]); err != nil {
+				slog.Error("upsert batting batch failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+				return fmt.Errorf("upsert batting batch: %w", err)
+			}
+			if err := db.UpsertBowlingBatchTx(ctx, tx, allBowlBatches[i]); err != nil {
+				slog.Error("upsert bowling batch failed", slog.Int64("match_id", mid), slog.Int("inning", i+1), slog.Any("err", err))
+				return fmt.Errorf("upsert bowling batch: %w", err)
+			}
+		}
+		if len(fieldingBatch) > 0 {
+			if err := db.UpsertFieldingBatchTx(ctx, tx, fieldingBatch); err != nil {
+				slog.Error("upsert fielding batch failed", slog.Int64("match_id", mid), slog.Any("err", err))
+				return fmt.Errorf("upsert fielding batch: %w", err)
+			}
+		}
+		if err := db.RecomputeFieldingAggregatesTx(ctx, tx, mid); err != nil {
+			slog.Error("recompute fielding aggregates failed", slog.Int64("match_id", mid), slog.Any("err", err))
+			return fmt.Errorf("recompute fielding aggregates: %w", err)
+		}
+		if len(ballEventRows) > 0 {
+			if err := db.InsertBallEventsTx(ctx, tx, ballEventRows); err != nil {
+				slog.Error("insert ball_event failed", slog.Int64("match_id", mid), slog.Any("err", err))
+				return fmt.Errorf("insert ball events: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	// Enqueue async weather job (non-blocking)
 	if opts != nil && opts.WeatherEnqueue {
@@ -477,17 +520,6 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			return err
 		}
 	}
-	// Recompute fielding aggregates from emitted events for this match
-	if err = recomputeFn(ctx, mid); err != nil {
-		slog.Error("failed to recompute fielding aggregates", slog.Int64("match_id", mid), slog.Any("err", err))
-		return err
-	}
-
-	if err = EmitBallEvents(ctx, m, int(formatID), mid); err != nil {
-		slog.Error("failed to emit ball_event rows", slog.Int64("match_id", mid), slog.Any("err", err))
-		return err
-	}
-
 	return nil
 }
 

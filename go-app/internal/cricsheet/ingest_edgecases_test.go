@@ -4,14 +4,61 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
+
+// spyTxForMatchInning implements db.CopyFromTx and captures OversBowled from match_inning upserts.
+type spyTxForMatchInning struct {
+	sawMatchInning bool
+	oversBowled    *float32
+}
+
+func (t *spyTxForMatchInning) Exec(_ context.Context, sql string, args ...any) error {
+	if strings.Contains(sql, "match_inning") && len(args) > 6 && t.oversBowled != nil {
+		t.sawMatchInning = true
+		switch v := args[6].(type) {
+		case float32:
+			*t.oversBowled = v
+		case float64:
+			*t.oversBowled = float32(v)
+		}
+	}
+	return nil
+}
+
+func (t *spyTxForMatchInning) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
+	return nopRows{}, nil
+}
+
+func (t *spyTxForMatchInning) QueryRow(_ context.Context, _ string, _ ...any) db.Row {
+	return nopRow{}
+}
+
+func (t *spyTxForMatchInning) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
+	return 0, nil
+}
+
+func (t *spyTxForMatchInning) Commit(_ context.Context) error   { return nil }
+func (t *spyTxForMatchInning) Rollback(_ context.Context) error { return nil }
+
+type nopRows struct{}
+
+func (nopRows) Next() bool          { return false }
+func (nopRows) Scan(_ ...any) error { return nil }
+func (nopRows) Close()              {}
+func (nopRows) Err() error          { return nil }
+
+type nopRow struct{}
+
+func (nopRow) Scan(_ ...any) error { return nil }
 
 // Helper: write a temp JSON file
 func writeJSON(t *testing.T, dir, name, data string) string {
@@ -140,22 +187,20 @@ func TestImportMatchFile_InningEmptyTeamName_Error(t *testing.T) {
 }
 
 func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
-	// Not parallel: uses package-level singletons via SetCricsheetDB/SetWeatherClient.
+	// Not parallel: uses package-level singletons and RunInTxFn.
 	ctx := context.Background()
-	dbMock := new(mocks.MockCricsheetDB)
-	weatherMock := new(mocks.MockWeatherClient)
-
-	// Arrange
-	cricsheet.SetCricsheetDB(dbMock)
-	cricsheet.SetWeatherClient(weatherMock)
-	defer func() {
-		cricsheet.SetCricsheetDB(new(mocks.MockCricsheetDB))
-		cricsheet.SetWeatherClient(new(mocks.MockWeatherClient))
-	}()
 
 	// stub recompute and fielding events to avoid touching real DB in unit tests
 	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	cricsheet.SetInsertFieldingEventsBatchFn(func(_ context.Context, _ []db.FieldingEvent) error { return nil })
+
+	// Spy tx to capture match_inning upsert args (OversBowled is 7th arg, 0-indexed: args[6])
+	var oversBowled float32
+	spyTx := &spyTxForMatchInning{oversBowled: &oversBowled}
+	cricsheet.SetRunInTxFn(func(ctx context.Context, inner func(context.Context, db.CopyFromTx) error) error {
+		return inner(ctx, spyTx)
+	})
+	defer cricsheet.SetRunInTxFn(nil)
 
 	good := `{
       "info": {
@@ -184,28 +229,11 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	d := t.TempDir()
 	file := writeJSON(t, d, "good.json", good)
 
-	// Expectations with typed matchers
-	dbMock.On("UpsertMatch", ctx, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).Return(nil)
-	dbMock.On("UpsertMatchInning", ctx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).Return(nil)
-	dbMock.On("UpsertBattingBatch", ctx, mock.MatchedBy(func(_ []db.Batting) bool { return true })).Return(nil)
-	dbMock.On("UpsertBowlingBatch", ctx, mock.MatchedBy(func(_ []db.Bowling) bool { return true })).Return(nil)
-
 	// Act
-	_ = cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
+	err := cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
+	require.NoError(t, err)
 
-	// Assert
-	dbMock.AssertExpectations(t)
-
-	// Overs assertion: 7 legal balls at 6 balls/over => 1.1 notation
-	calls := dbMock.Calls
-	for _, call := range calls {
-		if call.Method == "UpsertMatchInning" {
-			args := call.Arguments
-			mi := args.Get(1).(*db.MatchInningInsert)
-			expected := float32(1.1)
-			require.InDelta(t, expected, mi.OversBowled, 1e-6)
-			return
-		}
-	}
-	t.Fatalf("UpsertMatchInning was not called")
+	// Assert: 7 legal balls at 6 balls/over => 1.1 notation
+	require.True(t, spyTx.sawMatchInning, "match_inning upsert was not called")
+	require.InDelta(t, float32(1.1), oversBowled, 1e-6)
 }

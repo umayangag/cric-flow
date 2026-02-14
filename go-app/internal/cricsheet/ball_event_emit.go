@@ -10,10 +10,10 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/phase"
 )
 
-// EmitBallEvents emits ball_event rows
-// It computes is_legal, maintains a legal-only ball_seq per innings, and assigns phase via phase.PhaseFor.
-func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) error {
+// BuildBallEventRows builds ball_event rows for all innings. Used by both EmitBallEvents and transactional import.
+func BuildBallEventRows(ctx context.Context, m *Match, formatID int, matchID int64) ([]db.BallEventRow, error) {
 	cache := db.GetGlobalCache()
+	var allRows []db.BallEventRow
 	for i, inng := range m.Innings {
 		inningNo := i + 1
 		// Pre-compute total legal deliveries in innings for phase clamping
@@ -31,7 +31,7 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 			continue
 		}
 		// Second pass: build rows with ball_seq
-		rows := make([]db.BallEventRow, 0, totalLegal+8)
+		inningRows := make([]db.BallEventRow, 0, totalLegal+8)
 		ballSeq := 0
 		for _, over := range inng.Overs {
 			overNo := over.Over
@@ -99,7 +99,7 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 					}
 				}
 				phaseName := phase.PhaseFor(int(formatID), ballSeq, totalLegal)
-				rows = append(rows, db.BallEventRow{
+				inningRows = append(inningRows, db.BallEventRow{
 					MatchID:      matchID,
 					Innings:      inningNo,
 					Over:         overNo,
@@ -119,10 +119,23 @@ func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) 
 				})
 			}
 		}
-		if err := insertBallEventsFn(ctx, rows); err != nil {
-			slog.Error("failed to insert ball_event rows", slog.Any("err", err))
-			return fmt.Errorf("failed to insert ball events for inning %d: %w", inningNo, err)
-		}
+		allRows = append(allRows, inningRows...)
+	}
+	return allRows, nil
+}
+
+// EmitBallEvents emits ball_event rows using the default inserter.
+func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) error {
+	rows, err := BuildBallEventRows(ctx, m, formatID, matchID)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := insertBallEventsFn(ctx, rows); err != nil {
+		slog.Error("failed to insert ball_event rows", slog.Any("err", err))
+		return fmt.Errorf("failed to insert ball events: %w", err)
 	}
 	return nil
 }

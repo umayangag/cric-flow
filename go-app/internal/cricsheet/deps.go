@@ -60,6 +60,15 @@ func SetInsertFieldingEventsBatchFn(f func(ctx context.Context, rows []db.Fieldi
 	insertFieldingEventsBatchFn = f
 }
 
+// RunInTxFn, when set, replaces db.RunInTx for transaction execution. Used by tests to inject
+// failing or spy transactions without mocking the full pool.
+var runInTxFn func(ctx context.Context, fn func(ctx context.Context, tx db.CopyFromTx) error) error
+
+// SetRunInTxFn allows tests to inject custom transaction behavior.
+func SetRunInTxFn(fn func(ctx context.Context, inner func(ctx context.Context, tx db.CopyFromTx) error) error) {
+	runInTxFn = fn
+}
+
 type realDB struct{}
 
 type realWeather struct{}

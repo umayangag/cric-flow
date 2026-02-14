@@ -141,3 +141,49 @@ func UpsertBowlingBatch(ctx context.Context, rows []Bowling) error {
 
 	return tx.Commit(ctx)
 }
+
+// UpsertBowlingBatchTx inserts or updates multiple bowling_data rows using the given transaction.
+func UpsertBowlingBatchTx(ctx context.Context, tx CopyFromTx, rows []Bowling) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	err := tx.Exec(ctx, `CREATE TEMP TABLE bowling_data_tmp (LIKE bowling_data INCLUDING DEFAULTS) ON COMMIT DROP`)
+	if err != nil {
+		return fmt.Errorf("create temp table: %w", err)
+	}
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"bowling_data_tmp"},
+		[]string{
+			"match_id", "inning_number", "player_id", "overs", "balls", "maidens",
+			"runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
+		},
+		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
+			r := rows[i]
+			return []any{
+				r.MatchID, r.InningNumber, r.PlayerID, r.Overs, r.Balls, r.Maidens,
+				r.Runs, r.Wickets, r.Dots, r.Fours, r.Sixes, r.Econ, r.Wides, r.NoBalls,
+			}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("copy from: %w", err)
+	}
+	return tx.Exec(ctx, `
+		INSERT INTO bowling_data (match_id, inning_number, player_id, overs, balls, maidens, runs, wickets, dots, fours, sixes, econ, wides, no_balls)
+		SELECT match_id, inning_number, player_id, overs, balls, maidens, runs, wickets, dots, fours, sixes, econ, wides, no_balls
+		FROM bowling_data_tmp
+		ON CONFLICT (match_id, inning_number, player_id) DO UPDATE SET
+			overs = COALESCE(EXCLUDED.overs, bowling_data.overs),
+			balls = COALESCE(EXCLUDED.balls, bowling_data.balls),
+			maidens = COALESCE(EXCLUDED.maidens, bowling_data.maidens),
+			runs = COALESCE(EXCLUDED.runs, bowling_data.runs),
+			wickets = COALESCE(EXCLUDED.wickets, bowling_data.wickets),
+			dots = COALESCE(EXCLUDED.dots, bowling_data.dots),
+			fours = COALESCE(EXCLUDED.fours, bowling_data.fours),
+			sixes = COALESCE(EXCLUDED.sixes, bowling_data.sixes),
+			econ = COALESCE(EXCLUDED.econ, bowling_data.econ),
+			wides = COALESCE(EXCLUDED.wides, bowling_data.wides),
+			no_balls = COALESCE(EXCLUDED.no_balls, bowling_data.no_balls)
+	`)
+}

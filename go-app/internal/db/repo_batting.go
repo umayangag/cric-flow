@@ -127,3 +127,46 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 
 	return tx.Commit(ctx)
 }
+
+// UpsertBattingBatchTx inserts or updates multiple batting_data rows using the given transaction.
+func UpsertBattingBatchTx(ctx context.Context, tx CopyFromTx, rows []Batting) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	err := tx.Exec(ctx, `CREATE TEMP TABLE batting_data_tmp (LIKE batting_data INCLUDING DEFAULTS) ON COMMIT DROP`)
+	if err != nil {
+		return fmt.Errorf("create temp table: %w", err)
+	}
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"batting_data_tmp"},
+		[]string{
+			"match_id", "inning_number", "player_id", "description", "runs", "balls",
+			"minutes", "fours", "sixes", "strike_rate", "batting_position",
+		},
+		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
+			r := rows[i]
+			return []any{
+				r.MatchID, r.InningNumber, r.PlayerID, r.Description, r.Runs, r.Balls,
+				r.Minutes, r.Fours, r.Sixes, r.StrikeRate, r.BattingPosition,
+			}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("copy from: %w", err)
+	}
+	return tx.Exec(ctx, `
+		INSERT INTO batting_data (match_id, inning_number, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
+		SELECT match_id, inning_number, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position
+		FROM batting_data_tmp
+		ON CONFLICT (match_id, inning_number, player_id) DO UPDATE SET
+			description = COALESCE(EXCLUDED.description, batting_data.description),
+			runs = COALESCE(EXCLUDED.runs, batting_data.runs),
+			balls = COALESCE(EXCLUDED.balls, batting_data.balls),
+			minutes = COALESCE(EXCLUDED.minutes, batting_data.minutes),
+			fours = COALESCE(EXCLUDED.fours, batting_data.fours),
+			sixes = COALESCE(EXCLUDED.sixes, batting_data.sixes),
+			strike_rate = COALESCE(EXCLUDED.strike_rate, batting_data.strike_rate),
+			batting_position = COALESCE(EXCLUDED.batting_position, batting_data.batting_position)
+	`)
+}

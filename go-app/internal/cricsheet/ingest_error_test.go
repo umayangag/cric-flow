@@ -8,19 +8,11 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	tmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
-
-// matchInsertMatcher returns a mock.Matcher that accepts any *db.MatchInsert with OriginalMatchType set.
-func matchInsertMatcher(matchType string) func(*db.MatchInsert) bool {
-	return func(m *db.MatchInsert) bool {
-		return m != nil && m.OriginalMatchType == matchType
-	}
-}
 
 // ingestErrorTestNopPool implements db.PoolIface for cache lookups.
 type ingestErrorTestNopPool struct{}
@@ -70,6 +62,22 @@ func (ingestErrorTestNopTx) CopyFrom(
 }
 func (ingestErrorTestNopTx) Commit(_ context.Context) error   { return nil }
 func (ingestErrorTestNopTx) Rollback(_ context.Context) error { return nil }
+
+// failingTx implements db.CopyFromTx with Exec returning a fixed error.
+type failingTx struct {
+	err error
+}
+
+func (t *failingTx) Exec(_ context.Context, _ string, _ ...any) error { return t.err }
+func (t *failingTx) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
+	return ingestErrorTestNopRows{}, nil
+}
+func (t *failingTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row { return ingestErrorTestNopRow{} }
+func (t *failingTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
+	return 0, t.err
+}
+func (t *failingTx) Commit(_ context.Context) error   { return nil }
+func (t *failingTx) Rollback(_ context.Context) error { return nil }
 
 func TestImportDir_ErrorHandling(t *testing.T) {
 	ctx := context.Background()
@@ -121,14 +129,16 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		),
 	)
 
-	anyCtx := mock.MatchedBy(func(c context.Context) bool { return c != nil })
 	t.Run("stops_at_first_DB_error", func(t *testing.T) {
-		// Ingest uses db cache for format/venue/season/opposition/players; only UpsertMatch (and below) hit cricDB
-		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(matchInsertMatcher("T20"))).Return(fmt.Errorf("db error"))
+		// Ingest uses db.RunInTx for writes; inject a tx that fails on first Exec (UpsertMatch).
+		failingTx := &failingTx{err: fmt.Errorf("db error")}
+		cricsheet.SetRunInTxFn(func(ctx context.Context, inner func(context.Context, db.CopyFromTx) error) error {
+			return inner(ctx, failingTx)
+		})
+		t.Cleanup(func() { cricsheet.SetRunInTxFn(nil) })
 
 		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{})
 
 		require.Error(t, err, "ImportDir must stop and return on first DB error")
-		mdb.AssertExpectations(t)
 	})
 }
