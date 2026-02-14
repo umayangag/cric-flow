@@ -130,7 +130,9 @@ func TestInsertBallEvents_Scenarios(t *testing.T) {
 
 				// Bulk path expectations
 				mock.ExpectBegin()
-				mock.ExpectExec("CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS").
+				mock.ExpectExec("DROP TABLE IF EXISTS ball_event_stage").
+					WillReturnResult(pgxmock.NewResult("DROP TABLE", 0))
+				mock.ExpectExec("CREATE TEMP TABLE ball_event_stage AS").
 					WillReturnResult(pgxmock.NewResult("CREATE TABLE", 0))
 				mock.ExpectCopyFrom(pgx.Identifier{"ball_event_stage"}, []string{"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase", "striker_id", "non_striker_id", "bowler_id", "runs_batter", "runs_extras", "runs_total", "extras_kind", "wicket_kind", "player_out_id"}).
 					WillReturnResult(10)

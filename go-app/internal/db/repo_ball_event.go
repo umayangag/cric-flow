@@ -92,8 +92,10 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 
 	// Create a temp table with the exact columns we intend to insert.
 	// Using CTAS to inherit column types from ball_event while restricting to insert columns only.
+	// DROP first and ON COMMIT DROP avoid reuse/corruption when connection is pooled.
+	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS ball_event_stage`)
 	err = tx.Exec(ctx, `
-        CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS
+        CREATE TEMP TABLE ball_event_stage AS
         SELECT 
             match_id::bigint,
             innings::int,
@@ -112,7 +114,8 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             wicket_kind::text,
             player_out_id::bigint
         FROM ball_event
-        WITH NO DATA;
+        WITH NO DATA
+        ON COMMIT DROP;
     `)
 	if err != nil {
 		return err
@@ -211,13 +214,15 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 		}
 		return nil
 	}
+	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS ball_event_stage`)
 	err := tx.Exec(ctx, `
-        CREATE TEMP TABLE IF NOT EXISTS ball_event_stage AS
+        CREATE TEMP TABLE ball_event_stage AS
         SELECT match_id::bigint, innings::int, over::int, ball::int, ball_seq::int,
             is_legal::boolean, phase::text, striker_id::bigint, non_striker_id::bigint,
             bowler_id::bigint, runs_batter::int, runs_extras::int, runs_total::int,
             extras_kind::text, wicket_kind::text, player_out_id::bigint
-        FROM ball_event WITH NO DATA;
+        FROM ball_event WITH NO DATA
+        ON COMMIT DROP;
     `)
 	if err != nil {
 		return err
