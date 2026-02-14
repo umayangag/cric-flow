@@ -1,11 +1,11 @@
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Simple JSON config loader for ml-service
 # Precedence elsewhere should be: flag/arg > env > config.json > built-in defaults
 
-_cached: Dict[str, Any] | None = None
+_cached: Optional[Dict[str, Any]] = None
 
 
 def _load() -> Dict[str, Any]:

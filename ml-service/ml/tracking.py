@@ -1,29 +1,17 @@
 import json
 import logging
-import os
 from contextlib import contextmanager
 
-# Try importing db, handle failure gracefully if running outside context
-try:
-    import db
-except ImportError:
-    db = None
+from dotenv import load_dotenv
+
+from ml.db import get_db_connection
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 
 def get_connection():
-    if db and hasattr(db, "get_db_connection"):
-        return db.get_db_connection()
-
-    # Fallback/Direct connection
-    import psycopg2
-
-    return psycopg2.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        port=os.environ.get("DB_PORT", "5432"),
-        dbname=os.environ.get("DB_NAME", "cricinfo"),
-        user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASSWORD"),
-    )
+    return get_db_connection()
 
 
 class Tracker:

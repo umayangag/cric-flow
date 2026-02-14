@@ -87,6 +87,7 @@ gh api graphql \
 ```bash
 git add .
 git commit -m "Fix Gemini comments"
+git push
 
 ## 7) Trigger re-review
 Finally, once you ensure all local changes are commited and pushed, post a comment to trigger a new Gemini review:

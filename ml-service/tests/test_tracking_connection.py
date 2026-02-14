@@ -40,23 +40,6 @@ class TestDBConnection(unittest.TestCase):
             self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
             self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
 
-    def test_tracking_connection_fallback_no_defaults(self):
-        """Verify that tracking.get_connection fallback does NOT use insecure defaults."""
-        if tracking is None:
-            self.fail("Could not import ml.tracking")
-
-        # Force db to be None in tracking to test fallback path
-        with patch("ml.tracking.db", None):
-            with patch.dict(os.environ, {}, clear=True):
-                tracking.get_connection()
-
-                # tracking.py imports psycopg2 inside function
-                # It will get our injected mock
-                call_kwargs = mock_psycopg2_module.connect.call_args[1]
-
-                self.assertIsNone(call_kwargs.get("user"), f"Expected None, got {call_kwargs.get('user')}")
-                self.assertIsNone(call_kwargs.get("password"), f"Expected None, got {call_kwargs.get('password')}")
-
 
 if __name__ == "__main__":
     unittest.main()
