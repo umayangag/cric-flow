@@ -93,6 +93,7 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 }
 
 // RecomputeFieldingAggregatesTx aggregates fielding_event into fielding_data for a match using the given transaction.
+// Results are read into a slice first so the connection is not busy when calling UpsertFieldingTx (pgx does not allow concurrent use).
 func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID int64) error {
 	rows, err := tx.Query(ctx, `
         WITH base AS (
@@ -113,18 +114,38 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 	}
 	defer rows.Close()
 
+	var results []struct {
+		playerID   int64
+		catches    int
+		runOuts    int
+		stumpings  int
+		directHits int
+	}
 	for rows.Next() {
-		var playerID int64
-		var catches, runOuts, stumpings, directHits int
-		if err := rows.Scan(&playerID, &catches, &runOuts, &stumpings, &directHits); err != nil {
+		var r struct {
+			playerID   int64
+			catches    int
+			runOuts    int
+			stumpings  int
+			directHits int
+		}
+		if err := rows.Scan(&r.playerID, &r.catches, &r.runOuts, &r.stumpings, &r.directHits); err != nil {
 			return err
 		}
-		c, r, s, dh := catches, runOuts, stumpings, directHits
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close() // release connection before using tx again
+
+	for _, r := range results {
+		c, ro, s, dh := r.catches, r.runOuts, r.stumpings, r.directHits
 		if err := UpsertFieldingTx(ctx, tx, &Fielding{
 			MatchID:           matchID,
-			PlayerID:          playerID,
+			PlayerID:          r.playerID,
 			Catches:           &c,
-			RunOuts:           &r,
+			RunOuts:           &ro,
 			DroppedCatches:    nil,
 			MissedRunOuts:     nil,
 			Stumpings:         &s,
@@ -221,7 +242,7 @@ func InsertFieldingEventsBatchTx(ctx context.Context, tx CopyFromTx, rows []Fiel
 	if len(rows) == 0 {
 		return nil
 	}
-	_, _ = tx.Exec(ctx, `DROP TABLE IF EXISTS fielding_event_tmp`)
+	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS fielding_event_tmp`)
 	err := tx.Exec(ctx, `CREATE TEMP TABLE fielding_event_tmp (LIKE fielding_event INCLUDING DEFAULTS) ON COMMIT DROP`)
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)

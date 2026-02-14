@@ -129,10 +129,12 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 }
 
 // UpsertBattingBatchTx inserts or updates multiple batting_data rows using the given transaction.
+// The same transaction may be used for multiple batches (e.g. one per inning), so we drop the temp table if it exists.
 func UpsertBattingBatchTx(ctx context.Context, tx CopyFromTx, rows []Batting) error {
 	if len(rows) == 0 {
 		return nil
 	}
+	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS batting_data_tmp`)
 	err := tx.Exec(ctx, `CREATE TEMP TABLE batting_data_tmp (LIKE batting_data INCLUDING DEFAULTS) ON COMMIT DROP`)
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
