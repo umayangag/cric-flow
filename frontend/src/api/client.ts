@@ -116,31 +116,26 @@ export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]
   return res.json();
 }
 
-export async function fetchFormats(baseUrl: string): Promise<string[]> {
+async function fetchJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const url =
     baseUrl && baseUrl.startsWith('http')
-      ? new URL('/api/options/formats', baseUrl).toString()
-      : (baseUrl || '') + '/api/options/formats';
-  const res = await fetch(url);
+      ? new URL(path, baseUrl).toString()
+      : (baseUrl || '') + path;
+  const res = await fetch(url, init);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
   }
-  return res.json();
+  return res.json() as Promise<T>;
+}
+
+export async function fetchFormats(baseUrl: string): Promise<string[]> {
+  return fetchJson(baseUrl, '/api/options/formats');
 }
 
 export async function fetchTeamsByFormat(baseUrl: string, format: string): Promise<string[]> {
   const qp = new URLSearchParams({ format });
-  const url =
-    baseUrl && baseUrl.startsWith('http')
-      ? new URL(`/api/options/teams-by-format?${qp.toString()}`, baseUrl).toString()
-      : (baseUrl || '') + '/api/options/teams-by-format?' + qp.toString();
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-  }
-  return res.json();
+  return fetchJson<string[]>(baseUrl, `/api/options/teams-by-format?${qp.toString()}`);
 }
 
 export async function fetchOpponents(
@@ -149,14 +144,5 @@ export async function fetchOpponents(
   team: string,
 ): Promise<string[]> {
   const qp = new URLSearchParams({ format, team });
-  const url =
-    baseUrl && baseUrl.startsWith('http')
-      ? new URL(`/api/options/opponents?${qp.toString()}`, baseUrl).toString()
-      : (baseUrl || '') + '/api/options/opponents?' + qp.toString();
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
-  }
-  return res.json();
+  return fetchJson<string[]>(baseUrl, `/api/options/opponents?${qp.toString()}`);
 }

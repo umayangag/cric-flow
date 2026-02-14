@@ -121,7 +121,7 @@ describe('api/client fetch helpers', () => {
     vi.stubGlobal('fetch', mockFetch);
     const res = await fetchFormats('http://localhost:8080');
     expect(res).toEqual(payload);
-    expect(mockFetch).toHaveBeenCalledWith('http://localhost:8080/api/options/formats');
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:8080/api/options/formats', undefined);
     vi.unstubAllGlobals();
   });
 

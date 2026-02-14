@@ -148,31 +148,33 @@ Keep (match_id, player_id) as **match-level aggregates** – catches, run_outs, 
 
 ---
 
-## 3. Optional: Introduce `match` Table
+## 3. Implementation: Option A (Full Redesign)
 
-Two approaches:
+**Implementation note:** The codebase implements **Option A** (full redesign). Migration `0090_full_schema_restructure.sql` creates the `match` and `match_inning` tables and drops `match_details`. This section is kept for historical context.
 
-### Option A: Add `match` table, keep `match_details` as inning-only
+### Option A: Add `match` table, inning-level table (implemented)
 
 - Create `match` with match-level fields.
-- `match_details` references `match(match_id)` and holds only inning-specific data.
-- `batting_data`, `bowling_data` add `inning` and use UNIQUE(match_id, inning, player_id).
-- No `match` table: keep match-level data in `match_details` (one row per inning) but consolidate by having shared columns (venue_id, season_id, format_id, match_date, toss) repeated per inning – current approach, just fix batting/bowling.
+- Create `match_inning` (replacing `match_details`) with inning-level data; references `match(match_id)`.
+- `batting_data`, `bowling_data` add `inning_number` and use UNIQUE(match_id, inning_number, player_id).
+- **Implemented** in migration 0090: `match` + `match_inning`; `match_details` dropped.
 
-### Option B: Minimal changes (recommended for incremental migration)
+### Option B: Minimal changes (not taken)
 
 1. Add `inning` to `batting_data` and `bowling_data`.
 2. Change UNIQUE to `(match_id, inning, player_id)`.
 3. Keep `match_details` as-is (one row per inning) with venue, season, format, etc. denormalised per inning.
 4. Add `batting_team_opposition_id` and `bowling_team_opposition_id` to `match_details` (or keep inferring from batting_session/bowling_session).
 
-**Recommendation:** Option B first. Add `inning` to batting/bowling, fix uniqueness. Option A can be a later refactor.
+Option B was considered for incremental migration; the implementation chose Option A for a cleaner schema.
 
 ---
 
-## 4. Migration Plan (Option B)
+## 4. Migration Plan (Option A — as implemented)
 
-### Step 1: Add inning to batting_data and bowling_data
+Migration `0090_full_schema_restructure.sql` performs the full restructure. For reference, the minimal Option B steps would have been:
+
+### Step 1 (Option B): Add inning to batting_data and bowling_data
 
 **Note:** Current `batting_data` and `bowling_data` use `(match_id, player_id)`. With 2 innings per match, the ingest overwrites inning 1 with inning 2 data. For a clean state, truncate these tables after migration and re-run the cricsheet import.
 
@@ -232,6 +234,6 @@ Columns in `match_details` that could be dropped or moved:
 | Add `inning` to batting_data, bowling_data | Fixes Test matches, enables correct joins |
 | UNIQUE(match_id, inning, player_id) | Correct uniqueness for multi-innings |
 | Join bd/bw to md on (match_id, inning) | Removes duplicate rows in exports |
-| Optional: Add match table | Cleaner separation; can be Phase 2 |
+| Add match + match_inning (Option A) | Implemented in migration 0090; match_details dropped |
 
-Next step: Implement migration 0090 and update ingestion + export queries.
+The schema is implemented in migration `0090_full_schema_restructure.sql`; ingestion and export use `match` and `match_inning`.
