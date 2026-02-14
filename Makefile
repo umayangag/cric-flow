@@ -168,7 +168,8 @@ migrate-local:
 	MIGRATIONS_DIR=./migrations \
 	go run ./cmd/migrate -dir=./migrations
 
-# Seed tiny deterministic fixtures for E2E backtest smoke
+# Seed tiny deterministic fixtures for E2E backtest smoke.
+# Uses match + match_inning schema (post-0090); see tests/fixtures/backtest/seed.sql.
 seed-fixtures:
 	# Ensure Postgres is up (compose service name: postgres)
 	$(DC) up -d postgres
@@ -427,7 +428,8 @@ init-context:
 init-py:
 	$(MAKE) -C ml-service init
 
-# Import Cricsheet JSON into DB using Go importer
+# Import Cricsheet JSON into DB using Go importer.
+# Populates match, match_inning, batting_data, bowling_data (post-0090 schema).
 cricsheet-import:
 	cd go-app && GO_APP_INPUT_DIR=../data/go-app/cricsheet make cricsheet-import
 
@@ -520,8 +522,8 @@ help:
 	@echo "  frontend-stop      Stop Frontend dev server if started in background"
 	@echo
 	@echo "[Data & Pipeline]"
-	@echo "  migrate            Run DB migrations"
-	@echo "  cricsheet-import   Import Cricsheet JSON into DB"
+	@echo "  migrate            Run DB migrations (match + match_inning schema)"
+	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning)"
 	@echo "  precompute         Trigger precompute (via API)"
 	@echo "  precompute-all        Run unified precompute (as-of/replay + sequential) for FORMAT (default T20)"
 	@echo "  precompute-all-all-formats  Run unified precompute for all formats"

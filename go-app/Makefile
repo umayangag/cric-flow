@@ -60,7 +60,7 @@ team-predictor:
 	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
 	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
 
-# Import Cricsheet JSON into DB
+# Import Cricsheet JSON into DB (populates match, match_inning, batting_data, bowling_data).
 # Usage: make cricsheet-import [DIR=path/to/json] [PLACEHOLDERS=1]
 cricsheet-import:
 	@DIR=$${GO_APP_INPUT_DIR:-../data/go-app/cricsheet}; \
@@ -236,7 +236,7 @@ help:
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
-	@echo "  cricsheet-import   Import Cricsheet JSON into DB (DIR=..., PLACEHOLDERS=1)"
+	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
 	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
