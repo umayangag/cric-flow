@@ -7,10 +7,10 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cricsheetmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
 	dbmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
-	svcmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter/internal/mocks"
 )
 
 type assertSvcFn func(t *testing.T, processed int, err error)
@@ -35,14 +35,14 @@ func TestIngestService_BasicFlows(t *testing.T) {
 		name    string
 		apply   bool
 		conc    int
-		arrange func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo)
+		arrange func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo)
 		assert  assertSvcFn
 	}{
 		{
 			name:  "dry-run single worker",
 			apply: false,
 			conc:  1,
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				_ = r
 				l.EXPECT().List(mock.Anything, ".").Return([]string{"a.json", "b.json"}, nil)
 				l.EXPECT().Load(mock.Anything, ".", "a.json").Return([]byte("A"), nil).Once()
@@ -57,7 +57,7 @@ func TestIngestService_BasicFlows(t *testing.T) {
 			name:  "apply with 2 workers",
 			apply: true,
 			conc:  2,
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, ".").Return([]string{"a.json", "b.json"}, nil)
 				// Order-agnostic loads
 				l.EXPECT().Load(mock.Anything, ".", "a.json").Return([]byte("A"), nil).Once()
@@ -71,8 +71,8 @@ func TestIngestService_BasicFlows(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			l := svcmocks.NewMockLoader(t)
-			p := svcmocks.NewMockParser(t)
+			l := cricsheetmocks.NewMockLoader(t)
+			p := cricsheetmocks.NewMockParser(t)
 			r := dbmocks.NewMockMatchRepo(t)
 			s := &svc.IngestService{Loader: l, Parser: p, Repository: r}
 			if tc.arrange != nil {
@@ -89,7 +89,7 @@ func TestIngestService_Errors(t *testing.T) {
 	cases := []struct {
 		name    string
 		dir     string
-		arrange func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo)
+		arrange func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo)
 		svcNil  bool
 		assert  assertSvcFn
 	}{
@@ -102,7 +102,7 @@ func TestIngestService_Errors(t *testing.T) {
 		{
 			name: "empty dir",
 			dir:  "",
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				// no expectations; validation fails before use
 				_ = l
 				_ = p
@@ -113,7 +113,7 @@ func TestIngestService_Errors(t *testing.T) {
 		{
 			name: "list error",
 			dir:  ".",
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				_ = p
 				_ = r
 				l.EXPECT().List(mock.Anything, ".").Return(nil, errors.New("boom"))
@@ -123,7 +123,7 @@ func TestIngestService_Errors(t *testing.T) {
 		{
 			name: "load error",
 			dir:  ".",
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				_ = p
 				_ = r
 				l.EXPECT().List(mock.Anything, ".").Return([]string{"y.json"}, nil)
@@ -134,7 +134,7 @@ func TestIngestService_Errors(t *testing.T) {
 		{
 			name: "parse error",
 			dir:  ".",
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				_ = r
 				l.EXPECT().List(mock.Anything, ".").Return([]string{"x.json"}, nil)
 				l.EXPECT().Load(mock.Anything, ".", "x.json").Return([]byte("X"), nil)
@@ -145,7 +145,7 @@ func TestIngestService_Errors(t *testing.T) {
 		{
 			name: "repo error",
 			dir:  ".",
-			arrange: func(l *svcmocks.MockLoader, p *svcmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, ".").Return([]string{"x.json"}, nil)
 				l.EXPECT().Load(mock.Anything, ".", "x.json").Return([]byte("X"), nil)
 				p.EXPECT().Parse(mock.Anything, []byte("X")).Return([]models.Match{{ID: 9}}, nil)
@@ -160,8 +160,8 @@ func TestIngestService_Errors(t *testing.T) {
 			if tc.svcNil {
 				s = &svc.IngestService{}
 			} else {
-				l := svcmocks.NewMockLoader(t)
-				p := svcmocks.NewMockParser(t)
+				l := cricsheetmocks.NewMockLoader(t)
+				p := cricsheetmocks.NewMockParser(t)
 				r := dbmocks.NewMockMatchRepo(t)
 				if tc.arrange != nil {
 					tc.arrange(l, p, r)

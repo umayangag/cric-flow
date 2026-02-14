@@ -197,6 +197,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		inningNo := i + 1
 		batTeam := strings.TrimSpace(inng.Team)
 		oppTeam := otherTeam(batTeam, teamA, teamB)
+		// Validate inning team names match match teams to avoid creating opposition rows with empty name
+		if batTeam == "" {
+			return fmt.Errorf("inning %d has no team name", inningNo)
+		}
+		if oppTeam == "" {
+			return fmt.Errorf("inning %d team %q does not match match teams %q and %q", inningNo, batTeam, teamA, teamB)
+		}
 		battingTeamOppositionID, err := cache.GetOppositionID(ctx, batTeam)
 		if err != nil {
 			return fmt.Errorf("get/create opposition for batting team %q: %w", batTeam, err)

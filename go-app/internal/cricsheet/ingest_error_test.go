@@ -15,6 +15,13 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
+// matchInsertMatcher returns a mock.Matcher that accepts any *db.MatchInsert with OriginalMatchType set.
+func matchInsertMatcher(matchType string) func(*db.MatchInsert) bool {
+	return func(m *db.MatchInsert) bool {
+		return m != nil && m.OriginalMatchType == matchType
+	}
+}
+
 // ingestErrorTestNopPool implements db.PoolIface for cache lookups.
 type ingestErrorTestNopPool struct{}
 
@@ -72,9 +79,9 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 	db.SetPoolAPI(ingestErrorTestNopPool{})
 	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 
-	// Setup mocks
-	mdb := &tmocks.CricsheetDBMock{}
-	mweather := &tmocks.WeatherClientMock{}
+	// Setup mocks (use struct directly so we can reset expectations per subtest)
+	mdb := &tmocks.MockCricsheetDB{}
+	mweather := &tmocks.MockWeatherClient{}
 
 	prevDB := cricsheet.GetCricsheetDB()
 	prevWeather := cricsheet.GetWeatherClient()
@@ -114,39 +121,35 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		),
 	)
 
+	anyCtx := mock.MatchedBy(func(c context.Context) bool { return c != nil })
 	t.Run("FailFast_Enabled", func(t *testing.T) {
-		mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateVenue", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateSeason", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateOpposition", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateByName", mock.Anything, mock.Anything).Return(int64(1), nil)
-		// UpsertMatch fails -> ImportMatchFile returns; FailFast propagates
-		mdb.On("UpsertMatch", mock.Anything, mock.Anything).Return(fmt.Errorf("db error"))
+		// Ingest uses db cache for format/venue/season/opposition/players; only UpsertMatch (and below) hit cricDB
+		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(matchInsertMatcher("T20"))).Return(fmt.Errorf("db error"))
 
 		opts := &cricsheet.Options{FailFast: true}
 		_, err := cricsheet.ImportDir(ctx, tmpDir, opts)
 
 		require.Error(t, err, "FailFast should propagate UpsertMatch error")
+		mdb.AssertExpectations(t)
 	})
 
 	t.Run("FailFast_Disabled", func(t *testing.T) {
-		// Reset mocks
 		mdb.ExpectedCalls = nil
-		mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateVenue", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateSeason", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateOpposition", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("GetOrCreateByName", mock.Anything, mock.Anything).Return(int64(1), nil)
-		mdb.On("UpsertMatch", mock.Anything, mock.Anything).Return(nil)
-		mdb.On("UpsertMatchInning", mock.Anything, mock.Anything).Return(nil)
-		mdb.On("UpsertBattingBatch", mock.Anything, mock.Anything).Return(nil)
-		mdb.On("UpsertBowlingBatch", mock.Anything, mock.Anything).Return(nil)
+		mdb.On("GetMatchFormatIDByCode", anyCtx, "T20").Return(int64(1), nil).Maybe()
+		mdb.On("GetOrCreateVenue", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
+		mdb.On("GetOrCreateSeason", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
+		mdb.On("GetOrCreateOpposition", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
+		mdb.On("GetOrCreateByName", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil).Maybe()
+		mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(matchInsertMatcher("T20"))).Return(nil).Twice()
+		mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).Return(nil).Maybe()
+		mdb.On("UpsertBattingBatch", anyCtx, mock.MatchedBy(func(_ []db.Batting) bool { return true })).Return(nil).Maybe()
+		mdb.On("UpsertBowlingBatch", anyCtx, mock.MatchedBy(func(_ []db.Bowling) bool { return true })).Return(nil).Maybe()
 
 		opts := &cricsheet.Options{FailFast: false}
 		count, err := cricsheet.ImportDir(ctx, tmpDir, opts)
 
 		require.NoError(t, err, "Should not return error when FailFast is disabled")
-		// Both files complete; recompute and EmitBallEvents succeed via nop pool
 		require.Equal(t, 2, count, "Both files should complete successfully")
+		mdb.AssertExpectations(t)
 	})
 }

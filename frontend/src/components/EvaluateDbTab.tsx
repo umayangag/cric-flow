@@ -199,7 +199,7 @@ const EvaluateDbTab: React.FC = () => {
               resetOutputs();
             }}
           >
-            {availableFormats.length === 0 && <MenuItem value={format}>{format}</MenuItem>}
+            <MenuItem value="">Select Format</MenuItem>
             {availableFormats.map((f) => (
               <MenuItem key={f} value={f}>
                 {f}
@@ -213,12 +213,10 @@ const EvaluateDbTab: React.FC = () => {
           size="small"
           disableClearable
           options={(availableTeam1s || []).filter((t) => t !== team2)}
-          value={team1}
+          value={(team1 || null) as string | undefined}
           onChange={(_e, newValue) => {
-            if (newValue) {
-              setTeam1(newValue);
-              resetOutputs();
-            }
+            setTeam1(newValue ?? '');
+            if (newValue) resetOutputs();
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);
@@ -241,12 +239,10 @@ const EvaluateDbTab: React.FC = () => {
           size="small"
           disableClearable
           options={(availableTeam2s || []).filter((t) => t !== team1)}
-          value={team2}
+          value={(team2 || null) as string | undefined}
           onChange={(_e, newValue) => {
-            if (newValue) {
-              setTeam2(newValue);
-              resetOutputs();
-            }
+            setTeam2(newValue ?? '');
+            if (newValue) resetOutputs();
           }}
           filterOptions={(options, params) => {
             const filtered = filter(options, params);

@@ -16,16 +16,27 @@ func GetUniqueFormats(ctx context.Context) ([]string, error) {
 }
 
 // GetTeamsByFormat returns a list of unique team names that played in the given format.
-// Uses match_inning.batting_team_opposition_id to get distinct teams.
+// Collects teams from both batting and bowling positions (UNION), so teams that only
+// appeared as bowling side are included, matching buildPlayedMatchesFiltersQuery.
 func GetTeamsByFormat(ctx context.Context, format string) ([]string, error) {
 	query := `
-		SELECT DISTINCT o.opposition_name
-		FROM match_inning mi
-		JOIN match m ON m.match_id = mi.match_id
-		JOIN match_format mf ON mf.id = m.format_id
-		JOIN opposition o ON o.id = mi.batting_team_opposition_id
-		WHERE mf.code = $1 AND o.opposition_name IS NOT NULL AND o.opposition_name != ''
-		ORDER BY o.opposition_name
+		SELECT DISTINCT team_name
+		FROM (
+			SELECT o.opposition_name AS team_name
+			FROM match_inning mi
+			JOIN match m ON m.match_id = mi.match_id
+			JOIN match_format mf ON mf.id = m.format_id
+			JOIN opposition o ON o.id = mi.batting_team_opposition_id
+			WHERE mf.code = $1 AND o.opposition_name IS NOT NULL AND o.opposition_name != ''
+			UNION
+			SELECT o.opposition_name AS team_name
+			FROM match_inning mi
+			JOIN match m ON m.match_id = mi.match_id
+			JOIN match_format mf ON mf.id = m.format_id
+			JOIN opposition o ON o.id = mi.bowling_team_opposition_id
+			WHERE mf.code = $1 AND o.opposition_name IS NOT NULL AND o.opposition_name != ''
+		) t
+		ORDER BY team_name
 	`
 	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")
