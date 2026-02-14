@@ -15,21 +15,38 @@ Implements suggested fixes from unresolved PR review threads by `gemini-code-ass
 
 ## 1. Fetch unresolved Gemini review threads
 
-Use GraphQL via `gh api graphql`. Pass integers with `-F` to avoid coercion errors. Filter for `isResolved == false` and `author.login == "gemini-code-assist"`.
+Use GraphQL via `gh api graphql`. Pass integers with `-F` to avoid coercion errors. Filter for `isResolved == false` and `author.login == "gemini-code-assist"`. Uses pagination to fetch all threads (PRs with >100 threads are rare but possible).
 
 ```bash
 PR=53  # or: gh pr view --json number -q .number
 OWNER=$(gh repo view --json owner -q .owner.login)
 REPO=$(gh repo view --json name -q .name)
 
-gh api graphql \
-  -F number=$PR \
-  -f owner="$OWNER" -f repo="$REPO" \
-  -f query='query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } path line body } } } } } } }' \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+> pr_reviews.json
+CURSOR=""
+while true; do
+  QUERY='query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id isResolved comments(first: 1) { nodes { author { login } path line body } } }
+        }
+      }
+    }
+  }'
+  if [ -z "$CURSOR" ]; then
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" 2>/dev/null)
+  else
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR" 2>/dev/null)
+  fi
+  echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
         | select((.isResolved==false) and (.comments.nodes[0].author.login=="gemini-code-assist"))
-        | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}' \
-  > pr_reviews.json
+        | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}' >> pr_reviews.json
+  HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  [ "$HAS_NEXT" != "true" ] && break
+  CURSOR=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+done
 ```
 
 Sanity check: `jq -r 'select(.!=null) | .id' pr_reviews.json | wc -l`
@@ -54,15 +71,36 @@ done
 
 ## 4. Verify
 
-Confirm no remaining unresolved Gemini threads:
+Confirm no remaining unresolved Gemini threads (uses pagination for PRs with many threads):
 
 ```bash
-gh api graphql \
-  -F number=$PR -f owner="$OWNER" -f repo="$REPO" \
-  -f query='query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { author { login } } } } } } } }' \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select((.comments.nodes[0].author.login=="gemini-code-assist"))
-        | .isResolved' | sort | uniq -c
+> /tmp/gemini_resolved.txt
+CURSOR=""
+while true; do
+  QUERY='query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { isResolved comments(first: 1) { nodes { author { login } } } }
+        }
+      }
+    }
+  }'
+  if [ -z "$CURSOR" ]; then
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" 2>/dev/null)
+  else
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR" 2>/dev/null)
+  fi
+  echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
+        | select(.comments.nodes[0].author.login=="gemini-code-assist")
+        | .isResolved' >> /tmp/gemini_resolved.txt
+  HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  [ "$HAS_NEXT" != "true" ] && break
+  CURSOR=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+done
+echo "Gemini threads by status:"
+sort /tmp/gemini_resolved.txt | uniq -c
 # Expect only "true" remaining
 ```
 

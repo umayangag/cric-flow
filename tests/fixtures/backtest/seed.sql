@@ -96,13 +96,13 @@ INSERT INTO opposition(opposition_name) VALUES ('AUS') ON CONFLICT (opposition_n
 -- Resolve IDs and insert match + match_inning (schema post-0090)
 -- match table must exist (created by migration 0090)
 WITH s AS (
-  SELECT id AS season_id FROM season WHERE COALESCE(name, season_name)='2024' LIMIT 1
+  SELECT id AS season_id FROM season WHERE COALESCE(name, season_name)='2024' ORDER BY id LIMIT 1
 ), v AS (
-  SELECT id AS venue_id FROM venue WHERE COALESCE(name, venue_name)='Wankhede Stadium' LIMIT 1
+  SELECT id AS venue_id FROM venue WHERE COALESCE(name, venue_name)='Wankhede Stadium' ORDER BY id LIMIT 1
 ), f AS (
-  SELECT id AS format_id FROM match_format WHERE code='T20' LIMIT 1
+  SELECT id AS format_id FROM match_format WHERE code='T20' ORDER BY id LIMIT 1
 ), ind AS (
-  SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' LIMIT 1
+  SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' ORDER BY id LIMIT 1
 )
 INSERT INTO match (
   match_id, format_id, match_date, original_match_type, venue_id, season_id,
@@ -123,8 +123,8 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM match WHERE match_id = 9000111);
 
 -- Inning 1: IND batting, AUS bowling. Runs 150, wickets 7
-WITH ind AS (SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' LIMIT 1),
-     aus AS (SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS' LIMIT 1)
+WITH ind AS (SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' ORDER BY id LIMIT 1),
+     aus AS (SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS' ORDER BY id LIMIT 1)
 INSERT INTO match_inning (
   match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
   runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate, target_runs, extras, winner_opposition_id
@@ -134,8 +134,8 @@ SELECT 9000111, 1, (SELECT ind_id FROM ind), (SELECT aus_id FROM aus),
 WHERE NOT EXISTS (SELECT 1 FROM match_inning WHERE match_id = 9000111 AND inning_number = 1);
 
 -- Inning 2: AUS batting, IND bowling. Runs 140, target 151
-WITH ind AS (SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' LIMIT 1),
-     aus AS (SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS' LIMIT 1)
+WITH ind AS (SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' ORDER BY id LIMIT 1),
+     aus AS (SELECT id AS aus_id FROM opposition WHERE opposition_name='AUS' ORDER BY id LIMIT 1)
 INSERT INTO match_inning (
   match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
   runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate, target_runs, extras, winner_opposition_id

@@ -67,10 +67,10 @@ const EvaluateDbTab: React.FC = () => {
         if (active) {
           setAvailableTeam1s(teams);
           // Don't auto-select team1; keep it empty until user selects
-          // Only clear if current selection is invalid
-          if (team1 && !teams.includes(team1)) {
-            setTeam1('');
-          }
+          // Only clear if current selection is invalid (functional updater avoids stale closure)
+          setTeam1((currentTeam1) =>
+            currentTeam1 && !teams.includes(currentTeam1) ? '' : currentTeam1,
+          );
         }
       })
       .catch((err) => {
@@ -100,10 +100,10 @@ const EvaluateDbTab: React.FC = () => {
         if (active) {
           setAvailableTeam2s(opps);
           // Don't auto-select team2; keep it empty until user selects
-          // Only clear if current selection is invalid
-          if (team2 && !opps.includes(team2)) {
-            setTeam2('');
-          }
+          // Only clear if current selection is invalid (functional updater avoids stale closure)
+          setTeam2((currentTeam2) =>
+            currentTeam2 && !opps.includes(currentTeam2) ? '' : currentTeam2,
+          );
         }
       })
       .catch((err) => {
