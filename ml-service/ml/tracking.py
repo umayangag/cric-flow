@@ -2,9 +2,8 @@ import json
 import logging
 from contextlib import contextmanager
 
+from db import get_db_connection
 from dotenv import load_dotenv
-
-from ml.db import get_db_connection
 
 # Load environment variables from .env file if it exists
 load_dotenv()

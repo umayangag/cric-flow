@@ -140,10 +140,10 @@ ml-install:
 	$(MAKE) -C ml-service install
 
 train-batting:
-	cd ml-service && $(ML_VENV_BIN)/python ml/train_batting_model.py
+	cd ml-service && PYTHONPATH=ml $(ML_VENV_BIN)/python ml/train_batting_model.py
 
 train-bowling:
-	cd ml-service && $(ML_VENV_BIN)/python ml/train_bowling_model.py
+	cd ml-service && PYTHONPATH=ml $(ML_VENV_BIN)/python ml/train_bowling_model.py
 
 train-all: train-batting train-bowling
 
