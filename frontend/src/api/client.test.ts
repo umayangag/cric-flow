@@ -4,6 +4,9 @@ import {
   buildEvaluateQuery,
   fetchBacktestSelect,
   fetchBacktestEvaluate,
+  fetchFormats,
+  fetchTeamsByFormat,
+  fetchOpponents,
 } from './client';
 
 // Note: use vi.stubGlobal to mock fetch to avoid duplicate global declarations
@@ -107,5 +110,49 @@ describe('api/client fetch helpers', () => {
     const calledUrl = mockFetch.mock.calls[0][0] as string;
     expect(calledUrl).toContain('use_ml=1');
     expect(calledUrl).toContain('match_id=789');
+  });
+
+  it('fetchFormats fetches and parses JSON', async () => {
+    const payload = ['T20', 'ODI', 'TEST'];
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    const res = await fetchFormats('http://localhost:8080');
+    expect(res).toEqual(payload);
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:8080/api/options/formats');
+    vi.unstubAllGlobals();
+  });
+
+  it('fetchTeamsByFormat fetches with format param', async () => {
+    const payload = ['IND', 'AUS', 'ENG'];
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    const res = await fetchTeamsByFormat('http://localhost:8080', 'T20');
+    expect(res).toEqual(payload);
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/api/options/teams-by-format');
+    expect(calledUrl).toContain('format=T20');
+    vi.unstubAllGlobals();
+  });
+
+  it('fetchOpponents fetches with format and team params', async () => {
+    const payload = ['AUS', 'ENG'];
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    const res = await fetchOpponents('http://localhost:8080', 'ODI', 'IND');
+    expect(res).toEqual(payload);
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/api/options/opponents');
+    expect(calledUrl).toContain('format=ODI');
+    expect(calledUrl).toContain('team=IND');
+    vi.unstubAllGlobals();
   });
 });

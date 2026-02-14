@@ -3,44 +3,69 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BacktestFilters } from './BacktestFilters';
 
-// Mock API client (avoid any)
+// Mock API client
 vi.mock('../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/client')>();
   return {
     ...actual,
     fetchBacktestSelect: vi.fn(),
+    fetchFormats: vi.fn(),
+    fetchTeamsByFormat: vi.fn(),
+    fetchOpponents: vi.fn(),
   };
 });
 
-import { fetchBacktestSelect } from '../api/client';
+import {
+  fetchBacktestSelect,
+  fetchFormats,
+  fetchTeamsByFormat,
+  fetchOpponents,
+} from '../api/client';
 
 describe('BacktestFilters component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (fetchFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
+    (fetchTeamsByFormat as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
+    (fetchOpponents as unknown as Mock).mockResolvedValue(['AUS', 'ENG']);
   });
 
-  it('renders inputs and search button', () => {
+  it('renders inputs and search button', async () => {
     const onSelect = vi.fn();
     render(<BacktestFilters onSelect={onSelect} />);
     expect(screen.getByLabelText('format')).toBeInTheDocument();
     expect(screen.getByLabelText('team1')).toBeInTheDocument();
     expect(screen.getByLabelText('team2')).toBeInTheDocument();
     expect(screen.getByLabelText('search')).toBeInTheDocument();
+    await waitFor(() => expect(fetchFormats).toHaveBeenCalled());
   });
 
-  it('shows validation error when required fields missing', async () => {
+  it('fetches formats on mount, then teams and opponents in cascade', async () => {
+    const onSelect = vi.fn();
+    render(<BacktestFilters baseUrl="http://localhost:8080" onSelect={onSelect} />);
+
+    await waitFor(() => expect(fetchFormats).toHaveBeenCalledWith('http://localhost:8080'));
+    await waitFor(() =>
+      expect(fetchTeamsByFormat).toHaveBeenCalledWith('http://localhost:8080', 'T20'),
+    );
+    await waitFor(() =>
+      expect(fetchOpponents).toHaveBeenCalledWith('http://localhost:8080', 'T20', 'IND'),
+    );
+  });
+
+  it('Search button is disabled until format, team1, team2 are selected', async () => {
+    (fetchFormats as unknown as Mock).mockResolvedValue([]);
     const onSelect = vi.fn();
     render(<BacktestFilters onSelect={onSelect} />);
-    const team1 = screen.getByLabelText('team1');
-    fireEvent.change(team1, { target: { value: '' } });
-    fireEvent.click(screen.getByLabelText('search'));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/required/i);
+
+    await waitFor(() => expect(fetchFormats).toHaveBeenCalled());
+    const searchBtn = screen.getByLabelText('search');
+    expect(searchBtn).toBeDisabled();
   });
 
   it('fetches candidates and invokes onSelect on click', async () => {
     const onSelect = vi.fn();
-    const mockedFetch = fetchBacktestSelect as unknown as Mock;
-    mockedFetch.mockResolvedValue({
+    (fetchBacktestSelect as unknown as Mock).mockResolvedValue({
       filters: {},
       candidates: [
         {
@@ -58,6 +83,9 @@ describe('BacktestFilters component', () => {
     });
 
     render(<BacktestFilters onSelect={onSelect} />);
+
+    // Wait for cascade to complete (formats -> teams -> opponents)
+    await waitFor(() => expect(fetchOpponents).toHaveBeenCalled());
     fireEvent.click(screen.getByLabelText('search'));
 
     await waitFor(() => expect(fetchBacktestSelect).toHaveBeenCalledTimes(1));

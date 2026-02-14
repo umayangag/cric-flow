@@ -81,6 +81,8 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
+    // team1 excluded: only used to validate/clear selection; API call depends only on format
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [format]);
 
   // Fetch Team 2 when Team 1 or format changes
@@ -111,6 +113,8 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
+    // team2 excluded: only used to validate/clear selection; API call depends only on format+team1
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [format, team1]);
 
   // UI state
@@ -229,7 +233,7 @@ const EvaluateDbTab: React.FC = () => {
             return filtered;
           }}
           renderInput={(params) => <TextField {...params} label="Team 1" />}
-          noOptionsText={team1 ? "No matching teams" : "Type to search or select from dropdown"}
+          noOptionsText={team1 ? 'No matching teams' : 'Type to search or select from dropdown'}
         />
 
         <Autocomplete
@@ -257,7 +261,7 @@ const EvaluateDbTab: React.FC = () => {
             return filtered;
           }}
           renderInput={(params) => <TextField {...params} label="Team 2" />}
-          noOptionsText={team2 ? "No matching teams" : "Type to search or select from dropdown"}
+          noOptionsText={team2 ? 'No matching teams' : 'Type to search or select from dropdown'}
         />
 
         <Button

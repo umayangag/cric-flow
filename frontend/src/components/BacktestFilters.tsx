@@ -35,6 +35,8 @@ export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', 
         }
       })
       .catch((err) => setError(err.message || 'Failed to fetch formats'));
+    // format excluded: only used to avoid overwriting user selection on initial load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseUrl]);
 
   // Fetch teams when format changes
