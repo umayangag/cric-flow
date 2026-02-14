@@ -216,10 +216,12 @@ func InsertFieldingEventsBatch(ctx context.Context, rows []FieldingEvent) error 
 }
 
 // InsertFieldingEventsBatchTx inserts multiple fielding_event rows using the given transaction.
+// The same transaction may be used for multiple batches (e.g. one per inning), so we drop the temp table if it exists.
 func InsertFieldingEventsBatchTx(ctx context.Context, tx CopyFromTx, rows []FieldingEvent) error {
 	if len(rows) == 0 {
 		return nil
 	}
+	_, _ = tx.Exec(ctx, `DROP TABLE IF EXISTS fielding_event_tmp`)
 	err := tx.Exec(ctx, `CREATE TEMP TABLE fielding_event_tmp (LIKE fielding_event INCLUDING DEFAULTS) ON COMMIT DROP`)
 	if err != nil {
 		return fmt.Errorf("create temp table: %w", err)
