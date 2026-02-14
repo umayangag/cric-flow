@@ -81,7 +81,7 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [format, team1]);
+  }, [format]);
 
   // Fetch Team 2 when Team 1 or format changes
   useEffect(() => {
@@ -111,7 +111,7 @@ const EvaluateDbTab: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [format, team1, team2]);
+  }, [format, team1]);
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false);
