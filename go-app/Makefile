@@ -236,7 +236,7 @@ help:
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
-	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; DIR=..., PLACEHOLDERS=1)"
+	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
 	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"

@@ -36,9 +36,9 @@ while true; do
     }
   }'
   if [ -z "$CURSOR" ]; then
-    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" 2>/dev/null)
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY")
   else
-    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR" 2>/dev/null)
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
         | select((.isResolved==false) and (.comments.nodes[0].author.login=="gemini-code-assist"))
@@ -88,9 +88,9 @@ while true; do
     }
   }'
   if [ -z "$CURSOR" ]; then
-    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" 2>/dev/null)
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY")
   else
-    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR" 2>/dev/null)
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
         | select(.comments.nodes[0].author.login=="gemini-code-assist")

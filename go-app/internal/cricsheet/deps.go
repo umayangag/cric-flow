@@ -33,9 +33,9 @@ type WeatherClient interface {
 
 // Default adapters
 var (
-	cricDB            CricsheetDB   = realDB{}
-	weatherClient     WeatherClient = realWeather{}
-	insertBallEventsFn              = db.InsertBallEvents
+	cricDB             CricsheetDB   = realDB{}
+	weatherClient      WeatherClient = realWeather{}
+	insertBallEventsFn               = db.InsertBallEvents
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.
@@ -49,14 +49,6 @@ func GetCricsheetDB() CricsheetDB { return cricDB }
 
 // GetWeatherClient returns the current weather client (for tests).
 func GetWeatherClient() WeatherClient { return weatherClient }
-
-// SetRecomputeFn allows tests to stub the recompute function. Ingest uses db.RecomputeFieldingAggregatesTx
-// inside a transaction, so this setter is a no-op; it exists so tests can call it without breaking.
-func SetRecomputeFn(func(context.Context, int64) error) {}
-
-// SetInsertFieldingEventsBatchFn allows tests to stub fielding event inserts. Ingest uses
-// db.InsertFieldingEventsBatchTx inside a transaction, so this setter is a no-op for compatibility.
-func SetInsertFieldingEventsBatchFn(func(context.Context, []db.FieldingEvent) error) {}
 
 // RunInTxFn, when set, replaces db.RunInTx for transaction execution. Used by tests to inject
 // failing or spy transactions without mocking the full pool.

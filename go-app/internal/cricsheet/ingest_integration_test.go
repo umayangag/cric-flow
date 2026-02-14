@@ -89,8 +89,8 @@ func (nopTx) Rollback(_ context.Context) error { return nil }
 
 // offlineSpyTx captures match_inning upserts, CopyFrom table names, and execs for integration-style assertions.
 type offlineSpyTx struct {
-	innings                                  []db.MatchInningInsert
-	execs                                    []string
+	innings                                         []db.MatchInningInsert
+	execs                                           []string
 	sawBattingCopy, sawBowlingCopy, sawFieldingCopy bool
 }
 
@@ -190,7 +190,12 @@ func (t *offlineSpyTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row {
 	return nopRow{}
 }
 
-func (t *offlineSpyTx) CopyFrom(_ context.Context, table pgx.Identifier, _ []string, src pgx.CopyFromSource) (int64, error) {
+func (t *offlineSpyTx) CopyFrom(
+	_ context.Context,
+	table pgx.Identifier,
+	_ []string,
+	src pgx.CopyFromSource,
+) (int64, error) {
 	tbl := strings.Join(table, ".")
 	if strings.Contains(tbl, "batting") {
 		t.sawBattingCopy = true
@@ -237,10 +242,8 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 		})
 
 	cricsheet.SetWeatherClient(mweather)
-	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	t.Cleanup(func() {
 		cricsheet.SetWeatherClient(&tmocks.MockWeatherClient{})
-		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	})
 
 	d := t.TempDir()
@@ -282,20 +285,20 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mdb.On("GetOrCreateOpposition", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("GetOrCreateByName", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).Return(nil)
-	mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).Return(nil)
+	mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).
+		Return(nil)
 	mdb.On("UpsertBattingBatch", anyCtx, mock.MatchedBy(func(_ []db.Batting) bool { return true })).Return(nil)
 	mdb.On("UpsertBowlingBatch", anyCtx, mock.MatchedBy(func(_ []db.Bowling) bool { return true })).Return(nil)
 	mdb.On("UpsertFieldingBatch", anyCtx, mock.MatchedBy(func(_ []db.Fielding) bool { return true })).Return(nil)
-	mdb.On("Exec", anyCtx, mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ any) bool { return true })).Return(nil)
+	mdb.On("Exec", anyCtx, mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ any) bool { return true })).
+		Return(nil)
 	mweather.On("EnqueueJob", anyCtx, mock.MatchedBy(func(_ int64) bool { return true }), mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ int) bool { return true })).
 		Return(nil)
 	cricsheet.SetCricsheetDB(mdb)
 	cricsheet.SetWeatherClient(mweather)
-	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	defer func() {
 		cricsheet.SetCricsheetDB(&tmocks.MockCricsheetDB{})
 		cricsheet.SetWeatherClient(&tmocks.MockWeatherClient{})
-		cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
 	}()
 
 	d := t.TempDir()

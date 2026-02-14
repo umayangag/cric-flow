@@ -558,7 +558,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			})
 		}
 	}
-	// Run all match-specific DB writes in a single transaction (all-or-nothing)
+	// Run all match-specific DB writes in a single transaction (all-or-nothing).
+	// Note: Dimension entity creation (players, venues, seasons, oppositions via cache.Get*)
+	// happens above, outside this transaction. If the tx rolls back, those new dimension rows
+	// remain and can become orphaned. Full atomicity would require refactoring the cache/DB
+	// to accept a transaction for all writes.
 	runTx := db.RunInTx
 	if runInTxFn != nil {
 		runTx = runInTxFn
