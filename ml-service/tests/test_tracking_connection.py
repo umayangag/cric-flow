@@ -3,10 +3,9 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Add ml-service root and ml directory to path
+# Add ml-service root to path
 ml_service_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ml_service_path)
-sys.path.insert(1, os.path.join(ml_service_path, "ml"))
 
 # Mock psycopg2 and dotenv
 mock_psycopg2_module = MagicMock()
