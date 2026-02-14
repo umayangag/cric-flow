@@ -190,10 +190,6 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	// Not parallel: uses package-level singletons and RunInTxFn.
 	ctx := context.Background()
 
-	// stub recompute and fielding events to avoid touching real DB in unit tests
-	cricsheet.SetRecomputeFn(func(_ context.Context, _ int64) error { return nil })
-	cricsheet.SetInsertFieldingEventsBatchFn(func(_ context.Context, _ []db.FieldingEvent) error { return nil })
-
 	// Spy tx to capture match_inning upsert args (OversBowled is 7th arg, 0-indexed: args[6])
 	var oversBowled float32
 	spyTx := &spyTxForMatchInning{oversBowled: &oversBowled}
