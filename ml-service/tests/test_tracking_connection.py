@@ -4,11 +4,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 # Add ml-service root to path
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+ml_service_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, ml_service_path)
 
-# Mock psycopg2
+# Mock psycopg2 and dotenv
 mock_psycopg2_module = MagicMock()
 sys.modules["psycopg2"] = mock_psycopg2_module
+sys.modules["dotenv"] = MagicMock()
 
 # Import modules under test
 try:

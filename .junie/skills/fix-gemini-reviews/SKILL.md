@@ -1,4 +1,4 @@
-When the user types "/fix reviews {{pr_number}}"
+When the user types "/fix-gemini-reviews {{pr_number}}"
 
 # Fix Gemini Reviews
 Description: Fetch unresolved PR review threads authored by `gemini-code-assist` that are still unresolved, implement the suggested fixes, and resolve the threads via GraphQL. This documents the exact, working `gh` + GraphQL commands to avoid trial-and-error.
