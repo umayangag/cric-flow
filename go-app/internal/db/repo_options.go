@@ -16,12 +16,14 @@ func GetUniqueFormats(ctx context.Context) ([]string, error) {
 }
 
 // GetTeamsByFormat returns a list of unique team names that played in the given format.
+// Uses match_inning.batting_team_opposition_id to get distinct teams.
 func GetTeamsByFormat(ctx context.Context, format string) ([]string, error) {
 	query := `
 		SELECT DISTINCT o.opposition_name
-		FROM match_details md
-		JOIN match_format mf ON mf.id = md.format_id
-		JOIN opposition o ON o.id = md.opposition_id
+		FROM match_inning mi
+		JOIN match m ON m.match_id = mi.match_id
+		JOIN match_format mf ON mf.id = m.format_id
+		JOIN opposition o ON o.id = mi.batting_team_opposition_id
 		WHERE mf.code = $1 AND o.opposition_name IS NOT NULL AND o.opposition_name != ''
 		ORDER BY o.opposition_name
 	`
@@ -45,23 +47,22 @@ func GetTeamsByFormat(ctx context.Context, format string) ([]string, error) {
 	return results, rows.Err()
 }
 
-// GetOpponentsByFormatAndTeam returns a list of unique team names that played against the given team in the given format.
-// The match_details table has multiple rows per match (one per inning), all sharing the same match_number.
-// Each row has a different opposition_id, so the two distinct opposition_ids represent the two teams.
-// Strategy: Find all match_numbers where the given team appears, then return all other teams from those matches.
+// GetOpponentsByFormatAndTeam returns team names that played against the given team in the given format.
+// For each inning, batting_team and bowling_team are the two sides; the opponent is the other team.
 func GetOpponentsByFormatAndTeam(ctx context.Context, format, teamName string) ([]string, error) {
 	query := `
-		SELECT DISTINCT o2.opposition_name
-		FROM match_details md1
-		JOIN match_format mf ON mf.id = md1.format_id
-		JOIN opposition o1 ON o1.id = md1.opposition_id
-		JOIN match_details md2 ON md2.match_number = md1.match_number AND md2.opposition_id != md1.opposition_id
-		JOIN opposition o2 ON o2.id = md2.opposition_id
+		SELECT DISTINCT
+		  CASE WHEN o_bat.opposition_name = $2 THEN o_bowl.opposition_name ELSE o_bat.opposition_name END AS opponent
+		FROM match_inning mi
+		JOIN match m ON m.match_id = mi.match_id
+		JOIN match_format mf ON mf.id = m.format_id
+		JOIN opposition o_bat ON o_bat.id = mi.batting_team_opposition_id
+		JOIN opposition o_bowl ON o_bowl.id = mi.bowling_team_opposition_id
 		WHERE mf.code = $1
-		  AND o1.opposition_name = $2
-		  AND o2.opposition_name IS NOT NULL
-		  AND o2.opposition_name != ''
-		ORDER BY o2.opposition_name
+		  AND (o_bat.opposition_name = $2 OR o_bowl.opposition_name = $2)
+		  AND o_bat.opposition_name IS NOT NULL AND o_bat.opposition_name != ''
+		  AND o_bowl.opposition_name IS NOT NULL AND o_bowl.opposition_name != ''
+		ORDER BY opponent
 	`
 	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")

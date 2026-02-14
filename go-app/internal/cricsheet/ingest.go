@@ -112,9 +112,6 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	if err := cricDB.EnsureMatchWithFormat(ctx, mid, formatID, dateISO, info.MatchType); err != nil {
-		return fmt.Errorf("ensure match with format: %w", err)
-	}
 	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
 	var venueID *int64
 	if venueName != "" {
@@ -153,6 +150,38 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if ballsPerOver <= 0 {
 		ballsPerOver = 6
 	}
+	var tossWinnerOppositionID *int64
+	if toss != "" {
+		if id, e := cache.GetOppositionID(ctx, toss); e == nil {
+			tossWinnerOppositionID = &id
+		}
+	}
+	scheduledOvers := scheduledOversFromFormatOrInfo(formatCode, info.Overs)
+	eventName := ""
+	if info.Event != nil {
+		eventName = info.Event.Name
+	}
+	matchInsert := &db.MatchInsert{
+		MatchID:                   mid,
+		FormatID:                  formatID,
+		MatchDate:                 dateISO,
+		OriginalMatchType:         info.MatchType,
+		VenueID:                   venueID,
+		SeasonID:                  seasonID,
+		TossWinnerOppositionID:    tossWinnerOppositionID,
+		TossDecision:              strPtrFromToss(info.Toss),
+		OutcomeWinnerOppositionID: winnerID,
+		OutcomeByRuns:             outcomeByRuns(info.Outcome),
+		OutcomeByWickets:          outcomeByWickets(info.Outcome),
+		EventName:                 strPtrNonEmpty(eventName),
+		MatchNumber:               matchNumber,
+		Gender:                    strPtrNonEmpty(info.Gender),
+		BallsPerOver:              ballsPerOver,
+		ScheduledOversPerInnings:  scheduledOvers,
+	}
+	if err := cricDB.UpsertMatch(ctx, matchInsert); err != nil {
+		return fmt.Errorf("upsert match: %w", err)
+	}
 	// Optional: insert placeholder weather rows once per match
 	if opts != nil && opts.PlaceholdersWeather {
 		if err := cricDB.Exec(
@@ -168,11 +197,13 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		inningNo := i + 1
 		batTeam := strings.TrimSpace(inng.Team)
 		oppTeam := otherTeam(batTeam, teamA, teamB)
-		var oppositionID *int64
-		if oppTeam != "" {
-			if id, e := cache.GetOppositionID(ctx, oppTeam); e == nil {
-				oppositionID = &id
-			}
+		battingTeamOppositionID, err := cache.GetOppositionID(ctx, batTeam)
+		if err != nil {
+			return fmt.Errorf("get/create opposition for batting team %q: %w", batTeam, err)
+		}
+		bowlingTeamOppositionID, err := cache.GetOppositionID(ctx, oppTeam)
+		if err != nil {
+			return fmt.Errorf("get/create opposition for bowling team %q: %w", oppTeam, err)
 		}
 		// totals and aggregates
 		runs, wkts, balls, extras := 0, 0, 0, 0
@@ -340,28 +371,27 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			firRuns := inningsRuns(m.Innings[0])
 			target = &firRuns
 		}
-		upd := &db.MatchInfoUpdate{
-			Balls:             &balls,
-			BattingSession:    &batTeam,
-			BowlingSession:    &oppTeam,
-			Extras:            &extras,
-			Inning:            &inningNo,
-			MatchDate:         &dateISO,
-			MatchNumber:       matchNumber,
-			OppositionID:      oppositionID,
-			Overs:             &oversFloat,
-			RPO:               &rpo,
-			Result:            winnerID,
-			Score:             &runs,
-			SeasonID:          seasonID,
-			Target:            target,
-			Toss:              &toss,
-			VenueID:           venueID,
-			Wickets:           &wkts,
-			OriginalMatchType: &info.MatchType,
+		mi := &db.MatchInningInsert{
+			MatchID:                 mid,
+			InningNumber:            inningNo,
+			BattingTeamOppositionID: battingTeamOppositionID,
+			BowlingTeamOppositionID: bowlingTeamOppositionID,
+			RunsScored:              runs,
+			WicketsLost:             wkts,
+			OversBowled:             oversFloat,
+			BallsBowled:             balls,
+			RunRate:                 &rpo,
+			TargetRuns:              target,
+			Extras:                  extras,
+			WinnerOppositionID:      winnerID,
 		}
-		if err := cricDB.UpdateMatchDetails(ctx, mid, upd); err != nil {
-			slog.Warn("update match_details failed", slog.Int64("match_id", mid), slog.Any("err", err))
+		if err := cricDB.UpsertMatchInning(ctx, mi); err != nil {
+			slog.Warn(
+				"upsert match_inning failed",
+				slog.Int64("match_id", mid),
+				slog.Int("inning", inningNo),
+				slog.Any("err", err),
+			)
 		}
 		order := make([]string, 0, len(batAgg))
 		for name, b := range batAgg {
@@ -382,6 +412,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			mins := 0
 			batBatch = append(batBatch, db.Batting{
 				MatchID:         mid,
+				InningNumber:    inningNo,
 				PlayerID:        pid,
 				Description:     strPtr(desc),
 				Runs:            &b.Runs,
@@ -408,19 +439,20 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			}
 			pid, _ := cache.GetPlayerID(ctx, name)
 			bowlBatch = append(bowlBatch, db.Bowling{
-				MatchID:  mid,
-				PlayerID: pid,
-				Overs:    &o,
-				Balls:    &s.Balls,
-				Maidens:  &maidens,
-				Runs:     &s.Runs,
-				Wickets:  &s.Wickets,
-				Dots:     &s.Dots,
-				Fours:    &s.Fours,
-				Sixes:    &s.Sixes,
-				Econ:     &econ,
-				Wides:    &s.Wides,
-				NoBalls:  &s.NoBalls,
+				MatchID:      mid,
+				InningNumber: inningNo,
+				PlayerID:     pid,
+				Overs:        &o,
+				Balls:        &s.Balls,
+				Maidens:      &maidens,
+				Runs:         &s.Runs,
+				Wickets:      &s.Wickets,
+				Dots:         &s.Dots,
+				Fours:        &s.Fours,
+				Sixes:        &s.Sixes,
+				Econ:         &econ,
+				Wides:        &s.Wides,
+				NoBalls:      &s.NoBalls,
 			})
 		}
 		if err := cricDB.UpsertBowlingBatch(ctx, bowlBatch); err != nil {
@@ -545,6 +577,50 @@ func strikeRate(runs, balls int) float32 {
 }
 
 func strPtr(s string) *string { return &s }
+
+func strPtrNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func strPtrFromToss(t *Toss) *string {
+	if t == nil || t.Decision == "" {
+		return nil
+	}
+	return &t.Decision
+}
+
+func outcomeByRuns(o *Outcome) *int {
+	if o == nil || o.By == nil {
+		return nil
+	}
+	return o.By.Runs
+}
+
+func outcomeByWickets(o *Outcome) *int {
+	if o == nil || o.By == nil {
+		return nil
+	}
+	return o.By.Wickets
+}
+
+func scheduledOversFromFormatOrInfo(formatCode string, infoOvers int) *int {
+	if infoOvers > 0 {
+		return &infoOvers
+	}
+	switch formatCode {
+	case "T20", "T20I":
+		v := 20
+		return &v
+	case "ODI":
+		v := 50
+		return &v
+	default:
+		return nil
+	}
+}
 
 func firstNonEmpty(s ...string) string {
 	for _, v := range s {

@@ -31,6 +31,8 @@ type Info struct {
 	Event        *Event   `json:"event"`
 	Toss         *Toss    `json:"toss"`
 	Outcome      *Outcome `json:"outcome"`
+	Gender       string   `json:"gender"`
+	Overs        int      `json:"overs"`
 }
 
 // MatchDate returns the primary match date (the first entry in Dates).
@@ -62,19 +64,28 @@ func (i *Info) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Event contains optional tournament information like match number.
+// Event contains optional tournament information.
 type Event struct {
-	MatchNumber *int `json:"match_number"`
+	Name        string `json:"name"`
+	MatchNumber *int   `json:"match_number"`
 }
 
-// Toss records which team won the toss.
+// Toss records which team won the toss and the decision.
 type Toss struct {
-	Winner string `json:"winner"`
+	Winner   string `json:"winner"`
+	Decision string `json:"decision"`
 }
 
-// Outcome records the match winner when available.
+// Outcome records the match winner and margin when available.
 type Outcome struct {
-	Winner string `json:"winner"`
+	Winner string     `json:"winner"`
+	By     *OutcomeBy `json:"by,omitempty"`
+}
+
+// OutcomeBy holds margin details (runs or wickets).
+type OutcomeBy struct {
+	Runs    *int `json:"runs,omitempty"`
+	Wickets *int `json:"wickets,omitempty"`
 }
 
 // Innings represents a team's innings containing overs and deliveries.

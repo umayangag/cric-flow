@@ -27,13 +27,15 @@ func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff ti
 		FROM (
 		  SELECT b.player_id
 		  FROM batting_data b
-		  JOIN match_details md ON md.match_id = b.match_id
-		  WHERE md.format_id = $1 AND md.match_date < $2
+		  JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
+		  JOIN match m ON m.match_id = b.match_id
+		  WHERE m.format_id = $1 AND m.match_date < $2
 		  UNION
 		  SELECT w.player_id
 		  FROM bowling_data w
-		  JOIN match_details md ON md.match_id = w.match_id
-		  WHERE md.format_id = $1 AND md.match_date < $2
+		  JOIN match_inning mi ON mi.match_id = w.match_id AND mi.inning_number = w.inning_number
+		  JOIN match m ON m.match_id = w.match_id
+		  WHERE m.format_id = $1 AND m.match_date < $2
 		) t
 		ORDER BY player_id ASC`, formatID, cutoff)
 	if err != nil {
@@ -56,8 +58,8 @@ func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT id, match_id, match_date, format_id, COALESCE(opposition_id,0), COALESCE(venue_id,0)
-		FROM match_details
+	q := `SELECT match_id AS id, match_id, match_date, format_id, 0 AS opposition_id, COALESCE(venue_id,0)
+		FROM match
 		WHERE format_id = $1`
 	args := []any{formatID}
 	if from != nil {
@@ -131,24 +133,25 @@ func ListBattingBefore(
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT md.match_date, COALESCE(b.runs,0)::float8
+	q := `SELECT m.match_date, COALESCE(b.runs,0)::float8
 		FROM batting_data b
-		JOIN match_details md ON md.match_id = b.match_id
-		WHERE b.player_id = $1 AND md.match_date < $2 AND md.format_id = $3`
+		JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
+		JOIN match m ON m.match_id = b.match_id
+		WHERE b.player_id = $1 AND m.match_date < $2 AND m.format_id = $3`
 	args := []any{playerID, cutoff, formatID}
 	if oppID != nil {
-		q += ` AND md.opposition_id = $4`
+		q += ` AND mi.bowling_team_opposition_id = $4`
 		args = append(args, *oppID)
 	}
 	if venueID != nil {
 		if oppID != nil {
-			q += ` AND md.venue_id = $5`
+			q += ` AND m.venue_id = $5`
 		} else {
-			q += ` AND md.venue_id = $4`
+			q += ` AND m.venue_id = $4`
 		}
 		args = append(args, *venueID)
 	}
-	q += ` ORDER BY md.match_date ASC, b.id ASC`
+	q += ` ORDER BY m.match_date ASC, b.id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -176,24 +179,25 @@ func ListBowlingBefore(
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	q := `SELECT md.match_date, COALESCE(w.wickets,0)::float8
+	q := `SELECT m.match_date, COALESCE(w.wickets,0)::float8
 		FROM bowling_data w
-		JOIN match_details md ON md.match_id = w.match_id
-		WHERE w.player_id = $1 AND md.match_date < $2 AND md.format_id = $3`
+		JOIN match_inning mi ON mi.match_id = w.match_id AND mi.inning_number = w.inning_number
+		JOIN match m ON m.match_id = w.match_id
+		WHERE w.player_id = $1 AND m.match_date < $2 AND m.format_id = $3`
 	args := []any{playerID, cutoff, formatID}
 	if oppID != nil {
-		q += ` AND md.opposition_id = $4`
+		q += ` AND mi.batting_team_opposition_id = $4`
 		args = append(args, *oppID)
 	}
 	if venueID != nil {
 		if oppID != nil {
-			q += ` AND md.venue_id = $5`
+			q += ` AND m.venue_id = $5`
 		} else {
-			q += ` AND md.venue_id = $4`
+			q += ` AND m.venue_id = $4`
 		}
 		args = append(args, *venueID)
 	}
-	q += ` ORDER BY md.match_date ASC, w.id ASC`
+	q += ` ORDER BY m.match_date ASC, w.id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

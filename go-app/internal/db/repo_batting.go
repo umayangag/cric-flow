@@ -12,6 +12,7 @@ import (
 type Batting struct {
 	ID              int64
 	MatchID         int64
+	InningNumber    int
 	PlayerID        int64
 	Description     *string
 	Runs            *int
@@ -23,15 +24,15 @@ type Batting struct {
 	BattingPosition *int
 }
 
-// UpsertBatting inserts or updates batting_data by (match_id, player_id).
+// UpsertBatting inserts or updates batting_data by (match_id, inning_number, player_id).
 func UpsertBatting(ctx context.Context, b *Batting) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
 	_, err := Pool.Exec(ctx, `INSERT INTO batting_data(
-		match_id, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT (match_id, player_id) DO UPDATE SET
+		match_id, inning_number, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (match_id, inning_number, player_id) DO UPDATE SET
 			description = COALESCE(EXCLUDED.description, batting_data.description),
 			runs = COALESCE(EXCLUDED.runs, batting_data.runs),
 			balls = COALESCE(EXCLUDED.balls, batting_data.balls),
@@ -40,7 +41,7 @@ func UpsertBatting(ctx context.Context, b *Batting) error {
 			sixes = COALESCE(EXCLUDED.sixes, batting_data.sixes),
 			strike_rate = COALESCE(EXCLUDED.strike_rate, batting_data.strike_rate),
 			batting_position = COALESCE(EXCLUDED.batting_position, batting_data.batting_position)
-	`, b.MatchID, b.PlayerID, b.Description, b.Runs, b.Balls, b.Minutes, b.Fours, b.Sixes, b.StrikeRate, b.BattingPosition)
+	`, b.MatchID, b.InningNumber, b.PlayerID, b.Description, b.Runs, b.Balls, b.Minutes, b.Fours, b.Sixes, b.StrikeRate, b.BattingPosition)
 	return err
 }
 
@@ -73,6 +74,7 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 		pgx.Identifier{"batting_data_tmp"},
 		[]string{
 			"match_id",
+			"inning_number",
 			"player_id",
 			"description",
 			"runs",
@@ -87,6 +89,7 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 			r := rows[i]
 			return []any{
 				r.MatchID,
+				r.InningNumber,
 				r.PlayerID,
 				r.Description,
 				r.Runs,
@@ -105,10 +108,10 @@ func UpsertBattingBatch(ctx context.Context, rows []Batting) error {
 
 	// 3. Merge the temporary table into the main table.
 	err = tx.Exec(ctx, `
-		INSERT INTO batting_data (match_id, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
-		SELECT match_id, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position
+		INSERT INTO batting_data (match_id, inning_number, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position)
+		SELECT match_id, inning_number, player_id, description, runs, balls, minutes, fours, sixes, strike_rate, batting_position
 		FROM batting_data_tmp
-		ON CONFLICT (match_id, player_id) DO UPDATE SET
+		ON CONFLICT (match_id, inning_number, player_id) DO UPDATE SET
 			description = COALESCE(EXCLUDED.description, batting_data.description),
 			runs = COALESCE(EXCLUDED.runs, batting_data.runs),
 			balls = COALESCE(EXCLUDED.balls, batting_data.balls),

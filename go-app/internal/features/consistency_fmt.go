@@ -63,8 +63,8 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 	FROM cons c
 	JOIN (
 		SELECT DISTINCT player_id, season_id FROM batting_data bd
-		JOIN match_details md ON md.match_id = bd.match_id
-		WHERE md.format_id = %d %s
+		JOIN match m ON m.match_id = bd.match_id
+		WHERE m.format_id = %d %s
 	) s ON s.player_id = c.player_id
 	LEFT JOIN player_consistency_data_fmt pcdf ON pcdf.player_id = c.player_id AND pcdf.season_id = s.season_id AND pcdf.format_id = %d
 	ON CONFLICT (player_id, season_id, format_id) DO UPDATE SET

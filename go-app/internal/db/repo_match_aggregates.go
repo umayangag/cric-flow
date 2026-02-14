@@ -25,15 +25,14 @@ func buildMatchAggregates(runs, wickets, extras float64, winner string) MatchAgg
 }
 
 // GetMatchAggregates returns basic aggregates for a match. Numeric totals are
-// read from match_details columns (score as total runs, wickets, extras), and
+// summed from match_inning (runs_scored, wickets_lost, extras), and
 // winner is derived from team_match.
 func GetMatchAggregates(ctx context.Context, matchID int64) (MatchAggregates, error) {
 	if Pool == nil {
 		return MatchAggregates{}, errors.New("db pool not initialized")
 	}
 
-	// 1) Read numeric totals from match_details.
-	//    Schema: score (total runs), wickets, extras.
+	// 1) Sum numeric totals from match_inning across all innings.
 	var (
 		runs    float64
 		wickets float64
@@ -41,11 +40,11 @@ func GetMatchAggregates(ctx context.Context, matchID int64) (MatchAggregates, er
 	)
 	if err := Pool.QueryRow(ctx, `
         SELECT
-            COALESCE(md.score, 0)   AS total_runs,
-            COALESCE(md.wickets, 0) AS total_wickets,
-            COALESCE(md.extras, 0)  AS total_extras
-        FROM match_details md
-        WHERE md.match_id = $1
+            COALESCE(SUM(mi.runs_scored), 0),
+            COALESCE(SUM(mi.wickets_lost), 0),
+            COALESCE(SUM(mi.extras), 0)
+        FROM match_inning mi
+        WHERE mi.match_id = $1
     `, matchID).Scan(&runs, &wickets, &extras); err != nil {
 		// If schema differs or row missing, keep zeros for totals
 		runs, wickets, extras = 0, 0, 0

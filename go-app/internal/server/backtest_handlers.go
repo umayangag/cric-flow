@@ -243,9 +243,9 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 		respondErr(w, err)
 		return
 	}
-	cands := make([]backtestCandidate, 0, len(rows))
+	candidates := make([]backtestCandidate, 0, len(rows))
 	for _, row := range rows {
-		cands = append(cands, backtestCandidate{
+		candidates = append(candidates, backtestCandidate{
 			MatchID:        row.MatchID,
 			StableID:       nullString(row.StableID),
 			MatchDate:      row.MatchDate.Format("2006-01-02T15:04:05Z07:00"),
@@ -263,7 +263,7 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 			"team1":  team1,
 			"team2":  team2,
 		},
-		Candidates: cands,
+		Candidates: candidates,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -385,7 +385,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// List candidates via helper (tests can stub seams used within)
-	cands, err := listAccuracyTrendCandidates(
+	candidates, err := listAccuracyTrendCandidates(
 		r.Context(),
 		params.Format, params.Team1, params.Team2,
 		params.Start, params.End, params.Order, params.Limit,
@@ -394,7 +394,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		respondErr(w, err)
 		return
 	}
-	if len(cands) == 0 {
+	if len(candidates) == 0 {
 		resp := accuracyTrendResponse{
 			Filters: map[string]any{
 				"format": params.Format, "team1": params.Team1, "team2": params.Team2,
@@ -412,7 +412,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 
 	// Compute metrics and aggregates via helper
 	results, summary, progressive := computeAccuracyTrendForCandidates(
-		r.Context(), cands, params.IncludePlayer, params.IncludeTeam, params.Cache,
+		r.Context(), candidates, params.IncludePlayer, params.IncludeTeam, params.Cache,
 	)
 
 	resp := accuracyTrendResponse{

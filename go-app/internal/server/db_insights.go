@@ -26,9 +26,9 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
 	// and match_date is more accurate for "freshness" of the data content itself.
 	var ts time.Time
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COALESCE(MAX(md.match_date), DATE '0001-01-01')
-        FROM match_details md
-        JOIN match_format mf ON md.format_id = mf.id
+        SELECT COALESCE(MAX(m.match_date), DATE '0001-01-01')
+        FROM match m
+        JOIN match_format mf ON m.format_id = mf.id
         WHERE mf.code = $1
     `, format).Scan(&ts); err != nil {
 		return time.Time{}, err
@@ -50,10 +50,10 @@ func (productionInsightsProbe) CountMatchesSinceByFormat(
 	// Count distinct matches since the provided boundary using match_date.
 	var n int64
 	if err := db.Pool.QueryRow(ctx, `
-        SELECT COUNT(DISTINCT md.match_id)
-        FROM match_details md
-        JOIN match_format mf ON md.format_id = mf.id
-        WHERE mf.code = $1 AND md.match_date >= $2::date
+        SELECT COUNT(*)
+        FROM match m
+        JOIN match_format mf ON m.format_id = mf.id
+        WHERE mf.code = $1 AND m.match_date >= $2::date
     `, format, since).Scan(&n); err != nil {
 		return 0, err
 	}

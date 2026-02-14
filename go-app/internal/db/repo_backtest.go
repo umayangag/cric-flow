@@ -25,8 +25,8 @@ type BacktestCandidate struct {
 }
 
 // buildPlayedMatchesFiltersQuery builds the SQL and argument list for querying
-// already played matches with optional filters. This mirrors the inline builder
-// previously used in ListPlayedMatchesByFilters to keep behavior identical.
+// already played matches with optional filters. Uses match and match_inning;
+// both teams come from MIN/MAX(opposition_name) across innings per match.
 func buildPlayedMatchesFiltersQuery(
 	formatCode string,
 	team1 string,
@@ -36,33 +36,46 @@ func buildPlayedMatchesFiltersQuery(
 	order string,
 	limit int,
 ) (string, []any) {
-	// Base CTE to collect team names and winner per match
 	sb := strings.Builder{}
 	sb.WriteString(`
-        WITH tm AS (
-            SELECT tm.match_id,
-                   MIN(t.name) AS team_a,
-                   MAX(t.name) AS team_b,
-                   MAX(CASE WHEN tm.result IN ('W','WIN','1','TRUE','T') THEN t.name ELSE NULL END) AS winner
-            FROM team_match tm
-            JOIN team t ON t.id = tm.team_id
-            GROUP BY tm.match_id
+        WITH match_teams AS (
+            SELECT match_id,
+                   MIN(team_name) AS team_a,
+                   MAX(team_name) AS team_b
+            FROM (
+                SELECT mi.match_id, o.opposition_name AS team_name
+                FROM match_inning mi
+                JOIN opposition o ON o.id = mi.batting_team_opposition_id
+                UNION
+                SELECT mi.match_id, o.opposition_name AS team_name
+                FROM match_inning mi
+                JOIN opposition o ON o.id = mi.bowling_team_opposition_id
+            ) t
+            WHERE team_name IS NOT NULL AND team_name != ''
+            GROUP BY match_id
+        ),
+        match_winner AS (
+            SELECT m.match_id, o.opposition_name AS winner
+            FROM match m
+            JOIN opposition o ON o.id = m.outcome_winner_opposition_id
+            WHERE m.outcome_winner_opposition_id IS NOT NULL
         )
-        SELECT md.match_id,
-               CAST(md.match_id AS TEXT) AS stable_id,
-               md.match_date,
-               COALESCE(v.name, '') AS venue_name,
-               COALESCE(s.name, '') AS season_name,
+        SELECT m.match_id,
+               CAST(m.match_id AS TEXT) AS stable_id,
+               m.match_date,
+               COALESCE(v.display_name, v.venue_name, '') AS venue_name,
+               COALESCE(s.season_name, '') AS season_name,
                COALESCE(mf.code, '') AS format_code,
-               tm.team_a,
-               tm.team_b,
-               COALESCE(tm.winner, '') AS winner
-        FROM match_details md
-        JOIN tm ON tm.match_id = md.match_id
-        LEFT JOIN venue v ON v.id = md.venue_id
-        LEFT JOIN season s ON s.id = md.season_id
-        LEFT JOIN match_format mf ON mf.id = md.format_id
-        WHERE md.match_date < NOW()`)
+               mt.team_a,
+               mt.team_b,
+               COALESCE(mw.winner, '') AS winner
+        FROM match m
+        JOIN match_teams mt ON mt.match_id = m.match_id
+        LEFT JOIN match_winner mw ON mw.match_id = m.match_id
+        LEFT JOIN venue v ON v.id = m.venue_id
+        LEFT JOIN season s ON s.id = m.season_id
+        LEFT JOIN match_format mf ON mf.id = m.format_id
+        WHERE m.match_date < NOW()`)
 
 	args := []any{}
 	idx := 1
@@ -74,31 +87,31 @@ func buildPlayedMatchesFiltersQuery(
 		idx++
 	}
 	if !start.IsZero() {
-		sb.WriteString(" AND md.match_date >= $")
+		sb.WriteString(" AND m.match_date >= $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, start)
 		idx++
 	}
 	if !end.IsZero() {
-		sb.WriteString(" AND md.match_date <= $")
+		sb.WriteString(" AND m.match_date <= $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, end)
 		idx++
 	}
 	if team1 != "" && team2 != "" {
-		sb.WriteString(" AND ((tm.team_a = $")
+		sb.WriteString(" AND ((mt.team_a = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team1)
 		idx++
-		sb.WriteString(" AND tm.team_b = $")
+		sb.WriteString(" AND mt.team_b = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team2)
 		idx++
-		sb.WriteString(") OR (tm.team_a = $")
+		sb.WriteString(") OR (mt.team_a = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team2)
 		idx++
-		sb.WriteString(" AND tm.team_b = $")
+		sb.WriteString(" AND mt.team_b = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team1)
 		sb.WriteString("))")
@@ -108,11 +121,11 @@ func buildPlayedMatchesFiltersQuery(
 		if team == "" {
 			team = team2
 		}
-		sb.WriteString(" AND (tm.team_a = $")
+		sb.WriteString(" AND (mt.team_a = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team)
 		idx++
-		sb.WriteString(" OR tm.team_b = $")
+		sb.WriteString(" OR mt.team_b = $")
 		sb.WriteString(strconv.Itoa(idx))
 		args = append(args, team)
 		sb.WriteString(")")
@@ -120,9 +133,9 @@ func buildPlayedMatchesFiltersQuery(
 
 	// Ordering
 	if strings.ToLower(order) == "desc" {
-		sb.WriteString(" ORDER BY md.match_date DESC")
+		sb.WriteString(" ORDER BY m.match_date DESC")
 	} else {
-		sb.WriteString(" ORDER BY md.match_date ASC")
+		sb.WriteString(" ORDER BY m.match_date ASC")
 	}
 	if limit > 0 {
 		sb.WriteString(" LIMIT $")
@@ -150,13 +163,6 @@ func scanBacktestCandidate(rows scanx.Scanner, c *BacktestCandidate) error {
 // ListPlayedMatchesByFormatAndTeams returns already-played matches filtered by
 // format code and two team names. Teams are order-insensitive; results are ordered by date ASC.
 // A match is considered "played" if its date is strictly before NOW().
-// Note: Adjust schema/table names if they drift; this query expects:
-//   - match_details(match_id, date, season_id, venue_id, format_id, stable_id)
-//   - season(id, name)
-//   - venue(id, name)
-//   - match_format(id, code)
-//   - team_match(match_id, team_id, result)
-//   - team(id, name)
 func ListPlayedMatchesByFormatAndTeams(
 	ctx context.Context,
 	formatCode string,
@@ -168,33 +174,47 @@ func ListPlayedMatchesByFormatAndTeams(
 	}
 
 	q := `
-        WITH tm AS (
-            SELECT tm.match_id,
-                   MIN(t.name) AS team_a,
-                   MAX(t.name) AS team_b,
-                   MAX(CASE WHEN tm.result IN ('W','WIN','1','TRUE','T') THEN t.name ELSE NULL END) AS winner
-            FROM team_match tm
-            JOIN team t ON t.id = tm.team_id
-            GROUP BY tm.match_id
+        WITH match_teams AS (
+            SELECT match_id,
+                   MIN(team_name) AS team_a,
+                   MAX(team_name) AS team_b
+            FROM (
+                SELECT mi.match_id, o.opposition_name AS team_name
+                FROM match_inning mi
+                JOIN opposition o ON o.id = mi.batting_team_opposition_id
+                UNION
+                SELECT mi.match_id, o.opposition_name AS team_name
+                FROM match_inning mi
+                JOIN opposition o ON o.id = mi.bowling_team_opposition_id
+            ) t
+            WHERE team_name IS NOT NULL AND team_name != ''
+            GROUP BY match_id
+        ),
+        match_winner AS (
+            SELECT m.match_id, o.opposition_name AS winner
+            FROM match m
+            JOIN opposition o ON o.id = m.outcome_winner_opposition_id
+            WHERE m.outcome_winner_opposition_id IS NOT NULL
         )
-        SELECT md.match_id,
-               CAST(md.match_id AS TEXT) AS stable_id,
-               md.match_date,
-               COALESCE(v.name, '') AS venue_name,
-               COALESCE(s.name, '') AS season_name,
+        SELECT m.match_id,
+               CAST(m.match_id AS TEXT) AS stable_id,
+               m.match_date,
+               COALESCE(v.display_name, v.venue_name, '') AS venue_name,
+               COALESCE(s.season_name, '') AS season_name,
                COALESCE(mf.code, '') AS format_code,
-               tm.team_a,
-               tm.team_b,
-               COALESCE(tm.winner, '') AS winner
-        FROM match_details md
-        JOIN tm ON tm.match_id = md.match_id
-        LEFT JOIN venue v ON v.id = md.venue_id
-        LEFT JOIN season s ON s.id = md.season_id
-        LEFT JOIN match_format mf ON mf.id = md.format_id
-        WHERE md.match_date < NOW()
+               mt.team_a,
+               mt.team_b,
+               COALESCE(mw.winner, '') AS winner
+        FROM match m
+        JOIN match_teams mt ON mt.match_id = m.match_id
+        LEFT JOIN match_winner mw ON mw.match_id = m.match_id
+        LEFT JOIN venue v ON v.id = m.venue_id
+        LEFT JOIN season s ON s.id = m.season_id
+        LEFT JOIN match_format mf ON mf.id = m.format_id
+        WHERE m.match_date < NOW()
           AND mf.code = $1
-          AND ((tm.team_a = $2 AND tm.team_b = $3) OR (tm.team_a = $3 AND tm.team_b = $2))
-        ORDER BY md.match_date ASC
+          AND ((mt.team_a = $2 AND mt.team_b = $3) OR (mt.team_a = $3 AND mt.team_b = $2))
+        ORDER BY m.match_date ASC
     `
 
 	rows, err := Pool.Query(ctx, q, formatCode, team1, team2)

@@ -27,14 +27,14 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 		if err != nil {
 			return err
 		}
-		seasonIDFilter = fmt.Sprintf("AND md.season_id = %d", sid)
+		seasonIDFilter = fmt.Sprintf("AND m.season_id = %d", sid)
 	}
 	// Batting form formula:
 	// 0.4262*avg_score + 0.2566*innings + 0.1510*avg_sr + 0.0787*centuries + 0.0556*fifties - 0.0328*ducks
 	// threshold: innings > 5
 	q := fmt.Sprintf(`
 	WITH batting_base AS (
-		SELECT bd.player_id, md.season_id, md.format_id,
+		SELECT bd.player_id, m.season_id, m.format_id,
 			COUNT(*) AS innings,
 			AVG(COALESCE(bd.strike_rate,0)) AS avg_sr,
 			SUM(COALESCE(bd.runs,0)) AS sum_runs,
@@ -43,9 +43,9 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 			SUM(CASE WHEN bd.runs >= 50 THEN 1 ELSE 0 END) - SUM(CASE WHEN bd.runs >= 100 THEN 1 ELSE 0 END) AS fifties,
 			SUM(CASE WHEN bd.runs = 0 THEN 1 ELSE 0 END) AS ducks
 		FROM batting_data bd
-		JOIN match_details md ON md.match_id = bd.match_id
-		WHERE md.season_id IS NOT NULL AND md.format_id = %d %s
-		GROUP BY bd.player_id, md.season_id, md.format_id
+		JOIN match m ON m.match_id = bd.match_id
+		WHERE m.season_id IS NOT NULL AND m.format_id = %d %s
+		GROUP BY bd.player_id, m.season_id, m.format_id
 	), batting AS (
 		SELECT player_id, season_id, format_id,
 			innings,
@@ -60,16 +60,16 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 		FROM batting_base
 		WHERE innings > 5
 	), bowling_base AS (
-		SELECT bw.player_id, md.season_id, md.format_id,
+		SELECT bw.player_id, m.season_id, m.format_id,
 			COUNT(*) AS innings,
 			SUM(COALESCE(bw.balls,0)) AS sum_balls,
 			SUM(COALESCE(bw.runs,0)) AS sum_runs,
 			SUM(COALESCE(bw.wickets,0)) AS sum_wkts,
 			SUM(CASE WHEN bw.wickets >= 5 THEN 1 ELSE 0 END) AS five_fors
 		FROM bowling_data bw
-		JOIN match_details md ON md.match_id = bw.match_id
-		WHERE md.season_id IS NOT NULL AND md.format_id = %d %s
-		GROUP BY bw.player_id, md.season_id, md.format_id
+		JOIN match m ON m.match_id = bw.match_id
+		WHERE m.season_id IS NOT NULL AND m.format_id = %d %s
+		GROUP BY bw.player_id, m.season_id, m.format_id
 	), bowling AS (
 		SELECT player_id, season_id, format_id,
 			innings,
@@ -115,7 +115,7 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 	}
 	q := fmt.Sprintf(`
 	WITH batting_base AS (
-		SELECT bd.player_id, md.venue_id, md.format_id,
+		SELECT bd.player_id, m.venue_id, m.format_id,
 			COUNT(*) AS innings,
 			AVG(COALESCE(bd.strike_rate,0)) AS avg_sr,
 			SUM(COALESCE(bd.runs,0)) AS sum_runs,
@@ -124,9 +124,9 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 			SUM(CASE WHEN bd.runs >= 50 THEN 1 ELSE 0 END) - SUM(CASE WHEN bd.runs >= 100 THEN 1 ELSE 0 END) AS fifties,
 			MAX(COALESCE(bd.runs,0)) AS highest_score
 		FROM batting_data bd
-		JOIN match_details md ON md.match_id = bd.match_id
-		WHERE md.venue_id IS NOT NULL AND md.format_id = %d
-		GROUP BY bd.player_id, md.venue_id, md.format_id
+		JOIN match m ON m.match_id = bd.match_id
+		WHERE m.venue_id IS NOT NULL AND m.format_id = %d
+		GROUP BY bd.player_id, m.venue_id, m.format_id
 	), batting AS (
 		SELECT player_id, venue_id, format_id,
 			(0.4262 * (CASE WHEN innings - not_outs > 0 THEN (sum_runs::real)/(innings - not_outs) ELSE sum_runs::real END)
@@ -138,16 +138,16 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 		FROM batting_base
 		WHERE innings > 5
 	), bowling_base AS (
-		SELECT bw.player_id, md.venue_id, md.format_id,
+		SELECT bw.player_id, m.venue_id, m.format_id,
 			COUNT(*) AS innings,
 			SUM(COALESCE(bw.balls,0)) AS sum_balls,
 			SUM(COALESCE(bw.runs,0)) AS sum_runs,
 			SUM(COALESCE(bw.wickets,0)) AS sum_wkts,
 			SUM(CASE WHEN bw.wickets >= 5 THEN 1 ELSE 0 END) AS five_fors
 		FROM bowling_data bw
-		JOIN match_details md ON md.match_id = bw.match_id
-		WHERE md.venue_id IS NOT NULL AND md.format_id = %d
-		GROUP BY bw.player_id, md.venue_id, md.format_id
+		JOIN match m ON m.match_id = bw.match_id
+		WHERE m.venue_id IS NOT NULL AND m.format_id = %d
+		GROUP BY bw.player_id, m.venue_id, m.format_id
 	), bowling AS (
 		SELECT player_id, venue_id, format_id,
 			(0.4174 * ((sum_balls::real)/6.0)
@@ -188,7 +188,7 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 	}
 	q := fmt.Sprintf(`
 	WITH batting_base AS (
-		SELECT bd.player_id, md.opposition_id, md.format_id,
+		SELECT bd.player_id, mi.bowling_team_opposition_id, m.format_id,
 			COUNT(*) AS innings,
 			AVG(COALESCE(bd.strike_rate,0)) AS avg_sr,
 			SUM(COALESCE(bd.runs,0)) AS sum_runs,
@@ -197,11 +197,12 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 			SUM(CASE WHEN bd.runs >= 50 THEN 1 ELSE 0 END) - SUM(CASE WHEN bd.runs >= 100 THEN 1 ELSE 0 END) AS fifties,
 			MAX(COALESCE(bd.runs,0)) AS highest_score
 		FROM batting_data bd
-		JOIN match_details md ON md.match_id = bd.match_id
-		WHERE md.opposition_id IS NOT NULL AND md.format_id = %d
-		GROUP BY bd.player_id, md.opposition_id, md.format_id
+		JOIN match m ON m.match_id = bd.match_id
+		JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		WHERE mi.bowling_team_opposition_id IS NOT NULL AND m.format_id = %d
+		GROUP BY bd.player_id, mi.bowling_team_opposition_id, m.format_id
 	), batting AS (
-		SELECT player_id, opposition_id, format_id,
+		SELECT player_id, bowling_team_opposition_id AS opposition_id, format_id,
 			(0.4262 * (CASE WHEN innings - not_outs > 0 THEN (sum_runs::real)/(innings - not_outs) ELSE sum_runs::real END)
 			 + 0.2566 * innings
 			 + 0.1510 * avg_sr
@@ -211,18 +212,19 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 		FROM batting_base
 		WHERE innings > 5
 	), bowling_base AS (
-		SELECT bw.player_id, md.opposition_id, md.format_id,
+		SELECT bw.player_id, mi.batting_team_opposition_id, m.format_id,
 			COUNT(*) AS innings,
 			SUM(COALESCE(bw.balls,0)) AS sum_balls,
 			SUM(COALESCE(bw.runs,0)) AS sum_runs,
 			SUM(COALESCE(bw.wickets,0)) AS sum_wkts,
 			SUM(CASE WHEN bw.wickets >= 5 THEN 1 ELSE 0 END) AS five_fors
 		FROM bowling_data bw
-		JOIN match_details md ON md.match_id = bw.match_id
-		WHERE md.opposition_id IS NOT NULL AND md.format_id = %d
-		GROUP BY bw.player_id, md.opposition_id, md.format_id
+		JOIN match m ON m.match_id = bw.match_id
+		JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
+		WHERE mi.batting_team_opposition_id IS NOT NULL AND m.format_id = %d
+		GROUP BY bw.player_id, mi.batting_team_opposition_id, m.format_id
 	), bowling AS (
-		SELECT player_id, opposition_id, format_id,
+		SELECT player_id, batting_team_opposition_id AS opposition_id, format_id,
 			(0.4174 * ((sum_balls::real)/6.0)
 			 + 0.2634 * innings
 			 + 0.1602 * (CASE WHEN sum_wkts > 0 THEN (sum_balls::real)/(sum_wkts::real) ELSE 0 END)

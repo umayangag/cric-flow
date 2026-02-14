@@ -16,8 +16,13 @@ func (m *CricsheetDBMock) GetMatchFormatIDByCode(ctx context.Context, code strin
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *CricsheetDBMock) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string, originalMatchType string) error {
-	args := m.Called(ctx, matchID, formatID, matchDate, originalMatchType)
+func (m *CricsheetDBMock) UpsertMatch(ctx context.Context, match *db.MatchInsert) error {
+	args := m.Called(ctx, match)
+	return args.Error(0)
+}
+
+func (m *CricsheetDBMock) UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error {
+	args := m.Called(ctx, mi)
 	return args.Error(0)
 }
 
@@ -34,11 +39,6 @@ func (m *CricsheetDBMock) GetOrCreateSeason(ctx context.Context, name string) (i
 func (m *CricsheetDBMock) GetOrCreateOpposition(ctx context.Context, name string) (int64, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *CricsheetDBMock) UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error {
-	args := m.Called(ctx, matchID, upd)
-	return args.Error(0)
 }
 
 func (m *CricsheetDBMock) GetOrCreateByName(ctx context.Context, name string) (int64, error) {

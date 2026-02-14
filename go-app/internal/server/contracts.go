@@ -28,8 +28,8 @@ type matchDetailsResponse struct {
 	OppositionID   *int64  `json:"opposition_id"`
 	SeasonID       *int64  `json:"season_id"`
 	Toss           *string `json:"toss"`
-	BattingSession *string `json:"batting_session"`
-	BowlingSession *string `json:"bowling_session"`
+	BattingSession *string `json:"batting_session,omitempty"`
+	BowlingSession *string `json:"bowling_session,omitempty"`
 }
 
 type precomputeRequest struct {

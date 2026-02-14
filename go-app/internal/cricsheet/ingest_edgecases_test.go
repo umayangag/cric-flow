@@ -107,8 +107,8 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	file := writeJSON(t, d, "good.json", good)
 
 	// Expectations
-	dbMock.On("EnsureMatchWithFormat", ctx, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	dbMock.On("UpdateMatchDetails", ctx, mock.Anything, mock.Anything).Return(nil)
+	dbMock.On("UpsertMatch", ctx, mock.AnythingOfType("*db.MatchInsert")).Return(nil)
+	dbMock.On("UpsertMatchInning", ctx, mock.AnythingOfType("*db.MatchInningInsert")).Return(nil)
 	dbMock.On("UpsertBattingBatch", ctx, mock.Anything).Return(nil)
 	dbMock.On("UpsertBowlingBatch", ctx, mock.Anything).Return(nil)
 
@@ -118,18 +118,16 @@ func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	// Assert
 	dbMock.AssertExpectations(t)
 
-	// Overs assertion
+	// Overs assertion: 7 legal balls at 6 balls/over => 1.1 notation
 	calls := dbMock.Calls
 	for _, call := range calls {
-		if call.Method == "UpdateMatchDetails" {
+		if call.Method == "UpsertMatchInning" {
 			args := call.Arguments
-			upd := args.Get(2).(*db.MatchInfoUpdate)
-			ov := upd.Overs
-			require.NotNil(t, ov)
-			expected := float32(1.1) // 7 legal balls at 6 balls/over => 1.1 notation
-			require.InDelta(t, expected, *ov, 1e-6)
+			mi := args.Get(1).(*db.MatchInningInsert)
+			expected := float32(1.1)
+			require.InDelta(t, expected, mi.OversBowled, 1e-6)
 			return
 		}
 	}
-	t.Fatalf("UpdateMatchDetails was not called")
+	t.Fatalf("UpsertMatchInning was not called")
 }

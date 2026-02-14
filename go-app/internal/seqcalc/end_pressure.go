@@ -69,10 +69,10 @@ func queryEventsForEndPressure(ctx context.Context, formatIDs []int) ([]evRowEP,
           be.match_id, be.innings, be.over, be.ball_seq, be.phase,
           be.is_legal,
           be.bowler_id, be.runs_batter, be.runs_total, be.player_out_id,
-          md.match_date, md.format_id
+          m.match_date, m.format_id
         FROM ball_event be
-        JOIN match_details md ON md.match_id = be.match_id
-        WHERE md.format_id IN (%s) AND md.match_date IS NOT NULL
+        JOIN match m ON m.match_id = be.match_id
+        WHERE m.format_id IN (%s) AND m.match_date IS NOT NULL
         ORDER BY be.match_id, be.innings, be.ball_seq
     `, place)
 	dr, err := db.Pool.Query(ctx, q, args...)

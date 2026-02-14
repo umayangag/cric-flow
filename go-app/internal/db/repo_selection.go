@@ -17,7 +17,7 @@ type MatchContext struct {
 	MatchNumber  sql.NullInt64
 }
 
-// GetMatchContext fetches match context fields from match_details.
+// GetMatchContext fetches match context from match + first match_inning.
 func GetMatchContext(ctx context.Context, matchID int64) (*MatchContext, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
@@ -25,21 +25,16 @@ func GetMatchContext(ctx context.Context, matchID int64) (*MatchContext, error) 
 	mc := &MatchContext{}
 	err := Pool.QueryRow(ctx, `
 		SELECT 
-			inning,
-			CASE 
-				WHEN batting_session IS NULL THEN 0
-				WHEN lower(batting_session) LIKE '%morning%' THEN 0
-				WHEN lower(batting_session) LIKE '%afternoon%' THEN 1
-				WHEN lower(batting_session) LIKE '%evening%' THEN 2
-				ELSE 0
-			END AS session,
-			CASE 
-				WHEN toss IS NULL THEN 0
-				WHEN lower(toss) LIKE '%bat%' THEN 1
-				ELSE 0
-			END AS toss,
-			venue_id, opposition_id, season_id, match_number
-		FROM match_details WHERE match_id = $1
+			mi.inning_number,
+			0 AS session,
+			CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END,
+			m.venue_id, mi.batting_team_opposition_id, m.season_id, m.match_number
+		FROM match m
+		LEFT JOIN LATERAL (
+			SELECT inning_number, batting_team_opposition_id
+			FROM match_inning WHERE match_id = m.match_id ORDER BY inning_number LIMIT 1
+		) mi ON true
+		WHERE m.match_id = $1
 	`, matchID).Scan(&mc.Inning, &mc.Session, &mc.Toss, &mc.VenueID, &mc.OppositionID, &mc.SeasonID, &mc.MatchNumber)
 	if err != nil {
 		return nil, err

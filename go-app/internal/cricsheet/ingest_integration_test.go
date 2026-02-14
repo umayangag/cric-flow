@@ -110,7 +110,7 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 	// Collections to assert behavior similar to earlier fakes
 	var (
-		updates      []*db.MatchInfoUpdate
+		innings      []*db.MatchInningInsert
 		batting      []*db.Batting
 		bowling      []*db.Bowling
 		fielding     []*db.Fielding
@@ -121,18 +121,17 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 	// DB expectations and behaviors
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, "T20").Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string")).
-		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).
+	mdb.On("UpsertMatch", mock.Anything, mock.AnythingOfType("*db.MatchInsert")).Return(nil)
+	mdb.On("UpsertMatchInning", mock.Anything, mock.AnythingOfType("*db.MatchInningInsert")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			upd := args.Get(2).(*db.MatchInfoUpdate)
-			c := *upd
-			updates = append(updates, &c)
+			mi := args.Get(1).(*db.MatchInningInsert)
+			c := *mi
+			innings = append(innings, &c)
 		})
 	mdb.On("UpsertBattingBatch", mock.Anything, mock.AnythingOfType("[]db.Batting")).
 		Return(nil).
@@ -189,11 +188,11 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
 	err := cricsheet.ImportMatchFile(ctx, file, opts)
 	require.NoError(t, err)
-	// Expect two UpdateMatchDetails (two innings)
-	require.Equal(t, 2, len(updates), "expected 2 updates")
+	// Expect two UpsertMatchInning calls (two innings)
+	require.Equal(t, 2, len(innings), "expected 2 inning upserts")
 	// Target for second innings should equal first innings total (4 + 1 + 6 = 11)
-	require.NotNil(t, updates[1].Target)
-	require.Equal(t, 11, *updates[1].Target)
+	require.NotNil(t, innings[1].TargetRuns)
+	require.Equal(t, 11, *innings[1].TargetRuns)
 	// Expect at least one batting and bowling record upserted
 	require.NotEmpty(t, batting)
 	require.NotEmpty(t, bowling)
@@ -216,14 +215,12 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mweather := &tmocks.WeatherClientMock{}
 	// DB expectations minimal for directory import
 	mdb.On("GetMatchFormatIDByCode", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("EnsureMatchWithFormat", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("string"), mock.AnythingOfType("string")).
-		Return(nil)
 	mdb.On("GetOrCreateVenue", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateOpposition", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
 	mdb.On("GetOrCreateByName", mock.Anything, mock.AnythingOfType("string")).Return(int64(1), nil)
-	mdb.On("UpdateMatchDetails", mock.Anything, mock.AnythingOfType("int64"), mock.AnythingOfType("*db.MatchInfoUpdate")).
-		Return(nil)
+	mdb.On("UpsertMatch", mock.Anything, mock.AnythingOfType("*db.MatchInsert")).Return(nil)
+	mdb.On("UpsertMatchInning", mock.Anything, mock.AnythingOfType("*db.MatchInningInsert")).Return(nil)
 	mdb.On("UpsertBattingBatch", mock.Anything, mock.AnythingOfType("[]db.Batting")).Return(nil)
 	mdb.On("UpsertBowlingBatch", mock.Anything, mock.AnythingOfType("[]db.Bowling")).Return(nil)
 	mdb.On("UpsertFieldingBatch", mock.Anything, mock.AnythingOfType("[]db.Fielding")).Return(nil)

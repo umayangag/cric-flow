@@ -11,17 +11,11 @@ import (
 // nolint:revive // name stutter is intentional to match package domain terms
 type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
-	EnsureMatchWithFormat(
-		ctx context.Context,
-		matchID int64,
-		formatID int64,
-		matchDate string,
-		originalMatchType string,
-	) error
+	UpsertMatch(ctx context.Context, m *db.MatchInsert) error
+	UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error
 	GetOrCreateVenue(ctx context.Context, name string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	GetOrCreateOpposition(ctx context.Context, name string) (int64, error)
-	UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error
 	GetOrCreateByName(ctx context.Context, name string) (int64, error)
 	UpsertBatting(ctx context.Context, b *db.Batting) error
 	UpsertBattingBatch(ctx context.Context, rows []db.Batting) error
@@ -69,14 +63,12 @@ func (realDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, e
 	return db.GetMatchFormatIDByCode(ctx, code)
 }
 
-func (realDB) EnsureMatchWithFormat(
-	ctx context.Context,
-	matchID int64,
-	formatID int64,
-	matchDate string,
-	originalMatchType string,
-) error {
-	return db.EnsureMatchWithFormat(ctx, matchID, formatID, matchDate, originalMatchType)
+func (realDB) UpsertMatch(ctx context.Context, m *db.MatchInsert) error {
+	return db.UpsertMatch(ctx, m)
+}
+
+func (realDB) UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error {
+	return db.UpsertMatchInning(ctx, mi)
 }
 
 func (realDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {
@@ -89,10 +81,6 @@ func (realDB) GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 
 func (realDB) GetOrCreateOpposition(ctx context.Context, name string) (int64, error) {
 	return db.GetOrCreateOpposition(ctx, name)
-}
-
-func (realDB) UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error {
-	return db.UpdateMatchDetails(ctx, matchID, upd)
 }
 
 func (realDB) GetOrCreateByName(ctx context.Context, name string) (int64, error) {
