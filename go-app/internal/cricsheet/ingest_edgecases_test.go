@@ -42,7 +42,12 @@ func (t *spyTxForMatchInning) QueryRow(_ context.Context, _ string, _ ...any) db
 	return nopRow{}
 }
 
-func (t *spyTxForMatchInning) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
+func (t *spyTxForMatchInning) CopyFrom(
+	_ context.Context,
+	_ pgx.Identifier,
+	_ []string,
+	_ pgx.CopyFromSource,
+) (int64, error) {
 	return 0, nil
 }
 
@@ -140,7 +145,9 @@ func TestImportMatchFile_InningTeamMismatch_Error(t *testing.T) {
 	file := writeJSON(t, d, "mismatch.json", bad)
 
 	// Ingest runs UpsertMatch before the innings loop; allow it so we reach inning validation
-	dbMock.On("UpsertMatch", mock.Anything, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).Return(nil).Once()
+	dbMock.On("UpsertMatch", mock.Anything, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).
+		Return(nil).
+		Once()
 
 	err := cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
 	require.Error(t, err)
@@ -179,7 +186,9 @@ func TestImportMatchFile_InningEmptyTeamName_Error(t *testing.T) {
 	d := t.TempDir()
 	file := writeJSON(t, d, "empty_team.json", bad)
 
-	dbMock.On("UpsertMatch", mock.Anything, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).Return(nil).Once()
+	dbMock.On("UpsertMatch", mock.Anything, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).
+		Return(nil).
+		Once()
 
 	err := cricsheet.ImportMatchFile(ctx, file, &cricsheet.Options{})
 	require.Error(t, err)

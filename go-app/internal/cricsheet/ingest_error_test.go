@@ -72,7 +72,9 @@ func (t *failingTx) Exec(_ context.Context, _ string, _ ...any) error { return t
 func (t *failingTx) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
 	return ingestErrorTestNopRows{}, nil
 }
-func (t *failingTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row { return ingestErrorTestNopRow{} }
+func (t *failingTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row {
+	return ingestErrorTestNopRow{}
+}
 func (t *failingTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	return 0, t.err
 }

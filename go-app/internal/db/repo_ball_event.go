@@ -233,10 +233,12 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 		})
 	}
 	_, err = tx.CopyFrom(ctx, pgx.Identifier{"ball_event_stage"},
-		[]string{"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase",
+		[]string{
+			"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase",
 			"striker_id", "non_striker_id", "bowler_id",
 			"runs_batter", "runs_extras", "runs_total",
-			"extras_kind", "wicket_kind", "player_out_id"},
+			"extras_kind", "wicket_kind", "player_out_id",
+		},
 		pgx.CopyFromRows(data))
 	if err != nil {
 		return err
