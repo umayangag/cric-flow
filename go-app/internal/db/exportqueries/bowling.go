@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
@@ -466,6 +467,91 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		"runouts_direct_hits",
 		"fielding_involvements",
 		"format_code",
+	}
+	out := make([][]string, 0, 1024)
+	out = append(out, headers)
+	fmtcode := strings.ToUpper(strings.TrimSpace(format))
+	for rows.Next() {
+		vals, err := scanx.ScanToStrings(rows, len(headers)-1)
+		if err != nil {
+			return nil, err
+		}
+		vals = append(vals, fmtcode)
+		out = append(out, vals)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// BowlingFormatRowsWithCutoff returns the same shape as BowlingFormatRows but only for matches with match_date < cutoff.
+// Used by the backtest training-data API so the ML service can train on data strictly before the cutoff.
+func BowlingFormatRowsWithCutoff(ctx context.Context, format string, cutoff time.Time) ([][]string, error) {
+	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	if err != nil {
+		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
+	}
+	formatID := id
+	q := `SELECT  
+		b.runs,
+		b.balls,
+		b.wickets,
+		tc.bowling_consistency,
+		tf.bowling_form,
+		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity,
+		mi.inning_number,
+		NULL,
+		m.toss_decision,
+		tvv.bowling_venue,
+		tvo.bowling_opposition,
+		s.id AS season_id,
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+		FROM bowling_data b
+		LEFT JOIN player p ON b.player_id = p.id
+		LEFT JOIN (
+			SELECT * FROM weather_data WHERE session = 'bowling'
+		) w ON b.match_id = w.match_id
+		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
+		LEFT JOIN match m ON m.match_id = b.match_id
+		LEFT JOIN season s ON s.id = m.season_id
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_form, n_samples_bowl FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_consistency, n_samples_bowl FROM feature_consistency_snapshots
+		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_opposition, n_samples_bowl AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE 
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id 
+		WHERE m.format_id = $1 AND m.match_date < $2`
+	rows, err := db.Pool.Query(ctx, q, formatID, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	headers := []string{
+		"runs", "balls", "wickets",
+		"bowling_consistency", "bowling_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)

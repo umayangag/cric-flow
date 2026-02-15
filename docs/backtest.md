@@ -98,9 +98,9 @@ Fielding metrics (when available):
 - `player_catches_mae`: mean absolute error of predicted vs actual catches across evaluated players.
 - `player_run_outs_mae`: mean absolute error of predicted vs actual run-outs across evaluated players.
 
-### Full pipeline vs baseline (player predictions)
+### Full pipeline and train-on-the-fly (player predictions)
 
-When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service may use **pre-trained batting/bowling models** for that format (full pipeline). When any of these is missing or no model is loaded for the format, it falls back to a **deterministic baseline** (RNG seeded by cutoff + player_id). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
+When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service uses **pre-trained batting/bowling models** for that format if loaded; otherwise it **trains on the fly** by fetching training data from go-app (`GET /api/backtest/training-data?format=...&cutoff=...`), training in memory, then predicting. **Format and features are required** for player predictions (no deterministic baseline). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
 
 ### ML service endpoint (used by backend)
 
@@ -111,15 +111,7 @@ The Go backend calls a dedicated ML endpoint to obtain predictions with a strict
 
 1) Player predictions mode
 
-Request (minimal — baseline path)
-```
-{
-  "cutoff_date": "2024-10-30T14:00:00Z",
-  "player_ids": [1, 2, 3]
-}
-```
-
-Request (full pipeline — when format and features are sent)
+Request (format and features required)
 ```
 {
   "cutoff_date": "2024-10-30T14:00:00Z",
@@ -161,8 +153,8 @@ Response
 
 Implementation notes
 - The ML service must honor the strict cutoff (train/aggregate only from data earlier than `cutoff_date`).
-- When the backend sends `format` and `features`, the ML service uses loaded per-format models if available; otherwise it uses a deterministic baseline (no DB, no training).
-- For full pipeline details (feature computation, SSE evaluate-stream, scorecards, debugging), see **docs/evaluate-db-pipeline.md**.
+- When the backend sends `format` and `features`, the ML service uses loaded per-format models if available; otherwise it trains on the fly (fetches training data from go-app, trains in memory, then predicts). Requires **GO_APP_URL** (and optionally **GO_APP_API_KEY**) for train-on-the-fly.
+- For full pipeline details (feature computation, training-data API, SSE evaluate-stream, scorecards, debugging), see **docs/evaluate-db-pipeline.md**.
 
 ## Curl examples
 
@@ -197,12 +189,12 @@ What it does:
   - `GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111` returns `players`, `metrics.player_runs_mae`, and `match_aggregates.predicted|actual|errors`.
 
 Notes:
-- The ML service baseline is deterministic, so results are stable for the same cutoff and inputs.
+- Player predictions use either loaded models or train-on-the-fly (same cutoff and inputs yield stable results when cached).
 - The smoke uses `docker compose` service names defined in `docker-compose.yml`.
 
 ## E2E smoke example (recorded)
 
-Below is a representative response captured from a local run using the deterministic ML baseline. Values will be deterministic for the same inputs (cutoff, players, teams):
+Below is a representative response captured from a local run. Values are stable for the same inputs (cutoff, players, teams) when using the same models or train-on-the-fly data:
 
 ```
 {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 )
 
 // --- Helpers extracted for readability (no behavior change) ---
@@ -728,4 +729,62 @@ func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, card)
+}
+
+// trainingDataResponse is the JSON shape for GET /api/backtest/training-data (for ML service train-on-the-fly).
+type trainingDataResponse struct {
+	Batting  trainingDataPart `json:"batting"`
+	Bowling  trainingDataPart `json:"bowling"`
+}
+
+type trainingDataPart struct {
+	Headers []string     `json:"headers"`
+	Rows    [][]string   `json:"rows"`
+}
+
+// backtestTrainingDataHandler handles GET /api/backtest/training-data?format=T20&cutoff=2024-10-30T00:00:00Z.
+// Returns batting and bowling training rows (same shape as per-format export CSV) filtered by match_date < cutoff.
+// The ML service uses this for on-the-fly training when no pre-trained artifacts exist.
+func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if format == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required"})
+		return
+	}
+	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
+	if cutoffStr == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
+		return
+	}
+	cutoff, err := time.Parse(time.RFC3339, cutoffStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff must be RFC3339"})
+		return
+	}
+	batRows, err := exq.BattingFormatRowsWithCutoff(r.Context(), format, cutoff)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	bowlRows, err := exq.BowlingFormatRowsWithCutoff(r.Context(), format, cutoff)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	batHeaders := []string{}
+	batData := [][]string{}
+	if len(batRows) > 0 {
+		batHeaders = batRows[0]
+		batData = batRows[1:]
+	}
+	bowlHeaders := []string{}
+	bowlData := [][]string{}
+	if len(bowlRows) > 0 {
+		bowlHeaders = bowlRows[0]
+		bowlData = bowlRows[1:]
+	}
+	writeJSON(w, http.StatusOK, trainingDataResponse{
+		Batting:  trainingDataPart{Headers: batHeaders, Rows: batData},
+		Bowling:  trainingDataPart{Headers: bowlHeaders, Rows: bowlData},
+	})
 }

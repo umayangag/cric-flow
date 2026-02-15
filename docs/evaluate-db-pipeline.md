@@ -60,35 +60,42 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 
 ---
 
-## 4. ML service: full pipeline vs baseline
+## 4. ML service: full pipeline and train-on-the-fly (no baseline)
 
 **Endpoint:** `POST $ML_SERVICE_URL/ml/backtest/predict`
 
 **Request body (player predictions):**
 
 - `cutoff_date` (RFC3339), `player_ids` (required for player mode)
-- **Optional:** `format` (e.g. `"T20"`, `"ODI"`) and `features` (`Dict[str, Dict[str, float]]`: key = `player_id` as string, value = feature name → value)
+- **Required for player mode:** `format` (e.g. `"T20"`, `"ODI"`) and `features` (non-empty `Dict[str, Dict[str, float]]`: key = `player_id` as string, value = feature name → value). If either is missing, the service returns **400** with `FORMAT_AND_FEATURES_REQUIRED` (no deterministic baseline).
 
 **Behavior:**
 
-- **Full pipeline:** When **all** of `player_ids`, `format` (non-empty), and `features` (non-empty) are present **and** the ML service has loaded models for that format (`BAT_MODELS`, `BOWL_MODELS` in `ml-service/app/artifacts.py`):
-  - For each player, build `BattingFeatures` and `BowlingFeatures` from `features` + defaults (see `ml-service/app/backtest_service.py`: `build_batting_features_from_map`, `build_bowling_features_from_map`).
-  - Build feature vectors using `configs/feature_vectors.json` and run **loaded** batting/bowling models (scaler + model).
-  - Return runs (from batting model), wickets and economy (from bowling model) per player. Catches/run_outs not from models; currently 0 in full pipeline.
-- **Baseline (fallback):** If any of the above is missing (e.g. no `features`, or no model for `format`), the ML service uses `predict_players_baseline(cutoff, player_ids)`: deterministic pseudo-random numbers (RNG seeded by cutoff + player_id). No DB, no feature computation, no training.
+- **Loaded artifacts:** When the ML service has loaded batting/bowling artifacts for the requested format (`BAT_MODELS`, `BOWL_MODELS` in `ml-service/app/artifacts.py`), it builds feature vectors from `features`, runs the loaded scaler + model, and returns runs, wickets, economy per player.
+- **Train-on-the-fly:** When **no** artifacts are loaded for that format, the service calls the go-app **training-data** API (`GET $GO_APP_URL/api/backtest/training-data?format=...&cutoff=...`), builds X/Y from the response (same column semantics as `train_batting` / `train_bowling`), trains StandardScaler + RandomForest in memory, then predicts. Requires **GO_APP_URL** (and optionally **GO_APP_API_KEY** for go-app auth). If fetch or training fails (e.g. no data, bad response), the service returns **503** with a clear error.
 
-**Important:** The full pipeline does **not** train on the fly; it uses **pre-trained artifacts** for the given format. Training is done offline (e.g. `train_batting` / `train_bowling`); artifacts must be present under the ML service’s models directory.
+**No deterministic baseline.** Player predictions always use either loaded artifacts or train-on-the-fly. A cache for trained-in-memory models per (format, cutoff) can be added later.
 
 **Code references:**
 
-- Request model: `ml-service/app/models.py` — `BacktestPredictRequest` (`format`, `features` optional).
-- Full-pipeline path: `ml-service/app/main.py` — `_predict_players_with_features()`, and in `backtest_predict` when `use_full_pipeline` is true.
-- Feature builders: `ml-service/app/backtest_service.py` — `build_batting_features_from_map`, `build_bowling_features_from_map` (defaults for missing keys: e.g. temp=25, venue/opposition=0.5, season=cutoff year).
-- Baseline: `ml-service/app/backtest_service.py` — `predict_players_baseline()`.
+- Request model: `ml-service/app/models.py` — `BacktestPredictRequest` (`format`, `features` required for player predictions).
+- Full pipeline: `ml-service/app/main.py` — `backtest_predict`, `_predict_players_with_features()`.
+- Train-on-the-fly: `ml-service/app/train_on_the_fly.py` — `fetch_training_data()`, `train_on_the_fly()`.
+- Feature builders: `ml-service/app/backtest_service.py` — `build_batting_features_from_map`, `build_bowling_features_from_map`.
 
 ---
 
-## 5. Go-app → ML client
+## 5. Go-app training-data API (for ML train-on-the-fly)
+
+**Endpoint:** `GET /api/backtest/training-data?format=...&cutoff=...` (cutoff RFC3339). Protected by same auth as other backtest routes (e.g. X-API-Key).
+
+**Response:** `{ "batting": { "headers": [...], "rows": [[...], ...] }, "bowling": { "headers": [...], "rows": [...] } }` — same shape as per-format export (first row = headers, rest = data). Only matches with `match_date < cutoff` are included.
+
+**Handler:** `go-app/internal/server/backtest_handlers.go` — `backtestTrainingDataHandler`; uses `exportqueries.BattingFormatRowsWithCutoff`, `BowlingFormatRowsWithCutoff`.
+
+---
+
+## 6. Go-app → ML client
 
 **File:** `go-app/internal/server/ml_backtest_client.go`
 
@@ -99,7 +106,7 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 
 ---
 
-## 6. SSE stream endpoint (evaluate-stream)
+## 7. SSE stream endpoint (evaluate-stream)
 
 **Endpoint:** `GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...`
 
@@ -119,7 +126,7 @@ Then either:
 
 ---
 
-## 7. Scorecards
+## 8. Scorecards
 
 **Actual scorecard (before/after evaluate):**
 
@@ -134,7 +141,7 @@ Then either:
 
 ---
 
-## 8. Key files quick reference
+## 9. Key files quick reference
 
 | Area | File(s) |
 |------|--------|
@@ -144,7 +151,9 @@ Then either:
 | ML client | `go-app/internal/server/ml_backtest_client.go` |
 | Scorecard DB | `go-app/internal/db/repo_scorecard.go` |
 | ML backtest predict + full pipeline | `ml-service/app/main.py` (`backtest_predict`, `_predict_players_with_features`) |
-| ML feature builders | `ml-service/app/backtest_service.py` (`build_*_features_from_map`, `predict_players_baseline`) |
+| ML train-on-the-fly | `ml-service/app/train_on_the_fly.py` |
+| ML feature builders | `ml-service/app/backtest_service.py` (`build_*_features_from_map`) |
+| Go-app training-data API | `go-app/internal/server/backtest_handlers.go` (`backtestTrainingDataHandler`) |
 | ML request/response models | `ml-service/app/models.py` |
 | Feature vector config | `configs/feature_vectors.json` |
 | Frontend evaluate + SSE | `frontend/src/api.ts`, `frontend/src/components/EvaluateDbTab.tsx` |
@@ -152,10 +161,10 @@ Then either:
 
 ---
 
-## 9. Debugging tips
+## 10. Debugging tips
 
-- **Predictions look random / not changing with features:** Check that the ML service receives `format` and `features` (e.g. log request body in go-app or ML service). Ensure models for that format are loaded (e.g. artifacts under the ML service models dir; see `BAT_MODELS` / `BOWL_MODELS`).
-- **“Model for format X not loaded”:** Train and export artifacts for that format; ensure the ML service loads them at startup (see `ml-service/app/artifacts.py` and config).
+- **Predictions look random / not changing with features:** Check that the ML service receives `format` and `features`. If using train-on-the-fly, ensure `GO_APP_URL` is set and go-app returns non-empty training data for that format and cutoff.
+- **503 TRAIN_ON_THE_FLY_FAILED:** Set `GO_APP_URL` (and `GO_APP_API_KEY` if go-app requires it). Ensure go-app has data for the requested format and cutoff (match_date < cutoff). Check ML logs for the underlying error (e.g. HTTP error from go-app, or "Insufficient batting/bowling training data").
 - **Features empty or wrong:** In go-app, confirm `getBacktestFeaturesAtCutoffFunc` is the DB provider and that `match_date` and `player`/`player_form_data`/`batting_data`/`bowling_data` exist for the cutoff. Check `repo_features_cutoff.go` queries and filters (`<= cutoff`, season ≤ cutoff year).
 - **Squad empty:** Match must have rows in `batting_data` or `bowling_data` for that `match_id`; squad is the union of those `player_id`s.
 - **SSE never finishes:** Ensure the stream handler sends exactly one `result` or `error` event; check for panics or early returns in `doEvaluateWork` or in the handler.
@@ -163,9 +172,8 @@ Then either:
 
 ---
 
-## 10. Extending or refining the pipeline
+## 11. Extending or refining the pipeline
 
-- **Add features:** Extend `GetPlayerFeaturesAtCutoff` (and any precomputed tables it uses) and ensure the ML service’s `build_*_features_from_map` and `feature_vectors.json` include the new names and defaults.
+- **Add features:** Extend `GetPlayerFeaturesAtCutoff` (and any precomputed tables it uses) and ensure the ML service’s `build_*_features_from_map` and `feature_vectors.json` include the new names and defaults. Update the go-app export/training-data column set if needed.
 - **Use sequential / window features:** If the project has sequential or window features (e.g. from precompute), they can be computed at cutoff in go-app and passed in `features`, or the ML service could accept a separate payload; the same “strictly before cutoff” rule applies.
-- **Train at cutoff:** Current design uses **pre-trained** models. Training at cutoff (e.g. train on all data &lt; cutoff then predict) would require a new ML endpoint or long-running job and likely async + progress reporting; it is not implemented in the current full pipeline.
-- **Caching:** Full-pipeline responses are not cached in the ML service when `features` are sent (by design). Baseline path can still use the existing backtest cache keyed by cutoff + player_ids.
+- **Caching:** Responses are cached by (cutoff_iso, player_ids) after a successful prediction. A cache for train-on-the-fly models keyed by (format, cutoff) can be added so repeated requests with the same format/cutoff reuse the in-memory models.

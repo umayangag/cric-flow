@@ -20,8 +20,8 @@ from .backtest_service import (
 )
 from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
-from .backtest_service import predict_players_baseline as svc_predict_players_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
+from .train_on_the_fly import train_on_the_fly
 from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
@@ -152,12 +152,23 @@ def _predict_players_with_features(
     fmt: str,
     features_map: Dict[str, Dict[str, float]],
 ) -> List[BacktestPlayerPred]:
-    """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions."""
+    """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
+    When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
+    """
     fmt_upper = (fmt or "").strip().upper()
     bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
     bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
     if not bat_pair or not bowl_pair:
-        return svc_predict_players_baseline(cutoff, player_ids)
+        go_app_url = (os.environ.get("GO_APP_URL") or "").strip()
+        if not go_app_url:
+            raise ValueError(
+                "GO_APP_URL is required for train-on-the-fly when no artifacts are loaded for format=%s"
+                % fmt_upper
+            )
+        _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
+        cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
+        bat_pair, bowl_pair = train_on_the_fly(go_app_url, fmt_upper, cutoff_iso, api_key)
 
     scaler_bat, model_bat = bat_pair
     scaler_bowl, model_bowl = bowl_pair
@@ -212,28 +223,49 @@ def backtest_predict(req: BacktestPredictRequest):
     cutoff_utc = cutoff_with_tz.astimezone(timezone.utc)
     cutoff_iso = cutoff_utc.isoformat().replace("+00:00", "Z")
     if req.player_ids is not None:
-        # Full pipeline: when format and features are provided and models are loaded, use them
+        # Player predictions require format and features (no deterministic baseline)
         use_full_pipeline = (
             req.format is not None
             and (req.format or "").strip()
             and req.features is not None
             and len(req.features) > 0
         )
-        if use_full_pipeline:
-            global BACKTEST_PLAYERS_COMPUTE_COUNT
-            BACKTEST_PLAYERS_COMPUTE_COUNT += 1
-            preds = _predict_players_with_features(
-                cutoff, req.player_ids, req.format or "", req.features
+        if not use_full_pipeline:
+            raise HTTPException(
+                status_code=400,
+                detail=error_payload(
+                    code="FORMAT_AND_FEATURES_REQUIRED",
+                    message="Player predictions require format and features",
+                    hint="Send format and features (per-player feature map). No baseline fallback.",
+                ),
             )
-            body = BacktestPlayersResponse(players=preds).model_dump()
-            return JSONResponse(status_code=200, content=body)
         cached = _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)
-        # Compute fresh predictions and increment compute counter once per uncached call
         global BACKTEST_PLAYERS_COMPUTE_COUNT
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
-        preds = svc_predict_players_baseline(cutoff, req.player_ids)
+        try:
+            preds = _predict_players_with_features(
+                cutoff, req.player_ids, req.format or "", req.features
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=error_payload(
+                    code="TRAIN_ON_THE_FLY_FAILED",
+                    message=str(e),
+                    hint="Ensure GO_APP_URL is set and go-app has training data for this format and cutoff.",
+                ),
+            ) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=error_payload(
+                    code="PREDICTION_FAILED",
+                    message="Train-on-the-fly or prediction failed",
+                    hint=str(e),
+                ),
+            ) from e
         body = BacktestPlayersResponse(players=preds).model_dump()
         _cache_put("players", cutoff_iso, list(req.player_ids), body)
         return JSONResponse(status_code=200, content=body)
