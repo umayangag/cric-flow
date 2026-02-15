@@ -152,7 +152,9 @@ const EvaluateDbTab: React.FC = () => {
 
   // Evaluate with progress (SSE stream)
   const [evaluating, setEvaluating] = useState<boolean>(false);
-  const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>([]);
+  const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>(
+    [],
+  );
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -232,31 +234,26 @@ const EvaluateDbTab: React.FC = () => {
     setError(null);
     setStatusMessage('Evaluation in progress…');
     api
-      .backtestEvaluateStream(
-        format.trim(),
-        team1.trim(),
-        team2.trim(),
-        selectedMatchId,
-        {
-          onProgress: (step, message) => {
-            setEvaluationSteps((prev) => [...prev, { step, message }]);
-          },
-          onResult: (result) => {
-            setEvaluationResult(result);
-            setEvaluating(false);
-            setStatusMessage('Evaluation complete.');
-          },
-          onError: (err) => {
-            setError(err.message);
-            setEvaluating(false);
-            setStatusMessage('');
-          },
+      .backtestEvaluateStream(format.trim(), team1.trim(), team2.trim(), selectedMatchId, {
+        onProgress: (step, message) => {
+          setEvaluationSteps((prev) => [...prev, { step, message }]);
         },
-      )
+        onResult: (result) => {
+          setEvaluationResult(result);
+          setEvaluating(false);
+          setStatusMessage('Evaluation complete.');
+        },
+        onError: (err) => {
+          setError(err.message);
+          setEvaluating(false);
+          setStatusMessage('');
+        },
+      })
       .then(() => {
         // Stream completed (onResult or onError already called)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
         setEvaluating(false);
       });
   };
@@ -344,11 +341,7 @@ const EvaluateDbTab: React.FC = () => {
           onSelectMatch={setSelectedMatchId}
         />
         {selectedMatchId != null && (
-          <MatchScorecard
-            scorecard={scorecard}
-            loading={scorecardLoading}
-            error={scorecardError}
-          />
+          <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
         )}
         <Box sx={{ mt: 2 }}>
           <Button

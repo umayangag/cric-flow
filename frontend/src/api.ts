@@ -46,6 +46,53 @@ function createHttpClient(baseUrl: string) {
 const http = createHttpClient(BASE_URL);
 const httpApi = createHttpClient(BASE_API_URL);
 
+type SSECallbacks = {
+  onProgress: (step: string, message: string) => void;
+  onResult: (result: BacktestEvaluateResponse) => void;
+  onError: (err: Error) => void;
+};
+
+/** Process one SSE event part; returns 'result' or 'error' when the stream is done, 'continue' otherwise. */
+function processBacktestSSEPart(
+  part: string,
+  callbacks: SSECallbacks,
+): 'continue' | 'result' | 'error' {
+  let eventType = '';
+  let data = '';
+  for (const line of part.split('\n')) {
+    if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+    else if (line.startsWith('data: ')) data = line.slice(6);
+  }
+  if (eventType === 'progress' && data) {
+    try {
+      const { step, message } = JSON.parse(data) as { step: string; message: string };
+      callbacks.onProgress(step ?? '', message ?? '');
+    } catch {
+      /* ignore */
+    }
+    return 'continue';
+  }
+  if (eventType === 'result' && data) {
+    try {
+      const result = JSON.parse(data) as BacktestEvaluateResponse;
+      callbacks.onResult(result);
+    } catch (e) {
+      callbacks.onError(e instanceof Error ? e : new Error(String(e)));
+    }
+    return 'result';
+  }
+  if (eventType === 'error' && data) {
+    try {
+      const { message } = JSON.parse(data) as { message?: string };
+      callbacks.onError(new Error(message ?? 'Unknown error'));
+    } catch {
+      callbacks.onError(new Error(data));
+    }
+    return 'error';
+  }
+  return 'continue';
+}
+
 export const api = {
   apiHealth(): Promise<{ status: string }> {
     return httpApi('/health');
@@ -151,7 +198,7 @@ export const api = {
     const decoder = new TextDecoder();
     let buffer = '';
     try {
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -159,65 +206,13 @@ export const api = {
         buffer = parts.pop() ?? '';
         for (const part of parts) {
           if (!part.trim()) continue;
-          let eventType = '';
-          let data = '';
-          for (const line of part.split('\n')) {
-            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
-            else if (line.startsWith('data: ')) data = line.slice(6);
-          }
-          if (eventType === 'progress' && data) {
-            try {
-              const { step, message } = JSON.parse(data) as { step: string; message: string };
-              callbacks.onProgress(step ?? '', message ?? '');
-            } catch {
-              /* ignore */
-            }
-          } else if (eventType === 'result' && data) {
-            try {
-              const result = JSON.parse(data) as BacktestEvaluateResponse;
-              callbacks.onResult(result);
-            } catch (e) {
-              callbacks.onError(e instanceof Error ? e : new Error(String(e)));
-            }
-            return;
-          } else if (eventType === 'error' && data) {
-            try {
-              const { message } = JSON.parse(data) as { message?: string };
-              callbacks.onError(new Error(message ?? 'Unknown error'));
-            } catch {
-              callbacks.onError(new Error(data));
-            }
-            return;
-          }
+          const action = processBacktestSSEPart(part, callbacks);
+          if (action === 'result' || action === 'error') return;
         }
       }
       if (buffer.trim()) {
-        const part = buffer;
-        let eventType = '';
-        let data = '';
-        for (const line of part.split('\n')) {
-          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
-          else if (line.startsWith('data: ')) data = line.slice(6);
-        }
-        if (eventType === 'result' && data) {
-          try {
-            const result = JSON.parse(data) as BacktestEvaluateResponse;
-            callbacks.onResult(result);
-          } catch (e) {
-            callbacks.onError(e instanceof Error ? e : new Error(String(e)));
-            return;
-          }
-          return;
-        }
-        if (eventType === 'error' && data) {
-          try {
-            const { message } = JSON.parse(data) as { message?: string };
-            callbacks.onError(new Error(message ?? 'Unknown error'));
-          } catch {
-            callbacks.onError(new Error(data));
-          }
-          return;
-        }
+        const action = processBacktestSSEPart(buffer, callbacks);
+        if (action === 'result' || action === 'error') return;
       }
     } catch (e) {
       callbacks.onError(e instanceof Error ? e : new Error(String(e)));

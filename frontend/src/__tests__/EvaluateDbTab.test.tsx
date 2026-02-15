@@ -11,6 +11,8 @@ vi.mock('../api', async () => {
     api: {
       backtestSelect: vi.fn(),
       backtestEvaluate: vi.fn(),
+      backtestEvaluateStream: vi.fn(),
+      getMatchScorecard: vi.fn(),
       getFormats: vi.fn(),
       getTeamsByFormat: vi.fn(),
       getOpponents: vi.fn(),
@@ -46,6 +48,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     (api.getFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
     (api.getTeamsByFormat as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
     (api.getOpponents as unknown as Mock).mockResolvedValue(['AUS', 'ENG']);
+    (api.getMatchScorecard as unknown as Mock).mockResolvedValue(null);
   });
 
   it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
@@ -67,26 +70,37 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         },
       ],
     });
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
-      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
-      match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
-      players: [
-        {
-          player_id: 1,
-          predicted: { runs: 25 },
-          actual: { runs: 30 },
-          errors: { runs_mae: 5 },
-        },
-        {
-          player_id: 2,
-          predicted: { runs: 10 },
-          actual: { runs: 10 },
-          errors: { runs_mae: 0 },
-        },
-      ],
-      metrics: { player_runs_mae: 2.5 },
-    });
+    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
+    backtestEvaluateStreamMock.mockImplementation(
+      (
+        _format: string,
+        _t1: string,
+        _t2: string,
+        _matchId: unknown,
+        callbacks: { onResult: (r: unknown) => void },
+      ) => {
+        callbacks.onResult({
+          filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
+          match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
+          players: [
+            {
+              player_id: 1,
+              predicted: { runs: 25 },
+              actual: { runs: 30 },
+              errors: { runs_mae: 5 },
+            },
+            {
+              player_id: 2,
+              predicted: { runs: 10 },
+              actual: { runs: 10 },
+              errors: { runs_mae: 0 },
+            },
+          ],
+          metrics: { player_runs_mae: 2.5 },
+        });
+        return Promise.resolve();
+      },
+    );
 
     render(<EvaluateDbTab />);
     await selectFilters();
@@ -139,9 +153,9 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with wickets/economy and match_aggregates
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
+    // Arrange evaluate with wickets/economy and match_aggregates (stream calls onResult)
+    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
+    const evaluatePayload = {
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
       match: { match_id: 222, match_date: '2024-11-05T09:00:00Z' },
       players: [
@@ -177,7 +191,19 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         match_extras_mae: 2,
         winner_accuracy: 1,
       },
-    });
+    };
+    backtestEvaluateStreamMock.mockImplementation(
+      (
+        _f: string,
+        _t1: string,
+        _t2: string,
+        _mid: unknown,
+        callbacks: { onResult: (r: unknown) => void },
+      ) => {
+        callbacks.onResult(evaluatePayload);
+        return Promise.resolve();
+      },
+    );
 
     render(<EvaluateDbTab />);
     await selectFilters();
@@ -235,31 +261,38 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with fielding keys present
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
-      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
-      match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
-      players: [
-        {
-          player_id: 201,
-          predicted: { runs: 12, catches: 1, run_outs: 2 },
-          actual: { runs: 10, catches: 2, run_outs: 1 },
-          errors: { runs_mae: 2, catches_mae: 1, run_outs_mae: 1 },
-        },
-        {
-          player_id: 202,
-          predicted: { runs: 4, catches: 0, run_outs: 1 },
-          actual: { runs: 5, catches: 0, run_outs: 0 },
-          errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 },
-        },
-      ],
-      metrics: {
-        player_runs_mae: 1.5,
-        player_catches_mae: 0.5,
-        player_run_outs_mae: 1.0,
+    // Arrange evaluate with fielding keys present (stream calls onResult)
+    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
+    backtestEvaluateStreamMock.mockImplementation(
+      (
+        _f: string,
+        _t1: string,
+        _t2: string,
+        _mid: unknown,
+        callbacks: { onResult: (r: unknown) => void },
+      ) => {
+        callbacks.onResult({
+          filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
+          match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
+          players: [
+            {
+              player_id: 201,
+              predicted: { runs: 12, catches: 1, run_outs: 2 },
+              actual: { runs: 10, catches: 2, run_outs: 1 },
+              errors: { runs_mae: 2, catches_mae: 1, run_outs_mae: 1 },
+            },
+            {
+              player_id: 202,
+              predicted: { runs: 4, catches: 0, run_outs: 1 },
+              actual: { runs: 5, catches: 0, run_outs: 0 },
+              errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 },
+            },
+          ],
+          metrics: { player_runs_mae: 1.5, player_catches_mae: 0.5, player_run_outs_mae: 1.0 },
+        });
+        return Promise.resolve();
       },
-    });
+    );
 
     render(<EvaluateDbTab />);
     await selectFilters();

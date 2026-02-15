@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -667,32 +668,41 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	writeSSE := func(event, data string) bool {
+		if _, err := w.Write([]byte("event: " + event + "\ndata: " + data + "\n\n")); err != nil {
+			log.Printf("backtest evaluate-stream: write failed (client may have disconnected): %v", err)
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+
 	progress := func(step, message string) {
 		payload := map[string]string{"step": step, "message": message}
 		data, _ := json.Marshal(payload)
-		_, _ = w.Write([]byte("event: progress\ndata: " + string(data) + "\n\n"))
-		flusher.Flush()
+		writeSSE("progress", string(data))
 	}
 
 	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, progress)
 	if err != nil {
 		payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)
-		_, _ = w.Write([]byte("event: error\ndata: " + string(data) + "\n\n"))
-		flusher.Flush()
+		if !writeSSE("error", string(data)) {
+			return
+		}
 		return
 	}
 	resultData, err := json.Marshal(resp)
 	if err != nil {
 		payload := map[string]string{"message": "failed to encode result"}
 		data, _ := json.Marshal(payload)
-		_, _ = w.Write([]byte("event: error\ndata: " + string(data) + "\n\n"))
-		flusher.Flush()
+		if !writeSSE("error", string(data)) {
+			return
+		}
 		return
 	}
 	// SSE data must not contain literal newlines; use one line per event
-	_, _ = w.Write([]byte("event: result\ndata: " + string(resultData) + "\n\n"))
-	flusher.Flush()
+	writeSSE("result", string(resultData))
 }
 
 // backtestScorecardHandler handles GET /api/backtest/scorecard?match_id=...

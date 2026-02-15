@@ -8,15 +8,15 @@ import (
 
 // ScorecardInning holds summary and card rows for one innings.
 type ScorecardInning struct {
-	InningNumber    int                 `json:"inning_number"`
-	BattingTeamName string              `json:"batting_team_name"`
-	BowlingTeamName string              `json:"bowling_team_name"`
-	RunsScored      int                 `json:"runs_scored"`
-	WicketsLost     int                 `json:"wickets_lost"`
-	Extras          int                 `json:"extras"`
-	TargetRuns      *int                `json:"target_runs,omitempty"`
-	Batting         []ScorecardBatting  `json:"batting"`
-	Bowling         []ScorecardBowling  `json:"bowling"`
+	InningNumber    int                `json:"inning_number"`
+	BattingTeamName string             `json:"batting_team_name"`
+	BowlingTeamName string             `json:"bowling_team_name"`
+	RunsScored      int                `json:"runs_scored"`
+	WicketsLost     int                `json:"wickets_lost"`
+	Extras          int                `json:"extras"`
+	TargetRuns      *int               `json:"target_runs,omitempty"`
+	Batting         []ScorecardBatting `json:"batting"`
+	Bowling         []ScorecardBowling `json:"bowling"`
 }
 
 // ScorecardBatting is one batting line (player, runs, balls, how out, etc.).
@@ -49,10 +49,10 @@ type ScorecardBowling struct {
 
 // MatchScorecard holds match-level info and per-innings scorecards.
 type MatchScorecard struct {
-	MatchID   int64              `json:"match_id"`
-	MatchDate string             `json:"match_date"`
-	Venue     string             `json:"venue"`
-	Innings   []ScorecardInning  `json:"innings"`
+	MatchID   int64             `json:"match_id"`
+	MatchDate string            `json:"match_date"`
+	Venue     string            `json:"venue"`
+	Innings   []ScorecardInning `json:"innings"`
 }
 
 // GetMatchScorecard returns full scorecard (innings, batting, bowling) for a match.
@@ -112,56 +112,61 @@ func GetMatchScorecard(ctx context.Context, matchID int64) (*MatchScorecard, err
 		return nil, err
 	}
 
-	// Batting lines per inning
-	for i := range innings {
-		batRows, err := Pool.Query(ctx, `
-			SELECT bd.player_id, COALESCE(p.player_name, ''), bd.description, bd.runs, bd.balls, bd.fours, bd.sixes, bd.strike_rate
-			FROM batting_data bd
-			JOIN player p ON p.id = bd.player_id
-			WHERE bd.match_id = $1 AND bd.inning_number = $2
-			ORDER BY COALESCE(bd.batting_position, 99), bd.player_id
-		`, matchID, innings[i].InningNumber)
-		if err != nil {
+	// Fetch all batting for this match in one query, then group by inning_number
+	batByInning := make(map[int][]ScorecardBatting)
+	batRows, err := Pool.Query(ctx, `
+		SELECT bd.inning_number, bd.player_id, COALESCE(p.player_name, ''), bd.description, bd.runs, bd.balls, bd.fours, bd.sixes, bd.strike_rate
+		FROM batting_data bd
+		JOIN player p ON p.id = bd.player_id
+		WHERE bd.match_id = $1
+		ORDER BY bd.inning_number, COALESCE(bd.batting_position, 99), bd.player_id
+	`, matchID)
+	if err != nil {
+		return nil, err
+	}
+	for batRows.Next() {
+		var innNum int
+		var b ScorecardBatting
+		if err := batRows.Scan(&innNum, &b.PlayerID, &b.PlayerName, &b.HowOut, &b.Runs, &b.Balls, &b.Fours, &b.Sixes, &b.StrikeRate); err != nil {
+			batRows.Close()
 			return nil, err
 		}
-		for batRows.Next() {
-			var b ScorecardBatting
-			if err := batRows.Scan(&b.PlayerID, &b.PlayerName, &b.HowOut, &b.Runs, &b.Balls, &b.Fours, &b.Sixes, &b.StrikeRate); err != nil {
-				batRows.Close()
-				return nil, err
-			}
-			innings[i].Batting = append(innings[i].Batting, b)
-		}
-		batRows.Close()
-		if err := batRows.Err(); err != nil {
-			return nil, err
-		}
+		batByInning[innNum] = append(batByInning[innNum], b)
+	}
+	batRows.Close()
+	if err := batRows.Err(); err != nil {
+		return nil, err
 	}
 
-	// Bowling lines per inning
+	// Fetch all bowling for this match in one query, then group by inning_number
+	bowlByInning := make(map[int][]ScorecardBowling)
+	bowlRows, err := Pool.Query(ctx, `
+		SELECT bw.inning_number, bw.player_id, COALESCE(p.player_name, ''), bw.overs, bw.maidens, bw.runs, bw.wickets, bw.econ, bw.wides, bw.no_balls, bw.balls
+		FROM bowling_data bw
+		JOIN player p ON p.id = bw.player_id
+		WHERE bw.match_id = $1
+		ORDER BY bw.inning_number, bw.player_id
+	`, matchID)
+	if err != nil {
+		return nil, err
+	}
+	for bowlRows.Next() {
+		var innNum int
+		var w ScorecardBowling
+		if err := bowlRows.Scan(&innNum, &w.PlayerID, &w.PlayerName, &w.Overs, &w.Maidens, &w.Runs, &w.Wickets, &w.Economy, &w.Wides, &w.NoBalls, &w.Balls); err != nil {
+			bowlRows.Close()
+			return nil, err
+		}
+		bowlByInning[innNum] = append(bowlByInning[innNum], w)
+	}
+	bowlRows.Close()
+	if err := bowlRows.Err(); err != nil {
+		return nil, err
+	}
+
 	for i := range innings {
-		bowlRows, err := Pool.Query(ctx, `
-			SELECT bw.player_id, COALESCE(p.player_name, ''), bw.overs, bw.maidens, bw.runs, bw.wickets, bw.econ, bw.wides, bw.no_balls, bw.balls
-			FROM bowling_data bw
-			JOIN player p ON p.id = bw.player_id
-			WHERE bw.match_id = $1 AND bw.inning_number = $2
-			ORDER BY bw.player_id
-		`, matchID, innings[i].InningNumber)
-		if err != nil {
-			return nil, err
-		}
-		for bowlRows.Next() {
-			var w ScorecardBowling
-			if err := bowlRows.Scan(&w.PlayerID, &w.PlayerName, &w.Overs, &w.Maidens, &w.Runs, &w.Wickets, &w.Economy, &w.Wides, &w.NoBalls, &w.Balls); err != nil {
-				bowlRows.Close()
-				return nil, err
-			}
-			innings[i].Bowling = append(innings[i].Bowling, w)
-		}
-		bowlRows.Close()
-		if err := bowlRows.Err(); err != nil {
-			return nil, err
-		}
+		innings[i].Batting = batByInning[innings[i].InningNumber]
+		innings[i].Bowling = bowlByInning[innings[i].InningNumber]
 	}
 
 	out.Innings = innings
