@@ -4,7 +4,6 @@ import ReactFlow, {
   Node,
   Edge,
   Background,
-  Controls,
   ConnectionLineType,
   Position,
   Handle,
@@ -131,12 +130,15 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        nodesDraggable={true}
+        nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable={true}
+        elementsSelectable={false}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
       >
         <Background color="#aaa" gap={16} />
-        <Controls />
       </ReactFlow>
     </Box>
   );
