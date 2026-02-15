@@ -120,11 +120,11 @@ precompute-asof:
 precompute-all:
 	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
-# Run unified command for all formats (order: TEST, ODI, T20I, T20)
+# Run unified command for all formats (order: TEST, ODI, T20I, T20). Each format once; do not add aliases (MDM→TEST, IT20→T20I).
 # Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
 precompute-all-all-formats:
 	cd go-app; \
-	for F in TEST ODI T20I T20 IT20 MDM; do \
+	for F in TEST ODI T20I T20; do \
 		echo "[unified] precompute-all for $$F"; \
 		go run ./cmd/precompute-all -format=$$F $(ARGS) || exit 1; \
 	done

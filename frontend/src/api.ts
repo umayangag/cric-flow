@@ -205,6 +205,7 @@ export const api = {
             callbacks.onResult(result);
           } catch (e) {
             callbacks.onError(e instanceof Error ? e : new Error(String(e)));
+            return;
           }
           return;
         }
@@ -215,6 +216,7 @@ export const api = {
           } catch {
             callbacks.onError(new Error(data));
           }
+          return;
         }
       }
     } catch (e) {
