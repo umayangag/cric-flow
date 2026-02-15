@@ -95,7 +95,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// DROP first and ON COMMIT DROP avoid reuse/corruption when connection is pooled.
 	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS ball_event_stage`)
 	err = tx.Exec(ctx, `
-        CREATE TEMP TABLE ball_event_stage AS
+        CREATE TEMP TABLE ball_event_stage ON COMMIT DROP AS
         SELECT 
             match_id::bigint,
             innings::int,
@@ -115,7 +115,6 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
             player_out_id::bigint
         FROM ball_event
         WITH NO DATA
-        ON COMMIT DROP;
     `)
 	if err != nil {
 		return err
@@ -216,13 +215,13 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 	}
 	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS ball_event_stage`)
 	err := tx.Exec(ctx, `
-        CREATE TEMP TABLE ball_event_stage AS
+        CREATE TEMP TABLE ball_event_stage ON COMMIT DROP AS
         SELECT match_id::bigint, innings::int, "over"::int, ball::int, ball_seq::int,
             is_legal::boolean, phase::text, striker_id::bigint, non_striker_id::bigint,
             bowler_id::bigint, runs_batter::int, runs_extras::int, runs_total::int,
             extras_kind::text, wicket_kind::text, player_out_id::bigint
-        FROM ball_event WITH NO DATA
-        ON COMMIT DROP;
+        FROM ball_event
+        WITH NO DATA
     `)
 	if err != nil {
 		return err
