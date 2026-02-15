@@ -42,7 +42,7 @@ while true; do
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
         | select((.isResolved==false) and (.comments.nodes[0].author.login=="gemini-code-assist"))
-        | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}' >> pr_reviews.json
+        | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}' >> "$PR_REVIEWS_JSON"
   HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$HAS_NEXT" != "true" ] && break
   CURSOR=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
