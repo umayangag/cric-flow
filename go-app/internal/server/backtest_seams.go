@@ -28,12 +28,12 @@ var (
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 		return nil, sql.ErrNoRows
 	}
-	// Features at cutoff: when matchID > 0 uses EWM/Consistency/venue/opposition for that match; otherwise legacy AVG-based provider.
-	getBacktestFeaturesAtCutoffFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64, matchID int64) (map[int64]map[string]float64, error) {
+	// Features at cutoff: precomputed only (no averages). When matchID > 0 uses match context; when 0 uses format only (venue/opposition 0).
+	getBacktestFeaturesAtCutoffFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64, matchID int64, format string) (map[int64]map[string]float64, error) {
 		if matchID > 0 {
 			return exq.ComputeFeaturesAtCutoffForMatch(ctx, matchID, cutoff, playerIDs)
 		}
-		return db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)
+		return exq.ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, format, playerIDs)
 	}
 	// ML seam for backtest: given cutoff, format, player ids, and optional features, return predicted targets per player
 	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64) (map[int64]playerPredictions, error) {

@@ -36,7 +36,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
 		return []int64{1, 2, 3}, nil
 	}
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{1: {}, 2: {}, 3: {}}, nil
 	}
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
@@ -121,7 +121,7 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
 		return []int64{10, 20}, nil
 	}
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{10: {}, 20: {}}, nil
 	}
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
@@ -176,7 +176,7 @@ func TestBacktestMatchHandler_EvaluateMode_BowlingMetrics(t *testing.T) {
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
 		return []int64{101, 102}, nil
 	}
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{101: {}, 102: {}}, nil
 	}
 	// Actuals: include runs, wickets, economy
@@ -254,7 +254,7 @@ func TestBacktestMatchHandler_EvaluateMode_FieldingMetrics(t *testing.T) {
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
 		return []int64{201, 202}, nil
 	}
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{201: {}, 202: {}}, nil
 	}
 	// Actuals: include fielding catches and run_outs
@@ -323,7 +323,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
 		return []int64{1, 2}, nil
 	}
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{1: {}, 2: {}}, nil
 	}
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
@@ -397,7 +397,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_FromPlayerPreds(t *te
 	cutoff := time.Date(2025, 1, 2, 8, 0, 0, 0, time.UTC)
 	getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1}, nil }
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{1: {}}, nil
 	}
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
@@ -450,7 +450,7 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	getBacktestMatchDateFunc = func(_ context.Context, _ int64) (time.Time, error) { return cutoff, nil }
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) { return []int64{1, 2, 3}, nil }
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, _ time.Time, _ []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		return map[int64]map[string]float64{1: {}, 2: {}, 3: {}}, nil
 	}
 	// Actuals
@@ -531,7 +531,7 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
 	var called bool
 	var gotCutoff time.Time
 	var gotIDs []int64
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, cutoffArg time.Time, playerIDs []int64, _ int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, cutoffArg time.Time, playerIDs []int64, _ int64, _ string) (map[int64]map[string]float64, error) {
 		called = true
 		gotCutoff = cutoffArg
 		gotIDs = append([]int64{}, playerIDs...)

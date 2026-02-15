@@ -2,6 +2,9 @@ package exportqueries
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -233,9 +236,236 @@ func computeBowlingSnapshotFromHistories(
 	return out
 }
 
-// ComputeFeaturesAtCutoffForMatch returns a feature map per player using the same EWM/Consistency/venue/opposition
-// logic as training. Match context (format, venue, per-player batting/bowling opposition) comes from the DB.
-// Missing data yields 0 (no averages or baseline). Weather may use averages when available; here we use 0 for missing.
+// getPrecomputedFeaturesForMatch reads form, consistency, venue, and opposition from the precomputed
+// snapshot tables (feature_form_snapshots, feature_consistency_snapshots) populated by the precompute
+// cmd tool per format. Returns a map of playerID -> feature name -> value; only keys present in the
+// snapshots are set (so callers can fall back to on-the-fly computation for missing keys).
+func getPrecomputedFeaturesForMatch(
+	ctx context.Context,
+	cutoff time.Time,
+	formatID int64,
+	venueID *int64,
+	playerOpps map[int64]struct{ BattingOpp, BowlingOpp *int64 },
+	playerIDs []int64,
+) (map[int64]map[string]float64, error) {
+	if db.Pool == nil {
+		return nil, nil
+	}
+	cutoffDate := cutoff.Truncate(24 * time.Hour)
+	out := make(map[int64]map[string]float64)
+	for _, pid := range playerIDs {
+		out[pid] = make(map[string]float64)
+	}
+
+	// 1) Overall form (scope=overall, scope_id NULL)
+	rows, err := db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
+		FROM feature_form_snapshots
+		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
+		ORDER BY player_id, as_of_date DESC
+	`, playerIDs, formatID, cutoffDate)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var pid int64
+		var batVal, bowlVal float64
+		if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out[pid]["batting_form"] = batVal
+		out[pid]["bowling_form"] = bowlVal
+	}
+	rows.Close()
+
+	// 2) Overall consistency
+	rows, err = db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
+		FROM feature_consistency_snapshots
+		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
+		ORDER BY player_id, as_of_date DESC
+	`, playerIDs, formatID, cutoffDate)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var pid int64
+		var batVal, bowlVal float64
+		if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out[pid]["batting_consistency"] = batVal
+		out[pid]["bowling_consistency"] = bowlVal
+	}
+	rows.Close()
+
+	// 3) Venue form (when match has a venue)
+	if venueID != nil && *venueID != 0 {
+		rows, err = db.Pool.Query(ctx, `
+			SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
+			FROM feature_form_snapshots
+			WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'venue' AND scope_id = $3 AND as_of_date <= $4
+			ORDER BY player_id, as_of_date DESC
+		`, playerIDs, formatID, *venueID, cutoffDate)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var pid int64
+			var batVal, bowlVal float64
+			if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[pid]["batting_venue"] = batVal
+			out[pid]["bowling_venue"] = bowlVal
+			out[pid]["venue"] = batVal
+		}
+		rows.Close()
+	}
+
+	// 4) Opposition form: (player_id, scope_id) pairs for batting and bowling opposition
+	var oppPids, oppScopeIDs []int64
+	for _, pid := range playerIDs {
+		opps := playerOpps[pid]
+		if opps.BattingOpp != nil && *opps.BattingOpp != 0 {
+			oppPids = append(oppPids, pid)
+			oppScopeIDs = append(oppScopeIDs, *opps.BattingOpp)
+		}
+		if opps.BowlingOpp != nil && *opps.BowlingOpp != 0 {
+			oppPids = append(oppPids, pid)
+			oppScopeIDs = append(oppScopeIDs, *opps.BowlingOpp)
+		}
+	}
+	if len(oppPids) > 0 {
+		rows, err = db.Pool.Query(ctx, `
+			SELECT DISTINCT ON (f.player_id, f.scope_id) f.player_id, f.scope_id, f.batting_value, f.bowling_value
+			FROM feature_form_snapshots f
+			INNER JOIN unnest($3::bigint[], $4::bigint[]) AS pairs(pid, sid) ON f.player_id = pairs.pid AND f.scope_id = pairs.sid
+			WHERE f.format_id = $1 AND f.scope = 'opposition' AND f.as_of_date <= $2
+			ORDER BY f.player_id, f.scope_id, f.as_of_date DESC
+		`, formatID, cutoffDate, oppPids, oppScopeIDs)
+		if err != nil {
+			return nil, err
+		}
+		type oppRow struct {
+			pid     int64
+			scopeID int64
+			batVal  float64
+			bowlVal float64
+		}
+		var oppRows []oppRow
+		for rows.Next() {
+			var r oppRow
+			var scopeID sql.NullInt64
+			if err := rows.Scan(&r.pid, &scopeID, &r.batVal, &r.bowlVal); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if scopeID.Valid {
+				r.scopeID = scopeID.Int64
+				oppRows = append(oppRows, r)
+			}
+		}
+		rows.Close()
+		for _, r := range oppRows {
+			opps := playerOpps[r.pid]
+			if opps.BattingOpp != nil && *opps.BattingOpp == r.scopeID {
+				out[r.pid]["batting_opposition"] = r.batVal
+				out[r.pid]["opposition"] = r.batVal
+			}
+			if opps.BowlingOpp != nil && *opps.BowlingOpp == r.scopeID {
+				out[r.pid]["bowling_opposition"] = r.bowlVal
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// requiredPrecomputedKeysForMatchAll are always required when using match context.
+var requiredPrecomputedKeysForMatchAll = []string{
+	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
+}
+
+// requiredPrecomputedKeysNoMatch are the feature keys required when no match context (overall form/consistency only).
+var requiredPrecomputedKeysNoMatch = []string{
+	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
+}
+
+func missingPrecomputedKeys(precomp map[int64]map[string]float64, playerIDs []int64, keys []string) []string {
+	var missing []string
+	for _, pid := range playerIDs {
+		pc := precomp[pid]
+		for _, k := range keys {
+			if _, ok := pc[k]; !ok {
+				missing = append(missing, fmt.Sprintf("player %d missing %s", pid, k))
+			}
+		}
+	}
+	return missing
+}
+
+// ComputeFeaturesAtCutoffNoMatch returns a feature map per player using only precomputed overall form and
+// consistency from snapshot tables (per format). Used when there is no match context (matchID 0). Venue and
+// opposition are set to 0 (no context). Weather is 0 until weather data is available. Returns error if any
+// required precomputed value (batting_form, batting_consistency, bowling_form, bowling_consistency) is missing.
+func ComputeFeaturesAtCutoffNoMatch(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	playerIDs []int64,
+) (map[int64]map[string]float64, error) {
+	if len(playerIDs) == 0 {
+		return map[int64]map[string]float64{}, nil
+	}
+	formatID, err := db.GetGlobalCache().GetFormatID(ctx, strings.TrimSpace(strings.ToUpper(format)))
+	if err != nil {
+		return nil, fmt.Errorf("resolve format for features: %w", err)
+	}
+	emptyOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
+	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, formatID, nil, emptyOpps, playerIDs)
+	if err != nil {
+		return nil, err
+	}
+	if precomp == nil {
+		precomp = make(map[int64]map[string]float64)
+	}
+	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysNoMatch); len(m) > 0 {
+		return nil, fmt.Errorf("precomputed features required (run precompute for format %s): %s", format, strings.Join(m, "; "))
+	}
+	out := make(map[int64]map[string]float64)
+	for _, pid := range playerIDs {
+		pc := precomp[pid]
+		if pc == nil {
+			pc = make(map[string]float64)
+		}
+		feats := map[string]float64{
+			"batting_form":        pc["batting_form"],
+			"batting_consistency": pc["batting_consistency"],
+			"bowling_form":        pc["bowling_form"],
+			"bowling_consistency": pc["bowling_consistency"],
+			"batting_venue":       0,
+			"batting_opposition":  0,
+			"bowling_venue":       0,
+			"bowling_opposition":  0,
+			"venue":               0,
+			"opposition":          0,
+			"season":              0,
+			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+		}
+		out[pid] = feats
+	}
+	return out, nil
+}
+
+// ComputeFeaturesAtCutoffForMatch returns a feature map per player using only precomputed form, consistency,
+// venue, and opposition from the snapshot tables (populated by the precompute cmd per format). No averages or
+// on-the-fly computation: if any required value is missing, returns error. Weather is set to 0 until weather
+// data is available. Season comes from match context.
 func ComputeFeaturesAtCutoffForMatch(
 	ctx context.Context,
 	matchID int64,
@@ -253,48 +483,79 @@ func ComputeFeaturesAtCutoffForMatch(
 			BowlingOpp: po.BowlingOppositionID,
 		}
 	}
+	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, mctx.FormatID, mctx.VenueID, playerOpps, playerIDs)
+	if err != nil {
+		return nil, err
+	}
+	if precomp == nil {
+		precomp = make(map[int64]map[string]float64)
+	}
+	requiredMatch := append([]string(nil), requiredPrecomputedKeysForMatchAll...)
+	if mctx.VenueID != nil && *mctx.VenueID != 0 {
+		requiredMatch = append(requiredMatch, "batting_venue", "bowling_venue", "venue")
+	}
+	hasOpposition := false
+	for _, po := range playerOpps {
+		if po.BattingOpp != nil && *po.BattingOpp != 0 || po.BowlingOpp != nil && *po.BowlingOpp != 0 {
+			hasOpposition = true
+			break
+		}
+	}
+	if hasOpposition {
+		requiredMatch = append(requiredMatch, "batting_opposition", "bowling_opposition", "opposition")
+	}
+	if m := missingPrecomputedKeys(precomp, playerIDs, requiredMatch); len(m) > 0 {
+		return nil, fmt.Errorf("precomputed features required (run precompute for this format): %s", strings.Join(m, "; "))
+	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {
-		opps := playerOpps[pid]
-		bat, _ := computeBattingSnapshotAtCutoff(
-			ctx,
-			pid,
-			cutoff,
-			mctx.FormatID,
-			mctx.VenueID,
-			opps.BattingOpp,
-			DefaultEWMAlpha,
-			DefaultConsistencyLastN,
-			DefaultFormWindowN,
-		)
-		bowl, _ := computeBowlingSnapshotAtCutoff(
-			ctx,
-			pid,
-			cutoff,
-			mctx.FormatID,
-			mctx.VenueID,
-			opps.BowlingOpp,
-			DefaultEWMAlpha,
-			DefaultConsistencyLastN,
-			DefaultFormWindowN,
-		)
+		pc := precomp[pid]
+		if pc == nil {
+			pc = make(map[string]float64)
+		}
+		venue := 0.0
+		if v, ok := pc["venue"]; ok {
+			venue = v
+		}
+		if v, ok := pc["batting_venue"]; ok {
+			venue = v
+		}
+		opposition := 0.0
+		if v, ok := pc["opposition"]; ok {
+			opposition = v
+		}
+		if v, ok := pc["batting_opposition"]; ok {
+			opposition = v
+		}
+		batVenue, bowlVenue, batOpp, bowlOpp := 0.0, 0.0, 0.0, 0.0
+		if v, ok := pc["batting_venue"]; ok {
+			batVenue = v
+		}
+		if v, ok := pc["bowling_venue"]; ok {
+			bowlVenue = v
+		}
+		if v, ok := pc["batting_opposition"]; ok {
+			batOpp = v
+		}
+		if v, ok := pc["bowling_opposition"]; ok {
+			bowlOpp = v
+		}
 		season := 0.0
 		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
 			season = float64(*mctx.SeasonID)
 		}
 		feats := map[string]float64{
-			"batting_form":        bat.form,
-			"batting_consistency": bat.consistency,
-			"batting_venue":       bat.venue,
-			"batting_opposition":  bat.opposition,
-			"bowling_form":        bowl.form,
-			"bowling_consistency": bowl.consistency,
-			"bowling_venue":       bowl.venue,
-			"bowling_opposition":  bowl.opposition,
-			"venue":               bat.venue,
-			"opposition":          bat.opposition,
+			"batting_form":        pc["batting_form"],
+			"batting_consistency": pc["batting_consistency"],
+			"batting_venue":       batVenue,
+			"batting_opposition":  batOpp,
+			"bowling_form":        pc["bowling_form"],
+			"bowling_consistency": pc["bowling_consistency"],
+			"bowling_venue":       bowlVenue,
+			"bowling_opposition":  bowlOpp,
+			"venue":               venue,
+			"opposition":          opposition,
 			"season":              season,
-			// Weather: use 0 when missing (averages allowed elsewhere; here we keep consistent with "0 for missing")
 			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 		}

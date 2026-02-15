@@ -421,7 +421,7 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("features", "Computing feature data at cutoff (no future data)...")
 	}
-	features, err := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, mid)
+	features, err := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, mid, format)
 	if err != nil {
 		return nil, err
 	}
