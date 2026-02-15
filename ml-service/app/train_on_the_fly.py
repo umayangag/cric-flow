@@ -93,13 +93,13 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
             df = df.rename(columns={c.replace("_", " "): c})
     # Toss: Go batting export already sends 0/1
     if "toss" in df.columns and df["toss"].dtype == object:
-        df["toss"] = df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0)
+        df = df.assign(toss=df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0))
     df = df.dropna(subset=[c for c in BATTING_FEATURE_COLS if c in df.columns])
     if df.empty:
         return np.zeros((0, len(BATTING_FEATURE_COLS))), np.zeros((0, 6))
     for c in BATTING_FEATURE_COLS:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
     df = df.dropna(subset=BATTING_FEATURE_COLS)
     if df.empty:
         return np.zeros((0, len(BATTING_FEATURE_COLS))), np.zeros((0, 6))
@@ -126,15 +126,15 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
             df = df.rename(columns={c.replace("_", " "): c})
     # Go export: toss is raw toss_decision; bowling_session can be NULL
     if "toss" in df.columns and df["toss"].dtype == object:
-        df["toss"] = df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0)
+        df = df.assign(toss=df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0))
     if "bowling_session" in df.columns:
-        df["bowling_session"] = pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0)
+        df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
     df = df.dropna(subset=[c for c in BOWLING_FEATURE_COLS if c in df.columns])
     if df.empty:
         return np.zeros((0, len(BOWLING_FEATURE_COLS))), np.zeros((0, 4))
     for c in BOWLING_FEATURE_COLS:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
     df = df.dropna(subset=BOWLING_FEATURE_COLS)
     if df.empty:
         return np.zeros((0, len(BOWLING_FEATURE_COLS))), np.zeros((0, 4))
