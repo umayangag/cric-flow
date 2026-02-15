@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -255,7 +256,14 @@ func populateMatchAggregatesAndMetrics(
 	// Predicted: sum from player predictions; winner from team run totals.
 	var predRuns, predWickets float64
 	teamRuns := make(map[string]float64)
-	playerTeams, _ := db.GetMatchPlayerTeams(ctx, matchID)
+	playerTeams, err := db.GetMatchPlayerTeams(ctx, matchID)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to get match player teams", slog.Int64("match_id", matchID), slog.Any("err", err))
+		playerTeams = nil
+	}
+	if playerTeams == nil {
+		playerTeams = make(map[int64]string)
+	}
 	for _, p := range resp.Players {
 		r := 0.0
 		if p.Predicted != nil {
@@ -413,7 +421,10 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("features", "Computing feature data at cutoff (no future data)...")
 	}
-	features, _ := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, mid)
+	features, err := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, mid)
+	if err != nil {
+		return nil, err
+	}
 
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting/bowling)...")

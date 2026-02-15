@@ -9,7 +9,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -86,74 +86,94 @@ def _get_rf_params() -> dict:
     }
 
 
-def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Build X, Y from batting headers + rows (same logic as train_batting.load_dataset)."""
+def _rows_to_xy(
+    headers: List[str],
+    rows: List[List[str]],
+    feature_cols: List[str],
+    target_cols: List[str],
+    n_y_final: int,
+    preprocess: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
+    extra_y_column: Optional[Callable[[pd.DataFrame], np.ndarray]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Shared data processing: build X, Y from go-app training rows.
+
+    Used by both batting and bowling to avoid duplicating feature cleaning,
+    dropna, and numeric coercion. Aligns with offline train_batting/train_bowling
+    semantics where applicable.
+    """
     if not headers or not rows:
-        return np.zeros((0, len(BATTING_FEATURE_COLS))), np.zeros((0, 6))
+        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
     df = pd.DataFrame(rows, columns=headers)
-    # Normalize column names (export may use same names)
-    for c in BATTING_FEATURE_COLS + BATTING_TARGET_COLS:
+    all_cols = feature_cols + target_cols
+    for c in all_cols:
         if c not in df.columns and c.replace("_", " ") in df.columns:
             df = df.rename(columns={c.replace("_", " "): c})
-    # Toss: Go batting export already sends 0/1
     if "toss" in df.columns and df["toss"].dtype == object:
         df = df.assign(toss=df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0))
-    df = df.dropna(subset=[c for c in BATTING_FEATURE_COLS if c in df.columns])
+    if preprocess is not None:
+        df = preprocess(df)
+    df = df.dropna(subset=[c for c in feature_cols if c in df.columns])
     if df.empty:
-        return np.zeros((0, len(BATTING_FEATURE_COLS))), np.zeros((0, 6))
-    for c in BATTING_FEATURE_COLS:
+        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+    for c in feature_cols:
         if c in df.columns:
             df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
-    df = df.dropna(subset=BATTING_FEATURE_COLS)
+    df = df.dropna(subset=feature_cols)
     if df.empty:
-        return np.zeros((0, len(BATTING_FEATURE_COLS))), np.zeros((0, 6))
-    X = df[BATTING_FEATURE_COLS].astype(float).values
-    y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
+        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+    X = df[feature_cols].astype(float).values
+    y_cols = [c for c in target_cols if c in df.columns]
     Y = df[y_cols].astype(float).values
-    if Y.shape[1] < len(BATTING_TARGET_COLS):
-        pad = np.zeros((Y.shape[0], len(BATTING_TARGET_COLS) - Y.shape[1]))
+    if Y.shape[1] < len(target_cols):
+        pad = np.zeros((Y.shape[0], len(target_cols) - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
-    sr = np.where(balls > 0, (runs / balls) * 100.0, 0.0).reshape(-1, 1)
-    Y = np.concatenate([Y, sr], axis=1)
+    if extra_y_column is not None:
+        extra = extra_y_column(df)
+        Y = np.concatenate([Y, extra], axis=1)
     return X, Y
+
+
+def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
+    """Build X, Y from batting headers + rows (same logic as train_batting.load_dataset)."""
+
+    def _batting_extra_y(df: pd.DataFrame) -> np.ndarray:
+        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
+        balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
+        return np.where(balls > 0, (runs / balls) * 100.0, 0.0).reshape(-1, 1)
+
+    return _rows_to_xy(
+        headers,
+        rows,
+        BATTING_FEATURE_COLS,
+        BATTING_TARGET_COLS,
+        n_y_final=6,
+        extra_y_column=_batting_extra_y,
+    )
 
 
 def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
     """Build X, Y from bowling headers + rows (same logic as train_bowling.load_dataset)."""
-    if not headers or not rows:
-        return np.zeros((0, len(BOWLING_FEATURE_COLS))), np.zeros((0, 4))
-    df = pd.DataFrame(rows, columns=headers)
-    for c in BOWLING_FEATURE_COLS + BOWLING_TARGET_COLS:
-        if c not in df.columns and c.replace("_", " ") in df.columns:
-            df = df.rename(columns={c.replace("_", " "): c})
-    # Go export: toss is raw toss_decision; bowling_session can be NULL
-    if "toss" in df.columns and df["toss"].dtype == object:
-        df = df.assign(toss=df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0))
-    if "bowling_session" in df.columns:
-        df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
-    df = df.dropna(subset=[c for c in BOWLING_FEATURE_COLS if c in df.columns])
-    if df.empty:
-        return np.zeros((0, len(BOWLING_FEATURE_COLS))), np.zeros((0, 4))
-    for c in BOWLING_FEATURE_COLS:
-        if c in df.columns:
-            df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
-    df = df.dropna(subset=BOWLING_FEATURE_COLS)
-    if df.empty:
-        return np.zeros((0, len(BOWLING_FEATURE_COLS))), np.zeros((0, 4))
-    X = df[BOWLING_FEATURE_COLS].astype(float).values
-    y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
-    Y = df[y_cols].astype(float).values
-    if Y.shape[1] < len(BOWLING_TARGET_COLS):
-        pad = np.zeros((Y.shape[0], len(BOWLING_TARGET_COLS) - Y.shape[1]))
-        Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-    overs = np.where(balls > 0, balls / 6.0, 1.0)
-    econ = np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-    Y = np.concatenate([Y, econ], axis=1)
-    return X, Y
+
+    def _bowling_preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        if "bowling_session" in df.columns:
+            df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
+        return df
+
+    def _bowling_extra_y(df: pd.DataFrame) -> np.ndarray:
+        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
+        balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
+        overs = np.where(balls > 0, balls / 6.0, 1.0)
+        return np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
+
+    return _rows_to_xy(
+        headers,
+        rows,
+        BOWLING_FEATURE_COLS,
+        BOWLING_TARGET_COLS,
+        n_y_final=4,
+        preprocess=_bowling_preprocess,
+        extra_y_column=_bowling_extra_y,
+    )
 
 
 def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
