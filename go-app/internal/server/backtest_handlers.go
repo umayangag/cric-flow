@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -341,6 +342,93 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// BacktestProgressFunc is called after each step during evaluate (e.g. for SSE progress).
+// step is a short id (e.g. "match_date", "squad", "features", "ml_predict", "actuals", "scorecard"); message is human-readable.
+type BacktestProgressFunc func(step, message string)
+
+// doEvaluateWork runs the default evaluate pipeline (no use_ml=1). Progress is called after each step when non-nil.
+func doEvaluateWork(
+	ctx context.Context,
+	format, team1, team2, matchID string,
+	progress BacktestProgressFunc,
+) (*backtestEvaluateResponse, error) {
+	mid, err := strconv.ParseInt(matchID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	if progress != nil {
+		progress("match_date", "Getting match date (cutoff for features)...")
+	}
+	cutoff, err := getBacktestMatchDateFunc(ctx, mid)
+	if err != nil {
+		return nil, err
+	}
+
+	if progress != nil {
+		progress("squad", "Loading playing XI (squad) for this match...")
+	}
+	squad, err := getBacktestSquadPlayerIDsFunc(ctx, mid, cutoff, format)
+	if err != nil {
+		return nil, err
+	}
+
+	if progress != nil {
+		progress("features", "Computing feature data at cutoff (no future data)...")
+	}
+	_, _ = getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
+
+	if progress != nil {
+		progress("ml_predict", "Calling ML model for player predictions (batting/bowling)...")
+	}
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, squad)
+	if err != nil {
+		return nil, err
+	}
+
+	if progress != nil {
+		progress("actuals", "Loading actual match stats from database...")
+	}
+	actuals, err := getBacktestPlayerActualsForMatchFunc(ctx, mid)
+	if err != nil {
+		return nil, err
+	}
+
+	if progress != nil {
+		progress("metrics", "Computing player metrics and errors...")
+	}
+	resp := backtestEvaluateResponse{
+		Filters: map[string]any{
+			"format":   format,
+			"team1":    team1,
+			"team2":    team2,
+			"match_id": mid,
+		},
+	}
+	resp.Match.MatchID = mid
+	resp.Match.MatchDate = cutoff.Format(time.RFC3339)
+	players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
+	resp.Players = append(resp.Players, players...)
+	resp.Metrics = metrics
+
+	if progress != nil {
+		progress("aggregates", "Fetching match-level aggregates...")
+	}
+	populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid)
+
+	if progress != nil {
+		progress("scorecard", "Building predicted scorecard...")
+	}
+	if actualCard, err := db.GetMatchScorecard(ctx, mid); err == nil && actualCard != nil {
+		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds)
+	}
+
+	if progress != nil {
+		progress("done", "Evaluation complete.")
+	}
+	return &resp, nil
+}
+
 // handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
 // It requires a valid matchID and computes per-player results and summary metrics.
 func (a *App) handleBacktestEvaluate(
@@ -366,7 +454,6 @@ func (a *App) handleBacktestEvaluate(
 
 	// Optional delegation to ML historical backtest endpoint if requested via query flag use_ml=1
 	if strings.EqualFold(strings.TrimSpace(useMLFlag), "1") {
-		// cutoffStr provided from handler
 		if cutoffStr == "" {
 			writeJSON(
 				w,
@@ -380,67 +467,21 @@ func (a *App) handleBacktestEvaluate(
 			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid cutoff timestamp"})
 			return
 		}
-		// Delegate to ML historical backtest
 		res, herr := mlHistoricalBacktestFunc(ctx, cutoff, &mid, nil)
 		if herr != nil {
 			respondErr(w, herr)
 			return
 		}
-		// Map ML response to backtestEvaluateResponse shape
 		out := mapMLResponseToBacktestResponse(res, mid, format, team1, team2, cutoff)
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
 
-	cutoff, err := getBacktestMatchDateFunc(ctx, mid)
+	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, nil)
 	if err != nil {
 		respondErr(w, err)
 		return
 	}
-	squad, err := getBacktestSquadPlayerIDsFunc(ctx, mid, cutoff, format)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	// Features currently unused in baseline; kept for future extension
-	_, _ = getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
-
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, squad)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	actuals, err := getBacktestPlayerActualsForMatchFunc(ctx, mid)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-
-	// Build response
-	resp := backtestEvaluateResponse{
-		Filters: map[string]any{
-			"format":   format,
-			"team1":    team1,
-			"team2":    team2,
-			"match_id": mid,
-		},
-	}
-	// Match info
-	resp.Match.MatchID = mid
-	resp.Match.MatchDate = cutoff.Format(time.RFC3339)
-	// Players and Metrics (single pass)
-	players, metrics := computePlayerResultsAndMetrics(squad, preds, actuals)
-	resp.Players = append(resp.Players, players...)
-	resp.Metrics = metrics
-
-	// Match-level aggregates (optional if seams available)
-	populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid)
-
-	// Predicted scorecard: same structure as actual but with ML predictions (data strictly before match date)
-	if actualCard, err := db.GetMatchScorecard(ctx, mid); err == nil && actualCard != nil {
-		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds)
-	}
-
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -586,6 +627,65 @@ func mapMLResponseToBacktestResponse(
 		}
 	}
 	return out
+}
+
+// backtestEvaluateStreamHandler handles GET /api/backtest/evaluate-stream and streams progress via SSE, then the result.
+// Query params: format, team1, team2, match_id (same as evaluate). use_ml=1 is not supported for streaming.
+func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	format := strings.TrimSpace(q.Get("format"))
+	team1 := strings.TrimSpace(q.Get("team1"))
+	team2 := strings.TrimSpace(q.Get("team2"))
+	matchID := strings.TrimSpace(q.Get("match_id"))
+	if format == "" || team1 == "" || team2 == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"})
+		return
+	}
+	if matchID == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_id is required"})
+		return
+	}
+	if _, err := strconv.ParseInt(matchID, 10, 64); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+
+	progress := func(step, message string) {
+		payload := map[string]string{"step": step, "message": message}
+		data, _ := json.Marshal(payload)
+		_, _ = w.Write([]byte("event: progress\ndata: " + string(data) + "\n\n"))
+		flusher.Flush()
+	}
+
+	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, progress)
+	if err != nil {
+		payload := map[string]string{"message": err.Error()}
+		data, _ := json.Marshal(payload)
+		_, _ = w.Write([]byte("event: error\ndata: " + string(data) + "\n\n"))
+		flusher.Flush()
+		return
+	}
+	resultData, err := json.Marshal(resp)
+	if err != nil {
+		payload := map[string]string{"message": "failed to encode result"}
+		data, _ := json.Marshal(payload)
+		_, _ = w.Write([]byte("event: error\ndata: " + string(data) + "\n\n"))
+		flusher.Flush()
+		return
+	}
+	// SSE data must not contain literal newlines; use one line per event
+	_, _ = w.Write([]byte("event: result\ndata: " + string(resultData) + "\n\n"))
+	flusher.Flush()
 }
 
 // backtestScorecardHandler handles GET /api/backtest/scorecard?match_id=...

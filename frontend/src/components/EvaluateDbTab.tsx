@@ -4,7 +4,13 @@ import {
   Button,
   FormControl,
   InputLabel,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
   MenuItem,
+  Paper,
   Select,
   Stack,
   Typography,
@@ -12,6 +18,7 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
@@ -143,13 +150,17 @@ const EvaluateDbTab: React.FC = () => {
   const [scorecardLoading, setScorecardLoading] = useState<boolean>(false);
   const [scorecardError, setScorecardError] = useState<string | null>(null);
 
+  // Evaluate with progress (SSE stream)
+  const [evaluating, setEvaluating] = useState<boolean>(false);
+  const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>([]);
+
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
     [format, team1, team2, loading],
   );
   const canEvaluate = useMemo(
-    () => !!format && !!team1 && !!team2 && selectedMatchId != null && !loading,
-    [format, team1, team2, selectedMatchId, loading],
+    () => !!format && !!team1 && !!team2 && selectedMatchId != null && !loading && !evaluating,
+    [format, team1, team2, selectedMatchId, loading, evaluating],
   );
 
   const resetOutputs = () => {
@@ -213,21 +224,40 @@ const EvaluateDbTab: React.FC = () => {
     }
   };
 
-  const handleEvaluateSelectedMatch = async () => {
+  const handleEvaluateSelectedMatch = () => {
     if (selectedMatchId == null) return;
-    try {
-      setLoading(true);
-      setError(null);
-      setStatusMessage('Evaluating…');
-      const resp = await api.backtestEvaluate(format, team1.trim(), team2.trim(), selectedMatchId);
-      setEvaluationResult(resp);
-      setStatusMessage('Evaluation complete.');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setStatusMessage('');
-    } finally {
-      setLoading(false);
-    }
+    setEvaluating(true);
+    setEvaluationSteps([]);
+    setError(null);
+    setStatusMessage('Evaluation in progress…');
+    api
+      .backtestEvaluateStream(
+        format.trim(),
+        team1.trim(),
+        team2.trim(),
+        selectedMatchId,
+        {
+          onProgress: (step, message) => {
+            setEvaluationSteps((prev) => [...prev, { step, message }]);
+          },
+          onResult: (result) => {
+            setEvaluationResult(result);
+            setEvaluating(false);
+            setStatusMessage('Evaluation complete.');
+          },
+          onError: (err) => {
+            setError(err.message);
+            setEvaluating(false);
+            setStatusMessage('');
+          },
+        },
+      )
+      .then(() => {
+        // Stream completed (onResult or onError already called)
+      })
+      .catch(() => {
+        setEvaluating(false);
+      });
   };
 
   return (
@@ -326,9 +356,40 @@ const EvaluateDbTab: React.FC = () => {
             onClick={handleEvaluateSelectedMatch}
             disabled={!canEvaluate}
           >
-            Evaluate Selected Match
+            {evaluating ? (
+              <>
+                <CircularProgress size={20} sx={{ mr: 1 }} color="inherit" />
+                Evaluating…
+              </>
+            ) : (
+              'Evaluate Selected Match'
+            )}
           </Button>
         </Box>
+
+        {/* Progress steps while evaluating (SSE stream) */}
+        {evaluating && evaluationSteps.length > 0 && (
+          <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+              Current step
+            </Typography>
+            <LinearProgress sx={{ mb: 2 }} />
+            <List dense disablePadding>
+              {evaluationSteps.map((s, idx) => (
+                <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    {idx === evaluationSteps.length - 1 ? (
+                      <CircularProgress size={16} color="primary" />
+                    ) : (
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    )}
+                  </ListItemIcon>
+                  <ListItemText primary={s.message} primaryTypographyProps={{ variant: 'body2' }} />
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        )}
 
         {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
         {evaluationResult?.predicted_scorecard && (

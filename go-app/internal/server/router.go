@@ -56,6 +56,7 @@ func NewRouter(a *App) http.Handler {
 
 	// Backtesting endpoints
 	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-stream", a.backtestEvaluateStreamHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/scorecard", a.backtestScorecardHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Accuracy trend endpoint for dashboards
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).

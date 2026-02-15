@@ -113,4 +113,114 @@ export const api = {
     u.searchParams.set('match_id', String(matchId));
     return httpApi(u.toString());
   },
+
+  /**
+   * Evaluate with Server-Sent Events progress. Calls onProgress(step, message) for each step,
+   * onResult(result) with the final response, or onError(err) on failure.
+   */
+  async backtestEvaluateStream(
+    format: string,
+    team1: string,
+    team2: string,
+    matchId: number | string,
+    callbacks: {
+      onProgress: (step: string, message: string) => void;
+      onResult: (result: BacktestEvaluateResponse) => void;
+      onError: (err: Error) => void;
+    },
+  ): Promise<void> {
+    const u = new URL('/api/backtest/evaluate-stream', BASE_API_URL);
+    u.searchParams.set('format', format);
+    u.searchParams.set('team1', team1);
+    u.searchParams.set('team2', team2);
+    u.searchParams.set('match_id', String(matchId));
+    const headers: Record<string, string> = {};
+    const apiKey = localStorage.getItem('cric_info_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    const res = await fetch(u.toString(), { headers });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      callbacks.onError(new Error(`HTTP ${res.status}: ${text}`));
+      return;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      callbacks.onError(new Error('No response body'));
+      return;
+    }
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          let eventType = '';
+          let data = '';
+          for (const line of part.split('\n')) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+            else if (line.startsWith('data: ')) data = line.slice(6);
+          }
+          if (eventType === 'progress' && data) {
+            try {
+              const { step, message } = JSON.parse(data) as { step: string; message: string };
+              callbacks.onProgress(step ?? '', message ?? '');
+            } catch {
+              /* ignore */
+            }
+          } else if (eventType === 'result' && data) {
+            try {
+              const result = JSON.parse(data) as BacktestEvaluateResponse;
+              callbacks.onResult(result);
+            } catch (e) {
+              callbacks.onError(e instanceof Error ? e : new Error(String(e)));
+            }
+            return;
+          } else if (eventType === 'error' && data) {
+            try {
+              const { message } = JSON.parse(data) as { message?: string };
+              callbacks.onError(new Error(message ?? 'Unknown error'));
+            } catch {
+              callbacks.onError(new Error(data));
+            }
+            return;
+          }
+        }
+      }
+      if (buffer.trim()) {
+        const part = buffer;
+        let eventType = '';
+        let data = '';
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+          else if (line.startsWith('data: ')) data = line.slice(6);
+        }
+        if (eventType === 'result' && data) {
+          try {
+            const result = JSON.parse(data) as BacktestEvaluateResponse;
+            callbacks.onResult(result);
+          } catch (e) {
+            callbacks.onError(e instanceof Error ? e : new Error(String(e)));
+          }
+          return;
+        }
+        if (eventType === 'error' && data) {
+          try {
+            const { message } = JSON.parse(data) as { message?: string };
+            callbacks.onError(new Error(message ?? 'Unknown error'));
+          } catch {
+            callbacks.onError(new Error(data));
+          }
+        }
+      }
+    } catch (e) {
+      callbacks.onError(e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+    callbacks.onError(new Error('Stream ended without result'));
+  },
 };
