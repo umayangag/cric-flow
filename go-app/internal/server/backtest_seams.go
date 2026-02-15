@@ -32,8 +32,8 @@ var (
 		// Wire to default DB-based provider; tests may override this seam
 		return db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)
 	}
-	// ML seam for backtest: given cutoff and player ids, return predicted targets per player
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ []int64) (map[int64]playerPredictions, error) {
+	// ML seam for backtest: given cutoff, format, player ids, and optional features, return predicted targets per player
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64) (map[int64]playerPredictions, error) {
 		return nil, sql.ErrNoRows
 	}
 	// Match-level aggregates: actuals from DB for given match

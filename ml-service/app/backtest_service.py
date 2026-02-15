@@ -9,12 +9,94 @@ from .models import (
     BacktestMatchAgg,
     BacktestMetrics,
     BacktestPlayerPred,
+    BattingFeatures,
+    BowlingFeatures,
     HistoricalMatchBacktestRequest,
     HistoricalMatchBacktestResponse,
     MatchComparison,
     PlayerComparison,
     PlayerPoint,
 )
+
+
+def _float(d: Dict[str, float], key: str, default: float) -> float:
+    v = d.get(key)
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _int(d: Dict[str, float], key: str, default: int) -> int:
+    v = d.get(key)
+    if v is None:
+        return default
+    try:
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def build_batting_features_from_map(
+    player_id: int,
+    cutoff: datetime,
+    fmt: Optional[str],
+    feature_map: Dict[str, float],
+) -> BattingFeatures:
+    """Build BattingFeatures from go-app feature map; use defaults for missing keys."""
+    d = {k: v for k, v in feature_map.items()}
+    season = _int(d, "season", cutoff.year if cutoff else 0)
+    return BattingFeatures(
+        batting_consistency=max(0.0, _float(d, "batting_consistency", 0.5)),
+        batting_form=max(0.0, _float(d, "batting_form", _float(d, "avg_runs", 0.0))),
+        batting_temp=_int(d, "batting_temp", 25),
+        batting_wind=_int(d, "batting_wind", 0),
+        batting_rain=_int(d, "batting_rain", 0),
+        batting_humidity=_int(d, "batting_humidity", 50),
+        batting_cloud=_int(d, "batting_cloud", 0),
+        batting_pressure=_int(d, "batting_pressure", 0),
+        batting_viscosity=min(1, max(0, _int(d, "batting_viscosity", 0))),
+        batting_inning=min(2, max(1, _int(d, "batting_inning", 1))),
+        batting_session=min(3, max(1, _int(d, "batting_session", 1))),
+        toss=min(1, max(0, _int(d, "toss", 0))),
+        venue=_float(d, "venue", 0.5),
+        opposition=_float(d, "opposition", 0.5),
+        season=season,
+        player_name="",
+        format=fmt,
+    )
+
+
+def build_bowling_features_from_map(
+    player_id: int,
+    cutoff: datetime,
+    fmt: Optional[str],
+    feature_map: Dict[str, float],
+) -> BowlingFeatures:
+    """Build BowlingFeatures from go-app feature map; use defaults for missing keys."""
+    d = {k: v for k, v in feature_map.items()}
+    season = _int(d, "season", cutoff.year if cutoff else 0)
+    return BowlingFeatures(
+        bowling_consistency=max(0.0, _float(d, "bowling_consistency", 0.5)),
+        bowling_form=max(0.0, _float(d, "bowling_form", _float(d, "avg_wickets", 0.0))),
+        bowling_temp=_int(d, "bowling_temp", 25),
+        bowling_wind=_int(d, "bowling_wind", 0),
+        bowling_rain=_int(d, "bowling_rain", 0),
+        bowling_humidity=_int(d, "bowling_humidity", 50),
+        bowling_cloud=_int(d, "bowling_cloud", 0),
+        bowling_pressure=_int(d, "bowling_pressure", 0),
+        bowling_viscosity=min(1, max(0, _int(d, "bowling_viscosity", 0))),
+        batting_inning=min(2, max(1, _int(d, "batting_inning", 1))),
+        bowling_session=min(3, max(1, _int(d, "bowling_session", 1))),
+        toss=min(1, max(0, _int(d, "toss", 0))),
+        bowling_venue=_float(d, "bowling_venue", _float(d, "venue", 0.5)),
+        bowling_opposition=_float(d, "bowling_opposition", _float(d, "opposition", 0.5)),
+        season=season,
+        player_name="",
+        format=fmt,
+    )
 
 
 def resolve_model_version(app_version_fallback: str) -> str:

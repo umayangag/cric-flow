@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -27,8 +29,10 @@ func NewBacktestMLClient() *BacktestMLClient {
 
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
-	Cutoff    string  `json:"cutoff_date"`
-	PlayerIDs []int64 `json:"player_ids,omitempty"`
+	Cutoff    string                     `json:"cutoff_date"`
+	PlayerIDs []int64                    `json:"player_ids,omitempty"`
+	Format    string                     `json:"format,omitempty"`
+	Features  map[string]map[string]float64 `json:"features,omitempty"`
 }
 
 type mlBacktestPlayerPred struct {
@@ -127,15 +131,28 @@ type HistoricalBacktestResult struct {
 }
 
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
+// When format is non-empty and features is non-nil, they are sent so the ML service can run the full pipeline (real models).
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
 	cutoff time.Time,
+	format string,
 	playerIDs []int64,
+	features map[int64]map[string]float64,
 ) (map[int64]playerPredictions, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]playerPredictions{}, nil
 	}
-	body := mlBacktestPredictRequest{Cutoff: cutoff.Format(time.RFC3339), PlayerIDs: playerIDs}
+	body := mlBacktestPredictRequest{
+		Cutoff:    cutoff.Format(time.RFC3339),
+		PlayerIDs: playerIDs,
+		Format:    strings.TrimSpace(format),
+	}
+	if len(features) > 0 {
+		body.Features = make(map[string]map[string]float64, len(features))
+		for pid, m := range features {
+			body.Features[strconv.FormatInt(pid, 10)] = m
+		}
+	}
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(
 		ctx,

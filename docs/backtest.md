@@ -41,6 +41,10 @@ Response (abridged):
 ```
 GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=111
 ```
+
+Alternative for the Evaluate DB tab (SSE progress + same result):  
+`GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...` — streams `progress` events then a single `result` or `error`.  
+Match scorecard (actual): `GET /api/backtest/scorecard?match_id=...`
 Response (abridged):
 ```
 {
@@ -71,7 +75,8 @@ Response (abridged):
     "match_wickets_mae": 1,
     "match_extras_mae": 2,
     "winner_accuracy": 1
-  }
+  },
+  "predicted_scorecard": { "match_id": 111, "match_date": "...", "venue": "...", "innings": [ ... ] }
 }
 ```
 
@@ -93,6 +98,10 @@ Fielding metrics (when available):
 - `player_catches_mae`: mean absolute error of predicted vs actual catches across evaluated players.
 - `player_run_outs_mae`: mean absolute error of predicted vs actual run-outs across evaluated players.
 
+### Full pipeline vs baseline (player predictions)
+
+When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service may use **pre-trained batting/bowling models** for that format (full pipeline). When any of these is missing or no model is loaded for the format, it falls back to a **deterministic baseline** (RNG seeded by cutoff + player_id). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
+
 ### ML service endpoint (used by backend)
 
 The Go backend calls a dedicated ML endpoint to obtain predictions with a strict cutoff.
@@ -102,11 +111,24 @@ The Go backend calls a dedicated ML endpoint to obtain predictions with a strict
 
 1) Player predictions mode
 
-Request
+Request (minimal — baseline path)
 ```
 {
   "cutoff_date": "2024-10-30T14:00:00Z",
   "player_ids": [1, 2, 3]
+}
+```
+
+Request (full pipeline — when format and features are sent)
+```
+{
+  "cutoff_date": "2024-10-30T14:00:00Z",
+  "player_ids": [1, 2, 3],
+  "format": "T20",
+  "features": {
+    "1": {"batting_consistency": 0.5, "batting_form": 20.0, "bowling_consistency": 0.3, ...},
+    "2": { ... }
+  }
 }
 ```
 
@@ -139,7 +161,8 @@ Response
 
 Implementation notes
 - The ML service must honor the strict cutoff (train/aggregate only from data earlier than `cutoff_date`).
-- For v1 a deterministic baseline is implemented; later it can be replaced with trained models.
+- When the backend sends `format` and `features`, the ML service uses loaded per-format models if available; otherwise it uses a deterministic baseline (no DB, no training).
+- For full pipeline details (feature computation, SSE evaluate-stream, scorecards, debugging), see **docs/evaluate-db-pipeline.md**.
 
 ## Curl examples
 

@@ -15,6 +15,8 @@ from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_service import (
     DeterministicInMemoryRepo,
+    build_batting_features_from_map,
+    build_bowling_features_from_map,
 )
 from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
@@ -25,6 +27,7 @@ from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
     BacktestMatchResponse,
+    BacktestPlayerPred,
     BacktestPlayersResponse,
     BacktestPredictRequest,
     BattingFeatures,
@@ -143,6 +146,61 @@ async def request_context_middleware(request: Request, call_next):
 # Models are imported from app.models (see imports above)
 
 
+def _predict_players_with_features(
+    cutoff: datetime,
+    player_ids: List[int],
+    fmt: str,
+    features_map: Dict[str, Dict[str, float]],
+) -> List[BacktestPlayerPred]:
+    """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions."""
+    fmt_upper = (fmt or "").strip().upper()
+    bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
+    bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
+    if not bat_pair or not bowl_pair:
+        return svc_predict_players_baseline(cutoff, player_ids)
+
+    scaler_bat, model_bat = bat_pair
+    scaler_bowl, model_bowl = bowl_pair
+
+    bat_features: List[BattingFeatures] = []
+    bowl_features: List[BowlingFeatures] = []
+    for pid in player_ids:
+        fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+        bat_features.append(build_batting_features_from_map(pid, cutoff, fmt_upper, fm))
+        bowl_features.append(build_bowling_features_from_map(pid, cutoff, fmt_upper, fm))
+
+    X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+    if scaler_bat is not None:
+        X_bat = scaler_bat.transform(X_bat)
+    Y_bat = model_bat.predict(X_bat)
+
+    X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+    if scaler_bowl is not None:
+        X_bowl = scaler_bowl.transform(X_bowl)
+    Y_bowl = model_bowl.predict(X_bowl)
+
+    out: List[BacktestPlayerPred] = []
+    for i, pid in enumerate(player_ids):
+        row_bat = np.atleast_1d(Y_bat[i]).ravel()
+        row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
+        vals_bat = list(row_bat) + [0.0] * max(0, 6 - len(row_bat))
+        vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
+        runs = float(max(0.0, vals_bat[0]))
+        wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
+        economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else 6.0
+        out.append(
+            BacktestPlayerPred(
+                player_id=int(pid),
+                runs=runs,
+                wickets=wickets,
+                economy=economy,
+                catches=0.0,
+                run_outs=0.0,
+            )
+        )
+    return out
+
+
 @app.post("/ml/backtest/predict")
 def backtest_predict(req: BacktestPredictRequest):
     # Strict cutoff semantics are honored implicitly by not using post-cutoff data.
@@ -154,6 +212,21 @@ def backtest_predict(req: BacktestPredictRequest):
     cutoff_utc = cutoff_with_tz.astimezone(timezone.utc)
     cutoff_iso = cutoff_utc.isoformat().replace("+00:00", "Z")
     if req.player_ids is not None:
+        # Full pipeline: when format and features are provided and models are loaded, use them
+        use_full_pipeline = (
+            req.format is not None
+            and (req.format or "").strip()
+            and req.features is not None
+            and len(req.features) > 0
+        )
+        if use_full_pipeline:
+            global BACKTEST_PLAYERS_COMPUTE_COUNT
+            BACKTEST_PLAYERS_COMPUTE_COUNT += 1
+            preds = _predict_players_with_features(
+                cutoff, req.player_ids, req.format or "", req.features
+            )
+            body = BacktestPlayersResponse(players=preds).model_dump()
+            return JSONResponse(status_code=200, content=body)
         cached = _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)

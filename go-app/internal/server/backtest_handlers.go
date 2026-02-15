@@ -384,12 +384,12 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("features", "Computing feature data at cutoff (no future data)...")
 	}
-	_, _ = getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
+	features, _ := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
 
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting/bowling)...")
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, squad)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features)
 	if err != nil {
 		return nil, err
 	}

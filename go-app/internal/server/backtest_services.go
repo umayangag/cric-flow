@@ -90,7 +90,7 @@ func computePlayerRunsMAE(
 		return 0, false
 	}
 
-	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, squad)
+	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, m.Format, squad, nil)
 	acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
 	if err1 != nil || err2 != nil {
 		return 0, false
