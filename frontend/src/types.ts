@@ -65,6 +65,48 @@ export type BacktestEvaluateResponse = {
   };
 };
 
+// --- Match scorecard (for Evaluate DB tab) ---
+export type ScorecardBatting = {
+  player_name: string;
+  runs: number | null;
+  balls: number | null;
+  fours: number | null;
+  sixes: number | null;
+  strike_rate: number | null;
+  how_out: string | null;
+};
+
+export type ScorecardBowling = {
+  player_name: string;
+  overs: number | null;
+  maidens: number | null;
+  runs: number | null;
+  wickets: number | null;
+  economy: number | null;
+  wides: number | null;
+  no_balls: number | null;
+  balls: number | null;
+};
+
+export type ScorecardInning = {
+  inning_number: number;
+  batting_team_name: string;
+  bowling_team_name: string;
+  runs_scored: number;
+  wickets_lost: number;
+  extras: number;
+  target_runs?: number | null;
+  batting: ScorecardBatting[];
+  bowling: ScorecardBowling[];
+};
+
+export type MatchScorecardResponse = {
+  match_id: number;
+  match_date: string;
+  venue: string;
+  innings: ScorecardInning[];
+};
+
 // --- Ops Status (go-app API) DTO ---
 export type TableStat = {
   table_name: string;

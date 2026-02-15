@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
 // --- Helpers extracted for readability (no behavior change) ---
@@ -508,4 +510,29 @@ func mapMLResponseToBacktestResponse(
 		}
 	}
 	return out
+}
+
+// backtestScorecardHandler handles GET /api/backtest/scorecard?match_id=...
+// It returns the match scorecard (innings, batting and bowling card) for the given match.
+func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
+	matchIDStr := strings.TrimSpace(r.URL.Query().Get("match_id"))
+	if matchIDStr == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_id is required"})
+		return
+	}
+	matchID, err := strconv.ParseInt(matchIDStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
+		return
+	}
+	card, err := db.GetMatchScorecard(r.Context(), matchID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, apiError{Code: "NOT_FOUND", Message: "match not found"})
+			return
+		}
+		respondErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, card)
 }

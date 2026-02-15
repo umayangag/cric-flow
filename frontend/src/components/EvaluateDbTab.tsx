@@ -14,9 +14,10 @@ import {
 } from '@mui/material';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
-import type { BacktestCandidate, BacktestEvaluateResponse } from '../types';
+import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
+import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
 
@@ -137,6 +138,11 @@ const EvaluateDbTab: React.FC = () => {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [evaluationResult, setEvaluationResult] = useState<BacktestEvaluateResponse | null>(null);
 
+  // Match summary (scorecard) for selected match
+  const [scorecard, setScorecard] = useState<MatchScorecardResponse | null>(null);
+  const [scorecardLoading, setScorecardLoading] = useState<boolean>(false);
+  const [scorecardError, setScorecardError] = useState<string | null>(null);
+
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
     [format, team1, team2, loading],
@@ -150,9 +156,43 @@ const EvaluateDbTab: React.FC = () => {
     setCandidates([]);
     setSelectedMatchId(null);
     setEvaluationResult(null);
+    setScorecard(null);
+    setScorecardError(null);
     setStatusMessage('');
     setError(null);
   };
+
+  // Load match scorecard when a match is selected
+  useEffect(() => {
+    if (selectedMatchId == null) {
+      setScorecard(null);
+      setScorecardError(null);
+      return;
+    }
+    let active = true;
+    setScorecardLoading(true);
+    setScorecardError(null);
+    api
+      .getMatchScorecard(selectedMatchId)
+      .then((data) => {
+        if (active) {
+          setScorecard(data);
+          setScorecardError(null);
+        }
+      })
+      .catch((e: unknown) => {
+        if (active) {
+          setScorecard(null);
+          setScorecardError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (active) setScorecardLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedMatchId]);
 
   const handleLoadCandidates = async () => {
     try {
@@ -272,6 +312,13 @@ const EvaluateDbTab: React.FC = () => {
           selectedMatchId={selectedMatchId}
           onSelectMatch={setSelectedMatchId}
         />
+        {selectedMatchId != null && (
+          <MatchScorecard
+            scorecard={scorecard}
+            loading={scorecardLoading}
+            error={scorecardError}
+          />
+        )}
         <Box sx={{ mt: 2 }}>
           <Button
             variant="contained"

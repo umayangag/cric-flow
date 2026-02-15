@@ -2,6 +2,7 @@ import type {
   HealthResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
+  MatchScorecardResponse,
   Migration,
   Suggestion,
   PaginatedResponse,
@@ -105,5 +106,11 @@ export const api = {
   },
   getFormats(): Promise<string[]> {
     return httpApi('/api/options/formats');
+  },
+  /** Match scorecard (innings, batting and bowling card) for evaluate DB tab. */
+  getMatchScorecard(matchId: number): Promise<MatchScorecardResponse> {
+    const u = new URL('/api/backtest/scorecard', BASE_API_URL);
+    u.searchParams.set('match_id', String(matchId));
+    return httpApi(u.toString());
   },
 };
