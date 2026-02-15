@@ -231,11 +231,18 @@ def fetch_training_data(
         cutoff_iso=cutoff_iso,
         has_api_key=api_key is not None,
     )
+    timeout_sec = 600
+    env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
+    if env_timeout is not None:
+        try:
+            timeout_sec = int(env_timeout)
+        except ValueError:
+            pass
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""

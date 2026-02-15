@@ -535,6 +535,35 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	return q, args
 }
 
+type bowlingTrainingRowRaw struct {
+	matchDate    time.Time
+	playerID     int64
+	formatID     int64
+	venueID      int64
+	oppositionID int64
+	runs         string
+	balls        string
+	wickets      string
+	temp         string
+	wind         string
+	rain         string
+	humidity     string
+	cloud        string
+	pressure     string
+	viscosity    string
+	inning       string
+	sess         string
+	toss         string
+	seasonID     string
+	playerName   string
+	formatCode   string
+	catches      string
+	runOuts      string
+	stumpings    string
+	runoutsDH    string
+	fieldingInv  string
+}
+
 func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
 	q, args := bowlingTrainingRowsRawQuery(formatIDs, cutoff)
 	rows, err := db.Pool.Query(ctx, q, args...)
@@ -542,66 +571,113 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		return nil, err
 	}
 	defer rows.Close()
+	var rawRows []bowlingTrainingRowRaw
+	for rows.Next() {
+		var r bowlingTrainingRowRaw
+		err := rows.Scan(
+			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
+			&r.runs, &r.balls, &r.wickets,
+			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
+			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
+			&r.formatCode,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rawRows = append(rawRows, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	type mainKey struct {
+		P int64
+		T time.Time
+		F int64
+	}
+	type venueKey struct {
+		P int64
+		T time.Time
+		F int64
+		V int64
+	}
+	type oppKey struct {
+		P int64
+		T time.Time
+		F int64
+		O int64
+	}
+	mainKeys := make(map[mainKey]struct{})
+	venueKeys := make(map[venueKey]struct{})
+	oppKeys := make(map[oppKey]struct{})
+	for _, r := range rawRows {
+		mainKeys[mainKey{r.playerID, r.matchDate, r.formatID}] = struct{}{}
+		if r.venueID != 0 {
+			venueKeys[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}] = struct{}{}
+		}
+		if r.oppositionID != 0 {
+			oppKeys[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}] = struct{}{}
+		}
+	}
+	mainCache := make(map[mainKey][]db.InnVal)
+	for k := range mainKeys {
+		hist, err := db.ListBowlingBefore(ctx, k.P, k.T, k.F, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list bowling before player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		mainCache[k] = hist
+	}
+	venueCache := make(map[venueKey][]db.InnVal)
+	for k := range venueKeys {
+		vID := k.V
+		hist, err := db.ListBowlingBefore(ctx, k.P, k.T, k.F, nil, &vID)
+		if err != nil {
+			return nil, fmt.Errorf("list bowling before (venue) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		venueCache[k] = hist
+	}
+	oppCache := make(map[oppKey][]db.InnVal)
+	for k := range oppKeys {
+		oID := k.O
+		hist, err := db.ListBowlingBefore(ctx, k.P, k.T, k.F, &oID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list bowling before (opposition) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		oppCache[k] = hist
+	}
 	headers := []string{
 		"runs", "balls", "wickets",
 		"bowling_consistency", "bowling_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 	}
-	out := make([][]string, 0, 1024)
-	out = append(out, headers)
 	alpha := DefaultEWMAlpha
 	lastN := DefaultConsistencyLastN
 	windowN := DefaultFormWindowN
-	for rows.Next() {
-		var matchDate time.Time
-		var playerID, formatID, venueID, oppositionID int64
-		var runs, balls, wickets string
-		var temp, wind, rain, humidity, cloud, pressure, viscosity string
-		var inning, sess, toss, seasonID string
-		var playerName, formatCode string
-		var catches, runOuts, stumpings, runoutsDH, fieldingInv string
-		err := rows.Scan(
-			&matchDate, &playerID, &formatID, &venueID, &oppositionID,
-			&runs, &balls, &wickets,
-			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
-			&inning, &sess, &toss, &seasonID, &playerName,
-			&catches, &runOuts, &stumpings, &runoutsDH, &fieldingInv,
-			&formatCode,
-		)
-		if err != nil {
-			return nil, err
+	out := make([][]string, 0, len(rawRows)+1)
+	out = append(out, headers)
+	for _, r := range rawRows {
+		mk := mainKey{r.playerID, r.matchDate, r.formatID}
+		mainHist := mainCache[mk]
+		var venueHist, oppHist []db.InnVal
+		if r.venueID != 0 {
+			venueHist = venueCache[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}]
 		}
-		var vID, oID *int64
-		if venueID != 0 {
-			vID = &venueID
+		if r.oppositionID != 0 {
+			oppHist = oppCache[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}]
 		}
-		if oppositionID != 0 {
-			oID = &oppositionID
-		}
-		snap, err := computeBowlingSnapshotAtCutoff(ctx, playerID, matchDate, formatID, vID, oID, alpha, lastN, windowN)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"compute bowling snapshot player=%d asOf=%s: %w",
-				playerID,
-				matchDate.Format(time.RFC3339),
-				err,
-			)
-		}
+		snap := computeBowlingSnapshotFromHistories(mainHist, venueHist, oppHist, r.matchDate, alpha, lastN, windowN)
 		row := []string{
-			runs, balls, wickets,
+			r.runs, r.balls, r.wickets,
 			floatToExport(snap.consistency), floatToExport(snap.form),
-			temp, wind, rain, humidity, cloud, pressure, viscosity,
-			inning, sess, toss,
+			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
+			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			seasonID, playerName,
-			catches, runOuts, stumpings, runoutsDH, fieldingInv,
-			formatCode,
+			r.seasonID, r.playerName,
+			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
+			r.formatCode,
 		}
 		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return out, nil
 }

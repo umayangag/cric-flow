@@ -240,13 +240,21 @@ export const api = {
     const headers: Record<string, string> = {};
     const apiKey = localStorage.getItem('cric_info_api_key');
     if (apiKey) headers['X-API-Key'] = apiKey;
-    return fetch(u.toString(), { method: 'POST', headers }).then(async (res) => {
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`HTTP ${res.status}: ${text}`);
-      }
-      return res.json() as Promise<{ job_id: string }>;
-    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+    return fetch(u.toString(), { method: 'POST', headers, signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+        return res.json() as Promise<{ job_id: string }>;
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+      });
   },
 
   /** Get current status of an evaluation job (running / done / error). Poll until status is done or error. */

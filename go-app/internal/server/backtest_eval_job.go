@@ -89,8 +89,16 @@ func (s *evalJobState) snapshot() evalJobStatusResponse {
 }
 
 var (
-	evalJobStore   = make(map[string]*evalJobState)
-	evalJobStoreMu sync.RWMutex
+	evalJobStore     = make(map[string]*evalJobState)
+	evalJobStoreMu   sync.RWMutex
+	evalJobSem       chan struct{} // limits concurrent running jobs
+	evalJobCleanupCh chan struct{} // closed to stop cleanup goroutine
+)
+
+const (
+	evalJobMaxConcurrent = 4
+	evalJobCleanupAge    = 24 * time.Hour
+	evalJobCleanupEvery  = 15 * time.Minute
 )
 
 func generateEvalJobID() (string, error) {
@@ -103,6 +111,40 @@ func generateEvalJobID() (string, error) {
 
 // evalJobMaxDuration is the maximum time an evaluation job may run (e.g. train-on-the-fly can take hours).
 const evalJobMaxDuration = 6 * time.Hour
+
+func init() {
+	evalJobSem = make(chan struct{}, evalJobMaxConcurrent)
+	evalJobCleanupCh = make(chan struct{})
+	go evalJobCleanupLoop()
+}
+
+// evalJobCleanupLoop periodically removes jobs older than evalJobCleanupAge to prevent unbounded memory growth.
+func evalJobCleanupLoop() {
+	ticker := time.NewTicker(evalJobCleanupEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-evalJobCleanupCh:
+			return
+		case <-ticker.C:
+			evalJobCleanup()
+		}
+	}
+}
+
+func evalJobCleanup() {
+	cutoff := time.Now().Add(-evalJobCleanupAge)
+	evalJobStoreMu.Lock()
+	defer evalJobStoreMu.Unlock()
+	for id, job := range evalJobStore {
+		job.mu.Lock()
+		updated := job.UpdatedAt
+		job.mu.Unlock()
+		if updated.Before(cutoff) {
+			delete(evalJobStore, id)
+		}
+	}
+}
 
 // startEvaluateJob starts doEvaluateWork in a goroutine and returns the job ID immediately.
 // The job state is updated with progress and final result or error.
@@ -130,6 +172,9 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 	evalJobStoreMu.Unlock()
 
 	go func() {
+		// Limit concurrent evaluation jobs to avoid exhausting server resources.
+		evalJobSem <- struct{}{}
+		defer func() { <-evalJobSem }()
 		// Not the request context (cancelled when we return 202). Use a long deadline so the job
 		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
 		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration)

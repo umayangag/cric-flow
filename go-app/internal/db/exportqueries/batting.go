@@ -562,6 +562,37 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	return q, args
 }
 
+// battingTrainingRowRaw holds one scanned row before snapshot computation (for batch N+1 fix).
+type battingTrainingRowRaw struct {
+	matchDate    time.Time
+	playerID     int64
+	formatID     int64
+	venueID      int64
+	oppositionID int64
+	runs         string
+	balls        string
+	fours        string
+	sixes        string
+	pos          string
+	temp         string
+	wind         string
+	rain         string
+	humidity     string
+	cloud        string
+	pressure     string
+	viscosity    string
+	inning       string
+	sess         string
+	toss         string
+	seasonID     string
+	playerName   string
+	catches      string
+	runOuts      string
+	stumpings    string
+	runoutsDH    string
+	fieldingInv  string
+}
+
 func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
 	q, args := battingTrainingRowsRawQuery(formatIDs, cutoff)
 	rows, err := db.Pool.Query(ctx, q, args...)
@@ -569,64 +600,114 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		return nil, err
 	}
 	defer rows.Close()
+	var rawRows []battingTrainingRowRaw
+	for rows.Next() {
+		var r battingTrainingRowRaw
+		err := rows.Scan(
+			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
+			&r.runs, &r.balls, &r.fours, &r.sixes, &r.pos,
+			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
+			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rawRows = append(rawRows, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Batch-fetch histories to avoid N+1: one query per unique (playerID, matchDate, formatID) and per venue/opposition scope.
+	type mainKey struct {
+		P int64
+		T time.Time
+		F int64
+	}
+	type venueKey struct {
+		P int64
+		T time.Time
+		F int64
+		V int64
+	}
+	type oppKey struct {
+		P int64
+		T time.Time
+		F int64
+		O int64
+	}
+	mainKeys := make(map[mainKey]struct{})
+	venueKeys := make(map[venueKey]struct{})
+	oppKeys := make(map[oppKey]struct{})
+	for _, r := range rawRows {
+		mainKeys[mainKey{r.playerID, r.matchDate, r.formatID}] = struct{}{}
+		if r.venueID != 0 {
+			venueKeys[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}] = struct{}{}
+		}
+		if r.oppositionID != 0 {
+			oppKeys[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}] = struct{}{}
+		}
+	}
+	mainCache := make(map[mainKey][]db.InnVal)
+	for k := range mainKeys {
+		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list batting before player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		mainCache[k] = hist
+	}
+	venueCache := make(map[venueKey][]db.InnVal)
+	for k := range venueKeys {
+		vID := k.V
+		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, nil, &vID)
+		if err != nil {
+			return nil, fmt.Errorf("list batting before (venue) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		venueCache[k] = hist
+	}
+	oppCache := make(map[oppKey][]db.InnVal)
+	for k := range oppKeys {
+		oID := k.O
+		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, &oID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list batting before (opposition) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+		}
+		oppCache[k] = hist
+	}
+
 	headers := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
-	out := make([][]string, 0, 1024)
-	out = append(out, headers)
 	alpha := DefaultEWMAlpha
 	lastN := DefaultConsistencyLastN
 	windowN := DefaultFormWindowN
-	for rows.Next() {
-		var matchDate time.Time
-		var playerID, formatID, venueID, oppositionID int64
-		var runs, balls, fours, sixes, pos string
-		var temp, wind, rain, humidity, cloud, pressure, viscosity string
-		var inning, sess, toss, seasonID string
-		var playerName string
-		var catches, runOuts, stumpings, runoutsDH, fieldingInv string
-		err := rows.Scan(
-			&matchDate, &playerID, &formatID, &venueID, &oppositionID,
-			&runs, &balls, &fours, &sixes, &pos,
-			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
-			&inning, &sess, &toss, &seasonID, &playerName,
-			&catches, &runOuts, &stumpings, &runoutsDH, &fieldingInv,
-		)
-		if err != nil {
-			return nil, err
+	out := make([][]string, 0, len(rawRows)+1)
+	out = append(out, headers)
+	for _, r := range rawRows {
+		mk := mainKey{r.playerID, r.matchDate, r.formatID}
+		mainHist := mainCache[mk]
+		var venueHist, oppHist []db.InnVal
+		if r.venueID != 0 {
+			venueHist = venueCache[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}]
 		}
-		var vID, oID *int64
-		if venueID != 0 {
-			vID = &venueID
+		if r.oppositionID != 0 {
+			oppHist = oppCache[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}]
 		}
-		if oppositionID != 0 {
-			oID = &oppositionID
-		}
-		snap, err := computeBattingSnapshotAtCutoff(ctx, playerID, matchDate, formatID, vID, oID, alpha, lastN, windowN)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"compute batting snapshot player=%d asOf=%s: %w",
-				playerID,
-				matchDate.Format(time.RFC3339),
-				err,
-			)
-		}
+		snap := computeBattingSnapshotFromHistories(mainHist, venueHist, oppHist, r.matchDate, alpha, lastN, windowN)
 		row := []string{
-			runs, balls, fours, sixes, pos,
+			r.runs, r.balls, r.fours, r.sixes, r.pos,
 			floatToExport(snap.consistency), floatToExport(snap.form),
-			temp, wind, rain, humidity, cloud, pressure, viscosity,
-			inning, sess, toss,
+			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
+			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			seasonID, playerName,
-			catches, runOuts, stumpings, runoutsDH, fieldingInv,
+			r.seasonID, r.playerName,
+			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 		}
 		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return out, nil
 }

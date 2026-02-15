@@ -96,6 +96,46 @@ func computeBattingSnapshotAtCutoff(
 	return out, nil
 }
 
+// computeBattingSnapshotFromHistories computes form/consistency/venue/opposition from pre-fetched histories (avoids N+1 when batching).
+func computeBattingSnapshotFromHistories(
+	mainHist, venueHist, oppHist []db.InnVal,
+	asOf time.Time,
+	alpha float64,
+	lastN, windowN int,
+) battingSnapshotAtCutoff {
+	out := battingSnapshotAtCutoff{}
+	if alpha <= 0 {
+		alpha = DefaultEWMAlpha
+	}
+	if lastN < 0 {
+		lastN = DefaultConsistencyLastN
+	}
+	inn := toInnings(mainHist)
+	inn = features.SortAndClip(inn, asOf)
+	if windowN > 0 && len(inn) > windowN {
+		inn = inn[len(inn)-windowN:]
+	}
+	out.form, _ = features.EWM(inn, alpha)
+	out.consistency, _ = features.Consistency(inn, lastN)
+	if len(venueHist) > 0 {
+		venInn := toInnings(venueHist)
+		venInn = features.SortAndClip(venInn, asOf)
+		if windowN > 0 && len(venInn) > windowN {
+			venInn = venInn[len(venInn)-windowN:]
+		}
+		out.venue, _ = features.EWM(venInn, alpha)
+	}
+	if len(oppHist) > 0 {
+		oppInn := toInnings(oppHist)
+		oppInn = features.SortAndClip(oppInn, asOf)
+		if windowN > 0 && len(oppInn) > windowN {
+			oppInn = oppInn[len(oppInn)-windowN:]
+		}
+		out.opposition, _ = features.EWM(oppInn, alpha)
+	}
+	return out
+}
+
 // computeBowlingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
 func computeBowlingSnapshotAtCutoff(
 	ctx context.Context,
@@ -151,6 +191,46 @@ func computeBowlingSnapshotAtCutoff(
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
 	return out, nil
+}
+
+// computeBowlingSnapshotFromHistories computes form/consistency/venue/opposition from pre-fetched histories (avoids N+1 when batching).
+func computeBowlingSnapshotFromHistories(
+	mainHist, venueHist, oppHist []db.InnVal,
+	asOf time.Time,
+	alpha float64,
+	lastN, windowN int,
+) bowlingSnapshotAtCutoff {
+	out := bowlingSnapshotAtCutoff{}
+	if alpha <= 0 {
+		alpha = DefaultEWMAlpha
+	}
+	if lastN < 0 {
+		lastN = DefaultConsistencyLastN
+	}
+	inn := toInnings(mainHist)
+	inn = features.SortAndClip(inn, asOf)
+	if windowN > 0 && len(inn) > windowN {
+		inn = inn[len(inn)-windowN:]
+	}
+	out.form, _ = features.EWM(inn, alpha)
+	out.consistency, _ = features.Consistency(inn, lastN)
+	if len(venueHist) > 0 {
+		venInn := toInnings(venueHist)
+		venInn = features.SortAndClip(venInn, asOf)
+		if windowN > 0 && len(venInn) > windowN {
+			venInn = venInn[len(venInn)-windowN:]
+		}
+		out.venue, _ = features.EWM(venInn, alpha)
+	}
+	if len(oppHist) > 0 {
+		oppInn := toInnings(oppHist)
+		oppInn = features.SortAndClip(oppInn, asOf)
+		if windowN > 0 && len(oppInn) > windowN {
+			oppInn = oppInn[len(oppInn)-windowN:]
+		}
+		out.opposition, _ = features.EWM(oppInn, alpha)
+	}
+	return out
 }
 
 // ComputeFeaturesAtCutoffForMatch returns a feature map per player using the same EWM/Consistency/venue/opposition
