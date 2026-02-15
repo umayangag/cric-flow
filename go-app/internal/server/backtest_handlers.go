@@ -105,11 +105,10 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			p := preds[w.PlayerID]
 			wkts := int(math.Round(p.Wickets))
 			predWicketsSum += wkts
-			ec := float32(p.Economy)
+			ec := float32Ptr(float32(p.Economy))
 			var predRuns *int
 			if w.Overs != nil && *w.Overs > 0 {
-				r := int(math.Round(float64(*w.Overs) * p.Economy))
-				predRuns = &r
+				predRuns = intPtr(int(math.Round(float64(*w.Overs) * p.Economy)))
 			}
 			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{
 				PlayerID:   w.PlayerID,
@@ -118,7 +117,7 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				Maidens:    nil,
 				Runs:       predRuns,
 				Wickets:    intPtr(wkts),
-				Economy:    &ec,
+				Economy:    ec,
 				Wides:      nil,
 				NoBalls:    nil,
 				Balls:      w.Balls,
@@ -130,7 +129,15 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 	return out
 }
 
-func intPtr(n int) *int { return &n }
+func intPtr(n int) *int {
+	v := n
+	return &v
+}
+
+func float32Ptr(f float32) *float32 {
+	v := f
+	return &v
+}
 
 // computePlayerResultsAndMetrics walks through the given squad, pairing predictions with
 // actuals to produce per-player results and summary metrics.

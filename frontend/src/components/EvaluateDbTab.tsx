@@ -178,6 +178,7 @@ const EvaluateDbTab: React.FC = () => {
     if (selectedMatchId == null) {
       setScorecard(null);
       setScorecardError(null);
+      setScorecardLoading(false);
       return;
     }
     let active = true;
