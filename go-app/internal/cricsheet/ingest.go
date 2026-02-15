@@ -54,6 +54,10 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	for _, f := range files {
 		f := f // capture
 		g.Go(func() error {
+			// Skip without logging if another file already failed (ctx cancelled).
+			if err := ctx.Err(); err != nil {
+				return nil
+			}
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
 				slog.Error("import failed, stopping",

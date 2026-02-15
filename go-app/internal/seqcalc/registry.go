@@ -107,6 +107,9 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 	for _, c := range calcs {
 		c := c // capture
 		g.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return nil
+			}
 			return c.Compute(ctx, params, dry)
 		})
 	}

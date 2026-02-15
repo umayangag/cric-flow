@@ -51,6 +51,9 @@ func (Runner) RunReplay(
 		for _, pid := range players {
 			pid := pid // capture
 			g.Go(func() error {
+				if err := pCtx.Err(); err != nil {
+					return nil
+				}
 				// Base histories strictly before match date
 				batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 				if err != nil {
@@ -202,6 +205,9 @@ func (Runner) RunPointInTime(
 	for _, pid := range players {
 		pid := pid // capture
 		g.Go(func() error {
+			if err := pCtx.Err(); err != nil {
+				return nil
+			}
 			batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 			if err != nil {
 				return fmt.Errorf("batting history pid=%d: %w", pid, err)

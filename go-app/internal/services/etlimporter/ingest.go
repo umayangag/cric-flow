@@ -60,6 +60,9 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	var allBat []db.EtlBattingRow
 	var allBowl []db.EtlBowlingRow
 	for _, p := range matches {
+		if err := ctx.Err(); err != nil {
+			return st, err
+		}
 		slog.Info("processing ETL file", slog.String("path", p))
 		b, rerr := os.ReadFile(p)
 		if rerr != nil {

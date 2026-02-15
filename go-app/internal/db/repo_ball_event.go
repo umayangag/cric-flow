@@ -55,7 +55,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 			slog.Debug("insert ball event", slog.Int("match_id", int(r.MatchID)), slog.Any("row", r))
 			err := PoolAPI.Exec(ctx, `
                 INSERT INTO ball_event(
-                    match_id, innings, over, ball, ball_seq, is_legal, phase,
+                    match_id, innings, "over", ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,
                     runs_batter, runs_extras, runs_total,
                     extras_kind, wicket_kind, player_out_id
@@ -65,7 +65,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
                     $11,$12,$13,
                     $14,$15,$16
                 )
-                ON CONFLICT (match_id, innings, over, ball) DO NOTHING
+                ON CONFLICT (match_id, innings, "over", ball) DO NOTHING
             `,
 				r.MatchID, r.Innings, r.Over, r.Ball, r.BallSeq, r.IsLegal, r.Phase,
 				r.StrikerID, r.NonStrikerID, r.BowlerID,
@@ -99,7 +99,7 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
         SELECT 
             match_id::bigint,
             innings::int,
-            over::int,
+            "over"::int,
             ball::int,
             ball_seq::int,
             is_legal::boolean,
@@ -164,18 +164,18 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 	// Insert into the real table with idempotency.
 	err = tx.Exec(ctx, `
         INSERT INTO ball_event(
-            match_id, innings, over, ball, ball_seq, is_legal, phase,
+            match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
         )
         SELECT 
-            match_id, innings, over, ball, ball_seq, is_legal, phase,
+            match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id,
             runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
         FROM ball_event_stage
-        ON CONFLICT (match_id, innings, over, ball) DO NOTHING
+        ON CONFLICT (match_id, innings, "over", ball) DO NOTHING
     `)
 	if err != nil {
 		return err
@@ -197,12 +197,12 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 			r := rows[i]
 			if err := tx.Exec(ctx, `
                 INSERT INTO ball_event(
-                    match_id, innings, over, ball, ball_seq, is_legal, phase,
+                    match_id, innings, "over", ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,
                     runs_batter, runs_extras, runs_total,
                     extras_kind, wicket_kind, player_out_id
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-                ON CONFLICT (match_id, innings, over, ball) DO NOTHING
+                ON CONFLICT (match_id, innings, "over", ball) DO NOTHING
             `,
 				r.MatchID, r.Innings, r.Over, r.Ball, r.BallSeq, r.IsLegal, r.Phase,
 				r.StrikerID, r.NonStrikerID, r.BowlerID,
@@ -217,7 +217,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 	_ = tx.Exec(ctx, `DROP TABLE IF EXISTS ball_event_stage`)
 	err := tx.Exec(ctx, `
         CREATE TEMP TABLE ball_event_stage AS
-        SELECT match_id::bigint, innings::int, over::int, ball::int, ball_seq::int,
+        SELECT match_id::bigint, innings::int, "over"::int, ball::int, ball_seq::int,
             is_legal::boolean, phase::text, striker_id::bigint, non_striker_id::bigint,
             bowler_id::bigint, runs_batter::int, runs_extras::int, runs_total::int,
             extras_kind::text, wicket_kind::text, player_out_id::bigint
@@ -249,13 +249,13 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 		return err
 	}
 	return tx.Exec(ctx, `
-        INSERT INTO ball_event(match_id, innings, over, ball, ball_seq, is_legal, phase,
+        INSERT INTO ball_event(match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id)
-        SELECT match_id, innings, over, ball, ball_seq, is_legal, phase,
+        SELECT match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
             extras_kind, wicket_kind, player_out_id
         FROM ball_event_stage
-        ON CONFLICT (match_id, innings, over, ball) DO NOTHING
+        ON CONFLICT (match_id, innings, "over", ball) DO NOTHING
     `)
 }
