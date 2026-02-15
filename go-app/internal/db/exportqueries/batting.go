@@ -662,7 +662,12 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		vID := k.V
 		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, nil, &vID)
 		if err != nil {
-			return nil, fmt.Errorf("list batting before (venue) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+			return nil, fmt.Errorf(
+				"list batting before (venue) player=%d asOf=%s: %w",
+				k.P,
+				k.T.Format(time.RFC3339),
+				err,
+			)
 		}
 		venueCache[k] = hist
 	}
@@ -671,7 +676,12 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		oID := k.O
 		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, &oID, nil)
 		if err != nil {
-			return nil, fmt.Errorf("list batting before (opposition) player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
+			return nil, fmt.Errorf(
+				"list batting before (opposition) player=%d asOf=%s: %w",
+				k.P,
+				k.T.Format(time.RFC3339),
+				err,
+			)
 		}
 		oppCache[k] = hist
 	}

@@ -1,13 +1,6 @@
 import React, { useMemo } from 'react';
 import { FormatHierarchyNode } from '../types';
-import ReactFlow, {
-  Node,
-  Edge,
-  Background,
-  ConnectionLineType,
-  Position,
-  Handle,
-} from 'reactflow';
+import ReactFlow, { Node, Edge, Background, ConnectionLineType, Position, Handle } from 'reactflow';
 import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';

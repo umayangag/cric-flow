@@ -28,7 +28,7 @@ var DefaultFeatureProviderInst FeatureProvider = &DefaultFeatureProvider{}
 // GetPlayerFeaturesAtCutoff implements FeatureProvider. It does not use averages; returns an error so callers
 // use the precomputed path (ComputeFeaturesAtCutoffForMatch or ComputeFeaturesAtCutoffNoMatch with format).
 func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
-	ctx context.Context,
+	_ context.Context,
 	cutoff time.Time,
 	playerIDs []int64,
 ) (map[int64]map[string]float64, error) {
@@ -38,5 +38,7 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 	if len(playerIDs) == 0 {
 		return map[int64]map[string]float64{}, nil
 	}
-	return nil, errors.New("player features require precomputed values only (no averages); use exportqueries.ComputeFeaturesAtCutoffForMatch with matchID or ComputeFeaturesAtCutoffNoMatch with format when no match")
+	return nil, errors.New(
+		"player features require precomputed values only (no averages); use exportqueries.ComputeFeaturesAtCutoffForMatch with matchID or ComputeFeaturesAtCutoffNoMatch with format when no match",
+	)
 }

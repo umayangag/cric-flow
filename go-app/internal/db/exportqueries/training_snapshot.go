@@ -43,6 +43,8 @@ func toInnings(in []db.InnVal) []features.Innings {
 }
 
 // computeBattingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
+//
+//nolint:unused // kept for consistency with precompute-features and possible future use
 func computeBattingSnapshotAtCutoff(
 	ctx context.Context,
 	playerID int64,
@@ -140,6 +142,8 @@ func computeBattingSnapshotFromHistories(
 }
 
 // computeBowlingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
+//
+//nolint:unused // kept for consistency with precompute-features and possible future use
 func computeBowlingSnapshotAtCutoff(
 	ctx context.Context,
 	playerID int64,
@@ -434,7 +438,11 @@ func ComputeFeaturesAtCutoffNoMatch(
 		precomp = make(map[int64]map[string]float64)
 	}
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysNoMatch); len(m) > 0 {
-		return nil, fmt.Errorf("precomputed features required (run precompute for format %s): %s", format, strings.Join(m, "; "))
+		return nil, fmt.Errorf(
+			"precomputed features required (run precompute for format %s): %s",
+			format,
+			strings.Join(m, "; "),
+		)
 	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {
@@ -454,7 +462,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"venue":               0,
 			"opposition":          0,
 			"season":              0,
-			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 		}
 		out[pid] = feats
@@ -505,7 +513,10 @@ func ComputeFeaturesAtCutoffForMatch(
 		requiredMatch = append(requiredMatch, "batting_opposition", "bowling_opposition", "opposition")
 	}
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredMatch); len(m) > 0 {
-		return nil, fmt.Errorf("precomputed features required (run precompute for this format): %s", strings.Join(m, "; "))
+		return nil, fmt.Errorf(
+			"precomputed features required (run precompute for this format): %s",
+			strings.Join(m, "; "),
+		)
 	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {
@@ -556,7 +567,7 @@ func ComputeFeaturesAtCutoffForMatch(
 			"venue":               venue,
 			"opposition":          opposition,
 			"season":              season,
-			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 		}
 		out[pid] = feats

@@ -60,7 +60,7 @@ func TestGetMatchFeatureContext_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, int64(2), got.FormatID)
-	require.Nil(t, got.VenueID)   // mock returned nil for nullable columns
+	require.Nil(t, got.VenueID) // mock returned nil for nullable columns
 	require.Nil(t, got.SeasonID)
 	require.Len(t, got.PlayerOpps, 2)
 	byPID := make(map[int64]db.PlayerOpposition)
