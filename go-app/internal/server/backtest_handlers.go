@@ -647,7 +647,11 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 	team2 := strings.TrimSpace(q.Get("team2"))
 	matchID := strings.TrimSpace(q.Get("match_id"))
 	if format == "" || team1 == "" || team2 == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"},
+		)
 		return
 	}
 	if matchID == "" {
@@ -733,13 +737,13 @@ func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
 
 // trainingDataResponse is the JSON shape for GET /api/backtest/training-data (for ML service train-on-the-fly).
 type trainingDataResponse struct {
-	Batting  trainingDataPart `json:"batting"`
-	Bowling  trainingDataPart `json:"bowling"`
+	Batting trainingDataPart `json:"batting"`
+	Bowling trainingDataPart `json:"bowling"`
 }
 
 type trainingDataPart struct {
-	Headers []string     `json:"headers"`
-	Rows    [][]string   `json:"rows"`
+	Headers []string   `json:"headers"`
+	Rows    [][]string `json:"rows"`
 }
 
 // backtestTrainingDataHandler handles GET /api/backtest/training-data?format=T20&cutoff=2024-10-30T00:00:00Z.
@@ -784,7 +788,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		bowlData = bowlRows[1:]
 	}
 	writeJSON(w, http.StatusOK, trainingDataResponse{
-		Batting:  trainingDataPart{Headers: batHeaders, Rows: batData},
-		Bowling:  trainingDataPart{Headers: bowlHeaders, Rows: bowlData},
+		Batting: trainingDataPart{Headers: batHeaders, Rows: batData},
+		Bowling: trainingDataPart{Headers: bowlHeaders, Rows: bowlData},
 	})
 }

@@ -172,7 +172,7 @@ func init() {
 		return ids, nil
 	}
 	// Actuals for match: squad from batting_data UNION bowling_data, then LEFT JOIN batting/bowling/fielding stats.
-		getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
+	getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
 		if db.Pool == nil {
 			return nil, errors.New("db pool not initialized")
 		}

@@ -1,7 +1,7 @@
 import os
 import time
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -21,7 +21,6 @@ from .backtest_service import (
 from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
-from .train_on_the_fly import train_on_the_fly
 from .errors import error_payload
 from .features import batting_feature_vector, bowling_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
@@ -36,6 +35,7 @@ from .models import (
     BowlingPrediction,
     HistoricalMatchBacktestRequest,
 )
+from .train_on_the_fly import train_on_the_fly
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
@@ -162,8 +162,7 @@ def _predict_players_with_features(
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip()
         if not go_app_url:
             raise ValueError(
-                "GO_APP_URL is required for train-on-the-fly when no artifacts are loaded for format=%s"
-                % fmt_upper
+                "GO_APP_URL is required for train-on-the-fly when no artifacts are loaded for format=%s" % fmt_upper
             )
         _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -225,10 +224,7 @@ def backtest_predict(req: BacktestPredictRequest):
     if req.player_ids is not None:
         # Player predictions require format and features (no deterministic baseline)
         use_full_pipeline = (
-            req.format is not None
-            and (req.format or "").strip()
-            and req.features is not None
-            and len(req.features) > 0
+            req.format is not None and (req.format or "").strip() and req.features is not None and len(req.features) > 0
         )
         if not use_full_pipeline:
             raise HTTPException(
@@ -245,9 +241,7 @@ def backtest_predict(req: BacktestPredictRequest):
         global BACKTEST_PLAYERS_COMPUTE_COUNT
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
         try:
-            preds = _predict_players_with_features(
-                cutoff, req.player_ids, req.format or "", req.features
-            )
+            preds = _predict_players_with_features(cutoff, req.player_ids, req.format or "", req.features)
         except ValueError as e:
             raise HTTPException(
                 status_code=503,

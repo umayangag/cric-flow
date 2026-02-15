@@ -32,6 +32,7 @@ def test_backtest_predict_players_mode_with_format_and_features_schema():
     # If no T20 artifacts are loaded, train_on_the_fly would be called (needs GO_APP_URL).
     # Mock train_on_the_fly to return minimal in-memory models so we can assert schema without go-app.
     from unittest.mock import patch
+
     import numpy as np
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.multioutput import MultiOutputRegressor
@@ -40,8 +41,14 @@ def test_backtest_predict_players_mode_with_format_and_features_schema():
     def _fake_train(*args, **kwargs):
         scaler = StandardScaler()
         scaler.fit(np.zeros((2, 15)))
-        bat = (scaler, MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 6))))
-        bowl = (scaler, MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 4))))
+        bat = (
+            scaler,
+            MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 6))),
+        )
+        bowl = (
+            scaler,
+            MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 4))),
+        )
         return bat, bowl
 
     with patch("app.main.train_on_the_fly", side_effect=_fake_train):

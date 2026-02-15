@@ -29,9 +29,9 @@ func NewBacktestMLClient() *BacktestMLClient {
 
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
-	Cutoff    string                     `json:"cutoff_date"`
-	PlayerIDs []int64                    `json:"player_ids,omitempty"`
-	Format    string                     `json:"format,omitempty"`
+	Cutoff    string                        `json:"cutoff_date"`
+	PlayerIDs []int64                       `json:"player_ids,omitempty"`
+	Format    string                        `json:"format,omitempty"`
 	Features  map[string]map[string]float64 `json:"features,omitempty"`
 }
 

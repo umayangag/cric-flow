@@ -165,9 +165,7 @@ def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
         except Exception:
             max_depth = None
     model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
-        )
+        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
     )
     model.fit(Xs, Y)
     return scaler, model
@@ -186,9 +184,7 @@ def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
         except Exception:
             max_depth = None
     model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=n_estimators, random_state=random_state, max_depth=max_depth
-        )
+        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
     )
     model.fit(Xs, Y)
     return scaler, model
@@ -211,9 +207,7 @@ def fetch_training_data(
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
-        raise ValueError(
-            "Go-app training-data request failed: HTTP %s %s" % (e.code, body or e.reason)
-        ) from e
+        raise ValueError("Go-app training-data request failed: HTTP %s %s" % (e.code, body or e.reason)) from e
     except OSError as e:
         raise ValueError("Go-app training-data request failed: %s" % e) from e
     return json.loads(body)
