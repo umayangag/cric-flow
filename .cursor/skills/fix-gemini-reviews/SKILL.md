@@ -22,7 +22,7 @@ PR=53  # or: gh pr view --json number -q .number
 OWNER=$(gh repo view --json owner -q .owner.login)
 REPO=$(gh repo view --json name -q .name)
 
-> pr_reviews.json
+PR_REVIEWS_JSON=$(mktemp)
 CURSOR=""
 while true; do
   QUERY='query($owner: String!, $repo: String!, $number: Int!, $after: String) {
