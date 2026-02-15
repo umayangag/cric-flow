@@ -75,66 +75,11 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 	}
 
 	// Fast path: when using the real pool, batch the queries to avoid N+1.
+	// Note: player.batting_consistency/bowling_consistency and player_form_data were removed
+	// in migrations (0007, 0008, 0015). We use only batting_data/bowling_data aggregates here;
+	// consistency defaults are applied by the ML service when missing.
 	if _, usesPool := featureQuerier.(poolQuerier); usesPool {
-		// 1) Player-level consistency for all requested players
-		if rows, err := Pool.Query(ctx, `
-            SELECT id, batting_consistency, bowling_consistency
-            FROM player
-            WHERE id = ANY($1::bigint[])
-        `, playerIDs); err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var pid int64
-				var batCons, bowlCons sql.NullFloat64
-				if err := rows.Scan(&pid, &batCons, &bowlCons); err == nil {
-					feats := out[pid]
-					if feats == nil {
-						feats = make(map[string]float64)
-						out[pid] = feats
-					}
-					if batCons.Valid {
-						feats["batting_consistency"] = batCons.Float64
-					}
-					if bowlCons.Valid {
-						feats["bowling_consistency"] = bowlCons.Float64
-					}
-				}
-			}
-		}
-
-		// 2) Latest season form per player (season <= cutoff year)
-		cutoffYear := cutoff.Year()
-		if rows, err := Pool.Query(ctx, `
-            SELECT DISTINCT ON (pfd.player_id)
-                   pfd.player_id,
-                   pfd.batting_form,
-                   pfd.bowling_form
-            FROM player_form_data pfd
-            JOIN season s ON s.id = pfd.season_id
-            WHERE pfd.player_id = ANY($1::bigint[]) AND s.season_name <= $2
-            ORDER BY pfd.player_id, s.season_name DESC
-        `, playerIDs, cutoffYear); err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var pid int64
-				var batForm, bowlForm sql.NullFloat64
-				if err := rows.Scan(&pid, &batForm, &bowlForm); err == nil {
-					feats := out[pid]
-					if feats == nil {
-						feats = make(map[string]float64)
-						out[pid] = feats
-					}
-					if batForm.Valid {
-						feats["batting_form"] = batForm.Float64
-					}
-					if bowlForm.Valid {
-						feats["bowling_form"] = bowlForm.Float64
-					}
-				}
-			}
-		}
-
-		// 3) Batting aggregates up to cutoff
+		// 1) Batting aggregates up to cutoff
 		if rows, err := Pool.Query(ctx, `
             SELECT bd.player_id, COALESCE(AVG(bd.runs), 0)
             FROM batting_data bd
@@ -162,7 +107,7 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 			}
 		}
 
-		// 4) Bowling aggregates up to cutoff
+		// 2) Bowling aggregates up to cutoff
 		if rows, err := Pool.Query(ctx, `
             SELECT bw.player_id, COALESCE(AVG(bw.wickets), 0), COALESCE(AVG(bw.econ), 0)
             FROM bowling_data bw
@@ -196,42 +141,8 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		return out, nil
 	}
 
-	// Fallback path (tests or custom querier): keep per-player queries.
-	// 1) Precomputed-first: form/consistency-like values.
-	for _, pid := range playerIDs {
-		feats := out[pid]
-		var batCons, bowlCons sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
-            SELECT batting_consistency, bowling_consistency
-            FROM player WHERE id = $1
-        `, pid).Scan(&batCons, &bowlCons)
-		if batCons.Valid {
-			feats["batting_consistency"] = batCons.Float64
-		}
-		if bowlCons.Valid {
-			feats["bowling_consistency"] = bowlCons.Float64
-		}
-
-		cutoffYear := cutoff.Year()
-		var batForm, bowlForm sql.NullFloat64
-		_ = featureQuerier.QueryRow(ctx, `
-            SELECT pfd.batting_form, pfd.bowling_form
-            FROM player_form_data pfd
-            JOIN season s ON s.id = pfd.season_id
-            WHERE pfd.player_id = $1 AND s.season_name <= $2
-            ORDER BY s.season_name DESC
-            LIMIT 1
-        `, pid, cutoffYear).Scan(&batForm, &bowlForm)
-		if batForm.Valid {
-			feats["batting_form"] = batForm.Float64
-		}
-		if bowlForm.Valid {
-			feats["bowling_form"] = bowlForm.Float64
-		}
-		out[pid] = feats
-	}
-
-	// 2) Fallback computation using base tables strictly before cutoff.
+	// Fallback path (tests or custom querier): per-player aggregate queries only.
+	// player.batting_consistency/bowling_consistency and player_form_data no longer exist.
 	for _, pid := range playerIDs {
 		feats := out[pid]
 		if feats == nil {

@@ -13,6 +13,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+from app.logging import get_struct_logger
+
+logger = get_struct_logger()
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
@@ -199,6 +203,13 @@ def fetch_training_data(
     """Fetch training data from go-app. Returns dict with batting/bowling headers and rows."""
     base = go_app_url.rstrip("/")
     url = f"{base}/api/backtest/training-data?format={format_code}&cutoff={cutoff_iso}"
+    logger.info(
+        "train_on_the_fly.fetch.start",
+        url=url,
+        format_code=format_code,
+        cutoff_iso=cutoff_iso,
+        has_api_key=api_key is not None,
+    )
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -207,10 +218,30 @@ def fetch_training_data(
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
-        raise ValueError("Go-app training-data request failed: HTTP %s %s" % (e.code, body or e.reason)) from e
+        err_msg = "Go-app training-data request failed: HTTP %s %s" % (e.code, body or e.reason)
+        logger.error(
+            "train_on_the_fly.fetch.http_error",
+            url=url,
+            status_code=e.code,
+            body_preview=(body[:500] + "..." if len(body) > 500 else body),
+            error=err_msg,
+        )
+        raise ValueError(err_msg) from e
     except OSError as e:
+        logger.error(
+            "train_on_the_fly.fetch.os_error",
+            url=url,
+            error=str(e),
+        )
         raise ValueError("Go-app training-data request failed: %s" % e) from e
-    return json.loads(body)
+    data = json.loads(body)
+    logger.info(
+        "train_on_the_fly.fetch.success",
+        url=url,
+        batting_rows=len((data.get("batting") or {}).get("rows") or []),
+        bowling_rows=len((data.get("bowling") or {}).get("rows") or []),
+    )
+    return data
 
 
 def train_on_the_fly(
@@ -237,17 +268,53 @@ def train_on_the_fly(
     X_bat, Y_bat = _batting_rows_to_xy(bat_headers, bat_rows)
     X_bowl, Y_bowl = _bowling_rows_to_xy(bowl_headers, bowl_rows)
 
+    n_bat = X_bat.shape[0] if X_bat.size else 0
+    n_bowl = X_bowl.shape[0] if X_bowl.size else 0
+    logger.info(
+        "train_on_the_fly.rows_parsed",
+        format_code=format_code,
+        cutoff_iso=cutoff_iso,
+        batting_samples=n_bat,
+        bowling_samples=n_bowl,
+    )
+
     if X_bat.size == 0 or Y_bat.size == 0:
-        raise ValueError(
+        msg = (
             "Insufficient batting training data for format=%s cutoff=%s (no rows after filtering)"
             % (format_code, cutoff_iso)
         )
+        logger.warning(
+            "train_on_the_fly.insufficient_batting",
+            format_code=format_code,
+            cutoff_iso=cutoff_iso,
+            batting_headers_len=len(bat_headers),
+            batting_rows_len=len(bat_rows),
+        )
+        raise ValueError(msg)
     if X_bowl.size == 0 or Y_bowl.size == 0:
-        raise ValueError(
+        msg = (
             "Insufficient bowling training data for format=%s cutoff=%s (no rows after filtering)"
             % (format_code, cutoff_iso)
         )
+        logger.warning(
+            "train_on_the_fly.insufficient_bowling",
+            format_code=format_code,
+            cutoff_iso=cutoff_iso,
+            bowling_headers_len=len(bowl_headers),
+            bowling_rows_len=len(bowl_rows),
+        )
+        raise ValueError(msg)
 
+    logger.info(
+        "train_on_the_fly.training.start",
+        format_code=format_code,
+        cutoff_iso=cutoff_iso,
+    )
     scaler_bat, model_bat = _train_batting_in_memory(X_bat, Y_bat)
     scaler_bowl, model_bowl = _train_bowling_in_memory(X_bowl, Y_bowl)
+    logger.info(
+        "train_on_the_fly.training.done",
+        format_code=format_code,
+        cutoff_iso=cutoff_iso,
+    )
     return (scaler_bat, model_bat), (scaler_bowl, model_bowl)

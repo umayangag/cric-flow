@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -86,6 +87,31 @@ func (c *EntityCache) GetFormatID(ctx context.Context, code string) (int64, erro
 	}
 	c.formats.Store(code, id)
 	return id, nil
+}
+
+// GetFormatIDsForTrainingBucket returns format IDs to use for training-data queries.
+// T20 and T20I are treated as one bucket: both IDs are returned so matches stored
+// under either format_id are included (Cricsheet/ingest may store T20I as T20).
+func (c *EntityCache) GetFormatIDsForTrainingBucket(ctx context.Context, format string) ([]int64, error) {
+	code := strings.ToUpper(strings.TrimSpace(format))
+	switch code {
+	case "T20", "T20I":
+		idT20, err := c.GetFormatID(ctx, "T20")
+		if err != nil {
+			return nil, err
+		}
+		idT20I, err := c.GetFormatID(ctx, "T20I")
+		if err != nil {
+			return nil, err
+		}
+		return []int64{idT20, idT20I}, nil
+	default:
+		id, err := c.GetFormatID(ctx, code)
+		if err != nil {
+			return nil, err
+		}
+		return []int64{id}, nil
+	}
 }
 
 // GetOppositionID returns the ID for an opposition name, using the cache if available.

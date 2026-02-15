@@ -161,12 +161,24 @@ def _predict_players_with_features(
     if not bat_pair or not bowl_pair:
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip()
         if not go_app_url:
+            logger.error(
+                "backtest_predict.train_on_the_fly.missing_go_app_url",
+                format=fmt_upper,
+                hint="Set GO_APP_URL to the go-app base URL for train-on-the-fly.",
+            )
             raise ValueError(
                 "GO_APP_URL is required for train-on-the-fly when no artifacts are loaded for format=%s" % fmt_upper
             )
         _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
+        logger.info(
+            "backtest_predict.train_on_the_fly.triggered",
+            format=fmt_upper,
+            cutoff_iso=cutoff_iso,
+            go_app_url=go_app_url,
+            player_count=len(player_ids),
+        )
         bat_pair, bowl_pair = train_on_the_fly(go_app_url, fmt_upper, cutoff_iso, api_key)
 
     scaler_bat, model_bat = bat_pair
@@ -227,6 +239,14 @@ def backtest_predict(req: BacktestPredictRequest):
             req.format is not None and (req.format or "").strip() and req.features is not None and len(req.features) > 0
         )
         if not use_full_pipeline:
+            logger.warning(
+                "backtest_predict.player_rejected",
+                reason="format_and_features_required",
+                has_format=bool(req.format and (req.format or "").strip()),
+                has_features=bool(req.features and len(req.features) > 0),
+                player_count=len(req.player_ids or []),
+                cutoff_iso=cutoff_iso,
+            )
             raise HTTPException(
                 status_code=400,
                 detail=error_payload(
@@ -235,14 +255,28 @@ def backtest_predict(req: BacktestPredictRequest):
                     hint="Send format and features (per-player feature map). No baseline fallback.",
                 ),
             )
+        logger.info(
+            "backtest_predict.player.start",
+            format=req.format,
+            cutoff_iso=cutoff_iso,
+            player_count=len(req.player_ids),
+        )
         cached = _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
+            logger.info("backtest_predict.player.cache_hit", cutoff_iso=cutoff_iso, player_count=len(req.player_ids))
             return JSONResponse(status_code=200, content=cached)
         global BACKTEST_PLAYERS_COMPUTE_COUNT
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
         try:
             preds = _predict_players_with_features(cutoff, req.player_ids, req.format or "", req.features)
         except ValueError as e:
+            logger.exception(
+                "backtest_predict.player.train_on_the_fly_failed",
+                format=req.format,
+                cutoff_iso=cutoff_iso,
+                player_count=len(req.player_ids),
+                error=str(e),
+            )
             raise HTTPException(
                 status_code=503,
                 detail=error_payload(
@@ -252,6 +286,13 @@ def backtest_predict(req: BacktestPredictRequest):
                 ),
             ) from e
         except Exception as e:
+            logger.exception(
+                "backtest_predict.player.prediction_failed",
+                format=req.format,
+                cutoff_iso=cutoff_iso,
+                player_count=len(req.player_ids),
+                error=str(e),
+            )
             raise HTTPException(
                 status_code=503,
                 detail=error_payload(
@@ -260,6 +301,13 @@ def backtest_predict(req: BacktestPredictRequest):
                     hint=str(e),
                 ),
             ) from e
+        logger.info(
+            "backtest_predict.player.success",
+            format=req.format,
+            cutoff_iso=cutoff_iso,
+            player_count=len(req.player_ids),
+            predictions_count=len(preds),
+        )
         body = BacktestPlayersResponse(players=preds).model_dump()
         _cache_put("players", cutoff_iso, list(req.player_ids), body)
         return JSONResponse(status_code=200, content=body)
@@ -275,6 +323,11 @@ def backtest_predict(req: BacktestPredictRequest):
         ).model_dump()
         _cache_put("match", cutoff_iso, list(req.teams), body)
         return JSONResponse(status_code=200, content=body)
+    logger.warning(
+        "backtest_predict.invalid_request",
+        reason="missing_player_ids_and_teams",
+        cutoff_iso=cutoff_iso,
+    )
     raise HTTPException(
         status_code=400,
         detail=error_payload(

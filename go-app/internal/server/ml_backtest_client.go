@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -63,6 +65,55 @@ type mlBacktestMatchAgg struct {
 type mlBacktestMatchAggResponse struct {
 	Match        mlBacktestMatchAgg `json:"match"`
 	ModelVersion string             `json:"model_version,omitempty"`
+}
+
+// mlErrorDetail is a subset of the ML service error response (FastAPI sends {"detail": ...}).
+type mlErrorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Hint    string `json:"hint"`
+}
+
+// logMLNon2xx reads the response body, logs status and body for debugging, and returns an error
+// that includes status and a short message extracted from the body if present.
+func logMLNon2xx(resp *http.Response, endpoint string) error {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("ml service non-2xx: failed to read response body",
+			slog.String("endpoint", endpoint),
+			slog.Int("status", resp.StatusCode),
+			slog.Any("err", err))
+		return fmt.Errorf("%s http %d (body read failed: %v)", endpoint, resp.StatusCode, err)
+	}
+	bodyStr := string(body)
+	const maxLog = 2000
+	if len(bodyStr) > maxLog {
+		bodyStr = bodyStr[:maxLog] + "..."
+	}
+	slog.Error("ml service returned non-2xx",
+		slog.String("endpoint", endpoint),
+		slog.Int("status", resp.StatusCode),
+		slog.String("body", bodyStr))
+
+	// Try to extract a short message from FastAPI-style {"detail": "..."} or {"detail": {"code","message","hint"}}
+	var detail struct {
+		Detail json.RawMessage `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &detail); err == nil && len(detail.Detail) > 0 {
+		var s string
+		if err := json.Unmarshal(detail.Detail, &s); err == nil {
+			return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, s)
+		}
+		var d mlErrorDetail
+		if err := json.Unmarshal(detail.Detail, &d); err == nil {
+			msg := d.Message
+			if d.Hint != "" {
+				msg += " — " + d.Hint
+			}
+			return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, msg)
+		}
+	}
+	return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(bodyStr))
 }
 
 // ---------------- Historical match backtest DTOs ----------------
@@ -170,7 +221,7 @@ func (c *BacktestMLClient) predictPlayers(
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ml backtest predict http %d", resp.StatusCode)
+		return nil, logMLNon2xx(resp, "ml backtest predict")
 	}
 	var out mlBacktestPlayersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -216,7 +267,7 @@ func (c *BacktestMLClient) predictMatchAggregates(
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return matchAggregates{}, "", fmt.Errorf("ml backtest match http %d", resp.StatusCode)
+		return matchAggregates{}, "", logMLNon2xx(resp, "ml backtest match")
 	}
 	var out mlBacktestMatchAggResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -272,7 +323,7 @@ func (c *BacktestMLClient) historicalMatchBacktest(
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return HistoricalBacktestResult{}, fmt.Errorf("ml historical backtest http %d", resp.StatusCode)
+		return HistoricalBacktestResult{}, logMLNon2xx(resp, "ml historical backtest")
 	}
 	var out mlHistoricalBacktestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {

@@ -359,10 +359,21 @@ const EvaluateDbTab: React.FC = () => {
               'Evaluate Selected Match'
             )}
           </Button>
-        </Box>
 
-        {/* Progress steps while evaluating (SSE stream) */}
-        {evaluating && evaluationSteps.length > 0 && (
+          {/* Status and error directly below button so user doesn't have to scroll up */}
+          {selectedMatchId != null && (statusMessage || error) && (
+            <Box sx={{ mt: 2 }}>
+              {statusMessage && (
+                <Alert severity="info" sx={{ mb: error ? 1 : 0 }}>
+                  {statusMessage}
+                </Alert>
+              )}
+              {error && <Alert severity="error">{error}</Alert>}
+            </Box>
+          )}
+
+          {/* Progress steps while evaluating (SSE stream) */}
+          {evaluating && evaluationSteps.length > 0 && (
           <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
             <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
               Current step
@@ -393,6 +404,7 @@ const EvaluateDbTab: React.FC = () => {
             subtitle="ML prediction using only data before the match date (no actual match data used)."
           />
         )}
+        </Box>
       </Box>
 
       {/* Results */}

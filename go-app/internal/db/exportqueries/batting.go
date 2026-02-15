@@ -512,12 +512,12 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 
 // BattingFormatRowsWithCutoff returns the same shape as BattingFormatRows but only for matches with match_date < cutoff.
 // Used by the backtest training-data API so the ML service can train on data strictly before the cutoff.
+// T20 and T20I are treated as one bucket (both format_ids included) so training data is returned when stored under either.
 func BattingFormatRowsWithCutoff(ctx context.Context, format string, cutoff time.Time) ([][]string, error) {
-	id, err := db.GetGlobalCache().GetFormatID(ctx, strings.ToUpper(strings.TrimSpace(format)))
+	formatIDs, err := db.GetGlobalCache().GetFormatIDsForTrainingBucket(ctx, format)
 	if err != nil {
-		return nil, fmt.Errorf("resolve format_id for %s: %w", format, err)
+		return nil, fmt.Errorf("resolve format_id(s) for %s: %w", format, err)
 	}
-	formatID := id
 	q := `SELECT  
 		bd.runs,
 		bd.balls,
@@ -577,8 +577,8 @@ func BattingFormatRowsWithCutoff(ctx context.Context, format string, cutoff time
 		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
 		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE m.format_id = $1 AND m.match_date < $2`
-	rows, err := db.Pool.Query(ctx, q, formatID, cutoff)
+		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2`
+	rows, err := db.Pool.Query(ctx, q, formatIDs, cutoff)
 	if err != nil {
 		return nil, err
 	}

@@ -140,16 +140,12 @@ func writeDoubleNullableFloat(dest []any, v1 bool, f1 float64, v2 bool, f2 float
 	return nil
 }
 
-func TestPrecomputedFirst_OverridesFallback(t *testing.T) {
-	// Arrange: swap in fake querier and restore after
+func TestFallbackAggregates_PopulateFormAndAux(t *testing.T) {
+	// Arrange: swap in fake querier and restore after (no precomputed tables; aggregate-only)
 	orig := featureQuerier
 	t.Cleanup(func() { featureQuerier = orig })
 
 	fq := &fakeQuerier{
-		// Precomputed available
-		preBatForm: 42.0, hasPreBat: true,
-		preBowlForm: 3.0, hasPreBowl: true,
-		// Fallbacks would return different values (should not override precomputed for *form*)
 		avgRuns: 10.0, hasAvgRuns: true,
 		avgWkts: 1.0, hasAvgWkts: true,
 		avgEcon: 7.0, hasAvgEcon: true,
@@ -166,13 +162,13 @@ func TestPrecomputedFirst_OverridesFallback(t *testing.T) {
 	if feats == nil {
 		t.Fatalf("missing features for player 1")
 	}
-	if feats["batting_form"] != 42.0 {
-		t.Fatalf("batting_form = %v, want 42", feats["batting_form"])
+	// batting_form/ bowling_form come from aggregate fallbacks (avg_runs, avg_wickets)
+	if feats["batting_form"] != 10.0 {
+		t.Fatalf("batting_form = %v, want 10", feats["batting_form"])
 	}
-	if feats["bowling_form"] != 3.0 {
-		t.Fatalf("bowling_form = %v, want 3", feats["bowling_form"])
+	if feats["bowling_form"] != 1.0 {
+		t.Fatalf("bowling_form = %v, want 1", feats["bowling_form"])
 	}
-	// Fallbacks still included as auxiliary metrics
 	if feats["avg_runs"] != 10.0 {
 		t.Fatalf("avg_runs = %v, want 10", feats["avg_runs"])
 	}
