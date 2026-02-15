@@ -20,6 +20,14 @@ import EvaluationResults from './EvaluationResults';
 
 const filter = createFilterOptions<string>();
 
+/** Shared filter for Team 1/Team 2 Autocomplete: show all when empty, require ≥3 chars when typing. */
+function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
+  const filtered = filter(options, params);
+  if (params.inputValue === '') return filtered;
+  if (params.inputValue.length < 3) return [];
+  return filtered;
+}
+
 const EvaluateDbTab: React.FC = () => {
   // Inputs for new backtest flow
   const [format, setFormat] = useState<string>('');
@@ -220,18 +228,7 @@ const EvaluateDbTab: React.FC = () => {
             setTeam1(newValue ?? '');
             if (newValue) resetOutputs();
           }}
-          filterOptions={(options, params) => {
-            const filtered = filter(options, params);
-            // Show all options when input is empty (no user input required)
-            if (params.inputValue === '') {
-              return filtered;
-            }
-            // Require at least 3 characters when user starts typing
-            if (params.inputValue.length < 3) {
-              return [];
-            }
-            return filtered;
-          }}
+          filterOptions={teamFilterOptions}
           renderInput={(params) => <TextField {...params} label="Team 1" />}
           noOptionsText={team1 ? 'No matching teams' : 'Type to search or select from dropdown'}
         />
@@ -246,18 +243,7 @@ const EvaluateDbTab: React.FC = () => {
             setTeam2(newValue ?? '');
             if (newValue) resetOutputs();
           }}
-          filterOptions={(options, params) => {
-            const filtered = filter(options, params);
-            // Show all options when input is empty (no user input required)
-            if (params.inputValue === '') {
-              return filtered;
-            }
-            // Require at least 3 characters when user starts typing
-            if (params.inputValue.length < 3) {
-              return [];
-            }
-            return filtered;
-          }}
+          filterOptions={teamFilterOptions}
           renderInput={(params) => <TextField {...params} label="Team 2" />}
           noOptionsText={team2 ? 'No matching teams' : 'Type to search or select from dropdown'}
         />

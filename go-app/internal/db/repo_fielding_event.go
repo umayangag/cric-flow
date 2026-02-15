@@ -139,9 +139,10 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 	}
 	rows.Close() // release connection before using tx again
 
+	fieldingRows := make([]Fielding, 0, len(results))
 	for _, r := range results {
 		c, ro, s, dh := r.catches, r.runOuts, r.stumpings, r.directHits
-		if err := UpsertFieldingTx(ctx, tx, &Fielding{
+		fieldingRows = append(fieldingRows, Fielding{
 			MatchID:           matchID,
 			PlayerID:          r.playerID,
 			Catches:           &c,
@@ -150,9 +151,10 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 			MissedRunOuts:     nil,
 			Stumpings:         &s,
 			RunoutsDirectHits: &dh,
-		}); err != nil {
-			return err
-		}
+		})
+	}
+	if err := UpsertFieldingBatchTx(ctx, tx, fieldingRows); err != nil {
+		return err
 	}
 	return nil
 }
