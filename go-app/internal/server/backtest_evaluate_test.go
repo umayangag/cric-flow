@@ -285,14 +285,12 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 	origGetSquads := getBacktestSquadPlayerIDsFunc
 	origGetActuals := getBacktestPlayerActualsForMatchFunc
 	origMLPlayers := mlBacktestPredictFunc
-	origMLAgg := mlBacktestPredictMatchAggregatesFunc
 	origAggActuals := getBacktestMatchAggregatesActualsFunc
 	defer func() {
 		getBacktestMatchDateFunc = origGetDate
 		getBacktestSquadPlayerIDsFunc = origGetSquads
 		getBacktestPlayerActualsForMatchFunc = origGetActuals
 		mlBacktestPredictFunc = origMLPlayers
-		mlBacktestPredictMatchAggregatesFunc = origMLAgg
 		getBacktestMatchAggregatesActualsFunc = origAggActuals
 	}()
 
@@ -315,10 +313,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 			2: {Runs: 35},
 		}, nil
 	}
-	// Match-level seams
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
-		return matchAggregates{Runs: 160, Wickets: 6, Extras: 12, WinnerTeamCode: "IND"}, "model-v1", nil
-	}
+	// Match aggregates: predicted from player predictions (18+35=53 runs, 0 wickets, 0 extras); no ML match-aggregates call.
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 		return matchAggregates{Runs: 150, Wickets: 7, Extras: 10, WinnerTeamCode: "IND"}, nil
 	}
@@ -336,45 +331,39 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	// Check match_aggregates presence
+	// Check match_aggregates presence (predicted = sum of player preds, no baseline)
 	if payload.MatchAggregates.Predicted == nil || payload.MatchAggregates.Actual == nil ||
 		payload.MatchAggregates.Errors == nil {
 		t.Fatalf("match_aggregates missing sections")
 	}
-	// Check metrics computed correctly
-	// runs_mae = |160-150| = 10
-	if got := payload.Metrics["match_runs_mae"]; got < 9.9 || got > 10.1 {
-		t.Fatalf("match_runs_mae = %v, want ~10", got)
+	// Predicted runs = 18+35 = 53, wickets = 0, extras = 0. Actual: 150, 7, 10.
+	if got := payload.Metrics["match_runs_mae"]; got < 96.9 || got > 97.1 {
+		t.Fatalf("match_runs_mae = %v, want ~97 (|53-150|)", got)
 	}
-	// wickets_mae = |6-7| = 1
-	if got := payload.Metrics["match_wickets_mae"]; got < 0.9 || got > 1.1 {
-		t.Fatalf("match_wickets_mae = %v, want ~1", got)
+	if got := payload.Metrics["match_wickets_mae"]; got < 6.9 || got > 7.1 {
+		t.Fatalf("match_wickets_mae = %v, want ~7", got)
 	}
-	// extras_mae = |12-10| = 2
-	if got := payload.Metrics["match_extras_mae"]; got < 1.9 || got > 2.1 {
-		t.Fatalf("match_extras_mae = %v, want ~2", got)
+	if got := payload.Metrics["match_extras_mae"]; got < 9.9 || got > 10.1 {
+		t.Fatalf("match_extras_mae = %v, want ~10", got)
 	}
-	// winner_accuracy = 1 (IND vs IND)
-	if got := payload.Metrics["winner_accuracy"]; got != 1 {
-		t.Fatalf("winner_accuracy = %v, want 1", got)
+	// winner_accuracy: pred winner from team run sums; without DB GetMatchPlayerTeams returns empty, so pred winner "" -> 0
+	if got := payload.Metrics["winner_accuracy"]; got != 0 {
+		t.Fatalf("winner_accuracy = %v, want 0 (no team assignment in test)", got)
 	}
 }
 
-// Ensure cutoff is passed to match-aggregates ML seam
-func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_CutoffPassed(t *testing.T) {
-	// Backup and restore
+// Ensure match aggregates are derived from player predictions (no ML match-aggregates baseline).
+func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_FromPlayerPreds(t *testing.T) {
 	origGetDate := getBacktestMatchDateFunc
 	origGetSquads := getBacktestSquadPlayerIDsFunc
 	origGetActuals := getBacktestPlayerActualsForMatchFunc
 	origMLPlayers := mlBacktestPredictFunc
-	origMLAgg := mlBacktestPredictMatchAggregatesFunc
 	origAggActuals := getBacktestMatchAggregatesActualsFunc
 	defer func() {
 		getBacktestMatchDateFunc = origGetDate
 		getBacktestSquadPlayerIDsFunc = origGetSquads
 		getBacktestPlayerActualsForMatchFunc = origGetActuals
 		mlBacktestPredictFunc = origMLPlayers
-		mlBacktestPredictMatchAggregatesFunc = origMLAgg
 		getBacktestMatchAggregatesActualsFunc = origAggActuals
 	}()
 
@@ -386,12 +375,6 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_CutoffPassed(t *testi
 	}
 	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{1: {Runs: 9}}, nil
-	}
-
-	var receivedCutoff time.Time
-	mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, cutoffArg time.Time, _ [2]string) (matchAggregates, string, error) {
-		receivedCutoff = cutoffArg
-		return matchAggregates{Runs: 100, Wickets: 5, Extras: 8, WinnerTeamCode: "IND"}, "model-v1", nil
 	}
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
 		return matchAggregates{Runs: 95, Wickets: 6, Extras: 6, WinnerTeamCode: "AUS"}, nil
@@ -405,8 +388,16 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_CutoffPassed(t *testi
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if !receivedCutoff.Equal(cutoff) {
-		t.Fatalf("match-aggregates cutoff = %v, want %v", receivedCutoff, cutoff)
+	var payload backtestEvaluateResponse
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Predicted runs = 9 (single player), wickets = 0, extras = 0
+	if pred, ok := payload.MatchAggregates.Predicted["runs"].(float64); !ok || pred < 8.9 || pred > 9.1 {
+		t.Fatalf("predicted runs = %v, want 9", payload.MatchAggregates.Predicted["runs"])
+	}
+	if pred, ok := payload.MatchAggregates.Predicted["wickets"].(float64); !ok || pred != 0 {
+		t.Fatalf("predicted wickets = %v, want 0", payload.MatchAggregates.Predicted["wickets"])
 	}
 }
 
@@ -505,11 +496,11 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
 	var called bool
 	var gotCutoff time.Time
 	var gotIDs []int64
-	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, cutoffArg time.Time, playerIDs []int64) (map[int64]map[string]float64, error) {
+	getBacktestFeaturesAtCutoffFunc = func(_ context.Context, cutoffArg time.Time, playerIDs []int64, _ int64) (map[int64]map[string]float64, error) {
 		called = true
 		gotCutoff = cutoffArg
 		gotIDs = append([]int64{}, playerIDs...)
-		// Return empty features map (current default behavior)
+		// Return empty features map (test does not need match context)
 		return map[int64]map[string]float64{}, nil
 	}
 

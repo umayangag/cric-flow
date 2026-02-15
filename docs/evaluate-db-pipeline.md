@@ -31,11 +31,11 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 |---------------|-------------|
 | `match_date`  | Get match date from DB → used as **cutoff** for all later steps. |
 | `squad`       | Get playing XI: distinct `player_id` from `batting_data` ∪ `bowling_data` for this `match_id` (no `player_match` table). |
-| `features`    | **Feature computation at cutoff:** `getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)` → `map[player_id]map[feature_name]float64`. Uses `db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff()` (see below). |
-| `ml_predict`  | Call ML service with **cutoff, format, player_ids, and features**. If features are non-empty, ML may use the **full pipeline** (real models); otherwise **baseline** (deterministic RNG). |
+| `features`    | **Feature computation at cutoff:** `getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, matchID)`. When **matchID &gt; 0** uses `exportqueries.ComputeFeaturesAtCutoffForMatch` (EWM + Consistency + venue/opposition for this match; missing → 0). When matchID == 0 (e.g. tests) uses `db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff()`. |
+| `ml_predict`  | Call ML service with **cutoff, format, player_ids, and features**. Format and features are required; ML uses full pipeline (loaded artifacts or train-on-the-fly). |
 | `actuals`     | Load actual match stats from DB: runs, wickets, economy, catches, run_outs per player (from `batting_data`, `bowling_data`, `fielding_data`). |
 | `metrics`     | Compute per-player and summary metrics (MAE, RMSE, R², etc.) from predictions vs actuals. |
-| `aggregates`  | Fetch match-level aggregates (predicted and actual: runs, wickets, extras, winner). |
+| `aggregates`  | **Predicted** match aggregates = sum of player predictions (runs, wickets); winner from team run totals via `db.GetMatchPlayerTeams`. **Actual** aggregates from DB. No ML match-aggregates baseline. |
 | `scorecard`   | Build **predicted scorecard** from actual scorecard layout + ML predictions (runs, wickets, economy per player). |
 | `done`        | Evaluation complete. |
 
@@ -45,18 +45,15 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 
 ## 3. Feature computation at cutoff (go-app)
 
-**Provider:** `go-app/internal/db/repo_features_cutoff.go` — `DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)`.
+**Evaluate path (matchID &gt; 0):** `getBacktestFeaturesAtCutoffFunc(ctx, cutoff, playerIDs, matchID)` → `exportqueries.ComputeFeaturesAtCutoffForMatch(ctx, matchID, cutoff, playerIDs)`.
 
-**Contract:** Returns `map[int64]map[string]float64`: for each player, a map of feature name → value. Only data with `match_date <= cutoff` (or season ≤ cutoff year for precomputed form) is used.
+- **Match context:** `db.GetMatchFeatureContext(ctx, matchID)` returns format_id, venue_id, season_id, and per-player batting/bowling opposition IDs (from the innings they batted/bowled in).
+- **Per-player features:** For each player, `computeBattingSnapshotAtCutoff` and `computeBowlingSnapshotAtCutoff` (same EWM + Consistency logic as `training_snapshot.go` and precompute) with that match’s venue and opposition. Only data with `match_date < cutoff` is used. **Missing history → 0.** Weather: **0** when not available (averages for missing weather allowed elsewhere; see audit).
+- **Output:** `batting_form`, `batting_consistency`, `batting_venue`, `batting_opposition`, `bowling_form`, `bowling_consistency`, `bowling_venue`, `bowling_opposition`, plus `venue`/`opposition` and weather keys (0). Same semantics as training export.
 
-**Features produced (examples):**
+**Legacy (matchID == 0):** `db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)` — AVG(runs), AVG(wickets), AVG(economy) only. Used when no match context (e.g. tests).
 
-- From `player`: `batting_consistency`, `bowling_consistency`
-- From `player_form_data` + `season` (season ≤ cutoff year): `batting_form`, `bowling_form`
-- From `batting_data` + `match` (match_date ≤ cutoff): `avg_runs`; used as `batting_form` fallback
-- From `bowling_data` + `match` (match_date ≤ cutoff): `avg_wickets`, `avg_economy`; used as `bowling_form` fallback
-
-**Used by:** `doEvaluateWork` passes this map to `mlBacktestPredictFunc`, which sends it to the ML service when calling `POST /ml/backtest/predict` with `format` and `features`.
+**Used by:** `doEvaluateWork` passes the feature map to `mlBacktestPredictFunc`, which sends it to `POST /ml/backtest/predict` with `format` and `features`.
 
 ---
 
@@ -145,9 +142,10 @@ Then either:
 
 | Area | File(s) |
 |------|--------|
-| Evaluate pipeline + SSE | `go-app/internal/server/backtest_handlers.go` (`doEvaluateWork`, stream handler) |
+| Evaluate pipeline + SSE | `go-app/internal/server/backtest_handlers.go` (`doEvaluateWork`, stream handler, `populateMatchAggregatesAndMetrics`) |
 | Seams / test hooks | `go-app/internal/server/backtest_seams.go`, `go-app/internal/server/backtest.go` (init) |
-| Features at cutoff | `go-app/internal/db/repo_features_cutoff.go` |
+| Features at cutoff (match context) | `go-app/internal/db/repo_backtest_features.go` (`GetMatchFeatureContext`, `GetMatchPlayerTeams`), `go-app/internal/db/exportqueries/training_snapshot.go` (`ComputeFeaturesAtCutoffForMatch`, snapshot helpers) |
+| Features at cutoff (legacy) | `go-app/internal/db/repo_features_cutoff.go` |
 | ML client | `go-app/internal/server/ml_backtest_client.go` |
 | Scorecard DB | `go-app/internal/db/repo_scorecard.go` |
 | ML backtest predict + full pipeline | `ml-service/app/main.py` (`backtest_predict`, `_predict_players_with_features`) |
@@ -165,7 +163,7 @@ Then either:
 
 - **Predictions look random / not changing with features:** Check that the ML service receives `format` and `features`. If using train-on-the-fly, ensure `GO_APP_URL` is set and go-app returns non-empty training data for that format and cutoff.
 - **503 TRAIN_ON_THE_FLY_FAILED:** Set `GO_APP_URL` (and `GO_APP_API_KEY` if go-app requires it). Ensure go-app has data for the requested format and cutoff (match_date < cutoff). Check ML logs for the underlying error (e.g. HTTP error from go-app, or "Insufficient batting/bowling training data").
-- **Features empty or wrong:** In go-app, confirm `getBacktestFeaturesAtCutoffFunc` is the DB provider and that `match_date` and `player`/`player_form_data`/`batting_data`/`bowling_data` exist for the cutoff. Check `repo_features_cutoff.go` queries and filters (`<= cutoff`, season ≤ cutoff year).
+- **Features empty or wrong:** When matchID &gt; 0, features come from `ComputeFeaturesAtCutoffForMatch` (match context from `GetMatchFeatureContext`). Ensure the match has `format_id`, `venue_id`, `season_id` and that `batting_data`/`bowling_data` + `match_inning` give correct opposition IDs. Check `repo_backtest_features.go` and `exportqueries/training_snapshot.go`; data is strictly before cutoff.
 - **Squad empty:** Match must have rows in `batting_data` or `bowling_data` for that `match_id`; squad is the union of those `player_id`s.
 - **SSE never finishes:** Ensure the stream handler sends exactly one `result` or `error` event; check for panics or early returns in `doEvaluateWork` or in the handler.
 - **Scorecard missing:** Verify `GetMatchScorecard` and the scorecard API are called with the same `match_id`; check DB for `match`, `match_inning`, `batting_data`, `bowling_data` for that match.
@@ -174,6 +172,6 @@ Then either:
 
 ## 11. Extending or refining the pipeline
 
-- **Add features:** Extend `GetPlayerFeaturesAtCutoff` (and any precomputed tables it uses) and ensure the ML service’s `build_*_features_from_map` and `feature_vectors.json` include the new names and defaults. Update the go-app export/training-data column set if needed.
+- **Add features:** For the evaluate path, extend `ComputeFeaturesAtCutoffForMatch` and `GetMatchFeatureContext` (and snapshot helpers in `training_snapshot.go`) and ensure the ML service’s `build_*_features_from_map` and `feature_vectors.json` include the new names and defaults. Update the go-app export/training-data column set if needed.
 - **Use sequential / window features:** If the project has sequential or window features (e.g. from precompute), they can be computed at cutoff in go-app and passed in `features`, or the ML service could accept a separate payload; the same “strictly before cutoff” rule applies.
 - **Caching:** Responses are cached by (cutoff_iso, player_ids) after a successful prediction. A cache for train-on-the-fly models keyed by (format, cutoff) can be added so repeated requests with the same format/cutoff reuse the in-memory models.

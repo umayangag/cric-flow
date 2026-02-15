@@ -152,3 +152,53 @@ func computeBowlingSnapshotAtCutoff(
 	}
 	return out, nil
 }
+
+// ComputeFeaturesAtCutoffForMatch returns a feature map per player using the same EWM/Consistency/venue/opposition
+// logic as training. Match context (format, venue, per-player batting/bowling opposition) comes from the DB.
+// Missing data yields 0 (no averages or baseline). Weather may use averages when available; here we use 0 for missing.
+func ComputeFeaturesAtCutoffForMatch(
+	ctx context.Context,
+	matchID int64,
+	cutoff time.Time,
+	playerIDs []int64,
+) (map[int64]map[string]float64, error) {
+	mctx, err := db.GetMatchFeatureContext(ctx, matchID)
+	if err != nil {
+		return nil, err
+	}
+	playerOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
+	for _, po := range mctx.PlayerOpps {
+		playerOpps[po.PlayerID] = struct{ BattingOpp, BowlingOpp *int64 }{
+			BattingOpp:  po.BattingOppositionID,
+			BowlingOpp: po.BowlingOppositionID,
+		}
+	}
+	out := make(map[int64]map[string]float64)
+	for _, pid := range playerIDs {
+		opps := playerOpps[pid]
+		bat, _ := computeBattingSnapshotAtCutoff(ctx, pid, cutoff, mctx.FormatID, mctx.VenueID, opps.BattingOpp, DefaultEWMAlpha, DefaultConsistencyLastN, DefaultFormWindowN)
+		bowl, _ := computeBowlingSnapshotAtCutoff(ctx, pid, cutoff, mctx.FormatID, mctx.VenueID, opps.BowlingOpp, DefaultEWMAlpha, DefaultConsistencyLastN, DefaultFormWindowN)
+		season := 0.0
+		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
+			season = float64(*mctx.SeasonID)
+		}
+		feats := map[string]float64{
+			"batting_form":        bat.form,
+			"batting_consistency": bat.consistency,
+			"batting_venue":       bat.venue,
+			"batting_opposition":  bat.opposition,
+			"bowling_form":        bowl.form,
+			"bowling_consistency": bowl.consistency,
+			"bowling_venue":       bowl.venue,
+			"bowling_opposition":  bowl.opposition,
+			"venue":               bat.venue,
+			"opposition":          bat.opposition,
+			"season":              season,
+			// Weather: use 0 when missing (averages allowed elsewhere; here we keep consistent with "0 for missing")
+			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+		}
+		out[pid] = feats
+	}
+	return out, nil
+}

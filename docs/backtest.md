@@ -83,7 +83,7 @@ Response (abridged):
 Notes:
 - Training data used by ML is restricted to rows before the match date (cutoff).
 - Players list includes only those who actually played.
-- Match aggregates section is present when both ML and DB seams are wired; otherwise it may be omitted.
+- **Match aggregates (evaluate path):** Predicted runs, wickets, and winner are **derived from player predictions** (sum of predicted runs/wickets, winner from team run totals). No separate ML match-aggregates call or baseline. Actual aggregates come from DB (`match_inning`, etc.).
 - Totals mapping: numeric match totals are summed from the database table `match_inning` across all innings — `runs_scored` as total runs, `wickets_lost` as total wickets, and `extras` as total extras. The `target_runs` column is not used for backtest accuracy metrics.
 
 ### Metrics definitions (player-level runs)

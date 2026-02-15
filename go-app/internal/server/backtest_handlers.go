@@ -242,7 +242,8 @@ func computePlayerResultsAndMetrics(
 }
 
 // populateMatchAggregatesAndMetrics fills the response with match-level predicted/actual aggregates
-// and associated metrics when both prediction and actuals are available. No behavior change if seams fail.
+// and associated metrics. Predicted aggregates are derived from player predictions (no baseline/RNG).
+// Actuals come from DB. No behavior change if actuals seam fails.
 func populateMatchAggregatesAndMetrics(
 	ctx context.Context,
 	resp *backtestEvaluateResponse,
@@ -251,36 +252,63 @@ func populateMatchAggregatesAndMetrics(
 	team2 string,
 	matchID int64,
 ) {
-	if predAgg, _, err1 := mlBacktestPredictMatchAggregatesFunc(ctx, cutoff, [2]string{team1, team2}); err1 == nil {
-		if actAgg, err2 := getBacktestMatchAggregatesActualsFunc(ctx, matchID); err2 == nil {
-			// Predicted and actual sections
-			resp.MatchAggregates.Predicted = map[string]any{
-				"runs":             predAgg.Runs,
-				"wickets":          predAgg.Wickets,
-				"extras":           predAgg.Extras,
-				"winner_team_code": predAgg.WinnerTeamCode,
+	// Predicted: sum from player predictions; winner from team run totals.
+	var predRuns, predWickets float64
+	teamRuns := make(map[string]float64)
+	playerTeams, _ := db.GetMatchPlayerTeams(ctx, matchID)
+	for _, p := range resp.Players {
+		r := 0.0
+		if p.Predicted != nil {
+			if v, ok := p.Predicted["runs"]; ok {
+				r = v
 			}
-			resp.MatchAggregates.Actual = map[string]any{
-				"runs":             actAgg.Runs,
-				"wickets":          actAgg.Wickets,
-				"extras":           actAgg.Extras,
-				"winner_team_code": actAgg.WinnerTeamCode,
-			}
-			// Errors and mirrored summary metrics for single match
-			resp.MatchAggregates.Errors = map[string]float64{}
-			resp.MatchAggregates.Errors["runs_mae"] = math.Abs(predAgg.Runs - actAgg.Runs)
-			resp.MatchAggregates.Errors["wickets_mae"] = math.Abs(predAgg.Wickets - actAgg.Wickets)
-			resp.MatchAggregates.Errors["extras_mae"] = math.Abs(predAgg.Extras - actAgg.Extras)
-
-			if resp.Metrics == nil {
-				resp.Metrics = map[string]float64{}
-			}
-			resp.Metrics["match_runs_mae"] = resp.MatchAggregates.Errors["runs_mae"]
-			resp.Metrics["match_wickets_mae"] = resp.MatchAggregates.Errors["wickets_mae"]
-			resp.Metrics["match_extras_mae"] = resp.MatchAggregates.Errors["extras_mae"]
-			resp.Metrics["winner_accuracy"] = winnerAccuracy(predAgg.WinnerTeamCode, actAgg.WinnerTeamCode)
 		}
+		predRuns += r
+		if t, ok := playerTeams[p.PlayerID]; ok {
+			teamRuns[t] += r
+		}
+		w := 0.0
+		if p.Predicted != nil {
+			if v, ok := p.Predicted["wickets"]; ok {
+				w = v
+			}
+		}
+		predWickets += w
 	}
+	predWinner := ""
+	if teamRuns[team1] > teamRuns[team2] {
+		predWinner = team1
+	} else if teamRuns[team2] > teamRuns[team1] {
+		predWinner = team2
+	}
+
+	actAgg, err2 := getBacktestMatchAggregatesActualsFunc(ctx, matchID)
+	if err2 != nil {
+		return
+	}
+	resp.MatchAggregates.Predicted = map[string]any{
+		"runs":             predRuns,
+		"wickets":          predWickets,
+		"extras":           0,
+		"winner_team_code": predWinner,
+	}
+	resp.MatchAggregates.Actual = map[string]any{
+		"runs":             actAgg.Runs,
+		"wickets":          actAgg.Wickets,
+		"extras":           actAgg.Extras,
+		"winner_team_code": actAgg.WinnerTeamCode,
+	}
+	resp.MatchAggregates.Errors = map[string]float64{}
+	resp.MatchAggregates.Errors["runs_mae"] = math.Abs(predRuns - actAgg.Runs)
+	resp.MatchAggregates.Errors["wickets_mae"] = math.Abs(predWickets - actAgg.Wickets)
+	resp.MatchAggregates.Errors["extras_mae"] = math.Abs(0 - actAgg.Extras)
+	if resp.Metrics == nil {
+		resp.Metrics = map[string]float64{}
+	}
+	resp.Metrics["match_runs_mae"] = resp.MatchAggregates.Errors["runs_mae"]
+	resp.Metrics["match_wickets_mae"] = resp.MatchAggregates.Errors["wickets_mae"]
+	resp.Metrics["match_extras_mae"] = resp.MatchAggregates.Errors["extras_mae"]
+	resp.Metrics["winner_accuracy"] = winnerAccuracy(predWinner, actAgg.WinnerTeamCode)
 }
 
 // backtestMatchHandler handles GET /api/backtest/match
@@ -385,7 +413,7 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("features", "Computing feature data at cutoff (no future data)...")
 	}
-	features, _ := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad)
+	features, _ := getBacktestFeaturesAtCutoffFunc(ctx, cutoff, squad, mid)
 
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting/bowling)...")

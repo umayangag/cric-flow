@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 )
 
 // testing seam for DB call
@@ -27,9 +28,11 @@ var (
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 		return nil, sql.ErrNoRows
 	}
-	// Optional: retrieve features at-or-before cutoff; may be unused by tests initially
-	getBacktestFeaturesAtCutoffFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64) (map[int64]map[string]float64, error) {
-		// Wire to default DB-based provider; tests may override this seam
+	// Features at cutoff: when matchID > 0 uses EWM/Consistency/venue/opposition for that match; otherwise legacy AVG-based provider.
+	getBacktestFeaturesAtCutoffFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64, matchID int64) (map[int64]map[string]float64, error) {
+		if matchID > 0 {
+			return exq.ComputeFeaturesAtCutoffForMatch(ctx, matchID, cutoff, playerIDs)
+		}
 		return db.DefaultFeatureProviderInst.GetPlayerFeaturesAtCutoff(ctx, cutoff, playerIDs)
 	}
 	// ML seam for backtest: given cutoff, format, player ids, and optional features, return predicted targets per player
