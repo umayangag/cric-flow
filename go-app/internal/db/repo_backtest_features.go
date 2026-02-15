@@ -23,12 +23,12 @@ type PlayerOpposition struct {
 // GetMatchFeatureContext returns format_id, venue_id, season_id and per-player batting/bowling opposition IDs for the match.
 // Used by exportqueries.ComputeFeaturesAtCutoffForMatch to compute EWM/consistency/venue/opposition with correct context.
 func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureContext, error) {
-	if Pool == nil {
+	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")
 	}
 	var m MatchFeatureContext
 	var venueID, seasonID *int64
-	err := Pool.QueryRow(ctx, `
+	err := QueryRow(ctx, `
 		SELECT format_id, venue_id, season_id FROM match WHERE match_id = $1
 	`, matchID).Scan(&m.FormatID, &venueID, &seasonID)
 	if err != nil {
@@ -39,7 +39,7 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 
 	// Batting: player_id -> opposition they faced (bowling_team_opposition_id of that inning)
 	batOpp := make(map[int64]*int64)
-	rows, err := Pool.Query(ctx, `
+	rows, err := Query(ctx, `
 		SELECT bd.player_id, mi.bowling_team_opposition_id
 		FROM batting_data bd
 		JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
@@ -63,7 +63,7 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 
 	// Bowling: player_id -> opposition they faced (batting_team_opposition_id of that inning)
 	bowlOpp := make(map[int64]*int64)
-	rows2, err := Pool.Query(ctx, `
+	rows2, err := Query(ctx, `
 		SELECT bd.player_id, mi.batting_team_opposition_id
 		FROM bowling_data bd
 		JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
@@ -107,11 +107,11 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 // GetMatchPlayerTeams returns a map of player_id -> team (opposition_name) for the match,
 // so predicted runs can be summed by team to derive winner. Uses batting_team for batters and bowling_team for bowlers-only.
 func GetMatchPlayerTeams(ctx context.Context, matchID int64) (map[int64]string, error) {
-	if Pool == nil {
+	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")
 	}
 	out := make(map[int64]string)
-	rows, err := Pool.Query(ctx, `
+	rows, err := Query(ctx, `
 		SELECT bd.player_id, COALESCE(o.opposition_name, '')
 		FROM batting_data bd
 		JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
