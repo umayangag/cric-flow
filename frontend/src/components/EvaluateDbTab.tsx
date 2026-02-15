@@ -238,6 +238,10 @@ const EvaluateDbTab: React.FC = () => {
           setError(status.error ?? 'Unknown error');
           setStatusMessage('');
         }
+        // Reload candidates so the table shows the match list and selected row after refresh
+        api.backtestSelect(data.format, data.team1, data.team2).then((resp) => {
+          if (!cancelled) setCandidates(resp.candidates ?? []);
+        }).catch(() => { /* ignore */ });
       })
       .catch(() => {
         if (cancelled) return;
@@ -466,6 +470,32 @@ const EvaluateDbTab: React.FC = () => {
 
       {statusMessage && <Alert severity="info">{statusMessage}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
+
+      {/* Current evaluation (restored after refresh or in progress) — so user sees which job and where the result is */}
+      {currentJobId && (
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            bgcolor: 'action.hover',
+            borderColor: 'divider',
+            borderWidth: 1,
+          }}
+          component="section"
+          aria-label="current-evaluation"
+        >
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+            Current evaluation
+          </Typography>
+          <Typography variant="body2">
+            {format} — {team1} vs {team2}
+            {selectedMatchId != null && ` · Match ${selectedMatchId}`}
+            {evaluating && ' · Running (progress below)'}
+            {evaluationResult && !evaluating && ' · Complete (result below)'}
+            {error && !evaluating && ' · Failed (see error above)'}
+          </Typography>
+        </Paper>
+      )}
 
       {/* Candidates */}
       <Box component="section" aria-label="candidates-section">

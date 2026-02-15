@@ -14,6 +14,21 @@ type evalJobStep struct {
 	Message string `json:"message"`
 }
 
+// evalJobStatusResponse is the JSON shape for evaluate-status; no mutex so it is safe to copy.
+type evalJobStatusResponse struct {
+	JobID     string                      `json:"job_id"`
+	MatchID   string                      `json:"match_id"`
+	Format    string                      `json:"format"`
+	Team1     string                      `json:"team1"`
+	Team2     string                      `json:"team2"`
+	Status    string                      `json:"status"` // "running" | "done" | "error"
+	Steps     []evalJobStep               `json:"steps,omitempty"`
+	Result    *backtestEvaluateResponse   `json:"result,omitempty"`
+	Error     string                      `json:"error,omitempty"`
+	CreatedAt time.Time                   `json:"created_at"`
+	UpdatedAt time.Time                   `json:"updated_at"`
+}
+
 // evalJobState holds the state of a single evaluate job (in-memory; survives refresh, not server restart).
 type evalJobState struct {
 	mu        sync.Mutex
@@ -53,12 +68,12 @@ func (s *evalJobState) setError(errMsg string) {
 	s.UpdatedAt = time.Now()
 }
 
-func (s *evalJobState) snapshot() evalJobState {
+func (s *evalJobState) snapshot() evalJobStatusResponse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	stepsCopy := make([]evalJobStep, len(s.Steps))
 	copy(stepsCopy, s.Steps)
-	return evalJobState{
+	return evalJobStatusResponse{
 		JobID:     s.JobID,
 		MatchID:   s.MatchID,
 		Format:    s.Format,
@@ -86,8 +101,13 @@ func generateEvalJobID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// evalJobMaxDuration is the maximum time an evaluation job may run (e.g. train-on-the-fly can take hours).
+const evalJobMaxDuration = 6 * time.Hour
+
 // startEvaluateJob starts doEvaluateWork in a goroutine and returns the job ID immediately.
 // The job state is updated with progress and final result or error.
+// Uses a long-lived context (not the request context) so the job is not cancelled when the HTTP
+// request ends, and has a generous deadline so it can run for hours without exceeding it.
 func startEvaluateJob(ctx context.Context, format, team1, team2, matchID string) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
@@ -110,10 +130,14 @@ func startEvaluateJob(ctx context.Context, format, team1, team2, matchID string)
 	evalJobStoreMu.Unlock()
 
 	go func() {
+		// Not the request context (cancelled when we return 202). Use a long deadline so the job
+		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
+		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration)
+		defer cancel()
 		progress := func(step, message string) {
 			job.appendStep(step, message)
 		}
-		resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, progress)
+		resp, err := doEvaluateWork(jobCtx, format, team1, team2, matchID, progress)
 		if err != nil {
 			job.setError(err.Error())
 			return
@@ -125,12 +149,12 @@ func startEvaluateJob(ctx context.Context, format, team1, team2, matchID string)
 }
 
 // getEvaluateJobStatus returns a snapshot of the job state. The second return is false if not found.
-func getEvaluateJobStatus(jobID string) (evalJobState, bool) {
+func getEvaluateJobStatus(jobID string) (evalJobStatusResponse, bool) {
 	evalJobStoreMu.RLock()
 	job := evalJobStore[jobID]
 	evalJobStoreMu.RUnlock()
 	if job == nil {
-		return evalJobState{}, false
+		return evalJobStatusResponse{}, false
 	}
 	return job.snapshot(), true
 }

@@ -21,12 +21,15 @@ type BacktestMLClient struct {
 	HTTP    *http.Client
 }
 
+// backtestMLClientTimeout: train-on-the-fly can take minutes (fetch data, train, predict). Use a long timeout so the client does not exceed deadline before the ML service responds.
+const backtestMLClientTimeout = 24 * time.Hour
+
 func NewBacktestMLClient() *BacktestMLClient {
 	base := os.Getenv("ML_SERVICE_URL")
 	if base == "" {
 		base = "http://localhost:8000"
 	}
-	return &BacktestMLClient{BaseURL: base, HTTP: &http.Client{Timeout: 15 * time.Second}}
+	return &BacktestMLClient{BaseURL: base, HTTP: &http.Client{Timeout: backtestMLClientTimeout}}
 }
 
 // request/response DTOs kept local to avoid leaking server internals.
