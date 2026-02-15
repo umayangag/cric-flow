@@ -63,6 +63,8 @@ export type BacktestEvaluateResponse = {
     actual: Record<string, number | string>;
     errors: Record<string, number>;
   };
+  /** Predicted scorecard from ML (data strictly before match date). Same shape as match scorecard. */
+  predicted_scorecard?: MatchScorecardResponse | null;
 };
 
 // --- Match scorecard (for Evaluate DB tab) ---

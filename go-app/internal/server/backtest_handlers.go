@@ -60,6 +60,77 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 	return 0
 }
 
+// buildPredictedScorecard builds a scorecard from the actual layout with ML-predicted stats per player.
+// Predictions use only data before the match date. Batting rows get predicted runs; bowling rows get predicted wickets, economy, and derived runs.
+func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions) *db.MatchScorecard {
+	if actual == nil {
+		return nil
+	}
+	out := &db.MatchScorecard{
+		MatchID:   actual.MatchID,
+		MatchDate: actual.MatchDate,
+		Venue:     actual.Venue,
+		Innings:   make([]db.ScorecardInning, 0, len(actual.Innings)),
+	}
+	for _, in := range actual.Innings {
+		inn := db.ScorecardInning{
+			InningNumber:    in.InningNumber,
+			BattingTeamName: in.BattingTeamName,
+			BowlingTeamName: in.BowlingTeamName,
+			Extras:          in.Extras,
+			TargetRuns:      in.TargetRuns,
+			Batting:         make([]db.ScorecardBatting, 0, len(in.Batting)),
+			Bowling:         make([]db.ScorecardBowling, 0, len(in.Bowling)),
+		}
+		var predRunsSum int
+		for _, b := range in.Batting {
+			p := preds[b.PlayerID]
+			r := int(math.Round(p.Runs))
+			predRunsSum += r
+			inn.Batting = append(inn.Batting, db.ScorecardBatting{
+				PlayerID:   b.PlayerID,
+				PlayerName: b.PlayerName,
+				Runs:       intPtr(r),
+				Balls:      nil,
+				Fours:      nil,
+				Sixes:      nil,
+				StrikeRate: nil,
+				HowOut:     nil,
+			})
+		}
+		inn.RunsScored = predRunsSum
+		var predWicketsSum int
+		for _, w := range in.Bowling {
+			p := preds[w.PlayerID]
+			wkts := int(math.Round(p.Wickets))
+			predWicketsSum += wkts
+			ec := float32(p.Economy)
+			var predRuns *int
+			if w.Overs != nil && *w.Overs > 0 {
+				r := int(math.Round(float64(*w.Overs) * p.Economy))
+				predRuns = &r
+			}
+			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{
+				PlayerID:   w.PlayerID,
+				PlayerName: w.PlayerName,
+				Overs:      w.Overs,
+				Maidens:    nil,
+				Runs:       predRuns,
+				Wickets:    intPtr(wkts),
+				Economy:    &ec,
+				Wides:      nil,
+				NoBalls:    nil,
+				Balls:      w.Balls,
+			})
+		}
+		inn.WicketsLost = predWicketsSum
+		out.Innings = append(out.Innings, inn)
+	}
+	return out
+}
+
+func intPtr(n int) *int { return &n }
+
 // computePlayerResultsAndMetrics walks through the given squad, pairing predictions with
 // actuals to produce per-player results and summary metrics.
 // Metrics computed:
@@ -364,6 +435,11 @@ func (a *App) handleBacktestEvaluate(
 
 	// Match-level aggregates (optional if seams available)
 	populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid)
+
+	// Predicted scorecard: same structure as actual but with ML predictions (data strictly before match date)
+	if actualCard, err := db.GetMatchScorecard(ctx, mid); err == nil && actualCard != nil {
+		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds)
+	}
 
 	writeJSON(w, http.StatusOK, resp)
 }

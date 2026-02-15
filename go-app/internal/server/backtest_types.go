@@ -1,5 +1,7 @@
 package server
 
+import "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+
 // Backtest selection response
 type backtestSelectResponse struct {
 	Filters    map[string]any      `json:"filters"`
@@ -55,18 +57,19 @@ type BacktestPlayerResult struct {
 
 // Backtest evaluate API response
 type backtestEvaluateResponse struct {
-	Filters map[string]any `json:"filters"`
-	Match   struct {
+	Filters            map[string]any `json:"filters"`
+	Match               struct {
 		MatchID   int64  `json:"match_id"`
 		MatchDate string `json:"match_date"`
 	} `json:"match"`
-	MatchAggregates struct {
+	MatchAggregates     struct {
 		Predicted map[string]any     `json:"predicted"`
 		Actual    map[string]any     `json:"actual"`
 		Errors    map[string]float64 `json:"errors"`
 	} `json:"match_aggregates,omitempty"`
-	Players []BacktestPlayerResult `json:"players"`
-	Metrics map[string]float64     `json:"metrics"`
+	Players             []BacktestPlayerResult `json:"players"`
+	Metrics             map[string]float64    `json:"metrics"`
+	PredictedScorecard  *db.MatchScorecard    `json:"predicted_scorecard,omitempty"`
 }
 
 // Accuracy trend DTOs

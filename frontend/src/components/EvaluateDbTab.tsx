@@ -329,6 +329,15 @@ const EvaluateDbTab: React.FC = () => {
             Evaluate Selected Match
           </Button>
         </Box>
+
+        {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
+        {evaluationResult?.predicted_scorecard && (
+          <MatchScorecard
+            scorecard={evaluationResult.predicted_scorecard}
+            title="Predicted scorecard"
+            subtitle="ML prediction using only data before the match date (no actual match data used)."
+          />
+        )}
       </Box>
 
       {/* Results */}

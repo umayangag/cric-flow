@@ -20,7 +20,9 @@ type ScorecardInning struct {
 }
 
 // ScorecardBatting is one batting line (player, runs, balls, how out, etc.).
+// PlayerID is set for backend use when building predicted scorecards.
 type ScorecardBatting struct {
+	PlayerID   int64    `json:"player_id,omitempty"`
 	PlayerName string   `json:"player_name"`
 	Runs       *int     `json:"runs"`
 	Balls      *int     `json:"balls"`
@@ -31,7 +33,9 @@ type ScorecardBatting struct {
 }
 
 // ScorecardBowling is one bowling line (bowler, overs, runs, wickets, etc.).
+// PlayerID is set for backend use when building predicted scorecards.
 type ScorecardBowling struct {
+	PlayerID   int64    `json:"player_id,omitempty"`
 	PlayerName string   `json:"player_name"`
 	Overs      *float32 `json:"overs"`
 	Maidens    *int     `json:"maidens"`
@@ -111,7 +115,7 @@ func GetMatchScorecard(ctx context.Context, matchID int64) (*MatchScorecard, err
 	// Batting lines per inning
 	for i := range innings {
 		batRows, err := Pool.Query(ctx, `
-			SELECT COALESCE(p.player_name, ''), bd.description, bd.runs, bd.balls, bd.fours, bd.sixes, bd.strike_rate
+			SELECT bd.player_id, COALESCE(p.player_name, ''), bd.description, bd.runs, bd.balls, bd.fours, bd.sixes, bd.strike_rate
 			FROM batting_data bd
 			JOIN player p ON p.id = bd.player_id
 			WHERE bd.match_id = $1 AND bd.inning_number = $2
@@ -122,7 +126,7 @@ func GetMatchScorecard(ctx context.Context, matchID int64) (*MatchScorecard, err
 		}
 		for batRows.Next() {
 			var b ScorecardBatting
-			if err := batRows.Scan(&b.PlayerName, &b.HowOut, &b.Runs, &b.Balls, &b.Fours, &b.Sixes, &b.StrikeRate); err != nil {
+			if err := batRows.Scan(&b.PlayerID, &b.PlayerName, &b.HowOut, &b.Runs, &b.Balls, &b.Fours, &b.Sixes, &b.StrikeRate); err != nil {
 				batRows.Close()
 				return nil, err
 			}
@@ -137,7 +141,7 @@ func GetMatchScorecard(ctx context.Context, matchID int64) (*MatchScorecard, err
 	// Bowling lines per inning
 	for i := range innings {
 		bowlRows, err := Pool.Query(ctx, `
-			SELECT COALESCE(p.player_name, ''), bw.overs, bw.maidens, bw.runs, bw.wickets, bw.econ, bw.wides, bw.no_balls, bw.balls
+			SELECT bw.player_id, COALESCE(p.player_name, ''), bw.overs, bw.maidens, bw.runs, bw.wickets, bw.econ, bw.wides, bw.no_balls, bw.balls
 			FROM bowling_data bw
 			JOIN player p ON p.id = bw.player_id
 			WHERE bw.match_id = $1 AND bw.inning_number = $2
@@ -148,7 +152,7 @@ func GetMatchScorecard(ctx context.Context, matchID int64) (*MatchScorecard, err
 		}
 		for bowlRows.Next() {
 			var w ScorecardBowling
-			if err := bowlRows.Scan(&w.PlayerName, &w.Overs, &w.Maidens, &w.Runs, &w.Wickets, &w.Economy, &w.Wides, &w.NoBalls, &w.Balls); err != nil {
+			if err := bowlRows.Scan(&w.PlayerID, &w.PlayerName, &w.Overs, &w.Maidens, &w.Runs, &w.Wickets, &w.Economy, &w.Wides, &w.NoBalls, &w.Balls); err != nil {
 				bowlRows.Close()
 				return nil, err
 			}

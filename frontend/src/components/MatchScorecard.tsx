@@ -22,9 +22,23 @@ function fmtDec(n: number | null | undefined, decimals = 2): string {
   return Number(n).toFixed(decimals);
 }
 
-type Props = { scorecard: MatchScorecardResponse | null; loading?: boolean; error?: string | null };
+type Props = {
+  scorecard: MatchScorecardResponse | null;
+  loading?: boolean;
+  error?: string | null;
+  /** Override default "Match summary" title */
+  title?: string;
+  /** Optional subtitle (e.g. for predicted card: "ML using data before match date") */
+  subtitle?: string;
+};
 
-const MatchScorecard: React.FC<Props> = ({ scorecard, loading, error }) => {
+const MatchScorecard: React.FC<Props> = ({
+  scorecard,
+  loading,
+  error,
+  title = 'Match summary',
+  subtitle,
+}) => {
   if (loading) {
     return (
       <Typography color="text.secondary" sx={{ fontStyle: 'italic', py: 2 }}>
@@ -54,11 +68,10 @@ const MatchScorecard: React.FC<Props> = ({ scorecard, loading, error }) => {
   return (
     <Box sx={{ mt: 2 }}>
       <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-        Match summary
+        {title}
       </Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
-        {dateStr}
-        {scorecard.venue ? ` · ${scorecard.venue}` : ''}
+        {subtitle ?? `${dateStr}${scorecard.venue ? ` · ${scorecard.venue}` : ''}`}
       </Typography>
 
       {scorecard.innings.map((inn) => (
