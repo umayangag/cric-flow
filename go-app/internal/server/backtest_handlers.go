@@ -247,7 +247,7 @@ func computePlayerResultsAndMetrics(
 func populateMatchAggregatesAndMetrics(
 	ctx context.Context,
 	resp *backtestEvaluateResponse,
-	cutoff time.Time,
+	_ time.Time,
 	team1 string,
 	team2 string,
 	matchID int64,
@@ -682,7 +682,11 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 			MatchID int64  `json:"match_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_BODY", Message: "JSON body with format, team1, team2, match_id required"})
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				apiError{Code: "INVALID_BODY", Message: "JSON body with format, team1, team2, match_id required"},
+			)
 			return
 		}
 		format = strings.TrimSpace(body.Format)
@@ -708,7 +712,11 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if format == "" || team1 == "" || team2 == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"},
+		)
 		return
 	}
 	if matchID == "" {

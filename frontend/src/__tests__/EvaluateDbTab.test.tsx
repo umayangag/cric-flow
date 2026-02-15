@@ -113,7 +113,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     // Wait for polling to run and job to complete (status returns 'done')
     await waitFor(() => expect(getEvaluateStatusMock).toHaveBeenCalled());
-    const results = await screen.findByLabelText('results-section', { timeout: 3000 });
+    const results = await screen.findByLabelText('results-section', {}, { timeout: 3000 });
     // Status message appears in more than one Alert; ensure at least one shows completion
     await waitFor(() =>
       expect(screen.getAllByText(/Evaluation complete/i).length).toBeGreaterThanOrEqual(1),

@@ -169,15 +169,35 @@ func ComputeFeaturesAtCutoffForMatch(
 	playerOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
 	for _, po := range mctx.PlayerOpps {
 		playerOpps[po.PlayerID] = struct{ BattingOpp, BowlingOpp *int64 }{
-			BattingOpp:  po.BattingOppositionID,
+			BattingOpp: po.BattingOppositionID,
 			BowlingOpp: po.BowlingOppositionID,
 		}
 	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {
 		opps := playerOpps[pid]
-		bat, _ := computeBattingSnapshotAtCutoff(ctx, pid, cutoff, mctx.FormatID, mctx.VenueID, opps.BattingOpp, DefaultEWMAlpha, DefaultConsistencyLastN, DefaultFormWindowN)
-		bowl, _ := computeBowlingSnapshotAtCutoff(ctx, pid, cutoff, mctx.FormatID, mctx.VenueID, opps.BowlingOpp, DefaultEWMAlpha, DefaultConsistencyLastN, DefaultFormWindowN)
+		bat, _ := computeBattingSnapshotAtCutoff(
+			ctx,
+			pid,
+			cutoff,
+			mctx.FormatID,
+			mctx.VenueID,
+			opps.BattingOpp,
+			DefaultEWMAlpha,
+			DefaultConsistencyLastN,
+			DefaultFormWindowN,
+		)
+		bowl, _ := computeBowlingSnapshotAtCutoff(
+			ctx,
+			pid,
+			cutoff,
+			mctx.FormatID,
+			mctx.VenueID,
+			opps.BowlingOpp,
+			DefaultEWMAlpha,
+			DefaultConsistencyLastN,
+			DefaultFormWindowN,
+		)
 		season := 0.0
 		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
 			season = float64(*mctx.SeasonID)

@@ -98,7 +98,10 @@ export const PaginationButton = styled.button`
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 
   &:disabled {
     opacity: 0.5;

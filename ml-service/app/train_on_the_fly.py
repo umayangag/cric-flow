@@ -13,13 +13,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.preprocessing import StandardScaler
 
 from app.logging import get_struct_logger
 
 logger = get_struct_logger()
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.preprocessing import StandardScaler
 
 # Align with ml/ml/train_batting.py and train_bowling.py
 BATTING_FEATURE_COLS = [
@@ -280,9 +280,9 @@ def train_on_the_fly(
     )
 
     if X_bat.size == 0 or Y_bat.size == 0:
-        msg = (
-            "Insufficient batting training data for format=%s cutoff=%s (no rows after filtering)"
-            % (format_code, cutoff_iso)
+        msg = "Insufficient batting training data for format=%s cutoff=%s (no rows after filtering)" % (
+            format_code,
+            cutoff_iso,
         )
         logger.warning(
             "train_on_the_fly.insufficient_batting",
@@ -293,9 +293,9 @@ def train_on_the_fly(
         )
         raise ValueError(msg)
     if X_bowl.size == 0 or Y_bowl.size == 0:
-        msg = (
-            "Insufficient bowling training data for format=%s cutoff=%s (no rows after filtering)"
-            % (format_code, cutoff_iso)
+        msg = "Insufficient bowling training data for format=%s cutoff=%s (no rows after filtering)" % (
+            format_code,
+            cutoff_iso,
         )
         logger.warning(
             "train_on_the_fly.insufficient_bowling",

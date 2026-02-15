@@ -44,7 +44,8 @@ const theme = createTheme({
     borderRadius: 12,
   },
   typography: {
-    fontFamily: '"Inter", "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily:
+      '"Inter", "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h6: { fontWeight: 600 },
     subtitle1: { fontWeight: 600 },
     subtitle2: { fontWeight: 600 },

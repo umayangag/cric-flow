@@ -239,9 +239,14 @@ const EvaluateDbTab: React.FC = () => {
           setStatusMessage('');
         }
         // Reload candidates so the table shows the match list and selected row after refresh
-        api.backtestSelect(data.format, data.team1, data.team2).then((resp) => {
-          if (!cancelled) setCandidates(resp.candidates ?? []);
-        }).catch(() => { /* ignore */ });
+        api
+          .backtestSelect(data.format, data.team1, data.team2)
+          .then((resp) => {
+            if (!cancelled) setCandidates(resp.candidates ?? []);
+          })
+          .catch(() => {
+            /* ignore */
+          });
       })
       .catch(() => {
         if (cancelled) return;
@@ -260,7 +265,9 @@ const EvaluateDbTab: React.FC = () => {
       api
         .getEvaluateStatus(currentJobId)
         .then((status) => {
-          setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+          setEvaluationSteps(
+            status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
+          );
           if (status.status === 'done' && status.result) {
             setEvaluating(false);
             setEvaluationResult(status.result);
@@ -392,7 +399,9 @@ const EvaluateDbTab: React.FC = () => {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
-      setStatusMessage('Evaluation in progress. You can refresh the page; progress will be restored.');
+      setStatusMessage(
+        'Evaluation in progress. You can refresh the page; progress will be restored.',
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
@@ -541,54 +550,57 @@ const EvaluateDbTab: React.FC = () => {
 
           {/* Progress steps while evaluating (SSE stream) */}
           {evaluating && evaluationSteps.length > 0 && (
-          <Paper
-            variant="outlined"
-            sx={{
-              mt: 2,
-              p: 2,
-              pl: 2.5,
-              position: 'relative',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 4,
-                background: accentGradient,
-                borderRadius: '0 4px 4px 0',
-              },
-            }}
-          >
-            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-              Current step
-            </Typography>
-            <LinearProgress sx={{ mb: 2 }} />
-            <List dense disablePadding>
-              {evaluationSteps.map((s, idx) => (
-                <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}>
-                    {idx === evaluationSteps.length - 1 ? (
-                      <CircularProgress size={16} color="primary" />
-                    ) : (
-                      <CheckCircleIcon color="success" fontSize="small" />
-                    )}
-                  </ListItemIcon>
-                  <ListItemText primary={s.message} primaryTypographyProps={{ variant: 'body2' }} />
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
-        )}
+            <Paper
+              variant="outlined"
+              sx={{
+                mt: 2,
+                p: 2,
+                pl: 2.5,
+                position: 'relative',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 4,
+                  background: accentGradient,
+                  borderRadius: '0 4px 4px 0',
+                },
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Current step
+              </Typography>
+              <LinearProgress sx={{ mb: 2 }} />
+              <List dense disablePadding>
+                {evaluationSteps.map((s, idx) => (
+                  <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      {idx === evaluationSteps.length - 1 ? (
+                        <CircularProgress size={16} color="primary" />
+                      ) : (
+                        <CheckCircleIcon color="success" fontSize="small" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={s.message}
+                      primaryTypographyProps={{ variant: 'body2' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
+          )}
 
-        {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
-        {evaluationResult?.predicted_scorecard && (
-          <MatchScorecard
-            scorecard={evaluationResult.predicted_scorecard}
-            title="Predicted scorecard"
-            subtitle="ML prediction using only data before the match date (no actual match data used)."
-          />
-        )}
+          {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
+          {evaluationResult?.predicted_scorecard && (
+            <MatchScorecard
+              scorecard={evaluationResult.predicted_scorecard}
+              title="Predicted scorecard"
+              subtitle="ML prediction using only data before the match date (no actual match data used)."
+            />
+          )}
         </Box>
       </Box>
 

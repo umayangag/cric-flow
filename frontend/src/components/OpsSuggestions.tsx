@@ -45,13 +45,21 @@ const OpsSuggestions: React.FC = () => {
     }
   };
 
-  if (loading && suggestions.length === 0) return <Typography variant="body2">Loading suggestions...</Typography>;
-  if (error) return <Typography variant="body2" color="error">Error: {error}</Typography>;
+  if (loading && suggestions.length === 0)
+    return <Typography variant="body2">Loading suggestions...</Typography>;
+  if (error)
+    return (
+      <Typography variant="body2" color="error">
+        Error: {error}
+      </Typography>
+    );
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
       {suggestions.length === 0 ? (
-        <Typography variant="body2" sx={{ opacity: 0.8 }}>No suggestions.</Typography>
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+          No suggestions.
+        </Typography>
       ) : (
         suggestions.map((s, i) => (
           <Box
@@ -68,10 +76,22 @@ const OpsSuggestions: React.FC = () => {
               bgcolor: 'action.hover',
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
               <Box>
-                <Typography component="strong" variant="body2" fontWeight={600}>{s.title}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>{s.description}</Typography>
+                <Typography component="strong" variant="body2" fontWeight={600}>
+                  {s.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>
+                  {s.description}
+                </Typography>
               </Box>
               {s.command && (
                 <Button
@@ -83,7 +103,11 @@ const OpsSuggestions: React.FC = () => {
                     textTransform: 'none',
                     borderColor: 'divider',
                     color: 'text.secondary',
-                    '&:hover': { borderColor: 'primary.main', color: 'primary.main', bgcolor: 'action.hover' },
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      color: 'primary.main',
+                      bgcolor: 'action.hover',
+                    },
                   }}
                 >
                   {copiedIdx === i ? 'Copied!' : 'Copy'}

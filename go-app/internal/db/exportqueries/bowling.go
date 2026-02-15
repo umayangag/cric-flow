@@ -10,7 +10,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
 )
 
-
 // BowlingUnifiedRows returns CSV-shaped rows for the unified bowling export.
 // Mirrors legacy exportBowlingUnified: base bowling row + per-format as-of features and fielding.
 func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
@@ -525,7 +524,12 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	WHERE m.match_date < $1`
 	args = []any{cutoff}
 	if formatIDs != nil {
-		q = strings.Replace(q, "WHERE m.match_date < $1", "WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2", 1)
+		q = strings.Replace(
+			q,
+			"WHERE m.match_date < $1",
+			"WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2",
+			1,
+		)
 		args = []any{formatIDs, cutoff}
 	}
 	return q, args
@@ -577,7 +581,12 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		}
 		snap, err := computeBowlingSnapshotAtCutoff(ctx, playerID, matchDate, formatID, vID, oID, alpha, lastN, windowN)
 		if err != nil {
-			return nil, fmt.Errorf("compute bowling snapshot player=%d asOf=%s: %w", playerID, matchDate.Format(time.RFC3339), err)
+			return nil, fmt.Errorf(
+				"compute bowling snapshot player=%d asOf=%s: %w",
+				playerID,
+				matchDate.Format(time.RFC3339),
+				err,
+			)
 		}
 		row := []string{
 			runs, balls, wickets,

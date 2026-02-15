@@ -551,7 +551,12 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	WHERE m.match_date < $1`
 	args = []any{cutoff}
 	if formatIDs != nil {
-		q = strings.Replace(q, "WHERE m.match_date < $1", "WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2", 1)
+		q = strings.Replace(
+			q,
+			"WHERE m.match_date < $1",
+			"WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2",
+			1,
+		)
 		args = []any{formatIDs, cutoff}
 	}
 	return q, args
@@ -602,7 +607,12 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		}
 		snap, err := computeBattingSnapshotAtCutoff(ctx, playerID, matchDate, formatID, vID, oID, alpha, lastN, windowN)
 		if err != nil {
-			return nil, fmt.Errorf("compute batting snapshot player=%d asOf=%s: %w", playerID, matchDate.Format(time.RFC3339), err)
+			return nil, fmt.Errorf(
+				"compute batting snapshot player=%d asOf=%s: %w",
+				playerID,
+				matchDate.Format(time.RFC3339),
+				err,
+			)
 		}
 		row := []string{
 			runs, balls, fours, sixes, pos,

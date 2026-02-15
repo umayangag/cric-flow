@@ -15,8 +15,8 @@ type MatchFeatureContext struct {
 
 // PlayerOpposition holds batting and bowling opposition IDs for a player in a match (from the inning they batted/bowled).
 type PlayerOpposition struct {
-	PlayerID           int64
-	BattingOppositionID  *int64 // opposition when batting (bowling_team_opposition_id of that inning)
+	PlayerID            int64
+	BattingOppositionID *int64 // opposition when batting (bowling_team_opposition_id of that inning)
 	BowlingOppositionID *int64 // opposition when bowling (batting_team_opposition_id of that inning)
 }
 
@@ -97,7 +97,7 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 	for pid := range seen {
 		m.PlayerOpps = append(m.PlayerOpps, PlayerOpposition{
 			PlayerID:            pid,
-			BattingOppositionID:  batOpp[pid],
+			BattingOppositionID: batOpp[pid],
 			BowlingOppositionID: bowlOpp[pid],
 		})
 	}

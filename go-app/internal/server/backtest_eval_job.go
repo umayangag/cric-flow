@@ -16,33 +16,33 @@ type evalJobStep struct {
 
 // evalJobStatusResponse is the JSON shape for evaluate-status; no mutex so it is safe to copy.
 type evalJobStatusResponse struct {
-	JobID     string                      `json:"job_id"`
-	MatchID   string                      `json:"match_id"`
-	Format    string                      `json:"format"`
-	Team1     string                      `json:"team1"`
-	Team2     string                      `json:"team2"`
-	Status    string                      `json:"status"` // "running" | "done" | "error"
-	Steps     []evalJobStep               `json:"steps,omitempty"`
-	Result    *backtestEvaluateResponse   `json:"result,omitempty"`
-	Error     string                      `json:"error,omitempty"`
-	CreatedAt time.Time                   `json:"created_at"`
-	UpdatedAt time.Time                   `json:"updated_at"`
+	JobID     string                    `json:"job_id"`
+	MatchID   string                    `json:"match_id"`
+	Format    string                    `json:"format"`
+	Team1     string                    `json:"team1"`
+	Team2     string                    `json:"team2"`
+	Status    string                    `json:"status"` // "running" | "done" | "error"
+	Steps     []evalJobStep             `json:"steps,omitempty"`
+	Result    *backtestEvaluateResponse `json:"result,omitempty"`
+	Error     string                    `json:"error,omitempty"`
+	CreatedAt time.Time                 `json:"created_at"`
+	UpdatedAt time.Time                 `json:"updated_at"`
 }
 
 // evalJobState holds the state of a single evaluate job (in-memory; survives refresh, not server restart).
 type evalJobState struct {
 	mu        sync.Mutex
-	JobID     string    `json:"job_id"`
-	MatchID   string    `json:"match_id"`
-	Format    string    `json:"format"`
-	Team1     string    `json:"team1"`
-	Team2     string    `json:"team2"`
-	Status    string    `json:"status"` // "running" | "done" | "error"
-	Steps     []evalJobStep `json:"steps,omitempty"`
+	JobID     string                    `json:"job_id"`
+	MatchID   string                    `json:"match_id"`
+	Format    string                    `json:"format"`
+	Team1     string                    `json:"team1"`
+	Team2     string                    `json:"team2"`
+	Status    string                    `json:"status"` // "running" | "done" | "error"
+	Steps     []evalJobStep             `json:"steps,omitempty"`
 	Result    *backtestEvaluateResponse `json:"result,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Error     string                    `json:"error,omitempty"`
+	CreatedAt time.Time                 `json:"created_at"`
+	UpdatedAt time.Time                 `json:"updated_at"`
 }
 
 func (s *evalJobState) appendStep(step, message string) {
@@ -108,7 +108,7 @@ const evalJobMaxDuration = 6 * time.Hour
 // The job state is updated with progress and final result or error.
 // Uses a long-lived context (not the request context) so the job is not cancelled when the HTTP
 // request ends, and has a generous deadline so it can run for hours without exceeding it.
-func startEvaluateJob(ctx context.Context, format, team1, team2, matchID string) (string, error) {
+func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
 		return "", err

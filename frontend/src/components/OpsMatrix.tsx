@@ -80,7 +80,15 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
           );
         })}
       </Box>
-      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', fontSize: 11, color: 'text.secondary' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 1.5,
+          alignItems: 'center',
+          fontSize: 11,
+          color: 'text.secondary',
+        }}
+      >
         <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main' }} />
           ok
@@ -166,13 +174,21 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
             <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 {subCell(bat?.exists === true, bat?.loaded === true)}
-                <Typography component="small" variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                <Typography
+                  component="small"
+                  variant="caption"
+                  sx={{ fontSize: 10, color: 'text.secondary' }}
+                >
                   batting
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 {subCell(bowl?.exists === true, bowl?.loaded === true)}
-                <Typography component="small" variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                <Typography
+                  component="small"
+                  variant="caption"
+                  sx={{ fontSize: 10, color: 'text.secondary' }}
+                >
                   bowling
                 </Typography>
               </Box>
