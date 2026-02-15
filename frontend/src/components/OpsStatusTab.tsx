@@ -269,9 +269,9 @@ const OpsStatusTab: React.FC = () => {
             </Grid>
           </Grid>
 
-          {/* DB Data Freshness */}
+          {/* Two blocks per row below Database */}
           <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               {(() => {
                 const freshness = asObj((data as { db_freshness?: unknown })?.db_freshness);
                 const overallSt = readStatus(asObj(freshness.overall).status);
@@ -334,11 +334,7 @@ const OpsStatusTab: React.FC = () => {
                 );
               })()}
             </Grid>
-          </Grid>
-
-          {/* DB Data Completeness */}
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               {(() => {
                 const comp = asObj((data as { db_completeness?: unknown })?.db_completeness);
                 const overallSt = readStatus(asObj(comp.overall).status);
@@ -391,10 +387,8 @@ const OpsStatusTab: React.FC = () => {
                 );
               })()}
             </Grid>
-          </Grid>
 
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               <SectionCard title="Precompute">
                 <SimpleStatTiles
                   size="md"
@@ -432,10 +426,7 @@ const OpsStatusTab: React.FC = () => {
                 <OpsMatrix type="precompute" title="Precompute" data={data.precompute ?? {}} />
               </SectionCard>
             </Grid>
-          </Grid>
-
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               <SectionCard title="Exports">
                 <SimpleStatTiles
                   size="md"
@@ -473,10 +464,7 @@ const OpsStatusTab: React.FC = () => {
                 <OpsMatrix type="exports" title="Exports" data={data.exports ?? {}} />
               </SectionCard>
             </Grid>
-          </Grid>
-
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               <SectionCard title="Artifacts">
                 <SimpleStatTiles
                   size="md"
@@ -510,9 +498,6 @@ const OpsStatusTab: React.FC = () => {
                 <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts ?? {}} />
               </SectionCard>
             </Grid>
-          </Grid>
-
-          <Grid container spacing={2} alignItems="stretch">
             <Grid item xs={12} md={6}>
               <SectionCard
                 title="Fielding Data"
