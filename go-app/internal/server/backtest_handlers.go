@@ -746,15 +746,9 @@ type trainingDataPart struct {
 	Rows    [][]string `json:"rows"`
 }
 
-// backtestTrainingDataHandler handles GET /api/backtest/training-data?format=T20&cutoff=2024-10-30T00:00:00Z.
-// Returns batting and bowling training rows (same shape as per-format export CSV) filtered by match_date < cutoff.
-// The ML service uses this for on-the-fly training when no pre-trained artifacts exist.
+// backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...
+// cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
-	format := strings.TrimSpace(r.URL.Query().Get("format"))
-	if format == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required"})
-		return
-	}
 	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
 	if cutoffStr == "" {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
@@ -765,12 +759,24 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff must be RFC3339"})
 		return
 	}
-	batRows, err := exq.BattingFormatRowsWithCutoff(r.Context(), format, cutoff)
-	if err != nil {
-		respondErr(w, err)
-		return
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	useAll := format == "" || strings.EqualFold(format, "all")
+	var batRows, bowlRows [][]string
+	if useAll {
+		batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
+	} else {
+		batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
 	}
-	bowlRows, err := exq.BowlingFormatRowsWithCutoff(r.Context(), format, cutoff)
 	if err != nil {
 		respondErr(w, err)
 		return

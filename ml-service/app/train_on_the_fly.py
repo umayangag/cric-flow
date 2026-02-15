@@ -202,7 +202,8 @@ def fetch_training_data(
 ) -> Dict[str, Any]:
     """Fetch training data from go-app. Returns dict with batting/bowling headers and rows."""
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format={format_code}&cutoff={cutoff_iso}"
+    # format=all requests all matches before cutoff (no format filter); required for cross-format features.
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
     logger.info(
         "train_on_the_fly.fetch.start",
         url=url,

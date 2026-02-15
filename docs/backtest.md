@@ -100,7 +100,7 @@ Fielding metrics (when available):
 
 ### Full pipeline and train-on-the-fly (player predictions)
 
-When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service uses **pre-trained batting/bowling models** for that format if loaded; otherwise it **trains on the fly** by fetching training data from go-app (`GET /api/backtest/training-data?format=...&cutoff=...`), training in memory, then predicting. **Format and features are required** for player predictions (no deterministic baseline). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
+When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service uses **pre-trained batting/bowling models** for that format if loaded; otherwise it **trains on the fly** by fetching training data from go-app (`GET /api/backtest/training-data?cutoff=...&format=all`; `format=all` or omit = all data, or pass a format to filter), training in memory, then predicting. **Format and features are required** for player predictions (no deterministic baseline). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
 
 ### ML service endpoint (used by backend)
 

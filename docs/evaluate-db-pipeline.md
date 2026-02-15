@@ -72,7 +72,7 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 **Behavior:**
 
 - **Loaded artifacts:** When the ML service has loaded batting/bowling artifacts for the requested format (`BAT_MODELS`, `BOWL_MODELS` in `ml-service/app/artifacts.py`), it builds feature vectors from `features`, runs the loaded scaler + model, and returns runs, wickets, economy per player.
-- **Train-on-the-fly:** When **no** artifacts are loaded for that format, the service calls the go-app **training-data** API (`GET $GO_APP_URL/api/backtest/training-data?format=...&cutoff=...`), builds X/Y from the response (same column semantics as `train_batting` / `train_bowling`), trains StandardScaler + RandomForest in memory, then predicts. Requires **GO_APP_URL** (and optionally **GO_APP_API_KEY** for go-app auth). If fetch or training fails (e.g. no data, bad response), the service returns **503** with a clear error.
+- **Train-on-the-fly:** When **no** artifacts are loaded for that format, the service calls the go-app **training-data** API with `format=all` (`GET .../training-data?format=all&cutoff=...`) so all match data before cutoff is returned, builds X/Y from the response (same column semantics as `train_batting` / `train_bowling`), trains StandardScaler + RandomForest in memory, then predicts. Requires **GO_APP_URL** (and optionally **GO_APP_API_KEY** for go-app auth). If fetch or training fails (e.g. no data, bad response), the service returns **503** with a clear error.
 
 **No deterministic baseline.** Player predictions always use either loaded artifacts or train-on-the-fly. A cache for trained-in-memory models per (format, cutoff) can be added later.
 
@@ -87,11 +87,11 @@ Steps run in order (each can emit an SSE `progress` event when using the stream 
 
 ## 5. Go-app training-data API (for ML train-on-the-fly)
 
-**Endpoint:** `GET /api/backtest/training-data?format=...&cutoff=...` (cutoff RFC3339). Protected by same auth as other backtest routes (e.g. X-API-Key).
+**Endpoint:** `GET /api/backtest/training-data?cutoff=...&format=...` (cutoff RFC3339, required). **format:** use `all` (or omit) to return all matches before cutoff; use a specific code (e.g. `T20`, `ODI`) to filter by that format. Train-on-the-fly sends `format=all` so data is not filtered by format. Protected by same auth as other backtest routes (e.g. X-API-Key).
 
 **Response:** `{ "batting": { "headers": [...], "rows": [[...], ...] }, "bowling": { "headers": [...], "rows": [...] } }` — same shape as per-format export (first row = headers, rest = data). Only matches with `match_date < cutoff` are included.
 
-**Handler:** `go-app/internal/server/backtest_handlers.go` — `backtestTrainingDataHandler`; uses `exportqueries.BattingFormatRowsWithCutoff`, `BowlingFormatRowsWithCutoff`.
+**Handler:** `go-app/internal/server/backtest_handlers.go` — `backtestTrainingDataHandler`; uses `exportqueries.BattingTrainingRows`, `BowlingTrainingRows` (all matches before cutoff; no format filter, since features use data across formats).
 
 ---
 

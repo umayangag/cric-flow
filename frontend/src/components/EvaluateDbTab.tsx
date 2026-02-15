@@ -21,6 +21,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
+import { accentGradient } from '../theme';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
@@ -374,7 +375,25 @@ const EvaluateDbTab: React.FC = () => {
 
           {/* Progress steps while evaluating (SSE stream) */}
           {evaluating && evaluationSteps.length > 0 && (
-          <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              mt: 2,
+              p: 2,
+              pl: 2.5,
+              position: 'relative',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                background: accentGradient,
+                borderRadius: '0 4px 4px 0',
+              },
+            }}
+          >
             <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
               Current step
             </Typography>

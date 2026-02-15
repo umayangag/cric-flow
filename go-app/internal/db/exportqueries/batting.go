@@ -510,10 +510,98 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	return out, nil
 }
 
-// BattingFormatRowsWithCutoff returns the same shape as BattingFormatRows but only for matches with match_date < cutoff.
-// Used by the backtest training-data API so the ML service can train on data strictly before the cutoff.
-// T20 and T20I are treated as one bucket (both format_ids included) so training data is returned when stored under either.
-func BattingFormatRowsWithCutoff(ctx context.Context, format string, cutoff time.Time) ([][]string, error) {
+// BattingTrainingRows returns batting export-shaped rows for all matches with match_date < cutoff.
+// Used by the backtest training-data API. No format filter: features are built from data across formats.
+func BattingTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, error) {
+	q := `SELECT  
+		bd.runs,
+		bd.balls,
+		bd.fours,
+		bd.sixes,
+		bd.batting_position,
+		tc.batting_consistency,
+		tf.batting_form,
+		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure,
+		CASE 
+			WHEN w.viscosity IS NULL THEN 0
+			WHEN lower(w.viscosity) = 'dry' THEN 0
+			WHEN lower(w.viscosity) = 'humid' THEN 1
+			WHEN lower(w.viscosity) = 'windy' THEN 2
+			ELSE 0
+		END AS viscosity,
+		mi.inning_number,
+		0 AS batting_session,
+		CASE 
+			WHEN m.toss_decision IS NULL THEN 0
+			WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1
+			ELSE 0
+		END AS toss,
+		tvv.batting_venue,
+		tvo.batting_opposition,
+		s.id AS season_id,
+		p.player_name,
+		COALESCE(fd.catches,0) AS catches,
+		COALESCE(fd.run_outs,0) AS run_outs,
+		COALESCE(fd.stumpings,0) AS stumpings,
+		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+		FROM batting_data bd
+		LEFT JOIN player p ON bd.player_id = p.id
+		LEFT JOIN (
+			SELECT * FROM weather_data WHERE session = 'batting'
+		) w ON bd.match_id = w.match_id
+		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		LEFT JOIN match m ON m.match_id = bd.match_id
+		LEFT JOIN season s ON s.id = m.season_id
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_form, n_samples_bat FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tf ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_consistency, n_samples_bat FROM feature_consistency_snapshots
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tc ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_opposition, n_samples_bat AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvo ON TRUE
+		LEFT JOIN LATERAL (
+		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
+		  ORDER BY as_of_date DESC LIMIT 1
+		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE m.match_date < $1`
+	rows, err := db.Pool.Query(ctx, q, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	headers := []string{
+		"runs", "balls", "fours", "sixes", "batting_position",
+		"batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+	}
+	out := make([][]string, 0, 1024)
+	out = append(out, headers)
+	for rows.Next() {
+		vals, err := scanx.ScanToStrings(rows, len(headers))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, vals)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// BattingTrainingRowsWithFormat returns batting export-shaped rows for matches with match_date < cutoff
+// and format_id in the given format's bucket (T20/T20I share a bucket). Use when format is a specific code (e.g. T20, ODI).
+func BattingTrainingRowsWithFormat(ctx context.Context, format string, cutoff time.Time) ([][]string, error) {
 	formatIDs, err := db.GetGlobalCache().GetFormatIDsForTrainingBucket(ctx, format)
 	if err != nil {
 		return nil, fmt.Errorf("resolve format_id(s) for %s: %w", format, err)

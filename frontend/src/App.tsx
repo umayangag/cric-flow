@@ -56,13 +56,13 @@ const AppContent: React.FC = () => {
         bgcolor: (t) => t.palette.background.default,
       }}
     >
-      {/* AppBar with subtle gradient */}
       <AppBar
         position="static"
+        elevation={0}
         sx={{
-          background: (theme) =>
-            `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-          boxShadow: 2,
+          background: (t) =>
+            `linear-gradient(90deg, ${t.palette.primary.main}, ${t.palette.primary.dark})`,
+          boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
         }}
       >
         <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -108,7 +108,7 @@ const AppContent: React.FC = () => {
 
         {/* Content Card */}
         <Fade in timeout={240}>
-          <Paper elevation={2} sx={{ p: 2 }}>
+          <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
             <Routes>
               <Route path="/" element={<Navigate to="/health" replace />} />
               <Route path="/login" element={<Login />} />
