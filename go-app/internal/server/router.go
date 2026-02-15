@@ -58,6 +58,10 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/evaluate-stream", a.backtestEvaluateStreamHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-start", a.backtestEvaluateStartHandler).
+		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-status", a.backtestEvaluateStatusHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/scorecard", a.backtestScorecardHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/training-data", a.backtestTrainingDataHandler).
 		Methods(http.MethodGet, http.MethodOptions)

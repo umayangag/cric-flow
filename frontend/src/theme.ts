@@ -57,11 +57,19 @@ const theme = createTheme({
         },
       },
     },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          boxShadow: 'none',
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         root: {
           borderRadius: 12,
           boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.05)',
+          transition: 'box-shadow 0.2s ease',
         },
       },
     },
@@ -79,6 +87,7 @@ const theme = createTheme({
           borderRadius: 10,
           textTransform: 'none',
           fontWeight: 600,
+          transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
         },
       },
     },
@@ -134,6 +143,8 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 8,
+          border: 'none',
+          boxShadow: 'none',
         },
       },
     },

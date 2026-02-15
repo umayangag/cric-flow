@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -26,6 +26,17 @@ import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardRespons
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
+
+const EVAL_JOB_STORAGE_KEY = 'cric_info_eval_job';
+
+type StoredEvalJob = {
+  job_id: string;
+  match_id: number;
+  format: string;
+  team1: string;
+  team2: string;
+  started_at: string;
+};
 
 const filter = createFilterOptions<string>();
 
@@ -151,11 +162,13 @@ const EvaluateDbTab: React.FC = () => {
   const [scorecardLoading, setScorecardLoading] = useState<boolean>(false);
   const [scorecardError, setScorecardError] = useState<string | null>(null);
 
-  // Evaluate with progress (SSE stream)
+  // Evaluate job (survives refresh: job_id stored in localStorage, poll status)
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>(
     [],
   );
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -174,7 +187,127 @@ const EvaluateDbTab: React.FC = () => {
     setScorecardError(null);
     setStatusMessage('');
     setError(null);
+    setCurrentJobId(null);
+    try {
+      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   };
+
+  // Restore evaluation job on mount (e.g. after refresh) — poll if still running
+  useEffect(() => {
+    let cancelled = false;
+    let stored: string | null = null;
+    try {
+      if (typeof localStorage?.getItem === 'function') {
+        stored = localStorage.getItem(EVAL_JOB_STORAGE_KEY);
+      }
+    } catch {
+      /* ignore (e.g. test env) */
+    }
+    if (!stored) return;
+    let data: StoredEvalJob;
+    try {
+      data = JSON.parse(stored) as StoredEvalJob;
+    } catch {
+      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+      return;
+    }
+    if (!data.job_id) return;
+
+    api
+      .getEvaluateStatus(data.job_id)
+      .then((status) => {
+        if (cancelled) return;
+        setCurrentJobId(data.job_id);
+        setFormat(data.format);
+        setTeam1(data.team1);
+        setTeam2(data.team2);
+        setSelectedMatchId(data.match_id);
+        setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+        if (status.status === 'running') {
+          setEvaluating(true);
+          setStatusMessage('Evaluation in progress (restored).');
+        } else if (status.status === 'done' && status.result) {
+          setEvaluating(false);
+          setEvaluationResult(status.result);
+          setStatusMessage('Evaluation complete.');
+        } else if (status.status === 'error') {
+          setEvaluating(false);
+          setError(status.error ?? 'Unknown error');
+          setStatusMessage('');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Poll evaluate status while job is running
+  useEffect(() => {
+    if (!currentJobId || !evaluating) return;
+
+    const poll = () => {
+      api
+        .getEvaluateStatus(currentJobId)
+        .then((status) => {
+          setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+          if (status.status === 'done' && status.result) {
+            setEvaluating(false);
+            setEvaluationResult(status.result);
+            setStatusMessage('Evaluation complete.');
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+          } else if (status.status === 'error') {
+            setEvaluating(false);
+            setError(status.error ?? 'Unknown error');
+            setStatusMessage('');
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            try {
+              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('404') || msg.includes('NOT_FOUND')) {
+            setEvaluating(false);
+            setError('Evaluation job no longer available (server may have restarted).');
+            setStatusMessage('');
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            try {
+              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
+          }
+        });
+    };
+
+    poll();
+    pollIntervalRef.current = setInterval(poll, 2000);
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [currentJobId, evaluating]);
 
   // Load match scorecard when a match is selected
   useEffect(() => {
@@ -228,35 +361,38 @@ const EvaluateDbTab: React.FC = () => {
     }
   };
 
-  const handleEvaluateSelectedMatch = () => {
+  const handleEvaluateSelectedMatch = async () => {
     if (selectedMatchId == null) return;
-    setEvaluating(true);
-    setEvaluationSteps([]);
     setError(null);
-    setStatusMessage('Evaluation in progress…');
-    api
-      .backtestEvaluateStream(format.trim(), team1.trim(), team2.trim(), selectedMatchId, {
-        onProgress: (step, message) => {
-          setEvaluationSteps((prev) => [...prev, { step, message }]);
-        },
-        onResult: (result) => {
-          setEvaluationResult(result);
-          setEvaluating(false);
-          setStatusMessage('Evaluation complete.');
-        },
-        onError: (err) => {
-          setError(err.message);
-          setEvaluating(false);
-          setStatusMessage('');
-        },
-      })
-      .then(() => {
-        // Stream completed (onResult or onError already called)
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-        setEvaluating(false);
-      });
+    setStatusMessage('Starting evaluation…');
+    try {
+      const { job_id } = await api.evaluateStart(
+        format.trim(),
+        team1.trim(),
+        team2.trim(),
+        selectedMatchId,
+      );
+      const stored: StoredEvalJob = {
+        job_id,
+        match_id: selectedMatchId,
+        format: format.trim(),
+        team1: team1.trim(),
+        team2: team2.trim(),
+        started_at: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem(EVAL_JOB_STORAGE_KEY, JSON.stringify(stored));
+      } catch {
+        /* ignore */
+      }
+      setCurrentJobId(job_id);
+      setEvaluating(true);
+      setEvaluationSteps([]);
+      setStatusMessage('Evaluation in progress. You can refresh the page; progress will be restored.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatusMessage('');
+    }
   };
 
   return (

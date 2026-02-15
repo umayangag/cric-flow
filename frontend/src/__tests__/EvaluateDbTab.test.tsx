@@ -12,6 +12,8 @@ vi.mock('../api', async () => {
       backtestSelect: vi.fn(),
       backtestEvaluate: vi.fn(),
       backtestEvaluateStream: vi.fn(),
+      evaluateStart: vi.fn(),
+      getEvaluateStatus: vi.fn(),
       getMatchScorecard: vi.fn(),
       getFormats: vi.fn(),
       getTeamsByFormat: vi.fn(),
@@ -45,6 +47,11 @@ async function selectFilters(team1 = 'IND', team2 = 'AUS') {
 describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    try {
+      localStorage.removeItem('cric_info_eval_job');
+    } catch {
+      /* ignore */
+    }
     (api.getFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
     (api.getTeamsByFormat as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
     (api.getOpponents as unknown as Mock).mockResolvedValue(['AUS', 'ENG']);
@@ -70,37 +77,27 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         },
       ],
     });
-    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
-    backtestEvaluateStreamMock.mockImplementation(
-      (
-        _format: string,
-        _t1: string,
-        _t2: string,
-        _matchId: unknown,
-        callbacks: { onResult: (r: unknown) => void },
-      ) => {
-        callbacks.onResult({
-          filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
-          match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
-          players: [
-            {
-              player_id: 1,
-              predicted: { runs: 25 },
-              actual: { runs: 30 },
-              errors: { runs_mae: 5 },
-            },
-            {
-              player_id: 2,
-              predicted: { runs: 10 },
-              actual: { runs: 10 },
-              errors: { runs_mae: 0 },
-            },
-          ],
-          metrics: { player_runs_mae: 2.5 },
-        });
-        return Promise.resolve();
-      },
-    );
+    const evaluateStartMock = api.evaluateStart as unknown as Mock;
+    evaluateStartMock.mockResolvedValue({ job_id: 'test-job-111' });
+    const getEvaluateStatusMock = api.getEvaluateStatus as unknown as Mock;
+    const resultPayload = {
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
+      match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
+      players: [
+        { player_id: 1, predicted: { runs: 25 }, actual: { runs: 30 }, errors: { runs_mae: 5 } },
+        { player_id: 2, predicted: { runs: 10 }, actual: { runs: 10 }, errors: { runs_mae: 0 } },
+      ],
+      metrics: { player_runs_mae: 2.5 },
+    };
+    getEvaluateStatusMock.mockResolvedValue({
+      job_id: 'test-job-111',
+      match_id: 111,
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: resultPayload,
+    });
 
     render(<EvaluateDbTab />);
     await selectFilters();
@@ -114,9 +111,13 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     fireEvent.click(radio);
     fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
-    // Expect results
-    await screen.findByText(/Evaluation complete/i);
-    const results = await screen.findByLabelText('results-section');
+    // Wait for polling to run and job to complete (status returns 'done')
+    await waitFor(() => expect(getEvaluateStatusMock).toHaveBeenCalled());
+    const results = await screen.findByLabelText('results-section', { timeout: 3000 });
+    // Status message appears in more than one Alert; ensure at least one shows completion
+    await waitFor(() =>
+      expect(screen.getAllByText(/Evaluation complete/i).length).toBeGreaterThanOrEqual(1),
+    );
     expect(within(results).getByText(/player_runs_mae/i)).toBeInTheDocument();
     // players table should show player ids
     expect(within(results).getByText('1')).toBeInTheDocument();
@@ -153,8 +154,6 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with wickets/economy and match_aggregates (stream calls onResult)
-    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
     const evaluatePayload = {
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
       match: { match_id: 222, match_date: '2024-11-05T09:00:00Z' },
@@ -192,18 +191,16 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         winner_accuracy: 1,
       },
     };
-    backtestEvaluateStreamMock.mockImplementation(
-      (
-        _f: string,
-        _t1: string,
-        _t2: string,
-        _mid: unknown,
-        callbacks: { onResult: (r: unknown) => void },
-      ) => {
-        callbacks.onResult(evaluatePayload);
-        return Promise.resolve();
-      },
-    );
+    (api.evaluateStart as unknown as Mock).mockResolvedValue({ job_id: 'test-job-222' });
+    (api.getEvaluateStatus as unknown as Mock).mockResolvedValue({
+      job_id: 'test-job-222',
+      match_id: '222',
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: evaluatePayload,
+    });
 
     render(<EvaluateDbTab />);
     await selectFilters();
@@ -261,38 +258,35 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with fielding keys present (stream calls onResult)
-    const backtestEvaluateStreamMock = api.backtestEvaluateStream as unknown as Mock;
-    backtestEvaluateStreamMock.mockImplementation(
-      (
-        _f: string,
-        _t1: string,
-        _t2: string,
-        _mid: unknown,
-        callbacks: { onResult: (r: unknown) => void },
-      ) => {
-        callbacks.onResult({
-          filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
-          match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
-          players: [
-            {
-              player_id: 201,
-              predicted: { runs: 12, catches: 1, run_outs: 2 },
-              actual: { runs: 10, catches: 2, run_outs: 1 },
-              errors: { runs_mae: 2, catches_mae: 1, run_outs_mae: 1 },
-            },
-            {
-              player_id: 202,
-              predicted: { runs: 4, catches: 0, run_outs: 1 },
-              actual: { runs: 5, catches: 0, run_outs: 0 },
-              errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 },
-            },
-          ],
-          metrics: { player_runs_mae: 1.5, player_catches_mae: 0.5, player_run_outs_mae: 1.0 },
-        });
-        return Promise.resolve();
-      },
-    );
+    const fieldingResult = {
+      filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
+      match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
+      players: [
+        {
+          player_id: 201,
+          predicted: { runs: 12, catches: 1, run_outs: 2 },
+          actual: { runs: 10, catches: 2, run_outs: 1 },
+          errors: { runs_mae: 2, catches_mae: 1, run_outs_mae: 1 },
+        },
+        {
+          player_id: 202,
+          predicted: { runs: 4, catches: 0, run_outs: 1 },
+          actual: { runs: 5, catches: 0, run_outs: 0 },
+          errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 },
+        },
+      ],
+      metrics: { player_runs_mae: 1.5, player_catches_mae: 0.5, player_run_outs_mae: 1.0 },
+    };
+    (api.evaluateStart as unknown as Mock).mockResolvedValue({ job_id: 'test-job-333' });
+    (api.getEvaluateStatus as unknown as Mock).mockResolvedValue({
+      job_id: 'test-job-333',
+      match_id: '333',
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: fieldingResult,
+    });
 
     render(<EvaluateDbTab />);
     await selectFilters();

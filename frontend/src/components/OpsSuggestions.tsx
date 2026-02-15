@@ -1,19 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Suggestion } from '../types';
-
-const codeStyle: React.CSSProperties = {
-  background: '#111',
-  color: '#ddd',
-  padding: 12,
-  borderRadius: 6,
-  fontFamily: 'ui-monospace, Menlo, monospace',
-  fontSize: 12,
-  overflowX: 'auto',
-  border: '1px solid rgba(255,255,255,0.06)',
-  userSelect: 'all',
-  cursor: 'text',
-};
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
 
 const OpsSuggestions: React.FC = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -55,64 +45,76 @@ const OpsSuggestions: React.FC = () => {
     }
   };
 
-  if (loading && suggestions.length === 0) return <div>Loading suggestions...</div>;
-  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
+  if (loading && suggestions.length === 0) return <Typography variant="body2">Loading suggestions...</Typography>;
+  if (error) return <Typography variant="body2" color="error">Error: {error}</Typography>;
 
   return (
-    <>
+    <Box sx={{ display: 'grid', gap: 2 }}>
       {suggestions.length === 0 ? (
-        <div style={{ opacity: 0.9 }}>No suggestions.</div>
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>No suggestions.</Typography>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {suggestions.map((s, i) => (
-            <div
-              key={s.command || s.title}
-              style={{
-                display: 'grid',
-                gap: 6,
-                borderLeft: `4px solid ${s.priority === 'HIGH' ? '#ff4444' : '#4488ff'}`,
-                paddingLeft: 12,
-                background: 'rgba(255,255,255,0.03)',
-                padding: 12,
-                borderRadius: 4,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
+        suggestions.map((s, i) => (
+          <Box
+            key={s.command || s.title}
+            sx={{
+              display: 'grid',
+              gap: 1,
+              pl: 1.5,
+              borderLeft: '4px solid',
+              borderColor: s.priority === 'HIGH' ? 'error.main' : 'primary.main',
+              borderRadius: 1,
+              py: 1.5,
+              pr: 1.5,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography component="strong" variant="body2" fontWeight={600}>{s.title}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>{s.description}</Typography>
+              </Box>
+              {s.command && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => onCopy(i, s.command)}
+                  title="Copy command"
+                  sx={{
+                    textTransform: 'none',
+                    borderColor: 'divider',
+                    color: 'text.secondary',
+                    '&:hover': { borderColor: 'primary.main', color: 'primary.main', bgcolor: 'action.hover' },
+                  }}
+                >
+                  {copiedIdx === i ? 'Copied!' : 'Copy'}
+                </Button>
+              )}
+            </Box>
+            {s.command && (
+              <Box
+                component="pre"
+                sx={{
+                  m: 0,
+                  p: 1.5,
+                  bgcolor: 'grey.100',
+                  color: 'text.primary',
+                  borderRadius: 1,
+                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  fontSize: 12,
+                  overflowX: 'auto',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  userSelect: 'all',
+                  cursor: 'text',
                 }}
               >
-                <div>
-                  <strong>{s.title}</strong>
-                  <div style={{ fontSize: 13, color: '#aaa' }}>{s.description}</div>
-                </div>
-                {s.command && (
-                  <button
-                    type="button"
-                    onClick={() => onCopy(i, s.command)}
-                    title="Copy command"
-                    style={{
-                      padding: '4px 8px',
-                      background: '#333',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {copiedIdx === i ? 'Copied!' : 'Copy'}
-                  </button>
-                )}
-              </div>
-              {s.command && <pre style={codeStyle}>{s.command}</pre>}
-            </div>
-          ))}
-        </div>
+                {s.command}
+              </Box>
+            )}
+          </Box>
+        ))
       )}
-    </>
+    </Box>
   );
 };
 

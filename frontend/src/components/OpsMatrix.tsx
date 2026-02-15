@@ -1,4 +1,6 @@
 import React from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 
 type MatrixType = 'precompute' | 'exports' | 'artifacts';
 
@@ -22,62 +24,77 @@ type Props = {
 
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 
-const cellStyle = (bg: string, _title?: string): React.CSSProperties => ({
-  background: bg,
-  color: '#eee',
-  borderRadius: 6,
-  padding: '8px 10px',
-  fontSize: 12,
+const cellSx = (state: 'ok' | 'stale' | 'error' | 'neutral') => ({
+  borderRadius: 2,
+  px: 1.25,
+  py: 1,
   minWidth: 90,
-  textAlign: 'center',
-  border: '1px solid rgba(255,255,255,0.06)',
+  textAlign: 'center' as const,
+  border: '1px solid',
+  fontSize: 12,
+  ...(state === 'ok' && {
+    bgcolor: 'rgba(34, 197, 94, 0.1)',
+    borderColor: 'rgba(34, 197, 94, 0.25)',
+    color: 'success.dark',
+  }),
+  ...(state === 'stale' && {
+    bgcolor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    color: 'warning.dark',
+  }),
+  ...(state === 'error' && {
+    bgcolor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    color: 'error.dark',
+  }),
+  ...(state === 'neutral' && {
+    bgcolor: 'grey.100',
+    borderColor: 'divider',
+    color: 'text.secondary',
+  }),
 });
-
-const legendDot = (color: string): JSX.Element => (
-  <span
-    style={{
-      display: 'inline-block',
-      width: 8,
-      height: 8,
-      borderRadius: 999,
-      background: color,
-      marginRight: 6,
-    }}
-  />
-);
 
 export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
   const renderPrecompute = () => (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <Box sx={{ display: 'grid', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
         {FORMATS.map((f) => {
           const st = (data as PrecomputeData)?.formats?.[f]?.status as string | undefined;
-          const color =
-            st === 'ok'
-              ? '#17431d'
-              : st === 'stale'
-                ? '#54450f'
-                : st === 'missing'
-                  ? '#4a1010'
-                  : '#333';
+          const state =
+            st === 'ok' ? 'ok' : st === 'stale' ? 'stale' : st === 'missing' ? 'error' : 'neutral';
           const txt = st ?? 'unknown';
           return (
-            <div
+            <Box
               key={f}
-              style={cellStyle(color)}
+              sx={cellSx(state)}
               title={`status: ${txt}`}
               data-testid={`precompute-${f}`}
             >
-              <strong>{f}</strong>
-              <div style={{ fontSize: 11, opacity: 0.9 }}>{txt}</div>
-            </div>
+              <Typography component="strong" variant="body2" fontWeight={600}>
+                {f}
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ fontSize: 11, opacity: 0.95 }}>
+                {txt}
+              </Typography>
+            </Box>
           );
         })}
-      </div>
-      <div style={{ fontSize: 11, opacity: 0.8 }}>
-        {legendDot('#17431d')} ok {legendDot('#54450f')} stale {legendDot('#4a1010')} missing
-      </div>
-    </div>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', fontSize: 11, color: 'text.secondary' }}>
+        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main' }} />
+          ok
+        </Box>
+        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'warning.main' }} />
+          stale
+        </Box>
+        <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main' }} />
+          missing
+        </Box>
+      </Box>
+    </Box>
   );
 
   const hasAnyExists = (files: unknown): boolean => {
@@ -86,89 +103,95 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
   };
 
   const renderExports = () => (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {FORMATS.map((f) => {
-          const files = (data as ExportsData)?.formats?.[f]?.files ?? [];
-          const ok = hasAnyExists(files);
-          const color = ok ? '#17431d' : '#4a1010';
-          const titleStr = Array.isArray(files)
-            ? files
-                .map((x) => (x && typeof x === 'object' ? (x as ExportFile).name : undefined))
-                .filter(Boolean)
-                .join(', ')
-            : '';
-          return (
-            <div key={f} style={cellStyle(color)} title={titleStr} data-testid={`exports-${f}`}>
-              <strong>{f}</strong>
-              <div style={{ fontSize: 11, opacity: 0.9 }}>{ok ? 'present' : 'missing'}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+      {FORMATS.map((f) => {
+        const files = (data as ExportsData)?.formats?.[f]?.files ?? [];
+        const ok = hasAnyExists(files);
+        const state = ok ? 'ok' : 'error';
+        const titleStr = Array.isArray(files)
+          ? files
+              .map((x) => (x && typeof x === 'object' ? (x as ExportFile).name : undefined))
+              .filter(Boolean)
+              .join(', ')
+          : '';
+        return (
+          <Box key={f} sx={cellSx(state)} title={titleStr} data-testid={`exports-${f}`}>
+            <Typography component="strong" variant="body2" fontWeight={600}>
+              {f}
+            </Typography>
+            <Typography variant="caption" display="block" sx={{ fontSize: 11, opacity: 0.95 }}>
+              {ok ? 'present' : 'missing'}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
   );
 
   const subCell = (ok: boolean, loaded?: boolean) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span
-        style={{
-          display: 'inline-block',
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      <Box
+        sx={{
           width: 10,
           height: 10,
-          borderRadius: 2,
-          background: ok ? '#17431d' : '#4a1010',
-          border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 1,
+          bgcolor: ok ? 'success.main' : 'error.main',
+          opacity: ok ? 1 : 0.85,
         }}
       />
-      <span style={{ fontSize: 11, opacity: 0.9 }}>{ok ? 'exists' : 'missing'}</span>
-      {loaded ? (
-        <span
+      <Typography variant="caption" sx={{ fontSize: 11, color: 'text.secondary' }}>
+        {ok ? 'exists' : 'missing'}
+      </Typography>
+      {loaded && (
+        <Box
           title="loaded"
-          style={{
-            width: 7,
-            height: 7,
-            background: '#48d597',
-            borderRadius: 999,
-          }}
+          sx={{ width: 6, height: 6, bgcolor: 'success.light', borderRadius: '50%' }}
         />
-      ) : null}
-    </div>
+      )}
+    </Box>
   );
 
   const renderArtifacts = () => (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {FORMATS.map((f) => {
-          const bat = (data as ArtifactsData)?.formats?.[f]?.batting ?? {};
-          const bowl = (data as ArtifactsData)?.formats?.[f]?.bowling ?? {};
-          const ok = bat?.exists === true && bowl?.exists === true;
-          const color = ok ? '#17431d' : '#4a1010';
-          return (
-            <div key={f} style={cellStyle(color)} data-testid={`artifacts-${f}`}>
-              <strong>{f}</strong>
-              <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-                <div>
-                  {subCell(bat?.exists === true, bat?.loaded === true)} <small>batting</small>
-                </div>
-                <div>
-                  {subCell(bowl?.exists === true, bowl?.loaded === true)} <small>bowling</small>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+      {FORMATS.map((f) => {
+        const bat = (data as ArtifactsData)?.formats?.[f]?.batting ?? {};
+        const bowl = (data as ArtifactsData)?.formats?.[f]?.bowling ?? {};
+        const ok = bat?.exists === true && bowl?.exists === true;
+        const state = ok ? 'ok' : 'error';
+        return (
+          <Box key={f} sx={cellSx(state)} data-testid={`artifacts-${f}`}>
+            <Typography component="strong" variant="body2" fontWeight={600}>
+              {f}
+            </Typography>
+            <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {subCell(bat?.exists === true, bat?.loaded === true)}
+                <Typography component="small" variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                  batting
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {subCell(bowl?.exists === true, bowl?.loaded === true)}
+                <Typography component="small" variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>
+                  bowling
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        );
+      })}
+    </Box>
   );
 
   return (
-    <section>
-      <h3 style={{ margin: '8px 0' }}>{title}</h3>
+    <Box component="section" sx={{ mt: 0.5 }}>
+      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+        {title}
+      </Typography>
       {type === 'precompute' && renderPrecompute()}
       {type === 'exports' && renderExports()}
       {type === 'artifacts' && renderArtifacts()}
-    </section>
+    </Box>
   );
 };
 

@@ -2,6 +2,7 @@ import type {
   HealthResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
+  EvaluateStatusResponse,
   MatchScorecardResponse,
   Migration,
   Suggestion,
@@ -219,5 +220,39 @@ export const api = {
       return;
     }
     callbacks.onError(new Error('Stream ended without result'));
+  },
+
+  /**
+   * Start evaluation in the background. Returns job_id; poll getEvaluateStatus(job_id) for progress and result.
+   * Survives page refresh: store job_id and poll on load to restore state.
+   */
+  evaluateStart(
+    format: string,
+    team1: string,
+    team2: string,
+    matchId: number | string,
+  ): Promise<{ job_id: string }> {
+    const u = new URL('/api/backtest/evaluate-start', BASE_API_URL);
+    u.searchParams.set('format', format);
+    u.searchParams.set('team1', team1);
+    u.searchParams.set('team2', team2);
+    u.searchParams.set('match_id', String(matchId));
+    const headers: Record<string, string> = {};
+    const apiKey = localStorage.getItem('cric_info_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    return fetch(u.toString(), { method: 'POST', headers }).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return res.json() as Promise<{ job_id: string }>;
+    });
+  },
+
+  /** Get current status of an evaluation job (running / done / error). Poll until status is done or error. */
+  getEvaluateStatus(jobId: string): Promise<EvaluateStatusResponse> {
+    const u = new URL('/api/backtest/evaluate-status', BASE_API_URL);
+    u.searchParams.set('job_id', jobId);
+    return httpApi(u.toString());
   },
 };

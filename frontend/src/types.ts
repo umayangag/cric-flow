@@ -67,6 +67,23 @@ export type BacktestEvaluateResponse = {
   predicted_scorecard?: MatchScorecardResponse | null;
 };
 
+// --- Evaluate job (persisted across refresh) ---
+export type EvaluateJobStep = { step: string; message: string };
+
+export type EvaluateStatusResponse = {
+  job_id: string;
+  match_id: string;
+  format: string;
+  team1: string;
+  team2: string;
+  status: 'running' | 'done' | 'error';
+  steps?: EvaluateJobStep[];
+  result?: BacktestEvaluateResponse | null;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 // --- Match scorecard (for Evaluate DB tab) ---
 export type ScorecardBatting = {
   player_name: string;

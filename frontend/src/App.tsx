@@ -60,30 +60,86 @@ const AppContent: React.FC = () => {
         position="static"
         elevation={0}
         sx={{
-          background: (t) =>
-            `linear-gradient(90deg, ${t.palette.primary.main}, ${t.palette.primary.dark})`,
-          boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          '& .MuiToolbar-root': {
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 2, sm: 3 },
+          },
         }}
       >
-        <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Typography variant="h6" component="div">
+        <Toolbar
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              color: 'text.primary',
+            }}
+          >
             Cric Info — ML Control Panel
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip color="secondary" label="ML Service" size="small" />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Chip
+                label="ML Service"
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(14, 165, 233, 0.12)',
+                  color: 'primary.dark',
+                  fontWeight: 500,
+                  border: 'none',
+                  '& .MuiChip-label': { px: 1.25 },
+                }}
+              />
               <Typography
                 variant="body2"
-                sx={{ opacity: 0.8, display: { xs: 'none', sm: 'inline' } }}
+                sx={{
+                  color: 'text.secondary',
+                  display: { xs: 'none', sm: 'inline' },
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                }}
                 noWrap
               >
                 {baseUrl}
               </Typography>
             </Box>
             {isAuthenticated && (
-              <Button color="inherit" onClick={logout} size="small">
-                Logout
-              </Button>
+              <>
+                <Box
+                  sx={{
+                    width: '1px',
+                    height: 20,
+                    bgcolor: 'divider',
+                    display: { xs: 'none', sm: 'block' },
+                  }}
+                  aria-hidden
+                />
+                <Button
+                  color="inherit"
+                  onClick={logout}
+                  size="small"
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    color: 'text.primary',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  Logout
+                </Button>
+              </>
             )}
           </Box>
         </Toolbar>
