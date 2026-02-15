@@ -51,9 +51,10 @@ packages:
       Ingestor: {}
   github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet:
     config:
-      dir: internal/services/cricsheetimporter/internal/mocks
+      dir: internal/cricsheet/mocks
       pkgname: mocks
     interfaces:
       Loader: {}
       Parser: {}
       CricsheetDB: {}
+      WeatherClient: {}

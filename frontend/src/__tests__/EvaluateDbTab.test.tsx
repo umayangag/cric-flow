@@ -2,7 +2,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import EvaluateDbTab from '../components/EvaluateDbTab';
 
 // Mock the api module to use the new backtest endpoints
@@ -12,18 +12,40 @@ vi.mock('../api', async () => {
       backtestSelect: vi.fn(),
       backtestEvaluate: vi.fn(),
       getFormats: vi.fn(),
-      getTeams: vi.fn(),
+      getTeamsByFormat: vi.fn(),
+      getOpponents: vi.fn(),
     },
   };
 });
 
 const { api } = await import('../api');
 
+async function selectFilters(team1 = 'IND', team2 = 'AUS') {
+  await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
+  fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
+
+  await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
+  const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
+  team1Input.focus();
+  fireEvent.change(team1Input, { target: { value: team1 } });
+  fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByText(team1));
+
+  await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', team1));
+  const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
+  team2Input.focus();
+  fireEvent.change(team2Input, { target: { value: team2 } });
+  fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByText(team2));
+}
+
 describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (api.getFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
-    (api.getTeams as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
+    (api.getTeamsByFormat as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
+    (api.getOpponents as unknown as Mock).mockResolvedValue(['AUS', 'ENG']);
   });
 
   it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
@@ -67,25 +89,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    // Inputs exist - interaction with MUI Select / Autocomplete
-    // Format (Select)
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-    fireEvent.click(screen.getByRole('option', { name: 'T20' }));
-
-    // Team 1 (Autocomplete)
-    const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-    team1Input.focus();
-    fireEvent.change(team1Input, { target: { value: 'IND' } });
-    fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('IND'));
-
-    // Team 2 (Autocomplete)
-    const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-    team2Input.focus();
-    fireEvent.change(team2Input, { target: { value: 'AUS' } });
-    fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-    fireEvent.click(await screen.findByText('AUS'));
+    await selectFilters();
 
     // Load candidates
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
@@ -110,6 +114,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/HTTP 500/i);
   });
@@ -175,8 +180,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    // Load candidates
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
@@ -258,8 +262,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     });
 
     render(<EvaluateDbTab />);
-
-    // Load candidates
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
@@ -289,8 +292,9 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       candidates: [],
     });
     render(<EvaluateDbTab />);
+    await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/No candidates loaded yet/i);
+    await screen.findByText(/Loaded 0 candidates/i);
     const btn = screen.getByRole('button', {
       name: /Evaluate Selected Match/i,
     }) as HTMLButtonElement;

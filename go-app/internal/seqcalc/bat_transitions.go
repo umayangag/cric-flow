@@ -11,7 +11,7 @@ import (
 )
 
 // batTransitionsCalc implements Calculator for batting transitions (T20-first).
-// It reads ball_event joined with match_details to obtain as_of_date (match_date),
+// It reads ball_event joined with match to obtain as_of_date (match_date),
 // aggregates A->B transitions by phase, and upserts rows idempotently.
 //
 // Notes:
@@ -71,10 +71,10 @@ func runBatTransitionsQueryAndUpsert(ctx context.Context, formatIDs []int) error
 		SELECT
 		  be.match_id, be.innings, be.ball_seq, be.phase,
 		  be.striker_id, be.runs_batter, be.runs_total, be.wicket_kind, be.player_out_id,
-		  md.match_date, md.format_id
+		  m.match_date, m.format_id
 		FROM ball_event be
-		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id IN (%s) AND md.match_date IS NOT NULL
+		JOIN match m ON m.match_id = be.match_id
+		WHERE m.format_id IN (%s) AND m.match_date IS NOT NULL
 		ORDER BY be.match_id, be.innings, be.ball_seq
 	`, place)
 	rows, err := db.Pool.Query(ctx, q, args...)

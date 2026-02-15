@@ -138,8 +138,8 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		if rows, err := Pool.Query(ctx, `
             SELECT bd.player_id, COALESCE(AVG(bd.runs), 0)
             FROM batting_data bd
-            JOIN match_details md ON md.match_id = bd.match_id
-            WHERE bd.player_id = ANY($1::bigint[]) AND md.match_date <= $2
+            JOIN match m ON m.match_id = bd.match_id
+            WHERE bd.player_id = ANY($1::bigint[]) AND m.match_date <= $2
             GROUP BY bd.player_id
         `, playerIDs, cutoff); err == nil {
 			defer rows.Close()
@@ -166,8 +166,8 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		if rows, err := Pool.Query(ctx, `
             SELECT bw.player_id, COALESCE(AVG(bw.wickets), 0), COALESCE(AVG(bw.econ), 0)
             FROM bowling_data bw
-            JOIN match_details md ON md.match_id = bw.match_id
-            WHERE bw.player_id = ANY($1::bigint[]) AND md.match_date <= $2
+            JOIN match m ON m.match_id = bw.match_id
+            WHERE bw.player_id = ANY($1::bigint[]) AND m.match_date <= $2
             GROUP BY bw.player_id
         `, playerIDs, cutoff); err == nil {
 			defer rows.Close()
@@ -241,8 +241,8 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		_ = featureQuerier.QueryRow(ctx, `
             SELECT COALESCE(AVG(bd.runs), 0)
             FROM batting_data bd
-            JOIN match_details md ON md.match_id = bd.match_id
-            WHERE bd.player_id = $1 AND md.match_date <= $2
+            JOIN match m ON m.match_id = bd.match_id
+            WHERE bd.player_id = $1 AND m.match_date <= $2
         `, pid, cutoff).Scan(&avgRuns)
 		if avgRuns.Valid {
 			if _, ok := feats["batting_form"]; !ok {
@@ -255,8 +255,8 @@ func (p *DefaultFeatureProvider) GetPlayerFeaturesAtCutoff(
 		_ = featureQuerier.QueryRow(ctx, `
             SELECT COALESCE(AVG(bw.wickets), 0), COALESCE(AVG(bw.econ), 0)
             FROM bowling_data bw
-            JOIN match_details md ON md.match_id = bw.match_id
-            WHERE bw.player_id = $1 AND md.match_date <= $2
+            JOIN match m ON m.match_id = bw.match_id
+            WHERE bw.player_id = $1 AND m.match_date <= $2
         `, pid, cutoff).Scan(&avgWkts, &avgEcon)
 		if avgWkts.Valid {
 			if _, ok := feats["bowling_form"]; !ok {

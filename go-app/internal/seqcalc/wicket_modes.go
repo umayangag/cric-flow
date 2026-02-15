@@ -70,10 +70,10 @@ func queryEventsWithWicketKind(ctx context.Context, formatIDs []int) ([]evRowWK,
 		  be.match_id, be.innings, be.ball_seq, be.phase,
 		  be.is_legal,
 		  be.bowler_id, be.extras_kind, be.runs_total, be.player_out_id, be.wicket_kind,
-		  md.match_date, md.format_id
+		  m.match_date, m.format_id
 		FROM ball_event be
-		JOIN match_details md ON md.match_id = be.match_id
-		WHERE md.format_id IN (%s)
+		JOIN match m ON m.match_id = be.match_id
+		WHERE m.format_id IN (%s)
 		ORDER BY be.match_id, be.innings, be.ball_seq
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)

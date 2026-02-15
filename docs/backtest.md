@@ -79,7 +79,7 @@ Notes:
 - Training data used by ML is restricted to rows before the match date (cutoff).
 - Players list includes only those who actually played.
 - Match aggregates section is present when both ML and DB seams are wired; otherwise it may be omitted.
-- Totals mapping: numeric match totals are read from the database table `match_details` using these columns — `score` as total runs, `wickets` as total wickets, and `extras` as total extras. The `target` column is not used for backtest accuracy metrics.
+- Totals mapping: numeric match totals are summed from the database table `match_inning` across all innings — `runs_scored` as total runs, `wickets_lost` as total wickets, and `extras` as total extras. The `target_runs` column is not used for backtest accuracy metrics.
 
 ### Metrics definitions (player-level runs)
 
@@ -167,7 +167,7 @@ make e2e-backtest-smoke
 ```
 
 What it does:
-- Seeds a single played T20 match (match_id 9000111) with totals in `match_details` (score/wickets/extras), two teams (IND, AUS), winner, and a few player rows with `batting_data` and `bowling_data`.
+- Seeds a single played T20 match (match_id 9000111) with `match` and `match_inning` rows (totals: runs_scored/wickets_lost/extras per inning), two teams (IND, AUS), winner, and a few player rows with `batting_data` and `bowling_data`.
 - Starts Postgres, then `go-api` and `ml-service`.
 - Verifies:
   - `GET /api/backtest/match?format=T20&team1=IND&team2=AUS` returns candidates.
@@ -213,7 +213,7 @@ Notes:
 - If Go backend cannot reach ML service, ensure `ML_SERVICE_URL` is set (default: `http://localhost:8000`) and ML is running.
 - If `match_aggregates` section is missing, verify:
   - ML client is enabled and returns a `match` object for the teams, and
-  - DB has winner information in `team_match` for the selected `match_id`.
+  - DB has winner information in `match` (outcome_winner_opposition_id) or `match_inning` for the selected `match_id`.
 - Python tests: If pytest is not installed in your environment, install dev tools or run tests via your CI that includes pytest.
 - Frontend: Set `VITE_API_URL` to the Go API (default: `http://localhost:8080`).
 

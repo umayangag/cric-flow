@@ -115,3 +115,34 @@ export async function fetchOpsSuggestions(baseUrl: string): Promise<Suggestion[]
   }
   return res.json();
 }
+
+async function fetchJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  const url =
+    baseUrl && baseUrl.startsWith('http')
+      ? new URL(path, baseUrl).toString()
+      : (baseUrl || '') + path;
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function fetchFormats(baseUrl: string): Promise<string[]> {
+  return fetchJson(baseUrl, '/api/options/formats');
+}
+
+export async function fetchTeamsByFormat(baseUrl: string, format: string): Promise<string[]> {
+  const qp = new URLSearchParams({ format });
+  return fetchJson<string[]>(baseUrl, `/api/options/teams-by-format?${qp.toString()}`);
+}
+
+export async function fetchOpponents(
+  baseUrl: string,
+  format: string,
+  team: string,
+): Promise<string[]> {
+  const qp = new URLSearchParams({ format, team });
+  return fetchJson<string[]>(baseUrl, `/api/options/opponents?${qp.toString()}`);
+}

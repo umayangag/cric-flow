@@ -51,6 +51,9 @@ func (Runner) RunReplay(
 		for _, pid := range players {
 			pid := pid // capture
 			g.Go(func() error {
+				if err := pCtx.Err(); err != nil {
+					return nil
+				}
 				// Base histories strictly before match date
 				batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 				if err != nil {
@@ -91,8 +94,14 @@ func (Runner) RunReplay(
 				// opposition specific form
 				if m.OppositionID != 0 {
 					oppID := m.OppositionID
-					oppBat, _ := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
-					oppBowl, _ := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
+					oppBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
+					if err != nil {
+						return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", pid, oppID, err)
+					}
+					oppBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
+					if err != nil {
+						return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", pid, oppID, err)
+					}
 					oppBatInn := toFeatureInnings(oppBat)
 					oppBowlInn := toFeatureInnings(oppBowl)
 					oppBatInn = features.SortAndClip(oppBatInn, asOf)
@@ -116,8 +125,14 @@ func (Runner) RunReplay(
 				// venue specific form
 				if m.VenueID != 0 {
 					venueID := m.VenueID
-					venBat, _ := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
-					venBowl, _ := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
+					venBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
+					if err != nil {
+						return fmt.Errorf("venue batting history pid=%d venue=%d: %w", pid, venueID, err)
+					}
+					venBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
+					if err != nil {
+						return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", pid, venueID, err)
+					}
 					venBatInn := toFeatureInnings(venBat)
 					venBowlInn := toFeatureInnings(venBowl)
 					venBatInn = features.SortAndClip(venBatInn, asOf)
@@ -190,6 +205,9 @@ func (Runner) RunPointInTime(
 	for _, pid := range players {
 		pid := pid // capture
 		g.Go(func() error {
+			if err := pCtx.Err(); err != nil {
+				return nil
+			}
 			batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 			if err != nil {
 				return fmt.Errorf("batting history pid=%d: %w", pid, err)

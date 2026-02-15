@@ -16,7 +16,7 @@ type playerWindowsCalc struct{}
 
 func (p *playerWindowsCalc) Name() Target { return TargetPlayerWindows }
 
-// minimal projection of ball_event joined with match_details for scopes.
+// minimal projection of ball_event joined with match + match_inning for scopes.
 type bEvent struct {
 	MatchID     int64
 	Innings     int
@@ -286,10 +286,11 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
         SELECT be.match_id, be.innings, be.ball_seq, be.is_legal, be.phase,
                be.striker_id, be.bowler_id, be.runs_batter, be.runs_total,
                be.extras_kind, be.wicket_kind, be.player_out_id,
-               md.match_date, md.format_id, md.opposition_id, md.venue_id, md.season_id
+               m.match_date, m.format_id, mi.bowling_team_opposition_id, m.venue_id, m.season_id
         FROM ball_event be
-        JOIN match_details md ON md.match_id = be.match_id
-        WHERE md.format_id = $1 AND md.match_date IS NOT NULL
+        JOIN match m ON m.match_id = be.match_id
+        LEFT JOIN match_inning mi ON mi.match_id = be.match_id AND mi.inning_number = be.innings
+        WHERE m.format_id = $1 AND m.match_date IS NOT NULL
         ORDER BY be.match_id, be.innings, be.ball_seq
     `, formatID)
 	if err != nil {

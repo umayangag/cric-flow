@@ -155,12 +155,15 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	row := db.Pool.QueryRow(
 		r.Context(),
-		`SELECT id, match_id, venue_id, opposition_id, season_id, toss, batting_session, bowling_session FROM match_details WHERE match_id = $1`,
+		`SELECT m.match_id, m.match_id, m.venue_id, mi.batting_team_opposition_id, m.season_id, m.toss_decision
+		FROM match m
+		LEFT JOIN LATERAL (SELECT batting_team_opposition_id FROM match_inning WHERE match_id = m.match_id ORDER BY inning_number LIMIT 1) mi ON true
+		WHERE m.match_id = $1`,
 		mid,
 	)
 
 	var resp matchDetailsResponse
-	if err := row.Scan(&resp); err != nil {
+	if err := row.Scan(&resp.ID, &resp.MatchID, &resp.VenueID, &resp.OppositionID, &resp.SeasonID, &resp.Toss); err != nil {
 		respondErr(w, err)
 		return
 	}

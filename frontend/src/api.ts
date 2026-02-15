@@ -92,6 +92,17 @@ export const api = {
   getTeams(): Promise<string[]> {
     return httpApi('/api/options/teams');
   },
+  getTeamsByFormat(format: string): Promise<string[]> {
+    const u = new URL('/api/options/teams-by-format', BASE_API_URL);
+    u.searchParams.set('format', format);
+    return httpApi(u.toString());
+  },
+  getOpponents(format: string, team: string): Promise<string[]> {
+    const u = new URL('/api/options/opponents', BASE_API_URL);
+    u.searchParams.set('format', format);
+    u.searchParams.set('team', team);
+    return httpApi(u.toString());
+  },
   getFormats(): Promise<string[]> {
     return httpApi('/api/options/formats');
   },

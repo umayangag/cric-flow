@@ -98,13 +98,13 @@ This document describes the `/ops/status` endpoint exposed by the Go API. It agg
   - Keys: `available` (boolean), `rows` (total rows when connected).
 
 - `suggestions`
-  - Ordered, actionable `make` commands computed from the snapshot.
+  - Ordered, actionable `make` commands computed from the snapshot. All commands assume run from project root.
   - Priority rules: DB → Precompute → Exports → Artifacts → Services.
-  - Examples:
-    - DB not ready: `make migrate`, `make cricsheet-import`
-    - Precompute missing/stale: `make precompute` or `make precompute-asof ASOF=YYYY-MM-DD`
-    - Exports missing: `cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=ODI`
-    - Artifacts missing: `make ml-install`, `make train-all`
+  - Examples (copy-paste ready):
+    - DB not ready: `make migrate && make cricsheet-import`
+    - Precompute missing/stale: `make precompute-asof` (add `ASOF=YYYY-MM-DD` for a specific date)
+    - Exports missing: `make export-dataset`
+    - Artifacts missing: `make ml-install && make train-batting`, `make train-bowling`
     - ML service down: `make dev-up` (or `make dev-rebuild`)
 
 ## Quick verification

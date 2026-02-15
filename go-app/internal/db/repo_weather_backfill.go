@@ -18,13 +18,13 @@ func EnqueueMissingWeatherJobs(ctx context.Context, limit int) (int64, error) {
 	}
 	// Insert-Select idempotent via unique(match_id)
 	cmd := `INSERT INTO weather_job(match_id, normalized_venue, sessions, status)
-		SELECT md.match_id,
+		SELECT m.match_id,
 		       regexp_replace(lower(trim(v.venue_name)), '\\s+', ' ', 'g') AS normalized_venue,
 		       '[]'::jsonb,
 		       'queued'
-		FROM match_details md
-		JOIN venue v ON v.id = md.venue_id
-		LEFT JOIN weather_job wj ON wj.match_id = md.match_id
+		FROM match m
+		JOIN venue v ON v.id = m.venue_id
+		LEFT JOIN weather_job wj ON wj.match_id = m.match_id
 		WHERE wj.match_id IS NULL` + limClause
 	ct, err := Pool.Exec(ctx, cmd)
 	if err != nil {

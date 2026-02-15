@@ -39,6 +39,10 @@ func NewRouter(a *App) http.Handler {
 	// Options
 	optionsHandler := &OptionsHandler{}
 	admin.HandleFunc("/api/options/teams", optionsHandler.HandleGetTeams).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/options/teams-by-format", optionsHandler.HandleGetTeamsByFormat).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/options/opponents", optionsHandler.HandleGetOpponents).
+		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
 		Methods(http.MethodGet, http.MethodOptions)
 

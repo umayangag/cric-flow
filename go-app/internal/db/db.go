@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -256,6 +257,22 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 
 // SetPoolAPI allows tests to inject a mock pool implementation.
 func SetPoolAPI(p PoolIface) { PoolAPI = p }
+
+// RunInTx runs fn inside a transaction. Commits on success, rolls back on error or panic.
+func RunInTx(ctx context.Context, fn func(ctx context.Context, tx CopyFromTx) error) error {
+	if PoolAPI == nil {
+		return errors.New("db pool not initialized")
+	}
+	tx, err := PoolAPI.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

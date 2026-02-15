@@ -75,6 +75,9 @@ func (s *Service) BackfillAll(ctx context.Context, apply bool, concurrency int) 
 	worker := func() {
 		defer wg.Done()
 		for t := range jobs {
+			if err := ctx.Err(); err != nil {
+				return
+			}
 			if err := s.Repo.UpsertFieldingAggregates(ctx, t.rows); err != nil {
 				mu.Lock()
 				if firstErr == nil {

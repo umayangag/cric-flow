@@ -21,7 +21,7 @@ type DBProbe interface {
 	// status: "ok" | "unknown" | "out_of_date"
 	MigrationInfo(ctx context.Context) (int, int, string, error)
 	// LastMatchImportAt returns the latest available import timestamp/date for match data
-	// based on the `match_details` table. If not available, returns zero time with error.
+	// based on the `match` table. If not available, returns zero time with error.
 	LastMatchImportAt(ctx context.Context) (time.Time, error)
 	// TableStats returns row counts and last record info for all tables.
 	TableStats(ctx context.Context) ([]db.TableStat, error)
@@ -43,7 +43,7 @@ func (productionDBProbe) Ping(ctx context.Context) error {
 
 func (productionDBProbe) Count(ctx context.Context, table string) (int64, error) {
 	// The Ops dashboard asks for logical entity counts: "players", "matches", "innings".
-	// Our actual schema names differ (player/match_details). Map friendly names
+	// Our actual schema names differ (player/match). Map friendly names
 	// to the correct SQL so the dashboard reflects real data after imports.
 	if db.Pool == nil {
 		return 0, errors.New("db pool not initialized")
@@ -60,8 +60,8 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 		// Schema table is singular: player
 		sql = "SELECT COUNT(*) FROM player"
 	case "matches":
-		// Distinct matches are identified by match_details.match_id
-		sql = "SELECT COUNT(DISTINCT match_id) FROM match_details"
+		// Distinct matches are identified by match.match_id
+		sql = "SELECT COUNT(*) FROM match"
 	default:
 		// Reject unknown table names to avoid SQL injection risks.
 		return 0, fmt.Errorf("unsupported table for count: %s", table)
@@ -100,7 +100,7 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 	defer cancel()
 	// Use match_date for latest available match record date.
 	var ts time.Time
-	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(match_date), DATE '0001-01-01') FROM match_details").Scan(&ts); err != nil {
+	if err := db.Pool.QueryRow(ctx, "SELECT COALESCE(MAX(match_date), DATE '0001-01-01') FROM match").Scan(&ts); err != nil {
 		return time.Time{}, err
 	}
 	if ts.IsZero() {

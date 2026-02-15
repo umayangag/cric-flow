@@ -1,6 +1,12 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BacktestCandidate, BacktestSelectResponse } from '../api/types';
-import { fetchBacktestSelect, toUpperTrim } from '../api/client';
+import {
+  fetchBacktestSelect,
+  fetchFormats,
+  fetchOpponents,
+  fetchTeamsByFormat,
+  toUpperTrim,
+} from '../api/client';
 
 export type BacktestFiltersProps = {
   baseUrl?: string;
@@ -8,12 +14,66 @@ export type BacktestFiltersProps = {
 };
 
 export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', onSelect }) => {
-  const [format, setFormat] = useState('T20');
-  const [team1, setTeam1] = useState('IND');
-  const [team2, setTeam2] = useState('AUS');
+  const [format, setFormat] = useState('');
+  const [team1, setTeam1] = useState('');
+  const [team2, setTeam2] = useState('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
+
+  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
+  const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
+  const [availableTeam2s, setAvailableTeam2s] = useState<string[]>([]);
+
+  // Fetch formats on mount
+  useEffect(() => {
+    fetchFormats(baseUrl)
+      .then((fmts) => {
+        setAvailableFormats(fmts);
+        if (fmts.length > 0 && !format) {
+          setFormat(fmts[0]);
+        }
+      })
+      .catch((err) => setError(err.message || 'Failed to fetch formats'));
+    // format excluded: only used to avoid overwriting user selection on initial load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseUrl]);
+
+  // Fetch teams when format changes
+  useEffect(() => {
+    if (!format) {
+      setAvailableTeam1s([]);
+      return;
+    }
+    fetchTeamsByFormat(baseUrl, format)
+      .then((teams) => {
+        setAvailableTeam1s(teams);
+        if (teams.length > 0) {
+          setTeam1(teams[0]);
+        } else {
+          setTeam1('');
+        }
+      })
+      .catch((err) => setError(err.message || 'Failed to fetch teams'));
+  }, [baseUrl, format]);
+
+  // Fetch opponents when team1 or format changes
+  useEffect(() => {
+    if (!format || !team1) {
+      setAvailableTeam2s([]);
+      return;
+    }
+    fetchOpponents(baseUrl, format, team1)
+      .then((opps) => {
+        setAvailableTeam2s(opps);
+        if (opps.length > 0) {
+          setTeam2(opps[0]);
+        } else {
+          setTeam2('');
+        }
+      })
+      .catch((err) => setError(err.message || 'Failed to fetch opponents'));
+  }, [baseUrl, format, team1]);
 
   const disabled = useMemo(() => loading, [loading]);
 
@@ -49,32 +109,61 @@ export const BacktestFilters: React.FC<BacktestFiltersProps> = ({ baseUrl = '', 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           Format
-          <input
+          <select
             aria-label="format"
             value={format}
             onChange={(e) => setFormat(e.target.value)}
-            placeholder="T20"
-          />
+            disabled={disabled}
+            style={{ padding: '4px 8px' }}
+          >
+            <option value="">Select Format</option>
+            {availableFormats.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Team 1
-          <input
+          <select
             aria-label="team1"
             value={team1}
             onChange={(e) => setTeam1(e.target.value)}
-            placeholder="IND"
-          />
+            disabled={disabled || !format}
+            style={{ padding: '4px 8px' }}
+          >
+            <option value="">Select Team 1</option>
+            {availableTeam1s.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Team 2
-          <input
+          <select
             aria-label="team2"
             value={team2}
             onChange={(e) => setTeam2(e.target.value)}
-            placeholder="AUS"
-          />
+            disabled={disabled || !team1}
+            style={{ padding: '4px 8px' }}
+          >
+            <option value="">Select Team 2</option>
+            {availableTeam2s.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </label>
-        <button onClick={handleSearch} disabled={disabled} aria-label="search">
+        <button
+          onClick={handleSearch}
+          disabled={disabled || !format || !team1 || !team2}
+          aria-label="search"
+          style={{ padding: '4px 12px' }}
+        >
           {loading ? 'Searching...' : 'Search'}
         </button>
       </div>

@@ -38,75 +38,6 @@ func (_m *MockCricsheetDB) EXPECT() *MockCricsheetDB_Expecter {
 	return &MockCricsheetDB_Expecter{mock: &_m.Mock}
 }
 
-// EnsureMatchWithFormat provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) EnsureMatchWithFormat(ctx context.Context, matchID int64, formatID int64, matchDate string) error {
-	ret := _mock.Called(ctx, matchID, formatID, matchDate)
-
-	if len(ret) == 0 {
-		panic("no return value specified for EnsureMatchWithFormat")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, string) error); ok {
-		r0 = returnFunc(ctx, matchID, formatID, matchDate)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockCricsheetDB_EnsureMatchWithFormat_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureMatchWithFormat'
-type MockCricsheetDB_EnsureMatchWithFormat_Call struct {
-	*mock.Call
-}
-
-// EnsureMatchWithFormat is a helper method to define mock.On call
-//   - ctx context.Context
-//   - matchID int64
-//   - formatID int64
-//   - matchDate string
-func (_e *MockCricsheetDB_Expecter) EnsureMatchWithFormat(ctx interface{}, matchID interface{}, formatID interface{}, matchDate interface{}) *MockCricsheetDB_EnsureMatchWithFormat_Call {
-	return &MockCricsheetDB_EnsureMatchWithFormat_Call{Call: _e.mock.On("EnsureMatchWithFormat", ctx, matchID, formatID, matchDate)}
-}
-
-func (_c *MockCricsheetDB_EnsureMatchWithFormat_Call) Run(run func(ctx context.Context, matchID int64, formatID int64, matchDate string)) *MockCricsheetDB_EnsureMatchWithFormat_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 int64
-		if args[1] != nil {
-			arg1 = args[1].(int64)
-		}
-		var arg2 int64
-		if args[2] != nil {
-			arg2 = args[2].(int64)
-		}
-		var arg3 string
-		if args[3] != nil {
-			arg3 = args[3].(string)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-			arg3,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCricsheetDB_EnsureMatchWithFormat_Call) Return(err error) *MockCricsheetDB_EnsureMatchWithFormat_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockCricsheetDB_EnsureMatchWithFormat_Call) RunAndReturn(run func(ctx context.Context, matchID int64, formatID int64, matchDate string) error) *MockCricsheetDB_EnsureMatchWithFormat_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Exec provides a mock function for the type MockCricsheetDB
 func (_mock *MockCricsheetDB) Exec(ctx context.Context, sql string, args ...any) error {
 	var tmpRet mock.Arguments
@@ -509,69 +440,6 @@ func (_c *MockCricsheetDB_GetOrCreateVenue_Call) RunAndReturn(run func(ctx conte
 	return _c
 }
 
-// UpdateMatchDetails provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) UpdateMatchDetails(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error {
-	ret := _mock.Called(ctx, matchID, upd)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateMatchDetails")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, *db.MatchInfoUpdate) error); ok {
-		r0 = returnFunc(ctx, matchID, upd)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockCricsheetDB_UpdateMatchDetails_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateMatchDetails'
-type MockCricsheetDB_UpdateMatchDetails_Call struct {
-	*mock.Call
-}
-
-// UpdateMatchDetails is a helper method to define mock.On call
-//   - ctx context.Context
-//   - matchID int64
-//   - upd *db.MatchInfoUpdate
-func (_e *MockCricsheetDB_Expecter) UpdateMatchDetails(ctx interface{}, matchID interface{}, upd interface{}) *MockCricsheetDB_UpdateMatchDetails_Call {
-	return &MockCricsheetDB_UpdateMatchDetails_Call{Call: _e.mock.On("UpdateMatchDetails", ctx, matchID, upd)}
-}
-
-func (_c *MockCricsheetDB_UpdateMatchDetails_Call) Run(run func(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate)) *MockCricsheetDB_UpdateMatchDetails_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 int64
-		if args[1] != nil {
-			arg1 = args[1].(int64)
-		}
-		var arg2 *db.MatchInfoUpdate
-		if args[2] != nil {
-			arg2 = args[2].(*db.MatchInfoUpdate)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCricsheetDB_UpdateMatchDetails_Call) Return(err error) *MockCricsheetDB_UpdateMatchDetails_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockCricsheetDB_UpdateMatchDetails_Call) RunAndReturn(run func(ctx context.Context, matchID int64, upd *db.MatchInfoUpdate) error) *MockCricsheetDB_UpdateMatchDetails_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // UpsertBatting provides a mock function for the type MockCricsheetDB
 func (_mock *MockCricsheetDB) UpsertBatting(ctx context.Context, b *db.Batting) error {
 	ret := _mock.Called(ctx, b)
@@ -910,6 +778,120 @@ func (_c *MockCricsheetDB_UpsertFieldingBatch_Call) Return(err error) *MockCrics
 }
 
 func (_c *MockCricsheetDB_UpsertFieldingBatch_Call) RunAndReturn(run func(ctx context.Context, rows []db.Fielding) error) *MockCricsheetDB_UpsertFieldingBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpsertMatch provides a mock function for the type MockCricsheetDB
+func (_mock *MockCricsheetDB) UpsertMatch(ctx context.Context, m *db.MatchInsert) error {
+	ret := _mock.Called(ctx, m)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertMatch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *db.MatchInsert) error); ok {
+		r0 = returnFunc(ctx, m)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCricsheetDB_UpsertMatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertMatch'
+type MockCricsheetDB_UpsertMatch_Call struct {
+	*mock.Call
+}
+
+// UpsertMatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - m *db.MatchInsert
+func (_e *MockCricsheetDB_Expecter) UpsertMatch(ctx interface{}, m interface{}) *MockCricsheetDB_UpsertMatch_Call {
+	return &MockCricsheetDB_UpsertMatch_Call{Call: _e.mock.On("UpsertMatch", ctx, m)}
+}
+
+func (_c *MockCricsheetDB_UpsertMatch_Call) Run(run func(ctx context.Context, m *db.MatchInsert)) *MockCricsheetDB_UpsertMatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *db.MatchInsert
+		if args[1] != nil {
+			arg1 = args[1].(*db.MatchInsert)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpsertMatch_Call) Return(err error) *MockCricsheetDB_UpsertMatch_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpsertMatch_Call) RunAndReturn(run func(ctx context.Context, m *db.MatchInsert) error) *MockCricsheetDB_UpsertMatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpsertMatchInning provides a mock function for the type MockCricsheetDB
+func (_mock *MockCricsheetDB) UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error {
+	ret := _mock.Called(ctx, mi)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertMatchInning")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *db.MatchInningInsert) error); ok {
+		r0 = returnFunc(ctx, mi)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCricsheetDB_UpsertMatchInning_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertMatchInning'
+type MockCricsheetDB_UpsertMatchInning_Call struct {
+	*mock.Call
+}
+
+// UpsertMatchInning is a helper method to define mock.On call
+//   - ctx context.Context
+//   - mi *db.MatchInningInsert
+func (_e *MockCricsheetDB_Expecter) UpsertMatchInning(ctx interface{}, mi interface{}) *MockCricsheetDB_UpsertMatchInning_Call {
+	return &MockCricsheetDB_UpsertMatchInning_Call{Call: _e.mock.On("UpsertMatchInning", ctx, mi)}
+}
+
+func (_c *MockCricsheetDB_UpsertMatchInning_Call) Run(run func(ctx context.Context, mi *db.MatchInningInsert)) *MockCricsheetDB_UpsertMatchInning_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *db.MatchInningInsert
+		if args[1] != nil {
+			arg1 = args[1].(*db.MatchInningInsert)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpsertMatchInning_Call) Return(err error) *MockCricsheetDB_UpsertMatchInning_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpsertMatchInning_Call) RunAndReturn(run func(ctx context.Context, mi *db.MatchInningInsert) error) *MockCricsheetDB_UpsertMatchInning_Call {
 	_c.Call.Return(run)
 	return _c
 }

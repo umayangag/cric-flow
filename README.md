@@ -45,6 +45,7 @@ make team-predictor MATCH=<match_id>
 ## System architecture
 For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
 - docs/ARCHITECTURE.md
+- docs/SCHEMA_REDESIGN.md — database schema (match, match_inning, batting_data, bowling_data)
 
 ## Configuration and paths
 This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.

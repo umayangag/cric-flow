@@ -35,9 +35,9 @@ func TestGetMatchDateByID_Table(t *testing.T) {
 				// Some code paths check db.Pool not nil; maintain previous pattern
 				db.Pool = &pgxpool.Pool{}
 				ts := time.Date(2020, 5, 17, 0, 0, 0, 0, time.UTC)
-				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT match_date FROM match WHERE match_id = $1`)).
 					WithArgs(int64(42)).
-					WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(ts))
+					WillReturnRows(pgxmock.NewRows([]string{"match_date"}).AddRow(ts))
 				return mock, 42
 			},
 			assert: func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface) {
@@ -55,9 +55,9 @@ func TestGetMatchDateByID_Table(t *testing.T) {
 				t.Cleanup(mock.Close)
 				db.SetDB(mockDB{pool: mock})
 				db.Pool = &pgxpool.Pool{}
-				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT match_date FROM match WHERE match_id = $1`)).
 					WithArgs(int64(7)).
-					WillReturnRows(pgxmock.NewRows([]string{"date"}).AddRow(nil))
+					WillReturnRows(pgxmock.NewRows([]string{"match_date"}).AddRow(nil))
 				return mock, 7
 			},
 			assert: func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface) {
@@ -73,7 +73,7 @@ func TestGetMatchDateByID_Table(t *testing.T) {
 				require.NoError(t, err)
 				t.Cleanup(mock.Close)
 				db.SetDB(mockDB{pool: mock})
-				mock.ExpectQuery(regexp.QuoteMeta(`SELECT date FROM match_details WHERE match_id = $1`)).
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT match_date FROM match WHERE match_id = $1`)).
 					WithArgs(int64(99)).
 					WillReturnError(errors.New("boom"))
 				return mock, 99

@@ -33,12 +33,9 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	       WHEN lower(w.viscosity)='humid' THEN 1
 	       WHEN lower(w.viscosity)='windy' THEN 2
 	       ELSE 0 END AS viscosity,
-	  md.inning,
-	  CASE WHEN md.batting_session IS NULL THEN 0
-	       WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
-	       WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
-	       WHEN lower(md.batting_session) LIKE '%evening%' THEN 2 ELSE 0 END AS batting_session,
-	  CASE WHEN md.toss IS NULL THEN 0 WHEN lower(md.toss) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
+	  mi.inning_number AS inning,
+	  0 AS batting_session,
+	  CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END AS toss,
 	  s.id AS season_id,
 	  p.player_name,
 	  mf.code AS format_code,
@@ -68,10 +65,11 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  t20vo.bat_value AS bat_vs_opp_T20_asof,
 	  t20vv.bat_value AS bat_at_venue_T20_asof
 	FROM batting_data bd
-	JOIN match_details md ON md.match_id = bd.match_id
-	LEFT JOIN match_format mf ON mf.id = md.format_id
+	JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+	JOIN match m ON m.match_id = bd.match_id
+	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN player p ON p.id = bd.player_id
-	LEFT JOIN season s ON s.id = md.season_id
+	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
@@ -79,70 +77,70 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	-- TEST lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) tf ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_consistency, n_samples_bat FROM feature_consistency_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) tc ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) tvo ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $1 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) tvv ON TRUE
 	-- ODI lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) of ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_consistency, n_samples_bat FROM feature_consistency_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) oc ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) ovo ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $2 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) ovv ON TRUE
 	-- T20I lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) iif ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_consistency, n_samples_bat FROM feature_consistency_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) iic ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) iivo ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $3 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) iivv ON TRUE
 	-- T20 lateral joins
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_form, n_samples_bat FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) t20f ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_consistency, n_samples_bat FROM feature_consistency_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) t20c ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) t20vo ON TRUE
 	LEFT JOIN LATERAL (
 	  SELECT batting_value AS bat_value, n_samples_bat AS n_samples FROM feature_form_snapshots
-	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date ORDER BY as_of_date DESC LIMIT 1
+	  WHERE player_id=bd.player_id AND format_id = $4 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
 	) t20vv ON TRUE`
 
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
@@ -203,17 +201,11 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 			WHEN lower(w.viscosity) = 'windy' THEN 2
 			ELSE 0
 		END AS viscosity,
-		md.inning,
+		mi.inning_number,
+		0 AS batting_session,
 		CASE 
-			WHEN md.batting_session IS NULL THEN 0
-			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
-			WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
-			WHEN lower(md.batting_session) LIKE '%evening%' THEN 2
-			ELSE 0
-		END AS batting_session,
-		CASE 
-			WHEN md.toss IS NULL THEN 0
-			WHEN lower(md.toss) LIKE '%bat%' THEN 1
+			WHEN m.toss_decision IS NULL THEN 0
+			WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
 		tvv.batting_venue,
@@ -225,36 +217,37 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 		LEFT JOIN (
 			SELECT * FROM weather_data WHERE session = 'batting'
 		) w ON bd.match_id = w.match_id
-		LEFT JOIN match_details md ON md.match_id = w.match_id
-		LEFT JOIN venue v ON v.id = md.venue_id
-		LEFT JOIN opposition o ON o.id = md.opposition_id
-		LEFT JOIN season s ON s.id = md.season_id
+		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		LEFT JOIN match m ON m.match_id = bd.match_id
+		LEFT JOIN venue v ON v.id = m.venue_id
+		LEFT JOIN opposition o ON o.id = mi.bowling_team_opposition_id
+		LEFT JOIN season s ON s.id = m.season_id
 		-- Latest overall batting form as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_form
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		-- Latest overall batting consistency as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_consistency
 		  FROM feature_consistency_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		-- Latest batting form vs opposition as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_opposition
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		-- Latest batting form at venue as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_venue
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE`
 
@@ -307,17 +300,11 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 			WHEN lower(w.viscosity) = 'humid' THEN 1
 			ELSE 0
 		END AS batting_viscosity,
-		COALESCE(md.inning, 1) AS batting_inning,
+		COALESCE(mi.inning_number, 1) AS batting_inning,
+		0 AS batting_session,
 		CASE 
-			WHEN md.batting_session IS NULL THEN 0
-			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
-			WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
-			WHEN lower(md.batting_session) LIKE '%evening%' THEN 2
-			ELSE 0
-		END AS batting_session,
-		CASE 
-			WHEN md.toss IS NULL THEN 0
-			WHEN lower(md.toss) LIKE '%bat%' THEN 1
+			WHEN m.toss_decision IS NULL THEN 0
+			WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
 		COALESCE(tvv.batting_venue, 0) AS venue,
@@ -334,34 +321,35 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		LEFT JOIN (
 			SELECT * FROM weather_data WHERE session = 'batting'
 		) w ON bd.match_id = w.match_id
-		LEFT JOIN match_details md ON md.match_id = bd.match_id
-		LEFT JOIN season s ON s.id = md.season_id
+		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		LEFT JOIN match m ON m.match_id = bd.match_id
+		LEFT JOIN season s ON s.id = m.season_id
 		-- Latest overall batting form and consistency as-of match date (per-format)
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_form
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_consistency
 		  FROM feature_consistency_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		-- Latest batting form vs opposition and at venue
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_opposition
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_venue
 		  FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE md.format_id = $1`
+		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return nil, err
@@ -429,17 +417,11 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 			WHEN lower(w.viscosity) = 'windy' THEN 2
 			ELSE 0
 		END AS viscosity,
-		md.inning,
+		mi.inning_number,
+		0 AS batting_session,
 		CASE 
-			WHEN md.batting_session IS NULL THEN 0
-			WHEN lower(md.batting_session) LIKE '%morning%' THEN 0
-			WHEN lower(md.batting_session) LIKE '%afternoon%' THEN 1
-			WHEN lower(md.batting_session) LIKE '%evening%' THEN 2
-			ELSE 0
-		END AS batting_session,
-		CASE 
-			WHEN md.toss IS NULL THEN 0
-			WHEN lower(md.toss) LIKE '%bat%' THEN 1
+			WHEN m.toss_decision IS NULL THEN 0
+			WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1
 			ELSE 0
 		END AS toss,
 		tvv.batting_venue,
@@ -456,28 +438,29 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		LEFT JOIN (
 			SELECT * FROM weather_data WHERE session = 'batting'
 		) w ON bd.match_id = w.match_id
-		LEFT JOIN match_details md ON md.match_id = bd.match_id
-		LEFT JOIN season s ON s.id = md.season_id
+		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		LEFT JOIN match m ON m.match_id = bd.match_id
+		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_form, n_samples_bat FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tf ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_consistency, n_samples_bat FROM feature_consistency_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tc ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_opposition, n_samples_bat AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='opposition' AND scope_id = md.opposition_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.bowling_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
 		  SELECT batting_value AS batting_venue, n_samples_bat AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bd.player_id AND format_id = md.format_id AND scope='venue' AND scope_id = md.venue_id AND as_of_date <= md.match_date
+		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE md.format_id = $1`
+		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return nil, err
