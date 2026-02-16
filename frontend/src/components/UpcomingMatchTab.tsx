@@ -131,13 +131,15 @@ const UpcomingMatchTab: React.FC = () => {
 
   const dateError = useMemo(() => {
     if (!matchDate) return 'Match date is required';
-    const d = new Date(matchDate);
+    // Parse YYYY-MM-DD as local date (input[type=date] gives calendar date; new Date(str) parses as UTC).
+    const [y, m, d] = matchDate.split('-').map(Number);
+    const selectedLocal = new Date(y, m - 1, d);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const max = new Date(today);
     max.setDate(max.getDate() + MAX_FUTURE_DAYS);
-    if (d < today) return 'Date must be today or in the future';
-    if (d > max) return `Date must be within ${MAX_FUTURE_DAYS} days from today`;
+    if (selectedLocal < today) return 'Date must be today or in the future';
+    if (selectedLocal > max) return `Date must be within ${MAX_FUTURE_DAYS} days from today`;
     return null;
   }, [matchDate]);
 
