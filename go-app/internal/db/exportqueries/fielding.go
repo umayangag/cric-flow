@@ -123,9 +123,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 	if err != nil {
 		return nil, err
 	}
-	alpha := DefaultEWMAlpha
-	lastN := DefaultConsistencyLastN
-	windowN := DefaultFormWindowN
+	alpha, lastN, windowN := GetFeatureExtractionParams()
 	headers := []string{
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",

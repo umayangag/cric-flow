@@ -28,6 +28,14 @@ type Config struct {
 		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
 		ConsistencyPerFormat bool    `json:"consistency_per_format"`
 		HistoryWindowMatches int     `json:"history_window_matches"`
+		// Feature extraction (EWM form, consistency). Used by export/training-data and precompute when not overridden by CLI.
+		EWMAlpha          float64 `json:"ewm_alpha"`           // (0,1]; default 0.3
+		ConsistencyLastN  int     `json:"consistency_last_n"`  // last-N innings for consistency; default 10
+		FormWindowN       int     `json:"form_window_n"`      // max innings for form (0 = no limit); default 0
+		FieldingEnrich    struct {
+			EWMAlpha          float64 `json:"ewm_alpha"`            // EWM alpha for fielding form fallback; default 0.3
+			FormToCatchesRatio float64 `json:"form_to_catches_ratio"` // split of form into catches (rest = run_outs); default 0.7
+		} `json:"fielding_enrich"`
 	} `json:"features"`
 	Export struct {
 		SplitByFormat  bool   `json:"split_by_format"`

@@ -652,9 +652,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 	}
-	alpha := DefaultEWMAlpha
-	lastN := DefaultConsistencyLastN
-	windowN := DefaultFormWindowN
+	alpha, lastN, windowN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {

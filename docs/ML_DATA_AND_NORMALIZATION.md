@@ -47,7 +47,7 @@ Cricsheet / DB               EWM form, Consistency,            StandardScaler on
 - **Training:**
   - **CSV / train_batting / train_bowling:** Rows with missing required feature columns are dropped (`dropna(subset=feature_cols)`). Optional: fill remaining NaNs with 0 before scaling (e.g. `X.fillna(0.0)`) where the export may have sparse columns.
   - **Train-on-the-fly:** Rows with any missing value in the required feature columns are dropped (`dropna(subset=feature_cols)`). No fill.
-- **Prediction:** If the go-app feature map omits a key, the ML service uses documented defaults (e.g. 0.5 for consistency, 0 for form) in `build_*_features_from_map`. These defaults should match the semantics of “no history” so that training (where we drop or fill) and prediction stay aligned.
+- **Prediction:** If the go-app feature map omits a key, the ML service uses configurable defaults from `ml.feature_defaults` in `ml-service/config.json` (see **docs/CONFIG.md**). Built-in defaults (e.g. 0.5 for consistency, 0 for form, 25 for temp) apply when the config block is absent. Tune these to match the semantics of “no history” so that training (where we drop or fill) and prediction stay aligned.
 
 ### 3.4 Feature order
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
@@ -317,6 +318,7 @@ func hasFieldingPredictions(preds map[int64]PlayerPred) bool {
 // enrichFieldingFromHistory overwrites Catches and RunOuts in preds using historical
 // fielding form (EWM of involvements). Used only when the ML service did not return
 // fielding predictions (no fielding model loaded for this format).
+// EWM alpha and form-to-catches ratio are read from config (features.fielding_enrich).
 func enrichFieldingFromHistory(
 	ctx context.Context,
 	preds map[int64]PlayerPred,
@@ -324,7 +326,16 @@ func enrichFieldingFromHistory(
 	cutoff time.Time,
 	formatID int64,
 ) {
-	const ewmAlpha = 0.3
+	ewmAlpha := 0.3
+	catchesRatio := 0.7
+	if cfg := config.Load(); cfg != nil {
+		if cfg.Features.FieldingEnrich.EWMAlpha > 0 && cfg.Features.FieldingEnrich.EWMAlpha <= 1 {
+			ewmAlpha = cfg.Features.FieldingEnrich.EWMAlpha
+		}
+		if cfg.Features.FieldingEnrich.FormToCatchesRatio > 0 && cfg.Features.FieldingEnrich.FormToCatchesRatio <= 1 {
+			catchesRatio = cfg.Features.FieldingEnrich.FormToCatchesRatio
+		}
+	}
 	for _, pid := range playerIDs {
 		hist, err := db.ListFieldingBefore(ctx, pid, cutoff, formatID)
 		if err != nil || len(hist) == 0 {
@@ -341,9 +352,8 @@ func enrichFieldingFromHistory(
 			continue
 		}
 		form, _ := features.EWM(inn, ewmAlpha)
-		// Typical ratio: ~2 catches per run_out. Split form into catches and run_outs.
-		catches := form * 0.7
-		runOuts := form * 0.3
+		catches := form * catchesRatio
+		runOuts := form * (1 - catchesRatio)
 		if p, ok := preds[pid]; ok {
 			p.Catches = math.Max(0, catches)
 			p.RunOuts = math.Max(0, runOuts)

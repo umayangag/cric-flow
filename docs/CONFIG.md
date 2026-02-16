@@ -29,6 +29,14 @@ Keys:
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
   - `consistency_per_format` (bool) — if true, compute format-aware consistency (table can be introduced later).
+  - `history_window_matches` (int) — when &gt; 0, limit form/consistency to the last N matches (used by precompute-all).
+  - **Feature extraction (tunable):** Used by training-data export and by `cmd/precompute-all` when CLI flags are not overridden.
+    - `ewm_alpha` (float, default 0.3) — alpha for exponentially weighted mean (form). Must be in (0, 1].
+    - `consistency_last_n` (int, default 10) — last-N innings window for consistency (coefficient of variation).
+    - `form_window_n` (int, default 0) — max number of innings to use for form; 0 = no limit.
+  - `fielding_enrich` — used when ML does not return fielding predictions and go-app enriches from history (team selection).
+    - `ewm_alpha` (float, default 0.3) — EWM alpha for fielding form.
+    - `form_to_catches_ratio` (float, default 0.7) — split of form into catches; run_outs = form × (1 − ratio).
 - `export`
   - `split_by_format` (bool) — when true, `cmd/export-dataset` writes per-format CSVs by default.
   - `required_format` (string) — when set, exporter writes only this format unless overridden by flags.
@@ -62,6 +70,9 @@ Keys:
     - `bowling` — parameters for bowling RandomForest training and artifacts.
       - Same keys as `batting`. Add further keys (e.g. `fielding`, `win`) when those models are implemented.
   - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
+  - `feature_defaults` (optional) — defaults used when building feature vectors from a sparse go-app map at prediction time (missing keys). Tune these to match “no history” or environment assumptions.
+    - `common` — weather/context: `temp`, `humidity`, `wind`, `rain`, `cloud`, `pressure`, `viscosity`, `inning`, `session`, `toss` (same defaults used for batting/bowling/fielding where applicable).
+    - `fielding` — `consistency`, `form`, `venue`, `opposition` (used when fielding or venue/opposition keys are missing).
 
 For data normalization, feature computation, and ML practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
 

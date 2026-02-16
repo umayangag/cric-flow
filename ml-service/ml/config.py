@@ -142,3 +142,49 @@ def get_tuning_config() -> Dict[str, Any]:
         "n_iter": int(tuning.get("n_iter", 25)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
     }
+
+
+# Built-in feature defaults when building feature vectors from a sparse go-app map (prediction time).
+# Used by app/backtest_service build_*_features_from_map when a key is missing.
+_BUILTIN_FEATURE_DEFAULTS = {
+    "common": {
+        "temp": 25,
+        "humidity": 50,
+        "wind": 0,
+        "rain": 0,
+        "cloud": 0,
+        "pressure": 0,
+        "viscosity": 0,
+        "inning": 1,
+        "session": 1,
+        "toss": 0,
+    },
+    "fielding": {
+        "consistency": 0.5,
+        "form": 0.0,
+        "venue": 0.5,
+        "opposition": 0.5,
+    },
+}
+
+
+def get_feature_defaults() -> Dict[str, Any]:
+    """
+    Load feature_defaults from ml.feature_defaults (optional). Used when building
+    batting/bowling/fielding feature vectors from a sparse map; missing keys get
+    these defaults so prediction can proceed without failing.
+    Returns: dict with "common" (weather/context) and "fielding" (fielding-specific) sub-dicts.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    fd = ml.get("feature_defaults") if isinstance(ml, dict) else None
+    if not isinstance(fd, dict):
+        return _BUILTIN_FEATURE_DEFAULTS.copy()
+    result: Dict[str, Any] = {"common": {}, "fielding": {}}
+    builtin_common = _BUILTIN_FEATURE_DEFAULTS["common"]
+    builtin_fielding = _BUILTIN_FEATURE_DEFAULTS["fielding"]
+    for k, v in builtin_common.items():
+        result["common"][k] = fd.get("common", {}).get(k, v) if isinstance(fd.get("common"), dict) else v
+    for k, v in builtin_fielding.items():
+        result["fielding"][k] = fd.get("fielding", {}).get(k, v) if isinstance(fd.get("fielding"), dict) else v
+    return result

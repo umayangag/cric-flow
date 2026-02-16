@@ -683,9 +683,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
-	alpha := DefaultEWMAlpha
-	lastN := DefaultConsistencyLastN
-	windowN := DefaultFormWindowN
+	alpha, lastN, windowN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {

@@ -5,6 +5,11 @@ from typing import Dict, Iterable, List, Optional, Protocol, Tuple
 
 import numpy as np
 
+try:
+    from ml.config import get_feature_defaults
+except Exception:
+    get_feature_defaults = None
+
 from .models import (
     BacktestMatchAgg,
     BacktestMetrics,
@@ -50,6 +55,19 @@ def _int(d: Dict[str, float], key: str, default: int) -> int:
         return default
 
 
+def _feature_defaults() -> Dict:
+    """Feature defaults for missing keys (from config ml.feature_defaults or built-in)."""
+    if get_feature_defaults is not None:
+        try:
+            return get_feature_defaults()
+        except Exception:
+            pass
+    return {
+        "common": {"temp": 25, "humidity": 50, "wind": 0, "rain": 0, "cloud": 0, "pressure": 0, "viscosity": 0, "inning": 1, "session": 1, "toss": 0},
+        "fielding": {"consistency": 0.5, "form": 0.0, "venue": 0.5, "opposition": 0.5},
+    }
+
+
 def build_batting_features_from_map(
     player_id: int,
     cutoff: datetime,
@@ -58,20 +76,22 @@ def build_batting_features_from_map(
 ) -> BattingFeatures:
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
+    defs = _feature_defaults()
+    c = defs.get("common", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BattingFeatures(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
         batting_form=max(0.0, _get_required_float(d, "batting_form")),
-        batting_temp=_int(d, "batting_temp", 25),
-        batting_wind=_int(d, "batting_wind", 0),
-        batting_rain=_int(d, "batting_rain", 0),
-        batting_humidity=_int(d, "batting_humidity", 50),
-        batting_cloud=_int(d, "batting_cloud", 0),
-        batting_pressure=_int(d, "batting_pressure", 0),
-        batting_viscosity=min(1, max(0, _int(d, "batting_viscosity", 0))),
-        batting_inning=min(2, max(1, _int(d, "batting_inning", 1))),
-        batting_session=min(3, max(1, _int(d, "batting_session", 1))),
-        toss=min(1, max(0, _int(d, "toss", 0))),
+        batting_temp=_int(d, "batting_temp", c.get("temp", 25)),
+        batting_wind=_int(d, "batting_wind", c.get("wind", 0)),
+        batting_rain=_int(d, "batting_rain", c.get("rain", 0)),
+        batting_humidity=_int(d, "batting_humidity", c.get("humidity", 50)),
+        batting_cloud=_int(d, "batting_cloud", c.get("cloud", 0)),
+        batting_pressure=_int(d, "batting_pressure", c.get("pressure", 0)),
+        batting_viscosity=min(1, max(0, _int(d, "batting_viscosity", c.get("viscosity", 0)))),
+        batting_inning=min(2, max(1, _int(d, "batting_inning", c.get("inning", 1)))),
+        batting_session=min(3, max(1, _int(d, "batting_session", c.get("session", 1)))),
+        toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
         venue=_get_required_float(d, "venue"),
         opposition=_get_required_float(d, "opposition"),
         season=season,
@@ -106,23 +126,26 @@ def build_fielding_features_from_map(
     fmt: Optional[str],
     feature_map: Dict[str, float],
 ) -> FieldingFeatures:
-    """Build FieldingFeatures from go-app feature map. Uses 0 for missing fielding_form/fielding_consistency."""
+    """Build FieldingFeatures from go-app feature map. Uses config defaults for missing keys."""
     d = {k: v for k, v in feature_map.items()}
+    defs = _feature_defaults()
+    c = defs.get("common", {})
+    f = defs.get("fielding", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return FieldingFeatures(
-        fielding_consistency=max(0.0, _float(d, "fielding_consistency", 0.5)),
-        fielding_form=max(0.0, _float(d, "fielding_form", 0.0)),
-        fielding_temp=_int(d, "fielding_temp", _int(d, "batting_temp", 25)),
-        fielding_wind=_int(d, "fielding_wind", _int(d, "batting_wind", 0)),
-        fielding_rain=_int(d, "fielding_rain", _int(d, "batting_rain", 0)),
-        fielding_humidity=_int(d, "fielding_humidity", _int(d, "batting_humidity", 50)),
-        fielding_cloud=_int(d, "fielding_cloud", _int(d, "batting_cloud", 0)),
-        fielding_pressure=_int(d, "fielding_pressure", _int(d, "batting_pressure", 0)),
-        fielding_viscosity=min(1, max(0, _int(d, "fielding_viscosity", _int(d, "batting_viscosity", 0)))),
-        fielding_inning=min(2, max(1, _int(d, "fielding_inning", _int(d, "batting_inning", 1)))),
-        fielding_toss=min(1, max(0, _int(d, "toss", 0))),
-        fielding_venue=_float(d, "fielding_venue", _float(d, "venue", 0.5)),
-        fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", 0.5)),
+        fielding_consistency=max(0.0, _float(d, "fielding_consistency", f.get("consistency", 0.5))),
+        fielding_form=max(0.0, _float(d, "fielding_form", f.get("form", 0.0))),
+        fielding_temp=_int(d, "fielding_temp", _int(d, "batting_temp", c.get("temp", 25))),
+        fielding_wind=_int(d, "fielding_wind", _int(d, "batting_wind", c.get("wind", 0))),
+        fielding_rain=_int(d, "fielding_rain", _int(d, "batting_rain", c.get("rain", 0))),
+        fielding_humidity=_int(d, "fielding_humidity", _int(d, "batting_humidity", c.get("humidity", 50))),
+        fielding_cloud=_int(d, "fielding_cloud", _int(d, "batting_cloud", c.get("cloud", 0))),
+        fielding_pressure=_int(d, "fielding_pressure", _int(d, "batting_pressure", c.get("pressure", 0))),
+        fielding_viscosity=min(1, max(0, _int(d, "fielding_viscosity", _int(d, "batting_viscosity", c.get("viscosity", 0))))),
+        fielding_inning=min(2, max(1, _int(d, "fielding_inning", _int(d, "batting_inning", c.get("inning", 1))))),
+        fielding_toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
+        fielding_venue=_float(d, "fielding_venue", _float(d, "venue", f.get("venue", 0.5))),
+        fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", f.get("opposition", 0.5))),
         fielding_season=season,
     )
 
@@ -135,20 +158,22 @@ def build_bowling_features_from_map(
 ) -> BowlingFeatures:
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
+    defs = _feature_defaults()
+    c = defs.get("common", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BowlingFeatures(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
         bowling_form=max(0.0, _get_required_float(d, "bowling_form")),
-        bowling_temp=_int(d, "bowling_temp", 25),
-        bowling_wind=_int(d, "bowling_wind", 0),
-        bowling_rain=_int(d, "bowling_rain", 0),
-        bowling_humidity=_int(d, "bowling_humidity", 50),
-        bowling_cloud=_int(d, "bowling_cloud", 0),
-        bowling_pressure=_int(d, "bowling_pressure", 0),
-        bowling_viscosity=min(1, max(0, _int(d, "bowling_viscosity", 0))),
-        batting_inning=min(2, max(1, _int(d, "batting_inning", 1))),
-        bowling_session=min(3, max(1, _int(d, "bowling_session", 1))),
-        toss=min(1, max(0, _int(d, "toss", 0))),
+        bowling_temp=_int(d, "bowling_temp", c.get("temp", 25)),
+        bowling_wind=_int(d, "bowling_wind", c.get("wind", 0)),
+        bowling_rain=_int(d, "bowling_rain", c.get("rain", 0)),
+        bowling_humidity=_int(d, "bowling_humidity", c.get("humidity", 50)),
+        bowling_cloud=_int(d, "bowling_cloud", c.get("cloud", 0)),
+        bowling_pressure=_int(d, "bowling_pressure", c.get("pressure", 0)),
+        bowling_viscosity=min(1, max(0, _int(d, "bowling_viscosity", c.get("viscosity", 0)))),
+        batting_inning=min(2, max(1, _int(d, "batting_inning", c.get("inning", 1)))),
+        bowling_session=min(3, max(1, _int(d, "bowling_session", c.get("session", 1)))),
+        toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
         bowling_venue=_float(d, "bowling_venue", _get_required_float(d, "venue")),
         bowling_opposition=_float(d, "bowling_opposition", _get_required_float(d, "opposition")),
         season=season,
