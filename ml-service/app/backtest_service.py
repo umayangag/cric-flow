@@ -61,7 +61,7 @@ def build_batting_features_from_map(
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BattingFeatures(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
-        batting_form=max(0.0, _float(d, "batting_form", _float(d, "avg_runs", 0.0))),
+        batting_form=max(0.0, _get_required_float(d, "batting_form")),
         batting_temp=_int(d, "batting_temp", 25),
         batting_wind=_int(d, "batting_wind", 0),
         batting_rain=_int(d, "batting_rain", 0),
@@ -91,7 +91,7 @@ def build_bowling_features_from_map(
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BowlingFeatures(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
-        bowling_form=max(0.0, _float(d, "bowling_form", _float(d, "avg_wickets", 0.0))),
+        bowling_form=max(0.0, _get_required_float(d, "bowling_form")),
         bowling_temp=_int(d, "bowling_temp", 25),
         bowling_wind=_int(d, "bowling_wind", 0),
         bowling_rain=_int(d, "bowling_rain", 0),

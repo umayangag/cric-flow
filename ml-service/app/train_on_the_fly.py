@@ -113,6 +113,7 @@ def _rows_to_xy(
         if c not in df.columns and c.replace("_", " ") in df.columns:
             df = df.rename(columns={c.replace("_", " "): c})
     if "toss" in df.columns and df["toss"].dtype == object:
+
         def _normalize_toss(x):
             s = str(x).strip().lower()
             if s in ("0", "1"):
@@ -378,9 +379,9 @@ def _cache_key(format_code: str, cutoff_iso: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
-def _load_from_cache(cache_dir: str, key: str) -> Optional[
-    Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]
-]:
+def _load_from_cache(
+    cache_dir: str, key: str
+) -> Optional[Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]]:
     subdir = os.path.join(cache_dir, key)
     bat_scaler_p = os.path.join(subdir, "bat_scaler.joblib")
     bat_model_p = os.path.join(subdir, "bat_model.joblib")
