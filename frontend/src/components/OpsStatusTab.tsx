@@ -4,6 +4,7 @@ import { api } from '../api';
 import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
+import OpsPipelineGraph from './OpsPipelineGraph';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsTableStats from './OpsTableStats';
@@ -170,6 +171,12 @@ const OpsStatusTab: React.FC = () => {
             subtitle="Copy and run from project root. Commands include required flags."
           >
             <OpsSuggestions />
+          </SectionCard>
+          <SectionCard
+            title="Pipeline"
+            subtitle="Data import → precompute → export → train models. Click a step to copy its command."
+          >
+            <OpsPipelineGraph data={data} onRefresh={fetchStatus} />
           </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />

@@ -38,6 +38,22 @@ func UpdateMigrationStatus(
 	`, id, status, metadata, errMsgPtr)
 }
 
+// HasInProgressForCommand returns true if there is at least one row in data_migrations
+// for the given command with status IN_PROGRESS. Used by /ops/status pipeline section.
+func HasInProgressForCommand(ctx context.Context, command string) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM data_migrations
+			WHERE command = $1 AND status = $2
+		)
+	`, command, StatusInProgress).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message

@@ -186,7 +186,19 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
+  /** Pipeline step running state from backend (steps[stepId].running) */
+  pipeline?: {
+    steps?: Record<string, { running?: boolean }>;
+  };
   [key: string]: unknown;
+};
+
+/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */
+export type PipelineRunResponse = {
+  status?: string;
+  step?: string;
+  error?: string;
+  command?: string;
 };
 
 export type Migration = {

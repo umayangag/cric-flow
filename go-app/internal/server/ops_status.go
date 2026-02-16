@@ -22,6 +22,8 @@ type OpsStatusResponse struct {
 	DBFreshness    map[string]any                `json:"db_freshness"`
 	DBCompleteness map[string]any                `json:"db_completeness"`
 	Hierarchy      []formats.FormatHierarchyNode `json:"hierarchy"`
+	// Pipeline reports per-step running state (from data_migrations IN_PROGRESS).
+	Pipeline map[string]any `json:"pipeline,omitempty"`
 }
 
 // getPrecomputeStatus is a function variable to allow test-time substitution.
@@ -75,6 +77,7 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 		resp.Artifacts = sec
 		resp.Services["ml_health"] = mlOK
 	}
+	resp.Pipeline = buildPipelineSection(ctx)
 	return resp
 }
 

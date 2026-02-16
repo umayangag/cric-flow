@@ -14,6 +14,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 // healthHandler responds with liveness OK.
@@ -45,20 +46,26 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, err)
 		return
 	}
-	go func(season string, formats []string) {
+	season := body.Season
+	formats := body.Formats
+	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		if err := precompute.Run(ctx, season, formats); err != nil {
-			slog.Error(
-				"precompute failed",
-				slog.Any("err", err),
-				slog.String("season", season),
-				slog.Any("formats", formats),
-			)
+		tracker, tErr := tracking.Start(ctx, "precompute-features", map[string]any{"season": season, "formats": formats})
+		if tErr != nil {
+			slog.Warn("precompute: tracking start failed", slog.Any("err", tErr))
+		}
+		var runErr error
+		if tracker != nil {
+			defer tracker.CaptureExit(ctx, &runErr, map[string]any{"season": season, "formats": formats})
+		}
+		runErr = precompute.Run(ctx, season, formats)
+		if runErr != nil {
+			slog.Error("precompute failed", slog.Any("err", runErr), slog.String("season", season), slog.Any("formats", formats))
 		} else {
 			slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
 		}
-	}(body.Season, body.Formats)
+	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 
@@ -82,12 +89,22 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
+		tracker, tErr := tracking.Start(ctx, "cricsheet-import", map[string]any{"dir": body.Dir})
+		if tErr != nil {
+			slog.Warn("cricsheet-import: tracking start failed", slog.Any("err", tErr))
+		}
+		var runErr error
+		if tracker != nil {
+			defer tracker.CaptureExit(ctx, &runErr, nil)
+		}
 		opts := &cricsheet.Options{
 			PlaceholdersWeather:  body.PlaceholdersWeather,
 			PlaceholdersFielding: body.PlaceholdersFielding,
 		}
-		if n, err := cricsheet.ImportDir(ctx, body.Dir, opts); err != nil {
-			slog.Error("cricsheet import failed", slog.Any("err", err))
+		var n int
+		n, runErr = cricsheet.ImportDir(ctx, body.Dir, opts)
+		if runErr != nil {
+			slog.Error("cricsheet import failed", slog.Any("err", runErr))
 		} else {
 			slog.Info("cricsheet import completed", slog.Int("files", n))
 		}

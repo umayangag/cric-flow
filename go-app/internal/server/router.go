@@ -35,6 +35,7 @@ func NewRouter(a *App) http.Handler {
 	opsHandler := &OpsHandler{}
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}

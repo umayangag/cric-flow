@@ -8,6 +8,7 @@ import type {
   Suggestion,
   PaginatedResponse,
   PredictTeamSelectionResponse,
+  PipelineRunResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -137,6 +138,25 @@ export const api = {
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
+  },
+  /**
+   * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).
+   * Returns status and body so UI can handle 202 (started), 501 (run from root), or error.
+   */
+  async opsPipelineRun(step: string): Promise<{ status: number; data: PipelineRunResponse }> {
+    const url = `${BASE_API_URL}/ops/pipeline/run/${encodeURIComponent(step)}`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const apiKey = localStorage.getItem('cric_info_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    const res = await fetch(url, { method: 'POST', headers });
+    let data: PipelineRunResponse = {};
+    try {
+      const text = await res.text();
+      if (text) data = JSON.parse(text) as PipelineRunResponse;
+    } catch {
+      data = { error: res.statusText || 'Invalid response' };
+    }
+    return { status: res.status, data };
   },
   // --- Options ---
   getTeams(): Promise<string[]> {
