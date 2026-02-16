@@ -78,9 +78,7 @@ def get_training_params(model: str) -> Dict[str, Any]:
     model: one of "batting", "bowling". Used by train_batting*, train_bowling*, train_on_the_fly.
     """
     if model not in TRAINING_MODELS:
-        raise ValueError(
-            f"Unknown model {model!r}. Must be one of: {', '.join(TRAINING_MODELS)}."
-        )
+        raise ValueError(f"Unknown model {model!r}. Must be one of: {', '.join(TRAINING_MODELS)}.")
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     if not isinstance(ml, dict):
@@ -90,14 +88,11 @@ def get_training_params(model: str) -> Dict[str, Any]:
         )
     training = ml.get("training")
     if not isinstance(training, dict):
-        raise ValueError(
-            "config.json must define 'ml.training' with per-model blocks (batting, bowling)."
-        )
+        raise ValueError("config.json must define 'ml.training' with per-model blocks (batting, bowling).")
     block = training.get(model)
     if not isinstance(block, dict):
         raise ValueError(
-            f"config.json must define 'ml.training.{model}' with keys: "
-            + ", ".join(TRAINING_REQUIRED_KEYS)
+            f"config.json must define 'ml.training.{model}' with keys: " + ", ".join(TRAINING_REQUIRED_KEYS)
         )
     missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
     if missing:

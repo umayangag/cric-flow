@@ -63,7 +63,18 @@ def _feature_defaults() -> Dict:
         except Exception:
             pass
     return {
-        "common": {"temp": 25, "humidity": 50, "wind": 0, "rain": 0, "cloud": 0, "pressure": 0, "viscosity": 0, "inning": 1, "session": 1, "toss": 0},
+        "common": {
+            "temp": 25,
+            "humidity": 50,
+            "wind": 0,
+            "rain": 0,
+            "cloud": 0,
+            "pressure": 0,
+            "viscosity": 0,
+            "inning": 1,
+            "session": 1,
+            "toss": 0,
+        },
         "fielding": {"consistency": 0.5, "form": 0.0, "venue": 0.5, "opposition": 0.5},
     }
 
@@ -141,7 +152,9 @@ def build_fielding_features_from_map(
         fielding_humidity=_int(d, "fielding_humidity", _int(d, "batting_humidity", c.get("humidity", 50))),
         fielding_cloud=_int(d, "fielding_cloud", _int(d, "batting_cloud", c.get("cloud", 0))),
         fielding_pressure=_int(d, "fielding_pressure", _int(d, "batting_pressure", c.get("pressure", 0))),
-        fielding_viscosity=min(1, max(0, _int(d, "fielding_viscosity", _int(d, "batting_viscosity", c.get("viscosity", 0))))),
+        fielding_viscosity=min(
+            1, max(0, _int(d, "fielding_viscosity", _int(d, "batting_viscosity", c.get("viscosity", 0))))
+        ),
         fielding_inning=min(2, max(1, _int(d, "fielding_inning", _int(d, "batting_inning", c.get("inning", 1))))),
         fielding_toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
         fielding_venue=_float(d, "fielding_venue", _float(d, "venue", f.get("venue", 0.5))),

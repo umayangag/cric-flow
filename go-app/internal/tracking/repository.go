@@ -40,7 +40,11 @@ func UpdateMigrationStatus(
 
 // HasInProgressForCommand returns true if there is at least one row in data_migrations
 // for the given command with status IN_PROGRESS. Used by /ops/status pipeline section.
+// When the db pool is not initialized (e.g. disconnected), returns (false, nil).
 func HasInProgressForCommand(ctx context.Context, command string) (bool, error) {
+	if db.Pool == nil {
+		return false, nil
+	}
 	var exists bool
 	err := db.QueryRow(ctx, `
 		SELECT EXISTS(

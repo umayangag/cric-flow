@@ -404,18 +404,10 @@ def _save_to_cache(
         scaler_bowl, model_bowl = bowl_pair
         bat_params = _get_training_params("batting")
         bowl_params = _get_training_params("bowling")
-        joblib.dump(
-            scaler_bat, os.path.join(subdir, "bat_scaler.joblib"), compress=bat_params["joblib_compress"]
-        )
-        joblib.dump(
-            model_bat, os.path.join(subdir, "bat_model.joblib"), compress=bat_params["joblib_compress"]
-        )
-        joblib.dump(
-            scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"), compress=bowl_params["joblib_compress"]
-        )
-        joblib.dump(
-            model_bowl, os.path.join(subdir, "bowl_model.joblib"), compress=bowl_params["joblib_compress"]
-        )
+        joblib.dump(scaler_bat, os.path.join(subdir, "bat_scaler.joblib"), compress=bat_params["joblib_compress"])
+        joblib.dump(model_bat, os.path.join(subdir, "bat_model.joblib"), compress=bat_params["joblib_compress"])
+        joblib.dump(scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"), compress=bowl_params["joblib_compress"])
+        joblib.dump(model_bowl, os.path.join(subdir, "bowl_model.joblib"), compress=bowl_params["joblib_compress"])
         logger.info("train_on_the_fly.cache_saved", key=key, subdir=subdir)
     except Exception as e:
         logger.warning("train_on_the_fly.cache_save_failed", key=key, error=str(e))

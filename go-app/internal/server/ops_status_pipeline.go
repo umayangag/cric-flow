@@ -9,11 +9,11 @@ import (
 
 // Pipeline step IDs and their corresponding data_migrations command names.
 var pipelineStepCommands = map[string]string{
-	"import":        "cricsheet-import",
-	"precompute":    "precompute-features",
-	"export":        "export-dataset",
-	"train_batting": "train-batting",
-	"train_bowling": "train-bowling",
+	"import":         "cricsheet-import",
+	"precompute":     "precompute-features",
+	"export":         "export-dataset",
+	"train_batting":  "train-batting",
+	"train_bowling":  "train-bowling",
 	"train_fielding": "train-fielding",
 	// auto_tune has no tracking command; optional step
 }

@@ -110,7 +110,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
     }
     if (s === 'stale') precomputeStatus = 'stale';
   }
-  if (precomputeStatus === 'pending' && Object.keys(precomputeFormats).length > 0) precomputeStatus = 'stale';
+  if (precomputeStatus === 'pending' && Object.keys(precomputeFormats).length > 0)
+    precomputeStatus = 'stale';
 
   const exportFormats = getFormats(data.exports);
   let exportDone = false;
@@ -169,7 +170,9 @@ type OpsPipelineGraphProps = {
 const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) => {
   const [dialogStep, setDialogStep] = useState<PipelineStep | null>(null);
   const [copied, setCopied] = useState(false);
-  const [runState, setRunState] = useState<'idle' | 'loading' | 'started' | 'run_from_root' | 'error'>('idle');
+  const [runState, setRunState] = useState<
+    'idle' | 'loading' | 'started' | 'run_from_root' | 'error'
+  >('idle');
   const [runMessage, setRunMessage] = useState<string>('');
   const [runCommand, setRunCommand] = useState<string>('');
 
@@ -293,7 +296,13 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                   display: 'inline-flex',
                   alignItems: 'center',
                 }}
-                title={step.status === 'optional' ? 'Optional step' : step.status === 'running' ? 'Running' : step.status}
+                title={
+                  step.status === 'optional'
+                    ? 'Optional step'
+                    : step.status === 'running'
+                      ? 'Running'
+                      : step.status
+                }
               >
                 {step.status === 'running' ? (
                   <CircularProgress size={16} color="inherit" sx={{ display: 'block' }} />
@@ -378,7 +387,9 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               </Button>
               <Button
                 variant="outlined"
-                onClick={() => handleCopy({ ...dialogStep, command: runCommand || dialogStep.command })}
+                onClick={() =>
+                  handleCopy({ ...dialogStep, command: runCommand || dialogStep.command })
+                }
               >
                 {copied ? 'Copied!' : 'Copy command'}
               </Button>

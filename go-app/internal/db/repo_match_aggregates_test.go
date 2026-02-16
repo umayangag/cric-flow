@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestGetAverageExtrasForFormat_PoolNil(t *testing.T) {
 	defer func() { Pool = orig }()
 	Pool = nil
 
-	avg, err := GetAverageExtrasForFormat(nil, 1, nil)
+	avg, err := GetAverageExtrasForFormat(context.TODO(), 1, nil)
 	if err == nil {
 		t.Fatalf("expected error when pool is nil, got avg=%v", avg)
 	}

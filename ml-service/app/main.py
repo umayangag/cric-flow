@@ -229,7 +229,9 @@ def _predict_players_with_features(
     if field_pair is not None:
         scaler_fld, model_fld = field_pair
         field_features_list = [
-            build_fielding_features_from_map(int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {})
+            build_fielding_features_from_map(
+                int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            )
             for pid in player_ids
         ]
         X_fld = np.array([fielding_feature_vector(f) for f in field_features_list], dtype=float)

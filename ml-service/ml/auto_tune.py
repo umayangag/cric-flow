@@ -48,20 +48,45 @@ from ml.config import get_training_params, get_tuning_config
 _train_fielding = None
 try:
     from ml import train_fielding as _train_fielding_mod
+
     _train_fielding = _train_fielding_mod
 except ImportError:
     pass
 
 BATTING_FEATURE_COLS = [
-    "batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud",
-    "pressure", "viscosity", "inning", "batting_session", "toss", "batting_venue",
-    "batting_opposition", "season_id",
+    "batting_consistency",
+    "batting_form",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "inning",
+    "batting_session",
+    "toss",
+    "batting_venue",
+    "batting_opposition",
+    "season_id",
 ]
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
-    "bowling_consistency", "bowling_form", "temp", "wind", "rain", "humidity", "cloud",
-    "pressure", "viscosity", "inning", "bowling_session", "toss", "bowling_venue",
-    "bowling_opposition", "season_id",
+    "bowling_consistency",
+    "bowling_form",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "inning",
+    "bowling_session",
+    "toss",
+    "bowling_venue",
+    "bowling_opposition",
+    "season_id",
 ]
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
@@ -258,9 +283,10 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     return by_format
 
 
-def load_batting_from_api(go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]) -> Tuple[np.ndarray, np.ndarray]:
-    from app.train_on_the_fly import fetch_training_data
-    from app.train_on_the_fly import _batting_rows_to_xy
+def load_batting_from_api(
+    go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]
+) -> Tuple[np.ndarray, np.ndarray]:
+    from app.train_on_the_fly import _batting_rows_to_xy, fetch_training_data
 
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
     bat = data.get("batting") or {}
@@ -269,9 +295,10 @@ def load_batting_from_api(go_app_url: str, format_code: str, cutoff: str, api_ke
     return _batting_rows_to_xy(headers, rows)
 
 
-def load_bowling_from_api(go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]) -> Tuple[np.ndarray, np.ndarray]:
-    from app.train_on_the_fly import fetch_training_data
-    from app.train_on_the_fly import _bowling_rows_to_xy
+def load_bowling_from_api(
+    go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]
+) -> Tuple[np.ndarray, np.ndarray]:
+    from app.train_on_the_fly import _bowling_rows_to_xy, fetch_training_data
 
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
     bowl = data.get("bowling") or {}
@@ -321,7 +348,9 @@ def main() -> None:
     parser.add_argument("--csv", default="", help="Path to CSV (for batting/bowling/fielding)")
     parser.add_argument("--from-api", action="store_true", help="Fetch data from go-app training-data API")
     parser.add_argument("--cutoff", default="", help="RFC3339 cutoff (required with --from-api)")
-    parser.add_argument("--format", default="", help="Format code (e.g. T20, ODI); used for artifact suffix and API filter")
+    parser.add_argument(
+        "--format", default="", help="Format code (e.g. T20, ODI); used for artifact suffix and API filter"
+    )
     parser.add_argument("--all-formats", action="store_true", help="Loop over ml.formats and tune each (CSV only)")
     parser.add_argument("--out", default="", help="Output dir (default: ML_SERVICE_OUTPUT_DIR or config)")
     parser.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""))
@@ -331,6 +360,7 @@ def main() -> None:
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR")
     if not out_dir:
         from ml.config import default_artifacts_dir
+
         out_dir = default_artifacts_dir()
 
     def _config_formats() -> List[str]:
@@ -370,13 +400,17 @@ def main() -> None:
                         if X.size == 0 or Y.size == 0:
                             continue
                         report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
-                        print(f"[{model_kind}] format={fcode} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}")
+                        print(
+                            f"[{model_kind}] format={fcode} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
+                        )
                     continue
                 if X.size == 0 or Y.size == 0:
                     print(f"No {model_kind} data for format {fmt}", file=sys.stderr)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                print(f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}")
+                print(
+                    f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
+                )
             else:
                 # CSV
                 if model_kind == "fielding":
@@ -409,7 +443,9 @@ def main() -> None:
                     print(f"No data in {csv_path}", file=sys.stderr)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                print(f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}")
+                print(
+                    f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
+                )
 
 
 if __name__ == "__main__":

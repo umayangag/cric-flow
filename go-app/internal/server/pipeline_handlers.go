@@ -65,7 +65,7 @@ func stepToCommand(step string) string {
 }
 
 // runExportHandler starts export-dataset in the background with tracking.
-func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 	outDir := config.DefaultExportDir()
 	cfg := config.Load()
 	opts := exportcli.Options{

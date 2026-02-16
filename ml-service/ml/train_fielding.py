@@ -66,9 +66,7 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
     return data.get("fielding") or {"headers": [], "rows": []}
 
 
-def rows_to_xy_by_format(
-    headers: list[str], rows: list[list[str]]
-) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+def rows_to_xy_by_format(headers: list[str], rows: list[list[str]]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """Build X, Y per format_code. Returns dict format_code -> (X, Y)."""
     if not headers or not rows:
         return {}
