@@ -15,13 +15,13 @@ def load_config():
 config = load_config()
 
 
-def calculate_overall_performance(input_df, match_id):
+def calculate_overall_performance(input_df, match_id, predicted_extras=0.0):
+    """Extras must be supplied from a model or historical average (e.g. format/venue average); no default constant."""
     team_df = input_df.copy()
     team_size = config["team_prediction"]["team_size"]
-    default_extras = config["team_prediction"]["default_extras"]
 
     magic_number = team_size / len(team_df)  # this is to compensate players missing from actual 11
-    extras = default_extras
+    extras = float(predicted_extras)
     total_score = team_df["runs_scored"].sum() * magic_number + extras
     target = team_df["runs_conceded"].sum() * magic_number
     total_balls_faced = team_df["balls_faced"].sum() * magic_number

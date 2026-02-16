@@ -75,7 +75,7 @@ def run_training():
     y = pd.DataFrame(data=y_scaled, columns=y.columns)
 
     # Model: all hyperparameters from config (ml.training); no magic values
-    params = get_training_params()
+    params = get_training_params("batting")
     regr = RandomForestRegressor(
         max_depth=params["max_depth"],
         n_estimators=params["n_estimators"],

@@ -49,7 +49,7 @@ def _load_config(path: str) -> dict:
 
 def get_feature_names(kind: str) -> List[str]:
     kind = kind.lower().strip()
-    if kind not in {"batting", "bowling"}:
+    if kind not in {"batting", "bowling", "fielding"}:
         raise ValueError(f"unknown feature kind: {kind}")
 
     path = _config_path()

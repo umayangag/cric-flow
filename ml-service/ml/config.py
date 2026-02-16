@@ -63,38 +63,51 @@ def default_artifacts_dir() -> str:
     return os.path.join("../..", "..", "output", "ml-service")
 
 
-# Required keys under ml.training; all training scripts use these strictly (no magic defaults).
+# Required keys per model under ml.training.<model>; all training scripts use these strictly (no magic defaults).
 TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_compress")
 
+# Models that have their own training block in config (ml.training.batting, ml.training.bowling, etc.).
+TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win")
 
-def get_training_params() -> Dict[str, Any]:
+
+def get_training_params(model: str) -> Dict[str, Any]:
     """
-    Load ML training parameters from config (ml.training). All values must be set in config;
-    no defaults or env overrides. Raises ValueError if config is missing or any required key is absent.
-    Used by train_batting_model, train_bowling_model, train_batting, train_bowling, train_on_the_fly.
+    Load ML training parameters from config for the given model (ml.training.<model>).
+    All values must be set in config; no defaults or env overrides.
+    Raises ValueError if config is missing or any required key is absent.
+    model: one of "batting", "bowling". Used by train_batting*, train_bowling*, train_on_the_fly.
     """
+    if model not in TRAINING_MODELS:
+        raise ValueError(
+            f"Unknown model {model!r}. Must be one of: {', '.join(TRAINING_MODELS)}."
+        )
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     if not isinstance(ml, dict):
         raise ValueError(
-            "config.json must define 'ml'. Add ml.training with n_estimators, max_depth, random_state, joblib_compress."
+            "config.json must define 'ml'. Add ml.training.batting and ml.training.bowling with "
+            "n_estimators, max_depth, random_state, joblib_compress."
         )
     training = ml.get("training")
     if not isinstance(training, dict):
         raise ValueError(
-            "config.json must define 'ml.training' with keys: "
-            + ", ".join(TRAINING_REQUIRED_KEYS)
-            + ". Used for model training and artifact serialization."
+            "config.json must define 'ml.training' with per-model blocks (batting, bowling)."
         )
-    missing = [k for k in TRAINING_REQUIRED_KEYS if k not in training]
+    block = training.get(model)
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"config.json must define 'ml.training.{model}' with keys: "
+            + ", ".join(TRAINING_REQUIRED_KEYS)
+        )
+    missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
     if missing:
         raise ValueError(
-            "ml.training is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
+            f"ml.training.{model} is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
         )
-    n_estimators = training["n_estimators"]
-    max_depth = training["max_depth"]
-    random_state = training["random_state"]
-    joblib_compress = training["joblib_compress"]
+    n_estimators = block["n_estimators"]
+    max_depth = block["max_depth"]
+    random_state = block["random_state"]
+    joblib_compress = block["joblib_compress"]
     try:
         n_estimators = int(n_estimators)
         max_depth = int(max_depth)
@@ -102,10 +115,10 @@ def get_training_params() -> Dict[str, Any]:
         joblib_compress = int(joblib_compress)
     except (TypeError, ValueError) as e:
         raise ValueError(
-            "ml.training values must be integers: n_estimators, max_depth, random_state, joblib_compress."
+            f"ml.training.{model} values must be integers: n_estimators, max_depth, random_state, joblib_compress."
         ) from e
     if joblib_compress < 0 or joblib_compress > 9:
-        raise ValueError("ml.training.joblib_compress must be between 0 and 9.")
+        raise ValueError(f"ml.training.{model}.joblib_compress must be between 0 and 9.")
     return {
         "n_estimators": n_estimators,
         "max_depth": max_depth,

@@ -83,7 +83,7 @@ Response (abridged):
 Notes:
 - Training data used by ML is restricted to rows before the match date (cutoff).
 - Players list includes only those who actually played.
-- **Match aggregates (evaluate path):** Predicted runs, wickets, and winner are **derived from player predictions** (sum of predicted runs/wickets, winner from team run totals). No separate ML match-aggregates call or baseline. Actual aggregates come from DB (`match_inning`, etc.).
+- **Match aggregates (evaluate path):** Predicted runs, wickets, and winner are **derived from player predictions** (sum of predicted runs/wickets, winner from team run totals). **Predicted extras** are **not** a default constant: they come from the historical average total extras per match for the match's format (and venue) via `db.GetAverageExtrasForFormat`. Actual aggregates come from DB (`match_inning`, etc.).
 - Totals mapping: numeric match totals are summed from the database table `match_inning` across all innings — `runs_scored` as total runs, `wickets_lost` as total wickets, and `extras` as total extras. The `target_runs` column is not used for backtest accuracy metrics.
 
 ### Metrics definitions (player-level runs)

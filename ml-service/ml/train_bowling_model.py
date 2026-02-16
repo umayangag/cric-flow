@@ -69,7 +69,7 @@ def run_training():
     y_scaled = output_scaler.transform(y)
     y = pd.DataFrame(data=y_scaled, columns=y.columns)
 
-    params = get_training_params()
+    params = get_training_params("bowling")
     regr = RandomForestRegressor(
         max_depth=params["max_depth"],
         n_estimators=params["n_estimators"],

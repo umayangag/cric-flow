@@ -10,19 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
-from .artifacts import BAT_MODELS, BOWL_MODELS
+from .artifacts import BAT_MODELS, BOWL_MODELS, FIELD_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_service import (
     DeterministicInMemoryRepo,
     build_batting_features_from_map,
     build_bowling_features_from_map,
+    build_fielding_features_from_map,
 )
 from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
-from .features import batting_feature_vector, bowling_feature_vector
+from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
     BacktestMatchResponse,
@@ -210,16 +211,48 @@ def _predict_players_with_features(
         runs = float(max(0.0, vals_bat[0]))
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
         economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else 6.0
+        catches, run_outs = 0.0, 0.0
         out.append(
             BacktestPlayerPred(
                 player_id=int(pid),
                 runs=runs,
                 wickets=wickets,
                 economy=economy,
-                catches=0.0,
-                run_outs=0.0,
+                catches=catches,
+                run_outs=run_outs,
             )
         )
+
+    # Fielding: if we have fielding artifacts, predict catches/run_outs and merge into player preds
+    field_pair = FIELD_MODELS.get(fmt_upper) if fmt_upper else None
+    if field_pair is not None:
+        scaler_fld, model_fld = field_pair
+        field_features_list = [
+            build_fielding_features_from_map(int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {})
+            for pid in player_ids
+        ]
+        X_fld = np.array([fielding_feature_vector(f) for f in field_features_list], dtype=float)
+        if scaler_fld is not None:
+            X_fld = scaler_fld.transform(X_fld)
+        Y_fld = model_fld.predict(X_fld)
+        out_new: List[BacktestPlayerPred] = []
+        for i, pred in enumerate(out):
+            row_fld = np.atleast_1d(Y_fld[i]).ravel()
+            vals_fld = list(row_fld) + [0.0] * max(0, 3 - len(row_fld))
+            catches = float(max(0.0, vals_fld[0])) if len(vals_fld) > 0 else 0.0
+            run_outs = float(max(0.0, vals_fld[1])) if len(vals_fld) > 1 else 0.0
+            out_new.append(
+                BacktestPlayerPred(
+                    player_id=pred.player_id,
+                    runs=pred.runs,
+                    wickets=pred.wickets,
+                    economy=pred.economy,
+                    catches=catches,
+                    run_outs=run_outs,
+                )
+            )
+        out = out_new
+
     return out
 
 

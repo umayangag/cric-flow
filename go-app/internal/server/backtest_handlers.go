@@ -297,10 +297,17 @@ func populateMatchAggregatesAndMetrics(
 	if err2 != nil {
 		return
 	}
+	// Predicted extras from historical average for this format/venue (no default constant)
+	predExtras := 0.0
+	if mfc, err := db.GetMatchFeatureContext(ctx, matchID); err == nil {
+		if avg, err := db.GetAverageExtrasForFormat(ctx, mfc.FormatID, mfc.VenueID); err == nil {
+			predExtras = avg
+		}
+	}
 	resp.MatchAggregates.Predicted = map[string]any{
 		"runs":             predRuns,
 		"wickets":          predWickets,
-		"extras":           0,
+		"extras":           predExtras,
 		"winner_team_code": predWinner,
 	}
 	resp.MatchAggregates.Actual = map[string]any{
@@ -312,7 +319,7 @@ func populateMatchAggregatesAndMetrics(
 	resp.MatchAggregates.Errors = map[string]float64{}
 	resp.MatchAggregates.Errors["runs_mae"] = math.Abs(predRuns - actAgg.Runs)
 	resp.MatchAggregates.Errors["wickets_mae"] = math.Abs(predWickets - actAgg.Wickets)
-	resp.MatchAggregates.Errors["extras_mae"] = math.Abs(0 - actAgg.Extras)
+	resp.MatchAggregates.Errors["extras_mae"] = math.Abs(predExtras - actAgg.Extras)
 	if resp.Metrics == nil {
 		resp.Metrics = map[string]float64{}
 	}
@@ -865,8 +872,11 @@ func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
 
 // trainingDataResponse is the JSON shape for GET /api/backtest/training-data (for ML service train-on-the-fly).
 type trainingDataResponse struct {
-	Batting trainingDataPart `json:"batting"`
-	Bowling trainingDataPart `json:"bowling"`
+	Batting  trainingDataPart `json:"batting"`
+	Bowling  trainingDataPart `json:"bowling"`
+	Fielding trainingDataPart `json:"fielding"`
+	Extras   trainingDataPart `json:"extras"`
+	Win      trainingDataPart `json:"win"`
 }
 
 type trainingDataPart struct {
@@ -889,7 +899,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	format := strings.TrimSpace(r.URL.Query().Get("format"))
 	useAll := format == "" || strings.EqualFold(format, "all")
-	var batRows, bowlRows [][]string
+	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
 	if useAll {
 		batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
 		if err != nil {
@@ -897,6 +907,21 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 		bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
 	} else {
 		batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
 		if err != nil {
@@ -904,25 +929,42 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 		bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
 	}
 	if err != nil {
 		respondErr(w, err)
 		return
 	}
-	batHeaders := []string{}
-	batData := [][]string{}
-	if len(batRows) > 0 {
-		batHeaders = batRows[0]
-		batData = batRows[1:]
+	part := func(rows [][]string) (headers []string, data [][]string) {
+		if len(rows) > 0 {
+			return rows[0], rows[1:]
+		}
+		return nil, nil
 	}
-	bowlHeaders := []string{}
-	bowlData := [][]string{}
-	if len(bowlRows) > 0 {
-		bowlHeaders = bowlRows[0]
-		bowlData = bowlRows[1:]
-	}
+	batH, batD := part(batRows)
+	bowlH, bowlD := part(bowlRows)
+	fieldH, fieldD := part(fieldRows)
+	extrasH, extrasD := part(extrasRows)
+	winH, winD := part(winRows)
 	writeJSON(w, http.StatusOK, trainingDataResponse{
-		Batting: trainingDataPart{Headers: batHeaders, Rows: batData},
-		Bowling: trainingDataPart{Headers: bowlHeaders, Rows: bowlData},
+		Batting:  trainingDataPart{Headers: batH, Rows: batD},
+		Bowling:  trainingDataPart{Headers: bowlH, Rows: bowlD},
+		Fielding: trainingDataPart{Headers: fieldH, Rows: fieldD},
+		Extras:   trainingDataPart{Headers: extrasH, Rows: extrasD},
+		Win:      trainingDataPart{Headers: winH, Rows: winD},
 	})
 }

@@ -76,9 +76,9 @@ BOWLING_TARGET_COLS = [
 ]
 
 
-def _get_training_params() -> dict:
-    """Training parameters from config (ml.training) only; used for train-on-the-fly and cache save."""
-    return get_training_params()
+def _get_training_params(model: str) -> dict:
+    """Training parameters from config (ml.training.<model>) only; used for train-on-the-fly and cache save."""
+    return get_training_params(model)
 
 
 def _rows_to_xy(
@@ -181,7 +181,7 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
 
 
 def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
-    params = _get_training_params()
+    params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model = MultiOutputRegressor(
@@ -196,7 +196,7 @@ def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
 
 
 def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
-    params = _get_training_params()
+    params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model = MultiOutputRegressor(
@@ -395,12 +395,20 @@ def _save_to_cache(
         os.makedirs(subdir, mode=0o750, exist_ok=True)
         scaler_bat, model_bat = bat_pair
         scaler_bowl, model_bowl = bowl_pair
-        params = _get_training_params()
-        compress = params["joblib_compress"]
-        joblib.dump(scaler_bat, os.path.join(subdir, "bat_scaler.joblib"), compress=compress)
-        joblib.dump(model_bat, os.path.join(subdir, "bat_model.joblib"), compress=compress)
-        joblib.dump(scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"), compress=compress)
-        joblib.dump(model_bowl, os.path.join(subdir, "bowl_model.joblib"), compress=compress)
+        bat_params = _get_training_params("batting")
+        bowl_params = _get_training_params("bowling")
+        joblib.dump(
+            scaler_bat, os.path.join(subdir, "bat_scaler.joblib"), compress=bat_params["joblib_compress"]
+        )
+        joblib.dump(
+            model_bat, os.path.join(subdir, "bat_model.joblib"), compress=bat_params["joblib_compress"]
+        )
+        joblib.dump(
+            scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"), compress=bowl_params["joblib_compress"]
+        )
+        joblib.dump(
+            model_bowl, os.path.join(subdir, "bowl_model.joblib"), compress=bowl_params["joblib_compress"]
+        )
         logger.info("train_on_the_fly.cache_saved", key=key, subdir=subdir)
     except Exception as e:
         logger.warning("train_on_the_fly.cache_save_failed", key=key, error=str(e))

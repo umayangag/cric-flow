@@ -34,6 +34,11 @@ type bowlingSnapshotAtCutoff struct {
 	opposition  float64
 }
 
+type fieldingSnapshotAtCutoff struct {
+	form        float64
+	consistency float64
+}
+
 func toInnings(in []db.InnVal) []features.Innings {
 	out := make([]features.Innings, 0, len(in))
 	for _, iv := range in {
@@ -198,6 +203,30 @@ func computeBowlingSnapshotAtCutoff(
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
 	return out, nil
+}
+
+// computeFieldingSnapshotFromHistories computes form and consistency from fielding history (no venue/opposition scope).
+func computeFieldingSnapshotFromHistories(
+	mainHist []db.InnVal,
+	asOf time.Time,
+	alpha float64,
+	lastN, windowN int,
+) fieldingSnapshotAtCutoff {
+	out := fieldingSnapshotAtCutoff{}
+	if alpha <= 0 {
+		alpha = DefaultEWMAlpha
+	}
+	if lastN < 0 {
+		lastN = DefaultConsistencyLastN
+	}
+	inn := toInnings(mainHist)
+	inn = features.SortAndClip(inn, asOf)
+	if windowN > 0 && len(inn) > windowN {
+		inn = inn[len(inn)-windowN:]
+	}
+	out.form, _ = features.EWM(inn, alpha)
+	out.consistency, _ = features.Consistency(inn, lastN)
+	return out
 }
 
 // computeBowlingSnapshotFromHistories computes form/consistency/venue/opposition from pre-fetched histories (avoids N+1 when batching).

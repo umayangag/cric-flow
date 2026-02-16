@@ -80,6 +80,53 @@ def build_batting_features_from_map(
     )
 
 
+@dataclass
+class FieldingFeatures:
+    """Feature vector for fielding model (catches, run_outs, stumpings prediction)."""
+
+    fielding_consistency: float
+    fielding_form: float
+    fielding_temp: int
+    fielding_wind: int
+    fielding_rain: int
+    fielding_humidity: int
+    fielding_cloud: int
+    fielding_pressure: int
+    fielding_viscosity: int
+    fielding_inning: int
+    fielding_toss: int
+    fielding_venue: float
+    fielding_opposition: float
+    fielding_season: int
+
+
+def build_fielding_features_from_map(
+    player_id: int,
+    cutoff: datetime,
+    fmt: Optional[str],
+    feature_map: Dict[str, float],
+) -> FieldingFeatures:
+    """Build FieldingFeatures from go-app feature map. Uses 0 for missing fielding_form/fielding_consistency."""
+    d = {k: v for k, v in feature_map.items()}
+    season = _int(d, "season", cutoff.year if cutoff else 0)
+    return FieldingFeatures(
+        fielding_consistency=max(0.0, _float(d, "fielding_consistency", 0.5)),
+        fielding_form=max(0.0, _float(d, "fielding_form", 0.0)),
+        fielding_temp=_int(d, "fielding_temp", _int(d, "batting_temp", 25)),
+        fielding_wind=_int(d, "fielding_wind", _int(d, "batting_wind", 0)),
+        fielding_rain=_int(d, "fielding_rain", _int(d, "batting_rain", 0)),
+        fielding_humidity=_int(d, "fielding_humidity", _int(d, "batting_humidity", 50)),
+        fielding_cloud=_int(d, "fielding_cloud", _int(d, "batting_cloud", 0)),
+        fielding_pressure=_int(d, "fielding_pressure", _int(d, "batting_pressure", 0)),
+        fielding_viscosity=min(1, max(0, _int(d, "fielding_viscosity", _int(d, "batting_viscosity", 0)))),
+        fielding_inning=min(2, max(1, _int(d, "fielding_inning", _int(d, "batting_inning", 1)))),
+        fielding_toss=min(1, max(0, _int(d, "toss", 0))),
+        fielding_venue=_float(d, "fielding_venue", _float(d, "venue", 0.5)),
+        fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", 0.5)),
+        fielding_season=season,
+    )
+
+
 def build_bowling_features_from_map(
     player_id: int,
     cutoff: datetime,

@@ -39,17 +39,17 @@ Schema for `ml-service/config.json`:
 ```
 See `../docs/CONFIG.md` for full details and examples.
 
-### Model training parameters (config only)
-All training hyperparameters are read **strictly from config**; there are no magic defaults or env overrides in code. Edit `ml-service/config.json` under `ml.training` to tune for accuracy or model size:
+### Model training parameters (config only, per model)
+All training hyperparameters are read **strictly from config**; there are no magic defaults or env overrides in code. Edit `ml-service/config.json` under `ml.training.<model>` to tune each model independently:
 
-| Key | Description |
-|-----|-------------|
-| `n_estimators` | Number of trees per output (e.g. 100–200). |
-| `max_depth` | Maximum tree depth (e.g. 12–25; lower = smaller model, often better generalization). |
-| `random_state` | Random seed for reproducibility. |
-| `joblib_compress` | Joblib compression level 0–9 when saving artifacts (e.g. 3). |
+| Model | Config path | Used by |
+|-------|-------------|--------|
+| Batting | `ml.training.batting` | train_batting_model, train_batting, train-on-the-fly (batting) |
+| Bowling | `ml.training.bowling` | train_bowling_model, train_bowling, train-on-the-fly (bowling) |
 
-Example: change `max_depth` or `n_estimators` in `config.json`, then run `make train-all`. All training scripts (`train_batting_model`, `train_bowling_model`, `train_batting`, `train_bowling`, and train-on-the-fly) use these values only.
+Each block has: `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (0–9). Example: set different `max_depth` for batting vs bowling, then run `make train-all`.
+
+Additional models (fielding, extras, win) have their own config blocks and artifacts; see **docs/ML_MODELS_COMBINED.md** for training data, training scripts, and how all models are combined for final prediction.
 
 ## Unified cross-format datasets (new)
 The Go exporter now emits unified, cross-format CSVs that include leakage-free, time-indexed (as-of) per-format features for TEST/ODI/T20I/T20.

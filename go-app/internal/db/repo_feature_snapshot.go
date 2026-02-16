@@ -242,6 +242,88 @@ func ListFieldingBefore(ctx context.Context, playerID int64, cutoff time.Time, f
 	return res, rows.Err()
 }
 
+// FieldingHistKey identifies a fielding history lookup: PlayerID, Cutoff, FormatID.
+type FieldingHistKey struct {
+	P int64
+	T time.Time
+	F int64
+}
+
+type fieldingBulkRow struct {
+	playerID  int64
+	formatID  int64
+	matchDate time.Time
+	value     float64
+}
+
+// ListFieldingBeforeBulk fetches fielding involvements for multiple (playerID, cutoff, formatID) keys in one query.
+func ListFieldingBeforeBulk(ctx context.Context, keys []FieldingHistKey) (map[FieldingHistKey][]InnVal, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	if len(keys) == 0 {
+		return map[FieldingHistKey][]InnVal{}, nil
+	}
+	seenPF := make(map[struct{ P, F int64 }]struct{})
+	var maxCutoff time.Time
+	for _, k := range keys {
+		seenPF[struct{ P, F int64 }{k.P, k.F}] = struct{}{}
+		if k.T.After(maxCutoff) {
+			maxCutoff = k.T
+		}
+	}
+	var pfPairs []struct{ P, F int64 }
+	for pf := range seenPF {
+		pfPairs = append(pfPairs, pf)
+	}
+	sort.Slice(pfPairs, func(i, j int) bool {
+		if pfPairs[i].P != pfPairs[j].P {
+			return pfPairs[i].P < pfPairs[j].P
+		}
+		return pfPairs[i].F < pfPairs[j].F
+	})
+	pids := make([]int64, len(pfPairs))
+	fids := make([]int64, len(pfPairs))
+	for i, pf := range pfPairs {
+		pids[i] = pf.P
+		fids[i] = pf.F
+	}
+	rows, err := Pool.Query(ctx, `SELECT fd.player_id, m.format_id, m.match_date,
+		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0)*1.5 + COALESCE(fd.stumpings,0))::float8
+		FROM fielding_data fd
+		JOIN match m ON m.match_id = fd.match_id
+		WHERE (fd.player_id, m.format_id) IN (SELECT * FROM unnest($1::bigint[], $2::bigint[]))
+		AND m.match_date < $3
+		ORDER BY fd.player_id, m.format_id, m.match_date ASC`, pids, fids, maxCutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var all []fieldingBulkRow
+	for rows.Next() {
+		var r fieldingBulkRow
+		if err := rows.Scan(&r.playerID, &r.formatID, &r.matchDate, &r.value); err != nil {
+			return nil, err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[FieldingHistKey][]InnVal)
+	for _, k := range keys {
+		var list []InnVal
+		for _, r := range all {
+			if r.playerID != k.P || r.formatID != k.F || !r.matchDate.Before(k.T) {
+				continue
+			}
+			list = append(list, InnVal{MatchDate: r.matchDate, Value: r.value})
+		}
+		out[k] = list
+	}
+	return out, nil
+}
+
 // HistQueryKey identifies a history lookup for bulk fetch: PlayerID, Cutoff, FormatID, OppID (0=overall), VenueID (0=overall).
 type HistQueryKey struct {
 	P int64

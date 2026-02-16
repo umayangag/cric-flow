@@ -56,11 +56,11 @@ Keys:
 - `ml`
   - `formats` — list of format codes to train/serve (e.g., `["TEST","ODI","T20","T20I"]`).
   - `artifact_template` — naming template for saved artifacts (informational).
-  - `training` — **required** block used strictly by all training scripts (no defaults or env overrides in code). Fine-tune here for accuracy vs model size.
-    - `n_estimators` (int) — number of trees per output (e.g. 100–200).
-    - `max_depth` (int) — maximum tree depth (e.g. 12–25).
-    - `random_state` (int) — random seed for reproducibility.
-    - `joblib_compress` (int) — joblib compression level 0–9 when saving artifacts.
+  - `training` — **required** per-model block used strictly by all training scripts (no defaults or env overrides in code). Each model has its own parameters so you can tune batting vs bowling (and future models) independently.
+    - `batting` — parameters for batting RandomForest training and artifacts.
+      - `n_estimators` (int), `max_depth` (int), `random_state` (int), `joblib_compress` (int, 0–9).
+    - `bowling` — parameters for bowling RandomForest training and artifacts.
+      - Same keys as `batting`. Add further keys (e.g. `fielding`, `win`) when those models are implemented.
   - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
 
 Environment variables:

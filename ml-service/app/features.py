@@ -21,3 +21,9 @@ def bowling_feature_vector(f: Any) -> List[float]:
     """
     names = get_feature_names("bowling")
     return [getattr(f, n) for n in names]
+
+
+def fielding_feature_vector(f: Any) -> List[float]:
+    """Build the fielding feature vector in the exact order defined in config."""
+    names = get_feature_names("fielding")
+    return [getattr(f, n) for n in names]

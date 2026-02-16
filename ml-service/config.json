@@ -5,10 +5,11 @@
     "formats": ["TEST", "ODI", "T20", "T20I"],
     "artifact_template": "{kind}_{name}_{format}.joblib",
     "training": {
-      "n_estimators": 200,
-      "max_depth": 12,
-      "random_state": 42,
-      "joblib_compress": 3
+      "batting": {"n_estimators": 200, "max_depth": 12, "random_state": 42, "joblib_compress": 3},
+      "bowling": {"n_estimators": 200, "max_depth": 12, "random_state": 42, "joblib_compress": 3},
+      "fielding": {"n_estimators": 150, "max_depth": 10, "random_state": 42, "joblib_compress": 3},
+      "extras": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3},
+      "win": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3}
     },
     "cv_splits": 5,
     "test_size": 0.2,
@@ -20,5 +21,5 @@
     "early_stopping_rounds": 50,
     "max_iter": 1000
   },
-  "team_prediction": {"team_size": 11, "default_extras": 14.26}
+  "team_prediction": {"team_size": 11}
 }

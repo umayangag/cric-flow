@@ -22,3 +22,18 @@ func TestBuildMatchAggregates_SimpleMapping(t *testing.T) {
 		t.Fatalf("WinnerTeamCode = %q, want IND", got.WinnerTeamCode)
 	}
 }
+
+// TestGetAverageExtrasForFormat_PoolNil ensures we return an error when the db pool is not initialized.
+func TestGetAverageExtrasForFormat_PoolNil(t *testing.T) {
+	orig := Pool
+	defer func() { Pool = orig }()
+	Pool = nil
+
+	avg, err := GetAverageExtrasForFormat(nil, 1, nil)
+	if err == nil {
+		t.Fatalf("expected error when pool is nil, got avg=%v", avg)
+	}
+	if avg != 0 {
+		t.Fatalf("expected 0 on error, got %v", avg)
+	}
+}

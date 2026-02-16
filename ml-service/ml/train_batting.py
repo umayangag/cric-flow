@@ -105,7 +105,7 @@ def train_and_save(
     suffix: Optional[str] = None,
     metadata: Optional[dict] = None,
 ):
-    """Train and save artifacts. training_params must come from get_training_params() (config only)."""
+    """Train and save artifacts. training_params must come from get_training_params("batting") (config only)."""
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
@@ -178,8 +178,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # All training parameters from config (ml.training); no env overrides or magic values
-    training_params = get_training_params()
+    # All training parameters from config (ml.training.batting); no env overrides or magic values
+    training_params = get_training_params("batting")
 
     targets: list[str] = []
     if args.all_formats:
