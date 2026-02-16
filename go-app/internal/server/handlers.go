@@ -53,14 +53,29 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	formats := body.Formats
 	go func() {
 		timeout := precomputeHandlerTimeout()
-		slog.Info("precompute started", slog.Duration("timeout", timeout), slog.String("season", season), slog.Any("formats", formats))
-		runErr := pipeline.RunJob(context.Background(), "precompute-features", map[string]any{"season": season, "formats": formats}, timeout, func(ctx context.Context) (any, error) {
-			err := precompute.Run(ctx, season, formats, nil)
-			return map[string]any{"season": season, "formats": formats}, err
-		})
+		slog.Info(
+			"precompute started",
+			slog.Duration("timeout", timeout),
+			slog.String("season", season),
+			slog.Any("formats", formats),
+		)
+		runErr := pipeline.RunJob(
+			context.Background(),
+			"precompute-features",
+			map[string]any{"season": season, "formats": formats},
+			timeout,
+			func(ctx context.Context) (any, error) {
+				err := precompute.Run(ctx, season, formats, nil)
+				return map[string]any{"season": season, "formats": formats}, err
+			},
+		)
 		if runErr != nil {
-			slog.Error("precompute failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
-				slog.Any("err", runErr), slog.String("season", season), slog.Any("formats", formats))
+			slog.Error(
+				"precompute failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
+				slog.Any("err", runErr),
+				slog.String("season", season),
+				slog.Any("formats", formats),
+			)
 		} else {
 			slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
 		}
@@ -103,10 +118,16 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		slog.Info("cricsheet import started", slog.String("dir", dir))
-		runErr := pipeline.RunJob(context.Background(), "cricsheet-import", map[string]any{"dir": dir}, 10*time.Minute, func(ctx context.Context) (any, error) {
-			n, err := cricsheet.ImportDir(ctx, dir, opts)
-			return map[string]any{"files": n, "dir": dir}, err
-		})
+		runErr := pipeline.RunJob(
+			context.Background(),
+			"cricsheet-import",
+			map[string]any{"dir": dir},
+			10*time.Minute,
+			func(ctx context.Context) (any, error) {
+				n, err := cricsheet.ImportDir(ctx, dir, opts)
+				return map[string]any{"files": n, "dir": dir}, err
+			},
+		)
 		if runErr != nil {
 			slog.Error("cricsheet import failed", slog.Any("err", runErr))
 		} else {

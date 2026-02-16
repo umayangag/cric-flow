@@ -48,7 +48,15 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins"}
+	headers := []string{
+		"match_id",
+		"format_id",
+		"venue_id",
+		"team1_opposition_id",
+		"team2_opposition_id",
+		"toss_winner_opposition_id",
+		"team1_wins",
+	}
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {

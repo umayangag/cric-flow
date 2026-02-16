@@ -78,14 +78,20 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 
 	go func() {
 		slog.Info("export-dataset started", slog.String("dir", outDir))
-		runErr := pipeline.RunJob(context.Background(), "export-dataset", map[string]any{"out_dir": outDir}, 5*time.Minute, func(ctx context.Context) (any, error) {
-			repo := &exportqueries.Repo{}
-			bat := exportsvc.NewBattingService(repo)
-			bow := exportsvc.NewBowlingService(repo)
-			runner := expcmd.NewRunnerWithServices(bat, bow)
-			err := runner.Run(ctx, opts)
-			return map[string]any{"out_dir": outDir}, err
-		})
+		runErr := pipeline.RunJob(
+			context.Background(),
+			"export-dataset",
+			map[string]any{"out_dir": outDir},
+			5*time.Minute,
+			func(ctx context.Context) (any, error) {
+				repo := &exportqueries.Repo{}
+				bat := exportsvc.NewBattingService(repo)
+				bow := exportsvc.NewBowlingService(repo)
+				runner := expcmd.NewRunnerWithServices(bat, bow)
+				err := runner.Run(ctx, opts)
+				return map[string]any{"out_dir": outDir}, err
+			},
+		)
 		if runErr != nil {
 			slog.Error("export-dataset failed", slog.Any("err", runErr))
 		} else {

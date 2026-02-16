@@ -13,8 +13,10 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-const defaultEWMAlpha = 0.3
-const defaultConsistencyLastN = 10
+const (
+	defaultEWMAlpha         = 0.3
+	defaultConsistencyLastN = 10
+)
 
 // RunOpts holds optional overrides for Run. Nil or zero values mean use config.
 type RunOpts struct {

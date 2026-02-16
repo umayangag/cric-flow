@@ -35,7 +35,12 @@ type Team struct {
 
 // CalculateOverallPerformanceWithConfig is a pure variant that accepts configuration and predicted extras.
 // predictedExtras must be supplied from a model or historical average (e.g. db.GetAverageExtrasForFormat); no default constant is used.
-func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerPrediction, matchID int64, predictedExtras float64) Team {
+func CalculateOverallPerformanceWithConfig(
+	cfg *config.Config,
+	players []PlayerPrediction,
+	matchID int64,
+	predictedExtras float64,
+) Team {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}

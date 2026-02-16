@@ -74,8 +74,10 @@ type Config struct {
 	} `json:"selection"`
 }
 
-var cached *Config
-var loadedFrom string // path of config file loaded; empty if none found
+var (
+	cached     *Config
+	loadedFrom string // path of config file loaded; empty if none found
+)
 
 // Load reads config.json from the current working directory if present.
 // It is safe to call multiple times; the result is cached for the process lifetime.
@@ -118,7 +120,10 @@ func ValidateForServer() error {
 		return fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
 	}
 	if cfg.Features.PrecomputeTimeoutMs < 0 {
-		return fmt.Errorf("features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d", cfg.Features.PrecomputeTimeoutMs)
+		return fmt.Errorf(
+			"features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d",
+			cfg.Features.PrecomputeTimeoutMs,
+		)
 	}
 	return nil
 }
