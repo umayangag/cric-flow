@@ -1,5 +1,6 @@
 // Command precompute-all runs both as-of/replay feature precomputation and
 // sequential feature calculations in a single invocation.
+// In replay mode, reuses precompute.Run (same logic as pipeline handler).
 package main
 
 import (
@@ -16,6 +17,8 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
 
@@ -92,31 +95,35 @@ func run() int {
 		}
 	}
 
-	// Run base precompute features first
-	runner := pfcmd.NewRunner()
-	if opts.Replay {
-		if err := runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); err != nil {
-			slog.Error("replay precompute failed", slog.Any("err", err))
-			return 1
+	// Run base precompute features first. Replay uses precompute.Run (shared with pipeline handler).
+	meta := map[string]any{"format": opts.Format, "replay": opts.Replay}
+	runErr := pipeline.RunJob(ctx, "precompute-features", meta, 0, func(jobCtx context.Context) (any, error) {
+		if opts.Replay {
+			precomputeOpts := &precompute.RunOpts{Alpha: opts.EWMAlpha, LastN: opts.LastN}
+			return meta, precompute.Run(jobCtx, "", []string{opts.Format}, precomputeOpts)
 		}
-	} else {
-		// Single-date mode (as-of)
-		if err := runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
-			slog.Error("as-of precompute failed", slog.Any("err", err))
-			return 1
+		// Single-date mode (as-of): not supported by precompute.Run, use runner directly
+		runner := pfcmd.NewRunner()
+		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
+			return nil, err
 		}
+		return meta, nil
+	})
+	if runErr != nil {
+		slog.Error("precompute failed", slog.Any("err", runErr))
+		return 1
 	}
 
-	// Then run sequence features
+	// Replay mode: precompute.Run already runs seqcalc via RunReplay. As-of mode: run seqcalc here.
+	if opts.Replay {
+		return 0
+	}
+
 	params := seqcalc.Params{FormatCode: opts.Format}
 	if haveAsOf {
-		// Pass the same resolved as-of to seqcalc to ensure consistency
 		params.AsOf = asOf
 	}
-
-	// Build default registry via shared helper
 	reg := seqcalc.NewDefaultRegistry()
-
 	calcs, err := reg.ResolveTargets(opts.SeqTargets)
 	if err != nil {
 		slog.Error("seq targets resolve failed", slog.Any("err", err))

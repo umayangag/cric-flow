@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 // healthHandler responds with liveness OK.
@@ -51,24 +52,34 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	season := body.Season
 	formats := body.Formats
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		tracker, tErr := tracking.Start(ctx, "precompute-features", map[string]any{"season": season, "formats": formats})
-		if tErr != nil {
-			slog.Warn("precompute: tracking start failed", slog.Any("err", tErr))
-		}
-		var runErr error
-		if tracker != nil {
-			defer tracker.CaptureExit(ctx, &runErr, map[string]any{"season": season, "formats": formats})
-		}
-		runErr = precompute.Run(ctx, season, formats)
+		timeout := precomputeHandlerTimeout()
+		slog.Info("precompute started", slog.Duration("timeout", timeout), slog.String("season", season), slog.Any("formats", formats))
+		runErr := pipeline.RunJob(context.Background(), "precompute-features", map[string]any{"season": season, "formats": formats}, timeout, func(ctx context.Context) (any, error) {
+			err := precompute.Run(ctx, season, formats, nil)
+			return map[string]any{"season": season, "formats": formats}, err
+		})
 		if runErr != nil {
-			slog.Error("precompute failed", slog.Any("err", runErr), slog.String("season", season), slog.Any("formats", formats))
+			slog.Error("precompute failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
+				slog.Any("err", runErr), slog.String("season", season), slog.Any("formats", formats))
 		} else {
 			slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+}
+
+// precomputeHandlerTimeout returns the timeout for the precompute handler goroutine.
+// Uses features.precompute_timeout_ms from config; 0 means no limit (2h cap for safety).
+func precomputeHandlerTimeout() time.Duration {
+	cfg := config.Load()
+	if cfg == nil {
+		return 10 * time.Minute
+	}
+	ms := cfg.Features.PrecomputeTimeoutMs
+	if ms <= 0 {
+		return 2 * time.Hour
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // precomputeStatusHandler returns in-memory status of the last run.
@@ -88,27 +99,21 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(body.Dir) == "" {
 		body.Dir = "../data"
 	}
+	dir := body.Dir
+	opts := &cricsheet.Options{
+		PlaceholdersWeather:  body.PlaceholdersWeather,
+		PlaceholdersFielding: body.PlaceholdersFielding,
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		tracker, tErr := tracking.Start(ctx, "cricsheet-import", map[string]any{"dir": body.Dir})
-		if tErr != nil {
-			slog.Warn("cricsheet-import: tracking start failed", slog.Any("err", tErr))
-		}
-		var runErr error
-		if tracker != nil {
-			defer tracker.CaptureExit(ctx, &runErr, nil)
-		}
-		opts := &cricsheet.Options{
-			PlaceholdersWeather:  body.PlaceholdersWeather,
-			PlaceholdersFielding: body.PlaceholdersFielding,
-		}
-		var n int
-		n, runErr = cricsheet.ImportDir(ctx, body.Dir, opts)
+		slog.Info("cricsheet import started", slog.String("dir", dir))
+		runErr := pipeline.RunJob(context.Background(), "cricsheet-import", map[string]any{"dir": dir}, 10*time.Minute, func(ctx context.Context) (any, error) {
+			n, err := cricsheet.ImportDir(ctx, dir, opts)
+			return map[string]any{"files": n, "dir": dir}, err
+		})
 		if runErr != nil {
 			slog.Error("cricsheet import failed", slog.Any("err", runErr))
 		} else {
-			slog.Info("cricsheet import completed", slog.Int("files", n))
+			slog.Info("cricsheet import completed", slog.String("dir", dir))
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})

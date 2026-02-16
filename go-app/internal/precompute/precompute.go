@@ -8,19 +8,26 @@ import (
 	"context"
 	"time"
 
+	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 )
 
 const defaultEWMAlpha = 0.3
 const defaultConsistencyLastN = 10
 
+// RunOpts holds optional overrides for Run. Nil or zero values mean use config.
+type RunOpts struct {
+	Alpha float64 // (0,1] to override config; else use config
+	LastN int     // > 0 to override config; else use config
+}
+
 // Run orchestrates precompute for the given season and list of format codes.
 // It populates feature_form_snapshots and feature_consistency_snapshots (and
 // triggers sequence features) per format. If formats is empty, computes for all formats.
 // Season is ignored; the snapshot runner replays all matches chronologically.
-func Run(parent context.Context, season string, formats []string) error {
+// Pass nil for opts to use config for alpha and lastN.
+func Run(parent context.Context, season string, formats []string, opts *RunOpts) error {
 	ctx := parent
 	cfg := config.Load()
 	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
@@ -42,11 +49,15 @@ func Run(parent context.Context, season string, formats []string) error {
 	defer setDone()
 
 	alpha := defaultEWMAlpha
-	if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
+	if opts != nil && opts.Alpha > 0 && opts.Alpha <= 1 {
+		alpha = opts.Alpha
+	} else if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
 		alpha = cfg.Features.EWMAlpha
 	}
 	lastN := defaultConsistencyLastN
-	if cfg.Features.ConsistencyLastN > 0 {
+	if opts != nil && opts.LastN > 0 {
+		lastN = opts.LastN
+	} else if cfg.Features.ConsistencyLastN > 0 {
 		lastN = cfg.Features.ConsistencyLastN
 	}
 	windowN := 0

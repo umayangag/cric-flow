@@ -12,8 +12,8 @@ import (
 	expcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
@@ -77,21 +77,15 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		tracker, tErr := tracking.Start(ctx, "export-dataset", map[string]any{"out_dir": outDir})
-		if tErr != nil {
-			slog.Warn("export-dataset: tracking start failed", slog.Any("err", tErr))
-		}
-		var runErr error
-		if tracker != nil {
-			defer tracker.CaptureExit(ctx, &runErr, map[string]any{"out_dir": outDir})
-		}
-		repo := &exportqueries.Repo{}
-		bat := exportsvc.NewBattingService(repo)
-		bow := exportsvc.NewBowlingService(repo)
-		runner := expcmd.NewRunnerWithServices(bat, bow)
-		runErr = runner.Run(ctx, opts)
+		slog.Info("export-dataset started", slog.String("dir", outDir))
+		runErr := pipeline.RunJob(context.Background(), "export-dataset", map[string]any{"out_dir": outDir}, 5*time.Minute, func(ctx context.Context) (any, error) {
+			repo := &exportqueries.Repo{}
+			bat := exportsvc.NewBattingService(repo)
+			bow := exportsvc.NewBowlingService(repo)
+			runner := expcmd.NewRunnerWithServices(bat, bow)
+			err := runner.Run(ctx, opts)
+			return map[string]any{"out_dir": outDir}, err
+		})
 		if runErr != nil {
 			slog.Error("export-dataset failed", slog.Any("err", runErr))
 		} else {
