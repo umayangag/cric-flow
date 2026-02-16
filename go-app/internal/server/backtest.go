@@ -192,6 +192,8 @@ func init() {
              SELECT match_id, player_id FROM batting_data WHERE match_id = $1
              UNION
              SELECT match_id, player_id FROM bowling_data WHERE match_id = $1
+             UNION
+             SELECT match_id, player_id FROM fielding_data WHERE match_id = $1
          ) pm
          LEFT JOIN batting_data bd ON bd.match_id = pm.match_id AND bd.player_id = pm.player_id
          LEFT JOIN bowling_data bw ON bw.match_id = pm.match_id AND bw.player_id = pm.player_id
