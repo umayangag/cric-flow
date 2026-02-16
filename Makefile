@@ -334,7 +334,6 @@ frontend-stop:
 		rm -f /tmp/frontend-dev.pid; \
 		echo "[frontend] Stopped."; \
 	else \
-		# Fallback: try to find process by port if pid file is missing
 		if lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
 			PID=$$(lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN | head -n1); \
 			echo "[frontend] Stopping dev server on port $(FRONTEND_PORT) (pid $$PID)..."; \
