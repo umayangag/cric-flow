@@ -149,7 +149,10 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if err != nil {
 		return nil, fmt.Errorf("team1 predict: %w", err)
 	}
-	enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
+	// Use ML fielding when the service returned predictions; otherwise fall back to historical EWM.
+	if !hasFieldingPredictions(preds1) {
+		enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
+	}
 
 	// Features and predictions for team2 (opposition = team1)
 	ids2 := make([]int64, 0, len(pool2))
@@ -173,7 +176,9 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if err != nil {
 		return nil, fmt.Errorf("team2 predict: %w", err)
 	}
-	enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
+	if !hasFieldingPredictions(preds2) {
+		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
+	}
 
 	// Build teamselect pool and select
 	tsPool1 := buildTeamSelectPool(pool1, preds1)
@@ -298,9 +303,20 @@ func normalizeFieldScore(catches, runOuts float64) float64 {
 	return math.Min(1, (catches+runOuts*1.5)/5)
 }
 
+// hasFieldingPredictions returns true if any prediction has non-zero catches or run_outs,
+// i.e. the ML service returned fielding model output. When true, do not overwrite with enrichFieldingFromHistory.
+func hasFieldingPredictions(preds map[int64]PlayerPred) bool {
+	for _, p := range preds {
+		if p.Catches > 0 || p.RunOuts > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // enrichFieldingFromHistory overwrites Catches and RunOuts in preds using historical
-// fielding form (EWM of involvements). ML models do not predict fielding, so we use
-// historical average as the expected contribution.
+// fielding form (EWM of involvements). Used only when the ML service did not return
+// fielding predictions (no fielding model loaded for this format).
 func enrichFieldingFromHistory(
 	ctx context.Context,
 	preds map[int64]PlayerPred,

@@ -22,7 +22,17 @@ The system uses **multiple models** whose outputs are combined for the final pre
 
 ## Training (ml-service)
 
-- **Batting / Bowling**: `make train-all` or train-on-the-fly when no artifacts are loaded.
+**Pipeline order:** Precompute (go-app) → export-dataset → train models → run (or restart) ML service.
+
+| Model    | From repo root | From ml-service |
+|----------|----------------|-----------------|
+| Batting  | `make train-batting` | `make train-batting` |
+| Bowling  | `make train-bowling` | `make train-bowling` |
+| Fielding | `make train-fielding CUTOFF=<RFC3339>` or `FIELDING_CSV=<path>` | `make train-fielding` (set `GO_APP_URL`, `CUTOFF` or `FIELDING_CSV`) |
+| All three | `make train-models` (fielding needs `CUTOFF` or `FIELDING_CSV`) | `make train-all` |
+| Auto-tune | `make ml-auto-tune MODEL=batting FORMAT=T20` or `MODEL=all ALL_FORMATS=1` | `make auto-tune MODEL=... FORMAT=...` |
+
+- **Batting / Bowling**: Use exported CSVs (after `make export-dataset`). Or train-on-the-fly when no artifacts are loaded (ML service fetches from go-app at prediction time).
 - **Fielding**: `python -m ml.train_fielding --cutoff <RFC3339>` (requires `GO_APP_URL`) or `--csv <path>`.
 - **Extras / Win**: Training scripts can be added (e.g. `train_extras.py`, `train_win.py`) that read from the same API and save `extras_model_<FMT>.joblib`, `win_model_<FMT>.joblib`. Config: `ml.training.extras`, `ml.training.win`.
 
@@ -46,3 +56,8 @@ In `ml-service/config.json`, `ml.training` has one block per model so you can tu
 2. **Match aggregates**: Predicted runs/wickets = sum of player preds; predicted extras = from extras model if loaded, else `db.GetAverageExtrasForFormat`.
 3. **Winner**: From win model if loaded; else derived from predicted team totals (compare sum of runs).
 4. **Team selection**: Greedy selection using batting + bowling + fielding scores and constraints; no separate “team combination” model—combination is the use of all of the above together.
+
+## Integration: Evaluate DB and upcoming match
+
+- **Evaluate DB** (backtest evaluate, `GET /api/backtest/match?mode=evaluate&match_id=...` or evaluate-stream): Uses the same ML backtest endpoint with format + features. When **fielding artifacts** are loaded for that format, the ML service returns catches and run_outs per player; the go-app computes **player_catches_mae** and **player_run_outs_mae** and includes them in the response. When fielding artifacts are not loaded, ML returns 0 for catches/run_outs.
+- **Upcoming match** (`POST /api/predict/team-selection`): Uses the same ML backtest endpoint. When the ML service returns non-zero catches or run_outs (fielding model loaded), those values are used for **FieldScore** in team selection. When the ML returns all zeros (no fielding model), the go-app falls back to **enrichFieldingFromHistory** (EWM of historical fielding involvements) so fielding still contributes to selection. Train and deploy fielding artifacts per format to use the ML fielding model in both flows.

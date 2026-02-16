@@ -29,9 +29,19 @@ init: install
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
-train-all:
+# Per-model training (artifacts go to ML_SERVICE_OUTPUT_DIR or outputs.artifacts_dir).
+# Prerequisites: precompute (go-app) and export (batting/bowling CSVs); fielding needs GO_APP_URL + CUTOFF or --csv.
+train-batting:
 	$(PY) ml/train_batting_model.py
+
+train-bowling:
 	$(PY) ml/train_bowling_model.py
+
+# Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
+train-fielding:
+	$(PY) -m ml.train_fielding
+
+train-all: train-batting train-bowling train-fielding
 
 # Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
@@ -146,8 +156,13 @@ help:
 	@echo "[Run & Train]"
 	@echo "  run                Start FastAPI with uvicorn (reload)"
 	@echo "  export-pool        Generate ml/pool.csv for a match (MATCH=<id>)"
-	@echo "  train-all          Train batting and bowling models"
+	@echo "  train-batting      Train batting model (from exported CSVs)"
+	@echo "  train-bowling      Train bowling model (from exported CSVs)"
+	@echo "  train-fielding     Train fielding model (GO_APP_URL + CUTOFF or FIELDING_CSV)"
+	@echo "  train-all          Train batting + bowling + fielding (fielding needs env or CSV)"
 	@echo "  auto-tune          Auto-tune model(s): best algorithm + hyperparameters (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo ""
+	@echo "  Integration order: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  validate-exports   Validate training exports (all formats, golden)"

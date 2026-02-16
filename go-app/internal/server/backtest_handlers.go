@@ -437,7 +437,7 @@ func doEvaluateWork(
 	}
 
 	if progress != nil {
-		progress("ml_predict", "Calling ML model for player predictions (batting/bowling)...")
+		progress("ml_predict", "Calling ML model for player predictions (batting, bowling, fielding when loaded)...")
 	}
 	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features)
 	if err != nil {
