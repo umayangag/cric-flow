@@ -24,7 +24,7 @@ Keys:
   - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
   - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for `cmd/precompute` operations.
+  - `precompute_timeout_ms` (int) — timeout for precompute (RunReplay + seqcalc). Default 3600000 (1 hour). Set to 0 to disable. Precompute can be long-running on large datasets.
   - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
