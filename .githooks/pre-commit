@@ -115,19 +115,15 @@ if process_category "ml-service" PY_FILES_ARR "^ml-service/.*\.py$"; then
     if [ ! -d "$VENV" ]; then
         echo "[ml-service] Virtualenv not found at $VENV. Skipping (run 'make init-py' to fix)."
     else
-        # Format: isort -> black
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/isort" --profile black --line-length 120
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/black" --line-length 120
+        # Format and lint: ruff
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" format --line-length 120
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
 
         # Stage changes
         printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
 
-        # Lint: ruff check --fix
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
-
-        # Check only (gates) - ruff as single source
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --select F401 --ignore E203,E501,W503
+        # Check only (gates)
+        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check
     fi
 fi
 

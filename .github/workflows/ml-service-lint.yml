@@ -33,8 +33,5 @@ jobs:
       - name: Install dev tools
         run: make -C ml-service ci-setup
 
-      - name: Format check (isort + black + flake8)
+      - name: Format and lint check (ruff)
         run: make -C ml-service fmt-check
-
-      - name: Lint check (ruff)
-        run: make -C ml-service lint-check
