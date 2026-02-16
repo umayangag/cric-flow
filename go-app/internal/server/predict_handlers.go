@@ -46,16 +46,16 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Format         string  `json:"format"`
-		Team1          string  `json:"team1"`
-		Team2          string  `json:"team2"`
-		Venue          string  `json:"venue"`
-		MatchDate      string  `json:"match_date"`       // RFC3339 or YYYY-MM-DD
-		SeasonID       *int64  `json:"season_id"`
-		ExtraTeam1     []int64 `json:"extra_team1"`
-		ExtraTeam2     []int64 `json:"extra_team2"`
-		MinBowlers     int     `json:"min_bowlers"`
-		RequireKeeper  *bool   `json:"require_keeper"`
+		Format        string  `json:"format"`
+		Team1         string  `json:"team1"`
+		Team2         string  `json:"team2"`
+		Venue         string  `json:"venue"`
+		MatchDate     string  `json:"match_date"` // RFC3339 or YYYY-MM-DD
+		SeasonID      *int64  `json:"season_id"`
+		ExtraTeam1    []int64 `json:"extra_team1"`
+		ExtraTeam2    []int64 `json:"extra_team2"`
+		MinBowlers    int     `json:"min_bowlers"`
+		RequireKeeper *bool   `json:"require_keeper"`
 	}
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -108,7 +108,7 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	input := predictteam.PredictTeamInput{
+	input := predictteam.Input{
 		Format:        body.Format,
 		Team1:         body.Team1,
 		Team2:         body.Team2,

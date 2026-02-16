@@ -14,18 +14,18 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
 )
 
-// PredictTeamInput defines the request for future-match team selection.
-type PredictTeamInput struct {
-	Format       string    `json:"format"`
-	Team1        string    `json:"team1"`
-	Team2        string    `json:"team2"`
-	Venue        string    `json:"venue,omitempty"`         // venue name; empty = unknown venue
-	MatchDate    time.Time `json:"match_date"`
-	SeasonID     *int64    `json:"season_id,omitempty"`
-	ExtraTeam1   []int64   `json:"extra_team1,omitempty"`   // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2   []int64   `json:"extra_team2,omitempty"`   // extra player IDs for team2
-	MinBowlers   int       `json:"min_bowlers,omitempty"`   // default 5
-	RequireKeeper bool     `json:"require_keeper,omitempty"` // default true
+// Input defines the request for future-match team selection.
+type Input struct {
+	Format        string    `json:"format"`
+	Team1         string    `json:"team1"`
+	Team2         string    `json:"team2"`
+	Venue         string    `json:"venue,omitempty"` // venue name; empty = unknown venue
+	MatchDate     time.Time `json:"match_date"`
+	SeasonID      *int64    `json:"season_id,omitempty"`
+	ExtraTeam1    []int64   `json:"extra_team1,omitempty"`    // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2    []int64   `json:"extra_team2,omitempty"`    // extra player IDs for team2
+	MinBowlers    int       `json:"min_bowlers,omitempty"`    // default 5
+	RequireKeeper bool      `json:"require_keeper,omitempty"` // default true
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -39,15 +39,21 @@ type SelectedPlayer struct {
 	RunOuts    float64 `json:"run_outs"`
 }
 
-// PredictTeamResult holds the best 11 for each team.
-type PredictTeamResult struct {
+// Result holds the best 11 for each team.
+type Result struct {
 	Team1 []SelectedPlayer `json:"team1"`
 	Team2 []SelectedPlayer `json:"team2"`
 }
 
 // MLPredictor provides player predictions from features (e.g. via ML backtest endpoint).
 type MLPredictor interface {
-	PredictPlayers(ctx context.Context, cutoff time.Time, format string, playerIDs []int64, features map[int64]map[string]float64) (map[int64]PlayerPred, error)
+	PredictPlayers(
+		ctx context.Context,
+		cutoff time.Time,
+		format string,
+		playerIDs []int64,
+		features map[int64]map[string]float64,
+	) (map[int64]PlayerPred, error)
 }
 
 // PlayerPred holds ML prediction output.
@@ -60,7 +66,7 @@ type PlayerPred struct {
 }
 
 // PredictTeams runs the full pipeline: pool, features, ML predict, team select.
-func PredictTeams(ctx context.Context, input PredictTeamInput, predictor MLPredictor) (*PredictTeamResult, error) {
+func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
 	if input.MinBowlers <= 0 {
 		input.MinBowlers = 5
 	}
@@ -106,7 +112,15 @@ func PredictTeams(ctx context.Context, input PredictTeamInput, predictor MLPredi
 	for _, p := range pool1 {
 		ids1 = append(ids1, p.PlayerID)
 	}
-	feats1, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(ctx, cutoff, format, venueID, opp2ID, input.SeasonID, ids1)
+	feats1, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
+		ctx,
+		cutoff,
+		format,
+		venueID,
+		opp2ID,
+		input.SeasonID,
+		ids1,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("team1 features: %w", err)
 	}
@@ -120,7 +134,15 @@ func PredictTeams(ctx context.Context, input PredictTeamInput, predictor MLPredi
 	for _, p := range pool2 {
 		ids2 = append(ids2, p.PlayerID)
 	}
-	feats2, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(ctx, cutoff, format, venueID, opp1ID, input.SeasonID, ids2)
+	feats2, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
+		ctx,
+		cutoff,
+		format,
+		venueID,
+		opp1ID,
+		input.SeasonID,
+		ids2,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("team2 features: %w", err)
 	}
@@ -170,7 +192,7 @@ func PredictTeams(ctx context.Context, input PredictTeamInput, predictor MLPredi
 		nameToID2[p.PlayerName] = p.PlayerID
 	}
 
-	result := &PredictTeamResult{
+	result := &Result{
 		Team1: make([]SelectedPlayer, 0, len(sel1)),
 		Team2: make([]SelectedPlayer, 0, len(sel2)),
 	}
