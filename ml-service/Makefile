@@ -33,10 +33,10 @@ run:
 # Per-model training (artifacts go to ML_SERVICE_OUTPUT_DIR or outputs.artifacts_dir).
 # Prerequisites: precompute (go-app) and export (batting/bowling CSVs); fielding needs GO_APP_URL + CUTOFF or --csv.
 train-batting:
-	$(PY) ml/train_batting_model.py
+	$(PY) -m ml.train_batting --all-formats
 
 train-bowling:
-	$(PY) ml/train_bowling_model.py
+	$(PY) -m ml.train_bowling --all-formats
 
 # Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
 train-fielding:

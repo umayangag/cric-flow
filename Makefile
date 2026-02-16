@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-all train-models ml-auto-tune fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -161,9 +161,10 @@ train-fielding:
 	fi
 
 # Train batting + bowling (from exported CSVs). Use train-fielding for fielding (requires API or FIELDING_CSV).
-train-all: train-batting train-bowling
+train-batting-bowling: train-batting train-bowling
 
 # Train all player-level models (batting, bowling, fielding). For fielding set CUTOFF= and GO_APP_URL= if using API.
+train-all: train-models
 train-models: train-batting train-bowling train-fielding
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
@@ -564,7 +565,8 @@ help:
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
 	@echo "  train-fielding     Train fielding model (needs CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
-	@echo "  train-all          Train batting + bowling"
+	@echo "  train-batting-bowling  Train batting + bowling"
+	@echo "  train-all          Train all models (batting + bowling + fielding)"
 	@echo "  train-models       Train batting + bowling + fielding"
 	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo

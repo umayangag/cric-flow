@@ -107,10 +107,3 @@ func GetOrCreateByName(ctx context.Context, name string) (int64, error) {
 	}
 	return id, nil
 }
-
-// UpsertConsistencyFmt inserts or updates a player”'s consistency scores for a
-// given season and match format.
-func UpsertConsistencyFmt(ctx context.Context, data *PlayerConsistency) error {
-	// Consistency is now in feature_consistency_snapshots (precompute-features runner).
-	return nil
-}
