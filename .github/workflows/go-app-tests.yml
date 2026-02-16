@@ -62,6 +62,7 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
+          # Raise over time; Makefile default is 80. Current ~33%; keep CI passing until coverage is improved.
           COV_MIN: "30"
         run: make -C go-app coverage-check
 
