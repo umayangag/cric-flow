@@ -35,7 +35,7 @@ from .models import (
     BowlingPrediction,
     HistoricalMatchBacktestRequest,
 )
-from .train_on_the_fly import train_on_the_fly
+from .train_on_the_fly import train_on_the_fly_cached
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
@@ -179,7 +179,7 @@ def _predict_players_with_features(
             go_app_url=go_app_url,
             player_count=len(player_ids),
         )
-        bat_pair, bowl_pair = train_on_the_fly(go_app_url, fmt_upper, cutoff_iso, api_key)
+        bat_pair, bowl_pair = train_on_the_fly_cached(go_app_url, fmt_upper, cutoff_iso, api_key)
 
     scaler_bat, model_bat = bat_pair
     scaler_bowl, model_bowl = bowl_pair

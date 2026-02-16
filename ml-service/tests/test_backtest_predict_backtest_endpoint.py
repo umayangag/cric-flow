@@ -29,8 +29,8 @@ def test_backtest_predict_players_mode_with_format_and_features_schema():
             "3": {"batting_consistency": 0.6, "batting_form": 25.0},
         },
     }
-    # If no T20 artifacts are loaded, train_on_the_fly would be called (needs GO_APP_URL).
-    # Mock train_on_the_fly to return minimal in-memory models so we can assert schema without go-app.
+    # If no T20 artifacts are loaded, train_on_the_fly_cached would be called (needs GO_APP_URL).
+    # Mock train_on_the_fly_cached to return minimal in-memory models so we can assert schema without go-app.
     from unittest.mock import patch
 
     import numpy as np
@@ -51,7 +51,7 @@ def test_backtest_predict_players_mode_with_format_and_features_schema():
         )
         return bat, bowl
 
-    with patch("app.main.train_on_the_fly", side_effect=_fake_train):
+    with patch("app.main.train_on_the_fly_cached", side_effect=_fake_train):
         with patch.dict("os.environ", {"GO_APP_URL": "http://localhost:9999"}, clear=False):
             r = client.post("/ml/backtest/predict", json=body)
     if r.status_code != 200:

@@ -110,7 +110,10 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			predWicketsSum += wkts
 			ec := float32Ptr(float32(p.Economy))
 			var predRuns *int
-			if w.Overs != nil && *w.Overs > 0 {
+			if w.Balls != nil && *w.Balls > 0 {
+				// Use balls (not overs) since overs decimal is balls (e.g. 3.5 overs = 23 balls)
+				predRuns = intPtr(int(math.Round(float64(*w.Balls) * p.Economy / 6)))
+			} else if w.Overs != nil && *w.Overs > 0 {
 				predRuns = intPtr(int(math.Round(float64(*w.Overs) * p.Economy)))
 			}
 			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{

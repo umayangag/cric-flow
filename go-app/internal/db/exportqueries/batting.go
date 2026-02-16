@@ -649,41 +649,32 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			oppKeys[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}] = struct{}{}
 		}
 	}
+	// Bulk fetch to avoid N+1
+	bulkKeys := make([]db.HistQueryKey, 0, len(mainKeys)+len(venueKeys)+len(oppKeys))
+	for k := range mainKeys {
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: 0})
+	}
+	for k := range venueKeys {
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: k.V})
+	}
+	for k := range oppKeys {
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: k.O, V: 0})
+	}
+	bulkRes, err := db.ListBattingBeforeBulk(ctx, bulkKeys)
+	if err != nil {
+		return nil, fmt.Errorf("list batting before bulk: %w", err)
+	}
 	mainCache := make(map[mainKey][]db.InnVal)
 	for k := range mainKeys {
-		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("list batting before player=%d asOf=%s: %w", k.P, k.T.Format(time.RFC3339), err)
-		}
-		mainCache[k] = hist
+		mainCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: 0}]
 	}
 	venueCache := make(map[venueKey][]db.InnVal)
 	for k := range venueKeys {
-		vID := k.V
-		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, nil, &vID)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"list batting before (venue) player=%d asOf=%s: %w",
-				k.P,
-				k.T.Format(time.RFC3339),
-				err,
-			)
-		}
-		venueCache[k] = hist
+		venueCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: k.V}]
 	}
 	oppCache := make(map[oppKey][]db.InnVal)
 	for k := range oppKeys {
-		oID := k.O
-		hist, err := db.ListBattingBefore(ctx, k.P, k.T, k.F, &oID, nil)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"list batting before (opposition) player=%d asOf=%s: %w",
-				k.P,
-				k.T.Format(time.RFC3339),
-				err,
-			)
-		}
-		oppCache[k] = hist
+		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: k.O, V: 0}]
 	}
 
 	headers := []string{

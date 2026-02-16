@@ -3,14 +3,18 @@
 Used when format + features are provided but no pre-trained artifacts are loaded.
 Fetches GET {GO_APP_URL}/api/backtest/training-data?format=X&cutoff=Y, builds X/Y like
 train_batting/train_bowling, trains in memory, returns (scaler_bat, model_bat, scaler_bowl, model_bowl).
+Uses persistent filesystem cache keyed by (format, cutoff) when ML_TRAIN_CACHE_DIR is set.
 """
 
+import hashlib
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -109,7 +113,15 @@ def _rows_to_xy(
         if c not in df.columns and c.replace("_", " ") in df.columns:
             df = df.rename(columns={c.replace("_", " "): c})
     if "toss" in df.columns and df["toss"].dtype == object:
-        df = df.assign(toss=df["toss"].apply(lambda x: 1 if str(x).strip().lower().startswith("bat") else 0))
+        def _normalize_toss(x):
+            s = str(x).strip().lower()
+            if s in ("0", "1"):
+                return int(s)
+            if s.startswith("bat"):
+                return 1
+            return 0
+
+        df = df.assign(toss=df["toss"].apply(_normalize_toss))
     if preprocess is not None:
         df = preprocess(df)
     df = df.dropna(subset=[c for c in feature_cols if c in df.columns])
@@ -346,3 +358,98 @@ def train_on_the_fly(
         cutoff_iso=cutoff_iso,
     )
     return (scaler_bat, model_bat), (scaler_bowl, model_bowl)
+
+
+# Persistent cache for train-on-the-fly models (keyed by format + cutoff)
+_train_cache_lock = threading.Lock()
+_train_cache: Dict[Tuple[str, str], Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]] = {}
+
+
+def _cache_dir() -> Optional[str]:
+    d = (os.environ.get("ML_TRAIN_CACHE_DIR") or "").strip()
+    if d:
+        return os.path.expanduser(d)
+    return None
+
+
+def _cache_key(format_code: str, cutoff_iso: str) -> str:
+    """Filesystem-safe cache key for (format, cutoff)."""
+    raw = f"{format_code}_{cutoff_iso}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def _load_from_cache(cache_dir: str, key: str) -> Optional[
+    Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]
+]:
+    subdir = os.path.join(cache_dir, key)
+    bat_scaler_p = os.path.join(subdir, "bat_scaler.joblib")
+    bat_model_p = os.path.join(subdir, "bat_model.joblib")
+    bowl_scaler_p = os.path.join(subdir, "bowl_scaler.joblib")
+    bowl_model_p = os.path.join(subdir, "bowl_model.joblib")
+    for p in (bat_scaler_p, bat_model_p, bowl_scaler_p, bowl_model_p):
+        if not os.path.isfile(p):
+            return None
+    try:
+        scaler_bat = joblib.load(bat_scaler_p)
+        model_bat = joblib.load(bat_model_p)
+        scaler_bowl = joblib.load(bowl_scaler_p)
+        model_bowl = joblib.load(bowl_model_p)
+        return (scaler_bat, model_bat), (scaler_bowl, model_bowl)
+    except Exception as e:
+        logger.warning("train_on_the_fly.cache_load_failed", key=key, error=str(e))
+        return None
+
+
+def _save_to_cache(
+    cache_dir: str,
+    key: str,
+    bat_pair: Tuple[StandardScaler, Any],
+    bowl_pair: Tuple[StandardScaler, Any],
+) -> None:
+    subdir = os.path.join(cache_dir, key)
+    try:
+        os.makedirs(subdir, mode=0o750, exist_ok=True)
+        scaler_bat, model_bat = bat_pair
+        scaler_bowl, model_bowl = bowl_pair
+        joblib.dump(scaler_bat, os.path.join(subdir, "bat_scaler.joblib"))
+        joblib.dump(model_bat, os.path.join(subdir, "bat_model.joblib"))
+        joblib.dump(scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"))
+        joblib.dump(model_bowl, os.path.join(subdir, "bowl_model.joblib"))
+        logger.info("train_on_the_fly.cache_saved", key=key, subdir=subdir)
+    except Exception as e:
+        logger.warning("train_on_the_fly.cache_save_failed", key=key, error=str(e))
+
+
+def train_on_the_fly_cached(
+    go_app_url: str,
+    format_code: str,
+    cutoff_iso: str,
+    api_key: Optional[str] = None,
+) -> Tuple[
+    Tuple[StandardScaler, Any],
+    Tuple[StandardScaler, Any],
+]:
+    """
+    train_on_the_fly with persistent cache (filesystem when ML_TRAIN_CACHE_DIR is set).
+    Thread-safe: in-memory cache first, then disk, then train.
+    """
+    cache_dir = _cache_dir()
+    key = _cache_key(format_code, cutoff_iso)
+    with _train_cache_lock:
+        in_mem = _train_cache.get((format_code, cutoff_iso))
+        if in_mem is not None:
+            logger.info("train_on_the_fly.cache_hit", source="memory", format_code=format_code, cutoff_iso=cutoff_iso)
+            return in_mem
+    if cache_dir:
+        disk_pair = _load_from_cache(cache_dir, key)
+        if disk_pair is not None:
+            with _train_cache_lock:
+                _train_cache[(format_code, cutoff_iso)] = disk_pair
+            logger.info("train_on_the_fly.cache_hit", source="disk", format_code=format_code, cutoff_iso=cutoff_iso)
+            return disk_pair
+    pair = train_on_the_fly(go_app_url, format_code, cutoff_iso, api_key)
+    with _train_cache_lock:
+        _train_cache[(format_code, cutoff_iso)] = pair
+    if cache_dir:
+        _save_to_cache(cache_dir, key, pair[0], pair[1])
+    return pair
