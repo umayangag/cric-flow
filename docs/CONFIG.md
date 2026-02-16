@@ -55,8 +55,13 @@ Keys:
   - `artifacts_dir` — directory where training scripts write joblib artifacts and where FastAPI loads from.
 - `ml`
   - `formats` — list of format codes to train/serve (e.g., `["TEST","ODI","T20","T20I"]`).
-  - `random_state`, `cv_splits`, `test_size`, `n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — hyperparameters reserved for use by training scripts (current model uses a subset; others are placeholders for future models).
   - `artifact_template` — naming template for saved artifacts (informational).
+  - `training` — **required** block used strictly by all training scripts (no defaults or env overrides in code). Fine-tune here for accuracy vs model size.
+    - `n_estimators` (int) — number of trees per output (e.g. 100–200).
+    - `max_depth` (int) — maximum tree depth (e.g. 12–25).
+    - `random_state` (int) — random seed for reproducibility.
+    - `joblib_compress` (int) — joblib compression level 0–9 when saving artifacts.
+  - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
 
 Environment variables:
 - `ML_SERVICE_CONFIG` — path to an alternate `config.json`.

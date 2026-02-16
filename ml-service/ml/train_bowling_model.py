@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
 from . import tracking
-from .config import default_artifacts_dir, default_go_app_export_dir
+from .config import default_artifacts_dir, default_go_app_export_dir, get_training_params
 from .dataset_definitions import input_bowling_columns, output_bowling_columns
 
 
@@ -69,16 +69,33 @@ def run_training():
     y_scaled = output_scaler.transform(y)
     y = pd.DataFrame(data=y_scaled, columns=y.columns)
 
-    regr = RandomForestRegressor(max_depth=100, n_estimators=200, random_state=0)
+    params = get_training_params()
+    regr = RandomForestRegressor(
+        max_depth=params["max_depth"],
+        n_estimators=params["n_estimators"],
+        random_state=params["random_state"],
+    )
     predictor = MultiOutputRegressor(regr)
     predictor.fit(X, y)
 
-    # Save the trained model and scalers
     output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", default_artifacts_dir())
     os.makedirs(output_dir, exist_ok=True)
-    joblib.dump(predictor, os.path.join(output_dir, "bowling_model.joblib"))
-    joblib.dump(input_scaler, os.path.join(output_dir, "bowling_scaler.joblib"))
-    joblib.dump(output_scaler, os.path.join(output_dir, "bowling_output_scaler.joblib"))
+    compress = params["joblib_compress"]
+    joblib.dump(
+        predictor,
+        os.path.join(output_dir, "bowling_model.joblib"),
+        compress=compress,
+    )
+    joblib.dump(
+        input_scaler,
+        os.path.join(output_dir, "bowling_scaler.joblib"),
+        compress=compress,
+    )
+    joblib.dump(
+        output_scaler,
+        os.path.join(output_dir, "bowling_output_scaler.joblib"),
+        compress=compress,
+    )
 
 
 if __name__ == "__main__":

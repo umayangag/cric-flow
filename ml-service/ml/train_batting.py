@@ -5,6 +5,7 @@ from typing import Optional
 
 import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
+from .config import get_training_params
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -100,33 +101,28 @@ def train_and_save(
     X,
     Y,
     out_dir: str,
-    rf_params: dict,
+    training_params: dict,
     suffix: Optional[str] = None,
     metadata: Optional[dict] = None,
 ):
+    """Train and save artifacts. training_params must come from get_training_params() (config only)."""
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    # Apply configurable hyperparameters with safe defaults
-    n_estimators = int(rf_params.get("n_estimators", 100))
-    random_state = int(rf_params.get("random_state", 42))
-    max_depth = rf_params.get("max_depth", None)
-    if max_depth is not None:
-        try:
-            max_depth = int(max_depth)
-        except Exception:
-            max_depth = None
+    n_estimators = training_params["n_estimators"]
+    max_depth = training_params["max_depth"]
+    random_state = training_params["random_state"]
+    compress = training_params["joblib_compress"]
     model = MultiOutputRegressor(
         RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
     )
     model.fit(Xs, Y)
-    # Save artifacts
     if suffix:
-        joblib.dump(scaler, os.path.join(out_dir, f"batting_scaler_{suffix}.joblib"))
-        joblib.dump(model, os.path.join(out_dir, f"batting_model_{suffix}.joblib"))
+        joblib.dump(scaler, os.path.join(out_dir, f"batting_scaler_{suffix}.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, f"batting_model_{suffix}.joblib"), compress=compress)
     else:
-        joblib.dump(scaler, os.path.join(out_dir, "batting_scaler.joblib"))
-        joblib.dump(model, os.path.join(out_dir, "batting_model.joblib"))
+        joblib.dump(scaler, os.path.join(out_dir, "batting_scaler.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, "batting_model.joblib"), compress=compress)
     # Save training metadata if provided
     if metadata is not None:
         meta_path = os.path.join(out_dir, f"batting_metadata_{suffix or 'LEGACY'}.json")
@@ -180,21 +176,10 @@ def main():
         action="store_true",
         help="Train for all formats from config (ml.formats).",
     )
-    # Hyperparameters: read from config.json (ml.*) with env/CLI override hooks
-    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
-    cfg = {}
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception:
-        cfg = {}
-    ml_cfg = cfg.get("ml", {}) if isinstance(cfg, dict) else {}
-    # Allow env overrides
-    env_n_estimators = os.environ.get("ML_N_ESTIMATORS")
-    env_max_depth = os.environ.get("ML_MAX_DEPTH")
-    env_random_state = os.environ.get("ML_RANDOM_STATE")
-
     args = parser.parse_args()
+
+    # All training parameters from config (ml.training); no env overrides or magic values
+    training_params = get_training_params()
 
     targets: list[str] = []
     if args.all_formats:
@@ -203,14 +188,6 @@ def main():
         targets = [s.strip().upper() for s in args.formats.split(",") if s.strip()]
     elif args.format:
         targets = [args.format.strip().upper()]
-
-    def rf_params_from_cfg() -> dict:
-        params = {
-            "n_estimators": env_n_estimators or ml_cfg.get("n_estimators", 100),
-            "max_depth": env_max_depth or ml_cfg.get("max_depth", None),
-            "random_state": env_random_state or ml_cfg.get("random_state", 42),
-        }
-        return params
 
     # Auto-detect formats when none explicitly provided
     if not targets and not args.csv:
@@ -246,9 +223,9 @@ def main():
             "n_targets": int(Y.shape[1]),
             "format": None,
             "model": "RandomForestRegressor",
-            "hyperparams": rf_params_from_cfg(),
+            "hyperparams": training_params,
         }
-        train_and_save(X, Y, args.out, rf_params_from_cfg(), None, meta)
+        train_and_save(X, Y, args.out, training_params, None, meta)
         print(f"Saved batting artifacts to {args.out}")
         return
 
@@ -269,9 +246,9 @@ def main():
             "n_targets": int(Y.shape[1]),
             "format": fmt,
             "model": "RandomForestRegressor",
-            "hyperparams": rf_params_from_cfg(),
+            "hyperparams": training_params,
         }
-        train_and_save(X, Y, args.out, rf_params_from_cfg(), fmt, meta)
+        train_and_save(X, Y, args.out, training_params, fmt, meta)
         print(f"Saved batting artifacts for {fmt} to {args.out}")
 
 

@@ -22,6 +22,7 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from app.logging import get_struct_logger
+from ml.config import get_training_params
 
 logger = get_struct_logger()
 
@@ -75,19 +76,9 @@ BOWLING_TARGET_COLS = [
 ]
 
 
-def _get_rf_params() -> dict:
-    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception:
-        cfg = {}
-    ml_cfg = cfg.get("ml", {}) if isinstance(cfg, dict) else {}
-    return {
-        "n_estimators": int(os.environ.get("ML_N_ESTIMATORS") or ml_cfg.get("n_estimators", 100)),
-        "max_depth": ml_cfg.get("max_depth"),
-        "random_state": int(os.environ.get("ML_RANDOM_STATE") or ml_cfg.get("random_state", 42)),
-    }
+def _get_training_params() -> dict:
+    """Training parameters from config (ml.training) only; used for train-on-the-fly and cache save."""
+    return get_training_params()
 
 
 def _rows_to_xy(
@@ -190,38 +181,30 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
 
 
 def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
-    rf_params = _get_rf_params()
+    params = _get_training_params()
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_estimators = int(rf_params.get("n_estimators", 100))
-    random_state = int(rf_params.get("random_state", 42))
-    max_depth = rf_params.get("max_depth")
-    if max_depth is not None:
-        try:
-            max_depth = int(max_depth)
-        except Exception:
-            max_depth = None
     model = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+        RandomForestRegressor(
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+            max_depth=params["max_depth"],
+        )
     )
     model.fit(Xs, Y)
     return scaler, model
 
 
 def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
-    rf_params = _get_rf_params()
+    params = _get_training_params()
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_estimators = int(rf_params.get("n_estimators", 100))
-    random_state = int(rf_params.get("random_state", 42))
-    max_depth = rf_params.get("max_depth")
-    if max_depth is not None:
-        try:
-            max_depth = int(max_depth)
-        except Exception:
-            max_depth = None
     model = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+        RandomForestRegressor(
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+            max_depth=params["max_depth"],
+        )
     )
     model.fit(Xs, Y)
     return scaler, model
@@ -412,10 +395,12 @@ def _save_to_cache(
         os.makedirs(subdir, mode=0o750, exist_ok=True)
         scaler_bat, model_bat = bat_pair
         scaler_bowl, model_bowl = bowl_pair
-        joblib.dump(scaler_bat, os.path.join(subdir, "bat_scaler.joblib"))
-        joblib.dump(model_bat, os.path.join(subdir, "bat_model.joblib"))
-        joblib.dump(scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"))
-        joblib.dump(model_bowl, os.path.join(subdir, "bowl_model.joblib"))
+        params = _get_training_params()
+        compress = params["joblib_compress"]
+        joblib.dump(scaler_bat, os.path.join(subdir, "bat_scaler.joblib"), compress=compress)
+        joblib.dump(model_bat, os.path.join(subdir, "bat_model.joblib"), compress=compress)
+        joblib.dump(scaler_bowl, os.path.join(subdir, "bowl_scaler.joblib"), compress=compress)
+        joblib.dump(model_bowl, os.path.join(subdir, "bowl_model.joblib"), compress=compress)
         logger.info("train_on_the_fly.cache_saved", key=key, subdir=subdir)
     except Exception as e:
         logger.warning("train_on_the_fly.cache_save_failed", key=key, error=str(e))
