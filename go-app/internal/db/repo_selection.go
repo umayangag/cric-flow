@@ -54,7 +54,7 @@ type PlayerPoolRow struct {
 
 // ListPlayerPoolConsistency returns non-retired players with any non-zero consistency for the format.
 // Uses feature_consistency_snapshots (latest snapshot per player/format); seasonName is ignored.
-func ListPlayerPoolConsistency(ctx context.Context, seasonName, formatCode string) ([]PlayerPoolRow, error) {
+func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string) ([]PlayerPoolRow, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
@@ -93,7 +93,7 @@ func ListPlayerPoolConsistency(ctx context.Context, seasonName, formatCode strin
 
 // GetPlayerFormFmt returns batting and bowling form for player/format from feature_form_snapshots.
 // Uses the latest snapshot (scope=overall); seasonID is ignored.
-func GetPlayerFormFmt(ctx context.Context, playerID, seasonID, formatID int64) (bat float64, bowl float64, err error) {
+func GetPlayerFormFmt(ctx context.Context, playerID, _ int64, formatID int64) (bat float64, bowl float64, err error) {
 	if Pool == nil {
 		return 0, 0, errors.New("db pool not initialized")
 	}

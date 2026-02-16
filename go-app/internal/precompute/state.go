@@ -51,14 +51,6 @@ func setPhase(phase string) {
 	currentStat.Phase = phase
 }
 
-func setError(err error) {
-	mu.Lock()
-	defer mu.Unlock()
-	if err != nil {
-		currentStat.LastError = err.Error()
-	}
-}
-
 func setDone() {
 	mu.Lock()
 	defer mu.Unlock()
