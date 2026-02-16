@@ -151,6 +151,8 @@ func init() {
 				SELECT player_id FROM batting_data WHERE match_id = $1
 				UNION
 				SELECT player_id FROM bowling_data WHERE match_id = $1
+				UNION
+				SELECT player_id FROM fielding_data WHERE match_id = $1
 			) t ORDER BY player_id ASC`,
 			matchID,
 		)

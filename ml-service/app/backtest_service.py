@@ -45,6 +45,11 @@ def _get_required_float(d: Dict[str, float], key: str) -> float:
         raise ValueError(f"Feature '{key}' has a non-numeric value: {v}")
 
 
+def _get_required_int(d: Dict[str, float], key: str) -> int:
+    """Return int for a required feature; raise ValueError if missing or invalid."""
+    return int(round(_get_required_float(d, key)))
+
+
 def _int(d: Dict[str, float], key: str, default: int) -> int:
     v = d.get(key)
     if v is None:
@@ -93,16 +98,16 @@ def build_batting_features_from_map(
     return BattingFeatures(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
         batting_form=max(0.0, _get_required_float(d, "batting_form")),
-        batting_temp=_int(d, "batting_temp", c.get("temp", 25)),
-        batting_wind=_int(d, "batting_wind", c.get("wind", 0)),
-        batting_rain=_int(d, "batting_rain", c.get("rain", 0)),
-        batting_humidity=_int(d, "batting_humidity", c.get("humidity", 50)),
-        batting_cloud=_int(d, "batting_cloud", c.get("cloud", 0)),
-        batting_pressure=_int(d, "batting_pressure", c.get("pressure", 0)),
-        batting_viscosity=min(1, max(0, _int(d, "batting_viscosity", c.get("viscosity", 0)))),
-        batting_inning=min(2, max(1, _int(d, "batting_inning", c.get("inning", 1)))),
-        batting_session=min(3, max(1, _int(d, "batting_session", c.get("session", 1)))),
-        toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
+        batting_temp=_get_required_int(d, "batting_temp"),
+        batting_wind=_get_required_int(d, "batting_wind"),
+        batting_rain=_get_required_int(d, "batting_rain"),
+        batting_humidity=_get_required_int(d, "batting_humidity"),
+        batting_cloud=_get_required_int(d, "batting_cloud"),
+        batting_pressure=_get_required_int(d, "batting_pressure"),
+        batting_viscosity=min(1, max(0, _get_required_int(d, "batting_viscosity"))),
+        batting_inning=min(2, max(1, _get_required_int(d, "batting_inning"))),
+        batting_session=min(3, max(1, _get_required_int(d, "batting_session"))),
+        toss=min(1, max(0, _get_required_int(d, "toss"))),
         venue=_get_required_float(d, "venue"),
         opposition=_get_required_float(d, "opposition"),
         season=season,
@@ -171,24 +176,22 @@ def build_bowling_features_from_map(
 ) -> BowlingFeatures:
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
-    defs = _feature_defaults()
-    c = defs.get("common", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BowlingFeatures(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
         bowling_form=max(0.0, _get_required_float(d, "bowling_form")),
-        bowling_temp=_int(d, "bowling_temp", c.get("temp", 25)),
-        bowling_wind=_int(d, "bowling_wind", c.get("wind", 0)),
-        bowling_rain=_int(d, "bowling_rain", c.get("rain", 0)),
-        bowling_humidity=_int(d, "bowling_humidity", c.get("humidity", 50)),
-        bowling_cloud=_int(d, "bowling_cloud", c.get("cloud", 0)),
-        bowling_pressure=_int(d, "bowling_pressure", c.get("pressure", 0)),
-        bowling_viscosity=min(1, max(0, _int(d, "bowling_viscosity", c.get("viscosity", 0)))),
-        batting_inning=min(2, max(1, _int(d, "batting_inning", c.get("inning", 1)))),
-        bowling_session=min(3, max(1, _int(d, "bowling_session", c.get("session", 1)))),
-        toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
-        bowling_venue=_float(d, "bowling_venue", _get_required_float(d, "venue")),
-        bowling_opposition=_float(d, "bowling_opposition", _get_required_float(d, "opposition")),
+        bowling_temp=_get_required_int(d, "bowling_temp"),
+        bowling_wind=_get_required_int(d, "bowling_wind"),
+        bowling_rain=_get_required_int(d, "bowling_rain"),
+        bowling_humidity=_get_required_int(d, "bowling_humidity"),
+        bowling_cloud=_get_required_int(d, "bowling_cloud"),
+        bowling_pressure=_get_required_int(d, "bowling_pressure"),
+        bowling_viscosity=min(1, max(0, _get_required_int(d, "bowling_viscosity"))),
+        batting_inning=min(2, max(1, _get_required_int(d, "batting_inning"))),
+        bowling_session=min(3, max(1, _get_required_int(d, "bowling_session"))),
+        toss=min(1, max(0, _get_required_int(d, "toss"))),
+        bowling_venue=_get_required_float(d, "bowling_venue"),
+        bowling_opposition=_get_required_float(d, "bowling_opposition"),
         season=season,
         player_name="",
         format=fmt,

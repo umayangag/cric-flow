@@ -9,7 +9,7 @@ LINE_LENGTH?=120
 # Raise over time; current ~78%. CI and make coverage-check use this.
 COV_MIN?=77
 
-.PHONY: all venv install run train-all auto-tune export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_formatters
+.PHONY: all venv install run train-models auto-tune export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_formatters
 
 all: run
 
@@ -42,7 +42,7 @@ train-bowling:
 train-fielding:
 	$(PY) -m ml.train_fielding
 
-train-all: train-batting train-bowling train-fielding
+train-models: train-batting train-bowling train-fielding
 
 # Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
@@ -160,7 +160,7 @@ help:
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
 	@echo "  train-fielding     Train fielding model (GO_APP_URL + CUTOFF or FIELDING_CSV)"
-	@echo "  train-all          Train batting + bowling + fielding (fielding needs env or CSV)"
+	@echo "  train-models      Train batting + bowling + fielding (fielding needs env or CSV)"
 	@echo "  auto-tune          Auto-tune model(s): best algorithm + hyperparameters (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo ""
 	@echo "  Integration order: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
