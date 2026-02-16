@@ -69,15 +69,12 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // precomputeHandlerTimeout returns the timeout for the precompute handler goroutine.
-// Uses features.precompute_timeout_ms from config; 0 means no limit (2h cap for safety).
+// Uses features.precompute_timeout_ms from config (validated at startup). 0 = no timeout.
 func precomputeHandlerTimeout() time.Duration {
 	cfg := config.Load()
-	if cfg == nil {
-		return 10 * time.Minute
-	}
 	ms := cfg.Features.PrecomputeTimeoutMs
 	if ms <= 0 {
-		return 2 * time.Hour
+		return 0
 	}
 	return time.Duration(ms) * time.Millisecond
 }

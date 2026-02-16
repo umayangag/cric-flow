@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,29 @@ func TestLoad_ConfigJsonFromCWD(t *testing.T) {
 	}
 	if c.Outputs.ExportDir != "/cwd/export" {
 		t.Fatalf("cwd config not applied: %q", c.Outputs.ExportDir)
+	}
+}
+
+func TestValidateForServer_FailsWhenNoConfig(t *testing.T) {
+	cached = nil
+	oldWD, _ := os.Getwd()
+	oldEnv := os.Getenv("GO_APP_CONFIG")
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+		_ = os.Setenv("GO_APP_CONFIG", oldEnv)
+	})
+
+	tmp := t.TempDir()
+	_ = os.Chdir(tmp)
+	_ = os.Setenv("GO_APP_CONFIG", "")
+
+	Load() // no config file in tmp
+	err := ValidateForServer()
+	if err == nil {
+		t.Fatal("ValidateForServer expected to fail when no config file")
+	}
+	if !strings.Contains(err.Error(), "config file not found") {
+		t.Errorf("expected 'config file not found', got: %v", err)
 	}
 }
 

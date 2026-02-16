@@ -75,6 +75,7 @@ type Config struct {
 }
 
 var cached *Config
+var loadedFrom string // path of config file loaded; empty if none found
 
 // Load reads config.json from the current working directory if present.
 // It is safe to call multiple times; the result is cached for the process lifetime.
@@ -83,15 +84,12 @@ func Load() *Config {
 		return cached
 	}
 	cfg := &Config{}
-	// Search locations (in order):
-	//  1) GO_APP_CONFIG env var path
-	//  2) ./config.json (CWD)
-	//  3) ../config.json (if executed from a subdir)
-	//  4) go-app/config.json when running from a cmd subdir
+	loadedFrom = ""
 	if p := os.Getenv("GO_APP_CONFIG"); p != "" {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
 			cached = cfg
+			loadedFrom = p
 			return cfg
 		}
 	}
@@ -104,11 +102,25 @@ func Load() *Config {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
 			cached = cfg
+			loadedFrom = p
 			return cfg
 		}
 	}
 	cached = cfg
 	return cfg
+}
+
+// ValidateForServer returns an error if config is missing or invalid for the API server.
+// Call at server startup; exit on error rather than using fallback defaults.
+func ValidateForServer() error {
+	cfg := Load()
+	if loadedFrom == "" {
+		return fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
+	}
+	if cfg.Features.PrecomputeTimeoutMs < 0 {
+		return fmt.Errorf("features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d", cfg.Features.PrecomputeTimeoutMs)
+	}
+	return nil
 }
 
 // DefaultCricsheetDir returns the configured cricsheet input dir or a sensible built-in default.
