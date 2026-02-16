@@ -95,6 +95,11 @@ def _rows_to_xy(
     Used by both batting and bowling to avoid duplicating feature cleaning,
     dropna, and numeric coercion. Aligns with offline train_batting/train_bowling
     semantics where applicable.
+
+    ML practices: drop rows with missing required features (no fill); targets Y
+    in raw units; feature order must match configs/feature_vectors.json for the
+    model kind. Input scaling (StandardScaler) is applied in _train_*_in_memory.
+    See docs/ML_DATA_AND_NORMALIZATION.md.
     """
     if not headers or not rows:
         return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
@@ -181,6 +186,7 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
 
 
 def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
+    """Train batting model: normalize X with StandardScaler (fit on this data only), Y in raw units."""
     params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
@@ -196,6 +202,7 @@ def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
 
 
 def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
+    """Train bowling model: normalize X with StandardScaler (fit on this data only), Y in raw units."""
     params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)

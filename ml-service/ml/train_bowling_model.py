@@ -59,15 +59,12 @@ def run_training():
     X = input_data[x_cols].copy()
     y = input_data[y_cols].copy()
 
+    # Impute: fill missing numeric values. Same strategy as train_bowling/train_on_the_fly.
     X = X.fillna(0.0)
 
+    # Normalize inputs only (StandardScaler). Targets Y in raw units. See docs/ML_DATA_AND_NORMALIZATION.md.
     input_scaler = preprocessing.StandardScaler().fit(X)
     X_scaled = input_scaler.transform(X)
-    X = pd.DataFrame(data=X_scaled, columns=X.columns)
-
-    output_scaler = preprocessing.StandardScaler().fit(y)
-    y_scaled = output_scaler.transform(y)
-    y = pd.DataFrame(data=y_scaled, columns=y.columns)
 
     params = get_training_params("bowling")
     regr = RandomForestRegressor(
@@ -76,7 +73,7 @@ def run_training():
         random_state=params["random_state"],
     )
     predictor = MultiOutputRegressor(regr)
-    predictor.fit(X, y)
+    predictor.fit(X_scaled, y)
 
     output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", default_artifacts_dir())
     os.makedirs(output_dir, exist_ok=True)
@@ -89,11 +86,6 @@ def run_training():
     joblib.dump(
         input_scaler,
         os.path.join(output_dir, "bowling_scaler.joblib"),
-        compress=compress,
-    )
-    joblib.dump(
-        output_scaler,
-        os.path.join(output_dir, "bowling_output_scaler.joblib"),
         compress=compress,
     )
 

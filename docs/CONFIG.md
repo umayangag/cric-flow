@@ -63,6 +63,8 @@ Keys:
       - Same keys as `batting`. Add further keys (e.g. `fielding`, `win`) when those models are implemented.
   - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
 
+For data normalization, feature computation, and ML practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
+
 Environment variables:
 - `ML_SERVICE_CONFIG` — path to an alternate `config.json`.
 - `ML_SERVICE_OUTPUT_DIR` — artifacts directory override at runtime.

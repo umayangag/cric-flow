@@ -51,6 +51,8 @@ Each block has: `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (
 
 Additional models (fielding, extras, win) have their own config blocks and artifacts; see **docs/ML_MODELS_COMBINED.md** for training data, training scripts, and how all models are combined for final prediction.
 
+For data normalization, feature computation, and ML best practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
+
 ## Unified cross-format datasets (new)
 The Go exporter now emits unified, cross-format CSVs that include leakage-free, time-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
 

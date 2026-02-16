@@ -76,6 +76,10 @@ def rows_to_xy_by_format(
     for c in FIELDING_FEATURE_COLS + FIELDING_TARGET_COLS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
+    # Impute missing feature values with 0 (align with train_on_the_fly dropna or fillna strategy)
+    for c in FIELDING_FEATURE_COLS:
+        if c in df.columns:
+            df[c] = df[c].fillna(0.0)
     if "format_code" not in df.columns:
         # Single format: use "_ALL_" as key
         df = df.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in df.columns])
@@ -104,7 +108,11 @@ def train_and_save(
     out_dir: str,
     format_code: str,
 ) -> None:
-    """Train fielding model and save scaler + model for format_code."""
+    """Train fielding model and save scaler + model for format_code.
+
+    Input normalization (StandardScaler) on X only; targets Y in raw units.
+    See docs/ML_DATA_AND_NORMALIZATION.md.
+    """
     params = get_training_params("fielding")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)

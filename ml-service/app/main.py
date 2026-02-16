@@ -192,6 +192,7 @@ def _predict_players_with_features(
         bat_features.append(build_batting_features_from_map(pid, cutoff, fmt_upper, fm))
         bowl_features.append(build_bowling_features_from_map(pid, cutoff, fmt_upper, fm))
 
+    # Feature order must match training (configs/feature_vectors.json). Normalize with same scaler as at training.
     X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
     if scaler_bat is not None:
         X_bat = scaler_bat.transform(X_bat)
