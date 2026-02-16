@@ -1,5 +1,5 @@
 {
   "batting": ["batting_consistency", "batting_form", "batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity", "batting_inning", "batting_session", "toss", "venue", "opposition", "season"],
   "bowling": ["bowling_consistency", "bowling_form", "bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity", "batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season"],
-  "fielding": ["fielding_consistency", "fielding_form", "fielding_temp", "fielding_wind", "fielding_rain", "fielding_humidity", "fielding_cloud", "fielding_pressure", "fielding_viscosity", "fielding_inning", "fielding_toss", "fielding_venue", "fielding_opposition", "fielding_season"]
+  "fielding": ["fielding_consistency", "fielding_form", "fielding_temp", "fielding_wind", "fielding_rain", "fielding_humidity", "fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition", "season_id"]
 }
