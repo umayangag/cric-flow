@@ -92,8 +92,6 @@ def build_batting_features_from_map(
 ) -> BattingFeatures:
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
-    defs = _feature_defaults()
-    c = defs.get("common", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     return BattingFeatures(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
