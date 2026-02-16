@@ -150,12 +150,12 @@ train-bowling:
 GO_APP_URL ?= http://localhost:8080
 CUTOFF ?=
 train-fielding:
-	@if [ -z "$(CUTOFF)" ] && [ -z "$$FIELDING_CSV" ]; then \
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(FIELDING_CSV)" ]; then \
 	  echo "Set CUTOFF=<RFC3339> (e.g. 2025-01-01T00:00:00Z) and optionally GO_APP_URL=, or set FIELDING_CSV=<path>. Example: make train-fielding CUTOFF=2025-01-01T00:00:00Z"; \
 	  exit 1; \
 	fi
-	@if [ -n "$$FIELDING_CSV" ]; then \
-	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding --csv "$$FIELDING_CSV"; \
+	@if [ -n "$(FIELDING_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding --csv "$(FIELDING_CSV)"; \
 	else \
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi

@@ -276,6 +276,11 @@ const EvaluateDbTab: React.FC = () => {
               clearInterval(pollIntervalRef.current);
               pollIntervalRef.current = null;
             }
+            try {
+              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
           } else if (status.status === 'error') {
             setEvaluating(false);
             setError(status.error ?? 'Unknown error');
