@@ -1,3 +1,19 @@
+// --- Upcoming match prediction ---
+export type PredictTeamSelectedPlayer = {
+  player_id: number;
+  player_name: string;
+  runs: number;
+  wickets: number;
+  economy: number;
+  catches: number;
+  run_outs: number;
+};
+
+export type PredictTeamSelectionResponse = {
+  team1: PredictTeamSelectedPlayer[];
+  team2: PredictTeamSelectedPlayer[];
+};
+
 export type HealthResponse = {
   status: string;
   loaded_batting_formats: string[];

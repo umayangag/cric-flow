@@ -399,6 +399,81 @@ var requiredPrecomputedKeysNoMatch = []string{
 	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
 }
 
+// ComputeFeaturesAtCutoffForFutureMatch returns a feature map per player for a hypothetical future match.
+// Used when predicting team selection: same venue and opposition for all players (the opposition team).
+// Missing precomputed values are filled with 0 to support new/auction players with no prior history.
+func ComputeFeaturesAtCutoffForFutureMatch(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	venueID *int64,
+	oppositionID int64,
+	seasonID *int64,
+	playerIDs []int64,
+) (map[int64]map[string]float64, error) {
+	if len(playerIDs) == 0 {
+		return map[int64]map[string]float64{}, nil
+	}
+	formatID, err := db.GetGlobalCache().GetFormatID(ctx, strings.TrimSpace(strings.ToUpper(format)))
+	if err != nil {
+		return nil, fmt.Errorf("resolve format for features: %w", err)
+	}
+	playerOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
+	var oppPtr *int64
+	if oppositionID != 0 {
+		oppPtr = &oppositionID
+	}
+	for _, pid := range playerIDs {
+		playerOpps[pid] = struct{ BattingOpp, BowlingOpp *int64 }{
+			BattingOpp: oppPtr,
+			BowlingOpp: oppPtr,
+		}
+	}
+	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, formatID, venueID, playerOpps, playerIDs)
+	if err != nil {
+		return nil, err
+	}
+	if precomp == nil {
+		precomp = make(map[int64]map[string]float64)
+	}
+
+	season := 0.0
+	if seasonID != nil && *seasonID != 0 {
+		season = float64(*seasonID)
+	}
+
+	out := make(map[int64]map[string]float64)
+	for _, pid := range playerIDs {
+		pc := precomp[pid]
+		if pc == nil {
+			pc = make(map[string]float64)
+		}
+		get := func(k string) float64 {
+			if v, ok := pc[k]; ok {
+				return v
+			}
+			return 0
+		}
+		feats := map[string]float64{
+			"batting_form":        get("batting_form"),
+			"batting_consistency": get("batting_consistency"),
+			"batting_venue":       get("batting_venue"),
+			"batting_opposition":  get("batting_opposition"),
+			"bowling_form":        get("bowling_form"),
+			"bowling_consistency": get("bowling_consistency"),
+			"bowling_venue":       get("bowling_venue"),
+			"bowling_opposition":  get("bowling_opposition"),
+			"venue":               get("venue"),
+			"opposition":          get("opposition"),
+			"season":              season,
+			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+		}
+		out[pid] = feats
+	}
+	return out, nil
+}
+
 func missingPrecomputedKeys(precomp map[int64]map[string]float64, playerIDs []int64, keys []string) []string {
 	var missing []string
 	for _, pid := range playerIDs {

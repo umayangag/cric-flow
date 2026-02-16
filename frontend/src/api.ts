@@ -7,6 +7,7 @@ import type {
   Migration,
   Suggestion,
   PaginatedResponse,
+  PredictTeamSelectionResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -262,5 +263,27 @@ export const api = {
     const u = new URL('/api/backtest/evaluate-status', BASE_API_URL);
     u.searchParams.set('job_id', jobId);
     return httpApi(u.toString());
+  },
+
+  /**
+   * Predict best 11 for each team for an upcoming match.
+   * Requires future date within max limit (e.g. 2 weeks) for accurate predictions.
+   */
+  predictTeamSelection(params: {
+    format: string;
+    team1: string;
+    team2: string;
+    venue?: string;
+    match_date: string; // YYYY-MM-DD or RFC3339
+    season_id?: number;
+    extra_team1?: number[];
+    extra_team2?: number[];
+    min_bowlers?: number;
+    require_keeper?: boolean;
+  }): Promise<PredictTeamSelectionResponse> {
+    return httpApi('/api/predict/team-selection', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
   },
 };

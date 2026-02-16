@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 )
 
 // MatchContext carries the minimal fields needed for feature building.
@@ -139,6 +140,101 @@ func GetPlayerVenueEffectFmt(
 		bowl = w.Float64
 	}
 	return bat, bowl, nil
+}
+
+// ListPlayerPoolByTeam returns players who have played for the given team (opposition name) in the format,
+// with at least one batting or bowling record before the cutoff date. Uses feature snapshots for form/consistency
+// when available. Optionally include extra player IDs (e.g. IPL auction players with no prior team history).
+func ListPlayerPoolByTeam(
+	ctx context.Context,
+	formatCode string,
+	teamName string,
+	cutoff time.Time,
+	extraPlayerIDs []int64,
+) ([]PlayerPoolRow, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	formatID, err := GetOrCreateMatchFormat(ctx, formatCode)
+	if err != nil {
+		return nil, err
+	}
+	oppID, err := GetOrCreateOpposition(ctx, teamName)
+	if err != nil {
+		return nil, err
+	}
+	cutoffDate := cutoff.Truncate(24 * time.Hour)
+
+	// Players who have batted or bowled for this team (opposition) in matches before cutoff
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT p.id, p.player_name, p.is_wicket_keeper,
+		       0::real AS batting_consistency, 0::real AS bowling_consistency
+		FROM player p
+		WHERE p.is_retired = 0
+		  AND (
+		    p.id IN (
+		      SELECT bd.player_id FROM batting_data bd
+		      JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		      JOIN match m ON m.match_id = bd.match_id
+		      WHERE m.format_id = $1 AND m.match_date < $2
+		        AND mi.batting_team_opposition_id = $3
+		    )
+		    OR p.id IN (
+		      SELECT bw.player_id FROM bowling_data bw
+		      JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
+		      JOIN match m ON m.match_id = bw.match_id
+		      WHERE m.format_id = $1 AND m.match_date < $2
+		        AND mi.bowling_team_opposition_id = $3
+		    )
+		  )
+		ORDER BY p.player_name
+	`, formatID, cutoffDate, oppID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seen := make(map[int64]bool)
+	var out []PlayerPoolRow
+	for rows.Next() {
+		var r PlayerPoolRow
+		if err := rows.Scan(&r.PlayerID, &r.PlayerName, &r.IsWicketKeeper, &r.BattingConsistency, &r.BowlingConsistency); err != nil {
+			return nil, err
+		}
+		if seen[r.PlayerID] {
+			continue
+		}
+		seen[r.PlayerID] = true
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Add extra player IDs (e.g. new auction players) if not already in pool
+	for _, pid := range extraPlayerIDs {
+		if seen[pid] {
+			continue
+		}
+		var name string
+		var keeper int16
+		if err := Pool.QueryRow(ctx, `SELECT player_name, is_wicket_keeper FROM player WHERE id = $1`, pid).Scan(&name, &keeper); err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, err
+		}
+		seen[pid] = true
+		out = append(out, PlayerPoolRow{
+			PlayerID:           pid,
+			PlayerName:         name,
+			IsWicketKeeper:     keeper,
+			BattingConsistency: sql.NullFloat64{},
+			BowlingConsistency: sql.NullFloat64{},
+		})
+	}
+
+	return out, nil
 }
 
 // GetPlayerOppositionEffectFmt returns batting_opposition and bowling_opposition for player vs opposition/format.

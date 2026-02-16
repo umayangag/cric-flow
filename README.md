@@ -40,7 +40,33 @@ Alternative (CSV pool path, prototype-style):
 # generate pool.csv with the Python helper and then call the win model via service
 make team-predictor MATCH=<match_id>
 ```
-- Team selection parameters can be configured in `go-app/config.json` (sections `team`, `predictor`, and `selection`) or overridden via CLI flags to `go-app/cmd/team-select`. 
+- Team selection parameters can be configured in `go-app/config.json` (sections `team`, `predictor`, and `selection`) or overridden via CLI flags to `go-app/cmd/team-select`.
+
+### 11) Future match team selection (best 11 per team)
+API to select the best 11 players for each team for an upcoming match. Uses ML predictions (batting, bowling, fielding) with venue, opposition, and match-date context. Player pool: players who have played for that team; optionally include extra player IDs (e.g. IPL auction players).
+
+**Endpoint:** `POST /api/predict/team-selection` (or `GET` with query params)
+
+**Request body (JSON) or query params:**
+- `format` (required): e.g. T20, ODI
+- `team1`, `team2` (required): team names
+- `venue` (optional): venue name for venue-specific features
+- `match_date` (required): RFC3339 or YYYY-MM-DD
+- `season_id` (optional)
+- `extra_team1`, `extra_team2` (optional): player IDs to add to pool (e.g. new auction players)
+- `min_bowlers` (optional, default 5)
+- `require_keeper` (optional, default true)
+
+**Response:** `{ "team1": [...], "team2": [...] }` — each array has 11 selected players with predicted runs, wickets, economy, catches, run_outs.
+
+Example:
+```bash
+curl -X POST -H "Content-Type: application/json" -H "X-API-Key: $API_KEY" \
+  -d '{"format":"T20","team1":"India","team2":"Australia","venue":"Wankhede","match_date":"2025-03-15"}' \
+  http://localhost:8080/api/predict/team-selection
+```
+
+Prerequisites: precomputed features (run `make precompute-all` or equivalent), ML service with loaded artifacts, imported match data.
 
 ## System architecture
 For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:

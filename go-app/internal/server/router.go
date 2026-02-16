@@ -53,6 +53,9 @@ func NewRouter(a *App) http.Handler {
 	// ML predictions
 	admin.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost, http.MethodOptions)
+	// Future match team selection: best 11 for each team
+	admin.HandleFunc("/api/predict/team-selection", a.predictTeamSelectionHandler).
+		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
 
 	// Backtesting endpoints
 	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
