@@ -11,6 +11,11 @@
       "extras": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3},
       "win": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3}
     },
+    "tuning": {
+      "cv_splits": 5,
+      "n_iter": 25,
+      "scoring": "neg_mean_absolute_error"
+    },
     "cv_splits": 5,
     "test_size": 0.2,
     "learning_rate": 0.1,

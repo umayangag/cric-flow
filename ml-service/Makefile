@@ -8,7 +8,7 @@ UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 COV_MIN?=80
 
-.PHONY: all venv install run train-all export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_formatters
+.PHONY: all venv install run train-all auto-tune export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_formatters
 
 all: run
 
@@ -32,6 +32,21 @@ run:
 train-all:
 	$(PY) ml/train_batting_model.py
 	$(PY) ml/train_bowling_model.py
+
+# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
+# Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
+MODEL ?= batting
+FORMAT ?=
+ALL_FORMATS ?=
+AUTO_TUNE_ARGS := --model $(MODEL)
+ifneq ($(FORMAT),)
+AUTO_TUNE_ARGS += --format $(FORMAT)
+endif
+ifeq ($(ALL_FORMATS),1)
+AUTO_TUNE_ARGS += --all-formats
+endif
+auto-tune: venv
+	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
 
 # Generate ml/pool.csv for a given match id
 # Usage: make export-pool MATCH=<match_id>
@@ -132,6 +147,7 @@ help:
 	@echo "  run                Start FastAPI with uvicorn (reload)"
 	@echo "  export-pool        Generate ml/pool.csv for a match (MATCH=<id>)"
 	@echo "  train-all          Train batting and bowling models"
+	@echo "  auto-tune          Auto-tune model(s): best algorithm + hyperparameters (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  validate-exports   Validate training exports (all formats, golden)"

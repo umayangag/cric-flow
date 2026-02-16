@@ -77,6 +77,7 @@ make train-all
 python3 -m ml.train_batting_model
 python3 -m ml.train_bowling_model
 ```
+- Auto-tune models (find best algorithm and hyperparameters per model/format): see **docs/ML_AUTO_TUNE.md**. Example: `make auto-tune MODEL=batting FORMAT=T20` or `make auto-tune MODEL=all ALL_FORMATS=1`.
 - Generate a player pool CSV for team prediction (writes to `ml/pool.csv`):
 ```bash
 # requires DB to be populated and accessible via env (POSTGRES_*)

@@ -125,3 +125,20 @@ def get_training_params(model: str) -> Dict[str, Any]:
         "random_state": random_state,
         "joblib_compress": joblib_compress,
     }
+
+
+def get_tuning_config() -> Dict[str, Any]:
+    """
+    Load tuning config from ml.tuning (optional). Used by auto_tune.
+    Returns: cv_splits, n_iter, scoring. Missing keys get defaults.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    tuning = ml.get("tuning") if isinstance(ml, dict) else None
+    if not isinstance(tuning, dict):
+        return {"cv_splits": 5, "n_iter": 25, "scoring": "neg_mean_absolute_error"}
+    return {
+        "cv_splits": int(tuning.get("cv_splits", 5)),
+        "n_iter": int(tuning.get("n_iter", 25)),
+        "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
+    }
