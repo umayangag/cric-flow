@@ -293,19 +293,21 @@ const EvaluateDbTab: React.FC = () => {
         })
         .catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
+          setEvaluating(false);
           if (msg.includes('404') || msg.includes('NOT_FOUND')) {
-            setEvaluating(false);
             setError('Evaluation job no longer available (server may have restarted).');
-            setStatusMessage('');
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            try {
-              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-            } catch {
-              /* ignore */
-            }
+          } else {
+            setError(msg || 'Failed to fetch evaluation status.');
+          }
+          setStatusMessage('');
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          try {
+            localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+          } catch {
+            /* ignore */
           }
         });
     };

@@ -276,10 +276,21 @@ func ListBattingBeforeBulk(ctx context.Context, keys []HistQueryKey) (map[HistQu
 			maxCutoff = k.T
 		}
 	}
-	var pids, fids []int64
+	var pfPairs []struct{ P, F int64 }
 	for pf := range seenPF {
-		pids = append(pids, pf.P)
-		fids = append(fids, pf.F)
+		pfPairs = append(pfPairs, pf)
+	}
+	sort.Slice(pfPairs, func(i, j int) bool {
+		if pfPairs[i].P != pfPairs[j].P {
+			return pfPairs[i].P < pfPairs[j].P
+		}
+		return pfPairs[i].F < pfPairs[j].F
+	})
+	pids := make([]int64, len(pfPairs))
+	fids := make([]int64, len(pfPairs))
+	for i, pf := range pfPairs {
+		pids[i] = pf.P
+		fids[i] = pf.F
 	}
 	q := `SELECT b.player_id, m.format_id, m.match_date, COALESCE(b.runs,0)::float8,
 		COALESCE(mi.bowling_team_opposition_id, 0),
