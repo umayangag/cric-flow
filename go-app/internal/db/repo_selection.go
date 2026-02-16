@@ -52,14 +52,11 @@ type PlayerPoolRow struct {
 	BowlingConsistency sql.NullFloat64
 }
 
-// ListPlayerPoolConsistency returns non-retired players with any non-zero consistency for the given season/format.
+// ListPlayerPoolConsistency returns non-retired players with any non-zero consistency for the format.
+// Uses feature_consistency_snapshots (latest snapshot per player/format); seasonName is ignored.
 func ListPlayerPoolConsistency(ctx context.Context, seasonName, formatCode string) ([]PlayerPoolRow, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
-	}
-	sid, err := GetOrCreateSeason(ctx, seasonName)
-	if err != nil {
-		return nil, err
 	}
 	fid, err := GetOrCreateMatchFormat(ctx, formatCode)
 	if err != nil {
@@ -67,13 +64,18 @@ func ListPlayerPoolConsistency(ctx context.Context, seasonName, formatCode strin
 	}
 	rows, err := Pool.Query(ctx, `
 		SELECT p.id, p.player_name, p.is_wicket_keeper,
-		       COALESCE(pc.batting_consistency,0)::real AS batting_consistency,
-		       COALESCE(pc.bowling_consistency,0)::real AS bowling_consistency
+		       COALESCE(latest.batting_value,0)::real AS batting_consistency,
+		       COALESCE(latest.bowling_value,0)::real AS bowling_consistency
 		FROM player p
-		LEFT JOIN player_consistency_data_fmt pc
-		  ON pc.player_id = p.id AND pc.season_id = $1 AND pc.format_id = $2
-		WHERE p.is_retired = 0 AND (COALESCE(pc.batting_consistency,0) != 0 OR COALESCE(pc.bowling_consistency,0) != 0)
-	`, sid, fid)
+		LEFT JOIN LATERAL (
+			SELECT batting_value, bowling_value
+			FROM feature_consistency_snapshots
+			WHERE player_id = p.id AND format_id = $1 AND scope = 'overall' AND scope_id IS NULL
+			ORDER BY as_of_date DESC
+			LIMIT 1
+		) latest ON true
+		WHERE p.is_retired = 0 AND (COALESCE(latest.batting_value,0) != 0 OR COALESCE(latest.bowling_value,0) != 0)
+	`, fid)
 	if err != nil {
 		return nil, err
 	}
@@ -89,16 +91,20 @@ func ListPlayerPoolConsistency(ctx context.Context, seasonName, formatCode strin
 	return out, rows.Err()
 }
 
-// GetPlayerFormFmt returns batting and bowling form for player in given season/format.
+// GetPlayerFormFmt returns batting and bowling form for player/format from feature_form_snapshots.
+// Uses the latest snapshot (scope=overall); seasonID is ignored.
 func GetPlayerFormFmt(ctx context.Context, playerID, seasonID, formatID int64) (bat float64, bowl float64, err error) {
 	if Pool == nil {
 		return 0, 0, errors.New("db pool not initialized")
 	}
 	var b, w sql.NullFloat64
 	err = Pool.QueryRow(ctx, `
-		SELECT batting_form, bowling_form FROM player_form_data_fmt
-		WHERE player_id=$1 AND season_id=$2 AND format_id=$3
-	`, playerID, seasonID, formatID).Scan(&b, &w)
+		SELECT batting_value, bowling_value
+		FROM feature_form_snapshots
+		WHERE player_id = $1 AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL
+		ORDER BY as_of_date DESC
+		LIMIT 1
+	`, playerID, formatID).Scan(&b, &w)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, 0, nil
@@ -114,7 +120,7 @@ func GetPlayerFormFmt(ctx context.Context, playerID, seasonID, formatID int64) (
 	return bat, bowl, nil
 }
 
-// GetPlayerVenueEffectFmt returns batting_venue and bowling_venue for player at venue/format.
+// GetPlayerVenueEffectFmt returns batting and bowling venue effect from feature_form_snapshots (scope=venue).
 func GetPlayerVenueEffectFmt(
 	ctx context.Context,
 	playerID, venueID, formatID int64,
@@ -124,9 +130,12 @@ func GetPlayerVenueEffectFmt(
 	}
 	var b, w sql.NullFloat64
 	err = Pool.QueryRow(ctx, `
-		SELECT batting_venue, bowling_venue FROM player_venue_data_fmt
-		WHERE player_id=$1 AND venue_id=$2 AND format_id=$3
-	`, playerID, venueID, formatID).Scan(&b, &w)
+		SELECT batting_value, bowling_value
+		FROM feature_form_snapshots
+		WHERE player_id = $1 AND format_id = $2 AND scope = 'venue' AND scope_id = $3
+		ORDER BY as_of_date DESC
+		LIMIT 1
+	`, playerID, formatID, venueID).Scan(&b, &w)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, 0, nil
@@ -237,7 +246,7 @@ func ListPlayerPoolByTeam(
 	return out, nil
 }
 
-// GetPlayerOppositionEffectFmt returns batting_opposition and bowling_opposition for player vs opposition/format.
+// GetPlayerOppositionEffectFmt returns batting and bowling opposition effect from feature_form_snapshots (scope=opposition).
 func GetPlayerOppositionEffectFmt(
 	ctx context.Context,
 	playerID, oppositionID, formatID int64,
@@ -247,9 +256,12 @@ func GetPlayerOppositionEffectFmt(
 	}
 	var b, w sql.NullFloat64
 	err = Pool.QueryRow(ctx, `
-		SELECT batting_opposition, bowling_opposition FROM player_opposition_data_fmt
-		WHERE player_id=$1 AND opposition_id=$2 AND format_id=$3
-	`, playerID, oppositionID, formatID).Scan(&b, &w)
+		SELECT batting_value, bowling_value
+		FROM feature_form_snapshots
+		WHERE player_id = $1 AND format_id = $2 AND scope = 'opposition' AND scope_id = $3
+		ORDER BY as_of_date DESC
+		LIMIT 1
+	`, playerID, formatID, oppositionID).Scan(&b, &w)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, 0, nil

@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -38,11 +40,11 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // precomputeHandler triggers precompute with optional filters.
-// Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}
+// Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}. Empty body is allowed (defaults to all seasons/formats).
 func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	var body precomputeRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		slog.Error("error decoding the response", slog.Any("err", err))
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		slog.Error("error decoding precompute request body", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
@@ -78,8 +80,8 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 // Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
 func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		slog.Error("error decoding the response", slog.Any("err", err))
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		slog.Error("error decoding import request body", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}

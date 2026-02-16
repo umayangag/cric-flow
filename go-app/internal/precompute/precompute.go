@@ -1,7 +1,7 @@
 // Package precompute orchestrates precompute phases and maintains in-memory
-// status for long-running feature computations. The code in this package is
-// intentionally split into small, descriptive helpers to make the execution
-// flow easier to follow for new developers.
+// status for long-running feature computations. Pipeline precompute uses the
+// snapshot tables (feature_form_snapshots, feature_consistency_snapshots) via
+// the precompute-features runner; the legacy _fmt tables are no longer used.
 package precompute
 
 import (
@@ -10,35 +10,58 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 )
 
+const defaultEWMAlpha = 0.3
+const defaultConsistencyLastN = 10
+
 // Run orchestrates precompute for the given season and list of format codes.
-// If season is empty, computes for all seasons. If formats is empty, computes for all formats.
+// It populates feature_form_snapshots and feature_consistency_snapshots (and
+// triggers sequence features) per format. If formats is empty, computes for all formats.
+// Season is ignored; the snapshot runner replays all matches chronologically.
 func Run(parent context.Context, season string, formats []string) error {
 	ctx := parent
-	if d := time.Duration(config.Load().Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
+	cfg := config.Load()
+	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(parent, d)
 		defer cancel()
 	}
-	// ensure DB connection
 	if db.Pool == nil {
 		if _, err := db.Connect(ctx); err != nil {
 			return err
 		}
 	}
-	// Discover formats if not provided
 	codes, err := discoverFormatCodes(ctx, formats)
 	if err != nil {
 		return err
 	}
 
-	// Update status tracker
 	setStart(season, codes)
 	defer setDone()
 
+	alpha := defaultEWMAlpha
+	if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
+		alpha = cfg.Features.EWMAlpha
+	}
+	lastN := defaultConsistencyLastN
+	if cfg.Features.ConsistencyLastN > 0 {
+		lastN = cfg.Features.ConsistencyLastN
+	}
+	windowN := 0
+	if cfg.Features.HistoryWindowMatches > 0 {
+		windowN = cfg.Features.HistoryWindowMatches
+	}
+
+	runner := pfcmd.NewRunner()
 	for _, code := range codes {
-		if err := runPhasesForFormat(ctx, season, code); err != nil {
+		setPhase("form")
+		formatID, err := db.GetMatchFormatIDByCode(ctx, code)
+		if err != nil {
+			return err
+		}
+		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
 			return err
 		}
 	}
