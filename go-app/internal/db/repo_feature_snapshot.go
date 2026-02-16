@@ -215,6 +215,33 @@ func ListBowlingBefore(
 	return res, rows.Err()
 }
 
+// ListFieldingBefore returns fielding involvements (catches + run_outs*1.5 + stumpings) per match
+// for a player strictly before cutoff, in the given format.
+func ListFieldingBefore(ctx context.Context, playerID int64, cutoff time.Time, formatID int64) ([]InnVal, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	rows, err := Pool.Query(ctx, `SELECT m.match_date,
+		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0)*1.5 + COALESCE(fd.stumpings,0))::float8
+		FROM fielding_data fd
+		JOIN match m ON m.match_id = fd.match_id
+		WHERE fd.player_id = $1 AND m.match_date < $2 AND m.format_id = $3
+		ORDER BY m.match_date ASC`, playerID, cutoff, formatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var res []InnVal
+	for rows.Next() {
+		var iv InnVal
+		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
+			return nil, err
+		}
+		res = append(res, iv)
+	}
+	return res, rows.Err()
+}
+
 // HistQueryKey identifies a history lookup for bulk fetch: PlayerID, Cutoff, FormatID, OppID (0=overall), VenueID (0=overall).
 type HistQueryKey struct {
 	P int64

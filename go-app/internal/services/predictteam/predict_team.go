@@ -11,21 +11,35 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
 )
 
+// WeatherInput holds optional weather conditions for the match (forecast or historical average).
+// When provided, these override the default 0 values in feature computation.
+type WeatherInput struct {
+	Temp     float64 `json:"temp,omitempty"`     // Celsius
+	Humidity float64 `json:"humidity,omitempty"` // 0-100
+	Wind     float64 `json:"wind,omitempty"`
+	Rain     float64 `json:"rain,omitempty"`
+	Cloud    float64 `json:"cloud,omitempty"`
+	Pressure float64 `json:"pressure,omitempty"`
+}
+
 // Input defines the request for future-match team selection.
 type Input struct {
-	Format        string    `json:"format"`
-	Team1         string    `json:"team1"`
-	Team2         string    `json:"team2"`
-	Venue         string    `json:"venue,omitempty"` // venue name; empty = unknown venue
-	MatchDate     time.Time `json:"match_date"`
-	SeasonID      *int64    `json:"season_id,omitempty"`
-	ExtraTeam1    []int64   `json:"extra_team1,omitempty"`    // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2    []int64   `json:"extra_team2,omitempty"`    // extra player IDs for team2
-	MinBowlers    int       `json:"min_bowlers,omitempty"`    // default 5
-	RequireKeeper bool      `json:"require_keeper,omitempty"` // default true
+	Format              string        `json:"format"`
+	Team1               string        `json:"team1"`
+	Team2               string        `json:"team2"`
+	Venue               string        `json:"venue,omitempty"` // venue name; empty = unknown venue
+	MatchDate           time.Time     `json:"match_date"`
+	SeasonID            *int64        `json:"season_id,omitempty"`
+	Weather             *WeatherInput `json:"weather,omitempty"`               // optional; when set, used in features
+	ExtraTeam1          []int64       `json:"extra_team1,omitempty"`           // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2          []int64       `json:"extra_team2,omitempty"`           // extra player IDs for team2
+	OppositionPlayerIDs []int64       `json:"opposition_player_ids,omitempty"` // optional; for future batter-bowler matchup features
+	MinBowlers          int           `json:"min_bowlers,omitempty"`           // default 5
+	RequireKeeper       bool          `json:"require_keeper,omitempty"`        // default true
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -78,6 +92,11 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
 
+	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
+	if fmtErr != nil {
+		return nil, fmt.Errorf("resolve format: %w", fmtErr)
+	}
+
 	// Resolve venue ID
 	var venueID *int64
 	if input.Venue != "" {
@@ -112,6 +131,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	for _, p := range pool1 {
 		ids1 = append(ids1, p.PlayerID)
 	}
+	weatherOpt := toWeatherOverride(input.Weather)
 	feats1, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
 		ctx,
 		cutoff,
@@ -120,6 +140,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		opp2ID,
 		input.SeasonID,
 		ids1,
+		weatherOpt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("team1 features: %w", err)
@@ -128,6 +149,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if err != nil {
 		return nil, fmt.Errorf("team1 predict: %w", err)
 	}
+	enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
 
 	// Features and predictions for team2 (opposition = team1)
 	ids2 := make([]int64, 0, len(pool2))
@@ -142,6 +164,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		opp1ID,
 		input.SeasonID,
 		ids2,
+		weatherOpt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("team2 features: %w", err)
@@ -150,6 +173,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if err != nil {
 		return nil, fmt.Errorf("team2 predict: %w", err)
 	}
+	enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
 
 	// Build teamselect pool and select
 	tsPool1 := buildTeamSelectPool(pool1, preds1)
@@ -255,7 +279,59 @@ func normalizeBowlScore(wickets, economy float64) float64 {
 	return (wickPart + econPart) / 2
 }
 
+func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
+	if w == nil {
+		return nil
+	}
+	return &exportqueries.WeatherOverride{
+		Temp:     w.Temp,
+		Humidity: w.Humidity,
+		Wind:     w.Wind,
+		Rain:     w.Rain,
+		Cloud:    w.Cloud,
+		Pressure: w.Pressure,
+	}
+}
+
 func normalizeFieldScore(catches, runOuts float64) float64 {
 	// Catches + run_outs, typical max ~3-4 per match
 	return math.Min(1, (catches+runOuts*1.5)/5)
+}
+
+// enrichFieldingFromHistory overwrites Catches and RunOuts in preds using historical
+// fielding form (EWM of involvements). ML models do not predict fielding, so we use
+// historical average as the expected contribution.
+func enrichFieldingFromHistory(
+	ctx context.Context,
+	preds map[int64]PlayerPred,
+	playerIDs []int64,
+	cutoff time.Time,
+	formatID int64,
+) {
+	const ewmAlpha = 0.3
+	for _, pid := range playerIDs {
+		hist, err := db.ListFieldingBefore(ctx, pid, cutoff, formatID)
+		if err != nil || len(hist) == 0 {
+			continue
+		}
+		inn := make([]features.Innings, 0, len(hist))
+		for _, iv := range hist {
+			if iv.MatchDate.Before(cutoff) {
+				inn = append(inn, features.Innings{Date: iv.MatchDate, Value: iv.Value})
+			}
+		}
+		inn = features.SortAndClip(inn, cutoff)
+		if len(inn) == 0 {
+			continue
+		}
+		form, _ := features.EWM(inn, ewmAlpha)
+		// Typical ratio: ~2 catches per run_out. Split form into catches and run_outs.
+		catches := form * 0.7
+		runOuts := form * 0.3
+		if p, ok := preds[pid]; ok {
+			p.Catches = math.Max(0, catches)
+			p.RunOuts = math.Max(0, runOuts)
+			preds[pid] = p
+		}
+	}
 }

@@ -46,12 +46,20 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Format        string  `json:"format"`
-		Team1         string  `json:"team1"`
-		Team2         string  `json:"team2"`
-		Venue         string  `json:"venue"`
-		MatchDate     string  `json:"match_date"` // RFC3339 or YYYY-MM-DD
-		SeasonID      *int64  `json:"season_id"`
+		Format    string `json:"format"`
+		Team1     string `json:"team1"`
+		Team2     string `json:"team2"`
+		Venue     string `json:"venue"`
+		MatchDate string `json:"match_date"` // RFC3339 or YYYY-MM-DD
+		SeasonID  *int64 `json:"season_id"`
+		Weather   *struct {
+			Temp     float64 `json:"temp"`
+			Humidity float64 `json:"humidity"`
+			Wind     float64 `json:"wind"`
+			Rain     float64 `json:"rain"`
+			Cloud    float64 `json:"cloud"`
+			Pressure float64 `json:"pressure"`
+		} `json:"weather"`
 		ExtraTeam1    []int64 `json:"extra_team1"`
 		ExtraTeam2    []int64 `json:"extra_team2"`
 		MinBowlers    int     `json:"min_bowlers"`
@@ -119,6 +127,16 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		ExtraTeam2:    body.ExtraTeam2,
 		MinBowlers:    body.MinBowlers,
 		RequireKeeper: true,
+	}
+	if body.Weather != nil {
+		input.Weather = &predictteam.WeatherInput{
+			Temp:     body.Weather.Temp,
+			Humidity: body.Weather.Humidity,
+			Wind:     body.Weather.Wind,
+			Rain:     body.Weather.Rain,
+			Cloud:    body.Weather.Cloud,
+			Pressure: body.Weather.Pressure,
+		}
 	}
 	if body.RequireKeeper != nil {
 		input.RequireKeeper = *body.RequireKeeper

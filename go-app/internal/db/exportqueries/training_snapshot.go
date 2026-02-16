@@ -399,9 +399,15 @@ var requiredPrecomputedKeysNoMatch = []string{
 	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
 }
 
+// WeatherOverride optionally overrides weather feature values (otherwise 0) for future-match prediction.
+type WeatherOverride struct {
+	Temp, Humidity, Wind, Rain, Cloud, Pressure float64
+}
+
 // ComputeFeaturesAtCutoffForFutureMatch returns a feature map per player for a hypothetical future match.
 // Used when predicting team selection: same venue and opposition for all players (the opposition team).
 // Missing precomputed values are filled with 0 to support new/auction players with no prior history.
+// When weather is non-nil, its values override the default 0 for batting_* and bowling_* weather features.
 func ComputeFeaturesAtCutoffForFutureMatch(
 	ctx context.Context,
 	cutoff time.Time,
@@ -410,6 +416,7 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 	oppositionID int64,
 	seasonID *int64,
 	playerIDs []int64,
+	weather *WeatherOverride,
 ) (map[int64]map[string]float64, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]map[string]float64{}, nil
@@ -454,6 +461,10 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			}
 			return 0
 		}
+		wt, wh, ww, wr, wc, wp := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+		if weather != nil {
+			wt, wh, ww, wr, wc, wp = weather.Temp, weather.Humidity, weather.Wind, weather.Rain, weather.Cloud, weather.Pressure
+		}
 		feats := map[string]float64{
 			"batting_form":        get("batting_form"),
 			"batting_consistency": get("batting_consistency"),
@@ -466,8 +477,8 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"venue":               get("venue"),
 			"opposition":          get("opposition"),
 			"season":              season,
-			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
-			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+			"batting_temp":        wt, "batting_wind": ww, "batting_rain": wr, "batting_humidity": wh, "batting_cloud": wc, "batting_pressure": wp, "batting_viscosity": 0,
+			"bowling_temp": wt, "bowling_wind": ww, "bowling_rain": wr, "bowling_humidity": wh, "bowling_cloud": wc, "bowling_pressure": wp, "bowling_viscosity": 0,
 		}
 		out[pid] = feats
 	}
