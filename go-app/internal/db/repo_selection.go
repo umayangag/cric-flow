@@ -174,11 +174,21 @@ func ListPlayerPoolByTeam(
 	}
 	cutoffDate := cutoff.Truncate(24 * time.Hour)
 
-	// Players who have batted or bowled for this team (opposition) in matches before cutoff
+	// Players who have batted or bowled for this team (opposition) in matches before cutoff.
+	// Join with feature_consistency_snapshots for latest consistency at or before cutoff so teamselect can identify bowlers.
 	rows, err := Pool.Query(ctx, `
 		SELECT DISTINCT p.id, p.player_name, p.is_wicket_keeper,
-		       0::real AS batting_consistency, 0::real AS bowling_consistency
+		       COALESCE(latest.batting_value, 0)::real AS batting_consistency,
+		       COALESCE(latest.bowling_value, 0)::real AS bowling_consistency
 		FROM player p
+		LEFT JOIN LATERAL (
+			SELECT batting_value, bowling_value
+			FROM feature_consistency_snapshots
+			WHERE player_id = p.id AND format_id = $1 AND scope = 'overall' AND scope_id IS NULL
+			  AND as_of_date <= $2
+			ORDER BY as_of_date DESC
+			LIMIT 1
+		) latest ON true
 		WHERE p.is_retired = 0
 		  AND (
 		    p.id IN (
