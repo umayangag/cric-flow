@@ -12,6 +12,7 @@ import os
 import threading
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import joblib
@@ -25,6 +26,9 @@ from app.logging import get_struct_logger
 from ml.config import get_training_params
 
 logger = get_struct_logger()
+
+# Default timeout for fetching training data from go-app (seconds). Override with TRAINING_DATA_FETCH_TIMEOUT.
+DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 600
 
 # Align with ml/ml/train_batting.py and train_bowling.py
 BATTING_FEATURE_COLS = [
@@ -234,7 +238,7 @@ def fetch_training_data(
         cutoff_iso=cutoff_iso,
         has_api_key=api_key is not None,
     )
-    timeout_sec = 600
+    timeout_sec = DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC
     env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
     if env_timeout is not None:
         try:
@@ -351,9 +355,16 @@ def train_on_the_fly(
     return (scaler_bat, model_bat), (scaler_bowl, model_bowl)
 
 
-# Persistent cache for train-on-the-fly models (keyed by format + cutoff)
+# In-memory LRU cache for train-on-the-fly models (keyed by format + cutoff).
+# Max size from ML_TRAIN_CACHE_MAX_ENTRIES (default 32) to avoid unbounded growth and OOM.
 _train_cache_lock = threading.Lock()
-_train_cache: Dict[Tuple[str, str], Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]] = {}
+_train_cache_max_entries = max(
+    1,
+    int(os.environ.get("ML_TRAIN_CACHE_MAX_ENTRIES", "32")),
+)
+_train_cache: OrderedDict[Tuple[str, str], Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]] = (
+    OrderedDict()
+)
 
 
 def _cache_dir() -> Optional[str]:
@@ -428,21 +439,29 @@ def train_on_the_fly_cached(
     """
     cache_dir = _cache_dir()
     key = _cache_key(format_code, cutoff_iso)
+    cache_key = (format_code, cutoff_iso)
     with _train_cache_lock:
-        in_mem = _train_cache.get((format_code, cutoff_iso))
+        in_mem = _train_cache.get(cache_key)
         if in_mem is not None:
+            _train_cache.move_to_end(cache_key)
             logger.info("train_on_the_fly.cache_hit", source="memory", format_code=format_code, cutoff_iso=cutoff_iso)
             return in_mem
     if cache_dir:
         disk_pair = _load_from_cache(cache_dir, key)
         if disk_pair is not None:
             with _train_cache_lock:
-                _train_cache[(format_code, cutoff_iso)] = disk_pair
+                _train_cache[cache_key] = disk_pair
+                _train_cache.move_to_end(cache_key)
+                while len(_train_cache) > _train_cache_max_entries:
+                    _train_cache.popitem(last=False)
             logger.info("train_on_the_fly.cache_hit", source="disk", format_code=format_code, cutoff_iso=cutoff_iso)
             return disk_pair
     pair = train_on_the_fly(go_app_url, format_code, cutoff_iso, api_key)
     with _train_cache_lock:
-        _train_cache[(format_code, cutoff_iso)] = pair
+        _train_cache[cache_key] = pair
+        _train_cache.move_to_end(cache_key)
+        while len(_train_cache) > _train_cache_max_entries:
+            _train_cache.popitem(last=False)
     if cache_dir:
         _save_to_cache(cache_dir, key, pair[0], pair[1])
     return pair

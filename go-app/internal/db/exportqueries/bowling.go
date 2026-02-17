@@ -590,20 +590,21 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// Use UnixNano for map keys to avoid time.Time equality issues (monotonic clock).
 	type mainKey struct {
 		P int64
-		T time.Time
+		T int64 // matchDate.UnixNano()
 		F int64
 	}
 	type venueKey struct {
 		P int64
-		T time.Time
+		T int64
 		F int64
 		V int64
 	}
 	type oppKey struct {
 		P int64
-		T time.Time
+		T int64
 		F int64
 		O int64
 	}
@@ -611,24 +612,25 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	venueKeys := make(map[venueKey]struct{})
 	oppKeys := make(map[oppKey]struct{})
 	for _, r := range rawRows {
-		mainKeys[mainKey{r.playerID, r.matchDate, r.formatID}] = struct{}{}
+		tn := r.matchDate.UnixNano()
+		mainKeys[mainKey{r.playerID, tn, r.formatID}] = struct{}{}
 		if r.venueID != 0 {
-			venueKeys[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}] = struct{}{}
+			venueKeys[venueKey{r.playerID, tn, r.formatID, r.venueID}] = struct{}{}
 		}
 		if r.oppositionID != 0 {
-			oppKeys[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}] = struct{}{}
+			oppKeys[oppKey{r.playerID, tn, r.formatID, r.oppositionID}] = struct{}{}
 		}
 	}
 	// Bulk fetch to avoid N+1
 	bulkKeys := make([]db.HistQueryKey, 0, len(mainKeys)+len(venueKeys)+len(oppKeys))
 	for k := range mainKeys {
-		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: 0})
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: 0, V: 0})
 	}
 	for k := range venueKeys {
-		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: k.V})
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: 0, V: k.V})
 	}
 	for k := range oppKeys {
-		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: k.O, V: 0})
+		bulkKeys = append(bulkKeys, db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0})
 	}
 	bulkRes, err := db.ListBowlingBeforeBulk(ctx, bulkKeys)
 	if err != nil {
@@ -636,15 +638,15 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	}
 	mainCache := make(map[mainKey][]db.InnVal)
 	for k := range mainKeys {
-		mainCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: 0}]
+		mainCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: 0, V: 0}]
 	}
 	venueCache := make(map[venueKey][]db.InnVal)
 	for k := range venueKeys {
-		venueCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: 0, V: k.V}]
+		venueCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: 0, V: k.V}]
 	}
 	oppCache := make(map[oppKey][]db.InnVal)
 	for k := range oppKeys {
-		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: k.T, F: k.F, O: k.O, V: 0}]
+		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
 	headers := []string{
 		"runs", "balls", "wickets",
@@ -656,14 +658,15 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {
-		mk := mainKey{r.playerID, r.matchDate, r.formatID}
+		tn := r.matchDate.UnixNano()
+		mk := mainKey{r.playerID, tn, r.formatID}
 		mainHist := mainCache[mk]
 		var venueHist, oppHist []db.InnVal
 		if r.venueID != 0 {
-			venueHist = venueCache[venueKey{r.playerID, r.matchDate, r.formatID, r.venueID}]
+			venueHist = venueCache[venueKey{r.playerID, tn, r.formatID, r.venueID}]
 		}
 		if r.oppositionID != 0 {
-			oppHist = oppCache[oppKey{r.playerID, r.matchDate, r.formatID, r.oppositionID}]
+			oppHist = oppCache[oppKey{r.playerID, tn, r.formatID, r.oppositionID}]
 		}
 		snap := computeBowlingSnapshotFromHistories(mainHist, venueHist, oppHist, r.matchDate, alpha, lastN, windowN)
 		row := []string{

@@ -143,11 +143,12 @@ def get_tuning_config() -> Dict[str, Any]:
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     tuning = ml.get("tuning") if isinstance(ml, dict) else None
     if not isinstance(tuning, dict):
-        return {"cv_splits": 5, "n_iter": 25, "scoring": "neg_mean_absolute_error"}
+        return {"cv_splits": 5, "n_iter": 25, "scoring": "neg_mean_absolute_error", "n_jobs": 1}
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
+        "n_jobs": int(tuning.get("n_jobs", 1)),
     }
 
 

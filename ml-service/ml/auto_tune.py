@@ -150,6 +150,13 @@ def _run_search(
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
 
+    tuning_cfg = get_tuning_config()
+    n_jobs = tuning_cfg.get("n_jobs", 1)
+    if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
+        try:
+            n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
+        except ValueError:
+            pass
     for name, base_est, param_dist in candidates:
         pipe = _build_pipeline(base_est)
         search = RandomizedSearchCV(
@@ -159,7 +166,7 @@ def _run_search(
             cv=cv_splits,
             scoring=scoring,
             random_state=random_state,
-            n_jobs=-1,
+            n_jobs=n_jobs,
             error_score="raise",
         )
         search.fit(X, Y)

@@ -841,7 +841,8 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	// SSE data must not contain literal newlines; use one line per event
+	// SSE event delimiter is \n\n; the data line must not contain literal newlines or the client will misparse.
+	// json.Marshal produces compact (single-line) output and escapes newlines in string values as \\n, so no 0x0a appears.
 	writeSSE("result", string(resultData))
 }
 
