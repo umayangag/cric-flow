@@ -299,8 +299,12 @@ func populateMatchAggregatesAndMetrics(
 	}
 	// Predicted extras from historical average for this format/venue (no default constant)
 	predExtras := 0.0
-	if mfc, err := db.GetMatchFeatureContext(ctx, matchID); err == nil {
-		if avg, err := db.GetAverageExtrasForFormat(ctx, mfc.FormatID, mfc.VenueID); err == nil {
+	if mfc, err := db.GetMatchFeatureContext(ctx, matchID); err != nil {
+		slog.WarnContext(ctx, "failed to get match feature context for extras prediction", slog.Int64("match_id", matchID), slog.Any("err", err))
+	} else {
+		if avg, err := db.GetAverageExtrasForFormat(ctx, mfc.FormatID, mfc.VenueID); err != nil {
+			slog.WarnContext(ctx, "failed to get average extras for format", slog.Int64("format_id", mfc.FormatID), slog.Any("err", err))
+		} else {
 			predExtras = avg
 		}
 	}

@@ -191,18 +191,18 @@ func ListPlayerPoolByTeam(
 		) latest ON true
 		WHERE p.is_retired = 0
 		  AND (
-		    p.id IN (
-		      SELECT bd.player_id FROM batting_data bd
+		    EXISTS (
+		      SELECT 1 FROM batting_data bd
 		      JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 		      JOIN match m ON m.match_id = bd.match_id
-		      WHERE m.format_id = $1 AND m.match_date < $2
+		      WHERE bd.player_id = p.id AND m.format_id = $1 AND m.match_date < $2
 		        AND mi.batting_team_opposition_id = $3
 		    )
-		    OR p.id IN (
-		      SELECT bw.player_id FROM bowling_data bw
+		    OR EXISTS (
+		      SELECT 1 FROM bowling_data bw
 		      JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
 		      JOIN match m ON m.match_id = bw.match_id
-		      WHERE m.format_id = $1 AND m.match_date < $2
+		      WHERE bw.player_id = p.id AND m.format_id = $1 AND m.match_date < $2
 		        AND mi.bowling_team_opposition_id = $3
 		    )
 		  )
