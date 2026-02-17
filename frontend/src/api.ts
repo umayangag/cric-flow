@@ -194,7 +194,8 @@ export const api = {
     if (filters.team1) u.searchParams.set('team1', filters.team1);
     if (filters.team2) u.searchParams.set('team2', filters.team2);
     if (filters.order) u.searchParams.set('order', filters.order);
-    if (filters.limit != null && filters.limit > 0) u.searchParams.set('limit', String(filters.limit));
+    if (filters.limit != null && filters.limit > 0)
+      u.searchParams.set('limit', String(filters.limit));
     if (filters.cache) u.searchParams.set('cache', filters.cache);
     if (filters.metrics) u.searchParams.set('metrics', filters.metrics);
     return httpApi(u.toString());

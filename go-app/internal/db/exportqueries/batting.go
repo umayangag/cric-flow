@@ -763,7 +763,7 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 }
 
 // battingHoldoutRowsImpl returns batting export-shaped rows for the given match IDs with features computed at cutoff.
-func battingHoldoutRowsImpl(ctx context.Context, formatIDs []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
+func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
 		headers := []string{
 			"runs", "balls", "fours", "sixes", "batting_position",
@@ -798,9 +798,20 @@ func battingHoldoutRowsImpl(ctx context.Context, formatIDs []int64, matchIDs []i
 	}
 	// Build keys using cutoff (not row matchDate) so features are "as of cutoff"
 	cutoffNano := cutoff.UnixNano()
-	type mainKey struct{ P, T int64; F int64 }
-	type venueKey struct{ P, T int64; F int64; V int64 }
-	type oppKey struct{ P, T int64; F int64; O int64 }
+	type mainKey struct {
+		P, T int64
+		F    int64
+	}
+	type venueKey struct {
+		P, T int64
+		F    int64
+		V    int64
+	}
+	type oppKey struct {
+		P, T int64
+		F    int64
+		O    int64
+	}
 	mainKeys := make(map[mainKey]struct{})
 	venueKeys := make(map[venueKey]struct{})
 	oppKeys := make(map[oppKey]struct{})

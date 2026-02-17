@@ -16,7 +16,7 @@ const (
 
 // Fielding enrich defaults (used when ML has no fielding model; go-app enriches from history).
 const (
-	DefaultFieldingEWMAlpha         = 0.3
+	DefaultFieldingEWMAlpha           = 0.3
 	DefaultFieldingFormToCatchesRatio = 0.7
 )
 

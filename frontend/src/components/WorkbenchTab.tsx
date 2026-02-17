@@ -130,14 +130,15 @@ const WorkbenchTab: React.FC = () => {
         title="Dataset & accuracy trend"
         subtitle="Filter by format and date range, then load backtest accuracy (MAE etc.) from the go-app API."
       >
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap" alignItems="flex-start">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          flexWrap="wrap"
+          alignItems="flex-start"
+        >
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Format</InputLabel>
-            <Select
-              value={format}
-              label="Format"
-              onChange={(e) => setFormat(e.target.value)}
-            >
+            <Select value={format} label="Format" onChange={(e) => setFormat(e.target.value)}>
               <MenuItem value="">All</MenuItem>
               {availableFormats.map((f) => (
                 <MenuItem key={f} value={f}>
@@ -193,10 +194,13 @@ const WorkbenchTab: React.FC = () => {
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Matches: {trendData.count}
               {Object.keys(trendData.summary || {}).length > 0 && (
-                <> · Summary: {Object.entries(trendData.summary)
-                  .filter(([k]) => k !== 'n')
-                  .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
-                  .join(', ')}
+                <>
+                  {' '}
+                  · Summary:{' '}
+                  {Object.entries(trendData.summary)
+                    .filter(([k]) => k !== 'n')
+                    .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
+                    .join(', ')}
                 </>
               )}
             </Typography>
@@ -235,7 +239,11 @@ const WorkbenchTab: React.FC = () => {
               </Table>
             </TableContainer>
             {(trendData.results?.length ?? 0) > 200 && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 0.5, display: 'block' }}
+              >
                 Showing first 200 of {trendData.results?.length} rows.
               </Typography>
             )}
@@ -248,11 +256,7 @@ const WorkbenchTab: React.FC = () => {
         subtitle="Upload walk_forward_registry.json (from make walk-forward) to view MAE and variation per window."
       >
         <Stack direction="row" alignItems="center" spacing={2}>
-          <Button
-            variant="outlined"
-            component="label"
-            startIcon={<UploadFileIcon />}
-          >
+          <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
             Choose JSON file
             <input
               type="file"
@@ -272,55 +276,57 @@ const WorkbenchTab: React.FC = () => {
             {registryError}
           </Alert>
         )}
-        {registry && registry.windows.length > 0 && (() => {
-          const regMetricKeys = Array.from(
-            new Set(registry.windows.flatMap((w) => Object.keys(w.metrics || {})))
-          ).sort();
-          return (
-            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320, mt: 2 }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>#</TableCell>
-                    <TableCell>Model</TableCell>
-                    <TableCell>Format</TableCell>
-                    <TableCell>Cutoff (trained before)</TableCell>
-                    <TableCell>Window X</TableCell>
-                    <TableCell align="right">n_train</TableCell>
-                    <TableCell align="right">n_holdout</TableCell>
-                    {regMetricKeys.map((k) => (
-                      <TableCell key={k} align="right">
-                        {k}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {registry.windows.map((w: WalkForwardWindowEntry, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell>{w.window_index ?? idx + 1}</TableCell>
-                      <TableCell>{w.model_type}</TableCell>
-                      <TableCell>{w.format}</TableCell>
-                      <TableCell>{formatDate(w.cutoff_trained_before)}</TableCell>
-                      <TableCell>{w.window_x}</TableCell>
-                      <TableCell align="right">{w.n_training_samples ?? '—'}</TableCell>
-                      <TableCell align="right">{w.n_holdout_samples ?? '—'}</TableCell>
+        {registry &&
+          registry.windows.length > 0 &&
+          (() => {
+            const regMetricKeys = Array.from(
+              new Set(registry.windows.flatMap((w) => Object.keys(w.metrics || {}))),
+            ).sort();
+            return (
+              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 320, mt: 2 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>#</TableCell>
+                      <TableCell>Model</TableCell>
+                      <TableCell>Format</TableCell>
+                      <TableCell>Cutoff (trained before)</TableCell>
+                      <TableCell>Window X</TableCell>
+                      <TableCell align="right">n_train</TableCell>
+                      <TableCell align="right">n_holdout</TableCell>
                       {regMetricKeys.map((k) => (
                         <TableCell key={k} align="right">
-                          {w.metrics?.[k] != null
-                            ? (typeof w.metrics[k] === 'number'
-                              ? (w.metrics[k] as number).toFixed(3)
-                              : String(w.metrics[k]))
-                            : '—'}
+                          {k}
                         </TableCell>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          );
-        })()}
+                  </TableHead>
+                  <TableBody>
+                    {registry.windows.map((w: WalkForwardWindowEntry, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell>{w.window_index ?? idx + 1}</TableCell>
+                        <TableCell>{w.model_type}</TableCell>
+                        <TableCell>{w.format}</TableCell>
+                        <TableCell>{formatDate(w.cutoff_trained_before)}</TableCell>
+                        <TableCell>{w.window_x}</TableCell>
+                        <TableCell align="right">{w.n_training_samples ?? '—'}</TableCell>
+                        <TableCell align="right">{w.n_holdout_samples ?? '—'}</TableCell>
+                        {regMetricKeys.map((k) => (
+                          <TableCell key={k} align="right">
+                            {w.metrics?.[k] != null
+                              ? typeof w.metrics[k] === 'number'
+                                ? (w.metrics[k] as number).toFixed(3)
+                                : String(w.metrics[k])
+                              : '—'}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            );
+          })()}
         {registry && registry.windows.length === 0 && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             No windows in this registry.
@@ -328,7 +334,10 @@ const WorkbenchTab: React.FC = () => {
         )}
       </SectionCard>
 
-      <SectionCard title="Run & docs" subtitle="How to generate accuracy trend and walk-forward data.">
+      <SectionCard
+        title="Run & docs"
+        subtitle="How to generate accuracy trend and walk-forward data."
+      >
         <Typography variant="body2" paragraph>
           Accuracy trend is computed by the go-app backtest API. Ensure precompute and ML artifacts
           are in place; then use the filters above and click &quot;Load accuracy trend&quot;.
@@ -338,14 +347,17 @@ const WorkbenchTab: React.FC = () => {
           <Box component="code" sx={{ bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
             make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20
           </Box>
-          . The registry JSON is written to the ML service output dir (e.g. <code>walk_forward_registry.json</code>).
-          Upload it above to view MAE and sample counts per window.
+          . The registry JSON is written to the ML service output dir (e.g.{' '}
+          <code>walk_forward_registry.json</code>). Upload it above to view MAE and sample counts
+          per window.
         </Typography>
         <Typography variant="body2">
-          Auto-tune: <Box component="code" sx={{ bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
+          Auto-tune:{' '}
+          <Box component="code" sx={{ bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
             make ml-auto-tune MODEL=batting FORMAT=T20
           </Box>
-          . See <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the repo.
+          . See <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the
+          repo.
         </Typography>
       </SectionCard>
     </Box>

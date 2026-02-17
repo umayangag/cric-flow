@@ -91,10 +91,10 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				)
 			})
 			if err := g.Wait(); err != nil {
-			slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
-			return err
-		}
-		return nil
+				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
+				return err
+			}
+			return nil
 		}
 
 		for _, f := range formats {

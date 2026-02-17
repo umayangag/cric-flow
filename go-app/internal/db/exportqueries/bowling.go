@@ -729,7 +729,7 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 }
 
 // bowlingHoldoutRowsImpl returns bowling export-shaped rows for the given match IDs with features at cutoff.
-func bowlingHoldoutRowsImpl(ctx context.Context, formatIDs []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
+func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
 		headers := []string{
 			"runs", "balls", "wickets",
@@ -764,9 +764,20 @@ func bowlingHoldoutRowsImpl(ctx context.Context, formatIDs []int64, matchIDs []i
 		return nil, err
 	}
 	cutoffNano := cutoff.UnixNano()
-	type mainKey struct{ P, T int64; F int64 }
-	type venueKey struct{ P, T int64; F int64; V int64 }
-	type oppKey struct{ P, T int64; F int64; O int64 }
+	type mainKey struct {
+		P, T int64
+		F    int64
+	}
+	type venueKey struct {
+		P, T int64
+		F    int64
+		V    int64
+	}
+	type oppKey struct {
+		P, T int64
+		F    int64
+		O    int64
+	}
 	mainKeys := make(map[mainKey]struct{})
 	venueKeys := make(map[venueKey]struct{})
 	oppKeys := make(map[oppKey]struct{})
