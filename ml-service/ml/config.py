@@ -132,6 +132,12 @@ def get_training_params(model: str) -> Dict[str, Any]:
         raise ValueError(
             f"ml.training.{model} is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
         )
+    # Optional: n_jobs for RandomForest (default -1 = all CPUs)
+    n_jobs = block.get("n_jobs", -1)
+    if n_jobs == -1:
+        n_jobs = os.cpu_count() or 1
+    result = dict(block)
+    result["n_jobs"] = int(n_jobs)
     n_estimators = block["n_estimators"]
     max_depth = block["max_depth"]
     random_state = block["random_state"]
@@ -156,6 +162,7 @@ def get_training_params(model: str) -> Dict[str, Any]:
         "max_depth": max_depth,
         "random_state": random_state,
         "joblib_compress": joblib_compress,
+        "n_jobs": result["n_jobs"],
     }
 
 
@@ -167,10 +174,13 @@ def get_tuning_config() -> Dict[str, Any]:
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     tuning = (ml.get("tuning") if isinstance(ml, dict) else None) or {}
+    n_jobs = tuning.get("n_jobs", -1)
+    if n_jobs == -1:
+        n_jobs = os.cpu_count() or 1
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
-        "n_jobs": int(tuning.get("n_jobs", 1)),
+        "n_jobs": int(n_jobs),
         "random_state": int(tuning.get("random_state", 42)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
         "search_space": tuning.get("search_space"),

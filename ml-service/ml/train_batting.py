@@ -124,8 +124,14 @@ def train_and_save(
     max_depth = training_params["max_depth"]
     random_state = training_params["random_state"]
     compress = training_params["joblib_compress"]
+    n_jobs = training_params.get("n_jobs", -1)
     model = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+        RandomForestRegressor(
+            n_estimators=n_estimators,
+            random_state=random_state,
+            max_depth=max_depth,
+            n_jobs=n_jobs,
+        )
     )
     model.fit(Xs, Y)
     if suffix:

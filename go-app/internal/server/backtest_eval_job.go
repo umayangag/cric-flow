@@ -5,6 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"os"
+	"runtime"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -97,10 +100,25 @@ var (
 )
 
 const (
-	evalJobMaxConcurrent = 4
-	evalJobCleanupAge    = 24 * time.Hour
-	evalJobCleanupEvery  = 15 * time.Minute
+	evalJobCleanupAge   = 24 * time.Hour
+	evalJobCleanupEvery = 15 * time.Minute
 )
+
+func evalJobMaxConcurrent() int {
+	if v := os.Getenv("EVAL_JOB_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	n := runtime.NumCPU()
+	if n < 2 {
+		return 2
+	}
+	if n > 8 {
+		return 8
+	}
+	return n
+}
 
 func generateEvalJobID() (string, error) {
 	b := make([]byte, 12)
@@ -114,7 +132,7 @@ func generateEvalJobID() (string, error) {
 const evalJobMaxDuration = 6 * time.Hour
 
 func init() {
-	evalJobSem = make(chan struct{}, evalJobMaxConcurrent)
+	evalJobSem = make(chan struct{}, evalJobMaxConcurrent())
 	evalJobCleanupCh = make(chan struct{})
 	go evalJobCleanupLoop()
 }

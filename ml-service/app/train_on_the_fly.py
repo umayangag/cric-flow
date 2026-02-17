@@ -191,11 +191,13 @@ def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
     params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
+    n_jobs = params.get("n_jobs", -1)
     model = MultiOutputRegressor(
         RandomForestRegressor(
             n_estimators=params["n_estimators"],
             random_state=params["random_state"],
             max_depth=params["max_depth"],
+            n_jobs=n_jobs,
         )
     )
     model.fit(Xs, Y)
@@ -207,11 +209,13 @@ def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
     params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
+    n_jobs = params.get("n_jobs", -1)
     model = MultiOutputRegressor(
         RandomForestRegressor(
             n_estimators=params["n_estimators"],
             random_state=params["random_state"],
             max_depth=params["max_depth"],
+            n_jobs=n_jobs,
         )
     )
     model.fit(Xs, Y)

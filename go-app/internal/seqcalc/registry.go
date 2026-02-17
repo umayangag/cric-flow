@@ -6,12 +6,22 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"runtime"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
+
+func seqcalcConcurrency() int {
+	if v := os.Getenv("SEQCALC_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n
+		}
+	}
+	return 1
+}
 
 // Registry holds available calculators keyed by target name.
 type Registry struct {
@@ -95,13 +105,12 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 }
 
 // Run executes calculators with the given params concurrently.
+// Concurrency is controlled by SEQCALC_CONCURRENCY env (default 1) to avoid OOM from
+// multiple concurrent ball_event scans. Increase on machines with ample memory.
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
 	g, ctx := errgroup.WithContext(ctx)
-	// Run calculators one at a time to avoid OOM: each does a heavy ball_event scan;
-	// multiple concurrent scans can exhaust memory and get the process killed with no error log.
-	limit := 1
+	limit := seqcalcConcurrency()
 	g.SetLimit(limit)
-	_ = runtime.NumCPU() // allow future tuning via env if needed
 
 	for _, c := range calcs {
 		calc := c // capture for goroutine

@@ -124,11 +124,13 @@ def train_and_save(
     params = get_training_params("fielding")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
+    n_jobs = params.get("n_jobs", -1)
     model = MultiOutputRegressor(
         RandomForestRegressor(
             n_estimators=params["n_estimators"],
             max_depth=params["max_depth"],
             random_state=params["random_state"],
+            n_jobs=n_jobs,
         )
     )
     model.fit(Xs, Y)

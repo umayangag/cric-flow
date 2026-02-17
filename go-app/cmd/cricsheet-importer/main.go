@@ -51,7 +51,7 @@ func run() (exitCode int) {
 	}
 	startMeta := map[string]any{"dir": copts.InDir}
 	runErr := pipeline.RunJob(ctx, "cricsheet-import", startMeta, 0, func(jobCtx context.Context) (any, error) {
-		n, err := cricsheet.ImportDir(jobCtx, copts.InDir, opts)
+		n, err := cricsheet.ImportDir(jobCtx, copts.InDir, opts, copts.Concurrency)
 		return map[string]any{"files": n, "dir": copts.InDir}, err
 	})
 	if runErr != nil {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if defIn == "" {
 		defIn = config.DefaultCricsheetDir()
 	}
-	defConc := getenvInt("CRICSHEET_CONCURRENCY", 4)
+	defConc := getenvInt("CRICSHEET_CONCURRENCY", runtime.NumCPU())
 
 	fs.StringVar(&inDir, "in", defIn, "input directory containing Cricsheet match files")
 	fs.BoolVar(&apply, "apply", false, "apply changes (upsert to DB); if false, dry-run")

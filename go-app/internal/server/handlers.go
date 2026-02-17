@@ -126,7 +126,7 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"dir": dir},
 			10*time.Minute,
 			func(ctx context.Context) (any, error) {
-				n, err := cricsheet.ImportDir(ctx, dir, opts)
+				n, err := cricsheet.ImportDir(ctx, dir, opts, 0)
 				return map[string]any{"files": n, "dir": dir}, err
 			},
 		)
