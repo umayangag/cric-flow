@@ -1,6 +1,11 @@
 import os
+import signal
+import sys
+import threading
 import time
+import traceback
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -43,11 +48,65 @@ try:
 except ImportError:
     get_prediction_defaults = None
 
-app = FastAPI(title="Cricket ML Service", version="0.3.0")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> Any:
+    yield
+    logger.info("shutdown.complete", message="ml-service shutting down; check logs for errors if process exited unexpectedly")
+
+
+app = FastAPI(title="Cricket ML Service", version="0.3.0", lifespan=_lifespan)
 
 # Initialize logging early
 init_logging(service="ml-service", version=app.version)
 logger = get_struct_logger()
+
+
+def _install_crash_logging() -> None:
+    """Ensure uncaught exceptions and thread crashes are logged before exit."""
+    _orig_excepthook = sys.excepthook
+
+    def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: Any) -> None:
+        logger.error(
+            "uncaught_exception",
+            exc_info=(exc_type, exc_value, exc_tb),
+            error_type=exc_type.__name__ if exc_type else "",
+            error=str(exc_value),
+            traceback="".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+        )
+        _orig_excepthook(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
+    if hasattr(threading, "excepthook"):  # Python 3.8+
+        _orig_thread_excepthook = threading.excepthook
+
+        def _thread_excepthook(args: Any) -> None:
+            exc_type = getattr(args, "exc_type", None)
+            exc_value = getattr(args, "exc_value", None)
+            exc_tb = getattr(args, "exc_traceback", None)
+            thread = getattr(args, "thread", None)
+            logger.error(
+                "uncaught_thread_exception",
+                exc_info=(exc_type, exc_value, exc_tb),
+                error_type=exc_type.__name__ if exc_type else "",
+                error=str(exc_value) if exc_value else "",
+                thread_name=getattr(thread, "name", "") if thread else "",
+                traceback="".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                if exc_type and exc_value
+                else "",
+            )
+            if _orig_thread_excepthook is not threading.excepthook:
+                _orig_thread_excepthook(args)
+            elif exc_type and exc_value and exc_tb is not None:
+                sys.__stderr__.write(
+                    "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                )
+
+        threading.excepthook = _thread_excepthook
+
+
+_install_crash_logging()
 
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
 

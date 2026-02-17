@@ -3,9 +3,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -15,11 +19,24 @@ import (
 	apipkg "github.com/umayangag/cric-info-scrapers/go-app/internal/server"
 )
 
+const shutdownTimeout = 25 * time.Second
+
 func main() {
 	os.Exit(run())
 }
 
 func run() int {
+	// Ensure any panic is logged with stack trace before exit (e.g. precompute or init crash).
+	defer func() {
+		if v := recover(); v != nil {
+			slog.Error("api panic (crash)",
+				slog.String("panic", fmt.Sprint(v)),
+				slog.String("stack", string(debug.Stack())),
+			)
+			os.Exit(1)
+		}
+	}()
+
 	logger.SetupFromEnv()
 
 	if err := config.ValidateForServer(); err != nil {
@@ -66,9 +83,39 @@ func run() int {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("server exited", slog.Any("err", err))
-		return 1
+
+	// Graceful shutdown: on SIGTERM/SIGINT, shut down server and close DB so logs are flushed.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		} else {
+			serverErr <- nil
+		}
+	}()
+
+	select {
+	case sig := <-quit:
+		slog.Info("shutdown requested", slog.String("signal", sig.String()))
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer shutdownCancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown failed (timeout or error)", slog.Any("err", err))
+			db.Close()
+			return 1
+		}
+		slog.Info("server shutdown complete")
+		db.Close()
+		return 0
+	case err := <-serverErr:
+		if err != nil {
+			slog.Error("server exited with error", slog.Any("err", err))
+			db.Close()
+			return 1
+		}
+		return 0
 	}
-	return 0
 }
