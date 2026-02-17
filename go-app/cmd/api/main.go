@@ -148,7 +148,7 @@ func logMemStatsOnce() {
 		slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
 		slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),
 		slog.Uint64("sys_mb", m.Sys/(1024*1024)),
-		slog.Uint64("num_gc", m.NumGC),
+		slog.Uint64("num_gc", uint64(m.NumGC)),
 	)
 }
 
@@ -163,7 +163,7 @@ func logMemStatsLoop(interval time.Duration) {
 			slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
 			slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),
 			slog.Uint64("sys_mb", m.Sys/(1024*1024)),
-			slog.Uint64("num_gc", m.NumGC),
+			slog.Uint64("num_gc", uint64(m.NumGC)),
 		)
 	}
 }

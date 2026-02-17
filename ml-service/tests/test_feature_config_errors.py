@@ -53,3 +53,15 @@ def test_get_feature_names_non_string_in_list(tmp_path, monkeypatch):
     mod._load_config.cache_clear()
     with pytest.raises(mod.FeatureConfigError):
         mod.get_feature_names("batting")
+
+
+def test_get_feature_names_json_decode_error(tmp_path, monkeypatch):
+    """Invalid JSON raises FeatureConfigError (covers json.JSONDecodeError path)."""
+    path = tmp_path / "bad.json"
+    path.write_text("{ invalid json }", encoding="utf-8")
+    monkeypatch.setenv("FEATURE_CONFIG_PATH", str(path))
+    mod = importlib.import_module("app.feature_config")
+    importlib.reload(mod)
+    mod._load_config.cache_clear()
+    with pytest.raises(mod.FeatureConfigError):
+        mod.get_feature_names("batting")

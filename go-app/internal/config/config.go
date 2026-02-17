@@ -218,10 +218,10 @@ func EffectiveScoreNormParams(cfg *Config, format string) (batDiv, wicketDiv, ec
 
 // metaModelWeights holds parsed coefficients from train_combination_meta JSON.
 type metaModelWeights struct {
-	Bat         float64                    `json:"bat"`
-	Bowl        float64                    `json:"bowl"`
-	Field       float64                    `json:"field"`
-	KeeperBonus float64                    `json:"keeper_bonus"`
+	Bat         float64                     `json:"bat"`
+	Bowl        float64                     `json:"bowl"`
+	Field       float64                     `json:"field"`
+	KeeperBonus float64                     `json:"keeper_bonus"`
 	PerFormat   map[string]metaModelWeights `json:"per_format"`
 }
 

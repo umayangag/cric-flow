@@ -38,8 +38,8 @@ const WorkbenchTab: React.FC = () => {
   const [format, setFormat] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const [team1, setTeam1] = useState<string>('');
-  const [team2, setTeam2] = useState<string>('');
+  const [team1] = useState<string>('');
+  const [team2] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -132,8 +132,8 @@ const WorkbenchTab: React.FC = () => {
         </Typography>
         <Typography variant="body2" component="span">
           The Workbench lets you inspect how well the ML models predict real match outcomes. Use{' '}
-          <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates), and{' '}
-          <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
+          <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates),
+          and <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
           (train → predict next window → score). Each match is predicted with the{' '}
           <strong>model for that match&apos;s format</strong> (T20, ODI, etc.).
         </Typography>
@@ -372,7 +372,11 @@ const WorkbenchTab: React.FC = () => {
         title="Commands & docs"
         subtitle="Reference: how to generate the data you view in the sections above."
       >
-        <Typography variant="body2" component="div" sx={{ '& code': { bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 } }}>
+        <Typography
+          variant="body2"
+          component="div"
+          sx={{ '& code': { bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 } }}
+        >
           <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
             <li>
               <strong>Accuracy trend</strong> — Data comes from the go-app backtest API. Ensure
@@ -381,13 +385,17 @@ const WorkbenchTab: React.FC = () => {
             </li>
             <li>
               <strong>Walk-forward</strong> — From repo root:{' '}
-              <code>make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20</code>.
-              The registry is written to the ML service output dir; upload it in the section above.
+              <code>
+                make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20
+              </code>
+              . The registry is written to the ML service output dir; upload it in the section
+              above.
             </li>
             <li>
               <strong>Auto-tune</strong> — To search for better hyperparameters:{' '}
               <code>make ml-auto-tune MODEL=batting FORMAT=T20</code>. See{' '}
-              <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the repo.
+              <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the
+              repo.
             </li>
           </Box>
         </Typography>

@@ -87,6 +87,37 @@ func TestConsistency(t *testing.T) {
 	}
 }
 
+func TestMomentum(t *testing.T) {
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(vals ...float64) []Innings {
+		out := make([]Innings, 0, len(vals))
+		for i, v := range vals {
+			out = append(out, Innings{Date: base.Add(time.Duration(i) * time.Hour), Value: v})
+		}
+		return out
+	}
+	tests := []struct {
+		name      string
+		inn       []Innings
+		n         int
+		wantSlope float64
+		wantN     int
+	}{
+		{name: "empty", inn: nil, n: 5, wantSlope: 0, wantN: 0},
+		{name: "single value", inn: mk(10), n: 5, wantSlope: 0, wantN: 1},
+		{name: "two values", inn: mk(10, 20), n: 0, wantSlope: 10, wantN: 2},
+		{name: "last n window", inn: mk(5, 10, 15, 20, 25), n: 3, wantSlope: 5, wantN: 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			slope, n := Momentum(tt.inn, tt.n)
+			if !feq(slope, tt.wantSlope, 1e-9) || n != tt.wantN {
+				t.Fatalf("Momentum got (slope=%v,n=%d) want (slope=%v,n=%d)", slope, n, tt.wantSlope, tt.wantN)
+			}
+		})
+	}
+}
+
 func TestSortAndClip(t *testing.T) {
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	inn := []Innings{
