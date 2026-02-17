@@ -75,6 +75,7 @@ Keys:
     - `common` — weather/context: `temp`, `humidity`, `wind`, `rain`, `cloud`, `pressure`, `viscosity`, `inning`, `session`, `toss` (same defaults used for batting/bowling/fielding where applicable).
     - `fielding` — `consistency`, `form`, `venue`, `opposition` (used when fielding or venue/opposition keys are missing).
   - `tuning` (optional) — used by `ml.auto_tune`. Keys: `cv_splits`, `n_iter`, `n_jobs`, `random_state`, `scoring`; optionally `search_space` with `rf` and `gb` defining param ranges for RandomizedSearchCV.
+  - `walk_forward` (optional) — used by `ml.walk_forward`. Keys: `initial_cutoff`, `window_x`, `registry_path`. See **docs/ML_WALK_FORWARD.md**.
   - `prediction_defaults` (optional) — `economy` (default 6.0 when bowling model returns no economy).
   - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10, used by player_combinator).
 

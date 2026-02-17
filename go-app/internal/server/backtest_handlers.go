@@ -969,3 +969,117 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		Win:      trainingDataPart{Headers: winH, Rows: winD},
 	})
 }
+
+// matchesAfterResponse is the JSON shape for GET /api/backtest/matches (walk-forward).
+type matchesAfterResponse struct {
+	Matches []matchAfterItem `json:"matches"`
+}
+
+type matchAfterItem struct {
+	MatchID   int64  `json:"match_id"`
+	MatchDate string `json:"match_date"` // RFC3339
+}
+
+// backtestMatchesHandler handles GET /api/backtest/matches?after=...&format=...&limit=...
+// Used by walk-forward: list match_id and match_date for matches strictly after the cutoff.
+func (a *App) backtestMatchesHandler(w http.ResponseWriter, r *http.Request) {
+	afterStr := strings.TrimSpace(r.URL.Query().Get("after"))
+	if afterStr == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "after is required (RFC3339)"})
+		return
+	}
+	after, err := time.Parse(time.RFC3339, afterStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "after must be RFC3339"})
+		return
+	}
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if format == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"})
+		return
+	}
+	limit := 50
+	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			limit = v
+			if limit > 500 {
+				limit = 500
+			}
+		}
+	}
+	formatIDs, err := db.GetGlobalCache().GetFormatIDsForTrainingBucket(r.Context(), format)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	items, err := db.ListMatchIDsAfter(r.Context(), formatIDs, after, limit)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	out := make([]matchAfterItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, matchAfterItem{MatchID: it.MatchID, MatchDate: it.MatchDate.Format(time.RFC3339)})
+	}
+	writeJSON(w, http.StatusOK, matchesAfterResponse{Matches: out})
+}
+
+// backtestHoldoutDataHandler handles GET /api/backtest/holdout-data?cutoff=...&format=...&limit=...
+// Returns training-data-shaped JSON for matches strictly after cutoff (features computed at cutoff) for walk-forward.
+func (a *App) backtestHoldoutDataHandler(w http.ResponseWriter, r *http.Request) {
+	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
+	if cutoffStr == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
+		return
+	}
+	cutoff, err := time.Parse(time.RFC3339, cutoffStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff must be RFC3339"})
+		return
+	}
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if format == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"})
+		return
+	}
+	limit := 50
+	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			limit = v
+			if limit > 500 {
+				limit = 500
+			}
+		}
+	}
+	batRows, err := exq.BattingHoldoutRows(r.Context(), format, cutoff, limit)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	bowlRows, err := exq.BowlingHoldoutRows(r.Context(), format, cutoff, limit)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	fieldRows, err := exq.FieldingHoldoutRows(r.Context(), format, cutoff, limit)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	part := func(rows [][]string) (headers []string, data [][]string) {
+		if len(rows) > 0 {
+			return rows[0], rows[1:]
+		}
+		return nil, nil
+	}
+	batH, batD := part(batRows)
+	bowlH, bowlD := part(bowlRows)
+	fieldH, fieldD := part(fieldRows)
+	writeJSON(w, http.StatusOK, trainingDataResponse{
+		Batting:  trainingDataPart{Headers: batH, Rows: batD},
+		Bowling:  trainingDataPart{Headers: bowlH, Rows: bowlD},
+		Fielding: trainingDataPart{Headers: fieldH, Rows: fieldD},
+		Extras:   trainingDataPart{},
+		Win:      trainingDataPart{},
+	})
+}

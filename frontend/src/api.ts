@@ -9,6 +9,8 @@ import type {
   PaginatedResponse,
   PredictTeamSelectionResponse,
   PipelineRunResponse,
+  AccuracyTrendResponse,
+  AccuracyTrendFilters,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -180,6 +182,21 @@ export const api = {
   getMatchScorecard(matchId: number): Promise<MatchScorecardResponse> {
     const u = new URL('/api/backtest/scorecard', BASE_API_URL);
     u.searchParams.set('match_id', String(matchId));
+    return httpApi(u.toString());
+  },
+
+  /** Accuracy trend (backtest metrics over matches) for Workbench tab. */
+  accuracyTrend(filters: AccuracyTrendFilters = {}): Promise<AccuracyTrendResponse> {
+    const u = new URL('/api/backtest/accuracy-trend', BASE_API_URL);
+    if (filters.format) u.searchParams.set('format', filters.format);
+    if (filters.start_date) u.searchParams.set('start_date', filters.start_date);
+    if (filters.end_date) u.searchParams.set('end_date', filters.end_date);
+    if (filters.team1) u.searchParams.set('team1', filters.team1);
+    if (filters.team2) u.searchParams.set('team2', filters.team2);
+    if (filters.order) u.searchParams.set('order', filters.order);
+    if (filters.limit != null && filters.limit > 0) u.searchParams.set('limit', String(filters.limit));
+    if (filters.cache) u.searchParams.set('cache', filters.cache);
+    if (filters.metrics) u.searchParams.set('metrics', filters.metrics);
     return httpApi(u.toString());
   },
 

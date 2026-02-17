@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -173,6 +173,14 @@ FORMAT ?=
 ALL_FORMATS ?=
 ml-auto-tune:
 	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)"
+
+# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ML_WALK_FORWARD.md)
+INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
+WINDOW_X ?= 50
+WALK_FORMAT ?= T20
+WALK_MODEL ?= batting
+walk-forward:
+	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",)
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -569,6 +577,7 @@ help:
 	@echo "  train-all          Train all models (batting + bowling + fielding)"
 	@echo "  train-models       Train batting + bowling + fielding"
 	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo "  walk-forward       Walk-forward train → predict → evaluate; registry for feedback (INITIAL_CUTOFF=, WINDOW_X=, WALK_FORMAT=, WALK_MODEL=)"
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"

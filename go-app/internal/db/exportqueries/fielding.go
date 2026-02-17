@@ -156,3 +156,128 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 	}
 	return out, nil
 }
+
+// fieldingHoldoutRawQuery returns SQL and args for raw fielding rows for the given match IDs.
+func fieldingHoldoutRawQuery(matchIDs []int64) (string, []any) {
+	q := `SELECT
+		m.match_date,
+		fd.player_id,
+		m.format_id,
+		COALESCE(m.venue_id, 0),
+		COALESCE(mi1.batting_team_opposition_id, 0),
+		COALESCE(w.temp, 0), COALESCE(w.wind, 0), COALESCE(w.rain, 0), COALESCE(w.humidity, 0), COALESCE(w.cloud, 0), COALESCE(w.pressure, 0),
+		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
+		1 AS inning,
+		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
+		COALESCE(s.id, 0) AS season_id,
+		p.player_name,
+		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0),
+		COALESCE(mf.code, '')
+	FROM fielding_data fd
+	LEFT JOIN player p ON fd.player_id = p.id
+	LEFT JOIN match m ON m.match_id = fd.match_id
+	LEFT JOIN match_format mf ON mf.id = m.format_id
+	LEFT JOIN match_inning mi1 ON mi1.match_id = fd.match_id AND mi1.inning_number = 1
+	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON w.match_id = fd.match_id
+	LEFT JOIN season s ON s.id = m.season_id
+	WHERE m.match_id = ANY($1::bigint[])`
+	return q, []any{matchIDs}
+}
+
+// fieldingHoldoutRowsImpl returns fielding export-shaped rows for the given match IDs with features at cutoff.
+func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.Time) ([][]string, error) {
+	if len(matchIDs) == 0 {
+		headers := []string{
+			"catches", "run_outs", "stumpings",
+			"fielding_consistency", "fielding_form",
+			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+			"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+		}
+		return [][]string{headers}, nil
+	}
+	q, args := fieldingHoldoutRawQuery(matchIDs)
+	rows, err := db.Pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rawRows []fieldingTrainingRowRaw
+	for rows.Next() {
+		var r fieldingTrainingRowRaw
+		if err := rows.Scan(
+			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
+			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
+			&r.inning, &r.toss, &r.seasonID, &r.playerName,
+			&r.catches, &r.runOuts, &r.stumpings,
+			&r.formatCode,
+		); err != nil {
+			return nil, err
+		}
+		rawRows = append(rawRows, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	keys := make([]db.FieldingHistKey, 0, len(rawRows))
+	seen := make(map[db.FieldingHistKey]struct{})
+	for _, r := range rawRows {
+		k := db.FieldingHistKey{P: r.playerID, T: cutoff, F: r.formatID}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
+	}
+	bulkRes, err := db.ListFieldingBeforeBulk(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	alpha, lastN, windowN := GetFeatureExtractionParams()
+	headers := []string{
+		"catches", "run_outs", "stumpings",
+		"fielding_consistency", "fielding_form",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+	}
+	out := make([][]string, 0, len(rawRows)+1)
+	out = append(out, headers)
+	for _, r := range rawRows {
+		k := db.FieldingHistKey{P: r.playerID, T: cutoff, F: r.formatID}
+		mainHist := bulkRes[k]
+		snap := computeFieldingSnapshotFromHistories(mainHist, cutoff, alpha, lastN, windowN)
+		venueStr := "0"
+		oppStr := "0"
+		if r.venueID != 0 {
+			venueStr = strconv.FormatInt(r.venueID, 10)
+		}
+		if r.oppositionID != 0 {
+			oppStr = strconv.FormatInt(r.oppositionID, 10)
+		}
+		row := []string{
+			r.catches, r.runOuts, r.stumpings,
+			floatToExport(snap.consistency), floatToExport(snap.form),
+			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
+			r.inning, r.toss, venueStr, oppStr, r.seasonID, r.playerName,
+			strings.TrimSpace(strings.ToUpper(r.formatCode)),
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// FieldingHoldoutRows returns fielding export-shaped rows for the next limit matches after cutoff (walk-forward holdout).
+func FieldingHoldoutRows(ctx context.Context, format string, cutoff time.Time, limit int) ([][]string, error) {
+	formatIDs, err := db.GetGlobalCache().GetFormatIDsForTrainingBucket(ctx, format)
+	if err != nil {
+		return nil, err
+	}
+	matchList, err := db.ListMatchIDsAfter(ctx, formatIDs, cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	matchIDs := make([]int64, 0, len(matchList))
+	for _, it := range matchList {
+		matchIDs = append(matchIDs, it.MatchID)
+	}
+	return fieldingHoldoutRowsImpl(ctx, matchIDs, cutoff)
+}

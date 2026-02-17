@@ -24,6 +24,11 @@ The system uses **multiple models** whose outputs are combined for the final pre
 
 **Pipeline order:** Precompute (go-app) → export-dataset → train models → run (or restart) ML service.
 
+Optional steps (separate from the core pipeline):
+
+- **Auto-tune** — find best hyperparameters for a given cutoff/CSV; then update `ml.training.<model>` and re-train. See **docs/ML_AUTO_TUNE.md**.
+- **Walk-forward** — evaluate models over time (train → predict next X matches → score → absorb, repeat); writes a registry for feedback and tuning X. See **docs/ML_WALK_FORWARD.md**. Run as a **separate step** (e.g. `make walk-forward`), not inside auto_tune.
+
 | Model    | From repo root | From ml-service |
 |----------|----------------|-----------------|
 | Batting  | `make train-batting` | `make train-batting` |
@@ -31,6 +36,7 @@ The system uses **multiple models** whose outputs are combined for the final pre
 | Fielding | `make train-fielding CUTOFF=<RFC3339>` or `FIELDING_CSV=<path>` | `make train-fielding` (set `GO_APP_URL`, `CUTOFF` or `FIELDING_CSV`) |
 | All three | `make train-models` (fielding needs `CUTOFF` or `FIELDING_CSV`) | `make train-all` |
 | Auto-tune | `make ml-auto-tune MODEL=batting FORMAT=T20` or `MODEL=all ALL_FORMATS=1` | `make auto-tune MODEL=... FORMAT=...` |
+| Walk-forward | `make walk-forward INITIAL_CUTOFF=... WINDOW_X=50 WALK_FORMAT=T20 WALK_MODEL=batting` | `make walk-forward` (requires GO_APP_URL) |
 
 - **Batting / Bowling**: Use exported CSVs (after `make export-dataset`). Or train-on-the-fly when no artifacts are loaded (ML service fetches from go-app at prediction time).
 - **Fielding**: `python -m ml.train_fielding --cutoff <RFC3339>` (requires `GO_APP_URL`) or `--csv <path>`.

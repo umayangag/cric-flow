@@ -231,3 +231,59 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
 }
+
+// --- Workbench: accuracy trend (go-app /api/backtest/accuracy-trend) ---
+export type AccuracyTrendItem = {
+  match_id: number;
+  match_date: string;
+  format: string;
+  team1: string;
+  team2: string;
+  metrics: Record<string, number>;
+};
+
+export type AccuracyTrendResponse = {
+  filters: Record<string, unknown>;
+  count: number;
+  results: AccuracyTrendItem[];
+  summary: Record<string, number>;
+  progressive: Array<Record<string, number>>;
+};
+
+export type AccuracyTrendFilters = {
+  format?: string;
+  start_date?: string;
+  end_date?: string;
+  team1?: string;
+  team2?: string;
+  order?: 'asc' | 'desc';
+  limit?: number;
+  cache?: 'off' | 'read' | 'readwrite';
+  metrics?: string;
+};
+
+// --- Workbench: walk-forward registry (from walk_forward_registry.json) ---
+export type WalkForwardWindowEntry = {
+  run_id?: string;
+  model_type: string;
+  format: string;
+  cutoff_trained_before: string;
+  window_x: number;
+  window_start_date?: string;
+  window_end_date?: string;
+  training_params?: Record<string, unknown>;
+  auto_tune_used?: boolean;
+  metrics: Record<string, number>;
+  n_training_samples?: number;
+  n_holdout_samples?: number;
+  window_index?: number;
+  created_at?: string;
+  artifact_paths?: { scaler?: string; model?: string } | null;
+  error?: string;
+};
+
+export type WalkForwardRegistry = {
+  run_id: string;
+  windows: WalkForwardWindowEntry[];
+  config?: { initial_cutoff?: string; window_x?: number; format?: string };
+};

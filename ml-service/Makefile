@@ -59,6 +59,16 @@ endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
 
+# Walk-forward training and evaluation (sequential data). Requires GO_APP_URL and go-app running.
+# Usage: make walk-forward INITIAL_CUTOFF=2020-01-01 WINDOW_X=50 WALK_FORMAT=T20 WALK_MODEL=batting
+INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
+WINDOW_X ?= 50
+WALK_FORMAT ?= T20
+WALK_MODEL ?= batting
+MAX_WINDOWS ?=
+walk-forward: venv
+	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),)
+
 # Generate ml/pool.csv for a given match id
 # Usage: make export-pool MATCH=<match_id>
 MATCH ?= 0

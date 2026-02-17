@@ -4,6 +4,7 @@ import HealthTab from './components/HealthTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
 import OpsStatusTab from './components/OpsStatusTab';
 import UpcomingMatchTab from './components/UpcomingMatchTab';
+import WorkbenchTab from './components/WorkbenchTab';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppBar from '@mui/material/AppBar';
@@ -40,6 +41,7 @@ const AppContent: React.FC = () => {
     if (location.pathname.startsWith('/ops')) return 'ops';
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
     if (location.pathname.startsWith('/upcoming')) return 'upcoming';
+    if (location.pathname.startsWith('/workbench')) return 'workbench';
     return 'health';
   })();
 
@@ -48,6 +50,7 @@ const AppContent: React.FC = () => {
     else if (newValue === 'ops') navigate('/ops');
     else if (newValue === 'evaluateDb') navigate('/evaluate');
     else if (newValue === 'upcoming') navigate('/upcoming');
+    else if (newValue === 'workbench') navigate('/workbench');
   };
 
   return (
@@ -163,6 +166,7 @@ const AppContent: React.FC = () => {
             <Tab value="ops" label="Ops Status" />
             <Tab value="evaluateDb" label="Evaluate (DB)" />
             <Tab value="upcoming" label="Upcoming match prediction" />
+            <Tab value="workbench" label="Workbench" />
           </Tabs>
         )}
 
@@ -201,6 +205,14 @@ const AppContent: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <UpcomingMatchTab />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/workbench"
+                element={
+                  <ProtectedRoute>
+                    <WorkbenchTab />
                   </ProtectedRoute>
                 }
               />

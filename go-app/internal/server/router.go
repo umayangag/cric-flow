@@ -69,6 +69,12 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/backtest/scorecard", a.backtestScorecardHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/training-data", a.backtestTrainingDataHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	// Walk-forward: list matches after a cutoff (for chunking)
+	admin.HandleFunc("/api/backtest/matches", a.backtestMatchesHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	// Walk-forward: holdout data (features at cutoff for matches after cutoff)
+	admin.HandleFunc("/api/backtest/holdout-data", a.backtestHoldoutDataHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	// Accuracy trend endpoint for dashboards
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
 		Methods(http.MethodGet, http.MethodOptions)
