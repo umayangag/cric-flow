@@ -58,5 +58,5 @@ def test_bowling_feature_vector_length(tmp_path):
     )
     vec = m.bowling_feature_vector(f)
     assert isinstance(vec, list)
-    # bowling: 18 base + 7 seq = 25
-    assert len(vec) == 25
+    # bowling: 18 base + 8 seq = 26
+    assert len(vec) == 26

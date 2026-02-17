@@ -268,9 +268,9 @@ const EvaluateDbTab: React.FC = () => {
           setEvaluationSteps(
             status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
           );
-          if (status.status === 'done' && status.result) {
+          if (status.status === 'done') {
             setEvaluating(false);
-            setEvaluationResult(status.result);
+            setEvaluationResult(status.result ?? null);
             setStatusMessage('Evaluation complete.');
             if (pollIntervalRef.current) {
               clearInterval(pollIntervalRef.current);

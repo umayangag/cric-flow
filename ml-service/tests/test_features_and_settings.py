@@ -31,7 +31,24 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     bat_vec = features_mod.batting_feature_vector(bat)
     # 18 base + 8 seq (0 when absent)
     assert bat_vec[:18] == [
-        1.1, 2.2, 2.0, 1.8, 0.5, 30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024,
+        1.1,
+        2.2,
+        2.0,
+        1.8,
+        0.5,
+        30,
+        5,
+        0,
+        60,
+        10,
+        1000,
+        1,
+        2,
+        3,
+        1,
+        7.5,
+        8.5,
+        2024,
     ]
     assert bat_vec[18:] == [0.0] * 8  # seq cols default to 0
 
@@ -58,9 +75,26 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     bowl_vec = features_mod.bowling_feature_vector(bowl)
     # 18 base + 7 seq (0 when absent)
     assert bowl_vec[:18] == [
-        1.1, 2.2, 2.0, 1.8, 0.5, 30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024,
+        1.1,
+        2.2,
+        2.0,
+        1.8,
+        0.5,
+        30,
+        5,
+        0,
+        60,
+        10,
+        1000,
+        1,
+        2,
+        3,
+        1,
+        7.5,
+        8.5,
+        2024,
     ]
-    assert bowl_vec[18:] == [0.0] * 7  # seq cols default to 0
+    assert bowl_vec[18:] == [0.0] * 8  # seq cols default to 0
 
 
 def test_settings_get_models_dir_precedence(tmp_path, monkeypatch):

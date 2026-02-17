@@ -93,7 +93,8 @@ def _one_bowling_row():
         "0",
         "0",
         "0",
-        "0",  # seq cols (7)
+        "0",
+        "0",  # seq cols (8)
     ]
     assert len(feats) == len(BOWLING_FEATURE_COLS)
     return targets + feats + ["Bowler One"]
