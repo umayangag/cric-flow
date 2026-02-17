@@ -175,12 +175,28 @@ func ListPlayerPoolByTeam(
 	cutoffDate := cutoff.Truncate(24 * time.Hour)
 
 	// Players who have batted or bowled for this team (opposition) in matches before cutoff.
-	// Join with feature_consistency_snapshots for latest consistency at or before cutoff so teamselect can identify bowlers.
+	// batting_team_opposition_id = team that batted (batters in batting_data play for that team);
+	// bowling_team_opposition_id = team that bowled (bowlers in bowling_data play for that team).
+	// Use a CTE to get distinct player_ids via JOINs (avoids EXISTS per-row); then join with player and consistency.
 	rows, err := Pool.Query(ctx, `
-		SELECT DISTINCT p.id, p.player_name, p.is_wicket_keeper,
+		WITH eligible AS (
+		  SELECT bd.player_id AS id
+		  FROM batting_data bd
+		  JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		  JOIN match m ON m.match_id = bd.match_id
+		  WHERE m.format_id = $1 AND m.match_date < $2 AND mi.batting_team_opposition_id = $3
+		  UNION
+		  SELECT bw.player_id
+		  FROM bowling_data bw
+		  JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
+		  JOIN match m ON m.match_id = bw.match_id
+		  WHERE m.format_id = $1 AND m.match_date < $2 AND mi.bowling_team_opposition_id = $3
+		)
+		SELECT p.id, p.player_name, p.is_wicket_keeper,
 		       COALESCE(latest.batting_value, 0)::real AS batting_consistency,
 		       COALESCE(latest.bowling_value, 0)::real AS bowling_consistency
 		FROM player p
+		JOIN eligible e ON e.id = p.id
 		LEFT JOIN LATERAL (
 			SELECT batting_value, bowling_value
 			FROM feature_consistency_snapshots
@@ -190,22 +206,6 @@ func ListPlayerPoolByTeam(
 			LIMIT 1
 		) latest ON true
 		WHERE p.is_retired = 0
-		  AND (
-		    EXISTS (
-		      SELECT 1 FROM batting_data bd
-		      JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
-		      JOIN match m ON m.match_id = bd.match_id
-		      WHERE bd.player_id = p.id AND m.format_id = $1 AND m.match_date < $2
-		        AND mi.batting_team_opposition_id = $3
-		    )
-		    OR EXISTS (
-		      SELECT 1 FROM bowling_data bw
-		      JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
-		      JOIN match m ON m.match_id = bw.match_id
-		      WHERE bw.player_id = p.id AND m.format_id = $1 AND m.match_date < $2
-		        AND mi.bowling_team_opposition_id = $3
-		    )
-		  )
 		ORDER BY p.player_name
 	`, formatID, cutoffDate, oppID)
 	if err != nil {

@@ -111,10 +111,19 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			ec := float32Ptr(float32(p.Economy))
 			var predRuns *int
 			if w.Balls != nil && *w.Balls > 0 {
-				// Use balls (not overs) since overs decimal is balls (e.g. 3.5 overs = 23 balls)
 				predRuns = intPtr(int(math.Round(float64(*w.Balls) * p.Economy / 6)))
 			} else if w.Overs != nil && *w.Overs > 0 {
-				predRuns = intPtr(int(math.Round(float64(*w.Overs) * p.Economy)))
+				// Cricket overs are often stored as e.g. 3.5 = 3 overs 5 balls (23 balls), not 3.5*6=21.
+				// Convert to balls: whole overs * 6 + fractional part as balls in last over (0–5).
+				ov := float64(*w.Overs)
+				whole := int(ov)
+				frac := ov - float64(whole)
+				ballsInOver := int(math.Round(frac * 10))
+				if ballsInOver > 5 {
+					ballsInOver = 5
+				}
+				totalBalls := whole*6 + ballsInOver
+				predRuns = intPtr(int(math.Round(float64(totalBalls) * p.Economy / 6)))
 			}
 			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{
 				PlayerID:   w.PlayerID,

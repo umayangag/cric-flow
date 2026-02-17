@@ -362,9 +362,17 @@ func enrichFieldingFromHistory(
 			catchesRatio = cfg.Features.FieldingEnrich.FormToCatchesRatio
 		}
 	}
+	keys := make([]db.FieldingHistKey, 0, len(playerIDs))
 	for _, pid := range playerIDs {
-		hist, err := db.ListFieldingBefore(ctx, pid, cutoff, formatID)
-		if err != nil || len(hist) == 0 {
+		keys = append(keys, db.FieldingHistKey{P: pid, T: cutoff, F: formatID})
+	}
+	bulkRes, err := db.ListFieldingBeforeBulk(ctx, keys)
+	if err != nil {
+		return
+	}
+	for _, k := range keys {
+		hist := bulkRes[k]
+		if len(hist) == 0 {
 			continue
 		}
 		inn := make([]features.Innings, 0, len(hist))
@@ -380,6 +388,7 @@ func enrichFieldingFromHistory(
 		form, _ := features.EWM(inn, ewmAlpha)
 		catches := form * catchesRatio
 		runOuts := form * (1 - catchesRatio)
+		pid := k.P
 		if p, ok := preds[pid]; ok {
 			p.Catches = math.Max(0, catches)
 			p.RunOuts = math.Max(0, runOuts)

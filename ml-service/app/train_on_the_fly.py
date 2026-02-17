@@ -228,17 +228,15 @@ def fetch_training_data(
     cutoff_iso: str,
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Fetch training data from go-app. Returns dict with batting/bowling headers and rows."""
+    """Fetch training data from go-app. Returns dict with batting/bowling headers and rows.
+
+    Timeout is from config (training_data_fetch_timeout_sec) or TRAINING_DATA_FETCH_TIMEOUT.
+    Align this with the Go backend's pipeline timeout (e.g. features.precompute_timeout_ms)
+    to avoid the client closing before the server responds on large datasets.
+    """
     base = go_app_url.rstrip("/")
     # format=all requests all matches before cutoff (no format filter); required for cross-format features.
     url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
-    logger.info(
-        "train_on_the_fly.fetch.start",
-        url=url,
-        format_code=format_code,
-        cutoff_iso=cutoff_iso,
-        has_api_key=api_key is not None,
-    )
     timeout_sec = get_training_data_fetch_timeout_sec()
     env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
     if env_timeout is not None:
@@ -246,6 +244,14 @@ def fetch_training_data(
             timeout_sec = int(env_timeout)
         except ValueError:
             pass
+    logger.info(
+        "train_on_the_fly.fetch.start",
+        url=url,
+        format_code=format_code,
+        cutoff_iso=cutoff_iso,
+        has_api_key=api_key is not None,
+        timeout_sec=timeout_sec,
+    )
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
