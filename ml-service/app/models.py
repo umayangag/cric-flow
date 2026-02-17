@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 class BattingFeatures(BaseModel):
     batting_consistency: float = Field(..., ge=0)
     batting_form: float = Field(..., ge=0)
+    batting_form_short: float = Field(default=0.0, ge=0)
+    batting_form_long: float = Field(default=0.0, ge=0)
+    batting_momentum: float = Field(default=0.0)
     batting_temp: int
     batting_wind: int = Field(..., ge=0)
     batting_rain: int = Field(..., ge=0)
@@ -37,6 +40,9 @@ class BattingFeatures(BaseModel):
 class BowlingFeatures(BaseModel):
     bowling_consistency: float = Field(..., ge=0)
     bowling_form: float = Field(..., ge=0)
+    bowling_form_short: float = Field(default=0.0, ge=0)
+    bowling_form_long: float = Field(default=0.0, ge=0)
+    bowling_momentum: float = Field(default=0.0)
     bowling_temp: int
     bowling_wind: int = Field(..., ge=0)
     bowling_rain: int = Field(..., ge=0)

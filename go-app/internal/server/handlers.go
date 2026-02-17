@@ -51,7 +51,11 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
-	slog.Info("precompute: request accepted, starting background job", slog.String("season", season), slog.Any("formats", formats))
+	slog.Info(
+		"precompute: request accepted, starting background job",
+		slog.String("season", season),
+		slog.Any("formats", formats),
+	)
 	go func() {
 		timeout := config.PipelineTimeout()
 		slog.Info(
@@ -217,7 +221,11 @@ func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	preds, err := a.mlClient.PredictBatting(r.Context(), feats)
 	if err != nil {
-		slog.Error("predictBatting: ML client PredictBatting failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
+		slog.Error(
+			"predictBatting: ML client PredictBatting failed",
+			slog.Int("features_count", len(feats)),
+			slog.Any("err", err),
+		)
 		respondErr(w, err)
 		return
 	}
@@ -234,7 +242,11 @@ func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	preds, err := a.mlClient.PredictBowling(r.Context(), feats)
 	if err != nil {
-		slog.Error("predictBowling: ML client PredictBowling failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
+		slog.Error(
+			"predictBowling: ML client PredictBowling failed",
+			slog.Int("features_count", len(feats)),
+			slog.Any("err", err),
+		)
 		respondErr(w, err)
 		return
 	}

@@ -123,7 +123,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 	if err != nil {
 		return nil, err
 	}
-	alpha, lastN, windowN := GetFeatureExtractionParams()
+	alpha, lastN, windowN, _, _, _ := GetFeatureExtractionParams()
 	headers := []string{
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",
@@ -232,7 +232,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 	if err != nil {
 		return nil, err
 	}
-	alpha, lastN, windowN := GetFeatureExtractionParams()
+	alpha, lastN, windowN, _, _, _ := GetFeatureExtractionParams()
 	headers := []string{
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",

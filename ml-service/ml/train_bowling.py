@@ -8,7 +8,8 @@ import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "temp",
     "wind",
     "rain",
@@ -69,12 +73,21 @@ def load_dataset(path: str):
         "season_id": "season_id",
         "bowling_consistency": "bowling_consistency",
         "bowling_form": "bowling_form",
+        "bowling_form_short": "bowling_form_short",
+        "bowling_form_long": "bowling_form_long",
+        "bowling_momentum": "bowling_momentum",
         "runs": "runs",
         "balls": "balls",
         "wickets": "wickets",
         "econ": "econ",
     }
     df = df.rename(columns=col_map)
+    # Backward compat: fill new columns from old exports
+    for col in ("bowling_form_short", "bowling_form_long"):
+        if col not in df.columns and "bowling_form" in df.columns:
+            df[col] = df["bowling_form"]
+    if "bowling_momentum" not in df.columns:
+        df["bowling_momentum"] = 0.0
     df = df.dropna(subset=[c for c in FEATURE_COLS if c in df.columns])
     X = df[FEATURE_COLS].astype(float).values
     y_cols = [c for c in TARGET_COLS if c in df.columns]
@@ -119,23 +132,77 @@ def train_and_save(
     random_state = training_params["random_state"]
     compress = training_params["joblib_compress"]
     n_jobs = training_params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
+    estimator_type = training_params.get("estimator", "rf")
+    learning_rate = training_params.get("learning_rate", 0.1)
+    quantile_level = training_params.get("quantile_level", 0.5)
+    if estimator_type == "quantile":
+        base_est = GradientBoostingRegressor(
             n_estimators=n_estimators,
-            random_state=random_state,
             max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+            loss="quantile",
+            alpha=quantile_level,
+        )
+    elif estimator_type == "stacked":
+        rf = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
             n_jobs=n_jobs,
         )
-    )
+        gb = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+        base_est = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=random_state),
+        )
+    elif estimator_type == "gb":
+        base_est = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+    else:
+        base_est = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=n_jobs,
+        )
+    model = MultiOutputRegressor(base_est)
     model.fit(Xs, Y)
+
+    # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_importance = None
+    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
+        imps = []
+        for est in model.estimators_:
+            if hasattr(est, "feature_importances_"):
+                imps.append(est.feature_importances_)
+        if imps:
+            feature_importance = {
+                FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
+                for i in range(min(len(FEATURE_COLS), len(imps[0])))
+            }
+            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
+            logger.info("train_bowling.feature_importance_top5 %s", top)
+
     if suffix:
         joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, f"bowling_model_{suffix}.joblib"), compress=compress)
     else:
         joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"), compress=compress)
-    # Save training metadata if provided
+    # Save training metadata if provided (include feature importance)
     if metadata is not None:
+        if feature_importance is not None:
+            metadata["feature_importance"] = feature_importance
         meta_path = os.path.join(out_dir, f"bowling_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:

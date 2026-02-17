@@ -2,6 +2,9 @@
   "batting": [
     "batting_consistency",
     "batting_form",
+    "batting_form_short",
+    "batting_form_long",
+    "batting_momentum",
     "batting_temp",
     "batting_wind",
     "batting_rain",
@@ -19,6 +22,9 @@
   "bowling": [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "bowling_temp",
     "bowling_wind",
     "bowling_rain",

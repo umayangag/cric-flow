@@ -1,80 +1,110 @@
 {
-  "inputs": {
-    "cricsheet_dir": "../data/go-app/cricsheet"
-  },
-  "outputs": {
-    "export_dir": "../output/go-app"
-  },
-  "formats": {
-    "treat_t20i_as_subset": true,
-    "international_teams": [
-      "Afghanistan",
-      "Australia",
-      "Bangladesh",
-      "England",
-      "India",
-      "Ireland",
-      "New Zealand",
-      "Pakistan",
-      "South Africa",
-      "Sri Lanka",
-      "West Indies",
-      "Zimbabwe"
-    ]
-  },
-  "features": {
-    "precompute_timeout_ms": 21600000,
-    "min_batting_innings": 5,
-    "min_bowling_innings": 5,
-    "form_shrinkage_alpha": 0.0,
-    "consistency_per_format": false,
-    "ewm_alpha": 0.3,
-    "consistency_last_n": 10,
-    "form_window_n": 0,
-    "fielding_enrich": {
-      "ewm_alpha": 0.3,
-      "form_to_catches_ratio": 0.7
-    }
-  },
-  "export": {
-    "split_by_format": true,
-    "required_format": ""
-  },
-  "team": {
-    "min_bowlers": 5,
-    "default_batters": 6,
-    "default_bowlers": 5
-  },
-  "weather": {
-    "enabled": false,
-    "rate_limit_per_sec": 0,
-    "max_attempts": 0,
-    "geocode_cache_only": true,
-    "overwrite_existing": false,
-    "whitelist_venues": [],
-    "mocks": {
-      "temp": 28,
-      "wind": 12,
-      "rain": 0,
-      "humidity": 62,
-      "cloud": 30,
-      "pressure": 1012,
-      "viscosity": 1,
-      "session": 2
-    }
-  },
-  "predictor": {
-    "team_size": 11,
-    "default_extras": 14.26
-  },
-  "selection": {
-    "default_pool_csv": "../ml-service/ml/pool.csv",
-    "require_keeper": false,
-    "score_weights": {
-      "bat": 0.45,
-      "bowl": 0.4,
-      "field": 0.1,
-      "keeper_bonus": 0.02
-    }
-  }
+"inputs": {
+"cricsheet_dir": "../data/go-app/cricsheet"
+},
+"outputs": {
+"export_dir": "../output/go-app"
+},
+"formats": {
+"treat_t20i_as_subset": true,
+"international_teams": [
+"Afghanistan",
+"Australia",
+"Bangladesh",
+"England",
+"India",
+"Ireland",
+"New Zealand",
+"Pakistan",
+"South Africa",
+"Sri Lanka",
+"West Indies",
+"Zimbabwe"
+]
+},
+"features": {
+"precompute_timeout_ms": 21600000,
+"min_batting_innings": 5,
+"min_bowling_innings": 5,
+"form_shrinkage_alpha": 0.0,
+"consistency_per_format": false,
+"ewm_alpha": 0.3,
+"ewm_alpha_short": 0.5,
+"ewm_alpha_long": 0.2,
+"consistency_last_n": 10,
+"form_window_n": 0,
+"momentum_last_n": 5,
+"fielding_enrich": {
+"ewm_alpha": 0.3,
+"form_to_catches_ratio": 0.7
+}
+},
+"export": {
+"split_by_format": true,
+"required_format": ""
+},
+"team": {
+"min_bowlers": 5,
+"default_batters": 6,
+"default_bowlers": 5
+},
+"weather": {
+"enabled": false,
+"rate_limit_per_sec": 0,
+"max_attempts": 0,
+"geocode_cache_only": true,
+"overwrite_existing": false,
+"whitelist_venues": [],
+"mocks": {
+"temp": 28,
+"wind": 12,
+"rain": 0,
+"humidity": 62,
+"cloud": 30,
+"pressure": 1012,
+"viscosity": 1,
+"session": 2
+}
+},
+"predictor": {
+"team_size": 11,
+"default_extras": 14.26
+},
+"selection": {
+"default_pool_csv": "../ml-service/ml/pool.csv",
+"require_keeper": false,
+"score_weights": {
+"bat": 0.45,
+"bowl": 0.4,
+"field": 0.1,
+"keeper_bonus": 0.02
+},
+"score_normalization": {
+"T20": {
+"bat_divisor": 80,
+"wicket_divisor": 5,
+"econ_base": 12,
+"field_divisor": 5
+},
+"T20I": {
+"bat_divisor": 75,
+"wicket_divisor": 4,
+"econ_base": 11,
+"field_divisor": 4
+},
+"ODI": {
+"bat_divisor": 100,
+"wicket_divisor": 5,
+"econ_base": 6,
+"field_divisor": 5
+},
+"TEST": {
+"bat_divisor": 150,
+"wicket_divisor": 6,
+"econ_base": 4,
+"field_divisor": 6
+}
+},
+"score_weights_by_format": {}
+}
 }

@@ -11,6 +11,9 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     bat = SimpleNamespace(
         batting_consistency=1.1,
         batting_form=2.2,
+        batting_form_short=2.0,
+        batting_form_long=1.8,
+        batting_momentum=0.5,
         batting_temp=30,
         batting_wind=5,
         batting_rain=0,
@@ -29,6 +32,9 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     assert bat_vec == [
         1.1,
         2.2,
+        2.0,
+        1.8,
+        0.5,
         30,
         5,
         0,
@@ -47,6 +53,9 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     bowl = SimpleNamespace(
         bowling_consistency=1.1,
         bowling_form=2.2,
+        bowling_form_short=2.0,
+        bowling_form_long=1.8,
+        bowling_momentum=0.5,
         bowling_temp=30,
         bowling_wind=5,
         bowling_rain=0,
@@ -65,6 +74,9 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     assert bowl_vec == [
         1.1,
         2.2,
+        2.0,
+        1.8,
+        0.5,
         30,
         5,
         0,

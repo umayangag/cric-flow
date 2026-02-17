@@ -33,7 +33,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
@@ -59,6 +60,9 @@ except ImportError:
 BATTING_FEATURE_COLS = [
     "batting_consistency",
     "batting_form",
+    "batting_form_short",
+    "batting_form_long",
+    "batting_momentum",
     "temp",
     "wind",
     "rain",
@@ -77,6 +81,9 @@ BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "temp",
     "wind",
     "rain",
@@ -144,10 +151,48 @@ def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, 
             "est__estimator__min_samples_leaf": [1, 2],
         }
 
-    return [
+    candidates = [
         ("RandomForestRegressor", RandomForestRegressor(), rf_params),
         ("GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
     ]
+    # Add quantile (GBM with loss=quantile) for median/interval prediction
+    try:
+        tp = get_training_params(model_kind)
+        quantile_level = tp.get("quantile_level", 0.5)
+        qr = GradientBoostingRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+            learning_rate=tp.get("learning_rate", 0.1),
+            loss="quantile",
+            alpha=quantile_level,
+        )
+        candidates.append(("QuantileRegressor", qr, {"est__estimator__max_depth": [tp.get("max_depth", 12)]}))
+    except (ValueError, KeyError):
+        pass
+
+    # Add stacked (RF + GBM + Ridge) using training params; no param search for stacked
+    try:
+        tp = get_training_params(model_kind)
+        rf = RandomForestRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+        )
+        gb = GradientBoostingRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+            learning_rate=tp.get("learning_rate", 0.1),
+        )
+        stacked = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=rs),
+        )
+        candidates.append(("StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]}))
+    except (ValueError, KeyError):
+        pass
+    return candidates
 
 
 def _build_pipeline(estimator: Any) -> Pipeline:
@@ -273,6 +318,11 @@ def _save_artifacts(
 # ---- Data loading (CSV) ----
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
+    for col in ("batting_form_short", "batting_form_long"):
+        if col not in df.columns and "batting_form" in df.columns:
+            df[col] = df["batting_form"]
+    if "batting_momentum" not in df.columns:
+        df["batting_momentum"] = 0.0
     df = df.dropna(subset=[c for c in BATTING_FEATURE_COLS if c in df.columns])
     X = df[[c for c in BATTING_FEATURE_COLS if c in df.columns]].astype(float).values
     y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
@@ -291,6 +341,11 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
+    for col in ("bowling_form_short", "bowling_form_long"):
+        if col not in df.columns and "bowling_form" in df.columns:
+            df[col] = df["bowling_form"]
+    if "bowling_momentum" not in df.columns:
+        df["bowling_momentum"] = 0.0
     df = df.dropna(subset=[c for c in BOWLING_FEATURE_COLS if c in df.columns])
     X = df[[c for c in BOWLING_FEATURE_COLS if c in df.columns]].astype(float).values
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]

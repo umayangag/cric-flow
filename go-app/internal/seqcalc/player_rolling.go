@@ -282,7 +282,11 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
 	if err != nil {
 		return err
 	}
-	slog.Info("seqcalc.player_windows.query_start", slog.String("format", params.FormatCode), slog.Int("format_id", formatID))
+	slog.Info(
+		"seqcalc.player_windows.query_start",
+		slog.String("format", params.FormatCode),
+		slog.Int("format_id", formatID),
+	)
 	// Fetch required sequence with match context for scopes.
 	r, err := db.Query(ctx, `
         SELECT be.match_id, be.innings, be.ball_seq, be.is_legal, be.phase,
@@ -296,7 +300,12 @@ func (p *playerWindowsCalc) Compute(ctx context.Context, params Params, dryRun b
         ORDER BY be.match_id, be.innings, be.ball_seq
     `, formatID)
 	if err != nil {
-		slog.Error("seqcalc.player_windows.query_failed", slog.String("format", params.FormatCode), slog.Int("format_id", formatID), slog.Any("err", err))
+		slog.Error(
+			"seqcalc.player_windows.query_failed",
+			slog.String("format", params.FormatCode),
+			slog.Int("format_id", formatID),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	defer r.Close()

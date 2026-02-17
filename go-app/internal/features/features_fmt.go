@@ -21,14 +21,22 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
-		slog.Error("features.ComputeSeasonalFormFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeSeasonalFormFmt GetMatchFormatIDByCode failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	var seasonIDFilter string
 	if seasonName != "" {
 		sid, err := db.GetOrCreateSeason(ctx, seasonName)
 		if err != nil {
-			slog.Error("features.ComputeSeasonalFormFmt GetOrCreateSeason failed", slog.String("season", seasonName), slog.Any("err", err))
+			slog.Error(
+				"features.ComputeSeasonalFormFmt GetOrCreateSeason failed",
+				slog.String("season", seasonName),
+				slog.Any("err", err),
+			)
 			return err
 		}
 		seasonIDFilter = fmt.Sprintf("AND m.season_id = %d", sid)
@@ -103,7 +111,11 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 	`, fmtID, seasonIDFilter, fmtID, seasonIDFilter)
 	_, err = db.Pool.Exec(ctx, q)
 	if err != nil {
-		slog.Error("features.ComputeSeasonalFormFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeSeasonalFormFmt Exec failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	return nil
@@ -120,7 +132,11 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
-		slog.Error("features.ComputeVenueEffectsFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeVenueEffectsFmt GetMatchFormatIDByCode failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	q := fmt.Sprintf(`
@@ -182,7 +198,11 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 	`, fmtID, fmtID)
 	_, err = db.Pool.Exec(ctx, q)
 	if err != nil {
-		slog.Error("features.ComputeVenueEffectsFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeVenueEffectsFmt Exec failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	return nil
@@ -199,7 +219,11 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
-		slog.Error("features.ComputeOppositionEffectsFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeOppositionEffectsFmt GetMatchFormatIDByCode failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	q := fmt.Sprintf(`
@@ -263,7 +287,11 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 	`, fmtID, fmtID)
 	_, err = db.Pool.Exec(ctx, q)
 	if err != nil {
-		slog.Error("features.ComputeOppositionEffectsFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeOppositionEffectsFmt Exec failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	return nil

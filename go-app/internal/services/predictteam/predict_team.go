@@ -102,7 +102,11 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 
 	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
 	if fmtErr != nil {
-		slog.Error("predictteam.PredictTeams resolve format failed", slog.String("format", format), slog.Any("err", fmtErr))
+		slog.Error(
+			"predictteam.PredictTeams resolve format failed",
+			slog.String("format", format),
+			slog.Any("err", fmtErr),
+		)
 		return nil, fmt.Errorf("resolve format: %w", fmtErr)
 	}
 
@@ -132,12 +136,22 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	}
 	if len(pool1) < 11 {
 		err := fmt.Errorf("team1 has only %d players, need at least 11", len(pool1))
-		slog.Error("predictteam.PredictTeams pool size", slog.String("team1", team1), slog.Int("len", len(pool1)), slog.Any("err", err))
+		slog.Error(
+			"predictteam.PredictTeams pool size",
+			slog.String("team1", team1),
+			slog.Int("len", len(pool1)),
+			slog.Any("err", err),
+		)
 		return nil, err
 	}
 	if len(pool2) < 11 {
 		err := fmt.Errorf("team2 has only %d players, need at least 11", len(pool2))
-		slog.Error("predictteam.PredictTeams pool size", slog.String("team2", team2), slog.Int("len", len(pool2)), slog.Any("err", err))
+		slog.Error(
+			"predictteam.PredictTeams pool size",
+			slog.String("team2", team2),
+			slog.Int("len", len(pool2)),
+			slog.Any("err", err),
+		)
 		return nil, err
 	}
 
@@ -199,15 +213,16 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
 	}
 
-	// Build teamselect pool and select
-	tsPool1 := buildTeamSelectPool(pool1, preds1)
-	tsPool2 := buildTeamSelectPool(pool2, preds2)
+	// Build teamselect pool and select (format-aware normalization)
+	cfg := config.Load()
+	tsPool1 := buildTeamSelectPool(pool1, preds1, format, cfg)
+	tsPool2 := buildTeamSelectPool(pool2, preds2, format, cfg)
 
 	teamSize := config.DefaultTeamSize
-	if cfg := config.Load(); cfg != nil && cfg.Predictor.TeamSize > 0 {
+	if cfg != nil && cfg.Predictor.TeamSize > 0 {
 		teamSize = cfg.Predictor.TeamSize
 	}
-	batW, bowlW, fieldW, keeperW := config.EffectiveScoreWeights(config.Load())
+	batW, bowlW, fieldW, keeperW := config.EffectiveScoreWeightsForFormat(cfg, format)
 	weights := teamselect.ScoreWeights{Bat: batW, Bowl: bowlW, Field: fieldW, KeeperBonus: keeperW}
 	sel1, err := teamselect.Select(tsPool1, weights, teamselect.Constraints{
 		Size:          teamSize,
@@ -279,13 +294,19 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	return result, nil
 }
 
-func buildTeamSelectPool(pool []db.PlayerPoolRow, preds map[int64]PlayerPred) []teamselect.Player {
+func buildTeamSelectPool(
+	pool []db.PlayerPoolRow,
+	preds map[int64]PlayerPred,
+	format string,
+	cfg *config.Config,
+) []teamselect.Player {
+	batDiv, wicketDiv, econBase, fieldDiv := config.EffectiveScoreNormParams(cfg, format)
 	out := make([]teamselect.Player, 0, len(pool))
 	for _, p := range pool {
 		pr := preds[p.PlayerID]
-		batScore := normalizeBatScore(pr.Runs)
-		bowlScore := normalizeBowlScore(pr.Wickets, pr.Economy)
-		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts)
+		batScore := normalizeBatScore(pr.Runs, batDiv)
+		bowlScore := normalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
+		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
 		isBowler := p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0
 		out = append(out, teamselect.Player{
 			Name:       p.PlayerName,
@@ -299,15 +320,22 @@ func buildTeamSelectPool(pool []db.PlayerPoolRow, preds map[int64]PlayerPred) []
 	return out
 }
 
-func normalizeBatScore(runs float64) float64 {
-	// T20/ODI: typical max ~80-100 per player
-	return math.Min(1, runs/80)
+func normalizeBatScore(runs, batDivisor float64) float64 {
+	if batDivisor <= 0 {
+		batDivisor = config.DefaultScoreNormBatDivisor
+	}
+	return math.Min(1, runs/batDivisor)
 }
 
-func normalizeBowlScore(wickets, economy float64) float64 {
-	// Wickets good, economy: lower is better (12 = poor, 6 = excellent)
-	wickPart := math.Min(1, wickets/5)
-	econPart := math.Max(0, 1-(economy/12))
+func normalizeBowlScore(wickets, economy, wicketDivisor, econBase float64) float64 {
+	if wicketDivisor <= 0 {
+		wicketDivisor = config.DefaultScoreNormWicketDivisor
+	}
+	if econBase <= 0 {
+		econBase = config.DefaultScoreNormEconBase
+	}
+	wickPart := math.Min(1, wickets/wicketDivisor)
+	econPart := math.Max(0, 1-(economy/econBase))
 	return (wickPart + econPart) / 2
 }
 
@@ -325,9 +353,11 @@ func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
 	}
 }
 
-func normalizeFieldScore(catches, runOuts float64) float64 {
-	// Catches + run_outs, typical max ~3-4 per match
-	return math.Min(1, (catches+runOuts*1.5)/5)
+func normalizeFieldScore(catches, runOuts, fieldDivisor float64) float64 {
+	if fieldDivisor <= 0 {
+		fieldDivisor = config.DefaultScoreNormFieldDivisor
+	}
+	return math.Min(1, (catches+runOuts*1.5)/fieldDivisor)
 }
 
 // hasFieldingPredictions returns true if any prediction has non-zero catches or run_outs,

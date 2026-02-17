@@ -8,11 +8,13 @@ import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from .config import get_training_params
+from .feature_transforms import apply_transforms, get_transform_config
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,9 @@ logger = logging.getLogger(__name__)
 FEATURE_COLS = [
     "batting_consistency",
     "batting_form",
+    "batting_form_short",
+    "batting_form_long",
+    "batting_momentum",
     "temp",
     "wind",
     "rain",
@@ -72,6 +77,9 @@ def load_dataset(path: str):
         "season_id": "season_id",
         "batting_consistency": "batting_consistency",
         "batting_form": "batting_form",
+        "batting_form_short": "batting_form_short",
+        "batting_form_long": "batting_form_long",
+        "batting_momentum": "batting_momentum",
         "runs": "runs",
         "balls": "balls",
         "fours": "fours",
@@ -80,9 +88,21 @@ def load_dataset(path: str):
         "strike_rate": "strike_rate",
     }
     df = df.rename(columns=col_map)
+    # Backward compat: fill new columns from old exports (form_short/form_long=form, momentum=0)
+    for col in ("batting_form_short", "batting_form_long"):
+        if col not in df.columns and "batting_form" in df.columns:
+            df[col] = df["batting_form"]
+    if "batting_momentum" not in df.columns:
+        df["batting_momentum"] = 0.0
     # Filter rows with required feature columns
     df = df.dropna(subset=[c for c in FEATURE_COLS if c in df.columns])
-    X = df[FEATURE_COLS].astype(float).values
+    X_raw = df[FEATURE_COLS].astype(float).values
+    transform_config = get_transform_config("batting")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, feature_names_used = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "batting")
+    else:
+        X = X_raw
+        feature_names_used = list(FEATURE_COLS)
     # Build Y with up to 6 outputs (pad strike_rate if missing)
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
@@ -101,7 +121,7 @@ def load_dataset(path: str):
         pad = np.zeros((Y.shape[0], needed - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
     Y = np.concatenate([Y, sr], axis=1)
-    return X, Y
+    return X, Y, feature_names_used
 
 
 def train_and_save(
@@ -111,6 +131,7 @@ def train_and_save(
     training_params: dict,
     suffix: Optional[str] = None,
     metadata: Optional[dict] = None,
+    transform_config: Optional[dict] = None,
 ):
     """Train and save artifacts. training_params must come from get_training_params("batting") (config only).
 
@@ -125,23 +146,82 @@ def train_and_save(
     random_state = training_params["random_state"]
     compress = training_params["joblib_compress"]
     n_jobs = training_params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
+    estimator_type = training_params.get("estimator", "rf")
+    learning_rate = training_params.get("learning_rate", 0.1)
+    quantile_level = training_params.get("quantile_level", 0.5)
+    if estimator_type == "quantile":
+        base_est = GradientBoostingRegressor(
             n_estimators=n_estimators,
-            random_state=random_state,
             max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+            loss="quantile",
+            alpha=quantile_level,
+        )
+    elif estimator_type == "stacked":
+        rf = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
             n_jobs=n_jobs,
         )
-    )
+        gb = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+        base_est = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=random_state),
+        )
+    elif estimator_type == "gb":
+        base_est = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+    else:
+        base_est = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=n_jobs,
+        )
+    model = MultiOutputRegressor(base_est)
     model.fit(Xs, Y)
+
+    # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_names_for_importance = metadata.get("feature_names") if metadata else None
+    if feature_names_for_importance is None:
+        feature_names_for_importance = FEATURE_COLS
+    feature_importance = None
+    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
+        imps = []
+        for est in model.estimators_:
+            if hasattr(est, "feature_importances_"):
+                imps.append(est.feature_importances_)
+        if imps:
+            n_f = min(len(feature_names_for_importance), len(imps[0]))
+            feature_importance = {
+                feature_names_for_importance[i]: float(np.mean([arr[i] for arr in imps])) for i in range(n_f)
+            }
+            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
+            logger.info("train_batting.feature_importance_top5 %s", top)
+
     if suffix:
         joblib.dump(scaler, os.path.join(out_dir, f"batting_scaler_{suffix}.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, f"batting_model_{suffix}.joblib"), compress=compress)
     else:
         joblib.dump(scaler, os.path.join(out_dir, "batting_scaler.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, "batting_model.joblib"), compress=compress)
-    # Save training metadata if provided
+    # Save training metadata if provided (include feature importance and feature_transforms)
     if metadata is not None:
+        if feature_importance is not None:
+            metadata["feature_importance"] = feature_importance
+        if transform_config:
+            metadata["feature_transforms"] = transform_config
         meta_path = os.path.join(out_dir, f"batting_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
@@ -230,13 +310,14 @@ def main():
     if not targets:
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
         try:
-            X, Y = load_dataset(csv_path)
+            X, Y, feature_names_used = load_dataset(csv_path)
         except FileNotFoundError as e:
             logger.error("train_batting.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
         if X.size == 0 or Y.size == 0:
             logger.error("train_batting.no_data path=%s", csv_path)
             return
+        transform_config = get_transform_config("batting")
         meta = {
             "csv_path": csv_path,
             "rows": int(X.shape[0]),
@@ -245,8 +326,9 @@ def main():
             "format": None,
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
+            "feature_names": feature_names_used,
         }
-        train_and_save(X, Y, args.out, training_params, None, meta)
+        train_and_save(X, Y, args.out, training_params, None, meta, transform_config)
         logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
 
@@ -257,13 +339,14 @@ def main():
             logger.warning("train_batting.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             continue
         try:
-            X, Y = load_dataset(csv_path)
+            X, Y, feature_names_used = load_dataset(csv_path)
         except Exception as e:
             logger.error("train_batting.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             continue
         if X.size == 0 or Y.size == 0:
             logger.warning("train_batting.skip_format_no_data format=%s path=%s", fmt, csv_path)
             continue
+        transform_config = get_transform_config("batting")
         meta = {
             "csv_path": csv_path,
             "rows": int(X.shape[0]),
@@ -272,8 +355,9 @@ def main():
             "format": fmt,
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
+            "feature_names": feature_names_used,
         }
-        train_and_save(X, Y, args.out, training_params, fmt, meta)
+        train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config)
         logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
 
 

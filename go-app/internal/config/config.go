@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -32,8 +33,11 @@ type Config struct {
 		HistoryWindowMatches int     `json:"history_window_matches"`
 		// Feature extraction (EWM form, consistency). Used by export/training-data and precompute when not overridden by CLI.
 		EWMAlpha         float64 `json:"ewm_alpha"`          // (0,1]; default 0.3
+		EWMAlphaShort    float64 `json:"ewm_alpha_short"`    // for form_short (more recent); default 0.5
+		EWMAlphaLong     float64 `json:"ewm_alpha_long"`     // for form_long (longer horizon); default 0.2
 		ConsistencyLastN int     `json:"consistency_last_n"` // last-N innings for consistency; default 10
 		FormWindowN      int     `json:"form_window_n"`      // max innings for form (0 = no limit); default 0
+		MomentumLastN    int     `json:"momentum_last_n"`    // last-N innings for momentum slope; default 5
 		FieldingEnrich   struct {
 			EWMAlpha           float64 `json:"ewm_alpha"`             // EWM alpha for fielding form fallback; default 0.3
 			FormToCatchesRatio float64 `json:"form_to_catches_ratio"` // split of form into catches (rest = run_outs); default 0.7
@@ -71,10 +75,25 @@ type Config struct {
 		DefaultExtras float64 `json:"default_extras"`
 	} `json:"predictor"`
 	Selection struct {
-		DefaultPoolCSV string        `json:"default_pool_csv"`
-		RequireKeeper  bool          `json:"require_keeper"`
-		ScoreWeights   *ScoreWeights `json:"score_weights"`
+		DefaultPoolCSV       string                     `json:"default_pool_csv"`
+		RequireKeeper        bool                       `json:"require_keeper"`
+		ScoreWeights         *ScoreWeights              `json:"score_weights"`
+		ScoreNormalization   map[string]ScoreNormParams `json:"score_normalization"`
+		ScoreWeightsByFormat map[string]ScoreWeights    `json:"score_weights_by_format"`
+		MetaModelPath        string                     `json:"meta_model_path"` // JSON from ml.train_combination_meta
 	} `json:"selection"`
+}
+
+// ScoreNormParams holds format-specific divisors for normalizing raw predictions to [0,1].
+// BatDivisor: typical max runs per player; runs/divisor caps at 1.
+// WicketDivisor: typical max wickets per player.
+// EconBase: economy above which contribution is 0; lower economy = higher score.
+// FieldDivisor: typical max (catches + run_outs*1.5).
+type ScoreNormParams struct {
+	BatDivisor    float64 `json:"bat_divisor"`
+	WicketDivisor float64 `json:"wicket_divisor"`
+	EconBase      float64 `json:"econ_base"`
+	FieldDivisor  float64 `json:"field_divisor"`
 }
 
 // ScoreWeights defines relative weights for combining batting/bowling/fielding signals in team selection.
@@ -169,6 +188,143 @@ func DefaultEtlDir() string {
 		return cfg.Inputs.EtlDir
 	}
 	return filepath.Join("..", "data", "go-app", "createdb")
+}
+
+// EffectiveScoreNormParams returns format-specific normalization divisors for score computation.
+// Falls back to defaults when format is not configured.
+func EffectiveScoreNormParams(cfg *Config, format string) (batDiv, wicketDiv, econBase, fieldDiv float64) {
+	batDiv = DefaultScoreNormBatDivisor
+	wicketDiv = DefaultScoreNormWicketDivisor
+	econBase = DefaultScoreNormEconBase
+	fieldDiv = DefaultScoreNormFieldDivisor
+	if cfg != nil && len(cfg.Selection.ScoreNormalization) > 0 {
+		if p, ok := cfg.Selection.ScoreNormalization[format]; ok && (p.BatDivisor > 0 || p.WicketDivisor > 0) {
+			if p.BatDivisor > 0 {
+				batDiv = p.BatDivisor
+			}
+			if p.WicketDivisor > 0 {
+				wicketDiv = p.WicketDivisor
+			}
+			if p.EconBase > 0 {
+				econBase = p.EconBase
+			}
+			if p.FieldDivisor > 0 {
+				fieldDiv = p.FieldDivisor
+			}
+		}
+	}
+	return batDiv, wicketDiv, econBase, fieldDiv
+}
+
+// metaModelWeights holds parsed coefficients from train_combination_meta JSON.
+type metaModelWeights struct {
+	Bat         float64                    `json:"bat"`
+	Bowl        float64                    `json:"bowl"`
+	Field       float64                    `json:"field"`
+	KeeperBonus float64                    `json:"keeper_bonus"`
+	PerFormat   map[string]metaModelWeights `json:"per_format"`
+}
+
+var (
+	metaModelCache  *metaModelWeights
+	metaModelPath   string
+	metaModelLoadMu sync.Mutex
+)
+
+func loadMetaModel(cfg *Config) *metaModelWeights {
+	path := ""
+	if cfg != nil && cfg.Selection.MetaModelPath != "" {
+		path = cfg.Selection.MetaModelPath
+	}
+	if path == "" {
+		return nil
+	}
+	metaModelLoadMu.Lock()
+	defer metaModelLoadMu.Unlock()
+	if metaModelPath == path && metaModelCache != nil {
+		return metaModelCache
+	}
+	abs := path
+	if !filepath.IsAbs(path) {
+		cwd, _ := os.Getwd()
+		abs = filepath.Join(cwd, path)
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		slog.Warn("config.loadMetaModel failed", "path", abs, "err", err)
+		metaModelPath = ""
+		metaModelCache = nil
+		return nil
+	}
+	var m metaModelWeights
+	if err := json.Unmarshal(b, &m); err != nil {
+		slog.Warn("config.loadMetaModel unmarshal failed", "path", abs, "err", err)
+		metaModelPath = ""
+		metaModelCache = nil
+		return nil
+	}
+	metaModelPath = path
+	metaModelCache = &m
+	return metaModelCache
+}
+
+// EffectiveScoreWeightsForFormat returns score weights for the given format, with per-format override when configured.
+func EffectiveScoreWeightsForFormat(cfg *Config, format string) (bat, bowl, field, keeperBonus float64) {
+	// 1. Meta-model (learned from backtest) takes precedence when configured
+	if meta := loadMetaModel(cfg); meta != nil {
+		if len(meta.PerFormat) > 0 {
+			if w, ok := meta.PerFormat[format]; ok {
+				bat, bowl, field, keeperBonus = w.Bat, w.Bowl, w.Field, w.KeeperBonus
+				if bat > 0 || bowl > 0 {
+					if bat == 0 {
+						bat = DefaultScoreWeightBat
+					}
+					if bowl == 0 {
+						bowl = DefaultScoreWeightBowl
+					}
+					if field == 0 {
+						field = DefaultScoreWeightField
+					}
+					return bat, bowl, field, keeperBonus
+				}
+			}
+		}
+		if meta.Bat > 0 || meta.Bowl > 0 {
+			bat, bowl, field, keeperBonus = meta.Bat, meta.Bowl, meta.Field, meta.KeeperBonus
+			if bat == 0 {
+				bat = DefaultScoreWeightBat
+			}
+			if bowl == 0 {
+				bowl = DefaultScoreWeightBowl
+			}
+			if field == 0 {
+				field = DefaultScoreWeightField
+			}
+			return bat, bowl, field, keeperBonus
+		}
+	}
+	// 2. Config score_weights_by_format
+	if cfg != nil && len(cfg.Selection.ScoreWeightsByFormat) > 0 {
+		if w, ok := cfg.Selection.ScoreWeightsByFormat[format]; ok && (w.Bat > 0 || w.Bowl > 0) {
+			bat = w.Bat
+			bowl = w.Bowl
+			field = w.Field
+			keeperBonus = w.KeeperBonus
+			if bat > 0 || bowl > 0 {
+				if bat == 0 {
+					bat = DefaultScoreWeightBat
+				}
+				if bowl == 0 {
+					bowl = DefaultScoreWeightBowl
+				}
+				if field == 0 {
+					field = DefaultScoreWeightField
+				}
+				return bat, bowl, field, keeperBonus
+			}
+		}
+	}
+	return EffectiveScoreWeights(cfg)
 }
 
 // EffectiveScoreWeights returns the configured score weights or built-in defaults.

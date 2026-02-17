@@ -681,11 +681,12 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 
 	headers := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
-		"batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
-	alpha, lastN, windowN := GetFeatureExtractionParams()
+	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {
@@ -699,10 +700,23 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		if r.oppositionID != 0 {
 			oppHist = oppCache[oppKey{r.playerID, tn, r.formatID, r.oppositionID}]
 		}
-		snap := computeBattingSnapshotFromHistories(mainHist, venueHist, oppHist, r.matchDate, alpha, lastN, windowN)
+		snap := computeBattingSnapshotFromHistories(
+			mainHist,
+			venueHist,
+			oppHist,
+			r.matchDate,
+			alpha,
+			alphaShort,
+			alphaLong,
+			lastN,
+			windowN,
+			momentumN,
+		)
 		row := []string{
 			r.runs, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(snap.consistency), floatToExport(snap.form),
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
@@ -767,7 +781,8 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	if len(matchIDs) == 0 {
 		headers := []string{
 			"runs", "balls", "fours", "sixes", "batting_position",
-			"batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+			"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		}
@@ -850,10 +865,11 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	for k := range oppKeys {
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
-	alpha, lastN, windowN := GetFeatureExtractionParams()
+	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	headers := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
-		"batting_consistency", "batting_form", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
@@ -869,10 +885,23 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		if r.oppositionID != 0 {
 			oppHist = oppCache[oppKey{r.playerID, cutoffNano, r.formatID, r.oppositionID}]
 		}
-		snap := computeBattingSnapshotFromHistories(mainHist, venueHist, oppHist, cutoff, alpha, lastN, windowN)
+		snap := computeBattingSnapshotFromHistories(
+			mainHist,
+			venueHist,
+			oppHist,
+			cutoff,
+			alpha,
+			alphaShort,
+			alphaLong,
+			lastN,
+			windowN,
+			momentumN,
+		)
 		row := []string{
 			r.runs, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(snap.consistency), floatToExport(snap.form),
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),

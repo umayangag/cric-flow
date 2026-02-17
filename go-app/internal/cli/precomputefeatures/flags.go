@@ -44,8 +44,18 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 			defaultLastN = cfg.Features.ConsistencyLastN
 		}
 	}
-	fs.Float64Var(&alpha, "ewm-alpha", defaultAlpha, "Alpha for exponentially weighted mean (0,1]; default from config features.ewm_alpha")
-	fs.IntVar(&lastN, "lastN", defaultLastN, "Last-N window size for consistency; default from config features.consistency_last_n")
+	fs.Float64Var(
+		&alpha,
+		"ewm-alpha",
+		defaultAlpha,
+		"Alpha for exponentially weighted mean (0,1]; default from config features.ewm_alpha",
+	)
+	fs.IntVar(
+		&lastN,
+		"lastN",
+		defaultLastN,
+		"Last-N window size for consistency; default from config features.consistency_last_n",
+	)
 	// Default migrations dir from MIGRATIONS_DIR env if set; otherwise ./migrations
 	defMig := os.Getenv("MIGRATIONS_DIR")
 	if defMig == "" {

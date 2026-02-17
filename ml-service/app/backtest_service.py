@@ -86,9 +86,13 @@ def build_batting_features_from_map(
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
+    bat_form = max(0.0, _get_required_float(d, "batting_form"))
     return BattingFeatures(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
-        batting_form=max(0.0, _get_required_float(d, "batting_form")),
+        batting_form=bat_form,
+        batting_form_short=max(0.0, _float(d, "batting_form_short", bat_form)),
+        batting_form_long=max(0.0, _float(d, "batting_form_long", bat_form)),
+        batting_momentum=_float(d, "batting_momentum", 0.0),
         batting_temp=_get_required_int(d, "batting_temp"),
         batting_wind=_get_required_int(d, "batting_wind"),
         batting_rain=_get_required_int(d, "batting_rain"),
@@ -168,9 +172,13 @@ def build_bowling_features_from_map(
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
+    bowl_form = max(0.0, _get_required_float(d, "bowling_form"))
     return BowlingFeatures(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
-        bowling_form=max(0.0, _get_required_float(d, "bowling_form")),
+        bowling_form=bowl_form,
+        bowling_form_short=max(0.0, _float(d, "bowling_form_short", bowl_form)),
+        bowling_form_long=max(0.0, _float(d, "bowling_form_long", bowl_form)),
+        bowling_momentum=_float(d, "bowling_momentum", 0.0),
         bowling_temp=_get_required_int(d, "bowling_temp"),
         bowling_wind=_get_required_int(d, "bowling_wind"),
         bowling_rain=_get_required_int(d, "bowling_rain"),

@@ -119,7 +119,11 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 			if err := ctx.Err(); err != nil {
 				return nil
 			}
-			slog.Info("seqcalc.calculator.start", slog.String("calculator", string(name)), slog.String("format", params.FormatCode))
+			slog.Info(
+				"seqcalc.calculator.start",
+				slog.String("calculator", string(name)),
+				slog.String("format", params.FormatCode),
+			)
 			err := calc.Compute(ctx, params, dry)
 			if err != nil {
 				// Log immediately so we see DB cancel/timeout in go-app logs (Postgres may show "terminating parallel worker").
@@ -138,7 +142,11 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 				}
 				return err
 			}
-			slog.Info("seqcalc.calculator.done", slog.String("calculator", string(name)), slog.String("format", params.FormatCode))
+			slog.Info(
+				"seqcalc.calculator.done",
+				slog.String("calculator", string(name)),
+				slog.String("format", params.FormatCode),
+			)
 			return nil
 		})
 	}

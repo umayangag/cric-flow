@@ -18,7 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -186,20 +187,62 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
     )
 
 
+def _make_base_estimator(params: dict) -> Any:
+    """Build RF, GBM, or stacked (RF+GB+Ridge) base estimator from training params."""
+    n_estimators = params["n_estimators"]
+    max_depth = params["max_depth"]
+    random_state = params["random_state"]
+    n_jobs = params.get("n_jobs", -1)
+    learning_rate = params.get("learning_rate", 0.1)
+    est_type = params.get("estimator", "rf")
+    quantile_level = params.get("quantile_level", 0.5)
+    if est_type == "quantile":
+        return GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=params.get("learning_rate", 0.1),
+            loss="quantile",
+            alpha=quantile_level,
+        )
+    if est_type == "stacked":
+        rf = RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=n_jobs,
+        )
+        gb = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+        return StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=random_state),
+        )
+    if est_type == "gb":
+        return GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            learning_rate=learning_rate,
+        )
+    return RandomForestRegressor(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        random_state=random_state,
+        n_jobs=n_jobs,
+    )
+
+
 def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
     """Train batting model: normalize X with StandardScaler (fit on this data only), Y in raw units."""
     params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            random_state=params["random_state"],
-            max_depth=params["max_depth"],
-            n_jobs=n_jobs,
-        )
-    )
+    model = MultiOutputRegressor(_make_base_estimator(params))
     model.fit(Xs, Y)
     return scaler, model
 
@@ -209,15 +252,7 @@ def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
     params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            random_state=params["random_state"],
-            max_depth=params["max_depth"],
-            n_jobs=n_jobs,
-        )
-    )
+    model = MultiOutputRegressor(_make_base_estimator(params))
     model.fit(Xs, Y)
     return scaler, model
 

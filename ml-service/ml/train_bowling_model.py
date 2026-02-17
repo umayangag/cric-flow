@@ -3,7 +3,8 @@ import os
 import joblib
 import pandas as pd
 from sklearn import preprocessing
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 
 from . import tracking
@@ -67,11 +68,47 @@ def run_training():
     X_scaled = input_scaler.transform(X)
 
     params = get_training_params("bowling")
-    regr = RandomForestRegressor(
-        max_depth=params["max_depth"],
-        n_estimators=params["n_estimators"],
-        random_state=params["random_state"],
-    )
+    est_type = params.get("estimator", "rf")
+    lr = params.get("learning_rate", 0.1)
+    quantile_level = params.get("quantile_level", 0.5)
+    if est_type == "quantile":
+        regr = GradientBoostingRegressor(
+            max_depth=params["max_depth"],
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+            loss="quantile",
+            alpha=quantile_level,
+        )
+    elif est_type == "stacked":
+        rf = RandomForestRegressor(
+            max_depth=params["max_depth"],
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+        )
+        gb = GradientBoostingRegressor(
+            max_depth=params["max_depth"],
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+        )
+        regr = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=params["random_state"]),
+        )
+    elif est_type == "gb":
+        regr = GradientBoostingRegressor(
+            max_depth=params["max_depth"],
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+        )
+    else:
+        regr = RandomForestRegressor(
+            max_depth=params["max_depth"],
+            n_estimators=params["n_estimators"],
+            random_state=params["random_state"],
+        )
     predictor = MultiOutputRegressor(regr)
     predictor.fit(X_scaled, y)
 

@@ -42,7 +42,11 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	}
 	codes, err := discoverFormatCodes(ctx, formats)
 	if err != nil {
-		slog.Error("precompute: discover format codes failed", slog.Any("err", err), slog.Any("formats_requested", formats))
+		slog.Error(
+			"precompute: discover format codes failed",
+			slog.Any("err", err),
+			slog.Any("formats_requested", formats),
+		)
 		return err
 	}
 	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
@@ -82,7 +86,12 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 			return err
 		}
 		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
-			slog.Error("precompute: RunReplay failed", slog.String("format", code), slog.Int64("format_id", formatID), slog.Any("err", err))
+			slog.Error(
+				"precompute: RunReplay failed",
+				slog.String("format", code),
+				slog.Int64("format_id", formatID),
+				slog.Any("err", err),
+			)
 			return err
 		}
 		slog.Info("precompute: format completed", slog.String("format", code))

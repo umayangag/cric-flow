@@ -7,12 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
 
 type battingSnapshotAtCutoff struct {
 	form        float64
+	formShort   float64
+	formLong    float64
+	momentum    float64
 	consistency float64
 	venue       float64
 	opposition  float64
@@ -20,6 +24,9 @@ type battingSnapshotAtCutoff struct {
 
 type bowlingSnapshotAtCutoff struct {
 	form        float64
+	formShort   float64
+	formLong    float64
+	momentum    float64
 	consistency float64
 	venue       float64
 	opposition  float64
@@ -51,14 +58,16 @@ func computeBattingSnapshotAtCutoff(
 	lastN, windowN int,
 ) (battingSnapshotAtCutoff, error) {
 	out := battingSnapshotAtCutoff{}
+	alphaShort, alphaLong, momentumN := config.DefaultFeatureEWMAlphaShort, config.DefaultFeatureEWMAlphaLong, config.DefaultFeatureMomentumLastN
 	if alpha <= 0 || lastN < 0 {
-		fa, fn, fw := GetFeatureExtractionParams()
+		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
 		if alpha <= 0 {
 			alpha = fa
 		}
 		if lastN < 0 {
 			lastN = fn
 		}
+		alphaShort, alphaLong, momentumN = fs, fl, mn
 		_ = fw // windowN already passed
 	}
 
@@ -72,6 +81,9 @@ func computeBattingSnapshotAtCutoff(
 		inn = inn[len(inn)-windowN:]
 	}
 	out.form, _ = features.EWM(inn, alpha)
+	out.formShort, _ = features.EWM(inn, alphaShort)
+	out.formLong, _ = features.EWM(inn, alphaLong)
+	out.momentum, _ = features.Momentum(inn, momentumN)
 	out.consistency, _ = features.Consistency(inn, lastN)
 
 	if venueID != nil && *venueID != 0 {
@@ -101,22 +113,25 @@ func computeBattingSnapshotAtCutoff(
 	return out, nil
 }
 
-// computeBattingSnapshotFromHistories computes form/consistency/venue/opposition from pre-fetched histories (avoids N+1 when batching).
+// computeBattingSnapshotFromHistories computes form, form_short, form_long, momentum, consistency, venue, opposition
+// from pre-fetched histories (avoids N+1 when batching).
 func computeBattingSnapshotFromHistories(
 	mainHist, venueHist, oppHist []db.InnVal,
 	asOf time.Time,
-	alpha float64,
-	lastN, windowN int,
+	alpha, alphaShort, alphaLong float64,
+	lastN, windowN, momentumN int,
 ) battingSnapshotAtCutoff {
 	out := battingSnapshotAtCutoff{}
 	if alpha <= 0 || lastN < 0 {
-		fa, fn, _ := GetFeatureExtractionParams()
+		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
 		if alpha <= 0 {
 			alpha = fa
 		}
 		if lastN < 0 {
 			lastN = fn
 		}
+		alphaShort, alphaLong = fs, fl
+		windowN, momentumN = fw, mn
 	}
 	inn := toInnings(mainHist)
 	inn = features.SortAndClip(inn, asOf)
@@ -124,6 +139,9 @@ func computeBattingSnapshotFromHistories(
 		inn = inn[len(inn)-windowN:]
 	}
 	out.form, _ = features.EWM(inn, alpha)
+	out.formShort, _ = features.EWM(inn, alphaShort)
+	out.formLong, _ = features.EWM(inn, alphaLong)
+	out.momentum, _ = features.Momentum(inn, momentumN)
 	out.consistency, _ = features.Consistency(inn, lastN)
 	if len(venueHist) > 0 {
 		venInn := toInnings(venueHist)
@@ -157,14 +175,17 @@ func computeBowlingSnapshotAtCutoff(
 	lastN, windowN int,
 ) (bowlingSnapshotAtCutoff, error) {
 	out := bowlingSnapshotAtCutoff{}
+	alphaShort, alphaLong, momentumN := config.DefaultFeatureEWMAlphaShort, config.DefaultFeatureEWMAlphaLong, config.DefaultFeatureMomentumLastN
 	if alpha <= 0 || lastN < 0 {
-		fa, fn, _ := GetFeatureExtractionParams()
+		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
 		if alpha <= 0 {
 			alpha = fa
 		}
 		if lastN < 0 {
 			lastN = fn
 		}
+		alphaShort, alphaLong, momentumN = fs, fl, mn
+		_ = fw
 	}
 
 	hist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, nil)
@@ -177,6 +198,9 @@ func computeBowlingSnapshotAtCutoff(
 		inn = inn[len(inn)-windowN:]
 	}
 	out.form, _ = features.EWM(inn, alpha)
+	out.formShort, _ = features.EWM(inn, alphaShort)
+	out.formLong, _ = features.EWM(inn, alphaLong)
+	out.momentum, _ = features.Momentum(inn, momentumN)
 	out.consistency, _ = features.Consistency(inn, lastN)
 
 	if venueID != nil && *venueID != 0 {
@@ -215,7 +239,7 @@ func computeFieldingSnapshotFromHistories(
 ) fieldingSnapshotAtCutoff {
 	out := fieldingSnapshotAtCutoff{}
 	if alpha <= 0 || lastN < 0 {
-		fa, fn, _ := GetFeatureExtractionParams()
+		fa, fn, _, _, _, _ := GetFeatureExtractionParams()
 		if alpha <= 0 {
 			alpha = fa
 		}
@@ -233,22 +257,25 @@ func computeFieldingSnapshotFromHistories(
 	return out
 }
 
-// computeBowlingSnapshotFromHistories computes form/consistency/venue/opposition from pre-fetched histories (avoids N+1 when batching).
+// computeBowlingSnapshotFromHistories computes form, form_short, form_long, momentum, consistency, venue, opposition
+// from pre-fetched histories (avoids N+1 when batching).
 func computeBowlingSnapshotFromHistories(
 	mainHist, venueHist, oppHist []db.InnVal,
 	asOf time.Time,
-	alpha float64,
-	lastN, windowN int,
+	alpha, alphaShort, alphaLong float64,
+	lastN, windowN, momentumN int,
 ) bowlingSnapshotAtCutoff {
 	out := bowlingSnapshotAtCutoff{}
 	if alpha <= 0 || lastN < 0 {
-		fa, fn, _ := GetFeatureExtractionParams()
+		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
 		if alpha <= 0 {
 			alpha = fa
 		}
 		if lastN < 0 {
 			lastN = fn
 		}
+		alphaShort, alphaLong = fs, fl
+		windowN, momentumN = fw, mn
 	}
 	inn := toInnings(mainHist)
 	inn = features.SortAndClip(inn, asOf)
@@ -256,6 +283,9 @@ func computeBowlingSnapshotFromHistories(
 		inn = inn[len(inn)-windowN:]
 	}
 	out.form, _ = features.EWM(inn, alpha)
+	out.formShort, _ = features.EWM(inn, alphaShort)
+	out.formLong, _ = features.EWM(inn, alphaLong)
+	out.momentum, _ = features.Momentum(inn, momentumN)
 	out.consistency, _ = features.Consistency(inn, lastN)
 	if len(venueHist) > 0 {
 		venInn := toInnings(venueHist)
@@ -497,16 +527,30 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			}
 			return 0
 		}
+		getOrDefault := func(k string, d float64) float64 {
+			if v, ok := pc[k]; ok {
+				return v
+			}
+			return d
+		}
 		wt, wh, ww, wr, wc, wp := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 		if weather != nil {
 			wt, wh, ww, wr, wc, wp = weather.Temp, weather.Humidity, weather.Wind, weather.Rain, weather.Cloud, weather.Pressure
 		}
+		batForm := get("batting_form")
+		bowlForm := get("bowling_form")
 		feats := map[string]float64{
-			"batting_form":        get("batting_form"),
+			"batting_form":        batForm,
+			"batting_form_short":  getOrDefault("batting_form_short", batForm),
+			"batting_form_long":   getOrDefault("batting_form_long", batForm),
+			"batting_momentum":    get("batting_momentum"),
 			"batting_consistency": get("batting_consistency"),
 			"batting_venue":       get("batting_venue"),
 			"batting_opposition":  get("batting_opposition"),
-			"bowling_form":        get("bowling_form"),
+			"bowling_form":        bowlForm,
+			"bowling_form_short":  getOrDefault("bowling_form_short", bowlForm),
+			"bowling_form_long":   getOrDefault("bowling_form_long", bowlForm),
+			"bowling_momentum":    get("bowling_momentum"),
 			"bowling_consistency": get("bowling_consistency"),
 			"bowling_venue":       get("bowling_venue"),
 			"bowling_opposition":  get("bowling_opposition"),
@@ -572,10 +616,18 @@ func ComputeFeaturesAtCutoffNoMatch(
 		if pc == nil {
 			pc = make(map[string]float64)
 		}
+		batForm := pc["batting_form"]
+		bowlForm := pc["bowling_form"]
 		feats := map[string]float64{
-			"batting_form":        pc["batting_form"],
+			"batting_form":        batForm,
+			"batting_form_short":  batForm,
+			"batting_form_long":   batForm,
+			"batting_momentum":    0,
 			"batting_consistency": pc["batting_consistency"],
-			"bowling_form":        pc["bowling_form"],
+			"bowling_form":        bowlForm,
+			"bowling_form_short":  bowlForm,
+			"bowling_form_long":   bowlForm,
+			"bowling_momentum":    0,
 			"bowling_consistency": pc["bowling_consistency"],
 			"batting_venue":       0,
 			"batting_opposition":  0,
@@ -677,12 +729,20 @@ func ComputeFeaturesAtCutoffForMatch(
 		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
 			season = float64(*mctx.SeasonID)
 		}
+		batForm := pc["batting_form"]
+		bowlForm := pc["bowling_form"]
 		feats := map[string]float64{
-			"batting_form":        pc["batting_form"],
+			"batting_form":        batForm,
+			"batting_form_short":  batForm,
+			"batting_form_long":   batForm,
+			"batting_momentum":    0,
 			"batting_consistency": pc["batting_consistency"],
 			"batting_venue":       batVenue,
 			"batting_opposition":  batOpp,
-			"bowling_form":        pc["bowling_form"],
+			"bowling_form":        bowlForm,
+			"bowling_form_short":  bowlForm,
+			"bowling_form_long":   bowlForm,
+			"bowling_momentum":    0,
 			"bowling_consistency": pc["bowling_consistency"],
 			"bowling_venue":       bowlVenue,
 			"bowling_opposition":  bowlOpp,

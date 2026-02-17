@@ -21,7 +21,8 @@ import urllib.request
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -124,21 +125,79 @@ def train_and_save(
     params = get_training_params("fielding")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
+    est_type = params.get("estimator", "rf")
     n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
+    lr = params.get("learning_rate", 0.1)
+    quantile_level = params.get("quantile_level", 0.5)
+    if est_type == "quantile":
+        base = GradientBoostingRegressor(
+            n_estimators=params["n_estimators"],
+            max_depth=params["max_depth"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+            loss="quantile",
+            alpha=quantile_level,
+        )
+    elif est_type == "stacked":
+        rf = RandomForestRegressor(
             n_estimators=params["n_estimators"],
             max_depth=params["max_depth"],
             random_state=params["random_state"],
             n_jobs=n_jobs,
         )
-    )
+        gb = GradientBoostingRegressor(
+            n_estimators=params["n_estimators"],
+            max_depth=params["max_depth"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+        )
+        base = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=params["random_state"]),
+        )
+    elif est_type == "gb":
+        base = GradientBoostingRegressor(
+            n_estimators=params["n_estimators"],
+            max_depth=params["max_depth"],
+            random_state=params["random_state"],
+            learning_rate=lr,
+        )
+    else:
+        base = RandomForestRegressor(
+            n_estimators=params["n_estimators"],
+            max_depth=params["max_depth"],
+            random_state=params["random_state"],
+            n_jobs=n_jobs,
+        )
+    model = MultiOutputRegressor(base)
     model.fit(Xs, Y)
+
+    # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_importance = None
+    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
+        imps = []
+        for est in model.estimators_:
+            if hasattr(est, "feature_importances_"):
+                imps.append(est.feature_importances_)
+        if imps:
+            feature_importance = {
+                FIELDING_FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
+                for i in range(min(len(FIELDING_FEATURE_COLS), len(imps[0])))
+            }
+            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
+            logger.info("train_fielding.feature_importance_top5 %s", top)
+
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     code = format_code.replace(" ", "_")
     joblib.dump(scaler, os.path.join(out_dir, f"fielding_scaler_{code}.joblib"), compress=compress)
     joblib.dump(model, os.path.join(out_dir, f"fielding_model_{code}.joblib"), compress=compress)
+    if feature_importance is not None:
+        try:
+            with open(os.path.join(out_dir, f"fielding_metadata_{code}.json"), "w", encoding="utf-8") as f:
+                json.dump({"feature_importance": feature_importance}, f, indent=2)
+        except OSError as e:
+            logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
 
 
 def main() -> None:

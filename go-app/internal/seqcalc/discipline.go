@@ -22,7 +22,11 @@ func (disciplineCalc) Compute(ctx context.Context, params Params, dryRun bool) e
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
-	slog.Info("seqcalc.discipline.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
+	slog.Info(
+		"seqcalc.discipline.query_start",
+		slog.String("format", params.FormatCode),
+		slog.Any("format_ids", formatIDs),
+	)
 	events, err := queryEvents(ctx, formatIDs)
 	if err != nil {
 		return err

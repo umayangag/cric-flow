@@ -1,5 +1,4 @@
 import os
-import signal
 import sys
 import threading
 import time
@@ -28,6 +27,7 @@ from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
+from .feature_config import get_feature_names
 from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
@@ -52,7 +52,9 @@ except ImportError:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> Any:
     yield
-    logger.info("shutdown.complete", message="ml-service shutting down; check logs for errors if process exited unexpectedly")
+    logger.info(
+        "shutdown.complete", message="ml-service shutting down; check logs for errors if process exited unexpectedly"
+    )
 
 
 app = FastAPI(title="Cricket ML Service", version="0.3.0", lifespan=_lifespan)
@@ -99,9 +101,7 @@ def _install_crash_logging() -> None:
             if _orig_thread_excepthook is not threading.excepthook:
                 _orig_thread_excepthook(args)
             elif exc_type and exc_value and exc_tb is not None:
-                sys.__stderr__.write(
-                    "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-                )
+                sys.__stderr__.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
         threading.excepthook = _thread_excepthook
 
@@ -256,8 +256,26 @@ def _predict_players_with_features(
         bat_features.append(build_batting_features_from_map(pid, cutoff, fmt_upper, fm))
         bowl_features.append(build_bowling_features_from_map(pid, cutoff, fmt_upper, fm))
 
-    # Feature order must match training (configs/feature_vectors.json). Normalize with same scaler as at training.
-    X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+    # Feature order must match training (configs/feature_vectors.json). Apply feature_transforms if in metadata.
+    try:
+        from ml.feature_transforms import build_extended_vector_from_features, load_transform_config_from_metadata
+
+        bat_transform = load_transform_config_from_metadata(MODELS_DIR, "batting", fmt_upper)
+        base_names = get_feature_names("batting")
+        if bat_transform.get("add_interactions") or bat_transform.get("add_log1p"):
+            bat_vecs = []
+            for i, f in enumerate(bat_features):
+                fm = features_map.get(str(player_ids[i])) or features_map.get(str(int(player_ids[i]))) or {}
+                fm_for_interactions = {n: getattr(f, n) for n in base_names}
+                fm_for_interactions.update(fm)
+                base_vals = batting_feature_vector(f)
+                ext = build_extended_vector_from_features(base_vals, base_names, fm_for_interactions, bat_transform)
+                bat_vecs.append(ext)
+            X_bat = np.array(bat_vecs, dtype=float)
+        else:
+            X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+    except Exception:
+        X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
     if scaler_bat is not None:
         X_bat = scaler_bat.transform(X_bat)
     Y_bat = model_bat.predict(X_bat)

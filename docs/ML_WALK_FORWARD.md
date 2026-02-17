@@ -108,6 +108,10 @@ GO_APP_URL=http://localhost:8080 python -m ml.walk_forward \
 # With registry path and save artifacts
 python -m ml.walk_forward --initial-cutoff 2020-01-01 --window-x 50 --format T20 \
   --model all --registry ../output/ml-service/walk_forward_registry.json
+
+# Export per-format mean MAE/RMSE for config updates
+python -m ml.walk_forward --initial-cutoff 2020-01-01 --window-x 50 --format T20 \
+  --model all --export-metrics ../output/ml-service/walk_forward_metrics.json
 ```
 
 ---
@@ -118,6 +122,7 @@ The registry JSON has:
 
 - **run_id:** Timestamp of the run.
 - **config:** `initial_cutoff`, `window_x`, `format`.
+- **summary:** Per-format/model aggregates: `mean_mae_overall`, `std_mae_overall`, `mean_rmse_overall`, `std_rmse_overall`, `n_windows`. Use for feedback loops (e.g. compare T20/batting vs ODI/bowling).
 - **windows:** List of entries, one per (window index, model type).
 
 Each entry:
@@ -129,7 +134,7 @@ Each entry:
 - **window_start_date**, **window_end_date:** First and last match date in the window.
 - **training_params:** e.g. `n_estimators`, `max_depth`, `random_state` (from `ml.training.<model>`).
 - **auto_tune_used:** `true` if this window used auto_tune (e.g. with `--auto-tune-initial`).
-- **metrics:** e.g. `mae_runs`, `mae_wickets`, `mae_overall`.
+- **metrics:** e.g. `mae_runs`, `mae_wickets`, `mae_overall`, `rmse_overall`.
 - **n_training_samples**, **n_holdout_samples**
 - **artifact_paths:** `{"scaler": "...", "model": "..."}` if artifacts were saved; else `null`.
 - **created_at:** ISO timestamp.
