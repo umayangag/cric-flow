@@ -96,14 +96,8 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 }
 
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
-	// Get total count (approximate for performance on large tables)
 	var total int
-	err := db.QueryRow(ctx, `
-		SELECT reltuples::bigint 
-		FROM pg_class 
-		WHERE relname = 'data_migrations' 
-		  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
-	`).Scan(&total)
+	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
