@@ -44,7 +44,7 @@ _ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
-from ml.config import get_training_params, get_tuning_config
+from ml.config import get_training_params, get_tuning_config, get_tuning_search_space
 
 # Batting/bowling CSV loading inlined (train_batting/train_bowling require top-level config).
 # Fielding: optional import for rows_to_xy_by_format and fetch_fielding_data.
@@ -98,27 +98,52 @@ def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
 
 
+def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
+    """Convert config search_space dict to Pipeline param format (est__estimator__*)."""
+    out = {"est__estimator__random_state": [random_state]}
+    for k, v in config_space.items():
+        if k == "random_state":
+            continue
+        key = f"est__estimator__{k}"
+        if v is not None and hasattr(v, "__iter__") and not isinstance(v, (str, bytes)):
+            out[key] = list(v)  # JSON null → None for max_depth etc.
+        else:
+            out[key] = [v]
+    return out
+
+
 def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, Any]]]:
-    """Return list of (estimator_name, base_estimator, param_distributions) for regression."""
-    # Param keys must use prefix "est__estimator__" for Pipeline step "est" (MultiOutputRegressor).
-    common = {
-        "est__estimator__random_state": [42],
-        "est__estimator__max_depth": [6, 8, 10, 12, 16, 20, None],
-        "est__estimator__min_samples_split": [2, 5, 10],
-        "est__estimator__min_samples_leaf": [1, 2, 4],
-    }
-    rf_params = {
-        **common,
-        "est__estimator__n_estimators": [50, 100, 150, 200, 300],
-    }
-    gb_params = {
-        "est__estimator__random_state": [42],
-        "est__estimator__n_estimators": [50, 100, 150, 200],
-        "est__estimator__max_depth": [3, 4, 5, 6, 8],
-        "est__estimator__learning_rate": [0.01, 0.05, 0.1],
-        "est__estimator__min_samples_split": [2, 5],
-        "est__estimator__min_samples_leaf": [1, 2],
-    }
+    """Return list of (estimator_name, base_estimator, param_distributions) for regression.
+    Reads from ml.tuning.search_space in config when present; otherwise uses built-in default from config.
+    """
+    tuning = get_tuning_config()
+    rs = tuning.get("random_state", 42)
+
+    rf_space = get_tuning_search_space("rf")
+    if rf_space:
+        rf_params = _to_pipeline_params(rf_space, rs)
+    else:
+        rf_params = {
+            "est__estimator__random_state": [rs],
+            "est__estimator__n_estimators": [50, 100, 150, 200, 300],
+            "est__estimator__max_depth": [6, 8, 10, 12, 16, 20, None],
+            "est__estimator__min_samples_split": [2, 5, 10],
+            "est__estimator__min_samples_leaf": [1, 2, 4],
+        }
+
+    gb_space = get_tuning_search_space("gb")
+    if gb_space:
+        gb_params = _to_pipeline_params(gb_space, rs)
+    else:
+        gb_params = {
+            "est__estimator__random_state": [rs],
+            "est__estimator__n_estimators": [50, 100, 150, 200],
+            "est__estimator__max_depth": [3, 4, 5, 6, 8],
+            "est__estimator__learning_rate": [0.01, 0.05, 0.1],
+            "est__estimator__min_samples_split": [2, 5],
+            "est__estimator__min_samples_leaf": [1, 2],
+        }
+
     return [
         ("RandomForestRegressor", RandomForestRegressor(), rf_params),
         ("GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
@@ -345,8 +370,8 @@ def run_auto_tune(
     cv_splits = tuning["cv_splits"]
     n_iter = tuning["n_iter"]
     scoring = tuning["scoring"]
+    random_state = tuning.get("random_state") or get_training_params(model_kind).get("random_state", 42)
     params = get_training_params(model_kind)
-    random_state = params["random_state"]
     joblib_compress = params["joblib_compress"]
 
     best_pipe, best_params, report = _run_search(X, Y, model_kind, cv_splits, n_iter, scoring, random_state)

@@ -11,15 +11,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
 )
 
-// DefaultEWMAlpha is the default alpha for EWM when computing form at cutoff (same as precompute).
-const DefaultEWMAlpha = 0.3
-
-// DefaultConsistencyLastN is the default last-N window for consistency when computing at cutoff.
-const DefaultConsistencyLastN = 10
-
-// DefaultFormWindowN is the max number of innings to use for form (0 = no limit).
-const DefaultFormWindowN = 0
-
 type battingSnapshotAtCutoff struct {
 	form        float64
 	consistency float64
@@ -60,11 +51,15 @@ func computeBattingSnapshotAtCutoff(
 	lastN, windowN int,
 ) (battingSnapshotAtCutoff, error) {
 	out := battingSnapshotAtCutoff{}
-	if alpha <= 0 {
-		alpha = DefaultEWMAlpha
-	}
-	if lastN < 0 {
-		lastN = DefaultConsistencyLastN
+	if alpha <= 0 || lastN < 0 {
+		fa, fn, fw := GetFeatureExtractionParams()
+		if alpha <= 0 {
+			alpha = fa
+		}
+		if lastN < 0 {
+			lastN = fn
+		}
+		_ = fw // windowN already passed
 	}
 
 	hist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, nil, nil)
@@ -114,11 +109,14 @@ func computeBattingSnapshotFromHistories(
 	lastN, windowN int,
 ) battingSnapshotAtCutoff {
 	out := battingSnapshotAtCutoff{}
-	if alpha <= 0 {
-		alpha = DefaultEWMAlpha
-	}
-	if lastN < 0 {
-		lastN = DefaultConsistencyLastN
+	if alpha <= 0 || lastN < 0 {
+		fa, fn, _ := GetFeatureExtractionParams()
+		if alpha <= 0 {
+			alpha = fa
+		}
+		if lastN < 0 {
+			lastN = fn
+		}
 	}
 	inn := toInnings(mainHist)
 	inn = features.SortAndClip(inn, asOf)
@@ -159,11 +157,14 @@ func computeBowlingSnapshotAtCutoff(
 	lastN, windowN int,
 ) (bowlingSnapshotAtCutoff, error) {
 	out := bowlingSnapshotAtCutoff{}
-	if alpha <= 0 {
-		alpha = DefaultEWMAlpha
-	}
-	if lastN < 0 {
-		lastN = DefaultConsistencyLastN
+	if alpha <= 0 || lastN < 0 {
+		fa, fn, _ := GetFeatureExtractionParams()
+		if alpha <= 0 {
+			alpha = fa
+		}
+		if lastN < 0 {
+			lastN = fn
+		}
 	}
 
 	hist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, nil)
@@ -213,11 +214,14 @@ func computeFieldingSnapshotFromHistories(
 	lastN, windowN int,
 ) fieldingSnapshotAtCutoff {
 	out := fieldingSnapshotAtCutoff{}
-	if alpha <= 0 {
-		alpha = DefaultEWMAlpha
-	}
-	if lastN < 0 {
-		lastN = DefaultConsistencyLastN
+	if alpha <= 0 || lastN < 0 {
+		fa, fn, _ := GetFeatureExtractionParams()
+		if alpha <= 0 {
+			alpha = fa
+		}
+		if lastN < 0 {
+			lastN = fn
+		}
 	}
 	inn := toInnings(mainHist)
 	inn = features.SortAndClip(inn, asOf)
@@ -237,11 +241,14 @@ func computeBowlingSnapshotFromHistories(
 	lastN, windowN int,
 ) bowlingSnapshotAtCutoff {
 	out := bowlingSnapshotAtCutoff{}
-	if alpha <= 0 {
-		alpha = DefaultEWMAlpha
-	}
-	if lastN < 0 {
-		lastN = DefaultConsistencyLastN
+	if alpha <= 0 || lastN < 0 {
+		fa, fn, _ := GetFeatureExtractionParams()
+		if alpha <= 0 {
+			alpha = fa
+		}
+		if lastN < 0 {
+			lastN = fn
+		}
 	}
 	inn := toInnings(mainHist)
 	inn = features.SortAndClip(inn, asOf)

@@ -14,11 +14,6 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
-const (
-	defaultEWMAlpha         = 0.3
-	defaultConsistencyLastN = 10
-)
-
 // RunOpts holds optional overrides for Run. Nil or zero values mean use config.
 type RunOpts struct {
 	Alpha float64 // (0,1] to override config; else use config
@@ -60,13 +55,13 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 		setDone()
 	}()
 
-	alpha := defaultEWMAlpha
+	alpha := config.DefaultFeatureEWMAlpha
 	if opts != nil && opts.Alpha > 0 && opts.Alpha <= 1 {
 		alpha = opts.Alpha
 	} else if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
 		alpha = cfg.Features.EWMAlpha
 	}
-	lastN := defaultConsistencyLastN
+	lastN := config.DefaultFeatureConsistencyLastN
 	if opts != nil && opts.LastN > 0 {
 		lastN = opts.LastN
 	} else if cfg.Features.ConsistencyLastN > 0 {

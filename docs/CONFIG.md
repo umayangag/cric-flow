@@ -59,6 +59,7 @@ Config file: `ml-service/config.json`
 Keys:
 - `inputs`
   - `go_app_export_dir` — directory where Go exports CSVs (read by training scripts).
+  - `training_data_fetch_timeout_sec` — timeout in seconds when fetching training data from go-app (train-on-the-fly, train_fielding). Default 600.
 - `outputs`
   - `artifacts_dir` — directory where training scripts write joblib artifacts and where FastAPI loads from.
 - `ml`
@@ -73,6 +74,9 @@ Keys:
   - `feature_defaults` (optional) — defaults used when building feature vectors from a sparse go-app map at prediction time (missing keys). Tune these to match “no history” or environment assumptions.
     - `common` — weather/context: `temp`, `humidity`, `wind`, `rain`, `cloud`, `pressure`, `viscosity`, `inning`, `session`, `toss` (same defaults used for batting/bowling/fielding where applicable).
     - `fielding` — `consistency`, `form`, `venue`, `opposition` (used when fielding or venue/opposition keys are missing).
+  - `tuning` (optional) — used by `ml.auto_tune`. Keys: `cv_splits`, `n_iter`, `n_jobs`, `random_state`, `scoring`; optionally `search_space` with `rf` and `gb` defining param ranges for RandomizedSearchCV.
+  - `prediction_defaults` (optional) — `economy` (default 6.0 when bowling model returns no economy).
+  - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10, used by player_combinator).
 
 For data normalization, feature computation, and ML practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
 
@@ -103,6 +107,9 @@ New keys in `go-app/config.json` under `team`:
 - `min_bowlers` — minimum number of bowlers the selector must include (default 5).
 - `default_batters` — default number of batters to pick when `-bat` not provided (default 6).
 - `default_bowlers` — default number of bowlers to pick when `-bowl` not provided (default 5 or `min_bowlers`).
+
+Under `selection`:
+- `score_weights` — optional weights for combining batting/bowling/fielding signals when selecting best XI: `bat` (default 0.45), `bowl` (0.40), `field` (0.10), `keeper_bonus` (0.02). These affect which players are ranked higher in team selection.
 
 CLI overrides still apply: `go run ./go-app/cmd/team-predictor -match=<id> -format=<CODE> -bat=6 -bowl=5`.
 

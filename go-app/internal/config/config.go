@@ -70,9 +70,18 @@ type Config struct {
 		DefaultExtras float64 `json:"default_extras"`
 	} `json:"predictor"`
 	Selection struct {
-		DefaultPoolCSV string `json:"default_pool_csv"`
-		RequireKeeper  bool   `json:"require_keeper"`
+		DefaultPoolCSV string        `json:"default_pool_csv"`
+		RequireKeeper  bool          `json:"require_keeper"`
+		ScoreWeights   *ScoreWeights `json:"score_weights"`
 	} `json:"selection"`
+}
+
+// ScoreWeights defines relative weights for combining batting/bowling/fielding signals in team selection.
+type ScoreWeights struct {
+	Bat         float64 `json:"bat"`          // default 0.45
+	Bowl        float64 `json:"bowl"`         // default 0.40
+	Field       float64 `json:"field"`        // default 0.10
+	KeeperBonus float64 `json:"keeper_bonus"` // default 0.02
 }
 
 var (
@@ -149,6 +158,30 @@ func DefaultEtlDir() string {
 		return cfg.Inputs.EtlDir
 	}
 	return filepath.Join("..", "data", "go-app", "createdb")
+}
+
+// EffectiveScoreWeights returns the configured score weights or built-in defaults.
+func EffectiveScoreWeights(cfg *Config) (bat, bowl, field, keeperBonus float64) {
+	if cfg != nil && cfg.Selection.ScoreWeights != nil {
+		w := cfg.Selection.ScoreWeights
+		bat = w.Bat
+		bowl = w.Bowl
+		field = w.Field
+		keeperBonus = w.KeeperBonus
+	}
+	if bat == 0 {
+		bat = DefaultScoreWeightBat
+	}
+	if bowl == 0 {
+		bowl = DefaultScoreWeightBowl
+	}
+	if field == 0 {
+		field = DefaultScoreWeightField
+	}
+	if keeperBonus == 0 {
+		keeperBonus = DefaultScoreWeightKeeperBonus
+	}
+	return bat, bowl, field, keeperBonus
 }
 
 // DefaultExportDir returns the configured export output dir or a built-in default.

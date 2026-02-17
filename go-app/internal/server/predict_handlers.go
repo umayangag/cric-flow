@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/predictteam"
 )
 
@@ -142,7 +143,11 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		input.RequireKeeper = *body.RequireKeeper
 	}
 	if input.MinBowlers <= 0 {
-		input.MinBowlers = 5
+		if cfg := config.Load(); cfg != nil && cfg.Team.MinBowlers > 0 {
+			input.MinBowlers = cfg.Team.MinBowlers
+		} else {
+			input.MinBowlers = config.DefaultMinBowlers
+		}
 	}
 
 	result, err := predictteam.PredictTeams(r.Context(), input, mlPredictorAdapter{})

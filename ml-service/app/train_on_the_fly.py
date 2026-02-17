@@ -23,12 +23,9 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from app.logging import get_struct_logger
-from ml.config import get_training_params
+from ml.config import get_training_data_fetch_timeout_sec, get_training_params
 
 logger = get_struct_logger()
-
-# Default timeout for fetching training data from go-app (seconds). Override with TRAINING_DATA_FETCH_TIMEOUT.
-DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 600
 
 # Align with ml/ml/train_batting.py and train_bowling.py
 BATTING_FEATURE_COLS = [
@@ -238,7 +235,7 @@ def fetch_training_data(
         cutoff_iso=cutoff_iso,
         has_api_key=api_key is not None,
     )
-    timeout_sec = DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC
+    timeout_sec = get_training_data_fetch_timeout_sec()
     env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
     if env_timeout is not None:
         try:

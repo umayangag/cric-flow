@@ -38,6 +38,11 @@ from .models import (
 )
 from .train_on_the_fly import train_on_the_fly_cached
 
+try:
+    from ml.config import get_prediction_defaults
+except ImportError:
+    get_prediction_defaults = None
+
 app = FastAPI(title="Cricket ML Service", version="0.3.0")
 
 # Initialize logging early
@@ -211,7 +216,8 @@ def _predict_players_with_features(
         vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
         runs = float(max(0.0, vals_bat[0]))
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
-        economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else 6.0
+        default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
+        economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else default_econ
         catches, run_outs = 0.0, 0.0
         out.append(
             BacktestPlayerPred(

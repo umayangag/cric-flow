@@ -25,8 +25,8 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		seqDryRun  bool
 	)
 
-	defaultAlpha := 0.3
-	defaultLastN := 10
+	defaultAlpha := config.DefaultFeatureEWMAlpha
+	defaultLastN := config.DefaultFeatureConsistencyLastN
 	if cfg := config.Load(); cfg != nil {
 		if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
 			defaultAlpha = float64(cfg.Features.EWMAlpha)

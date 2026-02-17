@@ -48,8 +48,8 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 		)
 	}
 
-	// Apply defaults from cfg
-	minB := 5
+	// Apply defaults from cfg or config constants
+	minB := config.DefaultMinBowlers
 	if cfg != nil && cfg.Team.MinBowlers > 0 {
 		minB = cfg.Team.MinBowlers
 	}
@@ -57,7 +57,7 @@ func parseFlags(args []string, cfg *config.Config) (options, error) {
 		if cfg != nil && cfg.Team.DefaultBatters > 0 {
 			bat = cfg.Team.DefaultBatters
 		} else {
-			bat = 6
+			bat = config.DefaultDefaultBatters
 		}
 	}
 	if bowl <= 0 {

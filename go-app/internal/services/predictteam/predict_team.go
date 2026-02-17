@@ -84,7 +84,11 @@ type PlayerPred struct {
 // PredictTeams runs the full pipeline: pool, features, ML predict, team select.
 func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
 	if input.MinBowlers <= 0 {
-		input.MinBowlers = 5
+		if cfg := config.Load(); cfg != nil && cfg.Team.MinBowlers > 0 {
+			input.MinBowlers = cfg.Team.MinBowlers
+		} else {
+			input.MinBowlers = config.DefaultMinBowlers
+		}
 	}
 	format := strings.ToUpper(strings.TrimSpace(input.Format))
 	team1 := strings.TrimSpace(input.Team1)
@@ -199,8 +203,14 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	tsPool1 := buildTeamSelectPool(pool1, preds1)
 	tsPool2 := buildTeamSelectPool(pool2, preds2)
 
-	sel1, err := teamselect.Select(tsPool1, teamselect.DefaultWeights(), teamselect.Constraints{
-		Size:          11,
+	teamSize := config.DefaultTeamSize
+	if cfg := config.Load(); cfg != nil && cfg.Predictor.TeamSize > 0 {
+		teamSize = cfg.Predictor.TeamSize
+	}
+	batW, bowlW, fieldW, keeperW := config.EffectiveScoreWeights(config.Load())
+	weights := teamselect.ScoreWeights{Bat: batW, Bowl: bowlW, Field: fieldW, KeeperBonus: keeperW}
+	sel1, err := teamselect.Select(tsPool1, weights, teamselect.Constraints{
+		Size:          teamSize,
 		MinBowlers:    input.MinBowlers,
 		RequireKeeper: input.RequireKeeper,
 	})
@@ -208,8 +218,8 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 select: %w", err)
 	}
-	sel2, err := teamselect.Select(tsPool2, teamselect.DefaultWeights(), teamselect.Constraints{
-		Size:          11,
+	sel2, err := teamselect.Select(tsPool2, weights, teamselect.Constraints{
+		Size:          teamSize,
 		MinBowlers:    input.MinBowlers,
 		RequireKeeper: input.RequireKeeper,
 	})
@@ -342,8 +352,8 @@ func enrichFieldingFromHistory(
 	cutoff time.Time,
 	formatID int64,
 ) {
-	ewmAlpha := 0.3
-	catchesRatio := 0.7
+	ewmAlpha := config.DefaultFieldingEWMAlpha
+	catchesRatio := config.DefaultFieldingFormToCatchesRatio
 	if cfg := config.Load(); cfg != nil {
 		if cfg.Features.FieldingEnrich.EWMAlpha > 0 && cfg.Features.FieldingEnrich.EWMAlpha <= 1 {
 			ewmAlpha = cfg.Features.FieldingEnrich.EWMAlpha

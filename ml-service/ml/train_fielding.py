@@ -28,7 +28,7 @@ from sklearn.preprocessing import StandardScaler
 # Add parent so ml.config and app.train_on_the_fly are importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ml.config import default_artifacts_dir, get_training_params
+from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
     if api_key:
         req.add_header("X-API-Key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
+        with urllib.request.urlopen(req, timeout=get_training_data_fetch_timeout_sec()) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""

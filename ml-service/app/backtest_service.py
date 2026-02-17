@@ -67,27 +67,14 @@ def _int(d: Dict[str, float], key: str, default: int) -> int:
 
 
 def _feature_defaults() -> Dict:
-    """Feature defaults for missing keys (from config ml.feature_defaults or built-in)."""
+    """Feature defaults for missing keys (from config ml.feature_defaults)."""
     if get_feature_defaults is not None:
         try:
             return get_feature_defaults()
         except Exception as e:
-            logger.warning("backtest_service.feature_defaults_fallback", error=str(e))
-    return {
-        "common": {
-            "temp": 25,
-            "humidity": 50,
-            "wind": 0,
-            "rain": 0,
-            "cloud": 0,
-            "pressure": 0,
-            "viscosity": 0,
-            "inning": 1,
-            "session": 1,
-            "toss": 0,
-        },
-        "fielding": {"consistency": 0.5, "form": 0.0, "venue": 0.5, "opposition": 0.5},
-    }
+            logger.warning("backtest_service.feature_defaults_error", error=str(e))
+            raise
+    raise RuntimeError("ml.config.get_feature_defaults not available")
 
 
 def build_batting_features_from_map(

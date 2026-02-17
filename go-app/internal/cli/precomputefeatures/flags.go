@@ -34,8 +34,18 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		false,
 		"Replay mode: iterate matches chronologically and write snapshots as of each match date (ignores -as-of)",
 	)
-	fs.Float64Var(&alpha, "ewm-alpha", 0.3, "Alpha for exponentially weighted mean (0,1]")
-	fs.IntVar(&lastN, "lastN", 10, "Last-N window size for consistency")
+	defaultAlpha := config.DefaultFeatureEWMAlpha
+	defaultLastN := config.DefaultFeatureConsistencyLastN
+	if cfg := config.Load(); cfg != nil {
+		if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
+			defaultAlpha = cfg.Features.EWMAlpha
+		}
+		if cfg.Features.ConsistencyLastN > 0 {
+			defaultLastN = cfg.Features.ConsistencyLastN
+		}
+	}
+	fs.Float64Var(&alpha, "ewm-alpha", defaultAlpha, "Alpha for exponentially weighted mean (0,1]; default from config features.ewm_alpha")
+	fs.IntVar(&lastN, "lastN", defaultLastN, "Last-N window size for consistency; default from config features.consistency_last_n")
 	// Default migrations dir from MIGRATIONS_DIR env if set; otherwise ./migrations
 	defMig := os.Getenv("MIGRATIONS_DIR")
 	if defMig == "" {

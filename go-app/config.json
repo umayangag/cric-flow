@@ -69,6 +69,12 @@
   },
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
-    "require_keeper": false
+    "require_keeper": false,
+    "score_weights": {
+      "bat": 0.45,
+      "bowl": 0.4,
+      "field": 0.1,
+      "keeper_bonus": 0.02
+    }
   }
 }
