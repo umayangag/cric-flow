@@ -1,6 +1,7 @@
 package precompute
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -57,4 +58,14 @@ func setDone() {
 	currentStat.Running = false
 	currentStat.FinishedAt = time.Now().UTC()
 	currentStat.Phase = "done"
+}
+
+// setLastError records the error message in status (e.g. when Run fails). Call before setDone.
+func setLastError(errMsg string) {
+	mu.Lock()
+	defer mu.Unlock()
+	currentStat.LastError = errMsg
+	if errMsg != "" {
+		slog.Error("precompute run error recorded in status", slog.String("last_error", errMsg))
+	}
 }

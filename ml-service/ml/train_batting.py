@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 from typing import Optional
 
@@ -12,6 +13,8 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from .config import get_training_params
+
+logger = logging.getLogger(__name__)
 
 # Minimal training script to produce placeholder artifacts compatible with app.main
 # Supports training per-format; artifacts saved with format suffixes when provided.
@@ -48,6 +51,9 @@ TARGET_COLS = [
 
 
 def load_dataset(path: str):
+    if not os.path.exists(path):
+        logger.error("train_batting.load_dataset.file_not_found path=%s", path)
+        raise FileNotFoundError(path)
     df = pd.read_csv(path)
     # Map Go export headers to expected names if needed
     col_map = {
@@ -134,8 +140,8 @@ def train_and_save(
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("train_batting.train_and_save.metadata_save_failed path=%s error=%s", meta_path, e)
 
 
 def _config_formats() -> list[str]:
@@ -217,9 +223,13 @@ def main():
     # If still no targets detected, fall back to legacy single CSV path
     if not targets:
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
-        X, Y = load_dataset(csv_path)
+        try:
+            X, Y = load_dataset(csv_path)
+        except FileNotFoundError as e:
+            logger.error("train_batting.legacy_csv_not_found path=%s error=%s", csv_path, e)
+            raise SystemExit(1) from e
         if X.size == 0 or Y.size == 0:
-            print("No data found for training. Exiting.")
+            logger.error("train_batting.no_data path=%s", csv_path)
             return
         meta = {
             "csv_path": csv_path,
@@ -231,18 +241,22 @@ def main():
             "hyperparams": training_params,
         }
         train_and_save(X, Y, args.out, training_params, None, meta)
-        print(f"Saved batting artifacts to {args.out}")
+        logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
 
     # Per-format training loop
     for fmt in targets:
         csv_path = args.csv or os.path.join(default_csv_dir, f"batting_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):
-            print(f"Skip {fmt}: CSV not found at {csv_path}")
+            logger.warning("train_batting.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             continue
-        X, Y = load_dataset(csv_path)
+        try:
+            X, Y = load_dataset(csv_path)
+        except Exception as e:
+            logger.error("train_batting.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
+            continue
         if X.size == 0 or Y.size == 0:
-            print(f"No data for {fmt}. Skipping.")
+            logger.warning("train_batting.skip_format_no_data format=%s path=%s", fmt, csv_path)
             continue
         meta = {
             "csv_path": csv_path,
@@ -254,7 +268,7 @@ def main():
             "hyperparams": training_params,
         }
         train_and_save(X, Y, args.out, training_params, fmt, meta)
-        print(f"Saved batting artifacts for {fmt} to {args.out}")
+        logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import sys
 import urllib.error
@@ -28,6 +29,8 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.config import default_artifacts_dir, get_training_params
+
+logger = logging.getLogger(__name__)
 
 FIELDING_FEATURE_COLS = [
     "fielding_consistency",
@@ -60,8 +63,15 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
+        logger.error(
+            "train_fielding.fetch_fielding_data.http_error url=%s code=%s body_preview=%s",
+            url,
+            e.code,
+            (body[:200] + "..." if len(body) > 200 else body),
+        )
         raise ValueError(f"Go-app training-data failed: HTTP {e.code} {body}") from e
     except OSError as e:
+        logger.error("train_fielding.fetch_fielding_data.os_error url=%s error=%s", url, e)
         raise ValueError(f"Go-app training-data request failed: {e}") from e
     return data.get("fielding") or {"headers": [], "rows": []}
 
@@ -141,27 +151,33 @@ def main() -> None:
 
     if args.csv:
         if not os.path.isfile(args.csv):
-            print(f"CSV not found: {args.csv}", file=sys.stderr)
+            logger.error("train_fielding.csv_not_found path=%s", args.csv)
             sys.exit(1)
+        logger.info("train_fielding.loading_csv path=%s", args.csv)
         df = pd.read_csv(args.csv)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
     else:
         if not args.go_app_url or not args.cutoff:
-            print("Provide --go-app-url and --cutoff, or --csv", file=sys.stderr)
+            logger.error("train_fielding.missing_args hint=Provide --go-app-url and --cutoff, or --csv")
             sys.exit(1)
-        field = fetch_fielding_data(args.go_app_url, args.cutoff, args.api_key or None)
+        logger.info("train_fielding.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
+        try:
+            field = fetch_fielding_data(args.go_app_url, args.cutoff, args.api_key or None)
+        except ValueError as e:
+            logger.error("train_fielding.fetch_failed error=%s", e)
+            sys.exit(1)
         headers = field.get("headers") or []
         rows = field.get("rows") or []
         by_format = rows_to_xy_by_format(headers, rows)
 
     if not by_format:
-        print("No fielding training data (empty or insufficient rows).", file=sys.stderr)
+        logger.error("train_fielding.no_data hint=empty or insufficient rows")
         sys.exit(1)
     for fmt, (X, Y) in by_format.items():
         train_and_save(X, Y, out_dir, fmt)
-        print(f"Trained fielding model for format={fmt} (n={X.shape[0]}) -> {out_dir}")
+        logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
 
 if __name__ == "__main__":

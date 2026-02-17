@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.model_selection import RandomizedSearchCV
@@ -273,6 +276,7 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     if _train_fielding is None:
+        logger.error("auto_tune.load_fielding_csv.train_fielding_unavailable")
         raise RuntimeError("ml.train_fielding not available for fielding CSV")
     df = pd.read_csv(path)
     headers = list(df.columns)
@@ -311,6 +315,7 @@ def load_fielding_from_api(
     go_app_url: str, cutoff: str, api_key: Optional[str], format_filter: Optional[str] = None
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     if _train_fielding is None:
+        logger.error("auto_tune.load_fielding_from_api.train_fielding_unavailable")
         raise RuntimeError("ml.train_fielding not available for fielding API")
     field = _train_fielding.fetch_fielding_data(go_app_url, cutoff, api_key)
     headers = field.get("headers") or []
@@ -384,32 +389,44 @@ def main() -> None:
             format_suffix = fmt if fmt else None
             if args.from_api:
                 if not args.go_app_url or not args.cutoff:
-                    print("--from-api requires --go-app-url and --cutoff", file=sys.stderr)
+                    logger.error("auto_tune.from_api_requires_go_app_url_and_cutoff")
                     sys.exit(1)
-                if model_kind == "batting":
-                    X, Y = load_batting_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
-                elif model_kind == "bowling":
-                    X, Y = load_bowling_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
-                else:
-                    by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
-                    if not by_f:
-                        print(f"No fielding data for format {fmt}", file=sys.stderr)
-                        continue
-                    # Run once per format from API
-                    for fcode, (X, Y) in by_f.items():
-                        if X.size == 0 or Y.size == 0:
+                try:
+                    if model_kind == "batting":
+                        X, Y = load_batting_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
+                    elif model_kind == "bowling":
+                        X, Y = load_bowling_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
+                    else:
+                        by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                        if not by_f:
+                            logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                             continue
-                        report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
-                        print(
-                            f"[{model_kind}] format={fcode} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
-                        )
-                    continue
+                        # Run once per format from API
+                        for fcode, (X, Y) in by_f.items():
+                            if X.size == 0 or Y.size == 0:
+                                continue
+                            report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
+                            logger.info(
+                                "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                model_kind,
+                                fcode,
+                                X.shape[0],
+                                report["best_cv_score"],
+                            )
+                        continue
+                except (ValueError, RuntimeError) as e:
+                    logger.error("auto_tune.from_api_load_failed model=%s format=%s error=%s", model_kind, fmt, e)
+                    raise SystemExit(1) from e
                 if X.size == 0 or Y.size == 0:
-                    print(f"No {model_kind} data for format {fmt}", file=sys.stderr)
+                    logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                print(
-                    f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
+                logger.info(
+                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                    model_kind,
+                    format_suffix,
+                    X.shape[0],
+                    report["best_cv_score"],
                 )
             else:
                 # CSV
@@ -419,32 +436,50 @@ def main() -> None:
                     if not os.path.isfile(csv_path) and not args.csv:
                         csv_path = args.csv or ""
                     if not csv_path or not os.path.isfile(csv_path):
-                        print(f"Skip {model_kind} format={fmt}: CSV not found", file=sys.stderr)
+                        logger.warning("auto_tune.skip_csv_not_found model=%s format=%s", model_kind, fmt)
                         continue
-                    by_f = load_fielding_csv(csv_path, fmt)
+                    try:
+                        by_f = load_fielding_csv(csv_path, fmt)
+                    except (RuntimeError, FileNotFoundError) as e:
+                        logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
+                        continue
                     for fcode, (X, Y) in by_f.items():
                         if X.size == 0 or Y.size == 0:
                             continue
                         report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
-                        print(f"[{model_kind}] format={fcode} n={X.shape[0]} best_cv_score={report['best_cv_score']}")
+                        logger.info(
+                            "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                            model_kind,
+                            fcode,
+                            X.shape[0],
+                            report["best_cv_score"],
+                        )
                     continue
                 default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app"))
                 csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded_{fmt or 'LEGACY'}.csv")
                 if not os.path.isfile(csv_path):
                     csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded.csv")
                 if not os.path.isfile(csv_path):
-                    print(f"Skip {model_kind} format={fmt}: CSV not found at {csv_path}", file=sys.stderr)
+                    logger.warning("auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path)
                     continue
-                if model_kind == "batting":
-                    X, Y = load_batting_csv(csv_path)
-                else:
-                    X, Y = load_bowling_csv(csv_path)
+                try:
+                    if model_kind == "batting":
+                        X, Y = load_batting_csv(csv_path)
+                    else:
+                        X, Y = load_bowling_csv(csv_path)
+                except Exception as e:
+                    logger.error("auto_tune.load_csv_failed model=%s path=%s error=%s", model_kind, csv_path, e)
+                    continue
                 if X.size == 0 or Y.size == 0:
-                    print(f"No data in {csv_path}", file=sys.stderr)
+                    logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                print(
-                    f"[{model_kind}] format={format_suffix} n={X.shape[0]} best_cv_score={report['best_cv_score']} best_params={report['best_params']}"
+                logger.info(
+                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                    model_kind,
+                    format_suffix,
+                    X.shape[0],
+                    report["best_cv_score"],
                 )
 
 

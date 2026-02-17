@@ -45,16 +45,17 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	var body precomputeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		slog.Error("error decoding precompute request body", slog.Any("err", err))
+		slog.Error("precompute: decode request body failed", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
 	season := body.Season
 	formats := body.Formats
+	slog.Info("precompute: request accepted, starting background job", slog.String("season", season), slog.Any("formats", formats))
 	go func() {
 		timeout := precomputeHandlerTimeout()
 		slog.Info(
-			"precompute started",
+			"precompute job started",
 			slog.Duration("timeout", timeout),
 			slog.String("season", season),
 			slog.Any("formats", formats),
@@ -71,13 +72,13 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		if runErr != nil {
 			slog.Error(
-				"precompute failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
+				"precompute job failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
 				slog.Any("err", runErr),
 				slog.String("season", season),
 				slog.Any("formats", formats),
 			)
 		} else {
-			slog.Info("precompute completed", slog.String("season", season), slog.Any("formats", formats))
+			slog.Info("precompute job completed successfully", slog.String("season", season), slog.Any("formats", formats))
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
@@ -104,7 +105,7 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		slog.Error("error decoding import request body", slog.Any("err", err))
+		slog.Error("import: decode request body failed", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
@@ -116,8 +117,9 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		PlaceholdersWeather:  body.PlaceholdersWeather,
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}
+	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
 	go func() {
-		slog.Info("cricsheet import started", slog.String("dir", dir))
+		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
 			context.Background(),
 			"cricsheet-import",
@@ -129,9 +131,9 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 		if runErr != nil {
-			slog.Error("cricsheet import failed", slog.Any("err", runErr))
+			slog.Error("cricsheet import job failed", slog.String("dir", dir), slog.Any("err", runErr))
 		} else {
-			slog.Info("cricsheet import completed", slog.String("dir", dir))
+			slog.Info("cricsheet import job completed successfully", slog.String("dir", dir))
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
@@ -143,6 +145,7 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := vars["id"]
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		slog.Info("getPlayer: invalid player id", slog.String("id", idStr), slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
@@ -153,6 +156,7 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 	// Get base player data
 	player, err := db.GetPlayerByID(r.Context(), id)
 	if err != nil {
+		slog.Error("getPlayer: GetPlayerByID failed", slog.Int64("player_id", id), slog.Any("err", err))
 		respondErr(w, err)
 		return
 	}
@@ -191,6 +195,7 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := vars["id"]
 	mid, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		slog.Info("getMatch: invalid match id", slog.String("id", idStr), slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
@@ -206,6 +211,7 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	var resp matchDetailsResponse
 	if err := row.Scan(&resp.ID, &resp.MatchID, &resp.VenueID, &resp.OppositionID, &resp.SeasonID, &resp.Toss); err != nil {
+		slog.Error("getMatch: query/scan failed", slog.Int64("match_id", mid), slog.Any("err", err))
 		respondErr(w, err)
 		return
 	}
@@ -216,11 +222,13 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []models.BattingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
+		slog.Info("predictBatting: decode body failed", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
 	preds, err := a.mlClient.PredictBatting(r.Context(), feats)
 	if err != nil {
+		slog.Error("predictBatting: ML client PredictBatting failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
 		respondErr(w, err)
 		return
 	}
@@ -231,11 +239,13 @@ func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	var feats []models.BowlingFeatures
 	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
+		slog.Info("predictBowling: decode body failed", slog.Any("err", err))
 		respondBadRequest(w, err)
 		return
 	}
 	preds, err := a.mlClient.PredictBowling(r.Context(), feats)
 	if err != nil {
+		slog.Error("predictBowling: ML client PredictBowling failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
 		respondErr(w, err)
 		return
 	}

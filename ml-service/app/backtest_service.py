@@ -10,6 +10,8 @@ try:
 except Exception:
     get_feature_defaults = None
 
+from app.logging import get_struct_logger
+
 from .models import (
     BacktestMatchAgg,
     BacktestMetrics,
@@ -22,6 +24,8 @@ from .models import (
     PlayerComparison,
     PlayerPoint,
 )
+
+logger = get_struct_logger()
 
 
 def _float(d: Dict[str, float], key: str, default: float) -> float:
@@ -38,10 +42,12 @@ def _get_required_float(d: Dict[str, float], key: str) -> float:
     """Return float for a required feature; raise ValueError if missing or invalid."""
     v = d.get(key)
     if v is None:
+        logger.debug("backtest_service.required_feature_missing", key=key)
         raise ValueError(f"Required feature '{key}' is missing from the feature map.")
     try:
         return float(v)
     except (TypeError, ValueError):
+        logger.debug("backtest_service.feature_non_numeric", key=key, value=v)
         raise ValueError(f"Feature '{key}' has a non-numeric value: {v}")
 
 
@@ -65,8 +71,8 @@ def _feature_defaults() -> Dict:
     if get_feature_defaults is not None:
         try:
             return get_feature_defaults()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("backtest_service.feature_defaults_fallback", error=str(e))
     return {
         "common": {
             "temp": 25,

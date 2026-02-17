@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -230,8 +231,10 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	ssl := getenv("POSTGRES_SSLMODE", "disable")
 
 	dsn := BuildDSN(user, pass, host, port, db, ssl)
+	slog.Info("db.Connect: parsing config", slog.String("host", host), slog.String("db", db))
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
+		slog.Error("db.Connect: parse config failed", slog.Any("err", err))
 		return nil, err
 	}
 	cfg.MaxConns = 10
@@ -242,13 +245,16 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	// Use background context for pool lifecycle so it doesn't close if Connect's ctx is canceled/times out.
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
+		slog.Error("db.Connect: create pool failed", slog.Any("err", err))
 		return nil, err
 	}
 	// Verify connectivity using the provided (potentially short-lived) context.
 	if err := pool.Ping(ctx); err != nil {
+		slog.Error("db.Connect: ping failed", slog.Any("err", err))
 		pool.Close()
 		return nil, err
 	}
+	slog.Info("db.Connect: connected successfully", slog.String("host", host), slog.String("db", db))
 	Pool = pool
 	defaultDB = poolDB{p: pool}
 	PoolAPI = poolAPIAdapter{p: pool}

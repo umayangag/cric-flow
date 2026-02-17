@@ -382,11 +382,22 @@ def historical_backtest_match(req: HistoricalMatchBacktestRequest):
     Currently uses a deterministic in-memory repo and simple baselines; swap in a DB-backed
     repo and true models as they become available.
     """
+    logger.info(
+        "historical_backtest.match.start",
+        match_id=req.match_id,
+        has_filters=req.filters is not None,
+    )
     repo = DeterministicInMemoryRepo()
     try:
         resp = svc_historical_backtest(req, repo, svc_resolve_model_version(getattr(app, "version", "")))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        logger.error(
+            "historical_backtest.match.validation_failed",
+            match_id=req.match_id,
+            error=str(e),
+        )
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    logger.info("historical_backtest.match.success", match_id=req.match_id)
     return JSONResponse(status_code=200, content=resp.model_dump())
 
 
@@ -417,10 +428,16 @@ def _reload_artifacts() -> dict:
 
 # Initial load of artifacts (legacy + per-format) via artifacts module
 try:
+    logger.info("startup.artifacts.load.start", models_dir=MODELS_DIR)
     reload_artifacts(MODELS_DIR)
-except Exception:
-    # Don't crash on load errors; endpoints will fall back to zeros or return helpful errors
-    pass
+    logger.info("startup.artifacts.load.done", models_dir=MODELS_DIR)
+except Exception as e:
+    logger.error(
+        "startup.artifacts.load.failed",
+        models_dir=MODELS_DIR,
+        error=str(e),
+        exc_info=True,
+    )
 
 
 @app.get("/health")
@@ -442,10 +459,11 @@ async def health():
                                 "modified": int(st.st_mtime),
                             }
                         )
-                    except Exception:
+                    except OSError as e:
+                        logger.warning("health.artifacts_info.stat_failed", file=fname, error=str(e))
                         out.append({"file": fname})
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("health.artifacts_info.listdir_failed", models_dir=MODELS_DIR, error=str(e))
         return sorted(out, key=lambda x: x.get("file", ""))
 
     def _metadata_info(prefix: str) -> List[str]:
@@ -455,8 +473,8 @@ async def health():
                 lf = fname.lower()
                 if lf.startswith(prefix) and lf.endswith(".json"):
                     names.append(fname)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("health.metadata_info.listdir_failed", models_dir=MODELS_DIR, error=str(e))
         return sorted(names)
 
     return {
@@ -492,7 +510,8 @@ def _find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[s
     """
     try:
         entries = os.listdir(models_dir)
-    except Exception:
+    except OSError as e:
+        logger.debug("artifacts_status.find_artifact.listdir_failed", models_dir=models_dir, fmt=fmt, error=str(e))
         return None
     fmt_lower = fmt.lower()
     prefer_prefix = "batting_" if batting else "bowling_"
@@ -559,13 +578,13 @@ async def artifacts_status():
         try:
             if fmt in BAT_MODELS:
                 b_obj["loaded"] = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("artifacts_status.batting_loaded_check", fmt=fmt, error=str(e))
         try:
             if fmt in BOWL_MODELS:
                 bow_obj["loaded"] = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("artifacts_status.bowling_loaded_check", fmt=fmt, error=str(e))
         formats[fmt] = {"batting": b_obj, "bowling": bow_obj}
 
     return {"timestamp": ts, "root": root, "formats": formats}
@@ -574,6 +593,7 @@ async def artifacts_status():
 @app.post("/predict/batting", response_model=List[BattingPrediction])
 async def predict_batting(features: List[BattingFeatures]):
     if not features:
+        logger.info("predict.batting.rejected", reason="empty_batch")
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
@@ -588,6 +608,7 @@ async def predict_batting(features: List[BattingFeatures]):
         # Validate all rows have same format
         for f in features:
             if (f.format or "").strip().upper() != fmt:
+                logger.info("predict.batting.rejected", reason="mixed_formats", batch_size=len(features))
                 raise HTTPException(
                     status_code=400,
                     detail=_error_payload(
@@ -598,6 +619,7 @@ async def predict_batting(features: List[BattingFeatures]):
                 )
         pair = BAT_MODELS.get(fmt)
         if not pair:
+            logger.warning("predict.batting.model_not_loaded", format=fmt, available=list(BAT_MODELS.keys()))
             raise HTTPException(
                 status_code=404,
                 detail=_error_payload(
@@ -612,6 +634,7 @@ async def predict_batting(features: List[BattingFeatures]):
         # Legacy fallback
         pair = BAT_MODELS.get("_LEGACY_")
         if not pair:
+            logger.info("predict.batting.rejected", reason="missing_format_no_legacy")
             raise HTTPException(
                 status_code=400,
                 detail=_error_payload(
@@ -661,6 +684,7 @@ async def predict_batting(features: List[BattingFeatures]):
 @app.post("/predict/bowling", response_model=List[BowlingPrediction])
 async def predict_bowling(features: List[BowlingFeatures]):
     if not features:
+        logger.info("predict.bowling.rejected", reason="empty_batch")
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
@@ -673,6 +697,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
     if fmt:
         for f in features:
             if (f.format or "").strip().upper() != fmt:
+                logger.info("predict.bowling.rejected", reason="mixed_formats", batch_size=len(features))
                 raise HTTPException(
                     status_code=400,
                     detail=_error_payload(
@@ -683,6 +708,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
                 )
         pair = BOWL_MODELS.get(fmt)
         if not pair:
+            logger.warning("predict.bowling.model_not_loaded", format=fmt, available=list(BOWL_MODELS.keys()))
             raise HTTPException(
                 status_code=404,
                 detail=_error_payload(
@@ -696,6 +722,7 @@ async def predict_bowling(features: List[BowlingFeatures]):
     else:
         pair = BOWL_MODELS.get("_LEGACY_")
         if not pair:
+            logger.info("predict.bowling.rejected", reason="missing_format_no_legacy")
             raise HTTPException(
                 status_code=400,
                 detail=_error_payload(
@@ -746,6 +773,7 @@ async def admin_reload():
     Guarded by ENABLE_HOT_RELOAD env flag to avoid accidental reloads in prod.
     """
     if not ENABLE_HOT_RELOAD:
+        logger.info("admin.reload.rejected", reason="disabled")
         raise HTTPException(
             status_code=403,
             detail=_error_payload(
@@ -754,5 +782,18 @@ async def admin_reload():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload.",
             ),
         )
-    summary = _reload_artifacts()
-    return {"status": "reloaded", **summary}
+    logger.info("admin.reload.start", models_dir=MODELS_DIR)
+    try:
+        summary = _reload_artifacts()
+        logger.info("admin.reload.success", models_dir=MODELS_DIR, summary=summary)
+        return {"status": "reloaded", **summary}
+    except Exception as e:
+        logger.error("admin.reload.failed", models_dir=MODELS_DIR, error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="RELOAD_FAILED",
+                message="Artifact reload failed",
+                hint=str(e),
+            ),
+        ) from e

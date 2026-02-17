@@ -22,9 +22,11 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	step := strings.TrimSpace(strings.ToLower(vars["step"]))
 	if step == "" {
+		slog.Info("pipeline run: empty step")
 		respondBadRequest(w, nil)
 		return
 	}
+	slog.Info("pipeline run requested", slog.String("step", step))
 
 	switch step {
 	case "import":
@@ -44,6 +46,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	default:
+		slog.Info("pipeline run: unknown step", slog.String("step", step))
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown step: " + step})
 		return
 	}
@@ -93,11 +96,12 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 			},
 		)
 		if runErr != nil {
-			slog.Error("export-dataset failed", slog.Any("err", runErr))
+			slog.Error("export-dataset failed", slog.String("out_dir", outDir), slog.Any("err", runErr))
 		} else {
 			slog.Info("export-dataset completed", slog.String("dir", outDir))
 		}
 	}()
+	slog.Info("export-dataset job started", slog.String("out_dir", outDir))
 
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
 }

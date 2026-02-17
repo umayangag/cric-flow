@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 # Simple JSON config loader for ml-service
 # Precedence elsewhere should be: flag/arg > env > config.json > built-in defaults
@@ -78,24 +81,29 @@ def get_training_params(model: str) -> Dict[str, Any]:
     model: one of "batting", "bowling". Used by train_batting*, train_bowling*, train_on_the_fly.
     """
     if model not in TRAINING_MODELS:
+        logger.error("config.get_training_params.unknown_model model=%s allowed=%s", model, TRAINING_MODELS)
         raise ValueError(f"Unknown model {model!r}. Must be one of: {', '.join(TRAINING_MODELS)}.")
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     if not isinstance(ml, dict):
+        logger.error("config.get_training_params.missing_ml_block model=%s", model)
         raise ValueError(
             "config.json must define 'ml'. Add ml.training.batting and ml.training.bowling with "
             "n_estimators, max_depth, random_state, joblib_compress."
         )
     training = ml.get("training")
     if not isinstance(training, dict):
+        logger.error("config.get_training_params.missing_training_block model=%s", model)
         raise ValueError("config.json must define 'ml.training' with per-model blocks (batting, bowling).")
     block = training.get(model)
     if not isinstance(block, dict):
+        logger.error("config.get_training_params.missing_model_block model=%s", model)
         raise ValueError(
             f"config.json must define 'ml.training.{model}' with keys: " + ", ".join(TRAINING_REQUIRED_KEYS)
         )
     missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
     if missing:
+        logger.error("config.get_training_params.missing_keys model=%s missing=%s", model, missing)
         raise ValueError(
             f"ml.training.{model} is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
         )
@@ -109,10 +117,14 @@ def get_training_params(model: str) -> Dict[str, Any]:
         random_state = int(random_state)
         joblib_compress = int(joblib_compress)
     except (TypeError, ValueError) as e:
+        logger.error("config.get_training_params.invalid_types model=%s error=%s", model, e)
         raise ValueError(
             f"ml.training.{model} values must be integers: n_estimators, max_depth, random_state, joblib_compress."
         ) from e
     if joblib_compress < 0 or joblib_compress > 9:
+        logger.error(
+            "config.get_training_params.invalid_joblib_compress model=%s joblib_compress=%s", model, joblib_compress
+        )
         raise ValueError(f"ml.training.{model}.joblib_compress must be between 0 and 9.")
     return {
         "n_estimators": n_estimators,

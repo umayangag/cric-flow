@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -153,6 +154,7 @@ func evalJobCleanup() {
 func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
+		slog.Error("startEvaluateJob: generate job ID failed", slog.Any("err", err))
 		return "", err
 	}
 	now := time.Now()
@@ -175,6 +177,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 		// Limit concurrent evaluation jobs to avoid exhausting server resources.
 		evalJobSem <- struct{}{}
 		defer func() { <-evalJobSem }()
+		slog.Info("evaluate job started", slog.String("job_id", jobID), slog.String("format", format), slog.String("team1", team1), slog.String("team2", team2), slog.String("match_id", matchID))
 		// Not the request context (cancelled when we return 202). Use a long deadline so the job
 		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
 		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration)
@@ -184,9 +187,11 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 		}
 		resp, err := doEvaluateWork(jobCtx, format, team1, team2, matchID, progress)
 		if err != nil {
+			slog.Error("evaluate job failed", slog.String("job_id", jobID), slog.String("format", format), slog.String("team1", team1), slog.String("team2", team2), slog.String("match_id", matchID), slog.Any("err", err))
 			job.setError(err.Error())
 			return
 		}
+		slog.Info("evaluate job completed", slog.String("job_id", jobID), slog.String("format", format))
 		job.setDone(resp)
 	}()
 

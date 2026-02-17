@@ -6,6 +6,7 @@ package precompute
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
@@ -29,7 +30,7 @@ type RunOpts struct {
 // triggers sequence features) per format. If formats is empty, computes for all formats.
 // Season is ignored; the snapshot runner replays all matches chronologically.
 // Pass nil for opts to use config for alpha and lastN.
-func Run(parent context.Context, season string, formats []string, opts *RunOpts) error {
+func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
 	cfg := config.Load()
 	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
@@ -38,17 +39,26 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 		defer cancel()
 	}
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil {
-			return err
+		slog.Info("precompute: connecting to database (pool was nil)")
+		if _, connectErr := db.Connect(ctx); connectErr != nil {
+			slog.Error("precompute: database connect failed", slog.Any("err", connectErr))
+			return connectErr
 		}
 	}
 	codes, err := discoverFormatCodes(ctx, formats)
 	if err != nil {
+		slog.Error("precompute: discover format codes failed", slog.Any("err", err), slog.Any("formats_requested", formats))
 		return err
 	}
+	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
 
 	setStart(season, codes)
-	defer setDone()
+	defer func() {
+		if err != nil {
+			setLastError(err.Error())
+		}
+		setDone()
+	}()
 
 	alpha := defaultEWMAlpha
 	if opts != nil && opts.Alpha > 0 && opts.Alpha <= 1 {
@@ -70,13 +80,17 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	runner := pfcmd.NewRunner()
 	for _, code := range codes {
 		setPhase("form")
+		slog.Info("precompute: starting format", slog.String("format", code))
 		formatID, err := db.GetMatchFormatIDByCode(ctx, code)
 		if err != nil {
+			slog.Error("precompute: get format ID failed", slog.String("format", code), slog.Any("err", err))
 			return err
 		}
 		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
+			slog.Error("precompute: RunReplay failed", slog.String("format", code), slog.Int64("format_id", formatID), slog.Any("err", err))
 			return err
 		}
+		slog.Info("precompute: format completed", slog.String("format", code))
 	}
 	return nil
 }

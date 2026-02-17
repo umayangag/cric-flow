@@ -49,5 +49,10 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	}()
 
 	exitMeta, runErr = fn(ctx)
+	if runErr != nil {
+		slog.Error(jobName+" job function failed",
+			slog.Any("err", runErr),
+			slog.Any("start_meta", startMeta))
+	}
 	return runErr
 }

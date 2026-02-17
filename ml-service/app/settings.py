@@ -14,11 +14,14 @@ from typing import Any, Optional
 
 
 def _default_models_dir_from_config(svc_config: Optional[Any]) -> str:
+    import logging
+
+    _log = logging.getLogger(__name__)
     if svc_config is not None:
         try:
             return svc_config.default_artifacts_dir()  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("settings.default_artifacts_dir_fallback", error=str(e))
     # built-in fallback ../../output/ml-service (relative to this file)
     here = osp.dirname(__file__)
     return osp.abspath(osp.join(here, "..", "..", "output", "ml-service"))
