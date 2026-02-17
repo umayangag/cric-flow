@@ -24,11 +24,19 @@ Keys:
   - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
   - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for `cmd/precompute` operations.
+  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 21600000 (6 hours). Set to 0 to disable. Precompute and large imports/exports can take 6+ hours on big datasets (T20/T20I).
   - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
   - `consistency_per_format` (bool) — if true, compute format-aware consistency (table can be introduced later).
+  - `history_window_matches` (int) — when &gt; 0, limit form/consistency to the last N matches (used by precompute-all).
+  - **Feature extraction (tunable):** Used by training-data export and by `cmd/precompute-all` when CLI flags are not overridden.
+    - `ewm_alpha` (float, default 0.3) — alpha for exponentially weighted mean (form). Must be in (0, 1].
+    - `consistency_last_n` (int, default 10) — last-N innings window for consistency (coefficient of variation).
+    - `form_window_n` (int, default 0) — max number of innings to use for form; 0 = no limit.
+  - `fielding_enrich` — used when ML does not return fielding predictions and go-app enriches from history (team selection).
+    - `ewm_alpha` (float, default 0.3) — EWM alpha for fielding form.
+    - `form_to_catches_ratio` (float, default 0.7) — split of form into catches; run_outs = form × (1 − ratio).
 - `export`
   - `split_by_format` (bool) — when true, `cmd/export-dataset` writes per-format CSVs by default.
   - `required_format` (string) — when set, exporter writes only this format unless overridden by flags.
@@ -51,12 +59,27 @@ Config file: `ml-service/config.json`
 Keys:
 - `inputs`
   - `go_app_export_dir` — directory where Go exports CSVs (read by training scripts).
+  - `training_data_fetch_timeout_sec` — timeout in seconds when fetching training data from go-app (train-on-the-fly, train_fielding, walk_forward). Default 3600 (1 hour). Large datasets may need longer.
 - `outputs`
   - `artifacts_dir` — directory where training scripts write joblib artifacts and where FastAPI loads from.
 - `ml`
   - `formats` — list of format codes to train/serve (e.g., `["TEST","ODI","T20","T20I"]`).
-  - `random_state`, `cv_splits`, `test_size`, `n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — hyperparameters reserved for use by training scripts (current model uses a subset; others are placeholders for future models).
   - `artifact_template` — naming template for saved artifacts (informational).
+  - `training` — **required** per-model block used strictly by all training scripts (no defaults or env overrides in code). Each model has its own parameters so you can tune batting vs bowling (and future models) independently.
+    - `batting` — parameters for batting RandomForest training and artifacts.
+      - `n_estimators` (int), `max_depth` (int), `random_state` (int), `joblib_compress` (int, 0–9).
+    - `bowling` — parameters for bowling RandomForest training and artifacts.
+      - Same keys as `batting`. Add further keys (e.g. `fielding`, `win`) when those models are implemented.
+  - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
+  - `feature_defaults` (optional) — defaults used when building feature vectors from a sparse go-app map at prediction time (missing keys). Tune these to match “no history” or environment assumptions.
+    - `common` — weather/context: `temp`, `humidity`, `wind`, `rain`, `cloud`, `pressure`, `viscosity`, `inning`, `session`, `toss` (same defaults used for batting/bowling/fielding where applicable).
+    - `fielding` — `consistency`, `form`, `venue`, `opposition` (used when fielding or venue/opposition keys are missing).
+  - `tuning` (optional) — used by `ml.auto_tune`. Keys: `cv_splits`, `n_iter`, `n_jobs`, `random_state`, `scoring`; optionally `search_space` with `rf` and `gb` defining param ranges for RandomizedSearchCV.
+  - `walk_forward` (optional) — used by `ml.walk_forward`. Keys: `initial_cutoff`, `window_x`, `registry_path`. See **docs/ML_WALK_FORWARD.md**.
+  - `prediction_defaults` (optional) — `economy` (default 6.0 when bowling model returns no economy).
+  - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10, used by player_combinator).
+
+For data normalization, feature computation, and ML practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
 
 Environment variables:
 - `ML_SERVICE_CONFIG` — path to an alternate `config.json`.
@@ -85,6 +108,9 @@ New keys in `go-app/config.json` under `team`:
 - `min_bowlers` — minimum number of bowlers the selector must include (default 5).
 - `default_batters` — default number of batters to pick when `-bat` not provided (default 6).
 - `default_bowlers` — default number of bowlers to pick when `-bowl` not provided (default 5 or `min_bowlers`).
+
+Under `selection`:
+- `score_weights` — optional weights for combining batting/bowling/fielding signals when selecting best XI: `bat` (default 0.45), `bowl` (0.40), `field` (0.10), `keeper_bonus` (0.02). These affect which players are ranked higher in team selection.
 
 CLI overrides still apply: `go run ./go-app/cmd/team-predictor -match=<id> -format=<CODE> -bat=6 -bowl=5`.
 

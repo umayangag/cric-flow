@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -25,12 +26,21 @@ type Options struct {
 }
 
 // ImportDir reads all .json files in dir and imports them into the DB concurrently.
-func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
+// concurrency limits parallel file imports; 0 or negative uses runtime.NumCPU().
+// Each file's DB writes run in a single transaction (all-or-nothing per file).
+func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) (int, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
+	if concurrency <= 0 {
+		concurrency = runtime.NumCPU()
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		slog.Error("cricsheet.ImportDir ReadDir failed", slog.String("dir", dir), slog.Any("err", err))
 		return 0, err
 	}
 	var files []string
@@ -45,11 +55,9 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	}
 	sort.Strings(files)
 
-	// Concurrency 1 ensures no partial data: when one file fails, no other is mid-import.
-	// Each file's DB writes run in a single transaction (all-or-nothing).
 	var count int64
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(1)
+	g.SetLimit(concurrency)
 
 	for _, f := range files {
 		f := f // capture
@@ -72,6 +80,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	}
 
 	if err := g.Wait(); err != nil {
+		slog.Error("cricsheet.ImportDir wait failed", slog.String("dir", dir), slog.Int64("imported", count), slog.Any("err", err))
 		return int(count), err
 	}
 	return int(count), nil
@@ -82,6 +91,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	cache := db.GetGlobalCache()
 	fh, err := os.Open(path)
 	if err != nil {
+		slog.Error("cricsheet.ImportMatchFile open failed", slog.String("path", path), slog.Any("err", err))
 		return err
 	}
 	defer func() {
@@ -685,6 +695,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 		return nil
 	}); err != nil {
+		slog.Error("cricsheet.ImportMatchFile transaction failed", slog.String("path", path), slog.Int64("match_id", mid), slog.Any("err", err))
 		return err
 	}
 	// Enqueue async weather job (non-blocking)

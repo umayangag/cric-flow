@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import HealthTab from './components/HealthTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
 import OpsStatusTab from './components/OpsStatusTab';
+import UpcomingMatchTab from './components/UpcomingMatchTab';
+import WorkbenchTab from './components/WorkbenchTab';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppBar from '@mui/material/AppBar';
@@ -38,6 +40,8 @@ const AppContent: React.FC = () => {
   const currentTab = (() => {
     if (location.pathname.startsWith('/ops')) return 'ops';
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
+    if (location.pathname.startsWith('/upcoming')) return 'upcoming';
+    if (location.pathname.startsWith('/workbench')) return 'workbench';
     return 'health';
   })();
 
@@ -45,6 +49,8 @@ const AppContent: React.FC = () => {
     if (newValue === 'health') navigate('/health');
     else if (newValue === 'ops') navigate('/ops');
     else if (newValue === 'evaluateDb') navigate('/evaluate');
+    else if (newValue === 'upcoming') navigate('/upcoming');
+    else if (newValue === 'workbench') navigate('/workbench');
   };
 
   return (
@@ -56,34 +62,90 @@ const AppContent: React.FC = () => {
         bgcolor: (t) => t.palette.background.default,
       }}
     >
-      {/* AppBar with subtle gradient */}
       <AppBar
         position="static"
+        elevation={0}
         sx={{
-          background: (theme) =>
-            `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-          boxShadow: 2,
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          '& .MuiToolbar-root': {
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 2, sm: 3 },
+          },
         }}
       >
-        <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Typography variant="h6" component="div">
+        <Toolbar
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              color: 'text.primary',
+            }}
+          >
             Cric Info — ML Control Panel
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip color="secondary" label="ML Service" size="small" />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Chip
+                label="ML Service"
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(14, 165, 233, 0.12)',
+                  color: 'primary.dark',
+                  fontWeight: 500,
+                  border: 'none',
+                  '& .MuiChip-label': { px: 1.25 },
+                }}
+              />
               <Typography
                 variant="body2"
-                sx={{ opacity: 0.8, display: { xs: 'none', sm: 'inline' } }}
+                sx={{
+                  color: 'text.secondary',
+                  display: { xs: 'none', sm: 'inline' },
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                }}
                 noWrap
               >
                 {baseUrl}
               </Typography>
             </Box>
             {isAuthenticated && (
-              <Button color="inherit" onClick={logout} size="small">
-                Logout
-              </Button>
+              <>
+                <Box
+                  sx={{
+                    width: '1px',
+                    height: 20,
+                    bgcolor: 'divider',
+                    display: { xs: 'none', sm: 'block' },
+                  }}
+                  aria-hidden
+                />
+                <Button
+                  color="inherit"
+                  onClick={logout}
+                  size="small"
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    color: 'text.primary',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  Logout
+                </Button>
+              </>
             )}
           </Box>
         </Toolbar>
@@ -103,12 +165,14 @@ const AppContent: React.FC = () => {
             <Tab value="health" label="Health" />
             <Tab value="ops" label="Ops Status" />
             <Tab value="evaluateDb" label="Evaluate (DB)" />
+            <Tab value="upcoming" label="Upcoming match prediction" />
+            <Tab value="workbench" label="Workbench" />
           </Tabs>
         )}
 
         {/* Content Card */}
         <Fade in timeout={240}>
-          <Paper elevation={2} sx={{ p: 2 }}>
+          <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
             <Routes>
               <Route path="/" element={<Navigate to="/health" replace />} />
               <Route path="/login" element={<Login />} />
@@ -133,6 +197,22 @@ const AppContent: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <EvaluateDbTab />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/upcoming"
+                element={
+                  <ProtectedRoute>
+                    <UpcomingMatchTab />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/workbench"
+                element={
+                  <ProtectedRoute>
+                    <WorkbenchTab />
                   </ProtectedRoute>
                 }
               />

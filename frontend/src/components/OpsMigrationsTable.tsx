@@ -88,7 +88,7 @@ const OpsMigrationsTable: React.FC = () => {
     return () => clearInterval(interval);
   }, [load]);
 
-  const totalPages = Math.ceil(total / limit);
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / limit));
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
   if (error) return <ErrorText>Error: {error}</ErrorText>;
@@ -134,16 +134,13 @@ const OpsMigrationsTable: React.FC = () => {
       </Table>
       <PaginationContainer>
         <PaginationButton disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          Previous
+          Newer
         </PaginationButton>
         <span>
-          Page {page} of {totalPages || 1}
+          Page {page} of {totalPages}
         </span>
-        <PaginationButton
-          disabled={migrations.length < limit}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next
+        <PaginationButton disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+          Older
         </PaginationButton>
       </PaginationContainer>
     </TableContainer>

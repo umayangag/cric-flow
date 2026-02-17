@@ -57,6 +57,9 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
+      # Required for train-on-the-fly when no artifacts are loaded for a format (e.g. T20I)
+      GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
+      GO_APP_API_KEY: ${API_KEY:-dev-local-key}
     ports:
       - "8000:8000"
     volumes:

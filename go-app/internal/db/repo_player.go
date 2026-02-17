@@ -13,7 +13,7 @@ type Player struct {
 	IsRetired      int16
 }
 
-// PlayerConsistency represents a row in the player_consistency_data_fmt table.
+// PlayerConsistency holds consistency values for a player/format (from feature_consistency_snapshots or legacy).
 type PlayerConsistency struct {
 	PlayerID           int64
 	SeasonID           int64
@@ -59,10 +59,13 @@ func GetPlayerConsistency(
 		return nil, err
 	}
 
+	// Read from feature_consistency_snapshots (latest per player/format); seasonID kept for API compatibility.
 	row := Pool.QueryRow(ctx, `
-		SELECT player_id, season_id, format_id, batting_consistency, bowling_consistency
-		FROM player_consistency_data_fmt
-		WHERE player_id = $1 AND season_id = $2 AND format_id = $3
+		SELECT $1::bigint, $2::bigint, $3::bigint, batting_value::real, bowling_value::real
+		FROM feature_consistency_snapshots
+		WHERE player_id = $1 AND format_id = $3 AND scope = 'overall' AND scope_id IS NULL
+		ORDER BY as_of_date DESC
+		LIMIT 1
 	`, playerID, sid, fid)
 
 	pc := &PlayerConsistency{}
@@ -103,22 +106,4 @@ func GetOrCreateByName(ctx context.Context, name string) (int64, error) {
 		return 0, err
 	}
 	return id, nil
-}
-
-// UpsertConsistencyFmt inserts or updates a player”'s consistency scores for a
-// given season and match format.
-func UpsertConsistencyFmt(ctx context.Context, data *PlayerConsistency) error {
-	if Pool == nil {
-		return errors.New("db pool not initialized")
-	}
-	_, err := Pool.Exec(ctx, `
-		INSERT INTO player_consistency_data_fmt (
-			player_id, season_id, format_id, batting_consistency, bowling_consistency
-		) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (player_id, season_id, format_id)
-		DO UPDATE SET
-			batting_consistency = EXCLUDED.batting_consistency,
-			bowling_consistency = EXCLUDED.bowling_consistency
-	`, data.PlayerID, data.SeasonID, data.FormatID, data.BattingConsistency, data.BowlingConsistency)
-	return err
 }

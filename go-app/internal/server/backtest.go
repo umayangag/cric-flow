@@ -140,14 +140,20 @@ func init() {
 		}
 		return *d, nil
 	}
-	// Minimal default for squad player IDs: read from player_match for the given match_id.
+	// Squad = distinct player_ids who batted or bowled in this match (from batting_data and bowling_data).
 	getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) {
 		if db.Pool == nil {
 			return nil, errors.New("db pool not initialized")
 		}
 		rows, err := db.Pool.Query(
 			ctx,
-			`SELECT DISTINCT player_id FROM player_match WHERE match_id = $1 ORDER BY player_id ASC`,
+			`SELECT DISTINCT player_id FROM (
+				SELECT player_id FROM batting_data WHERE match_id = $1
+				UNION
+				SELECT player_id FROM bowling_data WHERE match_id = $1
+				UNION
+				SELECT player_id FROM fielding_data WHERE match_id = $1
+			) t ORDER BY player_id ASC`,
 			matchID,
 		)
 		if err != nil {
@@ -167,27 +173,32 @@ func init() {
 		}
 		return ids, nil
 	}
-	// Actuals for match: optimized single-query LEFT JOIN across batting, bowling, fielding
+	// Actuals for match: squad from batting_data UNION bowling_data, then LEFT JOIN batting/bowling/fielding stats.
 	getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {
 		if db.Pool == nil {
 			return nil, errors.New("db pool not initialized")
 		}
-		// Unified query to reduce DB round-trips: get all player actuals with LEFT JOINs
 		rows, err := db.Pool.Query(
 			ctx,
 			`
          SELECT
              pm.player_id,
-             COALESCE(bd.runs, 0) AS runs,
-             COALESCE(bw.wickets, 0) AS wickets,
-             COALESCE(bw.econ, 0) AS econ,
-             COALESCE(fd.catches, 0) AS catches,
-             COALESCE(fd.run_outs, 0) AS run_outs
-         FROM player_match pm
+             COALESCE(SUM(bd.runs), 0)::float AS runs,
+             COALESCE(SUM(bw.wickets), 0)::float AS wickets,
+             COALESCE(SUM(bw.runs)::float / NULLIF(SUM(bw.overs), 0), 0) AS econ,
+             COALESCE(SUM(fd.catches), 0)::float AS catches,
+             COALESCE(SUM(fd.run_outs), 0)::float AS run_outs
+         FROM (
+             SELECT match_id, player_id FROM batting_data WHERE match_id = $1
+             UNION
+             SELECT match_id, player_id FROM bowling_data WHERE match_id = $1
+             UNION
+             SELECT match_id, player_id FROM fielding_data WHERE match_id = $1
+         ) pm
          LEFT JOIN batting_data bd ON bd.match_id = pm.match_id AND bd.player_id = pm.player_id
          LEFT JOIN bowling_data bw ON bw.match_id = pm.match_id AND bw.player_id = pm.player_id
          LEFT JOIN fielding_data fd ON fd.match_id = pm.match_id AND fd.player_id = pm.player_id
-         WHERE pm.match_id = $1
+         GROUP BY pm.player_id
          ORDER BY pm.player_id ASC
          `,
 			matchID,
@@ -222,12 +233,11 @@ func init() {
 	// Wire default ML and aggregates seams to concrete clients/repos where available.
 	// These can be overridden in tests.
 	mlClient := NewBacktestMLClient()
-	mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, playerIDs []int64) (map[int64]playerPredictions, error) {
-		// If mlClient is nil (should not happen), return placeholder error
+	mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, format string, playerIDs []int64, features map[int64]map[string]float64) (map[int64]playerPredictions, error) {
 		if mlClient == nil {
 			return nil, errors.New("ml client not initialized")
 		}
-		return mlClient.predictPlayers(ctx, cutoff, playerIDs)
+		return mlClient.predictPlayers(ctx, cutoff, format, playerIDs, features)
 	}
 	mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoff time.Time, teams [2]string) (matchAggregates, string, error) {
 		if mlClient == nil {

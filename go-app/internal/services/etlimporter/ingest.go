@@ -8,7 +8,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -32,9 +36,8 @@ func NewService(repository db.EtlRepository) *Service {
 	}
 }
 
-// IngestDir enumerates files by pattern in dir, parses them, and when apply==true upserts via Repository.
-// conc is reserved for future use; it must be >=1 (validated by the caller/CLI). For simplicity and
-// determinism we currently process sequentially.
+// IngestDir enumerates files by pattern in dir, parses them concurrently, and when apply==true
+// upserts per file to avoid loading all data into memory. conc limits parallel workers; 0 uses runtime.NumCPU().
 func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool, conc int) (Stats, error) {
 	if s == nil || s.Repository == nil {
 		return Stats{}, errors.New("nil service or dependency")
@@ -43,7 +46,10 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 		return Stats{}, errors.New("input directory required")
 	}
 	if conc < 1 {
-		return Stats{}, errors.New("concurrency must be >= 1")
+		conc = runtime.NumCPU()
+	}
+	if conc < 1 {
+		conc = 1
 	}
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil {
@@ -56,48 +62,58 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 		slog.String("dir", dir),
 		slog.String("pattern", pattern),
 		slog.Bool("apply", apply),
+		slog.Int("concurrency", conc),
 	)
-	var allBat []db.EtlBattingRow
-	var allBowl []db.EtlBowlingRow
+
+	var mu sync.Mutex
+	totalBat, totalBowl := 0, 0
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(conc)
+
 	for _, p := range matches {
-		if err := ctx.Err(); err != nil {
-			return st, err
-		}
-		slog.Info("processing ETL file", slog.String("path", p))
-		b, rerr := os.ReadFile(p)
-		if rerr != nil {
-			return Stats{}, rerr
-		}
-		// Decide parser by header
-		bat, berr := ParseBattingCSV(bytes.NewReader(b))
-		if berr == nil {
-			st.BattingRows += len(bat)
-			allBat = append(allBat, bat...)
-			continue
-		}
-		bowl, werr := ParseBowlingCSV(bytes.NewReader(b))
-		if werr == nil {
-			st.BowlingRows += len(bowl)
-			allBowl = append(allBowl, bowl...)
-			continue
-		}
-		// If neither parsed, return first error (batting) for diagnosability
-		return Stats{}, fmt.Errorf("failed to parse as batting (%w) or bowling (%w)", berr, werr)
-	}
-	if apply {
-		if len(allBat) > 0 {
-			slog.Info("upserting batting rows", slog.Int("count", len(allBat)))
-			if err := s.Repository.UpsertBatting(ctx, allBat); err != nil {
-				return Stats{}, err
+		p := p
+		g.Go(func() error {
+			if err := gCtx.Err(); err != nil {
+				return nil
 			}
-		}
-		if len(allBowl) > 0 {
-			slog.Info("upserting bowling rows", slog.Int("count", len(allBowl)))
-			if err := s.Repository.UpsertBowling(ctx, allBowl); err != nil {
-				return Stats{}, err
+			slog.Info("processing ETL file", slog.String("path", p))
+			b, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return rerr
 			}
-		}
+			bat, berr := ParseBattingCSV(bytes.NewReader(b))
+			if berr == nil {
+				mu.Lock()
+				totalBat += len(bat)
+				mu.Unlock()
+				if apply && len(bat) > 0 {
+					if err := s.Repository.UpsertBatting(gCtx, bat); err != nil {
+						return fmt.Errorf("upsert batting %s: %w", filepath.Base(p), err)
+					}
+				}
+				return nil
+			}
+			bowl, werr := ParseBowlingCSV(bytes.NewReader(b))
+			if werr == nil {
+				mu.Lock()
+				totalBowl += len(bowl)
+				mu.Unlock()
+				if apply && len(bowl) > 0 {
+					if err := s.Repository.UpsertBowling(gCtx, bowl); err != nil {
+						return fmt.Errorf("upsert bowling %s: %w", filepath.Base(p), err)
+					}
+				}
+				return nil
+			}
+			return fmt.Errorf("failed to parse %s as batting (%w) or bowling (%w)", filepath.Base(p), berr, werr)
+		})
 	}
+
+	if err := g.Wait(); err != nil {
+		return st, err
+	}
+	st.BattingRows = totalBat
+	st.BowlingRows = totalBowl
 	slog.Info(
 		"ETL ingestion finished",
 		slog.Int("files", st.Files),

@@ -27,6 +27,7 @@ func (r Runner) Preview(ctx context.Context, targets map[string]int, othersZero 
 	for name, v := range targets {
 		cnt, err := r.Repo.CountPlayersByLowerName(ctx, name)
 		if err != nil {
+			slog.Error("importkeepers.Preview count failed", slog.String("name", name), slog.Any("err", err))
 			return err
 		}
 		if cnt == 0 {
@@ -54,6 +55,7 @@ func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bo
 	if len(targets) > 0 {
 		count, err := r.Repo.BatchSetIsWicketKeeper(ctx, targets)
 		if err != nil {
+			slog.Error("importkeepers.Apply batch update failed", slog.Any("err", err))
 			return fmt.Errorf("batch update keepers: %w", err)
 		}
 		slog.Info("updated wicket-keeper status", slog.Int64("count", count))
@@ -66,6 +68,7 @@ func (r Runner) Apply(ctx context.Context, targets map[string]int, othersZero bo
 			names = append(names, name)
 		}
 		if _, err := r.Repo.ZeroKeepersExcept(ctx, names); err != nil {
+			slog.Error("importkeepers.Apply zero others failed", slog.Any("err", err))
 			return fmt.Errorf("zero others: %w", err)
 		}
 		slog.Info("zeroed wicket-keeper status for other players")

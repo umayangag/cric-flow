@@ -69,10 +69,8 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.Predictor.TeamSize = tc.teamSize
-			cfg.Predictor.DefaultExtras = tc.extras
 
-			// NOTE: This function will be added in the refactor step. The test will fail until implemented.
-			team := CalculateOverallPerformanceWithConfig(cfg, tc.players, tc.matchID)
+			team := CalculateOverallPerformanceWithConfig(cfg, tc.players, tc.matchID, tc.extras)
 
 			// Compute expected totals inline for assertion.
 			if len(tc.players) == 0 {

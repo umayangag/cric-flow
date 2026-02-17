@@ -2,6 +2,7 @@ package formats
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -61,7 +62,9 @@ func IDForCode(code string) (int, error) {
 	case CodeTest:
 		return IDTest, nil
 	default:
-		return 0, fmt.Errorf("unknown format code: %s", code)
+		err := fmt.Errorf("unknown format code: %s", code)
+		slog.Error("formats.IDForCode failed", slog.String("code", code), slog.Any("err", err))
+		return 0, err
 	}
 }
 

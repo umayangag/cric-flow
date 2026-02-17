@@ -35,6 +35,7 @@ func NewRouter(a *App) http.Handler {
 	opsHandler := &OpsHandler{}
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}
@@ -53,9 +54,27 @@ func NewRouter(a *App) http.Handler {
 	// ML predictions
 	admin.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost, http.MethodOptions)
+	// Future match team selection: best 11 for each team
+	admin.HandleFunc("/api/predict/team-selection", a.predictTeamSelectionHandler).
+		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
 
 	// Backtesting endpoints
 	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-stream", a.backtestEvaluateStreamHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-start", a.backtestEvaluateStartHandler).
+		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/evaluate-status", a.backtestEvaluateStatusHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/scorecard", a.backtestScorecardHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/training-data", a.backtestTrainingDataHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	// Walk-forward: list matches after a cutoff (for chunking)
+	admin.HandleFunc("/api/backtest/matches", a.backtestMatchesHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	// Walk-forward: holdout data (features at cutoff for matches after cutoff)
+	admin.HandleFunc("/api/backtest/holdout-data", a.backtestHoldoutDataHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	// Accuracy trend endpoint for dashboards
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
 		Methods(http.MethodGet, http.MethodOptions)

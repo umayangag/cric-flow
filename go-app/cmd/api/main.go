@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
@@ -20,6 +21,12 @@ func main() {
 
 func run() int {
 	logger.SetupFromEnv()
+
+	if err := config.ValidateForServer(); err != nil {
+		slog.Error("config validation failed", slog.Any("err", err))
+		return 1
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := db.Connect(ctx); err != nil {

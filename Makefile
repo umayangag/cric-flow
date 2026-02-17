@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-all fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -120,7 +120,7 @@ precompute-asof:
 precompute-all:
 	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
-# Run unified command for all formats (order: TEST, ODI, T20I, T20)
+# Run unified command for all formats (order: TEST, ODI, T20I, T20). Each format once; do not add aliases (MDM→TEST, IT20→T20I).
 # Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
 precompute-all-all-formats:
 	cd go-app; \
@@ -135,7 +135,8 @@ team-predictor:
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
 	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
-# Train ML artifacts from exported CSVs
+# Train ML artifacts (batting, bowling, fielding). Prerequisites: precompute + export (see export-dataset).
+# Fielding uses go-app training-data API by default; set GO_APP_URL and CUTOFF, or pass FIELDING_CSV to ml-service.
 ml-install:
 	$(MAKE) -C ml-service install
 
@@ -145,7 +146,41 @@ train-batting:
 train-bowling:
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling_model
 
-train-all: train-batting train-bowling
+# Train fielding model. Either: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or FIELDING_CSV=<path>.
+GO_APP_URL ?= http://localhost:8080
+CUTOFF ?=
+train-fielding:
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(FIELDING_CSV)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> (e.g. 2025-01-01T00:00:00Z) and optionally GO_APP_URL=, or set FIELDING_CSV=<path>. Example: make train-fielding CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(FIELDING_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding --csv "$(FIELDING_CSV)"; \
+	else \
+	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	fi
+
+# Train batting + bowling (from exported CSVs). Use train-fielding for fielding (requires API or FIELDING_CSV).
+train-batting-bowling: train-batting train-bowling
+
+# Train all player-level models (batting, bowling, fielding). For fielding set CUTOFF= and GO_APP_URL= if using API.
+train-all: train-models
+train-models: train-batting train-bowling train-fielding
+
+# Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
+MODEL ?= batting
+FORMAT ?=
+ALL_FORMATS ?=
+ml-auto-tune:
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)"
+
+# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ML_WALK_FORWARD.md)
+INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
+WINDOW_X ?= 50
+WALK_FORMAT ?= T20
+WALK_MODEL ?= batting
+walk-forward:
+	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",)
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -334,7 +369,6 @@ frontend-stop:
 		rm -f /tmp/frontend-dev.pid; \
 		echo "[frontend] Stopped."; \
 	else \
-		# Fallback: try to find process by port if pid file is missing
 		if lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
 			PID=$$(lsof -t -i :$(FRONTEND_PORT) -sTCP:LISTEN | head -n1); \
 			echo "[frontend] Stopping dev server on port $(FRONTEND_PORT) (pid $$PID)..."; \
@@ -358,6 +392,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 30 to match CI)..."
+	COV_MIN=$${COV_MIN_GO:-30} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -532,6 +568,16 @@ help:
 	@echo "  export-off         Export without seq columns for FORMAT (default T20)"
 	@echo "  export-on          Export with seq columns appended for FORMAT (uses -enable-seq and ENABLE_SEQ_FEATURES=1)"
 	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"
+	@echo
+	@echo "[ML training — precompute → export-dataset → train]"
+	@echo "  train-batting      Train batting model (from exported CSVs)"
+	@echo "  train-bowling      Train bowling model (from exported CSVs)"
+	@echo "  train-fielding     Train fielding model (needs CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
+	@echo "  train-batting-bowling  Train batting + bowling"
+	@echo "  train-all          Train all models (batting + bowling + fielding)"
+	@echo "  train-models       Train batting + bowling + fielding"
+	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo "  walk-forward       Walk-forward train → predict → evaluate; registry for feedback (INITIAL_CUTOFF=, WINDOW_X=, WALK_FORMAT=, WALK_MODEL=)"
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"

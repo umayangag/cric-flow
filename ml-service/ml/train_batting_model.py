@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
 from . import tracking
-from .config import default_artifacts_dir, default_go_app_export_dir
+from .config import default_artifacts_dir, default_go_app_export_dir, get_training_params
 from .dataset_definitions import input_batting_columns, output_batting_columns
 
 
@@ -62,29 +62,40 @@ def run_training():
     X = input_data[x_cols].copy()
     y = input_data[y_cols].copy()
 
-    # Impute/normalize: fill missing numeric values (expected for as-of columns when no history)
+    # Impute: fill missing numeric values (expected for as-of columns when no history).
+    # Same strategy as train_batting/train_on_the_fly so training and prediction stay aligned.
     X = X.fillna(0.0)
 
-    # Scale inputs/labels (to keep API parity)
+    # Normalize inputs only (StandardScaler). Targets Y stay in raw units for interpretable API output.
+    # See docs/ML_DATA_AND_NORMALIZATION.md.
     input_scaler = preprocessing.StandardScaler().fit(X)
     X_scaled = input_scaler.transform(X)
-    X = pd.DataFrame(data=X_scaled, columns=X.columns)
 
-    output_scaler = preprocessing.StandardScaler().fit(y)
-    y_scaled = output_scaler.transform(y)
-    y = pd.DataFrame(data=y_scaled, columns=y.columns)
-
-    # Model (trees cope with expanded inputs well)
-    regr = RandomForestRegressor(max_depth=100, n_estimators=200, random_state=0)
+    # Model: all hyperparameters from config (ml.training); no magic values
+    params = get_training_params("batting")
+    regr = RandomForestRegressor(
+        max_depth=params["max_depth"],
+        n_estimators=params["n_estimators"],
+        random_state=params["random_state"],
+    )
     predictor = MultiOutputRegressor(regr)
-    predictor.fit(X, y)
+    predictor.fit(X_scaled, y)
 
-    # Save the trained model and scalers
+    # Save the trained model and input scaler only (joblib_compress from config).
+    # No output scaler: predictions are in raw units.
     output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", default_artifacts_dir())
     os.makedirs(output_dir, exist_ok=True)
-    joblib.dump(predictor, os.path.join(output_dir, "batting_model.joblib"))
-    joblib.dump(input_scaler, os.path.join(output_dir, "batting_scaler.joblib"))
-    joblib.dump(output_scaler, os.path.join(output_dir, "batting_output_scaler.joblib"))
+    compress = params["joblib_compress"]
+    joblib.dump(
+        predictor,
+        os.path.join(output_dir, "batting_model.joblib"),
+        compress=compress,
+    )
+    joblib.dump(
+        input_scaler,
+        os.path.join(output_dir, "batting_scaler.joblib"),
+        compress=compress,
+    )
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -39,6 +40,7 @@ func (spellsCalc) Compute(ctx context.Context, params Params, dryRun bool) error
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.spells.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
 	ev, err := queryEventsForSpells(ctx, formatIDs)
 	if err != nil {
 		return err
@@ -79,6 +81,7 @@ func queryEventsForSpells(ctx context.Context, formatIDs []int) ([]evRowSpell, e
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		slog.Error("seqcalc.spells.query_failed", slog.Any("format_ids", formatIDs), slog.Any("err", err))
 		return nil, err
 	}
 	defer dr.Close()

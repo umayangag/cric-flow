@@ -323,7 +323,7 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	_ = writeTempJSON(t, d, "b.json", sampleJSON)
 	_ = writeTempJSON(t, d, "a.json", sampleJSON)
 
-	cnt, err := cricsheet.ImportDir(ctx, d, &cricsheet.Options{})
+	cnt, err := cricsheet.ImportDir(ctx, d, &cricsheet.Options{}, 1)
 	require.NoError(t, err)
 	require.Equal(t, 2, cnt)
 }

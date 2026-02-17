@@ -1,14 +1,6 @@
 import React, { useMemo } from 'react';
 import { FormatHierarchyNode } from '../types';
-import ReactFlow, {
-  Node,
-  Edge,
-  Background,
-  Controls,
-  ConnectionLineType,
-  Position,
-  Handle,
-} from 'reactflow';
+import ReactFlow, { Node, Edge, Background, ConnectionLineType, Position, Handle } from 'reactflow';
 import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -131,12 +123,15 @@ const OpsFormatHierarchy: React.FC<Props> = ({ hierarchy }) => {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        nodesDraggable={true}
+        nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable={true}
+        elementsSelectable={false}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
       >
         <Background color="#aaa" gap={16} />
-        <Controls />
       </ReactFlow>
     </Box>
   );

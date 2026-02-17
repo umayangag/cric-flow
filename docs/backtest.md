@@ -41,6 +41,10 @@ Response (abridged):
 ```
 GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=111
 ```
+
+Alternative for the Evaluate DB tab (SSE progress + same result):  
+`GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...` — streams `progress` events then a single `result` or `error`.  
+Match scorecard (actual): `GET /api/backtest/scorecard?match_id=...`
 Response (abridged):
 ```
 {
@@ -71,14 +75,15 @@ Response (abridged):
     "match_wickets_mae": 1,
     "match_extras_mae": 2,
     "winner_accuracy": 1
-  }
+  },
+  "predicted_scorecard": { "match_id": 111, "match_date": "...", "venue": "...", "innings": [ ... ] }
 }
 ```
 
 Notes:
 - Training data used by ML is restricted to rows before the match date (cutoff).
 - Players list includes only those who actually played.
-- Match aggregates section is present when both ML and DB seams are wired; otherwise it may be omitted.
+- **Match aggregates (evaluate path):** Predicted runs, wickets, and winner are **derived from player predictions** (sum of predicted runs/wickets, winner from team run totals). **Predicted extras** are **not** a default constant: they come from the historical average total extras per match for the match's format (and venue) via `db.GetAverageExtrasForFormat`. Actual aggregates come from DB (`match_inning`, etc.).
 - Totals mapping: numeric match totals are summed from the database table `match_inning` across all innings — `runs_scored` as total runs, `wickets_lost` as total wickets, and `extras` as total extras. The `target_runs` column is not used for backtest accuracy metrics.
 
 ### Metrics definitions (player-level runs)
@@ -93,6 +98,10 @@ Fielding metrics (when available):
 - `player_catches_mae`: mean absolute error of predicted vs actual catches across evaluated players.
 - `player_run_outs_mae`: mean absolute error of predicted vs actual run-outs across evaluated players.
 
+### Full pipeline and train-on-the-fly (player predictions)
+
+When the Go backend sends **format** and **features** (per-player feature map at cutoff) along with **player_ids**, the ML service uses **pre-trained batting/bowling models** for that format if loaded; otherwise it **trains on the fly** by fetching training data from go-app (`GET /api/backtest/training-data?cutoff=...&format=all`; `format=all` or omit = all data, or pass a format to filter), training in memory, then predicting. **Format and features are required** for player predictions (no deterministic baseline). See **docs/evaluate-db-pipeline.md** for step-by-step flow, feature computation, SSE stream, scorecards, and debugging.
+
 ### ML service endpoint (used by backend)
 
 The Go backend calls a dedicated ML endpoint to obtain predictions with a strict cutoff.
@@ -102,11 +111,16 @@ The Go backend calls a dedicated ML endpoint to obtain predictions with a strict
 
 1) Player predictions mode
 
-Request
+Request (format and features required)
 ```
 {
   "cutoff_date": "2024-10-30T14:00:00Z",
-  "player_ids": [1, 2, 3]
+  "player_ids": [1, 2, 3],
+  "format": "T20",
+  "features": {
+    "1": {"batting_consistency": 0.5, "batting_form": 20.0, "bowling_consistency": 0.3, ...},
+    "2": { ... }
+  }
 }
 ```
 
@@ -139,7 +153,8 @@ Response
 
 Implementation notes
 - The ML service must honor the strict cutoff (train/aggregate only from data earlier than `cutoff_date`).
-- For v1 a deterministic baseline is implemented; later it can be replaced with trained models.
+- When the backend sends `format` and `features`, the ML service uses loaded per-format models if available; otherwise it trains on the fly (fetches training data from go-app, trains in memory, then predicts). Requires **GO_APP_URL** (and optionally **GO_APP_API_KEY**) for train-on-the-fly.
+- For full pipeline details (feature computation, training-data API, SSE evaluate-stream, scorecards, debugging), see **docs/evaluate-db-pipeline.md**.
 
 ## Curl examples
 
@@ -174,12 +189,12 @@ What it does:
   - `GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111` returns `players`, `metrics.player_runs_mae`, and `match_aggregates.predicted|actual|errors`.
 
 Notes:
-- The ML service baseline is deterministic, so results are stable for the same cutoff and inputs.
+- Player predictions use either loaded models or train-on-the-fly (same cutoff and inputs yield stable results when cached).
 - The smoke uses `docker compose` service names defined in `docker-compose.yml`.
 
 ## E2E smoke example (recorded)
 
-Below is a representative response captured from a local run using the deterministic ML baseline. Values will be deterministic for the same inputs (cutoff, players, teams):
+Below is a representative response captured from a local run. Values are stable for the same inputs (cutoff, players, teams) when using the same models or train-on-the-fly data:
 
 ```
 {

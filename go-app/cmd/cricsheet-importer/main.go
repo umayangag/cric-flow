@@ -1,4 +1,5 @@
 // Command cricsheet-importer imports Cricsheet JSON files into the database.
+// Uses pipeline.RunJob (shared with pipeline handler) for panic recovery and tracking.
 package main
 
 import (
@@ -13,13 +14,12 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
 )
 
 func main() { os.Exit(run()) }
 
 func run() (exitCode int) {
-	// Parse flags via internal CLI to unify behavior and enable testing
 	fs := flag.NewFlagSet("cricsheet-importer", flag.ContinueOnError)
 	copts, perr := cricsheetcli.ParseArgs(fs, os.Args[1:])
 	if perr != nil {
@@ -38,38 +38,26 @@ func run() (exitCode int) {
 		slog.Error("db connect failed", slog.Any("err", err))
 		return 1
 	}
-	// Apply migrations to ensure schema is ready
 	if err := db.RunMigrations(ctx, "./migrations"); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
 		return 1
 	}
 
-	tracker, tErr := tracking.Start(ctx, "cricsheet-import", copts)
-	if tErr != nil {
-		slog.Warn("tracking start failed", slog.Any("err", tErr))
-	}
-
-	var runErr error
-	var importedCount int
-	defer func() {
-		tracker.CaptureExit(ctx, &runErr, map[string]int{"files": importedCount})
-	}()
-
-	// Map CLI options to legacy cricsheet.Options to preserve behavior
 	opts := &cricsheet.Options{
 		PlaceholdersWeather:  copts.PlaceholdersWeather,
 		PlaceholdersFielding: copts.PlaceholdersFielding,
 		WeatherEnqueue:       copts.WeatherEnqueue,
 		FailFast:             copts.FailFast,
 	}
-	importedCount, runErr = cricsheet.ImportDir(ctx, copts.InDir, opts)
+	startMeta := map[string]any{"dir": copts.InDir}
+	runErr := pipeline.RunJob(ctx, "cricsheet-import", startMeta, 0, func(jobCtx context.Context) (any, error) {
+		n, err := cricsheet.ImportDir(jobCtx, copts.InDir, opts, copts.Concurrency)
+		return map[string]any{"files": n, "dir": copts.InDir}, err
+	})
 	if runErr != nil {
-		slog.Error("cricsheet import failed, stopping",
-			slog.String("input_dir", copts.InDir),
-			slog.Int("files_imported_before_failure", importedCount),
-			slog.Any("err", runErr))
+		slog.Error("cricsheet import failed", slog.String("input_dir", copts.InDir), slog.Any("err", runErr))
 		return 1
 	}
-	slog.Info("cricsheet-importer finished successfully", slog.Int("files", importedCount))
+	slog.Info("cricsheet-importer finished successfully", slog.String("dir", copts.InDir))
 	return 0
 }

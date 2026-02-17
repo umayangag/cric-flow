@@ -1,3 +1,19 @@
+// --- Upcoming match prediction ---
+export type PredictTeamSelectedPlayer = {
+  player_id: number;
+  player_name: string;
+  runs: number;
+  wickets: number;
+  economy: number;
+  catches: number;
+  run_outs: number;
+};
+
+export type PredictTeamSelectionResponse = {
+  team1: PredictTeamSelectedPlayer[];
+  team2: PredictTeamSelectedPlayer[];
+};
+
 export type HealthResponse = {
   status: string;
   loaded_batting_formats: string[];
@@ -63,6 +79,67 @@ export type BacktestEvaluateResponse = {
     actual: Record<string, number | string>;
     errors: Record<string, number>;
   };
+  /** Predicted scorecard from ML (data strictly before match date). Same shape as match scorecard. */
+  predicted_scorecard?: MatchScorecardResponse | null;
+};
+
+// --- Evaluate job (persisted across refresh) ---
+export type EvaluateJobStep = { step: string; message: string };
+
+export type EvaluateStatusResponse = {
+  job_id: string;
+  match_id: string;
+  format: string;
+  team1: string;
+  team2: string;
+  status: 'running' | 'done' | 'error';
+  steps?: EvaluateJobStep[];
+  result?: BacktestEvaluateResponse | null;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// --- Match scorecard (for Evaluate DB tab) ---
+export type ScorecardBatting = {
+  player_name: string;
+  runs: number | null;
+  balls: number | null;
+  fours: number | null;
+  sixes: number | null;
+  strike_rate: number | null;
+  how_out: string | null;
+};
+
+export type ScorecardBowling = {
+  player_name: string;
+  overs: number | null;
+  maidens: number | null;
+  runs: number | null;
+  wickets: number | null;
+  economy: number | null;
+  wides: number | null;
+  no_balls: number | null;
+  balls: number | null;
+};
+
+export type ScorecardInning = {
+  inning_number: number;
+  batting_team_name: string;
+  bowling_team_name: string;
+  runs_scored: number;
+  wickets_lost: number;
+  extras: number;
+  target_runs?: number | null;
+  batting: ScorecardBatting[];
+  bowling: ScorecardBowling[];
+};
+
+export type MatchScorecardResponse = {
+  match_id: number;
+  match_date: string;
+  venue: string;
+  innings: ScorecardInning[];
 };
 
 // --- Ops Status (go-app API) DTO ---
@@ -109,7 +186,19 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
+  /** Pipeline step running state from backend (steps[stepId].running) */
+  pipeline?: {
+    steps?: Record<string, { running?: boolean }>;
+  };
   [key: string]: unknown;
+};
+
+/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */
+export type PipelineRunResponse = {
+  status?: string;
+  step?: string;
+  error?: string;
+  command?: string;
 };
 
 export type Migration = {
@@ -142,3 +231,59 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
 }
+
+// --- Workbench: accuracy trend (go-app /api/backtest/accuracy-trend) ---
+export type AccuracyTrendItem = {
+  match_id: number;
+  match_date: string;
+  format: string;
+  team1: string;
+  team2: string;
+  metrics: Record<string, number>;
+};
+
+export type AccuracyTrendResponse = {
+  filters: Record<string, unknown>;
+  count: number;
+  results: AccuracyTrendItem[];
+  summary: Record<string, number>;
+  progressive: Array<Record<string, number>>;
+};
+
+export type AccuracyTrendFilters = {
+  format?: string;
+  start_date?: string;
+  end_date?: string;
+  team1?: string;
+  team2?: string;
+  order?: 'asc' | 'desc';
+  limit?: number;
+  cache?: 'off' | 'read' | 'readwrite';
+  metrics?: string;
+};
+
+// --- Workbench: walk-forward registry (from walk_forward_registry.json) ---
+export type WalkForwardWindowEntry = {
+  run_id?: string;
+  model_type: string;
+  format: string;
+  cutoff_trained_before: string;
+  window_x: number;
+  window_start_date?: string;
+  window_end_date?: string;
+  training_params?: Record<string, unknown>;
+  auto_tune_used?: boolean;
+  metrics: Record<string, number>;
+  n_training_samples?: number;
+  n_holdout_samples?: number;
+  window_index?: number;
+  created_at?: string;
+  artifact_paths?: { scaler?: string; model?: string } | null;
+  error?: string;
+};
+
+export type WalkForwardRegistry = {
+  run_id: string;
+  windows: WalkForwardWindowEntry[];
+  config?: { initial_cutoff?: string; window_x?: number; format?: string };
+};

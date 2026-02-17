@@ -2,6 +2,8 @@ import importlib
 import os
 import time
 
+import joblib
+
 
 def reload_app_with_dir(root: str):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = root
@@ -70,3 +72,35 @@ def test_artifacts_status_loaded_flags(tmp_path, monkeypatch):
     data = r.json()
     assert data["formats"]["TEST"]["batting"]["loaded"] is True
     assert data["formats"]["TEST"]["bowling"]["loaded"] is True
+
+
+def test_artifacts_reload_legacy(tmp_path):
+    """Reload with legacy (unsuffixed) scaler/model files exercises _load_legacy success path."""
+    import app.artifacts as art
+
+    joblib.dump({}, tmp_path / "batting_scaler.joblib")
+    joblib.dump({}, tmp_path / "batting_model.joblib")
+    joblib.dump({}, tmp_path / "bowling_scaler.joblib")
+    joblib.dump({}, tmp_path / "bowling_model.joblib")
+
+    out = art.reload(str(tmp_path))
+    assert out["legacy_batting"] is True
+    assert out["legacy_bowling"] is True
+    assert "_LEGACY_" in art.BAT_MODELS
+    assert "_LEGACY_" in art.BOWL_MODELS
+
+
+def test_artifacts_reload_per_format(tmp_path):
+    """Reload with per-format scaler/model files exercises _load_per_format success path."""
+    import app.artifacts as art
+
+    joblib.dump({}, tmp_path / "batting_scaler_T20.joblib")
+    joblib.dump({}, tmp_path / "batting_model_T20.joblib")
+    joblib.dump({}, tmp_path / "bowling_scaler_T20.joblib")
+    joblib.dump({}, tmp_path / "bowling_model_T20.joblib")
+
+    out = art.reload(str(tmp_path))
+    assert "T20" in out["loaded_batting_formats"]
+    assert "T20" in out["loaded_bowling_formats"]
+    assert art.BAT_MODELS.get("T20") is not None
+    assert art.BOWL_MODELS.get("T20") is not None

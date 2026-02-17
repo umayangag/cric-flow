@@ -33,28 +33,32 @@ type Team struct {
 	WinningProbability float64
 }
 
-// CalculateOverallPerformanceWithConfig is a pure variant that accepts configuration explicitly.
-// This improves testability by avoiding implicit I/O or environment reads inside the function.
-func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerPrediction, matchID int64) Team {
+// CalculateOverallPerformanceWithConfig is a pure variant that accepts configuration and predicted extras.
+// predictedExtras must be supplied from a model or historical average (e.g. db.GetAverageExtrasForFormat); no default constant is used.
+func CalculateOverallPerformanceWithConfig(
+	cfg *config.Config,
+	players []PlayerPrediction,
+	matchID int64,
+	predictedExtras float64,
+) Team {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
 
-	// Guard against division by zero; return a zero-valued team with extras applied.
+	// Guard against division by zero; return a zero-valued team with predicted extras.
 	if len(players) == 0 {
 		return Team{
 			Players:      players,
-			TotalScore:   cfg.Predictor.DefaultExtras,
+			TotalScore:   predictedExtras,
 			TotalWickets: 10,
 			TotalBalls:   0,
 			Target:       0,
-			Extras:       cfg.Predictor.DefaultExtras,
+			Extras:       predictedExtras,
 			MatchNumber:  matchID,
 		}
 	}
 
 	magicNumber := float64(cfg.Predictor.TeamSize) / float64(len(players))
-	extras := cfg.Predictor.DefaultExtras
 
 	var totalRunsScored, totalBallsFaced, totalRunsConceded, totalDeliveries, totalWicketsTaken float64
 	for _, p := range players {
@@ -65,7 +69,7 @@ func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerP
 		totalWicketsTaken += p.WicketsTaken
 	}
 
-	totalScore := totalRunsScored*magicNumber + extras
+	totalScore := totalRunsScored*magicNumber + predictedExtras
 	target := totalRunsConceded * magicNumber
 	totalBalls := totalBallsFaced * magicNumber
 
@@ -75,7 +79,7 @@ func CalculateOverallPerformanceWithConfig(cfg *config.Config, players []PlayerP
 		TotalWickets: 10,
 		TotalBalls:   totalBalls,
 		Target:       target,
-		Extras:       extras,
+		Extras:       predictedExtras,
 		MatchNumber:  matchID,
 	}
 

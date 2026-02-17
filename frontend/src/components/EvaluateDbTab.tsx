@@ -1,10 +1,16 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
   FormControl,
   InputLabel,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
   MenuItem,
+  Paper,
   Select,
   Stack,
   Typography,
@@ -12,11 +18,25 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
-import type { BacktestCandidate, BacktestEvaluateResponse } from '../types';
+import { accentGradient } from '../theme';
+import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
+import MatchScorecard from './MatchScorecard';
+
+const EVAL_JOB_STORAGE_KEY = 'cric_info_eval_job';
+
+type StoredEvalJob = {
+  job_id: string;
+  match_id: number;
+  format: string;
+  team1: string;
+  team2: string;
+  started_at: string;
+};
 
 const filter = createFilterOptions<string>();
 
@@ -137,22 +157,208 @@ const EvaluateDbTab: React.FC = () => {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [evaluationResult, setEvaluationResult] = useState<BacktestEvaluateResponse | null>(null);
 
+  // Match summary (scorecard) for selected match
+  const [scorecard, setScorecard] = useState<MatchScorecardResponse | null>(null);
+  const [scorecardLoading, setScorecardLoading] = useState<boolean>(false);
+  const [scorecardError, setScorecardError] = useState<string | null>(null);
+
+  // Evaluate job (survives refresh: job_id stored in localStorage, poll status)
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState<boolean>(false);
+  const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>(
+    [],
+  );
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
     [format, team1, team2, loading],
   );
   const canEvaluate = useMemo(
-    () => !!format && !!team1 && !!team2 && selectedMatchId != null && !loading,
-    [format, team1, team2, selectedMatchId, loading],
+    () => !!format && !!team1 && !!team2 && selectedMatchId != null && !loading && !evaluating,
+    [format, team1, team2, selectedMatchId, loading, evaluating],
   );
 
   const resetOutputs = () => {
     setCandidates([]);
     setSelectedMatchId(null);
     setEvaluationResult(null);
+    setScorecard(null);
+    setScorecardError(null);
     setStatusMessage('');
     setError(null);
+    setCurrentJobId(null);
+    try {
+      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   };
+
+  // Restore evaluation job on mount (e.g. after refresh) — poll if still running
+  useEffect(() => {
+    let cancelled = false;
+    let stored: string | null = null;
+    try {
+      if (typeof localStorage?.getItem === 'function') {
+        stored = localStorage.getItem(EVAL_JOB_STORAGE_KEY);
+      }
+    } catch {
+      /* ignore (e.g. test env) */
+    }
+    if (!stored) return;
+    let data: StoredEvalJob;
+    try {
+      data = JSON.parse(stored) as StoredEvalJob;
+    } catch {
+      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+      return;
+    }
+    if (!data.job_id) return;
+
+    api
+      .getEvaluateStatus(data.job_id)
+      .then((status) => {
+        if (cancelled) return;
+        setCurrentJobId(data.job_id);
+        setFormat(data.format);
+        setTeam1(data.team1);
+        setTeam2(data.team2);
+        setSelectedMatchId(data.match_id);
+        setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+        if (status.status === 'running') {
+          setEvaluating(true);
+          setStatusMessage('Evaluation in progress (restored).');
+        } else if (status.status === 'done' && status.result) {
+          setEvaluating(false);
+          setEvaluationResult(status.result);
+          setStatusMessage('Evaluation complete.');
+        } else if (status.status === 'error') {
+          setEvaluating(false);
+          setError(status.error ?? 'Unknown error');
+          setStatusMessage('');
+        }
+        // Reload candidates so the table shows the match list and selected row after refresh
+        api
+          .backtestSelect(data.format, data.team1, data.team2)
+          .then((resp) => {
+            if (!cancelled) setCandidates(resp.candidates ?? []);
+          })
+          .catch(() => {
+            /* ignore */
+          });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Poll evaluate status while job is running
+  useEffect(() => {
+    if (!currentJobId || !evaluating) return;
+
+    const poll = () => {
+      api
+        .getEvaluateStatus(currentJobId)
+        .then((status) => {
+          setEvaluationSteps(
+            status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
+          );
+          if (status.status === 'done' && status.result) {
+            setEvaluating(false);
+            setEvaluationResult(status.result);
+            setStatusMessage('Evaluation complete.');
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            try {
+              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
+          } else if (status.status === 'error') {
+            setEvaluating(false);
+            setError(status.error ?? 'Unknown error');
+            setStatusMessage('');
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            try {
+              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          setEvaluating(false);
+          if (msg.includes('404') || msg.includes('NOT_FOUND')) {
+            setError('Evaluation job no longer available (server may have restarted).');
+          } else {
+            setError(msg || 'Failed to fetch evaluation status.');
+          }
+          setStatusMessage('');
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          try {
+            localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        });
+    };
+
+    poll();
+    pollIntervalRef.current = setInterval(poll, 2000);
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [currentJobId, evaluating]);
+
+  // Load match scorecard when a match is selected
+  useEffect(() => {
+    if (selectedMatchId == null) {
+      setScorecard(null);
+      setScorecardError(null);
+      setScorecardLoading(false);
+      return;
+    }
+    let active = true;
+    setScorecardLoading(true);
+    setScorecardError(null);
+    api
+      .getMatchScorecard(selectedMatchId)
+      .then((data) => {
+        if (active) {
+          setScorecard(data);
+          setScorecardError(null);
+        }
+      })
+      .catch((e: unknown) => {
+        if (active) {
+          setScorecard(null);
+          setScorecardError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (active) setScorecardLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedMatchId]);
 
   const handleLoadCandidates = async () => {
     try {
@@ -175,18 +381,37 @@ const EvaluateDbTab: React.FC = () => {
 
   const handleEvaluateSelectedMatch = async () => {
     if (selectedMatchId == null) return;
+    setError(null);
+    setStatusMessage('Starting evaluation…');
     try {
-      setLoading(true);
-      setError(null);
-      setStatusMessage('Evaluating…');
-      const resp = await api.backtestEvaluate(format, team1.trim(), team2.trim(), selectedMatchId);
-      setEvaluationResult(resp);
-      setStatusMessage('Evaluation complete.');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const { job_id } = await api.evaluateStart(
+        format.trim(),
+        team1.trim(),
+        team2.trim(),
+        selectedMatchId,
+      );
+      const stored: StoredEvalJob = {
+        job_id,
+        match_id: selectedMatchId,
+        format: format.trim(),
+        team1: team1.trim(),
+        team2: team2.trim(),
+        started_at: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem(EVAL_JOB_STORAGE_KEY, JSON.stringify(stored));
+      } catch {
+        /* ignore */
+      }
+      setCurrentJobId(job_id);
+      setEvaluating(true);
+      setEvaluationSteps([]);
+      setStatusMessage(
+        'Evaluation in progress. You can refresh the page; progress will be restored.',
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -262,6 +487,32 @@ const EvaluateDbTab: React.FC = () => {
       {statusMessage && <Alert severity="info">{statusMessage}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
 
+      {/* Current evaluation (restored after refresh or in progress) — so user sees which job and where the result is */}
+      {currentJobId && (
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            bgcolor: 'action.hover',
+            borderColor: 'divider',
+            borderWidth: 1,
+          }}
+          component="section"
+          aria-label="current-evaluation"
+        >
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+            Current evaluation
+          </Typography>
+          <Typography variant="body2">
+            {format} — {team1} vs {team2}
+            {selectedMatchId != null && ` · Match ${selectedMatchId}`}
+            {evaluating && ' · Running (progress below)'}
+            {evaluationResult && !evaluating && ' · Complete (result below)'}
+            {error && !evaluating && ' · Failed (see error above)'}
+          </Typography>
+        </Paper>
+      )}
+
       {/* Candidates */}
       <Box component="section" aria-label="candidates-section">
         <Typography variant="h6" gutterBottom>
@@ -272,6 +523,9 @@ const EvaluateDbTab: React.FC = () => {
           selectedMatchId={selectedMatchId}
           onSelectMatch={setSelectedMatchId}
         />
+        {selectedMatchId != null && (
+          <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
+        )}
         <Box sx={{ mt: 2 }}>
           <Button
             variant="contained"
@@ -279,8 +533,81 @@ const EvaluateDbTab: React.FC = () => {
             onClick={handleEvaluateSelectedMatch}
             disabled={!canEvaluate}
           >
-            Evaluate Selected Match
+            {evaluating ? (
+              <>
+                <CircularProgress size={20} sx={{ mr: 1 }} color="inherit" />
+                Evaluating…
+              </>
+            ) : (
+              'Evaluate Selected Match'
+            )}
           </Button>
+
+          {/* Status and error directly below button so user doesn't have to scroll up */}
+          {selectedMatchId != null && (statusMessage || error) && (
+            <Box sx={{ mt: 2 }}>
+              {statusMessage && (
+                <Alert severity="info" sx={{ mb: error ? 1 : 0 }}>
+                  {statusMessage}
+                </Alert>
+              )}
+              {error && <Alert severity="error">{error}</Alert>}
+            </Box>
+          )}
+
+          {/* Progress steps while evaluating (SSE stream) */}
+          {evaluating && evaluationSteps.length > 0 && (
+            <Paper
+              variant="outlined"
+              sx={{
+                mt: 2,
+                p: 2,
+                pl: 2.5,
+                position: 'relative',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 4,
+                  background: accentGradient,
+                  borderRadius: '0 4px 4px 0',
+                },
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Current step
+              </Typography>
+              <LinearProgress sx={{ mb: 2 }} />
+              <List dense disablePadding>
+                {evaluationSteps.map((s, idx) => (
+                  <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      {idx === evaluationSteps.length - 1 ? (
+                        <CircularProgress size={16} color="primary" />
+                      ) : (
+                        <CheckCircleIcon color="success" fontSize="small" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={s.message}
+                      primaryTypographyProps={{ variant: 'body2' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
+          )}
+
+          {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
+          {evaluationResult?.predicted_scorecard && (
+            <MatchScorecard
+              scorecard={evaluationResult.predicted_scorecard}
+              title="Predicted scorecard"
+              subtitle="ML prediction using only data before the match date (no actual match data used)."
+            />
+          )}
         </Box>
       </Box>
 

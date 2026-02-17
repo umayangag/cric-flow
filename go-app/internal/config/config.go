@@ -4,8 +4,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config holds directory defaults for go-app commands.
@@ -28,6 +30,14 @@ type Config struct {
 		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
 		ConsistencyPerFormat bool    `json:"consistency_per_format"`
 		HistoryWindowMatches int     `json:"history_window_matches"`
+		// Feature extraction (EWM form, consistency). Used by export/training-data and precompute when not overridden by CLI.
+		EWMAlpha         float64 `json:"ewm_alpha"`          // (0,1]; default 0.3
+		ConsistencyLastN int     `json:"consistency_last_n"` // last-N innings for consistency; default 10
+		FormWindowN      int     `json:"form_window_n"`      // max innings for form (0 = no limit); default 0
+		FieldingEnrich   struct {
+			EWMAlpha           float64 `json:"ewm_alpha"`             // EWM alpha for fielding form fallback; default 0.3
+			FormToCatchesRatio float64 `json:"form_to_catches_ratio"` // split of form into catches (rest = run_outs); default 0.7
+		} `json:"fielding_enrich"`
 	} `json:"features"`
 	Export struct {
 		SplitByFormat  bool   `json:"split_by_format"`
@@ -61,12 +71,24 @@ type Config struct {
 		DefaultExtras float64 `json:"default_extras"`
 	} `json:"predictor"`
 	Selection struct {
-		DefaultPoolCSV string `json:"default_pool_csv"`
-		RequireKeeper  bool   `json:"require_keeper"`
+		DefaultPoolCSV string        `json:"default_pool_csv"`
+		RequireKeeper  bool          `json:"require_keeper"`
+		ScoreWeights   *ScoreWeights `json:"score_weights"`
 	} `json:"selection"`
 }
 
-var cached *Config
+// ScoreWeights defines relative weights for combining batting/bowling/fielding signals in team selection.
+type ScoreWeights struct {
+	Bat         float64 `json:"bat"`          // default 0.45
+	Bowl        float64 `json:"bowl"`         // default 0.40
+	Field       float64 `json:"field"`        // default 0.10
+	KeeperBonus float64 `json:"keeper_bonus"` // default 0.02
+}
+
+var (
+	cached     *Config
+	loadedFrom string // path of config file loaded; empty if none found
+)
 
 // Load reads config.json from the current working directory if present.
 // It is safe to call multiple times; the result is cached for the process lifetime.
@@ -75,15 +97,12 @@ func Load() *Config {
 		return cached
 	}
 	cfg := &Config{}
-	// Search locations (in order):
-	//  1) GO_APP_CONFIG env var path
-	//  2) ./config.json (CWD)
-	//  3) ../config.json (if executed from a subdir)
-	//  4) go-app/config.json when running from a cmd subdir
+	loadedFrom = ""
 	if p := os.Getenv("GO_APP_CONFIG"); p != "" {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
 			cached = cfg
+			loadedFrom = p
 			return cfg
 		}
 	}
@@ -96,11 +115,42 @@ func Load() *Config {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
 			cached = cfg
+			loadedFrom = p
 			return cfg
 		}
 	}
 	cached = cfg
 	return cfg
+}
+
+// ValidateForServer returns an error if config is missing or invalid for the API server.
+// Call at server startup; exit on error rather than using fallback defaults.
+func ValidateForServer() error {
+	cfg := Load()
+	if loadedFrom == "" {
+		err := fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
+		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
+	}
+	if cfg.Features.PrecomputeTimeoutMs < 0 {
+		err := fmt.Errorf(
+			"features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d",
+			cfg.Features.PrecomputeTimeoutMs,
+		)
+		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
+	}
+	return nil
+}
+
+// PipelineTimeout returns the timeout for long-running pipeline jobs (import, precompute, export).
+// Uses features.precompute_timeout_ms. 0 = no timeout.
+func PipelineTimeout() time.Duration {
+	cfg := Load()
+	if cfg == nil || cfg.Features.PrecomputeTimeoutMs <= 0 {
+		return 0
+	}
+	return time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond
 }
 
 // DefaultCricsheetDir returns the configured cricsheet input dir or a sensible built-in default.
@@ -119,6 +169,30 @@ func DefaultEtlDir() string {
 		return cfg.Inputs.EtlDir
 	}
 	return filepath.Join("..", "data", "go-app", "createdb")
+}
+
+// EffectiveScoreWeights returns the configured score weights or built-in defaults.
+func EffectiveScoreWeights(cfg *Config) (bat, bowl, field, keeperBonus float64) {
+	if cfg != nil && cfg.Selection.ScoreWeights != nil {
+		w := cfg.Selection.ScoreWeights
+		bat = w.Bat
+		bowl = w.Bowl
+		field = w.Field
+		keeperBonus = w.KeeperBonus
+	}
+	if bat == 0 {
+		bat = DefaultScoreWeightBat
+	}
+	if bowl == 0 {
+		bowl = DefaultScoreWeightBowl
+	}
+	if field == 0 {
+		field = DefaultScoreWeightField
+	}
+	if keeperBonus == 0 {
+		keeperBonus = DefaultScoreWeightKeeperBonus
+	}
+	return bat, bowl, field, keeperBonus
 }
 
 // DefaultExportDir returns the configured export output dir or a built-in default.
@@ -141,23 +215,33 @@ func ValidateTeamSettings(cfg *Config) error {
 	}
 	// Min bowlers must be at least 1.
 	if cfg.Team.MinBowlers < 1 {
-		return fmt.Errorf("min bowlers must be >= 1")
+		err := fmt.Errorf("min bowlers must be >= 1")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// Default extras cannot be negative when provided.
 	if cfg.Predictor.DefaultExtras < 0 {
-		return fmt.Errorf("extras must be non-negative")
+		err := fmt.Errorf("extras must be non-negative")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// Default batters cannot be negative.
 	if cfg.Team.DefaultBatters < 0 {
-		return fmt.Errorf("default batters must be >= 0")
+		err := fmt.Errorf("default batters must be >= 0")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// If both TeamSize and MinBowlers are provided, TeamSize must be >= MinBowlers.
 	if cfg.Predictor.TeamSize > 0 && cfg.Team.MinBowlers > 0 && cfg.Predictor.TeamSize < cfg.Team.MinBowlers {
-		return fmt.Errorf("team size must be >= min bowlers")
+		err := fmt.Errorf("team size must be >= min bowlers")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// If DefaultBowlers is set, it must be >= MinBowlers.
 	if cfg.Team.DefaultBowlers > 0 && cfg.Team.MinBowlers > 0 && cfg.Team.DefaultBowlers < cfg.Team.MinBowlers {
-		return fmt.Errorf("default bowlers must be >= min bowlers")
+		err := fmt.Errorf("default bowlers must be >= min bowlers")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	return nil
 }

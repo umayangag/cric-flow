@@ -72,9 +72,11 @@ func (t *failingTx) Exec(_ context.Context, _ string, _ ...any) error { return t
 func (t *failingTx) Query(_ context.Context, _ string, _ ...any) (db.Rows, error) {
 	return ingestErrorTestNopRows{}, nil
 }
+
 func (t *failingTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row {
 	return ingestErrorTestNopRow{}
 }
+
 func (t *failingTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	return 0, t.err
 }
@@ -139,7 +141,7 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		})
 		t.Cleanup(func() { cricsheet.SetRunInTxFn(nil) })
 
-		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{})
+		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{}, 1)
 
 		require.Error(t, err, "ImportDir must stop and return on first DB error")
 	})

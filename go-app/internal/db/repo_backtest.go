@@ -274,6 +274,43 @@ func ListPlayedMatchesByFilters(
 	return out, nil
 }
 
+// MatchAfterItem holds match_id and match_date for walk-forward (matches after a cutoff).
+type MatchAfterItem struct {
+	MatchID   int64
+	MatchDate time.Time
+}
+
+// ListMatchIDsAfter returns match_id and match_date for matches strictly after the given cutoff,
+// for the given format IDs (e.g. from GetFormatIDsForTrainingBucket). Order: match_date ASC.
+// limit caps the number of matches (e.g. walk-forward window size).
+func ListMatchIDsAfter(ctx context.Context, formatIDs []int64, after time.Time, limit int) ([]MatchAfterItem, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	q := `SELECT m.match_id, m.match_date
+		FROM match m
+		WHERE m.format_id = ANY($1::bigint[]) AND m.match_date > $2
+		ORDER BY m.match_date ASC
+		LIMIT $3`
+	rows, err := Pool.Query(ctx, q, formatIDs, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MatchAfterItem
+	for rows.Next() {
+		var item MatchAfterItem
+		if err := rows.Scan(&item.MatchID, &item.MatchDate); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 // --- Match prediction aggregates cache ---
 
 // MatchPredictionAggregates stores cached match-level prediction outputs.

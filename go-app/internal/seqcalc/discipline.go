@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
@@ -21,6 +22,7 @@ func (disciplineCalc) Compute(ctx context.Context, params Params, dryRun bool) e
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.discipline.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
 	events, err := queryEvents(ctx, formatIDs)
 	if err != nil {
 		return err

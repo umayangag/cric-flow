@@ -1,33 +1,33 @@
-import json
-import os
-
-
-def load_config():
-    # Resolve config path: prefer ML_SERVICE_CONFIG env var; else try ./config.json
-    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
+def _get_team_prediction_config():
+    """Load team_prediction from config (ml.config or fallback)."""
     try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        from ml.config import _load
+
+        cfg = _load()
+        tp = cfg.get("team_prediction") or {}
+        return {
+            "team_size": int(tp.get("team_size", 11)),
+            "max_wickets_per_innings": int(tp.get("max_wickets_per_innings", 10)),
+        }
     except Exception:
-        return {}
+        return {"team_size": 11, "max_wickets_per_innings": 10}
 
 
-config = load_config()
-
-
-def calculate_overall_performance(input_df, match_id):
+def calculate_overall_performance(input_df, match_id, predicted_extras=0.0):
+    """Extras must be supplied from a model or historical average (e.g. format/venue average); no default constant."""
+    cfg = _get_team_prediction_config()
     team_df = input_df.copy()
-    team_size = config["team_prediction"]["team_size"]
-    default_extras = config["team_prediction"]["default_extras"]
+    team_size = cfg["team_size"]
+    max_wickets = cfg["max_wickets_per_innings"]
 
     magic_number = team_size / len(team_df)  # this is to compensate players missing from actual 11
-    extras = default_extras
+    extras = float(predicted_extras)
     total_score = team_df["runs_scored"].sum() * magic_number + extras
     target = team_df["runs_conceded"].sum() * magic_number
     total_balls_faced = team_df["balls_faced"].sum() * magic_number
 
     team_df["total_score"] = total_score * magic_number
-    team_df["total_wickets"] = 10
+    team_df["total_wickets"] = max_wickets
     team_df["total_balls"] = total_balls_faced
     team_df["target"] = target
     team_df["extras"] = extras

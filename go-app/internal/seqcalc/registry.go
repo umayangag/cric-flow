@@ -5,12 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
+	"log/slog"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
+
+func seqcalcConcurrency() int {
+	if v := os.Getenv("SEQCALC_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n
+		}
+	}
+	return 1
+}
 
 // Registry holds available calculators keyed by target name.
 type Registry struct {
@@ -94,24 +105,46 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 }
 
 // Run executes calculators with the given params concurrently.
+// Concurrency is controlled by SEQCALC_CONCURRENCY env (default 1) to avoid OOM from
+// multiple concurrent ball_event scans. Increase on machines with ample memory.
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
 	g, ctx := errgroup.WithContext(ctx)
-	// Limit concurrency to avoid overloading the DB with too many simultaneous heavy queries
-	// if we have many calculators. Most of these perform significant scans.
-	limit := runtime.NumCPU()
-	if limit > 4 {
-		limit = 4 // Cap at 4 to be conservative with DB connections and I/O
-	}
+	limit := seqcalcConcurrency()
 	g.SetLimit(limit)
 
 	for _, c := range calcs {
-		c := c // capture
+		calc := c // capture for goroutine
+		name := calc.Name()
 		g.Go(func() error {
 			if err := ctx.Err(); err != nil {
 				return nil
 			}
-			return c.Compute(ctx, params, dry)
+			slog.Info("seqcalc.calculator.start", slog.String("calculator", string(name)), slog.String("format", params.FormatCode))
+			err := calc.Compute(ctx, params, dry)
+			if err != nil {
+				// Log immediately so we see DB cancel/timeout in go-app logs (Postgres may show "terminating parallel worker").
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					slog.Error("seqcalc.calculator.cancelled_or_timeout",
+						slog.String("calculator", string(name)),
+						slog.String("format", params.FormatCode),
+						slog.Any("err", err),
+					)
+				} else {
+					slog.Error("seqcalc.calculator.failed",
+						slog.String("calculator", string(name)),
+						slog.String("format", params.FormatCode),
+						slog.Any("err", err),
+					)
+				}
+				return err
+			}
+			slog.Info("seqcalc.calculator.done", slog.String("calculator", string(name)), slog.String("format", params.FormatCode))
+			return nil
 		})
 	}
-	return g.Wait()
+	err := g.Wait()
+	if err != nil {
+		slog.Error("seqcalc.run.finished_with_error", slog.String("format", params.FormatCode), slog.Any("err", err))
+	}
+	return err
 }

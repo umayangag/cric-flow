@@ -1,4 +1,6 @@
 import React from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 
 type TileState = 'ok' | 'error' | 'neutral';
 
@@ -14,30 +16,6 @@ type Props = {
   size?: 'sm' | 'md';
 };
 
-const bgColor = (state: TileState | undefined): string => {
-  switch (state) {
-    case 'ok':
-      return '#17431d';
-    case 'error':
-      return '#4a1010';
-    default:
-      return '#333';
-  }
-};
-
-const tileStyle = (state: TileState | undefined, size: 'sm' | 'md'): React.CSSProperties => ({
-  background: bgColor(state),
-  color: '#eee',
-  borderRadius: 6,
-  padding: size === 'sm' ? '8px 10px' : '10px 12px',
-  minWidth: size === 'sm' ? 96 : 110,
-  minHeight: size === 'sm' ? 48 : 56,
-  display: 'grid',
-  gridTemplateRows: 'auto 1fr',
-  rowGap: 4,
-  border: '1px solid rgba(255,255,255,0.06)',
-});
-
 const formatValue = (v: unknown): string => {
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return v.toLocaleString();
@@ -47,19 +25,48 @@ const formatValue = (v: unknown): string => {
 export const SimpleStatTiles: React.FC<Props> = ({ items, size = 'md' }) => {
   const list = Array.isArray(items) ? items : [];
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
       {list.map((it, idx) => (
-        <div
+        <Box
           key={idx}
-          style={tileStyle(it.state, size)}
           title={it.title || String(it.value ?? '')}
           aria-label={`${it.label}: ${String(it.value ?? '')}`}
+          sx={{
+            borderRadius: 2,
+            px: size === 'sm' ? 1.25 : 1.5,
+            py: size === 'sm' ? 1 : 1.25,
+            minWidth: size === 'sm' ? 88 : 100,
+            minHeight: size === 'sm' ? 44 : 52,
+            display: 'grid',
+            gridTemplateRows: 'auto 1fr',
+            rowGap: 0.25,
+            border: '1px solid',
+            ...(it.state === 'ok' && {
+              bgcolor: 'rgba(34, 197, 94, 0.1)',
+              borderColor: 'rgba(34, 197, 94, 0.25)',
+              color: 'success.dark',
+            }),
+            ...(it.state === 'error' && {
+              bgcolor: 'rgba(239, 68, 68, 0.08)',
+              borderColor: 'rgba(239, 68, 68, 0.25)',
+              color: 'error.dark',
+            }),
+            ...(it.state === 'neutral' && {
+              bgcolor: 'grey.100',
+              borderColor: 'divider',
+              color: 'text.secondary',
+            }),
+          }}
         >
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{it.label}</div>
-          <div style={{ fontWeight: 600 }}>{formatValue(it.value)}</div>
-        </div>
+          <Typography variant="caption" sx={{ fontSize: 11, opacity: 0.9 }}>
+            {it.label}
+          </Typography>
+          <Typography variant="body2" fontWeight={600}>
+            {formatValue(it.value)}
+          </Typography>
+        </Box>
       ))}
-    </div>
+    </Box>
   );
 };
 

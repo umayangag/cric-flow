@@ -8,16 +8,33 @@
   "formats": {
     "treat_t20i_as_subset": true,
     "international_teams": [
-      "Afghanistan", "Australia", "Bangladesh", "England", "India", "Ireland",
-      "New Zealand", "Pakistan", "South Africa", "Sri Lanka", "West Indies", "Zimbabwe"
+      "Afghanistan",
+      "Australia",
+      "Bangladesh",
+      "England",
+      "India",
+      "Ireland",
+      "New Zealand",
+      "Pakistan",
+      "South Africa",
+      "Sri Lanka",
+      "West Indies",
+      "Zimbabwe"
     ]
   },
   "features": {
-    "precompute_timeout_ms": 300000,
+    "precompute_timeout_ms": 21600000,
     "min_batting_innings": 5,
     "min_bowling_innings": 5,
     "form_shrinkage_alpha": 0.0,
-    "consistency_per_format": false
+    "consistency_per_format": false,
+    "ewm_alpha": 0.3,
+    "consistency_last_n": 10,
+    "form_window_n": 0,
+    "fielding_enrich": {
+      "ewm_alpha": 0.3,
+      "form_to_catches_ratio": 0.7
+    }
   },
   "export": {
     "split_by_format": true,
@@ -52,6 +69,12 @@
   },
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
-    "require_keeper": false
+    "require_keeper": false,
+    "score_weights": {
+      "bat": 0.45,
+      "bowl": 0.4,
+      "field": 0.1,
+      "keeper_bonus": 0.02
+    }
   }
 }

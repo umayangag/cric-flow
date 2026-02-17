@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -69,6 +69,13 @@ class BacktestPredictRequest(BaseModel):
     # one of the following should be present
     player_ids: Optional[List[int]] = Field(default=None, description="Player IDs to predict for")
     teams: Optional[List[str]] = Field(default=None, description="Two team codes/names for match aggregates")
+    # Optional: format code (e.g. T20, ODI) to select per-format models when using features
+    format: Optional[str] = Field(default=None, description="Format code for model selection")
+    # Optional: per-player feature map for full pipeline (player_id as str -> feature name -> value)
+    features: Optional[Dict[str, Dict[str, float]]] = Field(
+        default=None,
+        description="Per-player features from go-app; when present with format, use loaded models",
+    )
 
     @field_validator("teams")
     def _teams_len_two(cls, v: Optional[List[str]]):

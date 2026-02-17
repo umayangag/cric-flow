@@ -1,5 +1,7 @@
 // Command precompute-features replays matches chronologically and persists
 // leakage-free, date-indexed (as-of) feature snapshots per player.
+// Uses pipeline.RunJob (shared with pipeline handler) for panic recovery and tracking.
+// In replay mode, consider using precompute-all which calls precompute.Run.
 package main
 
 import (
@@ -17,13 +19,12 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
 )
 
 func main() { os.Exit(run()) }
 
 func run() int {
-	// Parse flags via internal CLI
 	fs := flag.NewFlagSet("precompute-features", flag.ContinueOnError)
 	opts, err := pfcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
@@ -39,73 +40,52 @@ func run() int {
 	ctx, cancel := context.WithTimeout(baseCtx, opts.Timeout)
 	defer cancel()
 
-	// Ensure DB connection
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
 		return 1
 	}
 
-	// Apply migrations (flag may override env via CLI defaults)
-	migDir := opts.MigrationsDir
-	if err := db.RunMigrations(ctx, migDir); err != nil {
+	if err := db.RunMigrations(ctx, opts.MigrationsDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
 		return 1
 	}
 
-	tracker, tErr := tracking.Start(ctx, "precompute-features", opts)
-	if tErr != nil {
-		slog.Warn("tracking start failed", slog.Any("err", tErr))
-	}
-
-	var runErr error
-	var meta map[string]string
-	defer func() {
-		tracker.CaptureExit(ctx, &runErr, meta)
-	}()
-
 	formatID, err := db.GetMatchFormatIDByCode(ctx, opts.Format)
 	if err != nil {
 		slog.Error("resolve format failed", slog.String("format", opts.Format), slog.Any("err", err))
-		runErr = err
 		return 1
 	}
 
-	// Read optional history window from config
 	cfg := config.Load()
 	windowN := 0
 	if cfg != nil && cfg.Features.HistoryWindowMatches > 0 {
 		windowN = cfg.Features.HistoryWindowMatches
 	}
 
-	runner := pfcmd.NewRunner()
-	if opts.Replay {
-		if runErr = runner.RunReplay(ctx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN); runErr != nil {
-			slog.Error("replay failed", slog.Any("err", runErr))
-			return 1
+	startMeta := map[string]any{"format": opts.Format, "replay": opts.Replay}
+	runErr := pipeline.RunJob(ctx, "precompute-features", startMeta, 0, func(jobCtx context.Context) (any, error) {
+		runner := pfcmd.NewRunner()
+		if opts.Replay {
+			err := runner.RunReplay(jobCtx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN)
+			return map[string]any{"type": "replay"}, err
 		}
-		meta = map[string]string{"type": "replay"}
-		return 0
-	}
-
-	// Single-date mode (as-of)
-	var asOf time.Time
-	if strings.TrimSpace(opts.AsOf) == "" {
-		// Default to today's date in UTC when -as-of is not provided
-		asOf = time.Now().UTC()
-		slog.Info("no -as-of provided; defaulting to today (UTC)", slog.String("as_of", asOf.Format("2006-01-02")))
-	} else {
-		var parseErr error
-		asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
-		if parseErr != nil {
-			slog.Error("parse -as-of failed", slog.Any("err", parseErr))
-			runErr = parseErr
-			return 1
+		var asOf time.Time
+		if strings.TrimSpace(opts.AsOf) == "" {
+			asOf = time.Now().UTC()
+			slog.Info("no -as-of provided; defaulting to today (UTC)", slog.String("as_of", asOf.Format("2006-01-02")))
+		} else {
+			var parseErr error
+			asOf, parseErr = time.Parse("2006-01-02", opts.AsOf)
+			if parseErr != nil {
+				return nil, parseErr
+			}
 		}
-	}
-	if runErr = runner.RunPointInTime(ctx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); runErr != nil {
-		slog.Error("as-of run failed", slog.Any("err", runErr))
+		err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN)
+		return map[string]any{"type": "as-of", "as_of": asOf.Format("2006-01-02")}, err
+	})
+	if runErr != nil {
+		slog.Error("precompute-features failed", slog.Any("err", runErr))
 		return 1
 	}
-	meta = map[string]string{"type": "as-of", "as_of": asOf.Format("2006-01-02")}
 	return 0
 }

@@ -1,46 +1,91 @@
 // Package precompute orchestrates precompute phases and maintains in-memory
-// status for long-running feature computations. The code in this package is
-// intentionally split into small, descriptive helpers to make the execution
-// flow easier to follow for new developers.
+// status for long-running feature computations. Pipeline precompute uses the
+// snapshot tables (feature_form_snapshots, feature_consistency_snapshots) via
+// the precompute-features runner; the legacy _fmt tables are no longer used.
 package precompute
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
+	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
 
+// RunOpts holds optional overrides for Run. Nil or zero values mean use config.
+type RunOpts struct {
+	Alpha float64 // (0,1] to override config; else use config
+	LastN int     // > 0 to override config; else use config
+}
+
 // Run orchestrates precompute for the given season and list of format codes.
-// If season is empty, computes for all seasons. If formats is empty, computes for all formats.
-func Run(parent context.Context, season string, formats []string) error {
+// It populates feature_form_snapshots and feature_consistency_snapshots (and
+// triggers sequence features) per format. If formats is empty, computes for all formats.
+// Season is ignored; the snapshot runner replays all matches chronologically.
+// Pass nil for opts to use config for alpha and lastN.
+func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
-	if d := time.Duration(config.Load().Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
+	cfg := config.Load()
+	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(parent, d)
 		defer cancel()
 	}
-	// ensure DB connection
 	if db.Pool == nil {
-		if _, err := db.Connect(ctx); err != nil {
-			return err
+		slog.Info("precompute: connecting to database (pool was nil)")
+		if _, connectErr := db.Connect(ctx); connectErr != nil {
+			slog.Error("precompute: database connect failed", slog.Any("err", connectErr))
+			return connectErr
 		}
 	}
-	// Discover formats if not provided
 	codes, err := discoverFormatCodes(ctx, formats)
 	if err != nil {
+		slog.Error("precompute: discover format codes failed", slog.Any("err", err), slog.Any("formats_requested", formats))
 		return err
 	}
+	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
 
-	// Update status tracker
 	setStart(season, codes)
-	defer setDone()
+	defer func() {
+		if err != nil {
+			setLastError(err.Error())
+		}
+		setDone()
+	}()
 
+	alpha := config.DefaultFeatureEWMAlpha
+	if opts != nil && opts.Alpha > 0 && opts.Alpha <= 1 {
+		alpha = opts.Alpha
+	} else if cfg.Features.EWMAlpha > 0 && cfg.Features.EWMAlpha <= 1 {
+		alpha = cfg.Features.EWMAlpha
+	}
+	lastN := config.DefaultFeatureConsistencyLastN
+	if opts != nil && opts.LastN > 0 {
+		lastN = opts.LastN
+	} else if cfg.Features.ConsistencyLastN > 0 {
+		lastN = cfg.Features.ConsistencyLastN
+	}
+	windowN := 0
+	if cfg.Features.HistoryWindowMatches > 0 {
+		windowN = cfg.Features.HistoryWindowMatches
+	}
+
+	runner := pfcmd.NewRunner()
 	for _, code := range codes {
-		if err := runPhasesForFormat(ctx, season, code); err != nil {
+		setPhase("form")
+		slog.Info("precompute: starting format", slog.String("format", code))
+		formatID, err := db.GetMatchFormatIDByCode(ctx, code)
+		if err != nil {
+			slog.Error("precompute: get format ID failed", slog.String("format", code), slog.Any("err", err))
 			return err
 		}
+		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
+			slog.Error("precompute: RunReplay failed", slog.String("format", code), slog.Int64("format_id", formatID), slog.Any("err", err))
+			return err
+		}
+		slog.Info("precompute: format completed", slog.String("format", code))
 	}
 	return nil
 }

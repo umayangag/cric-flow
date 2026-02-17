@@ -4,6 +4,7 @@ package features
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -16,17 +17,20 @@ import (
 func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode string) error {
 	if db.Pool == nil {
 		if _, err := db.Connect(ctx); err != nil {
+			slog.Error("features.ComputeConsistencyFmt Connect failed", slog.Any("err", err))
 			return err
 		}
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
+		slog.Error("features.ComputeConsistencyFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
 		return err
 	}
 	var seasonIDCond string
 	if seasonName != "" {
 		sid, err := db.GetOrCreateSeason(ctx, seasonName)
 		if err != nil {
+			slog.Error("features.ComputeConsistencyFmt GetOrCreateSeason failed", slog.String("season", seasonName), slog.Any("err", err))
 			return err
 		}
 		seasonIDCond = fmt.Sprintf("AND season_id = %d", sid)
@@ -71,6 +75,7 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 		batting_consistency = EXCLUDED.batting_consistency;`, fmtID, fmtID, seasonIDCond, fmtID)
 
 	if _, err := db.Pool.Exec(ctx, batting); err != nil {
+		slog.Error("features.ComputeConsistencyFmt batting Exec failed", slog.String("format", formatCode), slog.Any("err", err))
 		return err
 	}
 
@@ -101,5 +106,9 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 	WHERE pcdf.player_id = cons.player_id AND pcdf.format_id = %d %s;`, fmtID, seasonIDCond)
 
 	_, err = db.Pool.Exec(ctx, bowling)
-	return err
+	if err != nil {
+		slog.Error("features.ComputeConsistencyFmt bowling Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		return err
+	}
+	return nil
 }

@@ -25,10 +25,14 @@ const JsonCollapse: React.FC<Props> = ({
           component="pre"
           sx={{
             p: 1.5,
-            bgcolor: '#111',
-            color: '#ddd',
+            bgcolor: 'grey.100',
+            color: 'text.primary',
             borderRadius: 1,
             overflow: 'auto',
+            border: '1px solid',
+            borderColor: 'divider',
+            fontSize: 12,
+            fontFamily: 'ui-monospace, Menlo, monospace',
           }}
         >
           {JSON.stringify(data, null, 2)}

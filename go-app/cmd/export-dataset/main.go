@@ -1,4 +1,5 @@
 // Command export-dataset exports training CSV datasets from the database.
+// Uses pipeline.RunJob (shared with pipeline handler) for panic recovery and tracking.
 package main
 
 import (
@@ -16,27 +17,22 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }
 
 func run() int {
-	// Phase 2: delegate flag parsing and output dir preparation to internal packages.
 	fs := flag.NewFlagSet("export-dataset", flag.ContinueOnError)
 	opts, err := exportcli.ParseArgs(fs, os.Args[1:])
 	if err != nil {
-		// Preserve legacy behavior: print error and exit similar to flag.Parse failure.
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		return 2
 	}
-	// Ensure output directory precedence: flag > env (handled by parser) > config.DefaultExportDir()
 	if opts.OutDir == "" {
 		opts.OutDir = config.DefaultExportDir()
 	}
-
-	// Map options to legacy variables used later in this file while we migrate logic incrementally.
 	outDir := opts.OutDir
 
 	logger.SetupFromEnv()
@@ -47,33 +43,24 @@ func run() int {
 	ctx, cancel := context.WithTimeout(baseCtx, 90*time.Second)
 	defer cancel()
 
-	// Prepare filesystem via internal runner (creates outDir). Remove direct os.MkdirAll.
-
 	if _, err := db.Connect(ctx); err != nil {
 		slog.Error("db connect failed", slog.Any("err", err))
 		return 1
 	}
 
-	tracker, tErr := tracking.Start(ctx, "export-dataset", opts)
-	if tErr != nil {
-		slog.Warn("tracking start failed", slog.Any("err", tErr))
-	}
-
-	var runErr error
-	defer func() {
-		tracker.CaptureExit(ctx, &runErr, map[string]string{"dir": outDir})
-	}()
-
-	// Wire internal services and runner to handle unified, legacy combined, and inference-only flows.
-	repo := &exportqueries.Repo{}
-	bat := exportsvc.NewBattingService(repo)
-	bow := exportsvc.NewBowlingService(repo)
-	runner := expcmd.NewRunnerWithServices(bat, bow)
-	if runErr = runner.Run(ctx, opts); runErr != nil {
+	startMeta := map[string]any{"out_dir": outDir}
+	runErr := pipeline.RunJob(ctx, "export-dataset", startMeta, 0, func(jobCtx context.Context) (any, error) {
+		repo := &exportqueries.Repo{}
+		bat := exportsvc.NewBattingService(repo)
+		bow := exportsvc.NewBowlingService(repo)
+		runner := expcmd.NewRunnerWithServices(bat, bow)
+		err := runner.Run(jobCtx, opts)
+		return map[string]any{"out_dir": outDir}, err
+	})
+	if runErr != nil {
 		slog.Error("runner execution failed", slog.Any("err", runErr))
 		return 1
 	}
-	// All flows are handled by Runner; log and return.
 	slog.Info("exports written", slog.String("dir", outDir))
 	return 0
 }

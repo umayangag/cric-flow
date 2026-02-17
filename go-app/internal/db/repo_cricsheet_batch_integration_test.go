@@ -72,7 +72,10 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 	}
 
 	// Ensure we have at least one player (batting_data has FK to player)
-	_ = PoolAPI.Exec(ctx, "INSERT INTO player(player_name) VALUES ('TestBatchPlayer') ON CONFLICT (player_name) DO NOTHING")
+	_ = PoolAPI.Exec(
+		ctx,
+		"INSERT INTO player(player_name) VALUES ('TestBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
+	)
 	var playerID int64
 	if err := PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID); err != nil {
 		t.Fatalf("select test player: %v", err)
@@ -120,7 +123,10 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 		t.Fatalf("migrations: %v", err)
 	}
 
-	_ = PoolAPI.Exec(ctx, "INSERT INTO player(player_name) VALUES ('TestBowlBatchPlayer') ON CONFLICT (player_name) DO NOTHING")
+	_ = PoolAPI.Exec(
+		ctx,
+		"INSERT INTO player(player_name) VALUES ('TestBowlBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
+	)
 	var playerID int64
 	if err := PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID); err != nil {
 		t.Fatalf("select test player: %v", err)
@@ -171,7 +177,10 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 	// Run in a single transaction: insert player, insert fielding_events, then RecomputeFieldingAggregatesTx.
 	// Without consuming and closing the aggregation query rows before calling UpsertFieldingTx, we get "conn busy".
 	err = RunInTx(ctx, func(ctx context.Context, tx CopyFromTx) error {
-		_ = tx.Exec(ctx, "INSERT INTO player(player_name) VALUES ('TestRecomputeFielder') ON CONFLICT (player_name) DO NOTHING")
+		_ = tx.Exec(
+			ctx,
+			"INSERT INTO player(player_name) VALUES ('TestRecomputeFielder') ON CONFLICT (player_name) DO NOTHING",
+		)
 		var playerID int64
 		if err := tx.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestRecomputeFielder'").Scan(&playerID); err != nil {
 			return err

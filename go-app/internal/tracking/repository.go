@@ -38,6 +38,26 @@ func UpdateMigrationStatus(
 	`, id, status, metadata, errMsgPtr)
 }
 
+// HasInProgressForCommand returns true if there is at least one row in data_migrations
+// for the given command with status IN_PROGRESS. Used by /ops/status pipeline section.
+// When the db pool is not initialized (e.g. disconnected), returns (false, nil).
+func HasInProgressForCommand(ctx context.Context, command string) (bool, error) {
+	if db.Pool == nil {
+		return false, nil
+	}
+	var exists bool
+	err := db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM data_migrations
+			WHERE command = $1 AND status = $2
+		)
+	`, command, StatusInProgress).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
@@ -76,14 +96,8 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 }
 
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
-	// Get total count (approximate for performance on large tables)
 	var total int
-	err := db.QueryRow(ctx, `
-		SELECT reltuples::bigint 
-		FROM pg_class 
-		WHERE relname = 'data_migrations' 
-		  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
-	`).Scan(&total)
+	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}

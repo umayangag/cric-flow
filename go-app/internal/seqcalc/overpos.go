@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
@@ -49,6 +50,7 @@ func (overPosCalc) Compute(ctx context.Context, params Params, dryRun bool) erro
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.overpos.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
 	rows, err := queryEventsForOverPos(ctx, formatIDs)
 	if err != nil {
 		return err
@@ -108,6 +110,7 @@ func queryEventsForOverPos(ctx context.Context, formatIDs []int) ([]evRowOverPos
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		slog.Error("seqcalc.overpos.query_failed", slog.Any("format_ids", formatIDs), slog.Any("err", err))
 		return nil, err
 	}
 	defer dr.Close()

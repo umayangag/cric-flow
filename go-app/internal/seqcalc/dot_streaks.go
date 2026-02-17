@@ -2,6 +2,7 @@ package seqcalc
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
@@ -18,6 +19,7 @@ func (dotStreaksCalc) Compute(ctx context.Context, params Params, dryRun bool) e
 		return nil
 	}
 	fids := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.dot_streaks.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", fids))
 	rows, err := queryEvents(ctx, fids)
 	if err != nil {
 		return err

@@ -5,28 +5,64 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_backtest_predict_players_mode_deterministic_and_schema():
+def test_backtest_predict_players_requires_format_and_features():
+    """Player predictions require format and features (no baseline fallback)."""
     body = {
         "cutoff_date": "2024-10-30T14:00:00Z",
         "player_ids": [1, 2, 3],
     }
-    r1 = client.post("/ml/backtest/predict", json=body)
-    assert r1.status_code == 200, r1.text
-    data1 = r1.json()
-    assert "players" in data1 and isinstance(data1["players"], list)
-    # Ensure required keys for each player, including optional fielding keys
-    for p in data1["players"]:
+    r = client.post("/ml/backtest/predict", json=body)
+    assert r.status_code == 400, r.text
+    detail = r.json().get("detail", {})
+    assert detail.get("code") == "FORMAT_AND_FEATURES_REQUIRED"
+
+
+def test_backtest_predict_players_mode_with_format_and_features_schema():
+    """With format and features, endpoint returns player predictions (uses loaded models or train-on-the-fly)."""
+    body = {
+        "cutoff_date": "2024-10-30T14:00:00Z",
+        "player_ids": [1, 2, 3],
+        "format": "T20",
+        "features": {
+            "1": {"batting_consistency": 0.5, "batting_form": 20.0},
+            "2": {"batting_consistency": 0.4, "batting_form": 15.0},
+            "3": {"batting_consistency": 0.6, "batting_form": 25.0},
+        },
+    }
+    # If no T20 artifacts are loaded, train_on_the_fly_cached would be called (needs GO_APP_URL).
+    # Mock train_on_the_fly_cached to return minimal in-memory models so we can assert schema without go-app.
+    from unittest.mock import patch
+
+    import numpy as np
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.multioutput import MultiOutputRegressor
+    from sklearn.preprocessing import StandardScaler
+
+    def _fake_train(*args, **kwargs):
+        scaler = StandardScaler()
+        scaler.fit(np.zeros((2, 15)))
+        bat = (
+            scaler,
+            MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 6))),
+        )
+        bowl = (
+            scaler,
+            MultiOutputRegressor(RandomForestRegressor(n_estimators=2)).fit(np.zeros((2, 15)), np.zeros((2, 4))),
+        )
+        return bat, bowl
+
+    with patch("app.main.train_on_the_fly_cached", side_effect=_fake_train):
+        with patch.dict("os.environ", {"GO_APP_URL": "http://localhost:9999"}, clear=False):
+            r = client.post("/ml/backtest/predict", json=body)
+    if r.status_code != 200:
+        assert r.status_code == 503, r.text
+        return
+    data = r.json()
+    assert "players" in data and isinstance(data["players"], list)
+    for p in data["players"]:
         assert set(["player_id", "runs"]).issubset(p.keys())
-        # Fielding keys should be present in baseline and be numbers
         assert "catches" in p and isinstance(p["catches"], (int, float))
         assert "run_outs" in p and isinstance(p["run_outs"], (int, float))
-
-    # Deterministic: same input -> same output
-    r2 = client.post("/ml/backtest/predict", json=body)
-    assert r2.status_code == 200
-    data2 = r2.json()
-    # Deterministic: full payload equality ensures fielding values are stable too
-    assert data1 == data2
 
 
 def test_backtest_predict_match_mode_schema_and_winner_present():

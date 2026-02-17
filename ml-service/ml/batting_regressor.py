@@ -10,7 +10,9 @@ output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifact
 
 predictor = joblib.load(os.path.join(output_dir, "batting_model.joblib"))
 input_scaler = joblib.load(os.path.join(output_dir, "batting_scaler.joblib"))
-output_scaler = joblib.load(os.path.join(output_dir, "batting_output_scaler.joblib"))
+# Optional: legacy artifacts may include output_scaler; we train in raw Y now (see docs/ML_DATA_AND_NORMALIZATION.md)
+_output_scaler_path = os.path.join(output_dir, "batting_output_scaler.joblib")
+output_scaler = joblib.load(_output_scaler_path) if os.path.isfile(_output_scaler_path) else None
 
 
 def calculate_strike_rate(row):
@@ -22,7 +24,9 @@ def calculate_strike_rate(row):
 def predict_batting(dataset):
     scaled_dataset = input_scaler.transform(dataset)
     predicted = predictor.predict(scaled_dataset)
-    result = pd.DataFrame(output_scaler.inverse_transform(predicted), columns=output_batting_columns)
+    if output_scaler is not None:
+        predicted = output_scaler.inverse_transform(predicted)
+    result = pd.DataFrame(predicted, columns=output_batting_columns)
     for column in output_batting_columns:
         dataset[column] = result[column]
     dataset["strike_rate"] = dataset.apply(lambda row: calculate_strike_rate(row), axis=1)

@@ -6,22 +6,26 @@ package teamselect
 // Player is a simplified model used by scoring/selection services.
 // Keep only fields required for pure scoring to avoid coupling to DB models.
 type Player struct {
-	Name      string
-	IsBowler  bool
-	IsKeeper  bool
-	BatScore  float64 // normalized batting signal
-	BowlScore float64 // normalized bowling signal
+	Name       string
+	IsBowler   bool
+	IsKeeper   bool
+	BatScore   float64 // normalized batting signal (e.g. predicted runs contribution)
+	BowlScore  float64 // normalized bowling signal (e.g. wickets/economy contribution)
+	FieldScore float64 // normalized fielding signal (catches, run_outs; 0 if not set)
 }
 
 // ScoreWeights defines relative weights for combining signals into a single score.
 type ScoreWeights struct {
 	Bat         float64
 	Bowl        float64
+	Field       float64 // weight for fielding (0 = ignore)
 	KeeperBonus float64 // extra additive bonus if the player can keep wickets
 }
 
-// DefaultWeights returns a conservative weighting leaning slightly toward batting.
-func DefaultWeights() ScoreWeights { return ScoreWeights{Bat: 0.55, Bowl: 0.45, KeeperBonus: 0.02} }
+// DefaultWeights returns a conservative weighting: batting, bowling, fielding, keeper bonus.
+func DefaultWeights() ScoreWeights {
+	return ScoreWeights{Bat: 0.45, Bowl: 0.40, Field: 0.10, KeeperBonus: 0.02}
+}
 
 // ScorePlayer computes a scalar score for a player using the provided weights.
 // It applies a keeper bonus when applicable and normalizes obvious bounds.
@@ -29,6 +33,9 @@ func ScorePlayer(p Player, w ScoreWeights) float64 {
 	bat := clamp01(p.BatScore)
 	bowl := clamp01(p.BowlScore)
 	s := w.Bat*bat + w.Bowl*bowl
+	if w.Field > 0 {
+		s += w.Field * clamp01(p.FieldScore)
+	}
 	if p.IsKeeper {
 		s += w.KeeperBonus
 	}

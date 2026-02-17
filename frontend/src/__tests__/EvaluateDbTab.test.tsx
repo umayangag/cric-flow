@@ -11,6 +11,10 @@ vi.mock('../api', async () => {
     api: {
       backtestSelect: vi.fn(),
       backtestEvaluate: vi.fn(),
+      backtestEvaluateStream: vi.fn(),
+      evaluateStart: vi.fn(),
+      getEvaluateStatus: vi.fn(),
+      getMatchScorecard: vi.fn(),
       getFormats: vi.fn(),
       getTeamsByFormat: vi.fn(),
       getOpponents: vi.fn(),
@@ -43,9 +47,15 @@ async function selectFilters(team1 = 'IND', team2 = 'AUS') {
 describe('EvaluateDbTab (Backtest flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    try {
+      localStorage.removeItem('cric_info_eval_job');
+    } catch {
+      /* ignore */
+    }
     (api.getFormats as unknown as Mock).mockResolvedValue(['T20', 'ODI']);
     (api.getTeamsByFormat as unknown as Mock).mockResolvedValue(['IND', 'AUS', 'ENG']);
     (api.getOpponents as unknown as Mock).mockResolvedValue(['AUS', 'ENG']);
+    (api.getMatchScorecard as unknown as Mock).mockResolvedValue(null);
   });
 
   it('happy path: loads candidates, selects a match, evaluates and renders player MAE', async () => {
@@ -67,25 +77,26 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         },
       ],
     });
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
+    const evaluateStartMock = api.evaluateStart as unknown as Mock;
+    evaluateStartMock.mockResolvedValue({ job_id: 'test-job-111' });
+    const getEvaluateStatusMock = api.getEvaluateStatus as unknown as Mock;
+    const resultPayload = {
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 111 },
       match: { match_id: 111, match_date: '2024-10-30T14:00:00Z' },
       players: [
-        {
-          player_id: 1,
-          predicted: { runs: 25 },
-          actual: { runs: 30 },
-          errors: { runs_mae: 5 },
-        },
-        {
-          player_id: 2,
-          predicted: { runs: 10 },
-          actual: { runs: 10 },
-          errors: { runs_mae: 0 },
-        },
+        { player_id: 1, predicted: { runs: 25 }, actual: { runs: 30 }, errors: { runs_mae: 5 } },
+        { player_id: 2, predicted: { runs: 10 }, actual: { runs: 10 }, errors: { runs_mae: 0 } },
       ],
       metrics: { player_runs_mae: 2.5 },
+    };
+    getEvaluateStatusMock.mockResolvedValue({
+      job_id: 'test-job-111',
+      match_id: 111,
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: resultPayload,
     });
 
     render(<EvaluateDbTab />);
@@ -100,9 +111,13 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     fireEvent.click(radio);
     fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
-    // Expect results
-    await screen.findByText(/Evaluation complete/i);
-    const results = await screen.findByLabelText('results-section');
+    // Wait for polling to run and job to complete (status returns 'done')
+    await waitFor(() => expect(getEvaluateStatusMock).toHaveBeenCalled());
+    const results = await screen.findByLabelText('results-section', {}, { timeout: 3000 });
+    // Status message appears in more than one Alert; ensure at least one shows completion
+    await waitFor(() =>
+      expect(screen.getAllByText(/Evaluation complete/i).length).toBeGreaterThanOrEqual(1),
+    );
     expect(within(results).getByText(/player_runs_mae/i)).toBeInTheDocument();
     // players table should show player ids
     expect(within(results).getByText('1')).toBeInTheDocument();
@@ -139,9 +154,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with wickets/economy and match_aggregates
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
+    const evaluatePayload = {
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 222 },
       match: { match_id: 222, match_date: '2024-11-05T09:00:00Z' },
       players: [
@@ -177,6 +190,16 @@ describe('EvaluateDbTab (Backtest flow)', () => {
         match_extras_mae: 2,
         winner_accuracy: 1,
       },
+    };
+    (api.evaluateStart as unknown as Mock).mockResolvedValue({ job_id: 'test-job-222' });
+    (api.getEvaluateStatus as unknown as Mock).mockResolvedValue({
+      job_id: 'test-job-222',
+      match_id: '222',
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: evaluatePayload,
     });
 
     render(<EvaluateDbTab />);
@@ -235,9 +258,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       ],
     });
 
-    // Arrange evaluate with fielding keys present
-    const backtestEvaluateMock = api.backtestEvaluate as unknown as Mock;
-    backtestEvaluateMock.mockResolvedValue({
+    const fieldingResult = {
       filters: { format: 'T20', team1: 'IND', team2: 'AUS', match_id: 333 },
       match: { match_id: 333, match_date: '2024-11-06T09:00:00Z' },
       players: [
@@ -254,11 +275,17 @@ describe('EvaluateDbTab (Backtest flow)', () => {
           errors: { runs_mae: 1, catches_mae: 0, run_outs_mae: 1 },
         },
       ],
-      metrics: {
-        player_runs_mae: 1.5,
-        player_catches_mae: 0.5,
-        player_run_outs_mae: 1.0,
-      },
+      metrics: { player_runs_mae: 1.5, player_catches_mae: 0.5, player_run_outs_mae: 1.0 },
+    };
+    (api.evaluateStart as unknown as Mock).mockResolvedValue({ job_id: 'test-job-333' });
+    (api.getEvaluateStatus as unknown as Mock).mockResolvedValue({
+      job_id: 'test-job-333',
+      match_id: '333',
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      status: 'done',
+      result: fieldingResult,
     });
 
     render(<EvaluateDbTab />);

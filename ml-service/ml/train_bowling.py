@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 from typing import Optional
 
@@ -10,6 +11,10 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
+
+from .config import get_training_params
+
+logger = logging.getLogger(__name__)
 
 # Minimal training script to produce placeholder artifacts for bowling
 # Supports training per-format; artifacts saved with format suffixes when provided.
@@ -44,6 +49,9 @@ TARGET_COLS = [
 
 
 def load_dataset(path: str):
+    if not os.path.exists(path):
+        logger.error("train_bowling.load_dataset.file_not_found path=%s", path)
+        raise FileNotFoundError(path)
     df = pd.read_csv(path)
     col_map = {
         "temp": "temp",
@@ -94,40 +102,46 @@ def train_and_save(
     X,
     Y,
     out_dir: str,
-    rf_params: dict,
+    training_params: dict,
     suffix: Optional[str] = None,
     metadata: Optional[dict] = None,
 ):
+    """Train and save artifacts. training_params must come from get_training_params("bowling") (config only).
+
+    Normalizes X with StandardScaler (fit on provided data); Y kept in raw units.
+    See docs/ML_DATA_AND_NORMALIZATION.md.
+    """
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    # Apply configurable hyperparameters with safe defaults
-    n_estimators = int(rf_params.get("n_estimators", 100))
-    random_state = int(rf_params.get("random_state", 42))
-    max_depth = rf_params.get("max_depth", None)
-    if max_depth is not None:
-        try:
-            max_depth = int(max_depth)
-        except Exception:
-            max_depth = None
+    n_estimators = training_params["n_estimators"]
+    max_depth = training_params["max_depth"]
+    random_state = training_params["random_state"]
+    compress = training_params["joblib_compress"]
+    n_jobs = training_params.get("n_jobs", -1)
     model = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, max_depth=max_depth)
+        RandomForestRegressor(
+            n_estimators=n_estimators,
+            random_state=random_state,
+            max_depth=max_depth,
+            n_jobs=n_jobs,
+        )
     )
     model.fit(Xs, Y)
     if suffix:
-        joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"))
-        joblib.dump(model, os.path.join(out_dir, f"bowling_model_{suffix}.joblib"))
+        joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, f"bowling_model_{suffix}.joblib"), compress=compress)
     else:
-        joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"))
-        joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"))
+        joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"), compress=compress)
     # Save training metadata if provided
     if metadata is not None:
         meta_path = os.path.join(out_dir, f"bowling_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("train_bowling.train_and_save.metadata_save_failed path=%s error=%s", meta_path, e)
 
 
 def _config_formats() -> list[str]:
@@ -175,27 +189,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # Hyperparameters: read from config.json (ml.*) with env/CLI override hooks
-    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
-    cfg = {}
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception:
-        cfg = {}
-    ml_cfg = cfg.get("ml", {}) if isinstance(cfg, dict) else {}
-    # Allow env overrides
-    env_n_estimators = os.environ.get("ML_N_ESTIMATORS")
-    env_max_depth = os.environ.get("ML_MAX_DEPTH")
-    env_random_state = os.environ.get("ML_RANDOM_STATE")
-
-    def rf_params_from_cfg() -> dict:
-        params = {
-            "n_estimators": env_n_estimators or ml_cfg.get("n_estimators", 100),
-            "max_depth": env_max_depth or ml_cfg.get("max_depth", None),
-            "random_state": env_random_state or ml_cfg.get("random_state", 42),
-        }
-        return params
+    # All training parameters from config (ml.training.bowling); no env overrides or magic values
+    training_params = get_training_params("bowling")
 
     targets: list[str] = []
     if args.all_formats:
@@ -228,9 +223,13 @@ def main():
     # If still no targets detected, fall back to legacy single CSV path
     if not targets:
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
-        X, Y = load_dataset(csv_path)
+        try:
+            X, Y = load_dataset(csv_path)
+        except FileNotFoundError as e:
+            logger.error("train_bowling.legacy_csv_not_found path=%s error=%s", csv_path, e)
+            raise SystemExit(1) from e
         if X.size == 0 or Y.size == 0:
-            print("No data found for training. Exiting.")
+            logger.error("train_bowling.no_data path=%s", csv_path)
             return
         meta = {
             "csv_path": csv_path,
@@ -239,20 +238,24 @@ def main():
             "n_targets": int(Y.shape[1]),
             "format": None,
             "model": "RandomForestRegressor",
-            "hyperparams": rf_params_from_cfg(),
+            "hyperparams": training_params,
         }
-        train_and_save(X, Y, args.out, rf_params_from_cfg(), None, meta)
-        print(f"Saved bowling artifacts to {args.out}")
+        train_and_save(X, Y, args.out, training_params, None, meta)
+        logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
         return
 
     for fmt in targets:
         csv_path = args.csv or os.path.join(default_csv_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):
-            print(f"Skip {fmt}: CSV not found at {csv_path}")
+            logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             continue
-        X, Y = load_dataset(csv_path)
+        try:
+            X, Y = load_dataset(csv_path)
+        except Exception as e:
+            logger.error("train_bowling.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
+            continue
         if X.size == 0 or Y.size == 0:
-            print(f"No data for {fmt}. Skipping.")
+            logger.warning("train_bowling.skip_format_no_data format=%s path=%s", fmt, csv_path)
             continue
         meta = {
             "csv_path": csv_path,
@@ -261,10 +264,10 @@ def main():
             "n_targets": int(Y.shape[1]),
             "format": fmt,
             "model": "RandomForestRegressor",
-            "hyperparams": rf_params_from_cfg(),
+            "hyperparams": training_params,
         }
-        train_and_save(X, Y, args.out, rf_params_from_cfg(), fmt, meta)
-        print(f"Saved bowling artifacts for {fmt} to {args.out}")
+        train_and_save(X, Y, args.out, training_params, fmt, meta)
+        logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
 
 
 if __name__ == "__main__":

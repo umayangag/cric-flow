@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +36,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if strings.TrimSpace(defIn) == "" {
 		defIn = config.DefaultEtlDir()
 	}
-	defConc := getenvInt("ETL_CONCURRENCY", 4)
+	defConc := getenvInt("ETL_CONCURRENCY", runtime.NumCPU())
 	defPattern := getenv("ETL_PATTERN", "*.csv")
 
 	fs.StringVar(&inDir, "in", defIn, "input directory containing curated CSV files")
