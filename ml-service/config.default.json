@@ -1,7 +1,7 @@
 {
   "inputs": {
     "go_app_export_dir": "../output/go-app",
-    "training_data_fetch_timeout_sec": 600
+    "training_data_fetch_timeout_sec": 3600
   },
   "outputs": {
     "artifacts_dir": "../output/ml-service"

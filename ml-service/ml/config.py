@@ -84,7 +84,7 @@ def default_artifacts_dir() -> str:
 def get_training_data_fetch_timeout_sec() -> int:
     """Return timeout in seconds for fetching training data from go-app (inputs.training_data_fetch_timeout_sec)."""
     cfg = _load()
-    val = (cfg.get("inputs") or {}).get("training_data_fetch_timeout_sec", 600)
+    val = (cfg.get("inputs") or {}).get("training_data_fetch_timeout_sec", 3600)
     try:
         return int(val)
     except (TypeError, ValueError):

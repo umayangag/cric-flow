@@ -23,7 +23,7 @@
     ]
   },
   "features": {
-    "precompute_timeout_ms": 3600000,
+    "precompute_timeout_ms": 21600000,
     "min_batting_innings": 5,
     "min_bowling_innings": 5,
     "form_shrinkage_alpha": 0.0,

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
@@ -85,7 +84,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 			context.Background(),
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
-			5*time.Minute,
+			config.PipelineTimeout(),
 			func(ctx context.Context) (any, error) {
 				repo := &exportqueries.Repo{}
 				bat := exportsvc.NewBattingService(repo)

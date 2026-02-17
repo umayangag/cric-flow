@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config holds directory defaults for go-app commands.
@@ -140,6 +141,16 @@ func ValidateForServer() error {
 		return err
 	}
 	return nil
+}
+
+// PipelineTimeout returns the timeout for long-running pipeline jobs (import, precompute, export).
+// Uses features.precompute_timeout_ms. 0 = no timeout.
+func PipelineTimeout() time.Duration {
+	cfg := Load()
+	if cfg == nil || cfg.Features.PrecomputeTimeoutMs <= 0 {
+		return 0
+	}
+	return time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond
 }
 
 // DefaultCricsheetDir returns the configured cricsheet input dir or a sensible built-in default.

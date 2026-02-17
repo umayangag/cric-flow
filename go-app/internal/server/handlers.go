@@ -53,7 +53,7 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	formats := body.Formats
 	slog.Info("precompute: request accepted, starting background job", slog.String("season", season), slog.Any("formats", formats))
 	go func() {
-		timeout := precomputeHandlerTimeout()
+		timeout := config.PipelineTimeout()
 		slog.Info(
 			"precompute job started",
 			slog.Duration("timeout", timeout),
@@ -82,17 +82,6 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
-}
-
-// precomputeHandlerTimeout returns the timeout for the precompute handler goroutine.
-// Uses features.precompute_timeout_ms from config (validated at startup). 0 = no timeout.
-func precomputeHandlerTimeout() time.Duration {
-	cfg := config.Load()
-	ms := cfg.Features.PrecomputeTimeoutMs
-	if ms <= 0 {
-		return 0
-	}
-	return time.Duration(ms) * time.Millisecond
 }
 
 // precomputeStatusHandler returns in-memory status of the last run.
@@ -124,7 +113,7 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 			context.Background(),
 			"cricsheet-import",
 			map[string]any{"dir": dir},
-			10*time.Minute,
+			config.PipelineTimeout(),
 			func(ctx context.Context) (any, error) {
 				n, err := cricsheet.ImportDir(ctx, dir, opts, 0)
 				return map[string]any{"files": n, "dir": dir}, err

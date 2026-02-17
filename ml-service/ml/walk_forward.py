@@ -29,7 +29,7 @@ _ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
-from ml.config import default_artifacts_dir, get_training_params
+from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,10 @@ def _fetch_json(
     base_url: str,
     path: str,
     api_key: Optional[str] = None,
-    timeout: int = 600,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
+    if timeout is None:
+        timeout = get_training_data_fetch_timeout_sec()
     url = base_url.rstrip("/") + path
     req = urllib.request.Request(url)
     if api_key:

@@ -24,7 +24,7 @@ Keys:
   - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
   - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for precompute (RunReplay + seqcalc). Default 3600000 (1 hour). Set to 0 to disable. Precompute can be long-running on large datasets.
+  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 21600000 (6 hours). Set to 0 to disable. Precompute and large imports/exports can take 6+ hours on big datasets (T20/T20I).
   - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
@@ -59,7 +59,7 @@ Config file: `ml-service/config.json`
 Keys:
 - `inputs`
   - `go_app_export_dir` — directory where Go exports CSVs (read by training scripts).
-  - `training_data_fetch_timeout_sec` — timeout in seconds when fetching training data from go-app (train-on-the-fly, train_fielding). Default 600.
+  - `training_data_fetch_timeout_sec` — timeout in seconds when fetching training data from go-app (train-on-the-fly, train_fielding, walk_forward). Default 3600 (1 hour). Large datasets may need longer.
 - `outputs`
   - `artifacts_dir` — directory where training scripts write joblib artifacts and where FastAPI loads from.
 - `ml`
