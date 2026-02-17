@@ -57,6 +57,26 @@ try:
 except ImportError:
     pass
 
+BAT_SEQ_COLS = [
+    "bat_prev_sr",
+    "bat_prev_out_rate",
+    "bat_window_sr_12_pp",
+    "bat_window_boundary_rate_12_pp",
+    "bat_entry_sr_1_6",
+    "bat_set_sr_13_30",
+    "bat_react_after_dot_sr",
+    "bat_after_k_dots_boundary_p_k2",
+]
+BOWL_SEQ_COLS = [
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+]
 BATTING_FEATURE_COLS = [
     "batting_consistency",
     "batting_form",
@@ -76,7 +96,7 @@ BATTING_FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
-]
+] + BAT_SEQ_COLS
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
     "bowling_consistency",
@@ -97,7 +117,7 @@ BOWLING_FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
-]
+] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
 
@@ -323,8 +343,14 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = df["batting_form"]
     if "batting_momentum" not in df.columns:
         df["batting_momentum"] = 0.0
-    df = df.dropna(subset=[c for c in BATTING_FEATURE_COLS if c in df.columns])
-    X = df[[c for c in BATTING_FEATURE_COLS if c in df.columns]].astype(float).values
+    for col in BAT_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    required = [c for c in BATTING_FEATURE_COLS if c not in BAT_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    X = df[BATTING_FEATURE_COLS].astype(float).values
     y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BATTING_TARGET_COLS):
@@ -346,8 +372,14 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = df["bowling_form"]
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
-    df = df.dropna(subset=[c for c in BOWLING_FEATURE_COLS if c in df.columns])
-    X = df[[c for c in BOWLING_FEATURE_COLS if c in df.columns]].astype(float).values
+    for col in BOWL_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    required = [c for c in BOWLING_FEATURE_COLS if c not in BOWL_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    X = df[BOWLING_FEATURE_COLS].astype(float).values
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BOWLING_TARGET_COLS):

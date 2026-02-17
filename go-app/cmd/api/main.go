@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -38,6 +39,12 @@ func run() int {
 	}()
 
 	logger.SetupFromEnv()
+
+	// Optional memory stats: log at startup and periodically to help diagnose OOM (set MEM_STATS_INTERVAL e.g. 5m).
+	logMemStatsOnce()
+	if d := memStatsInterval(); d > 0 {
+		go logMemStatsLoop(d)
+	}
 
 	if err := config.ValidateForServer(); err != nil {
 		slog.Error("config validation failed", slog.Any("err", err))
@@ -117,5 +124,46 @@ func run() int {
 			return 1
 		}
 		return 0
+	}
+}
+
+// memStatsInterval returns MEM_STATS_INTERVAL (e.g. 5m) for periodic memory logging; 0 disables.
+func memStatsInterval() time.Duration {
+	s := os.Getenv("MEM_STATS_INTERVAL")
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
+}
+
+func logMemStatsOnce() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	slog.Info("memory stats",
+		slog.Uint64("heap_alloc_mb", m.Alloc/(1024*1024)),
+		slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
+		slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),
+		slog.Uint64("sys_mb", m.Sys/(1024*1024)),
+		slog.Uint64("num_gc", m.NumGC),
+	)
+}
+
+func logMemStatsLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		slog.Info("memory stats (periodic)",
+			slog.Uint64("heap_alloc_mb", m.Alloc/(1024*1024)),
+			slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
+			slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),
+			slog.Uint64("sys_mb", m.Sys/(1024*1024)),
+			slog.Uint64("num_gc", m.NumGC),
+		)
 	}
 }

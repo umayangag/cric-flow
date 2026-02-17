@@ -1,0 +1,7 @@
+# Watcher container: subscribes to Docker events and logs container exit code and OOM status.
+# Requires Docker socket mount at runtime (see docker-compose watcher service).
+FROM docker:cli
+COPY scripts/watch-containers.sh /watch.sh
+RUN chmod +x /watch.sh
+ENV WATCH_CONTAINER=cric-go-api
+ENTRYPOINT ["/watch.sh"]

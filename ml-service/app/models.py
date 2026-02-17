@@ -27,6 +27,15 @@ class BattingFeatures(BaseModel):
     season: int = Field(..., ge=0)
     player_name: str
     format: Optional[str] = None
+    # Optional sequential features (0 when absent; used when go-app exports with -enable-seq)
+    bat_prev_sr: float = Field(default=0.0, ge=0)
+    bat_prev_out_rate: float = Field(default=0.0, ge=0)
+    bat_window_sr_12_pp: float = Field(default=0.0, ge=0)
+    bat_window_boundary_rate_12_pp: float = Field(default=0.0, ge=0)
+    bat_entry_sr_1_6: float = Field(default=0.0, ge=0)
+    bat_set_sr_13_30: float = Field(default=0.0, ge=0)
+    bat_react_after_dot_sr: float = Field(default=0.0, ge=0)
+    bat_after_k_dots_boundary_p_k2: float = Field(default=0.0, ge=0)
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:
@@ -58,6 +67,15 @@ class BowlingFeatures(BaseModel):
     season: int = Field(..., ge=0)
     player_name: str
     format: Optional[str] = None
+    # Optional sequential features (0 when absent; used when go-app exports with -enable-seq)
+    bowl_prev_wkt_rate: float = Field(default=0.0, ge=0)
+    bowl_window_econ_24_death: float = Field(default=0.0, ge=0)
+    bowl_window_wkt_rate_24_death: float = Field(default=0.0, ge=0)
+    bowl_extras_wide_rate_pp: float = Field(default=0.0, ge=0)
+    bowl_react_after_boundary_wkt_rate_next: float = Field(default=0.0, ge=0)
+    bowl_spell_first_over_wkt_rate: float = Field(default=0.0, ge=0)
+    bowl_over_ball1_wkt_rate: float = Field(default=0.0, ge=0)
+    bowl_over_ball6_wkt_rate: float = Field(default=0.0, ge=0)
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:

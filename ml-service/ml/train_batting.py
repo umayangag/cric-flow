@@ -22,7 +22,19 @@ logger = logging.getLogger(__name__)
 # Supports training per-format; artifacts saved with format suffixes when provided.
 # By default consumes the Go export from ../../output/go-app/batting_encoded.csv (legacy)
 # or batting_encoded_<FORMAT>.csv when --format is set.
-# Feature order must match ml-service/app/main.py -> _batting_feature_vector
+# Feature order must match configs/feature_vectors.json (batting) for prediction.
+# Seq columns: when absent in CSV, filled with 0.
+
+BAT_SEQ_COLS = [
+    "bat_prev_sr",
+    "bat_prev_out_rate",
+    "bat_window_sr_12_pp",
+    "bat_window_boundary_rate_12_pp",
+    "bat_entry_sr_1_6",
+    "bat_set_sr_13_30",
+    "bat_react_after_dot_sr",
+    "bat_after_k_dots_boundary_p_k2",
+]
 
 FEATURE_COLS = [
     "batting_consistency",
@@ -43,7 +55,7 @@ FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
-]
+] + BAT_SEQ_COLS
 
 TARGET_COLS = [
     "runs",  # runs_scored
@@ -87,6 +99,8 @@ def load_dataset(path: str):
         "batting_position": "batting_position",
         "strike_rate": "strike_rate",
     }
+    for c in BAT_SEQ_COLS:
+        col_map[c] = c
     df = df.rename(columns=col_map)
     # Backward compat: fill new columns from old exports (form_short/form_long=form, momentum=0)
     for col in ("batting_form_short", "batting_form_long"):
@@ -94,8 +108,15 @@ def load_dataset(path: str):
             df[col] = df["batting_form"]
     if "batting_momentum" not in df.columns:
         df["batting_momentum"] = 0.0
-    # Filter rows with required feature columns
-    df = df.dropna(subset=[c for c in FEATURE_COLS if c in df.columns])
+    # Backward compat: optional seq columns (fill with 0 when absent or NaN)
+    for col in BAT_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    # Filter rows with required feature columns (exclude seq from dropna so NULL seq doesn't drop rows)
+    required = [c for c in FEATURE_COLS if c not in BAT_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
     X_raw = df[FEATURE_COLS].astype(float).values
     transform_config = get_transform_config("batting")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):

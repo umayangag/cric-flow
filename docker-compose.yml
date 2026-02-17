@@ -36,6 +36,8 @@ services:
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
+      # Optional: log memory stats every 5m to diagnose OOM (see docs/CRASH_DIAGNOSIS.md)
+      MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
     ports:
       - "8080:8080"
 
@@ -65,5 +67,24 @@ services:
     volumes:
       - ./output:/app/output
 
+  # Watcher: logs go-api (and optionally other) container exit code and OOM status. See docs/CRASH_DIAGNOSIS.md.
+  watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.watcher
+    image: cric-watcher:latest
+    container_name: cric-watcher
+    depends_on:
+      - go-api
+    environment:
+      WATCH_CONTAINER: ${WATCH_CONTAINER:-cric-go-api}
+      # Optional: set WATCH_LOG=/logs/watcher.log to persist to watcher-logs volume
+      WATCH_LOG: ${WATCH_LOG:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - watcher-logs:/logs
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  watcher-logs:

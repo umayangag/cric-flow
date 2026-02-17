@@ -77,6 +77,29 @@ def _feature_defaults() -> Dict:
     raise RuntimeError("ml.config.get_feature_defaults not available")
 
 
+# Sequential feature keys (optional; 0 when absent)
+_BAT_SEQ_KEYS = (
+    "bat_prev_sr",
+    "bat_prev_out_rate",
+    "bat_window_sr_12_pp",
+    "bat_window_boundary_rate_12_pp",
+    "bat_entry_sr_1_6",
+    "bat_set_sr_13_30",
+    "bat_react_after_dot_sr",
+    "bat_after_k_dots_boundary_p_k2",
+)
+_BOWL_SEQ_KEYS = (
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+)
+
+
 def build_batting_features_from_map(
     player_id: int,
     cutoff: datetime,
@@ -87,7 +110,7 @@ def build_batting_features_from_map(
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
     bat_form = max(0.0, _get_required_float(d, "batting_form"))
-    return BattingFeatures(
+    base = dict(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
         batting_form=bat_form,
         batting_form_short=max(0.0, _float(d, "batting_form_short", bat_form)),
@@ -109,6 +132,9 @@ def build_batting_features_from_map(
         player_name="",
         format=fmt,
     )
+    for k in _BAT_SEQ_KEYS:
+        base[k] = max(0.0, _float(d, k, 0.0))
+    return BattingFeatures(**base)
 
 
 @dataclass
@@ -173,7 +199,7 @@ def build_bowling_features_from_map(
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
     bowl_form = max(0.0, _get_required_float(d, "bowling_form"))
-    return BowlingFeatures(
+    base = dict(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
         bowling_form=bowl_form,
         bowling_form_short=max(0.0, _float(d, "bowling_form_short", bowl_form)),
@@ -195,6 +221,9 @@ def build_bowling_features_from_map(
         player_name="",
         format=fmt,
     )
+    for k in _BOWL_SEQ_KEYS:
+        base[k] = max(0.0, _float(d, k, 0.0))
+    return BowlingFeatures(**base)
 
 
 def resolve_model_version(app_version_fallback: str) -> str:

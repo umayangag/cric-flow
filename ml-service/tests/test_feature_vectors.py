@@ -28,9 +28,8 @@ def test_batting_feature_vector_length(tmp_path):
     )
     vec = m.batting_feature_vector(f)
     assert isinstance(vec, list)
-    assert (
-        len(vec) == 18
-    )  # batting: consistency, form, form_short, form_long, momentum, temp, wind, rain, humidity, cloud, pressure, viscosity, inning, session, toss, venue, opposition, season
+    # batting: 18 base + 8 seq = 26
+    assert len(vec) == 26
 
 
 def test_bowling_feature_vector_length(tmp_path):
@@ -59,4 +58,5 @@ def test_bowling_feature_vector_length(tmp_path):
     )
     vec = m.bowling_feature_vector(f)
     assert isinstance(vec, list)
-    assert len(vec) == 18  # bowling: same structure with form_short, form_long, momentum
+    # bowling: 18 base + 7 seq = 25
+    assert len(vec) == 25

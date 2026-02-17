@@ -21,7 +21,19 @@ logger = logging.getLogger(__name__)
 # Supports training per-format; artifacts saved with format suffixes when provided.
 # By default consumes the Go export from ../../output/go-app/bowling_encoded.csv
 # or bowling_encoded_<FORMAT>.csv when --format is set.
-# Feature order must match ml-service/app/main.py -> _bowling_feature_vector
+# Feature order must match configs/feature_vectors.json (bowling) for prediction.
+# Seq columns: when absent in CSV, filled with 0.
+
+BOWL_SEQ_COLS = [
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+]
 
 FEATURE_COLS = [
     "bowling_consistency",
@@ -42,7 +54,7 @@ FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
-]
+] + BOWL_SEQ_COLS
 
 TARGET_COLS = [
     "runs",  # runs_conceded
@@ -81,6 +93,8 @@ def load_dataset(path: str):
         "wickets": "wickets",
         "econ": "econ",
     }
+    for c in BOWL_SEQ_COLS:
+        col_map[c] = c
     df = df.rename(columns=col_map)
     # Backward compat: fill new columns from old exports
     for col in ("bowling_form_short", "bowling_form_long"):
@@ -88,7 +102,15 @@ def load_dataset(path: str):
             df[col] = df["bowling_form"]
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
-    df = df.dropna(subset=[c for c in FEATURE_COLS if c in df.columns])
+    # Backward compat: optional seq columns (fill with 0 when absent or NaN)
+    for col in BOWL_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    # Filter rows with required feature columns (exclude seq from dropna)
+    required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
     X = df[FEATURE_COLS].astype(float).values
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
