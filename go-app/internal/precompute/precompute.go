@@ -7,7 +7,6 @@ package precompute
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -25,14 +24,11 @@ type RunOpts struct {
 // triggers sequence features) per format. If formats is empty, computes for all formats.
 // Season is ignored; the snapshot runner replays all matches chronologically.
 // Pass nil for opts to use config for alpha and lastN.
+// Run uses the parent context as-is; no extra deadline is applied here.
+// Callers (API pipeline.RunJob or CLI precompute-all) set the timeout (e.g. 24h or 0 for no limit).
 func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
 	cfg := config.Load()
-	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(parent, d)
-		defer cancel()
-	}
 	if db.Pool == nil {
 		slog.Info("precompute: connecting to database (pool was nil)")
 		if _, connectErr := db.Connect(ctx); connectErr != nil {

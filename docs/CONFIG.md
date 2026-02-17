@@ -24,7 +24,7 @@ Keys:
   - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
   - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 21600000 (6 hours). Set to 0 to disable. Precompute and large imports/exports can take 6+ hours on big datasets (T20/T20I).
+  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 86400000 (24 hours). Set to 0 to disable (no deadline). Precompute and large imports/exports can take many hours on big datasets (T20/T20I).
   - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
