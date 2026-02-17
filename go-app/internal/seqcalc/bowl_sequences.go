@@ -2,6 +2,7 @@ package seqcalc
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -41,6 +42,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 	if err != nil {
 		return err
 	}
+	slog.Info("seqcalc.bowl_sequences.query_start", slog.String("format", params.FormatCode), slog.Int("format_id", formatID))
 	// Query required fields ordered to reconstruct overs and compute basic stats for the next over (B)
 	r, err := db.Query(ctx, `
 		SELECT be.match_id, be.innings, be.over, be.ball, be.bowler_id, be.phase,
@@ -52,6 +54,7 @@ func (b *bowlSequencesCalc) Compute(ctx context.Context, params Params, dryRun b
 		ORDER BY be.match_id, be.innings, be.over, be.ball
 	`, formatID)
 	if err != nil {
+		slog.Error("seqcalc.bowl_sequences.query_failed", slog.String("format", params.FormatCode), slog.Int("format_id", formatID), slog.Any("err", err))
 		return err
 	}
 	defer r.Close()

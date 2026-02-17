@@ -48,6 +48,7 @@ func (r *Runner) Apply(ctx context.Context, names []string, othersZero bool) (in
 		}
 		ct, err := r.DB.Exec(ctx, `UPDATE player SET is_retired = 1 WHERE lower(player_name) = ANY($1)`, namesLower)
 		if err != nil {
+			slog.Error("importretired.Apply update retired failed", slog.Any("err", err))
 			return 0, 0, fmt.Errorf("update retired players: %w", err)
 		}
 		changed = ct
@@ -59,6 +60,7 @@ func (r *Runner) Apply(ctx context.Context, names []string, othersZero bool) (in
 		if len(names) == 0 {
 			ct, err := r.DB.Exec(ctx, `UPDATE player SET is_retired = 0 WHERE is_retired IS DISTINCT FROM 0`)
 			if err != nil {
+				slog.Error("importretired.Apply zero all failed", slog.Any("err", err))
 				return changed, zeroed, err
 			}
 			zeroed = ct
@@ -78,6 +80,7 @@ func (r *Runner) Apply(ctx context.Context, names []string, othersZero bool) (in
 				)`
 			ct, err := r.DB.Exec(ctx, q, namesLower)
 			if err != nil {
+				slog.Error("importretired.Apply zero except failed", slog.Any("err", err))
 				return changed, zeroed, err
 			}
 			zeroed = ct

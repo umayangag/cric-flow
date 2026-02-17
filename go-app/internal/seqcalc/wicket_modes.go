@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -22,6 +23,7 @@ func (wicketModesCalc) Compute(ctx context.Context, params Params, dryRun bool) 
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.wicket_modes.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
 	rows, err := queryEventsWithWicketKind(ctx, formatIDs)
 	if err != nil {
 		return err
@@ -78,6 +80,7 @@ func queryEventsWithWicketKind(ctx context.Context, formatIDs []int) ([]evRowWK,
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		slog.Error("seqcalc.wicket_modes.query_failed", slog.Any("format_ids", formatIDs), slog.Any("err", err))
 		return nil, err
 	}
 	defer dr.Close()

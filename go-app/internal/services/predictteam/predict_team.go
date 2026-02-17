@@ -5,6 +5,7 @@ package predictteam
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -89,12 +90,15 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	team1 := strings.TrimSpace(input.Team1)
 	team2 := strings.TrimSpace(input.Team2)
 	if format == "" || team1 == "" || team2 == "" {
-		return nil, fmt.Errorf("format, team1, team2 are required")
+		err := fmt.Errorf("format, team1, team2 are required")
+		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))
+		return nil, err
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
 
 	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
 	if fmtErr != nil {
+		slog.Error("predictteam.PredictTeams resolve format failed", slog.String("format", format), slog.Any("err", fmtErr))
 		return nil, fmt.Errorf("resolve format: %w", fmtErr)
 	}
 
@@ -114,17 +118,23 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	// Player pools
 	pool1, err := db.ListPlayerPoolByTeam(ctx, format, team1, cutoff, input.ExtraTeam1)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team1 pool failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 pool: %w", err)
 	}
 	pool2, err := db.ListPlayerPoolByTeam(ctx, format, team2, cutoff, input.ExtraTeam2)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team2 pool failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 pool: %w", err)
 	}
 	if len(pool1) < 11 {
-		return nil, fmt.Errorf("team1 has only %d players, need at least 11", len(pool1))
+		err := fmt.Errorf("team1 has only %d players, need at least 11", len(pool1))
+		slog.Error("predictteam.PredictTeams pool size", slog.String("team1", team1), slog.Int("len", len(pool1)), slog.Any("err", err))
+		return nil, err
 	}
 	if len(pool2) < 11 {
-		return nil, fmt.Errorf("team2 has only %d players, need at least 11", len(pool2))
+		err := fmt.Errorf("team2 has only %d players, need at least 11", len(pool2))
+		slog.Error("predictteam.PredictTeams pool size", slog.String("team2", team2), slog.Int("len", len(pool2)), slog.Any("err", err))
+		return nil, err
 	}
 
 	// Features and predictions for team1 (opposition = team2)
@@ -144,10 +154,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		weatherOpt,
 	)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team1 features failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 features: %w", err)
 	}
 	preds1, err := predictor.PredictPlayers(ctx, cutoff, format, ids1, feats1)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team1 predict failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 predict: %w", err)
 	}
 	// Use ML fielding when the service returned predictions; otherwise fall back to historical EWM.
@@ -171,10 +183,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		weatherOpt,
 	)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team2 features failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 features: %w", err)
 	}
 	preds2, err := predictor.PredictPlayers(ctx, cutoff, format, ids2, feats2)
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team2 predict failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 predict: %w", err)
 	}
 	if !hasFieldingPredictions(preds2) {
@@ -191,6 +205,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		RequireKeeper: input.RequireKeeper,
 	})
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 select: %w", err)
 	}
 	sel2, err := teamselect.Select(tsPool2, teamselect.DefaultWeights(), teamselect.Constraints{
@@ -199,6 +214,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		RequireKeeper: input.RequireKeeper,
 	})
 	if err != nil {
+		slog.Error("predictteam.PredictTeams team2 select failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 select: %w", err)
 	}
 

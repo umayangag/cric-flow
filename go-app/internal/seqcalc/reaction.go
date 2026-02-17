@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -39,6 +40,7 @@ func (reactionCalc) Compute(ctx context.Context, params Params, dryRun bool) err
 		return nil
 	}
 	fids := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.reaction.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", fids))
 	rows, err := queryEvents(ctx, fids)
 	if err != nil {
 		return err
@@ -84,6 +86,7 @@ func queryEvents(ctx context.Context, formatIDs []int) ([]evRow, error) {
 	`, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		slog.Error("seqcalc.reaction.query_events_failed", slog.Any("format_ids", formatIDs), slog.Any("err", err))
 		return nil, err
 	}
 	defer dr.Close()

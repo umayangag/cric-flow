@@ -4,6 +4,7 @@ package features
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 )
@@ -14,17 +15,20 @@ import (
 func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode string) error {
 	if db.Pool == nil {
 		if _, err := db.Connect(ctx); err != nil {
+			slog.Error("features.ComputeSeasonalFormFmt Connect failed", slog.Any("err", err))
 			return err
 		}
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
+		slog.Error("features.ComputeSeasonalFormFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
 		return err
 	}
 	var seasonIDFilter string
 	if seasonName != "" {
 		sid, err := db.GetOrCreateSeason(ctx, seasonName)
 		if err != nil {
+			slog.Error("features.ComputeSeasonalFormFmt GetOrCreateSeason failed", slog.String("season", seasonName), slog.Any("err", err))
 			return err
 		}
 		seasonIDFilter = fmt.Sprintf("AND m.season_id = %d", sid)
@@ -98,7 +102,11 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 		bowling_form = COALESCE(EXCLUDED.bowling_form, player_form_data_fmt.bowling_form);
 	`, fmtID, seasonIDFilter, fmtID, seasonIDFilter)
 	_, err = db.Pool.Exec(ctx, q)
-	return err
+	if err != nil {
+		slog.Error("features.ComputeSeasonalFormFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		return err
+	}
+	return nil
 }
 
 // ComputeVenueEffectsFmt computes venue effects per player per venue per format using
@@ -106,11 +114,13 @@ func ComputeSeasonalFormFmt(ctx context.Context, seasonName string, formatCode s
 func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 	if db.Pool == nil {
 		if _, err := db.Connect(ctx); err != nil {
+			slog.Error("features.ComputeVenueEffectsFmt Connect failed", slog.Any("err", err))
 			return err
 		}
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
+		slog.Error("features.ComputeVenueEffectsFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
 		return err
 	}
 	q := fmt.Sprintf(`
@@ -171,7 +181,11 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 		bowling_venue = COALESCE(EXCLUDED.bowling_venue, player_venue_data_fmt.bowling_venue);
 	`, fmtID, fmtID)
 	_, err = db.Pool.Exec(ctx, q)
-	return err
+	if err != nil {
+		slog.Error("features.ComputeVenueEffectsFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		return err
+	}
+	return nil
 }
 
 // ComputeOppositionEffectsFmt computes opposition effects per player per opposition per format using
@@ -179,11 +193,13 @@ func ComputeVenueEffectsFmt(ctx context.Context, formatCode string) error {
 func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 	if db.Pool == nil {
 		if _, err := db.Connect(ctx); err != nil {
+			slog.Error("features.ComputeOppositionEffectsFmt Connect failed", slog.Any("err", err))
 			return err
 		}
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
+		slog.Error("features.ComputeOppositionEffectsFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
 		return err
 	}
 	q := fmt.Sprintf(`
@@ -246,5 +262,9 @@ func ComputeOppositionEffectsFmt(ctx context.Context, formatCode string) error {
 		bowling_opposition = COALESCE(EXCLUDED.bowling_opposition, player_opposition_data_fmt.bowling_opposition);
 	`, fmtID, fmtID)
 	_, err = db.Pool.Exec(ctx, q)
-	return err
+	if err != nil {
+		slog.Error("features.ComputeOppositionEffectsFmt Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		return err
+	}
+	return nil
 }

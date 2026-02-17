@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -117,13 +118,17 @@ func Load() *Config {
 func ValidateForServer() error {
 	cfg := Load()
 	if loadedFrom == "" {
-		return fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
+		err := fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
+		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
 	}
 	if cfg.Features.PrecomputeTimeoutMs < 0 {
-		return fmt.Errorf(
+		err := fmt.Errorf(
 			"features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d",
 			cfg.Features.PrecomputeTimeoutMs,
 		)
+		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
 	}
 	return nil
 }
@@ -166,23 +171,33 @@ func ValidateTeamSettings(cfg *Config) error {
 	}
 	// Min bowlers must be at least 1.
 	if cfg.Team.MinBowlers < 1 {
-		return fmt.Errorf("min bowlers must be >= 1")
+		err := fmt.Errorf("min bowlers must be >= 1")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// Default extras cannot be negative when provided.
 	if cfg.Predictor.DefaultExtras < 0 {
-		return fmt.Errorf("extras must be non-negative")
+		err := fmt.Errorf("extras must be non-negative")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// Default batters cannot be negative.
 	if cfg.Team.DefaultBatters < 0 {
-		return fmt.Errorf("default batters must be >= 0")
+		err := fmt.Errorf("default batters must be >= 0")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// If both TeamSize and MinBowlers are provided, TeamSize must be >= MinBowlers.
 	if cfg.Predictor.TeamSize > 0 && cfg.Team.MinBowlers > 0 && cfg.Predictor.TeamSize < cfg.Team.MinBowlers {
-		return fmt.Errorf("team size must be >= min bowlers")
+		err := fmt.Errorf("team size must be >= min bowlers")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	// If DefaultBowlers is set, it must be >= MinBowlers.
 	if cfg.Team.DefaultBowlers > 0 && cfg.Team.MinBowlers > 0 && cfg.Team.DefaultBowlers < cfg.Team.MinBowlers {
-		return fmt.Errorf("default bowlers must be >= min bowlers")
+		err := fmt.Errorf("default bowlers must be >= min bowlers")
+		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
+		return err
 	}
 	return nil
 }

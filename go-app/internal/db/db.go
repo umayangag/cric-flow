@@ -267,17 +267,25 @@ func SetPoolAPI(p PoolIface) { PoolAPI = p }
 // RunInTx runs fn inside a transaction. Commits on success, rolls back on error or panic.
 func RunInTx(ctx context.Context, fn func(ctx context.Context, tx CopyFromTx) error) error {
 	if PoolAPI == nil {
-		return errors.New("db pool not initialized")
+		err := errors.New("db pool not initialized")
+		slog.Error("db.RunInTx failed", slog.Any("err", err))
+		return err
 	}
 	tx, err := PoolAPI.Begin(ctx)
 	if err != nil {
+		slog.Error("db.RunInTx Begin failed", slog.Any("err", err))
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := fn(ctx, tx); err != nil {
+		slog.Error("db.RunInTx fn failed", slog.Any("err", err))
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("db.RunInTx Commit failed", slog.Any("err", err))
+		return err
+	}
+	return nil
 }
 
 func getenv(key, def string) string {

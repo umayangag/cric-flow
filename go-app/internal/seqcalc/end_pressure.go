@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -37,6 +38,7 @@ func (endPressureCalc) Compute(ctx context.Context, params Params, dryRun bool) 
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
+	slog.Info("seqcalc.end_pressure.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
 	ev, err := queryEventsForEndPressure(ctx, formatIDs)
 	if err != nil {
 		return err
@@ -77,6 +79,7 @@ func queryEventsForEndPressure(ctx context.Context, formatIDs []int) ([]evRowEP,
     `, place)
 	dr, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		slog.Error("seqcalc.end_pressure.query_failed", slog.Any("format_ids", formatIDs), slog.Any("err", err))
 		return nil, err
 	}
 	defer dr.Close()

@@ -31,6 +31,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		slog.Error("cricsheet.ImportDir ReadDir failed", slog.String("dir", dir), slog.Any("err", err))
 		return 0, err
 	}
 	var files []string
@@ -72,6 +73,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options) (int, error) {
 	}
 
 	if err := g.Wait(); err != nil {
+		slog.Error("cricsheet.ImportDir wait failed", slog.String("dir", dir), slog.Int64("imported", count), slog.Any("err", err))
 		return int(count), err
 	}
 	return int(count), nil
@@ -82,6 +84,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	cache := db.GetGlobalCache()
 	fh, err := os.Open(path)
 	if err != nil {
+		slog.Error("cricsheet.ImportMatchFile open failed", slog.String("path", path), slog.Any("err", err))
 		return err
 	}
 	defer func() {
@@ -685,6 +688,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 		return nil
 	}); err != nil {
+		slog.Error("cricsheet.ImportMatchFile transaction failed", slog.String("path", path), slog.Int64("match_id", mid), slog.Any("err", err))
 		return err
 	}
 	// Enqueue async weather job (non-blocking)

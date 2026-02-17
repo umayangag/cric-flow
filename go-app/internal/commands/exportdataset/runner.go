@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -51,12 +52,17 @@ func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter) *Runner {
 // For now it validates options and prepares the output directory; service orchestration will follow in subsequent phases.
 func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r == nil {
-		return errors.New("nil runner")
+		err := errors.New("nil runner")
+		slog.Error("exportdataset.Runner.Run failed", slog.Any("err", err))
+		return err
 	}
 	if opts.OutDir == "" {
-		return errors.New("output directory is required")
+		err := errors.New("output directory is required")
+		slog.Error("exportdataset.Runner.Run failed", slog.Any("err", err))
+		return err
 	}
 	if err := os.MkdirAll(opts.OutDir, fs.FileMode(0o755)); err != nil {
+		slog.Error("exportdataset.Runner.Run mkdir failed", slog.String("out_dir", opts.OutDir), slog.Any("err", err))
 		return fmt.Errorf("mkdir %s: %w", opts.OutDir, err)
 	}
 	// If services are injected, orchestrate exports here. This path is only active
@@ -84,7 +90,11 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) },
 				)
 			})
-			return g.Wait()
+			if err := g.Wait(); err != nil {
+			slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
+			return err
+		}
+		return nil
 		}
 
 		for _, f := range formats {
@@ -139,7 +149,11 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) })
 			})
 		}
-		return g.Wait()
+		if err := g.Wait(); err != nil {
+			slog.Error("exportdataset.Runner.Run format export failed", slog.Any("err", err))
+			return err
+		}
+		return nil
 	}
 	return nil
 }
@@ -147,8 +161,13 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) error {
 	var buf bytes.Buffer
 	if err := fn(&buf); err != nil {
+		slog.Error("exportdataset.writeUsing export failed", slog.String("name", name), slog.Any("err", err))
 		return err
 	}
 	path := filepath.Join(outDir, name)
-	return os.WriteFile(path, buf.Bytes(), fs.FileMode(0o644))
+	if err := os.WriteFile(path, buf.Bytes(), fs.FileMode(0o644)); err != nil {
+		slog.Error("exportdataset.writeUsing write failed", slog.String("path", path), slog.Any("err", err))
+		return err
+	}
+	return nil
 }
