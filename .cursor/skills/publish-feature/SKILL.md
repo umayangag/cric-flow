@@ -68,6 +68,7 @@ If Gemini does not reply after the initial wait, keep polling every 90 seconds. 
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
   - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
+  - **After every push:** post `/gemini review` on the PR (e.g. `gh pr comment <PR> --body "/gemini review"`) so Gemini runs again on the new commits.
 
 ### D. Loop or exit
 
@@ -104,7 +105,7 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 |------|--------|
 | A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
 | B | Wait = size-based (small: 2 min, medium: 5 min, large: 7 min); if file has smaller value use it. Then poll every 90s; proceed when &gt;0 or **total wait ≥ 15 min**; update file with elapsed when threads appear (cap 15). If no response after 15 min, proceed to C and exit. |
-| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push |
+| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR |
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |
 
 Exit when: **cycle = 10** or **unresolved Gemini threads = 0**.
