@@ -10,8 +10,11 @@ from ml.db import get_db_connection
 # Load environment variables from .env file if it exists
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # Commands that form the main pipeline; only one may be IN_PROGRESS at a time (singleton).
 # Must stay in sync with go-app/internal/pipeline/job.go PipelineCommands.
+# Shared config (e.g. JSON) could be a future improvement.
 PIPELINE_COMMANDS = (
     "cricsheet-import",
     "precompute-features",
@@ -56,16 +59,15 @@ def cancel_in_progress_on_startup(
                 n = cur.rowcount
             conn.commit()
             if n:
-                logging.info(
-                    "[Tracking] Cancelled %d stale IN_PROGRESS migration(s) on startup (older than %dm)",
-                    n,
-                    stale_minutes,
+                logger.info(
+                    "tracking.cancelled_stale_on_startup",
+                    extra={"cancelled": n, "stale_minutes": stale_minutes},
                 )
             return n
         finally:
             conn.close()
     except Exception as e:
-        logging.warning("[Tracking] Failed to cancel stale IN_PROGRESS on startup: %s", e)
+        logger.warning("tracking.cancel_stale_on_startup_failed", extra={"error": str(e)})
         return 0
 
 
@@ -88,7 +90,7 @@ def has_any_pipeline_in_progress() -> bool:
         finally:
             conn.close()
     except Exception as e:
-        logging.warning("[Tracking] Failed to check pipeline busy: %s", e)
+        logger.warning("tracking.check_pipeline_busy_failed", extra={"error": str(e)})
         return True  # fail-closed: assume a pipeline is running to preserve singleton
 
 

@@ -56,10 +56,12 @@ async def _lifespan(app: FastAPI) -> Any:
         from ml.tracking import cancel_in_progress_on_startup
 
         raw = os.environ.get("TRACKING_STALE_CANCEL_AGE_MINUTES", "").strip()
-        try:
-            stale_minutes = int(raw) if raw else None
-        except ValueError:
-            stale_minutes = None
+        stale_minutes = None
+        if raw:
+            try:
+                stale_minutes = int(raw)
+            except ValueError:
+                logger.warning("invalid TRACKING_STALE_CANCEL_AGE_MINUTES, using default", value=raw)
         n = cancel_in_progress_on_startup(stale_minutes=stale_minutes)
         if n:
             logger.info("startup.cancelled_stale_migrations", count=n, stale_minutes=stale_minutes)
