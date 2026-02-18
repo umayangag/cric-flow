@@ -3,12 +3,12 @@ import os
 import joblib
 import pandas as pd
 from sklearn import preprocessing
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
 from . import tracking
 from .config import default_artifacts_dir, default_go_app_export_dir, get_training_params
 from .dataset_definitions import input_bowling_columns, output_bowling_columns
+from .utils import make_base_estimator
 
 
 def run_training():
@@ -67,12 +67,7 @@ def run_training():
     X_scaled = input_scaler.transform(X)
 
     params = get_training_params("bowling")
-    regr = RandomForestRegressor(
-        max_depth=params["max_depth"],
-        n_estimators=params["n_estimators"],
-        random_state=params["random_state"],
-    )
-    predictor = MultiOutputRegressor(regr)
+    predictor = MultiOutputRegressor(make_base_estimator(params))
     predictor.fit(X_scaled, y)
 
     output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", default_artifacts_dir())

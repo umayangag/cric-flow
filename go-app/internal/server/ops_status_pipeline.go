@@ -18,9 +18,8 @@ var pipelineStepCommands = map[string]string{
 	// auto_tune has no tracking command; optional step
 }
 
-// buildPipelineSection returns a map of pipeline step id -> { "running": bool }
-// for use in /ops/status. Running is true when data_migrations has an IN_PROGRESS
-// row for that step's command.
+// buildPipelineSection returns a map with "steps" (per-step running bool) for /ops/status.
+// Migration history (running/recent jobs) is shown in the separate Migration History section.
 func buildPipelineSection(ctx context.Context) map[string]any {
 	steps := map[string]any{}
 	for stepID, command := range pipelineStepCommands {
@@ -31,7 +30,6 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 		}
 		steps[stepID] = map[string]any{"running": running}
 	}
-	// auto_tune is optional and not tracked
 	steps["auto_tune"] = map[string]any{"running": false}
 	return map[string]any{"steps": steps}
 }

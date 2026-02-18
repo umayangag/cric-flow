@@ -1,10 +1,57 @@
 package seqcalc_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
+
+func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {
+	reg := seqcalc.NewDefaultRegistry()
+
+	calcs, err := reg.ResolveTargets("bat_transitions")
+	if err != nil {
+		t.Fatalf("ResolveTargets(bat_transitions) error: %v", err)
+	}
+	if len(calcs) != 1 {
+		t.Fatalf("expected 1 calc, got %d", len(calcs))
+	}
+	if calcs[0].Name() != seqcalc.TargetBatTransitions {
+		t.Fatalf("expected bat_transitions, got %s", calcs[0].Name())
+	}
+
+	_, err = reg.ResolveTargets("unknown_target_xyz")
+	if err == nil {
+		t.Fatal("expected error for unknown target")
+	}
+}
+
+func TestDryRun(t *testing.T) {
+	reg := seqcalc.NewDefaultRegistry()
+	calcs, _ := reg.ResolveTargets("bat_transitions")
+
+	var buf bytes.Buffer
+	err := seqcalc.DryRun(&buf, calcs, seqcalc.Params{FormatCode: "T20"})
+	if err != nil {
+		t.Fatalf("DryRun error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Fatal("DryRun should write output")
+	}
+
+	// Error: nil writer
+	err = seqcalc.DryRun(nil, calcs, seqcalc.Params{})
+	if err == nil {
+		t.Fatal("expected error for nil writer")
+	}
+
+	// Error: no calculators
+	err = seqcalc.DryRun(&buf, nil, seqcalc.Params{})
+	if err == nil {
+		t.Fatal("expected error for empty calcs")
+	}
+}
 
 func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
 	reg := seqcalc.NewDefaultRegistry()

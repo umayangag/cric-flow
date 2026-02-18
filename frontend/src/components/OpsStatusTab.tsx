@@ -71,6 +71,7 @@ export type OpsStatus = {
   precompute?: { formats?: PrecomputeFormats };
   exports?: { formats?: ExportFormats };
   artifacts?: { formats?: ArtifactFormats };
+  pipeline?: { steps?: Record<string, { running?: boolean }> };
   // New optional sections surfaced by backend as raw objects
   fielding?: unknown;
   weather?: unknown;

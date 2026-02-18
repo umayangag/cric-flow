@@ -38,8 +38,6 @@ const WorkbenchTab: React.FC = () => {
   const [format, setFormat] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const [team1, setTeam1] = useState<string>('');
-  const [team2, setTeam2] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -71,8 +69,6 @@ const WorkbenchTab: React.FC = () => {
         format: format || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
-        team1: team1 || undefined,
-        team2: team2 || undefined,
         order: 'asc',
         limit: Math.min(Math.max(1, limit), MAX_LIMIT),
         cache: 'read',
@@ -85,7 +81,7 @@ const WorkbenchTab: React.FC = () => {
     } finally {
       setTrendLoading(false);
     }
-  }, [format, startDate, endDate, team1, team2, limit]);
+  }, [format, startDate, endDate, limit]);
 
   const handleRegistryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,10 +122,30 @@ const WorkbenchTab: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Alert severity="info" sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          What is the Workbench?
+        </Typography>
+        <Typography variant="body2" component="span">
+          The Workbench lets you inspect how well the ML models predict real match outcomes. Use{' '}
+          <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates),
+          and <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
+          (train → predict next window → score). Each match is predicted with the{' '}
+          <strong>model for that match&apos;s format</strong> (T20, ODI, etc.).
+        </Typography>
+      </Alert>
+
       <SectionCard
-        title="Dataset & accuracy trend"
-        subtitle="Filter by format and date range, then load backtest accuracy (MAE etc.) from the go-app API."
+        title="Accuracy trend"
+        subtitle="Load backtest accuracy (MAE, etc.) for played matches. Filters choose which matches to include; then the API runs predictions and returns metrics."
       >
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load
+          accuracy trend&quot;. The table shows one row per match with error metrics (e.g. runs_mae,
+          wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include every format, or
+          pick one (e.g. T20) to evaluate that format only. <strong>Limit</strong> caps how many
+          matches are fetched (1–500). Prerequisites: precompute and ML artifacts must be in place.
+        </Typography>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           spacing={2}
@@ -137,9 +153,14 @@ const WorkbenchTab: React.FC = () => {
           alignItems="flex-start"
         >
           <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Format</InputLabel>
-            <Select value={format} label="Format" onChange={(e) => setFormat(e.target.value)}>
-              <MenuItem value="">All</MenuItem>
+            <InputLabel id="workbench-format-label">Format</InputLabel>
+            <Select
+              value={format}
+              labelId="workbench-format-label"
+              label="Format"
+              onChange={(e) => setFormat(e.target.value)}
+            >
+              <MenuItem value="">All formats</MenuItem>
               {availableFormats.map((f) => (
                 <MenuItem key={f} value={f}>
                   {f}
@@ -173,6 +194,7 @@ const WorkbenchTab: React.FC = () => {
             onChange={(e) => setLimit(Number(e.target.value) || DEFAULT_LIMIT)}
             inputProps={{ min: 1, max: MAX_LIMIT }}
             sx={{ width: 90 }}
+            helperText={`Max ${MAX_LIMIT} matches`}
           />
           <Button
             variant="contained"
@@ -253,8 +275,16 @@ const WorkbenchTab: React.FC = () => {
 
       <SectionCard
         title="Walk-forward registry"
-        subtitle="Upload walk_forward_registry.json (from make walk-forward) to view MAE and variation per window."
+        subtitle="Upload a walk-forward registry JSON to view metrics per time window (train → predict next X matches → score)."
       >
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <strong>How to use:</strong> Run the walk-forward pipeline from the repo (
+          <Box component="code" sx={{ fontSize: '0.85em', bgcolor: 'action.hover', px: 0.5 }}>
+            make walk-forward
+          </Box>
+          ). It writes <code>walk_forward_registry.json</code> to the ML service output directory.
+          Upload that file here to see MAE, n_train, n_holdout, and other metrics for each window.
+        </Typography>
         <Stack direction="row" alignItems="center" spacing={2}>
           <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
             Choose JSON file
@@ -335,29 +365,35 @@ const WorkbenchTab: React.FC = () => {
       </SectionCard>
 
       <SectionCard
-        title="Run & docs"
-        subtitle="How to generate accuracy trend and walk-forward data."
+        title="Commands & docs"
+        subtitle="Reference: how to generate the data you view in the sections above."
       >
-        <Typography variant="body2" paragraph>
-          Accuracy trend is computed by the go-app backtest API. Ensure precompute and ML artifacts
-          are in place; then use the filters above and click &quot;Load accuracy trend&quot;.
-        </Typography>
-        <Typography variant="body2" paragraph>
-          Walk-forward: from repo root run{' '}
-          <Box component="code" sx={{ bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
-            make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20
+        <Typography
+          variant="body2"
+          component="div"
+          sx={{ '& code': { bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 } }}
+        >
+          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            <li>
+              <strong>Accuracy trend</strong> — Data comes from the go-app backtest API. Ensure
+              precompute and ML artifacts are in place, then use the filters in the first section
+              and click &quot;Load accuracy trend&quot;.
+            </li>
+            <li>
+              <strong>Walk-forward</strong> — From repo root:{' '}
+              <code>
+                make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20
+              </code>
+              . The registry is written to the ML service output dir; upload it in the section
+              above.
+            </li>
+            <li>
+              <strong>Auto-tune</strong> — To search for better hyperparameters:{' '}
+              <code>make ml-auto-tune MODEL=batting FORMAT=T20</code>. See{' '}
+              <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the
+              repo.
+            </li>
           </Box>
-          . The registry JSON is written to the ML service output dir (e.g.{' '}
-          <code>walk_forward_registry.json</code>). Upload it above to view MAE and sample counts
-          per window.
-        </Typography>
-        <Typography variant="body2">
-          Auto-tune:{' '}
-          <Box component="code" sx={{ bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
-            make ml-auto-tune MODEL=batting FORMAT=T20
-          </Box>
-          . See <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the
-          repo.
         </Typography>
       </SectionCard>
     </Box>

@@ -7,7 +7,6 @@ package precompute
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -25,14 +24,11 @@ type RunOpts struct {
 // triggers sequence features) per format. If formats is empty, computes for all formats.
 // Season is ignored; the snapshot runner replays all matches chronologically.
 // Pass nil for opts to use config for alpha and lastN.
+// Run uses the parent context as-is; no extra deadline is applied here.
+// Callers (API pipeline.RunJob or CLI precompute-all) set the timeout (e.g. 24h or 0 for no limit).
 func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
 	cfg := config.Load()
-	if d := time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond; d > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(parent, d)
-		defer cancel()
-	}
 	if db.Pool == nil {
 		slog.Info("precompute: connecting to database (pool was nil)")
 		if _, connectErr := db.Connect(ctx); connectErr != nil {
@@ -42,7 +38,11 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	}
 	codes, err := discoverFormatCodes(ctx, formats)
 	if err != nil {
-		slog.Error("precompute: discover format codes failed", slog.Any("err", err), slog.Any("formats_requested", formats))
+		slog.Error(
+			"precompute: discover format codes failed",
+			slog.Any("err", err),
+			slog.Any("formats_requested", formats),
+		)
 		return err
 	}
 	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
@@ -82,7 +82,12 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 			return err
 		}
 		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
-			slog.Error("precompute: RunReplay failed", slog.String("format", code), slog.Int64("format_id", formatID), slog.Any("err", err))
+			slog.Error(
+				"precompute: RunReplay failed",
+				slog.String("format", code),
+				slog.Int64("format_id", formatID),
+				slog.Any("err", err),
+			)
 			return err
 		}
 		slog.Info("precompute: format completed", slog.String("format", code))

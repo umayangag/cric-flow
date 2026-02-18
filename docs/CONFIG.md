@@ -24,7 +24,7 @@ Keys:
   - `treat_t20i_as_subset` (bool) — when true, treat T20 matches between two international teams as `T20I`.
   - `international_teams` (list of strings) — list of ICC national teams used by the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 21600000 (6 hours). Set to 0 to disable. Precompute and large imports/exports can take 6+ hours on big datasets (T20/T20I).
+  - `precompute_timeout_ms` (int) — timeout for pipeline jobs: precompute, import, export. Default 86400000 (24 hours). Set to 0 to disable (no deadline). Precompute and large imports/exports can take many hours on big datasets (T20/T20I).
   - `min_batting_innings` (int) — minimum innings threshold for batting aggregates (reserved for future smoothing).
   - `min_bowling_innings` (int) — minimum innings threshold for bowling aggregates (reserved for future smoothing).
   - `form_shrinkage_alpha` (float) — shrinkage/regularization parameter for form (reserved for future smoothing).
@@ -32,8 +32,11 @@ Keys:
   - `history_window_matches` (int) — when &gt; 0, limit form/consistency to the last N matches (used by precompute-all).
   - **Feature extraction (tunable):** Used by training-data export and by `cmd/precompute-all` when CLI flags are not overridden.
     - `ewm_alpha` (float, default 0.3) — alpha for exponentially weighted mean (form). Must be in (0, 1].
+    - `ewm_alpha_short` (float, default 0.5) — alpha for form_short (more weight to recent innings).
+    - `ewm_alpha_long` (float, default 0.2) — alpha for form_long (longer horizon).
     - `consistency_last_n` (int, default 10) — last-N innings window for consistency (coefficient of variation).
     - `form_window_n` (int, default 0) — max number of innings to use for form; 0 = no limit.
+    - `momentum_last_n` (int, default 5) — last-N innings for momentum slope (positive = improving form).
   - `fielding_enrich` — used when ML does not return fielding predictions and go-app enriches from history (team selection).
     - `ewm_alpha` (float, default 0.3) — EWM alpha for fielding form.
     - `form_to_catches_ratio` (float, default 0.7) — split of form into catches; run_outs = form × (1 − ratio).
@@ -66,9 +69,12 @@ Keys:
   - `formats` — list of format codes to train/serve (e.g., `["TEST","ODI","T20","T20I"]`).
   - `artifact_template` — naming template for saved artifacts (informational).
   - `training` — **required** per-model block used strictly by all training scripts (no defaults or env overrides in code). Each model has its own parameters so you can tune batting vs bowling (and future models) independently.
-    - `batting` — parameters for batting RandomForest training and artifacts.
+    - `batting` — parameters for batting model training and artifacts.
       - `n_estimators` (int), `max_depth` (int), `random_state` (int), `joblib_compress` (int, 0–9).
-    - `bowling` — parameters for bowling RandomForest training and artifacts.
+      - `estimator` (optional, default `rf`) — `rf` for RandomForest, `gb`/`gbm` for GradientBoosting, `stacked` for RF+GB+Ridge ensemble, `quantile` for GBM with pinball loss (prediction intervals).
+      - `learning_rate` (optional, for GBM/quantile, default 0.1) — used when `estimator` is `gb` or `quantile`.
+      - `quantile_level` (optional, for quantile only, default 0.5) — quantile to predict (0.5 = median). Use 0.05/0.95 for interval bounds.
+    - `bowling` — parameters for bowling model training and artifacts.
       - Same keys as `batting`. Add further keys (e.g. `fielding`, `win`) when those models are implemented.
   - `cv_splits`, `test_size`, `learning_rate`, `subsample`, `colsample_bytree`, `reg_lambda`, `reg_alpha`, `early_stopping_rounds`, `max_iter` — reserved for future models.
   - `feature_defaults` (optional) — defaults used when building feature vectors from a sparse go-app map at prediction time (missing keys). Tune these to match “no history” or environment assumptions.
@@ -111,6 +117,9 @@ New keys in `go-app/config.json` under `team`:
 
 Under `selection`:
 - `score_weights` — optional weights for combining batting/bowling/fielding signals when selecting best XI: `bat` (default 0.45), `bowl` (0.40), `field` (0.10), `keeper_bonus` (0.02). These affect which players are ranked higher in team selection.
+- `score_normalization` — optional per-format divisors for converting raw predictions to [0,1] scores. Keys: format codes (e.g. T20, ODI, TEST). Each value: `bat_divisor`, `wicket_divisor`, `econ_base`, `field_divisor`. T20/ODI/TEST have format-specific typical maxima; defaults apply when absent.
+- `score_weights_by_format` — optional per-format overrides for `score_weights`. When set for a format, overrides the global `score_weights` for that format.
+- `meta_model_path` — optional path to JSON from `ml.train_combination_meta`. When set, learned weights override `score_weights` and `score_weights_by_format`. See **docs/ML_COMBINATION_META.md**.
 
 CLI overrides still apply: `go run ./go-app/cmd/team-predictor -match=<id> -format=<CODE> -bat=6 -bowl=5`.
 

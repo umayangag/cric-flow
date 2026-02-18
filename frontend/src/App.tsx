@@ -164,9 +164,9 @@ const AppContent: React.FC = () => {
           >
             <Tab value="health" label="Health" />
             <Tab value="ops" label="Ops Status" />
+            <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluate (DB)" />
             <Tab value="upcoming" label="Upcoming match prediction" />
-            <Tab value="workbench" label="Workbench" />
           </Tabs>
         )}
 

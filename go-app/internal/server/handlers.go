@@ -42,7 +42,7 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 
 // precomputeHandler triggers precompute with optional filters.
 // Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}. Empty body is allowed (defaults to all seasons/formats).
-func precomputeHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	var body precomputeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		slog.Error("precompute: decode request body failed", slog.Any("err", err))
@@ -51,7 +51,15 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
-	slog.Info("precompute: request accepted, starting background job", slog.String("season", season), slog.Any("formats", formats))
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	slog.Info(
+		"precompute: request accepted, starting background job",
+		slog.String("season", season),
+		slog.Any("formats", formats),
+	)
 	go func() {
 		timeout := config.PipelineTimeout()
 		slog.Info(
@@ -61,7 +69,7 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Any("formats", formats),
 		)
 		runErr := pipeline.RunJob(
-			context.Background(),
+			a.JobContext(),
 			"precompute-features",
 			map[string]any{"season": season, "formats": formats},
 			timeout,
@@ -91,7 +99,7 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 
 // importCricSheetHandler runs import of cricsheet data directory.
 // Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
-func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		slog.Error("import: decode request body failed", slog.Any("err", err))
@@ -106,11 +114,15 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		PlaceholdersWeather:  body.PlaceholdersWeather,
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
 	go func() {
 		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
-			context.Background(),
+			a.JobContext(),
 			"cricsheet-import",
 			map[string]any{"dir": dir},
 			config.PipelineTimeout(),
@@ -217,7 +229,11 @@ func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	preds, err := a.mlClient.PredictBatting(r.Context(), feats)
 	if err != nil {
-		slog.Error("predictBatting: ML client PredictBatting failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
+		slog.Error(
+			"predictBatting: ML client PredictBatting failed",
+			slog.Int("features_count", len(feats)),
+			slog.Any("err", err),
+		)
 		respondErr(w, err)
 		return
 	}
@@ -234,7 +250,11 @@ func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	preds, err := a.mlClient.PredictBowling(r.Context(), feats)
 	if err != nil {
-		slog.Error("predictBowling: ML client PredictBowling failed", slog.Int("features_count", len(feats)), slog.Any("err", err))
+		slog.Error(
+			"predictBowling: ML client PredictBowling failed",
+			slog.Int("features_count", len(feats)),
+			slog.Any("err", err),
+		)
 		respondErr(w, err)
 		return
 	}

@@ -7,6 +7,93 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
 )
 
+func TestNormalizeCode(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"t20", "T20"},
+		{" odi ", "ODI"},
+		{"test", "TEST"},
+		{"T20I", "T20I"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got := formats.NormalizeCode(tt.in)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCanonicalizeCode(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"MDM", formats.CodeTest},
+		{"mdm", formats.CodeTest},
+		{"ODM", formats.CodeODI},
+		{"IT20", formats.CodeT20I},
+		{"it20", formats.CodeT20I},
+		{"T20", formats.CodeT20},
+		{"ODI", formats.CodeODI},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got := formats.CanonicalizeCode(tt.in)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestIDForCode(t *testing.T) {
+	tests := []struct {
+		code    string
+		wantID  int
+		wantErr bool
+	}{
+		{"TEST", formats.IDTest, false},
+		{"ODI", formats.IDODI, false},
+		{"T20", formats.IDT20, false},
+		{"T20I", formats.IDT20I, false},
+		{"t20", formats.IDT20, false},
+		{"UNKNOWN", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			id, err := formats.IDForCode(tt.code)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "unknown format")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantID, id)
+		})
+	}
+}
+
+func TestMapFormatIDs(t *testing.T) {
+	tests := []struct {
+		code string
+		want []int
+	}{
+		{"", []int{formats.IDT20, formats.IDT20I}},
+		{"T20", []int{formats.IDT20, formats.IDT20I}},
+		{"T20I", []int{formats.IDT20, formats.IDT20I}},
+		{"ODI", []int{formats.IDODI}},
+		{"TEST", []int{formats.IDTest}},
+		{"UNKNOWN", []int{formats.IDT20, formats.IDT20I}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			got := formats.MapFormatIDs(tt.code)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestGetHierarchy(t *testing.T) {
 	hierarchy := formats.GetHierarchy()
 

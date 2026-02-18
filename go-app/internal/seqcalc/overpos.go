@@ -50,7 +50,11 @@ func (overPosCalc) Compute(ctx context.Context, params Params, dryRun bool) erro
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
-	slog.Info("seqcalc.overpos.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
+	slog.Info(
+		"seqcalc.overpos.query_start",
+		slog.String("format", params.FormatCode),
+		slog.Any("format_ids", formatIDs),
+	)
 	rows, err := queryEventsForOverPos(ctx, formatIDs)
 	if err != nil {
 		return err

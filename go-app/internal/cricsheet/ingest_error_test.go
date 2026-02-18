@@ -141,8 +141,8 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		})
 		t.Cleanup(func() { cricsheet.SetRunInTxFn(nil) })
 
-		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{}, 1)
+		_, err := cricsheet.ImportDir(ctx, tmpDir, &cricsheet.Options{FailFast: true}, 1)
 
-		require.Error(t, err, "ImportDir must stop and return on first DB error")
+		require.Error(t, err, "ImportDir must stop and return on first DB error when FailFast is true")
 	})
 }

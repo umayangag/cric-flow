@@ -8,7 +8,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -180,7 +180,11 @@ WINDOW_X ?= 50
 WALK_FORMAT ?= T20
 WALK_MODEL ?= batting
 walk-forward:
-	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",)
+	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
+
+# Train meta-model for score combination from backtest CSV (see docs/ML_COMBINATION_META.md)
+train-combination-meta:
+	$(MAKE) -C ml-service train-combination-meta CSV="$(CSV)" OUT="$(OUT)"
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports

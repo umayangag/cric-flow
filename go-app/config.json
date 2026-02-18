@@ -23,14 +23,17 @@
     ]
   },
   "features": {
-    "precompute_timeout_ms": 21600000,
+    "precompute_timeout_ms": 86400000,
     "min_batting_innings": 5,
     "min_bowling_innings": 5,
     "form_shrinkage_alpha": 0.0,
     "consistency_per_format": false,
     "ewm_alpha": 0.3,
+    "ewm_alpha_short": 0.5,
+    "ewm_alpha_long": 0.2,
     "consistency_last_n": 10,
     "form_window_n": 0,
+    "momentum_last_n": 5,
     "fielding_enrich": {
       "ewm_alpha": 0.3,
       "form_to_catches_ratio": 0.7
@@ -75,6 +78,33 @@
       "bowl": 0.4,
       "field": 0.1,
       "keeper_bonus": 0.02
-    }
+    },
+    "score_normalization": {
+      "T20": {
+        "bat_divisor": 80,
+        "wicket_divisor": 5,
+        "econ_base": 12,
+        "field_divisor": 5
+      },
+      "T20I": {
+        "bat_divisor": 75,
+        "wicket_divisor": 4,
+        "econ_base": 11,
+        "field_divisor": 4
+      },
+      "ODI": {
+        "bat_divisor": 100,
+        "wicket_divisor": 5,
+        "econ_base": 6,
+        "field_divisor": 5
+      },
+      "TEST": {
+        "bat_divisor": 150,
+        "wicket_divisor": 6,
+        "econ_base": 4,
+        "field_divisor": 6
+      }
+    },
+    "score_weights_by_format": {}
   }
 }

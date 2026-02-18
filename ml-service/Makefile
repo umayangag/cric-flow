@@ -66,8 +66,17 @@ WINDOW_X ?= 50
 WALK_FORMAT ?= T20
 WALK_MODEL ?= batting
 MAX_WINDOWS ?=
+EXPORT_METRICS ?=
 walk-forward: venv
-	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),)
+	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),) $(if $(EXPORT_METRICS),--export-metrics $(EXPORT_METRICS),)
+
+# Train combination meta-model (Ridge) from backtest CSV. See docs/ML_COMBINATION_META.md.
+# Usage: make train-combination-meta CSV=path/to/backtest.csv OUT=output/ml-service/combination_meta.json
+CSV ?=
+OUT ?=
+train-combination-meta: venv
+	@if [ -z "$(CSV)" ] || [ -z "$(OUT)" ]; then echo "Usage: make train-combination-meta CSV=<path> OUT=<path>"; exit 1; fi
+	$(PY) -m ml.train_combination_meta --csv "$(CSV)" --out "$(OUT)"
 
 # Generate ml/pool.csv for a given match id
 # Usage: make export-pool MATCH=<match_id>

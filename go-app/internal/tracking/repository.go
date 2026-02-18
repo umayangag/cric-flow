@@ -58,26 +58,88 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
-func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
+// CancelInProgressMigrations sets all rows with status IN_PROGRESS to CANCELLED with the given reason.
+// Call on server startup so that interrupted/crashed runs (e.g. OOM, restart) are not left as in-progress.
+// Returns the number of rows updated. When db pool is nil, returns (0, nil).
+func CancelInProgressMigrations(ctx context.Context, reason string) (int, error) {
+	if db.Pool == nil {
+		return 0, nil
+	}
+	var reasonPtr *string
+	if reason != "" {
+		reasonPtr = &reason
+	}
+	rows, err := db.Query(ctx, `
+		UPDATE data_migrations
+		SET status = $1, completed_at = NOW(), error_message = $2
+		WHERE status = $3
+		RETURNING id
+	`, StatusCancelled, reasonPtr, StatusInProgress)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var n int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		n++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// HasInProgressForAnyCommand returns true if there is at least one row with status IN_PROGRESS
+// and command in the given list. Used to enforce singleton pipeline: only one pipeline step
+// may run across the whole system. When db pool is nil, returns (false, nil).
+func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, error) {
+	if db.Pool == nil || len(commands) == 0 {
+		return false, nil
+	}
+	var exists bool
+	err := db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM data_migrations
+			WHERE status = $1 AND command = ANY($2::text[])
+		)
+	`, StatusInProgress, commands).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// GetInProgressMigrations returns all rows with status IN_PROGRESS, ordered by started_at DESC.
+// Used by /ops/status pipeline overview. When db pool is nil, returns (nil, nil).
+func GetInProgressMigrations(ctx context.Context) ([]Migration, error) {
+	if db.Pool == nil {
+		return nil, nil
+	}
 	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
 		FROM data_migrations
+		WHERE status = $1
 		ORDER BY started_at DESC
-		LIMIT $1
-	`, limit)
+	`, StatusInProgress)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return scanMigrations(rows)
+}
 
-	migrations := []Migration{}
+func scanMigrations(rows db.Rows) ([]Migration, error) {
+	var migrations []Migration
 	for rows.Next() {
 		var m Migration
 		var args []byte
 		var metadata []byte
 		var errMsg *string
 		var completedAt *time.Time
-
 		if err := rows.Scan(&m.ID, &m.Command, &args, &m.StartedAt, &completedAt, &m.Status, &metadata, &errMsg); err != nil {
 			return nil, err
 		}
@@ -95,7 +157,27 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 	return migrations, nil
 }
 
+func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
+	if db.Pool == nil {
+		return nil, nil
+	}
+	rows, err := db.Query(ctx, `
+		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
+		FROM data_migrations
+		ORDER BY started_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMigrations(rows)
+}
+
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
+	if db.Pool == nil {
+		return nil, 0, nil
+	}
 	var total int
 	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
 	if err != nil {

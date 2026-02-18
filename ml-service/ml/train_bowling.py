@@ -8,11 +8,11 @@ import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from .config import get_training_params
+from .utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,26 @@ logger = logging.getLogger(__name__)
 # Supports training per-format; artifacts saved with format suffixes when provided.
 # By default consumes the Go export from ../../output/go-app/bowling_encoded.csv
 # or bowling_encoded_<FORMAT>.csv when --format is set.
-# Feature order must match ml-service/app/main.py -> _bowling_feature_vector
+# Feature order must match configs/feature_vectors.json (bowling) for prediction.
+# Seq columns: when absent in CSV, filled with 0.
+
+BOWL_SEQ_COLS = [
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+]
 
 FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "temp",
     "wind",
     "rain",
@@ -38,7 +53,7 @@ FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
-]
+] + BOWL_SEQ_COLS
 
 TARGET_COLS = [
     "runs",  # runs_conceded
@@ -69,14 +84,40 @@ def load_dataset(path: str):
         "season_id": "season_id",
         "bowling_consistency": "bowling_consistency",
         "bowling_form": "bowling_form",
+        "bowling_form_short": "bowling_form_short",
+        "bowling_form_long": "bowling_form_long",
+        "bowling_momentum": "bowling_momentum",
         "runs": "runs",
         "balls": "balls",
         "wickets": "wickets",
         "econ": "econ",
     }
+    for c in BOWL_SEQ_COLS:
+        col_map[c] = c
     df = df.rename(columns=col_map)
-    df = df.dropna(subset=[c for c in FEATURE_COLS if c in df.columns])
-    X = df[FEATURE_COLS].astype(float).values
+    # Backward compat: fill new columns from old exports
+    for col in ("bowling_form_short", "bowling_form_long"):
+        if col not in df.columns and "bowling_form" in df.columns:
+            df[col] = df["bowling_form"]
+    if "bowling_momentum" not in df.columns:
+        df["bowling_momentum"] = 0.0
+    # Backward compat: optional seq columns (fill with 0 when absent or NaN)
+    for col in BOWL_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    # Filter rows with required feature columns (exclude seq from dropna)
+    required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    X_raw = df[FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("bowling")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
+    else:
+        X = X_raw
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     # Ensure econ column present or derive: econ = runs / (overs)
@@ -114,28 +155,36 @@ def train_and_save(
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_estimators = training_params["n_estimators"]
-    max_depth = training_params["max_depth"]
-    random_state = training_params["random_state"]
     compress = training_params["joblib_compress"]
-    n_jobs = training_params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=n_estimators,
-            random_state=random_state,
-            max_depth=max_depth,
-            n_jobs=n_jobs,
-        )
-    )
+    base_est = make_base_estimator(training_params)
+    model = MultiOutputRegressor(base_est)
     model.fit(Xs, Y)
+
+    # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_importance = None
+    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
+        imps = []
+        for est in model.estimators_:
+            if hasattr(est, "feature_importances_"):
+                imps.append(est.feature_importances_)
+        if imps:
+            feature_importance = {
+                FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
+                for i in range(min(len(FEATURE_COLS), len(imps[0])))
+            }
+            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
+            logger.info("train_bowling.feature_importance_top5 %s", top)
+
     if suffix:
         joblib.dump(scaler, os.path.join(out_dir, f"bowling_scaler_{suffix}.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, f"bowling_model_{suffix}.joblib"), compress=compress)
     else:
         joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"), compress=compress)
-    # Save training metadata if provided
+    # Save training metadata if provided (include feature importance)
     if metadata is not None:
+        if feature_importance is not None:
+            metadata["feature_importance"] = feature_importance
         meta_path = os.path.join(out_dir, f"bowling_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:

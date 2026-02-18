@@ -26,11 +26,14 @@ def _batting_headers():
 
 
 def _one_batting_row():
-    """One row: 5 targets + 15 features + player_name. Order matches _batting_headers()."""
+    """One row: 5 targets + 26 features + player_name. Order matches _batting_headers()."""
     targets = ["10", "12", "1", "0", "3"]  # runs, balls, fours, sixes, batting_position
     feats = [
         "0.5",
-        "20.0",  # batting_consistency, batting_form
+        "20.0",
+        "20.0",
+        "20.0",
+        "0",  # batting_consistency, batting_form, form_short, form_long, momentum
         "25",
         "5",
         "0",
@@ -44,8 +47,16 @@ def _one_batting_row():
         "0.5",
         "0.5",
         "2024",  # batting_venue, batting_opposition, season_id
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",  # seq cols (8)
     ]
-    assert len(feats) == 15
+    assert len(feats) == len(BATTING_FEATURE_COLS)
     return targets + feats + ["Player One"]
 
 
@@ -55,11 +66,14 @@ def _bowling_headers():
 
 
 def _one_bowling_row():
-    """One row: 3 targets + 15 features + player_name. Order matches _bowling_headers()."""
+    """One row: 3 targets + 25 features + player_name. Order matches _bowling_headers()."""
     targets = ["24", "24", "2"]  # runs, balls, wickets
     feats = [
         "0.4",
-        "1.5",  # bowling_consistency, bowling_form
+        "1.5",
+        "1.5",
+        "1.5",
+        "0",  # bowling_consistency, bowling_form, form_short, form_long, momentum
         "25",
         "5",
         "0",
@@ -73,8 +87,16 @@ def _one_bowling_row():
         "0.5",
         "0.5",
         "2024",  # bowling_venue, bowling_opposition, season_id
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",  # seq cols (8)
     ]
-    assert len(feats) == 15
+    assert len(feats) == len(BOWLING_FEATURE_COLS)
     return targets + feats + ["Bowler One"]
 
 
@@ -106,18 +128,17 @@ def test_batting_rows_to_xy_toss_string_normalized():
     """Toss column as string 'bat' / 'field' is normalized to 1/0."""
     headers = _batting_headers()
     row = _one_batting_row()
-    # Toss is at index for batting_session+1 in feature list; in our row it's the 11th feature (index 10 in feats) = "1"
-    # Replace toss with "bat" in the row; header has "toss" so column name is toss. Find index of toss in headers.
     idx_toss = headers.index("toss")
     row[idx_toss] = "bat"
     rows = [row]
     X, Y = _batting_rows_to_xy(headers, rows)
     assert X.shape[0] == 1
-    assert X[0, 11] == 1.0  # toss should be 1 for "bat"
+    col_toss = BATTING_FEATURE_COLS.index("toss")
+    assert X[0, col_toss] == 1.0  # toss should be 1 for "bat"
     row2 = _one_batting_row()
     row2[idx_toss] = "field"
     X2, _ = _batting_rows_to_xy(headers, [row2])
-    assert X2[0, 11] == 0.0
+    assert X2[0, col_toss] == 0.0
 
 
 def test_batting_rows_to_xy_multiple_rows():
@@ -160,8 +181,10 @@ def test_bowling_rows_to_xy_toss_and_session_normalized():
     row[idx_sess] = ""  # null/empty
     X, Y = _bowling_rows_to_xy(headers, [row])
     assert X.shape[0] == 1
-    assert X[0, 11] == 1.0  # toss
-    assert X[0, 10] == 0.0  # bowling_session filled with 0
+    col_toss = BOWLING_FEATURE_COLS.index("toss")
+    col_sess = BOWLING_FEATURE_COLS.index("bowling_session")
+    assert X[0, col_toss] == 1.0  # toss
+    assert X[0, col_sess] == 0.0  # bowling_session filled with 0
 
 
 # --- _train_batting_in_memory / _train_bowling_in_memory ---

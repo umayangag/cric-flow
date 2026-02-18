@@ -33,7 +33,12 @@ func (Runner) RunReplay(
 ) error {
 	matches, err := db.ListMatchesByFormatDate(ctx, formatID, nil, nil)
 	if err != nil {
-		slog.Error("precompute-features(replay): list matches failed", slog.String("format", formatCode), slog.Int64("format_id", formatID), slog.Any("err", err))
+		slog.Error(
+			"precompute-features(replay): list matches failed",
+			slog.String("format", formatCode),
+			slog.Int64("format_id", formatID),
+			slog.Any("err", err),
+		)
 		return fmt.Errorf("list matches: %w", err)
 	}
 	slog.Info("precompute-features(replay)", slog.Int("matches", len(matches)), slog.String("format", formatCode))
@@ -43,7 +48,12 @@ func (Runner) RunReplay(
 		asOf := m.MatchDate
 		players, err := db.ListPlayersInMatch(ctx, m.MatchID)
 		if err != nil {
-			slog.Error("precompute-features(replay): list players in match failed", slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+			slog.Error(
+				"precompute-features(replay): list players in match failed",
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
+			)
 			return fmt.Errorf("list players in match %d: %w", m.MatchID, err)
 		}
 
@@ -59,12 +69,24 @@ func (Runner) RunReplay(
 				// Base histories strictly before match date
 				batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 				if err != nil {
-					slog.Error("precompute-features(replay): batting history failed", slog.Int64("player_id", pid), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+					slog.Error(
+						"precompute-features(replay): batting history failed",
+						slog.Int64("player_id", pid),
+						slog.Int64("match_id", m.MatchID),
+						slog.String("format", formatCode),
+						slog.Any("err", err),
+					)
 					return fmt.Errorf("batting history pid=%d: %w", pid, err)
 				}
 				bowlHist, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, nil)
 				if err != nil {
-					slog.Error("precompute-features(replay): bowling history failed", slog.Int64("player_id", pid), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+					slog.Error(
+						"precompute-features(replay): bowling history failed",
+						slog.Int64("player_id", pid),
+						slog.Int64("match_id", m.MatchID),
+						slog.String("format", formatCode),
+						slog.Any("err", err),
+					)
 					return fmt.Errorf("bowling history pid=%d: %w", pid, err)
 				}
 
@@ -88,12 +110,24 @@ func (Runner) RunReplay(
 
 				if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil,
 					batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
-					slog.Error("precompute-features(replay): upsert form overall failed", slog.Int64("player_id", pid), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+					slog.Error(
+						"precompute-features(replay): upsert form overall failed",
+						slog.Int64("player_id", pid),
+						slog.Int64("match_id", m.MatchID),
+						slog.String("format", formatCode),
+						slog.Any("err", err),
+					)
 					return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
 				}
 				if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil,
 					batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
-					slog.Error("precompute-features(replay): upsert consistency overall failed", slog.Int64("player_id", pid), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+					slog.Error(
+						"precompute-features(replay): upsert consistency overall failed",
+						slog.Int64("player_id", pid),
+						slog.Int64("match_id", m.MatchID),
+						slog.String("format", formatCode),
+						slog.Any("err", err),
+					)
 					return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
 				}
 
@@ -102,12 +136,26 @@ func (Runner) RunReplay(
 					oppID := m.OppositionID
 					oppBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
 					if err != nil {
-						slog.Error("precompute-features(replay): opposition batting history failed", slog.Int64("player_id", pid), slog.Int64("opposition_id", oppID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): opposition batting history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("opposition_id", oppID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", pid, oppID, err)
 					}
 					oppBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
 					if err != nil {
-						slog.Error("precompute-features(replay): opposition bowling history failed", slog.Int64("player_id", pid), slog.Int64("opposition_id", oppID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): opposition bowling history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("opposition_id", oppID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", pid, oppID, err)
 					}
 					oppBatInn := toFeatureInnings(oppBat)
@@ -126,7 +174,14 @@ func (Runner) RunReplay(
 					oppBowlForm, nOppBowl := features.EWM(oppBowlInn, alpha)
 					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID,
 						oppBatForm, oppBowlForm, alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
-						slog.Error("precompute-features(replay): upsert form opposition failed", slog.Int64("player_id", pid), slog.Int64("opposition_id", oppID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): upsert form opposition failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("opposition_id", oppID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("upsert form opposition pid=%d opp=%d: %w", pid, oppID, err)
 					}
 				}
@@ -136,12 +191,26 @@ func (Runner) RunReplay(
 					venueID := m.VenueID
 					venBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
 					if err != nil {
-						slog.Error("precompute-features(replay): venue batting history failed", slog.Int64("player_id", pid), slog.Int64("venue_id", venueID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): venue batting history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("venue_id", venueID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("venue batting history pid=%d venue=%d: %w", pid, venueID, err)
 					}
 					venBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
 					if err != nil {
-						slog.Error("precompute-features(replay): venue bowling history failed", slog.Int64("player_id", pid), slog.Int64("venue_id", venueID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): venue bowling history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("venue_id", venueID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", pid, venueID, err)
 					}
 					venBatInn := toFeatureInnings(venBat)
@@ -160,7 +229,14 @@ func (Runner) RunReplay(
 					venBowlForm, nVenBowl := features.EWM(venBowlInn, alpha)
 					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID,
 						venBatForm, venBowlForm, alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
-						slog.Error("precompute-features(replay): upsert form venue failed", slog.Int64("player_id", pid), slog.Int64("venue_id", venueID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+						slog.Error(
+							"precompute-features(replay): upsert form venue failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("venue_id", venueID),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
 						return fmt.Errorf("upsert form venue pid=%d venue=%d: %w", pid, venueID, err)
 					}
 				}
@@ -169,7 +245,12 @@ func (Runner) RunReplay(
 		}
 
 		if err := g.Wait(); err != nil {
-			slog.Error("precompute-features(replay): errgroup wait failed for match", slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err))
+			slog.Error(
+				"precompute-features(replay): errgroup wait failed for match",
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
+			)
 			return err
 		}
 
@@ -183,7 +264,11 @@ func (Runner) RunReplay(
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
 	slog.Info("precompute-features(replay): triggering sequence calculations", slog.String("format", formatCode))
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
-		slog.Error("precompute-features(replay): sequence calculations failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"precompute-features(replay): sequence calculations failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return fmt.Errorf("sequence calculations failed: %w", err)
 	}
 
@@ -203,7 +288,13 @@ func (Runner) RunPointInTime(
 ) error {
 	players, err := db.ListPlayersWithHistoryBefore(ctx, formatID, asOf)
 	if err != nil {
-		slog.Error("precompute-features(as-of): list players with history failed", slog.String("format", formatCode), slog.Int64("format_id", formatID), slog.String("as_of", asOf.Format("2006-01-02")), slog.Any("err", err))
+		slog.Error(
+			"precompute-features(as-of): list players with history failed",
+			slog.String("format", formatCode),
+			slog.Int64("format_id", formatID),
+			slog.String("as_of", asOf.Format("2006-01-02")),
+			slog.Any("err", err),
+		)
 		return fmt.Errorf("list players with history: %w", err)
 	}
 	slog.Info(
@@ -225,12 +316,22 @@ func (Runner) RunPointInTime(
 			}
 			batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
 			if err != nil {
-				slog.Error("precompute-features(as-of): batting history failed", slog.Int64("player_id", pid), slog.String("format", formatCode), slog.Any("err", err))
+				slog.Error(
+					"precompute-features(as-of): batting history failed",
+					slog.Int64("player_id", pid),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
 				return fmt.Errorf("batting history pid=%d: %w", pid, err)
 			}
 			bowlHist, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, nil)
 			if err != nil {
-				slog.Error("precompute-features(as-of): bowling history failed", slog.Int64("player_id", pid), slog.String("format", formatCode), slog.Any("err", err))
+				slog.Error(
+					"precompute-features(as-of): bowling history failed",
+					slog.Int64("player_id", pid),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
 				return fmt.Errorf("bowling history pid=%d: %w", pid, err)
 			}
 			batInn := toFeatureInnings(batHist)
@@ -250,11 +351,21 @@ func (Runner) RunPointInTime(
 			batCons, nCbat := features.Consistency(batInn, lastN)
 			bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
 			if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
-				slog.Error("precompute-features(as-of): upsert form overall failed", slog.Int64("player_id", pid), slog.String("format", formatCode), slog.Any("err", err))
+				slog.Error(
+					"precompute-features(as-of): upsert form overall failed",
+					slog.Int64("player_id", pid),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
 				return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
 			}
 			if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil, batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
-				slog.Error("precompute-features(as-of): upsert consistency overall failed", slog.Int64("player_id", pid), slog.String("format", formatCode), slog.Any("err", err))
+				slog.Error(
+					"precompute-features(as-of): upsert consistency overall failed",
+					slog.Int64("player_id", pid),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
 				return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
 			}
 			p := atomic.AddInt64(&processed, 1)
@@ -266,7 +377,11 @@ func (Runner) RunPointInTime(
 	}
 
 	if err := g.Wait(); err != nil {
-		slog.Error("precompute-features(as-of): errgroup wait failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"precompute-features(as-of): errgroup wait failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	slog.Info(
@@ -279,7 +394,11 @@ func (Runner) RunPointInTime(
 	// Trigger sequence features calculation
 	slog.Info("precompute-features(as-of): triggering sequence calculations", slog.String("format", formatCode))
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
-		slog.Error("precompute-features(as-of): sequence calculations failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"precompute-features(as-of): sequence calculations failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return fmt.Errorf("sequence calculations failed: %w", err)
 	}
 
@@ -309,7 +428,11 @@ func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) erro
 	reg := seqcalc.NewDefaultRegistry()
 	calcs, err := reg.ResolveTargets("all")
 	if err != nil {
-		slog.Error("precompute-features: resolve seqcalc targets failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"precompute-features: resolve seqcalc targets failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return fmt.Errorf("resolve seqcalc targets: %w", err)
 	}
 	if err := seqcalc.Run(ctxNoDeadline, calcs, seqcalc.Params{FormatCode: formatCode, AsOf: asOf}, false); err != nil {

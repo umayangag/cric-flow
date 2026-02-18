@@ -33,7 +33,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
@@ -56,9 +57,32 @@ try:
 except ImportError:
     pass
 
+BAT_SEQ_COLS = [
+    "bat_prev_sr",
+    "bat_prev_out_rate",
+    "bat_window_sr_12_pp",
+    "bat_window_boundary_rate_12_pp",
+    "bat_entry_sr_1_6",
+    "bat_set_sr_13_30",
+    "bat_react_after_dot_sr",
+    "bat_after_k_dots_boundary_p_k2",
+]
+BOWL_SEQ_COLS = [
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+]
 BATTING_FEATURE_COLS = [
     "batting_consistency",
     "batting_form",
+    "batting_form_short",
+    "batting_form_long",
+    "batting_momentum",
     "temp",
     "wind",
     "rain",
@@ -72,11 +96,14 @@ BATTING_FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
-]
+] + BAT_SEQ_COLS
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "temp",
     "wind",
     "rain",
@@ -90,7 +117,7 @@ BOWLING_FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
-]
+] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
 
@@ -144,10 +171,48 @@ def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, 
             "est__estimator__min_samples_leaf": [1, 2],
         }
 
-    return [
+    candidates = [
         ("RandomForestRegressor", RandomForestRegressor(), rf_params),
         ("GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
     ]
+    # Add quantile (GBM with loss=quantile) for median/interval prediction
+    try:
+        tp = get_training_params(model_kind)
+        quantile_level = tp.get("quantile_level", 0.5)
+        qr = GradientBoostingRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+            learning_rate=tp.get("learning_rate", 0.1),
+            loss="quantile",
+            alpha=quantile_level,
+        )
+        candidates.append(("QuantileRegressor", qr, {"est__estimator__max_depth": [tp.get("max_depth", 12)]}))
+    except (ValueError, KeyError):
+        pass
+
+    # Add stacked (RF + GBM + Ridge) using training params; no param search for stacked
+    try:
+        tp = get_training_params(model_kind)
+        rf = RandomForestRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+        )
+        gb = GradientBoostingRegressor(
+            n_estimators=tp.get("n_estimators", 200),
+            max_depth=tp.get("max_depth", 12),
+            random_state=rs,
+            learning_rate=tp.get("learning_rate", 0.1),
+        )
+        stacked = StackingRegressor(
+            estimators=[("rf", rf), ("gb", gb)],
+            final_estimator=Ridge(alpha=1.0, random_state=rs),
+        )
+        candidates.append(("StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]}))
+    except (ValueError, KeyError):
+        pass
+    return candidates
 
 
 def _build_pipeline(estimator: Any) -> Pipeline:
@@ -273,8 +338,26 @@ def _save_artifacts(
 # ---- Data loading (CSV) ----
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
-    df = df.dropna(subset=[c for c in BATTING_FEATURE_COLS if c in df.columns])
-    X = df[[c for c in BATTING_FEATURE_COLS if c in df.columns]].astype(float).values
+    for col in ("batting_form_short", "batting_form_long"):
+        if col not in df.columns and "batting_form" in df.columns:
+            df[col] = df["batting_form"]
+    if "batting_momentum" not in df.columns:
+        df["batting_momentum"] = 0.0
+    for col in BAT_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    required = [c for c in BATTING_FEATURE_COLS if c not in BAT_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    X_raw = df[BATTING_FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("batting")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(BATTING_FEATURE_COLS), transform_config, "batting")
+    else:
+        X = X_raw
     y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BATTING_TARGET_COLS):
@@ -291,8 +374,19 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
-    df = df.dropna(subset=[c for c in BOWLING_FEATURE_COLS if c in df.columns])
-    X = df[[c for c in BOWLING_FEATURE_COLS if c in df.columns]].astype(float).values
+    for col in ("bowling_form_short", "bowling_form_long"):
+        if col not in df.columns and "bowling_form" in df.columns:
+            df[col] = df["bowling_form"]
+    if "bowling_momentum" not in df.columns:
+        df["bowling_momentum"] = 0.0
+    for col in BOWL_SEQ_COLS:
+        if col not in df.columns:
+            df[col] = 0.0
+        else:
+            df[col] = df[col].fillna(0.0)
+    required = [c for c in BOWLING_FEATURE_COLS if c not in BOWL_SEQ_COLS]
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    X = df[BOWLING_FEATURE_COLS].astype(float).values
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BOWLING_TARGET_COLS):

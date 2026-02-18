@@ -157,12 +157,35 @@ def get_training_params(model: str) -> Dict[str, Any]:
             "config.get_training_params.invalid_joblib_compress model=%s joblib_compress=%s", model, joblib_compress
         )
         raise ValueError(f"ml.training.{model}.joblib_compress must be between 0 and 9.")
+    estimator = (block.get("estimator") or "rf").strip().lower()
+    if estimator in ("gb", "gbm", "gradient_boosting"):
+        estimator = "gb"
+    elif estimator in ("stacked", "stacking", "ensemble"):
+        estimator = "stacked"
+    elif estimator in ("quantile", "qr"):
+        estimator = "quantile"
+    elif estimator not in ("rf", "random_forest"):
+        estimator = "rf"
+    learning_rate = block.get("learning_rate", 0.1)
+    try:
+        learning_rate = float(learning_rate)
+    except (TypeError, ValueError):
+        learning_rate = 0.1
+    quantile_level = block.get("quantile_level", 0.5)
+    try:
+        quantile_level = float(quantile_level)
+    except (TypeError, ValueError):
+        quantile_level = 0.5
+    quantile_level = max(0.01, min(0.99, quantile_level))
     return {
         "n_estimators": n_estimators,
         "max_depth": max_depth,
         "random_state": random_state,
         "joblib_compress": joblib_compress,
         "n_jobs": result["n_jobs"],
+        "estimator": estimator,
+        "learning_rate": learning_rate,
+        "quantile_level": quantile_level,
     }
 
 

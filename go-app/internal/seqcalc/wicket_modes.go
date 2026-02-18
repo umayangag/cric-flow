@@ -23,7 +23,11 @@ func (wicketModesCalc) Compute(ctx context.Context, params Params, dryRun bool) 
 		return nil
 	}
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
-	slog.Info("seqcalc.wicket_modes.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
+	slog.Info(
+		"seqcalc.wicket_modes.query_start",
+		slog.String("format", params.FormatCode),
+		slog.Any("format_ids", formatIDs),
+	)
 	rows, err := queryEventsWithWicketKind(ctx, formatIDs)
 	if err != nil {
 		return err

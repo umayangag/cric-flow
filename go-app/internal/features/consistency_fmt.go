@@ -23,14 +23,22 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 	}
 	fmtID, err := db.GetMatchFormatIDByCode(ctx, formatCode)
 	if err != nil {
-		slog.Error("features.ComputeConsistencyFmt GetMatchFormatIDByCode failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeConsistencyFmt GetMatchFormatIDByCode failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	var seasonIDCond string
 	if seasonName != "" {
 		sid, err := db.GetOrCreateSeason(ctx, seasonName)
 		if err != nil {
-			slog.Error("features.ComputeConsistencyFmt GetOrCreateSeason failed", slog.String("season", seasonName), slog.Any("err", err))
+			slog.Error(
+				"features.ComputeConsistencyFmt GetOrCreateSeason failed",
+				slog.String("season", seasonName),
+				slog.Any("err", err),
+			)
 			return err
 		}
 		seasonIDCond = fmt.Sprintf("AND season_id = %d", sid)
@@ -75,7 +83,11 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 		batting_consistency = EXCLUDED.batting_consistency;`, fmtID, fmtID, seasonIDCond, fmtID)
 
 	if _, err := db.Pool.Exec(ctx, batting); err != nil {
-		slog.Error("features.ComputeConsistencyFmt batting Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeConsistencyFmt batting Exec failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 
@@ -107,7 +119,11 @@ func ComputeConsistencyFmt(ctx context.Context, seasonName string, formatCode st
 
 	_, err = db.Pool.Exec(ctx, bowling)
 	if err != nil {
-		slog.Error("features.ComputeConsistencyFmt bowling Exec failed", slog.String("format", formatCode), slog.Any("err", err))
+		slog.Error(
+			"features.ComputeConsistencyFmt bowling Exec failed",
+			slog.String("format", formatCode),
+			slog.Any("err", err),
+		)
 		return err
 	}
 	return nil

@@ -309,7 +309,12 @@ func populateMatchAggregatesAndMetrics(
 	// Predicted extras from historical average for this format/venue (no default constant)
 	predExtras := 0.0
 	if mfc, err := db.GetMatchFeatureContext(ctx, matchID); err != nil {
-		slog.WarnContext(ctx, "failed to get match feature context for extras prediction", slog.Int64("match_id", matchID), slog.Any("err", err))
+		slog.WarnContext(
+			ctx,
+			"failed to get match feature context for extras prediction",
+			slog.Int64("match_id", matchID),
+			slog.Any("err", err),
+		)
 	} else {
 		if avg, err := db.GetAverageExtrasForFormat(ctx, mfc.FormatID, mfc.VenueID); err != nil {
 			slog.WarnContext(ctx, "failed to get average extras for format", slog.Int64("format_id", mfc.FormatID), slog.Any("err", err))
@@ -1008,7 +1013,11 @@ func (a *App) backtestMatchesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	format := strings.TrimSpace(r.URL.Query().Get("format"))
 	if format == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"},
+		)
 		return
 	}
 	limit := 50
@@ -1052,7 +1061,11 @@ func (a *App) backtestHoldoutDataHandler(w http.ResponseWriter, r *http.Request)
 	}
 	format := strings.TrimSpace(r.URL.Query().Get("format"))
 	if format == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"},
+		)
 		return
 	}
 	limit := 50

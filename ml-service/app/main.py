@@ -1,6 +1,10 @@
 import os
+import sys
+import threading
 import time
+import traceback
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,6 +27,7 @@ from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
+from .feature_config import get_feature_names
 from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
@@ -43,11 +48,63 @@ try:
 except ImportError:
     get_prediction_defaults = None
 
-app = FastAPI(title="Cricket ML Service", version="0.3.0")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> Any:
+    yield
+    logger.info(
+        "shutdown.complete", message="ml-service shutting down; check logs for errors if process exited unexpectedly"
+    )
+
+
+app = FastAPI(title="Cricket ML Service", version="0.3.0", lifespan=_lifespan)
 
 # Initialize logging early
 init_logging(service="ml-service", version=app.version)
 logger = get_struct_logger()
+
+
+def _install_crash_logging() -> None:
+    """Ensure uncaught exceptions and thread crashes are logged before exit."""
+    _orig_excepthook = sys.excepthook
+
+    def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: Any) -> None:
+        logger.error(
+            "uncaught_exception",
+            exc_info=(exc_type, exc_value, exc_tb),
+            error_type=exc_type.__name__ if exc_type else "",
+            error=str(exc_value),
+            traceback="".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+        )
+        _orig_excepthook(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
+    if hasattr(threading, "excepthook"):  # Python 3.8+
+        _orig_thread_excepthook = threading.excepthook
+
+        def _thread_excepthook(args: Any) -> None:
+            exc_type = getattr(args, "exc_type", None)
+            exc_value = getattr(args, "exc_value", None)
+            exc_tb = getattr(args, "exc_traceback", None)
+            thread = getattr(args, "thread", None)
+            logger.error(
+                "uncaught_thread_exception",
+                exc_info=(exc_type, exc_value, exc_tb),
+                error_type=exc_type.__name__ if exc_type else "",
+                error=str(exc_value) if exc_value else "",
+                thread_name=getattr(thread, "name", "") if thread else "",
+                traceback="".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                if exc_type and exc_value
+                else "",
+            )
+            if _orig_thread_excepthook:
+                _orig_thread_excepthook(args)
+
+        threading.excepthook = _thread_excepthook
+
+
+_install_crash_logging()
 
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
 
@@ -197,13 +254,57 @@ def _predict_players_with_features(
         bat_features.append(build_batting_features_from_map(pid, cutoff, fmt_upper, fm))
         bowl_features.append(build_bowling_features_from_map(pid, cutoff, fmt_upper, fm))
 
-    # Feature order must match training (configs/feature_vectors.json). Normalize with same scaler as at training.
-    X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+    # Feature order must match training (configs/feature_vectors.json). Apply feature_transforms if in metadata.
+    try:
+        from ml.feature_transforms import build_extended_vector_from_features, load_transform_config_from_metadata
+
+        bat_transform = load_transform_config_from_metadata(MODELS_DIR, "batting", fmt_upper)
+        base_names = get_feature_names("batting")
+        if bat_transform.get("add_interactions") or bat_transform.get("add_log1p"):
+            bat_vecs = []
+            for i, f in enumerate(bat_features):
+                fm = features_map.get(str(player_ids[i])) or features_map.get(str(int(player_ids[i]))) or {}
+                fm_for_interactions = {n: getattr(f, n) for n in base_names}
+                fm_for_interactions.update(fm)
+                base_vals = batting_feature_vector(f)
+                ext = build_extended_vector_from_features(base_vals, base_names, fm_for_interactions, bat_transform)
+                bat_vecs.append(ext)
+            X_bat = np.array(bat_vecs, dtype=float)
+        else:
+            X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+    except Exception as e:
+        logger.exception("predict.feature_transform.failed", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
+        ) from e
     if scaler_bat is not None:
         X_bat = scaler_bat.transform(X_bat)
     Y_bat = model_bat.predict(X_bat)
 
-    X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+    try:
+        bowl_transform = load_transform_config_from_metadata(MODELS_DIR, "bowling", fmt_upper)
+        base_names_bowl = get_feature_names("bowling")
+        if bowl_transform.get("add_interactions") or bowl_transform.get("add_log1p"):
+            bowl_vecs = []
+            for i, f in enumerate(bowl_features):
+                fm = features_map.get(str(player_ids[i])) or features_map.get(str(int(player_ids[i]))) or {}
+                base_vals = bowling_feature_vector(f)
+                fm_for_interactions = dict(zip(base_names_bowl, base_vals))
+                fm_for_interactions.update(fm)
+                ext = build_extended_vector_from_features(
+                    base_vals, base_names_bowl, fm_for_interactions, bowl_transform
+                )
+                bowl_vecs.append(ext)
+            X_bowl = np.array(bowl_vecs, dtype=float)
+        else:
+            X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+    except Exception as e:
+        logger.exception("predict.bowling_feature_transform.failed", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Bowling feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
+        ) from e
     if scaler_bowl is not None:
         X_bowl = scaler_bowl.transform(X_bowl)
     Y_bowl = model_bowl.predict(X_bowl)

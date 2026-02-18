@@ -48,7 +48,11 @@ func (batTransitionsCalc) Compute(ctx context.Context, params Params, dryRun boo
 	// Map format code to numeric ids via shared formats package.
 	formatIDs := formats.MapFormatIDs(params.FormatCode)
 
-	slog.Info("seqcalc.bat_transitions.query_start", slog.String("format", params.FormatCode), slog.Any("format_ids", formatIDs))
+	slog.Info(
+		"seqcalc.bat_transitions.query_start",
+		slog.String("format", params.FormatCode),
+		slog.Any("format_ids", formatIDs),
+	)
 	if err := runBatTransitionsQueryAndUpsert(ctx, formatIDs); err != nil {
 		return err
 	}

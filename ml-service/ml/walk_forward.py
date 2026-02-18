@@ -116,6 +116,12 @@ def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.abs(y_true - y_pred).mean())
 
 
+def _rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    if y_true.size == 0:
+        return float("nan")
+    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+
 def _compute_metrics_batting(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """y_true/y_pred: (n, 6) runs, balls, fours, sixes, batting_position, strike_rate."""
     metrics = {}
@@ -124,6 +130,7 @@ def _compute_metrics_batting(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str
         if i < y_true.shape[1] and i < y_pred.shape[1]:
             metrics[f"mae_{name}"] = _mae(y_true[:, i], y_pred[:, i])
     metrics["mae_overall"] = float(np.abs(y_true - y_pred).mean())
+    metrics["rmse_overall"] = _rmse(y_true, y_pred)
     return metrics
 
 
@@ -135,6 +142,7 @@ def _compute_metrics_bowling(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str
         if i < y_true.shape[1] and i < y_pred.shape[1]:
             metrics[f"mae_{name}"] = _mae(y_true[:, i], y_pred[:, i])
     metrics["mae_overall"] = float(np.abs(y_true - y_pred).mean())
+    metrics["rmse_overall"] = _rmse(y_true, y_pred)
     return metrics
 
 
@@ -364,18 +372,48 @@ def run_walk_forward(
                     f,
                     indent=2,
                 )
+    summary = _compute_registry_summary(registry)
     if registry_path:
+        payload = {
+            "run_id": run_id,
+            "windows": registry,
+            "config": {"initial_cutoff": initial_cutoff_iso, "window_x": window_x, "format": format_code},
+            "summary": summary,
+        }
         with open(registry_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "run_id": run_id,
-                    "windows": registry,
-                    "config": {"initial_cutoff": initial_cutoff_iso, "window_x": window_x, "format": format_code},
-                },
-                f,
-                indent=2,
-            )
+            json.dump(payload, f, indent=2)
     return registry
+
+
+def _compute_registry_summary(registry: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute per-format and per-model aggregate metrics (mean MAE, RMSE, etc.) for feedback."""
+    by_format_model: Dict[str, Dict[str, List[float]]] = {}
+    for e in registry:
+        if e.get("error"):
+            continue
+        fmt = e.get("format", "_unknown")
+        model = e.get("model_type", "_unknown")
+        mae = e.get("metrics", {}).get("mae_overall")
+        rmse = e.get("metrics", {}).get("rmse_overall")
+        if mae is not None and isinstance(mae, (int, float)):
+            key = f"{fmt}/{model}"
+            if key not in by_format_model:
+                by_format_model[key] = {"mae_overall": [], "rmse_overall": []}
+            by_format_model[key]["mae_overall"].append(float(mae))
+            if rmse is not None and isinstance(rmse, (int, float)):
+                by_format_model[key]["rmse_overall"].append(float(rmse))
+    summary: Dict[str, Any] = {"by_format_model": {}}
+    for k, v in by_format_model.items():
+        mae_list = v.get("mae_overall", [])
+        rmse_list = v.get("rmse_overall", [])
+        summary["by_format_model"][k] = {
+            "mean_mae_overall": float(np.mean(mae_list)) if mae_list else None,
+            "std_mae_overall": float(np.std(mae_list)) if len(mae_list) > 1 else None,
+            "mean_rmse_overall": float(np.mean(rmse_list)) if rmse_list else None,
+            "std_rmse_overall": float(np.std(rmse_list)) if len(rmse_list) > 1 else None,
+            "n_windows": len(mae_list),
+        }
+    return summary
 
 
 def main() -> None:
@@ -393,6 +431,11 @@ def main() -> None:
     parser.add_argument("--no-save-artifacts", action="store_false", dest="save_artifacts")
     parser.add_argument("--auto-tune-initial", action="store_true", help="Run auto_tune on first window (optional)")
     parser.add_argument("--max-windows", type=int, default=None, help="Cap number of windows (for testing)")
+    parser.add_argument(
+        "--export-metrics",
+        default="",
+        help="Path to write per-format mean MAE/RMSE summary (for config updates)",
+    )
     args = parser.parse_args()
 
     cutoff = args.initial_cutoff
@@ -417,6 +460,19 @@ def main() -> None:
     )
     print("Registry written to", registry_path)
     print("Total windows:", len(registry))
+
+    if args.export_metrics:
+        summary = _compute_registry_summary(registry)
+        run_id = next((e.get("run_id") for e in registry if e.get("run_id")), None)
+        export_payload = {
+            "run_id": run_id,
+            "config": {"initial_cutoff": cutoff, "window_x": args.window_x, "format": args.format},
+            "summary": summary,
+        }
+        os.makedirs(os.path.dirname(args.export_metrics) or ".", exist_ok=True)
+        with open(args.export_metrics, "w", encoding="utf-8") as f:
+            json.dump(export_payload, f, indent=2)
+        print("Metrics export written to", args.export_metrics)
 
 
 if __name__ == "__main__":

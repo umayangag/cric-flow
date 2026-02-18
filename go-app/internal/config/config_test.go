@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -111,4 +112,102 @@ func TestDefaultDirs_FallbacksWhenUnset(t *testing.T) {
 	require.Equal(t, wantCricsheet, DefaultCricsheetDir())
 	require.Equal(t, wantEtl, DefaultEtlDir())
 	require.Equal(t, wantExport, DefaultExportDir())
+}
+
+func TestEffectiveScoreNormParams(t *testing.T) {
+	// nil config -> defaults (returns float64)
+	bat, wkt, econ, fld := EffectiveScoreNormParams(nil, "T20")
+	require.Equal(t, float64(DefaultScoreNormBatDivisor), bat)
+	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
+	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
+	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
+
+	// format not in config -> defaults
+	cfg := &Config{}
+	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "T20")
+	require.Equal(t, float64(DefaultScoreNormBatDivisor), bat)
+	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
+	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
+	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
+
+	// format in config -> overrides
+	cfg.Selection.ScoreNormalization = map[string]ScoreNormParams{
+		"T20": {BatDivisor: 100, WicketDivisor: 6, EconBase: 10, FieldDivisor: 4},
+	}
+	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "T20")
+	require.Equal(t, 100.0, bat)
+	require.Equal(t, 6.0, wkt)
+	require.Equal(t, 10.0, econ)
+	require.Equal(t, 4.0, fld)
+
+	// partial override: only bat/wicket set, econ/field stay default
+	cfg.Selection.ScoreNormalization = map[string]ScoreNormParams{
+		"ODI": {BatDivisor: 50},
+	}
+	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "ODI")
+	require.Equal(t, 50.0, bat)
+	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
+	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
+	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
+}
+
+func TestEffectiveScoreWeights(t *testing.T) {
+	// nil config -> defaults
+	bat, bowl, field, keeper := EffectiveScoreWeights(nil)
+	require.Equal(t, DefaultScoreWeightBat, bat)
+	require.Equal(t, DefaultScoreWeightBowl, bowl)
+	require.Equal(t, DefaultScoreWeightField, field)
+	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
+
+	// config with custom weights
+	cfg := &Config{}
+	cfg.Selection.ScoreWeights = &ScoreWeights{Bat: 0.5, Bowl: 0.35, Field: 0.12, KeeperBonus: 0.03}
+	bat, bowl, field, keeper = EffectiveScoreWeights(cfg)
+	require.Equal(t, 0.5, bat)
+	require.Equal(t, 0.35, bowl)
+	require.Equal(t, 0.12, field)
+	require.Equal(t, 0.03, keeper)
+
+	// partial config: zero values filled with defaults
+	cfg.Selection.ScoreWeights = &ScoreWeights{Bat: 0.6}
+	bat, bowl, field, keeper = EffectiveScoreWeights(cfg)
+	require.Equal(t, 0.6, bat)
+	require.Equal(t, DefaultScoreWeightBowl, bowl)
+	require.Equal(t, DefaultScoreWeightField, field)
+	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
+}
+
+func TestEffectiveScoreWeightsForFormat(t *testing.T) {
+	// nil config -> falls through to EffectiveScoreWeights defaults
+	bat, bowl, field, keeper := EffectiveScoreWeightsForFormat(nil, "T20")
+	require.Equal(t, DefaultScoreWeightBat, bat)
+	require.Equal(t, DefaultScoreWeightBowl, bowl)
+	require.Equal(t, DefaultScoreWeightField, field)
+	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
+
+	// score_weights_by_format override
+	cfg := &Config{}
+	cfg.Selection.ScoreWeightsByFormat = map[string]ScoreWeights{
+		"T20": {Bat: 0.5, Bowl: 0.38, Field: 0.09, KeeperBonus: 0.03},
+	}
+	bat, bowl, field, keeper = EffectiveScoreWeightsForFormat(cfg, "T20")
+	require.Equal(t, 0.5, bat)
+	require.Equal(t, 0.38, bowl)
+	require.Equal(t, 0.09, field)
+	require.Equal(t, 0.03, keeper)
+}
+
+func TestPipelineTimeout(t *testing.T) {
+	cached = nil
+	cached = &Config{}
+	defer func() { cached = nil }()
+
+	// no timeout configured
+	d := PipelineTimeout()
+	require.Equal(t, time.Duration(0), d)
+
+	// configured timeout
+	cached.Features.PrecomputeTimeoutMs = 60000
+	d = PipelineTimeout()
+	require.Equal(t, 60*time.Second, d)
 }

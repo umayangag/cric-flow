@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -78,23 +79,45 @@ var defaultDB DB
 // SetDB allows tests to inject a fake DB implementation.
 func SetDB(d DB) { defaultDB = d }
 
+// ErrDBNotSet is returned when a DB helper is called before Connect or SetDB.
+var ErrDBNotSet = errors.New("db not initialized")
+
 // Exec runs a statement using the default DB.
 func Exec(ctx context.Context, sql string, args ...any) error {
+	if defaultDB == nil {
+		return ErrDBNotSet
+	}
 	return defaultDB.Exec(ctx, sql, args...)
 }
 
 // Query runs a query returning multiple rows using the default DB.
 func Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	if defaultDB == nil {
+		return nil, ErrDBNotSet
+	}
 	return defaultDB.Query(ctx, sql, args...)
 }
 
 // QueryRow runs a query expecting a single row using the default DB.
 func QueryRow(ctx context.Context, sql string, args ...any) Row {
+	if defaultDB == nil {
+		return &errRow{err: ErrDBNotSet}
+	}
 	return defaultDB.QueryRow(ctx, sql, args...)
 }
 
 // Begin starts a transaction using the default DB.
-func Begin(ctx context.Context) (Tx, error) { return defaultDB.Begin(ctx) }
+func Begin(ctx context.Context) (Tx, error) {
+	if defaultDB == nil {
+		return nil, ErrDBNotSet
+	}
+	return defaultDB.Begin(ctx)
+}
+
+// errRow implements Row and returns the wrapped error on Scan.
+type errRow struct{ err error }
+
+func (e *errRow) Scan(_ ...any) error { return e.err }
 
 // poolDB adapts pgxpool.Pool to the DB interface.
 type poolDB struct{ p *pgxpool.Pool }
@@ -263,6 +286,23 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 
 // SetPoolAPI allows tests to inject a mock pool implementation.
 func SetPoolAPI(p PoolIface) { PoolAPI = p }
+
+var closeOnce sync.Once
+
+// Close closes the global connection pool if initialized. Safe to call multiple times.
+// Call during graceful shutdown so in-flight connections drain and logs are flushed.
+func Close() {
+	closeOnce.Do(func() {
+		if Pool == nil {
+			return
+		}
+		Pool.Close()
+		Pool = nil
+		defaultDB = nil
+		PoolAPI = nil
+		slog.Info("db.Close: pool closed")
+	})
+}
 
 // RunInTx runs fn inside a transaction. Commits on success, rolls back on error or panic.
 func RunInTx(ctx context.Context, fn func(ctx context.Context, tx CopyFromTx) error) error {

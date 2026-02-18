@@ -1,9 +1,11 @@
 // Package pipeline provides shared orchestration for pipeline steps (import, precompute, export).
 // Both HTTP handlers and CLI commands use these helpers to minimize logic duplication.
+// Pipeline steps are singleton: only one step may run across the whole system at a time.
 package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -11,6 +13,26 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
+
+// PipelineCommands are the data_migrations command names that form the main pipeline.
+// Only one of these may be IN_PROGRESS at a time (enforced in RunJob and in ml-service Tracker).
+var PipelineCommands = []string{
+	"cricsheet-import",
+	"precompute-features",
+	"export-dataset",
+	"train-batting",
+	"train-bowling",
+	"train-fielding",
+}
+
+// ErrPipelineBusy is returned when another pipeline step is already running (singleton).
+var ErrPipelineBusy = errors.New("another pipeline step is already running")
+
+// HasPipelineBusy returns true if any pipeline step is currently IN_PROGRESS.
+// Handlers use this to return 409 before starting a new step.
+func HasPipelineBusy(ctx context.Context) (bool, error) {
+	return tracking.HasInProgressForAnyCommand(ctx, PipelineCommands)
+}
 
 // JobFunc runs a pipeline step. It returns (exitMeta, err). On success, exitMeta is
 // passed to tracking.CaptureExit; on failure, err is used.
@@ -28,6 +50,15 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(parent, timeout)
 		defer cancel()
+	}
+
+	// Enforce singleton: only one pipeline step for the whole system at a time.
+	busy, err := tracking.HasInProgressForAnyCommand(ctx, PipelineCommands)
+	if err != nil {
+		slog.Warn(jobName+": check for existing pipeline failed", slog.Any("err", err))
+	}
+	if busy {
+		return ErrPipelineBusy
 	}
 
 	tracker, tErr := tracking.Start(ctx, jobName, startMeta)

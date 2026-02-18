@@ -21,7 +21,6 @@ import urllib.request
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -29,6 +28,7 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
+from ml.utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -124,21 +124,36 @@ def train_and_save(
     params = get_training_params("fielding")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            n_jobs=n_jobs,
-        )
-    )
+    base = make_base_estimator(params)
+    model = MultiOutputRegressor(base)
     model.fit(Xs, Y)
+
+    # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_importance = None
+    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
+        imps = []
+        for est in model.estimators_:
+            if hasattr(est, "feature_importances_"):
+                imps.append(est.feature_importances_)
+        if imps:
+            feature_importance = {
+                FIELDING_FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
+                for i in range(min(len(FIELDING_FEATURE_COLS), len(imps[0])))
+            }
+            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
+            logger.info("train_fielding.feature_importance_top5 %s", top)
+
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     code = format_code.replace(" ", "_")
     joblib.dump(scaler, os.path.join(out_dir, f"fielding_scaler_{code}.joblib"), compress=compress)
     joblib.dump(model, os.path.join(out_dir, f"fielding_model_{code}.joblib"), compress=compress)
+    if feature_importance is not None:
+        try:
+            with open(os.path.join(out_dir, f"fielding_metadata_{code}.json"), "w", encoding="utf-8") as f:
+                json.dump({"feature_importance": feature_importance}, f, indent=2)
+        except OSError as e:
+            logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
 
 
 def main() -> None:

@@ -18,19 +18,42 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from app.logging import get_struct_logger
 from ml.config import get_training_data_fetch_timeout_sec, get_training_params
+from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
 
-# Align with ml/ml/train_batting.py and train_bowling.py
+# Align with ml/ml/train_batting.py and train_bowling.py (must match configs/feature_vectors.json order)
+BAT_SEQ_COLS = [
+    "bat_prev_sr",
+    "bat_prev_out_rate",
+    "bat_window_sr_12_pp",
+    "bat_window_boundary_rate_12_pp",
+    "bat_entry_sr_1_6",
+    "bat_set_sr_13_30",
+    "bat_react_after_dot_sr",
+    "bat_after_k_dots_boundary_p_k2",
+]
+BOWL_SEQ_COLS = [
+    "bowl_prev_wkt_rate",
+    "bowl_window_econ_24_death",
+    "bowl_window_wkt_rate_24_death",
+    "bowl_extras_wide_rate_pp",
+    "bowl_react_after_boundary_wkt_rate_next",
+    "bowl_spell_first_over_wkt_rate",
+    "bowl_over_ball1_wkt_rate",
+    "bowl_over_ball6_wkt_rate",
+]
 BATTING_FEATURE_COLS = [
     "batting_consistency",
     "batting_form",
+    "batting_form_short",
+    "batting_form_long",
+    "batting_momentum",
     "temp",
     "wind",
     "rain",
@@ -44,7 +67,7 @@ BATTING_FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
-]
+] + BAT_SEQ_COLS
 BATTING_TARGET_COLS = [
     "runs",
     "balls",
@@ -56,6 +79,9 @@ BATTING_TARGET_COLS = [
 BOWLING_FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
+    "bowling_form_short",
+    "bowling_form_long",
+    "bowling_momentum",
     "temp",
     "wind",
     "rain",
@@ -69,7 +95,7 @@ BOWLING_FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
-]
+] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = [
     "runs",
     "balls",
@@ -146,6 +172,19 @@ def _rows_to_xy(
 def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
     """Build X, Y from batting headers + rows (same logic as train_batting.load_dataset)."""
 
+    def _batting_preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        for col in ("batting_form_short", "batting_form_long"):
+            if col not in df.columns and "batting_form" in df.columns:
+                df = df.assign(**{col: df["batting_form"]})
+        if "batting_momentum" not in df.columns:
+            df = df.assign(batting_momentum=0.0)
+        for col in BAT_SEQ_COLS:
+            if col not in df.columns:
+                df = df.assign(**{col: 0.0})
+            else:
+                df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
+        return df
+
     def _batting_extra_y(df: pd.DataFrame) -> np.ndarray:
         runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
         balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
@@ -157,6 +196,7 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
         BATTING_FEATURE_COLS,
         BATTING_TARGET_COLS,
         n_y_final=6,
+        preprocess=_batting_preprocess,
         extra_y_column=_batting_extra_y,
     )
 
@@ -167,6 +207,16 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
     def _bowling_preprocess(df: pd.DataFrame) -> pd.DataFrame:
         if "bowling_session" in df.columns:
             df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
+        for col in ("bowling_form_short", "bowling_form_long"):
+            if col not in df.columns and "bowling_form" in df.columns:
+                df = df.assign(**{col: df["bowling_form"]})
+        if "bowling_momentum" not in df.columns:
+            df = df.assign(bowling_momentum=0.0)
+        for col in BOWL_SEQ_COLS:
+            if col not in df.columns:
+                df = df.assign(**{col: 0.0})
+            else:
+                df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
 
     def _bowling_extra_y(df: pd.DataFrame) -> np.ndarray:
@@ -191,15 +241,7 @@ def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
     params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            random_state=params["random_state"],
-            max_depth=params["max_depth"],
-            n_jobs=n_jobs,
-        )
-    )
+    model = MultiOutputRegressor(make_base_estimator(params))
     model.fit(Xs, Y)
     return scaler, model
 
@@ -209,15 +251,7 @@ def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScal
     params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_jobs = params.get("n_jobs", -1)
-    model = MultiOutputRegressor(
-        RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            random_state=params["random_state"],
-            max_depth=params["max_depth"],
-            n_jobs=n_jobs,
-        )
-    )
+    model = MultiOutputRegressor(make_base_estimator(params))
     model.fit(Xs, Y)
     return scaler, model
 

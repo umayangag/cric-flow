@@ -74,6 +74,30 @@ func Consistency(inn []Innings, n int) (float64, int) {
 	return cv, len(vals)
 }
 
+// Momentum computes the slope of recent performance over the last n innings.
+// Returns (slope, nUsed). Slope = (last - first) / (n-1) for last n values; 0 if n < 2.
+// Positive slope = improving form.
+func Momentum(inn []Innings, n int) (float64, int) {
+	if len(inn) == 0 {
+		return 0, 0
+	}
+	ln := len(inn)
+	start := 0
+	if n > 0 && ln > n {
+		start = ln - n
+	}
+	vals := make([]float64, 0, ln-start)
+	for i := start; i < ln; i++ {
+		vals = append(vals, inn[i].Value)
+	}
+	if len(vals) < 2 {
+		return 0, len(vals)
+	}
+	first, last := vals[0], vals[len(vals)-1]
+	slope := (last - first) / float64(len(vals)-1)
+	return slope, len(vals)
+}
+
 // SortAndClip sorts by date ascending and filters any entries >= cutoff (i.e., keeps strictly before cutoff).
 func SortAndClip(inn []Innings, cutoff time.Time) []Innings {
 	cp := make([]Innings, 0, len(inn))

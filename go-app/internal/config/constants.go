@@ -10,8 +10,11 @@ const DefaultTimeout = 7 * 24 * time.Hour
 // These affect prediction results; keep in sync with config.json defaults.
 const (
 	DefaultFeatureEWMAlpha         = 0.3
+	DefaultFeatureEWMAlphaShort    = 0.5 // more weight to recent for form_short
+	DefaultFeatureEWMAlphaLong     = 0.2 // less weight to recent for form_long
 	DefaultFeatureConsistencyLastN = 10
 	DefaultFeatureFormWindowN      = 0
+	DefaultFeatureMomentumLastN    = 5
 )
 
 // Fielding enrich defaults (used when ML has no fielding model; go-app enriches from history).
@@ -35,4 +38,13 @@ const (
 	DefaultScoreWeightBowl        = 0.40
 	DefaultScoreWeightField       = 0.10
 	DefaultScoreWeightKeeperBonus = 0.02
+)
+
+// Default score normalization divisors when selection.score_normalization is not set.
+// Format-agnostic fallbacks (T20/ODI typical).
+const (
+	DefaultScoreNormBatDivisor    = 80
+	DefaultScoreNormWicketDivisor = 5
+	DefaultScoreNormEconBase      = 12
+	DefaultScoreNormFieldDivisor  = 5
 )
