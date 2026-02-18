@@ -30,8 +30,18 @@ const MLPredictionGraph: React.FC = () => {
   };
 
   const parallelModels = [
-    { id: 'batting', label: 'Batting', sx: { ...nodeSx, borderColor: 'primary.light' }, color: 'primary.dark' },
-    { id: 'bowling', label: 'Bowling', sx: { ...nodeSx, borderColor: 'secondary.light' }, color: 'secondary.dark' },
+    {
+      id: 'batting',
+      label: 'Batting',
+      sx: { ...nodeSx, borderColor: 'primary.light' },
+      color: 'primary.dark',
+    },
+    {
+      id: 'bowling',
+      label: 'Bowling',
+      sx: { ...nodeSx, borderColor: 'secondary.light' },
+      color: 'secondary.dark',
+    },
     {
       id: 'fielding',
       label: 'Fielding',
@@ -107,7 +117,12 @@ const MLPredictionGraph: React.FC = () => {
               {node.label}
             </Typography>
             {node.sub && (
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.25 }}>
+              <Typography
+                component="span"
+                variant="caption"
+                color="text.secondary"
+                sx={{ ml: 0.25 }}
+              >
                 {node.sub}
               </Typography>
             )}
@@ -122,11 +137,7 @@ const MLPredictionGraph: React.FC = () => {
       {/* Downstream: Combined → Performance predictor → Win model → Team selection */}
       {downstreamNodes.map((node, index) => (
         <React.Fragment key={node.id}>
-          <Paper
-            component="span"
-            elevation={node.id === 'team' ? 1 : 0}
-            sx={node.sx}
-          >
+          <Paper component="span" elevation={node.id === 'team' ? 1 : 0} sx={node.sx}>
             <Typography
               component="span"
               variant="body2"
