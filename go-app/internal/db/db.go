@@ -78,23 +78,45 @@ var defaultDB DB
 // SetDB allows tests to inject a fake DB implementation.
 func SetDB(d DB) { defaultDB = d }
 
+// ErrDBNotSet is returned when a DB helper is called before Connect or SetDB.
+var ErrDBNotSet = errors.New("db not initialized")
+
 // Exec runs a statement using the default DB.
 func Exec(ctx context.Context, sql string, args ...any) error {
+	if defaultDB == nil {
+		return ErrDBNotSet
+	}
 	return defaultDB.Exec(ctx, sql, args...)
 }
 
 // Query runs a query returning multiple rows using the default DB.
 func Query(ctx context.Context, sql string, args ...any) (Rows, error) {
+	if defaultDB == nil {
+		return nil, ErrDBNotSet
+	}
 	return defaultDB.Query(ctx, sql, args...)
 }
 
 // QueryRow runs a query expecting a single row using the default DB.
 func QueryRow(ctx context.Context, sql string, args ...any) Row {
+	if defaultDB == nil {
+		return &errRow{err: ErrDBNotSet}
+	}
 	return defaultDB.QueryRow(ctx, sql, args...)
 }
 
 // Begin starts a transaction using the default DB.
-func Begin(ctx context.Context) (Tx, error) { return defaultDB.Begin(ctx) }
+func Begin(ctx context.Context) (Tx, error) {
+	if defaultDB == nil {
+		return nil, ErrDBNotSet
+	}
+	return defaultDB.Begin(ctx)
+}
+
+// errRow implements Row and returns the wrapped error on Scan.
+type errRow struct{ err error }
+
+func (e *errRow) Scan(_ ...any) error { return e.err }
 
 // poolDB adapts pgxpool.Pool to the DB interface.
 type poolDB struct{ p *pgxpool.Pool }

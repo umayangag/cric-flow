@@ -186,7 +186,7 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
-  /** Pipeline step running state from backend (steps[stepId].running) */
+  /** Pipeline step running state from backend */
   pipeline?: {
     steps?: Record<string, { running?: boolean }>;
   };

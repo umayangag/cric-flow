@@ -22,11 +22,11 @@ func NewRouter(a *App) http.Handler {
 	admin.Use(authMiddleware)
 
 	// Precompute controls
-	admin.HandleFunc("/precompute", precomputeHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/precompute", a.precomputeHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/precompute/status", precomputeStatusHandler).Methods(http.MethodGet, http.MethodOptions)
 
 	// Import cricsheet data
-	admin.HandleFunc("/import/cricsheet", importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)

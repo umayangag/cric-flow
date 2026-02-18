@@ -42,7 +42,7 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 
 // precomputeHandler triggers precompute with optional filters.
 // Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}. Empty body is allowed (defaults to all seasons/formats).
-func precomputeHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	var body precomputeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		slog.Error("precompute: decode request body failed", slog.Any("err", err))
@@ -65,7 +65,7 @@ func precomputeHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Any("formats", formats),
 		)
 		runErr := pipeline.RunJob(
-			context.Background(),
+			a.JobContext(),
 			"precompute-features",
 			map[string]any{"season": season, "formats": formats},
 			timeout,
@@ -95,7 +95,7 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 
 // importCricSheetHandler runs import of cricsheet data directory.
 // Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
-func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		slog.Error("import: decode request body failed", slog.Any("err", err))
@@ -114,7 +114,7 @@ func importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
-			context.Background(),
+			a.JobContext(),
 			"cricsheet-import",
 			map[string]any{"dir": dir},
 			config.PipelineTimeout(),
