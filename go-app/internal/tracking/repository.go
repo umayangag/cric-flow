@@ -58,36 +58,31 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
-// CancelInProgressMigrations sets all rows with status IN_PROGRESS to CANCELLED with the given reason.
-// Call on server startup so that interrupted/crashed runs (e.g. OOM, restart) are not left as in-progress.
-// Returns the number of rows updated. When db pool is nil, returns (0, nil).
-func CancelInProgressMigrations(ctx context.Context, reason string) (int, error) {
-	if db.Pool == nil {
+// CancelStaleInProgressMigrations sets IN_PROGRESS rows to CANCELLED only when started_at
+// is older than the given threshold. Use on server startup so that runs interrupted by
+// this instance's restart/crash are cleaned up, without cancelling runs started recently
+// by another instance (e.g. B running a pipeline while A restarts).
+// If staleOlderThan <= 0, no rows are cancelled. Returns the number of rows updated.
+func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
+	if db.Pool == nil || staleOlderThan < time.Second {
 		return 0, nil
 	}
 	var reasonPtr *string
 	if reason != "" {
 		reasonPtr = &reason
 	}
-	rows, err := db.Query(ctx, `
-		UPDATE data_migrations
-		SET status = $1, completed_at = NOW(), error_message = $2
-		WHERE status = $3
-		RETURNING id
-	`, StatusCancelled, reasonPtr, StatusInProgress)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
+	staleSeconds := int64(staleOlderThan.Seconds())
 	var n int
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			return 0, err
-		}
-		n++
-	}
-	if err := rows.Err(); err != nil {
+	err := db.QueryRow(ctx, `
+		WITH updated AS (
+			UPDATE data_migrations
+			SET status = $1, completed_at = NOW(), error_message = $2
+			WHERE status = $3 AND started_at < NOW() - ($4::bigint * interval '1 second')
+			RETURNING 1
+		)
+		SELECT COUNT(*)::int FROM updated
+	`, StatusCancelled, reasonPtr, StatusInProgress, staleSeconds).Scan(&n)
+	if err != nil {
 		return 0, err
 	}
 	return n, nil

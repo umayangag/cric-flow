@@ -51,6 +51,16 @@ except ImportError:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> Any:
+    # On startup: cancel only stale IN_PROGRESS (older than threshold) so we don't cancel another instance's run.
+    try:  # pragma: no cover - lifespan startup; tested indirectly via TestClient
+        from ml.tracking import cancel_in_progress_on_startup, parse_stale_cancel_age_seconds
+
+        stale_seconds = parse_stale_cancel_age_seconds()
+        n = cancel_in_progress_on_startup(stale_seconds=stale_seconds)
+        if n:
+            logger.info("startup.cancelled_stale_migrations", count=n, stale_seconds=stale_seconds)
+    except Exception as e:  # pragma: no cover
+        logger.warning("startup.cancel_stale_migrations_failed", error=str(e))
     yield
     logger.info(
         "shutdown.complete", message="ml-service shutting down; check logs for errors if process exited unexpectedly"

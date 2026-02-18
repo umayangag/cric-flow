@@ -44,15 +44,21 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 - **Post** a comment on the PR with body `/gemini review` (e.g. `gh pr comment <PR> --body "/gemini review"`).
 - Do this **first**, before waiting or fetching. Then proceed to step B.
 
-### B. Wait for Gemini (learn optimum time)
+### B. Wait for Gemini (size-based + learning)
 
-- **Stored value:** Read `.cursor/skills/publish-feature/optimum_wait_minutes.txt`; if missing or not a positive integer, use **5**.
+If Gemini does not reply after the initial wait, keep polling every 90 seconds. **Total wait is capped at 15 minutes.** If there is still no response after 15 minutes, proceed to step C and stop.
+
+- **Initial wait (PR size–based):** Get PR stats: `gh pr view <PR> --json changedFiles,additions,deletions`. Compute `totalChanges = additions + deletions`.  
+  - **Small:** `changedFiles ≤ 5` and `totalChanges < 250` → wait **2** minutes.  
+  - **Medium:** `changedFiles ≤ 15` or `totalChanges < 1000` → wait **5** minutes.  
+  - **Large:** else → wait **7** minutes.  
+  If `.cursor/skills/publish-feature/optimum_wait_minutes.txt` exists and contains a positive integer **smaller** than this size-based value, use that instead (learned shorter wait).
 - **If the user says Gemini has already finished:** skip the wait and go to step C; do not update the stored value.
 - **Otherwise:**  
-  1. Wait **optimum_wait_minutes** (from file or 5).  
+  1. Wait the chosen **initial_wait** minutes.  
   2. **Poll:** Fetch unresolved Gemini thread count for the PR (same GraphQL as in fix-gemini-reviews; count the nodes).  
-  3. If count **> 0:** proceed to step C and **learn:** elapsed = minutes from step A (comment) to this poll. Write `ceil(elapsed)` to `optimum_wait_minutes.txt` so future runs use this wait. If elapsed &lt; stored value, this shortens the default; if elapsed &gt; stored, this avoids under-waiting next time.  
-  4. If count **= 0:** wait **90 seconds**, poll again. Repeat until count &gt; 0 or **total wait ≥ 10 minutes**, then proceed to step C. When count first became &gt; 0, use that poll’s elapsed time to update the file as above.
+  3. If count **> 0:** proceed to step C and **learn:** elapsed = minutes from step A (comment) to this poll. Write `ceil(elapsed)` to `optimum_wait_minutes.txt`, capped at **15**. Future runs use this if it is smaller than the size-based wait.  
+  4. If count **= 0:** wait **90 seconds**, poll again. Repeat until count &gt; 0 or **total wait ≥ 15 minutes**, then proceed to step C. If there is still no response from Gemini after 15 minutes total wait, stop waiting and proceed to step C (with 0 threads, then exit). When count first became &gt; 0, use that poll’s elapsed time to update the file (capped at 15). If we hit 15 min with count still 0, set file to `min(15, stored+1)`.
 
 ### C. Fetch threads; fix only if needed
 
@@ -62,6 +68,7 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
   - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
+  - **After every push:** post `/gemini review` on the PR (e.g. `gh pr comment <PR> --body "/gemini review"`) so Gemini runs again on the new commits.
 
 ### D. Loop or exit
 
@@ -70,10 +77,11 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 
 ---
 
-## Optimum wait (learning)
+## Optimum wait (PR size + learning)
 
-- **File:** `.cursor/skills/publish-feature/optimum_wait_minutes.txt` — single integer (minutes). Read at start of step B; write when we first see unresolved Gemini threads and know elapsed time.
-- **Update rule:** When proceeding to step C because thread count &gt; 0, set file content to `ceil(elapsed_minutes_since_comment)` so the next run uses that as the initial wait. Cap stored value at 10. If we hit 10 min with count still 0, set file to `min(10, stored+1)` so the next run tries slightly longer before first poll.
+- **Size-based default:** Small PR (≤5 files, &lt;250 line changes) → 2 min; medium (≤15 files or &lt;1000 lines) → 5 min; large → 7 min.
+- **File:** `.cursor/skills/publish-feature/optimum_wait_minutes.txt` — single integer (minutes). If present and **smaller** than the size-based wait, use it as the initial wait (learned that less time was enough). Write when we first see unresolved Gemini threads: `ceil(elapsed_minutes_since_comment)`, cap at 15. If we hit 15 min with count still 0, set file to `min(15, stored+1)`.
+- **Max wait:** If Gemini has not replied after the initial wait, keep polling every 90 seconds until **total wait reaches 15 minutes**; then proceed to step C and stop (no threads → exit).
 
 ---
 
@@ -96,8 +104,8 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 | Step | Action |
 |------|--------|
 | A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
-| B | Wait optimum_wait_minutes (from file, default 5), then poll every 90s for thread count; proceed when &gt;0 or 10 min; update file with elapsed when threads appear |
-| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push |
+| B | Wait = size-based (small: 2 min, medium: 5 min, large: 7 min); if file has smaller value use it. Then poll every 90s; proceed when &gt;0 or **total wait ≥ 15 min**; update file with elapsed when threads appear (cap 15). If no response after 15 min, proceed to C and exit. |
+| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR |
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |
 
 Exit when: **cycle = 10** or **unresolved Gemini threads = 0**.
