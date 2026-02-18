@@ -249,16 +249,16 @@ func loadMetaModel(cfg *Config) *metaModelWeights {
 		cwd, _ := os.Getwd()
 		abs = filepath.Join(cwd, path)
 	}
-	b, err := os.ReadFile(abs)
+ b, err := os.ReadFile(abs)
 	if err != nil {
-		slog.Warn("config.loadMetaModel failed", "path", abs, "err", err)
+		slog.Error("config.loadMetaModel failed to read file", "path", abs, "err", err)
 		metaModelPath = ""
 		metaModelCache = nil
 		return nil
 	}
 	var m metaModelWeights
 	if err := json.Unmarshal(b, &m); err != nil {
-		slog.Warn("config.loadMetaModel unmarshal failed", "path", abs, "err", err)
+		slog.Error("config.loadMetaModel unmarshal failed", "path", abs, "err", err)
 		metaModelPath = ""
 		metaModelCache = nil
 		return nil
