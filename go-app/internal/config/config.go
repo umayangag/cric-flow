@@ -252,7 +252,11 @@ func loadMetaModel(cfg *Config) *metaModelWeights {
             abs = filepath.Join(configDir, path)
         } else {
             // Fallback to CWD if config path is unknown (e.g. in tests)
-            cwd, _ := os.Getwd()
+            cwd, err := os.Getwd()
+            if err != nil {
+                slog.Error("config.loadMetaModel failed to get CWD", "err", err)
+                return nil
+            }
             abs = filepath.Join(cwd, path)
         }
     }

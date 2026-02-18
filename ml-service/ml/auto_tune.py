@@ -350,7 +350,14 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = df[col].fillna(0.0)
     required = [c for c in BATTING_FEATURE_COLS if c not in BAT_SEQ_COLS]
     df = df.dropna(subset=[c for c in required if c in df.columns])
-    X = df[BATTING_FEATURE_COLS].astype(float).values
+    X_raw = df[BATTING_FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("batting")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(BATTING_FEATURE_COLS), transform_config, "batting")
+    else:
+        X = X_raw
     y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BATTING_TARGET_COLS):

@@ -110,7 +110,14 @@ def load_dataset(path: str):
     # Filter rows with required feature columns (exclude seq from dropna)
     required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
     df = df.dropna(subset=[c for c in required if c in df.columns])
-    X = df[FEATURE_COLS].astype(float).values
+    X_raw = df[FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("bowling")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
+    else:
+        X = X_raw
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     # Ensure econ column present or derive: econ = runs / (overs)

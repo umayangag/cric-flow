@@ -304,10 +304,13 @@ func buildTeamSelectPool(
 	out := make([]teamselect.Player, 0, len(pool))
 	for _, p := range pool {
 		pr := preds[p.PlayerID]
-		batScore := normalizeBatScore(pr.Runs, batDiv)
-		bowlScore := normalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
-		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
 		isBowler := p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0
+		batScore := normalizeBatScore(pr.Runs, batDiv)
+		bowlScore := 0.0
+		if isBowler {
+			bowlScore = normalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
+		}
+		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
 		out = append(out, teamselect.Player{
 			Name:       p.PlayerName,
 			IsBowler:   isBowler,

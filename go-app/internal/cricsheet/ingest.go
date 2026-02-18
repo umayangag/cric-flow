@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
@@ -56,23 +57,35 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	sort.Strings(files)
 
 	var count int64
+	var failedMu sync.Mutex
+	var failedFiles []string
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
 
 	for _, f := range files {
 		f := f // capture
 		g.Go(func() error {
-			// Skip without logging if another file already failed (ctx cancelled).
+			// Skip without logging if another file already failed (ctx cancelled) and FailFast.
 			if err := ctx.Err(); err != nil {
 				return nil
 			}
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
 			if err := ImportMatchFile(ctx, f, opts); err != nil {
-				slog.Error("import failed, stopping",
+				if opts.FailFast {
+					slog.Error("import failed, stopping",
+						slog.String("file", filepath.Base(f)),
+						slog.String("path", f),
+						slog.Any("err", err))
+					return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				}
+				slog.Warn("import failed, skipping",
 					slog.String("file", filepath.Base(f)),
 					slog.String("path", f),
 					slog.Any("err", err))
-				return fmt.Errorf("file %s: %w", filepath.Base(f), err)
+				failedMu.Lock()
+				failedFiles = append(failedFiles, filepath.Base(f))
+				failedMu.Unlock()
+				return nil
 			}
 			atomic.AddInt64(&count, 1)
 			return nil
@@ -87,6 +100,13 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 			slog.Any("err", err),
 		)
 		return int(count), err
+	}
+	if len(failedFiles) > 0 {
+		slog.Warn("cricsheet.ImportDir finished with skipped files",
+			slog.String("dir", dir),
+			slog.Int64("imported", count),
+			slog.Int("skipped", len(failedFiles)),
+			slog.Any("skipped_files", failedFiles))
 	}
 	return int(count), nil
 }

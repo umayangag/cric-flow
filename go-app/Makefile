@@ -61,12 +61,15 @@ team-predictor:
 	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
 
 # Import Cricsheet JSON into DB (populates match, match_inning, batting_data, bowling_data).
-# Usage: make cricsheet-import [DIR=path/to/json] [PLACEHOLDERS=1]
+# Usage: make cricsheet-import [DIR=path/to/json] [PLACEHOLDERS=1] [FAIL_FAST=0]
+# FAIL_FAST=0 skips bad files and continues; default is 1 (abort on first error).
 cricsheet-import:
 	@DIR=$${GO_APP_INPUT_DIR:-../data/go-app/cricsheet}; \
 	PLACEHOLDERS_FLAG=""; \
 	if [ "$(PLACEHOLDERS)" = "1" ]; then PLACEHOLDERS_FLAG="--placeholders-weather --placeholders-fielding"; fi; \
-	go run ./cmd/cricsheet-importer -in="$$DIR" $$PLACEHOLDERS_FLAG
+	FAIL_FAST_FLAG="--fail-fast=true"; \
+	if [ "$(FAIL_FAST)" = "0" ]; then FAIL_FAST_FLAG="--fail-fast=false"; fi; \
+	go run ./cmd/cricsheet-importer -in="$$DIR" $$PLACEHOLDERS_FLAG $$FAIL_FAST_FLAG
 
 # Evaluate (scaffold)
 # Example: make evaluate SEASON=2019 FORMAT=T20

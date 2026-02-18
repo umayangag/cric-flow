@@ -180,6 +180,7 @@ Three separate GitHub Actions workflows:
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
 - If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
 - If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).
+- If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/CRICSHEET_IMPORT.md** for why and how to run with `-fail-fast=false` to skip bad files and list them.
 
 
 

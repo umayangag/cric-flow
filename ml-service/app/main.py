@@ -279,7 +279,26 @@ def _predict_players_with_features(
         X_bat = scaler_bat.transform(X_bat)
     Y_bat = model_bat.predict(X_bat)
 
-    X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+    try:
+        bowl_transform = load_transform_config_from_metadata(MODELS_DIR, "bowling", fmt_upper)
+        base_names_bowl = get_feature_names("bowling")
+        if bowl_transform.get("add_interactions") or bowl_transform.get("add_log1p"):
+            bowl_vecs = []
+            for i, f in enumerate(bowl_features):
+                fm = features_map.get(str(player_ids[i])) or features_map.get(str(int(player_ids[i]))) or {}
+                base_vals = bowling_feature_vector(f)
+                fm_for_interactions = dict(zip(base_names_bowl, base_vals))
+                fm_for_interactions.update(fm)
+                ext = build_extended_vector_from_features(
+                    base_vals, base_names_bowl, fm_for_interactions, bowl_transform
+                )
+                bowl_vecs.append(ext)
+            X_bowl = np.array(bowl_vecs, dtype=float)
+        else:
+            X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+    except Exception as e:
+        logger.warning("predict.bowling_feature_transform.failed", error=str(e), exc_info=True)
+        X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
     if scaler_bowl is not None:
         X_bowl = scaler_bowl.transform(X_bowl)
     Y_bowl = model_bowl.predict(X_bowl)
