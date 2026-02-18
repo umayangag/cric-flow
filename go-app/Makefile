@@ -13,7 +13,7 @@ export POSTGRES_SSLMODE?=disable
 # Resource-aware pipelines: limit process memory so concurrency is capped (see docs/CONFIG.md). Override with GOMEMLIMIT=... if needed.
 export GOMEMLIMIT?=2GiB
 
-.PHONY: all build clean run-api team-select team-predictor weather-import evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
+.PHONY: all build clean run-api team-select team-predictor evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
 
 all: build
 
@@ -131,11 +131,6 @@ export-dataset:
 	# Use unified cross-format export to generate *_encoded_all.csv files
 	go run ./cmd/export-dataset -unified=1 -out $$OUT
 
-# Backfill fielding aggregates from fielding_event for all matches
-.PHONY: backfill-fielding
-backfill-fielding:
-	go run ./cmd/backfill-fielding --all
-
 # Lint Go code using golangci-lint (matches CI config)
 # Self-bootstrap a pinned major version (v2) if missing or outdated and invoke via absolute path if needed
 GOLANGCI_BIN := $(shell command -v golangci-lint 2>/dev/null || echo $$(go env GOPATH)/bin/golangci-lint)
@@ -178,28 +173,6 @@ coverage-check:
 		awk -v t="$$total" -v m="$$min" 'BEGIN{ if ((t+0) < (m+0)) exit 1; else exit 0 }' /dev/null || { echo "Coverage $$total% is below required $$min%"; exit 1; }; \
 		echo "Coverage $$total% meets threshold (>= $$min%)."
 
-# Import retired players from CSV
-# Usage: make import-retired FILE=./data/retired.csv [APPLY=1] [OTHERS_ZERO=1]
-import-retired:
-	@[ -n "$(FILE)" ] || (echo "Usage: make import-retired FILE=path/to/retired.csv [APPLY=1] [OTHERS_ZERO=1]" && exit 1)
-	@echo "Running import-retired with FILE=$(FILE), APPLY=$(APPLY), OTHERS_ZERO=$(OTHERS_ZERO)"
-	@APPLY_FLAG=""; \
-	if [ "$(APPLY)" = "1" ]; then APPLY_FLAG="--apply"; fi; \
-	OZ_FLAG=""; \
-	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
-	go run ./cmd/import-retired --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG
-
-# Import wicket keepers from CSV
-# Usage: make import-keepers FILE=./data/keepers.csv [APPLY=1] [OTHERS_ZERO=1]
-import-keepers:
-	@[ -n "$(FILE)" ] || (echo "Usage: make import-keepers FILE=path/to/keepers.csv [APPLY=1] [OTHERS_ZERO=1]" && exit 1)
-	@echo "Running import-keepers with FILE=$(FILE), APPLY=$(APPLY), OTHERS_ZERO=$(OTHERS_ZERO)"
-	@APPLY_FLAG=""; \
-	if [ "$(APPLY)" = "1" ]; then APPLY_FLAG="--apply"; fi; \
-	OZ_FLAG=""; \
-	if [ "$(OTHERS_ZERO)" = "1" ]; then OZ_FLAG="--others-zero"; fi; \
-	go run ./cmd/import-keepers --file "$(FILE)" $$APPLY_FLAG $$OZ_FLAG
-
 # Mockery targets for generating interface mocks
 .PHONY: mocks mocks-clean
 
@@ -239,13 +212,9 @@ help:
 	@echo "[Data & CLIs]"
 	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
-	@echo "  weather-import     Import weather (scaffold)"
 	@echo "  evaluate           Compute basic metrics (scaffold)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
-	@echo "  backfill-fielding  Backfill fielding aggregates from fielding_event"
-	@echo "  import-retired     Import retired players from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
-	@echo "  import-keepers     Import wicket keepers from CSV (FILE=..., APPLY=1, OTHERS_ZERO=1)"
 	@echo
 	@echo "[Docker]"
 	@echo "  docker-build       Build API Docker image"

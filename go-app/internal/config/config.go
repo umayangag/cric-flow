@@ -15,7 +15,6 @@ import (
 type Config struct {
 	Inputs struct {
 		CricsheetDir string `json:"cricsheet_dir"`
-		EtlDir       string `json:"etl_dir"`
 	} `json:"inputs"`
 	Outputs struct {
 		ExportDir string `json:"export_dir"`
@@ -187,15 +186,6 @@ func DefaultCricsheetDir() string {
 		return cfg.Inputs.CricsheetDir
 	}
 	return filepath.Join("..", "data", "go-app", "cricsheet")
-}
-
-// DefaultEtlDir returns the configured curated CSV dir for ETL importer or a built-in default.
-func DefaultEtlDir() string {
-	cfg := Load()
-	if cfg != nil && cfg.Inputs.EtlDir != "" {
-		return cfg.Inputs.EtlDir
-	}
-	return filepath.Join("..", "data", "go-app", "createdb")
 }
 
 // EffectiveScoreNormParams returns format-specific normalization divisors for score computation.
