@@ -65,6 +65,7 @@ def train_and_export(
     out_path: str,
     alpha: float = 1.0,
     per_format: bool = False,
+    normalize_weights: bool = True,
 ) -> dict:
     """
     Train Ridge meta-model and export coefficients to JSON.
@@ -104,10 +105,10 @@ def train_and_export(
         bowl = float(coef[1])
         field = float(coef[2])
         keeper_bonus = float(coef[3])
-        # Normalize so bat+bowl+field+keeper_bonus ≈ 1 (optional; keep raw for interpretability)
-        total = abs(bat) + abs(bowl) + abs(field) + abs(keeper_bonus)
-        if total > 0:
-            bat, bowl, field, keeper_bonus = bat / total, bowl / total, field / total, keeper_bonus / total
+        if normalize_weights:
+            total = abs(bat) + abs(bowl) + abs(field) + abs(keeper_bonus)
+            if total > 0:
+                bat, bowl, field, keeper_bonus = bat / total, bowl / total, field / total, keeper_bonus / total
         result = {
             "bat": float(bat),
             "bowl": float(bowl),
@@ -133,9 +134,18 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="Output JSON path for coefficients")
     parser.add_argument("--alpha", type=float, default=1.0, help="Ridge alpha (default 1.0)")
     parser.add_argument("--per-format", action="store_true", help="Fit separate model per format")
+    parser.add_argument(
+        "--no-normalize-weights",
+        action="store_false",
+        dest="normalize_weights",
+        default=True,
+        help="If set, output raw Ridge coefficients; otherwise normalize so weights sum to ~1 (default)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    train_and_export(args.csv, args.out, alpha=args.alpha, per_format=args.per_format)
+    train_and_export(
+        args.csv, args.out, alpha=args.alpha, per_format=args.per_format, normalize_weights=args.normalize_weights
+    )
     print("Coefficients written to", args.out)
 
 

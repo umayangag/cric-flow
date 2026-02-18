@@ -7,6 +7,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 go build -o /out/api ./cmd/api
 
 # Final stage: alpine so we can use an entrypoint script to log exit code (137 = likely OOM).
+# Kept as fallback when the watcher container is not run (see docs/CRASH_DIAGNOSIS.md).
 FROM alpine:3.20
 RUN apk --no-cache add ca-certificates
 WORKDIR /
