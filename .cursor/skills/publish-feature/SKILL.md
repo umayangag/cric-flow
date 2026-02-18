@@ -30,14 +30,19 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 ### 3. Check for existing unresolved Gemini threads
 
 - **Fetch** unresolved review threads by `gemini-code-assist` for the PR (same GraphQL/pagination as in **fix-gemini-reviews**).
-- **If count > 0:** There are existing comments. **Resolve them first:** implement the suggested fixes (per-thread path/line/body or ```suggestion```), run **run-check-all-incremental** only if there are uncommitted changes (fix and re-run failed part until all pass), resolve the fixed threads via GraphQL, commit and push (e.g. `git add . && git commit -m "Fix Gemini comments" && git push`). Then **start the main cycle** from step A.
-- **If count = 0:** No existing comments. **Start the main cycle** from step A.
+- **If count > 0:** There are existing comments. **Resolve them first:** implement the suggested fixes (per-thread path/line/body or ```suggestion```), run **run-check-all-incremental** only if there are uncommitted changes (fix and re-run failed part until all pass), resolve the fixed threads via GraphQL, commit and push (e.g. `git add . && git commit -m "Fix Gemini comments" && git push`). Then **start the main cycle**: do step A (post `/gemini review` on the PR), then B, C, D.
+- **If count = 0:** No existing comments. **Start the main cycle**: do step A (post `/gemini review` on the PR), then B, C, D. Do not skip step A — without it there will be no suggestions.
 
 ---
 
 ## Main cycle (repeat until exit condition)
 
-- Comment on the PR: `/gemini review` (e.g. `gh pr comment <PR> --body "/gemini review"`).
+**Mandatory:** Every cycle iteration **must** begin with step A. Do **not** run step B (wait) or step C (fetch) until you have posted `/gemini review` on the PR in this iteration. Without this comment, Gemini does not run and there will be no review suggestions.
+
+### A. Request Gemini review
+
+- **Post** a comment on the PR with body `/gemini review` (e.g. `gh pr comment <PR> --body "/gemini review"`).
+- Do this **first**, before waiting or fetching. Then proceed to step B.
 
 ### B. Wait for Gemini (learn optimum time)
 
@@ -61,7 +66,7 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 ### D. Loop or exit
 
 - **Exit** if cycle = 10 or (after step C) unresolved Gemini thread count = 0.
-- Otherwise **go back to step A**.
+- Otherwise **go back to step A** (post `/gemini review` again, then B, C, D).
 
 ---
 
@@ -87,10 +92,10 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 | 2 | Create PR if needed; note PR number (do not comment yet) |
 | 3 | Fetch unresolved Gemini threads; if &gt; 0 → fix, run-check-all-incremental (if changes), resolve, push; then start cycle. If 0 → start cycle. |
 
-**Main cycle:**  
+**Main cycle (do A then B then C then D; never skip A):**  
 | Step | Action |
 |------|--------|
-| A | Comment `/gemini review` on PR |
+| A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
 | B | Wait optimum_wait_minutes (from file, default 5), then poll every 90s for thread count; proceed when &gt;0 or 10 min; update file with elapsed when threads appear |
 | C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push |
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |

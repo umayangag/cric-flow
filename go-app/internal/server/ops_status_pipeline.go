@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
@@ -19,10 +18,8 @@ var pipelineStepCommands = map[string]string{
 	// auto_tune has no tracking command; optional step
 }
 
-const pipelineRecentLimit = 5
-
-// buildPipelineSection returns a map with "steps" (per-step running bool) and "overview"
-// (in_progress jobs and recent completed/failed) for /ops/status.
+// buildPipelineSection returns a map with "steps" (per-step running bool) for /ops/status.
+// Migration history (running/recent jobs) is shown in the separate Migration History section.
 func buildPipelineSection(ctx context.Context) map[string]any {
 	steps := map[string]any{}
 	for stepID, command := range pipelineStepCommands {
@@ -34,57 +31,5 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 		steps[stepID] = map[string]any{"running": running}
 	}
 	steps["auto_tune"] = map[string]any{"running": false}
-
-	inProgress, err := tracking.GetInProgressMigrations(ctx)
-	if err != nil {
-		slog.Warn("pipeline: GetInProgressMigrations failed", "err", err)
-	}
-	recent, err := tracking.GetRecentMigrations(ctx, pipelineRecentLimit)
-	if err != nil {
-		slog.Warn("pipeline: GetRecentMigrations failed", "err", err)
-	}
-	overview := map[string]any{
-		"in_progress": buildInProgressOverview(inProgress),
-		"recent":      buildRecentOverview(recent),
-	}
-	return map[string]any{"steps": steps, "overview": overview}
-}
-
-func buildInProgressOverview(migrations []tracking.Migration) []map[string]any {
-	out := make([]map[string]any, 0, len(migrations))
-	for _, m := range migrations {
-		out = append(out, map[string]any{
-			"id":         m.ID,
-			"command":    m.Command,
-			"started_at": formatTime(m.StartedAt),
-		})
-	}
-	return out
-}
-
-func buildRecentOverview(migrations []tracking.Migration) []map[string]any {
-	out := make([]map[string]any, 0, len(migrations))
-	for _, m := range migrations {
-		entry := map[string]any{
-			"id":         m.ID,
-			"command":    m.Command,
-			"started_at": formatTime(m.StartedAt),
-			"status":     string(m.Status),
-		}
-		if m.CompletedAt != nil {
-			entry["completed_at"] = formatTime(*m.CompletedAt)
-		}
-		if m.ErrorMessage != "" {
-			entry["error_message"] = m.ErrorMessage
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.UTC().Format(time.RFC3339)
+	return map[string]any{"steps": steps}
 }
