@@ -10,7 +10,7 @@ import (
 )
 
 func TestBacktestAccuracyTrendHandler_InvalidStartDate(t *testing.T) {
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	// invalid start_date format (slashes)
 	req := httptest.NewRequest(
@@ -25,7 +25,7 @@ func TestBacktestAccuracyTrendHandler_InvalidStartDate(t *testing.T) {
 }
 
 func TestBacktestAccuracyTrendHandler_InvalidEndDate(t *testing.T) {
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	// invalid end_date format (slashes)
 	req := httptest.NewRequest(
@@ -40,7 +40,7 @@ func TestBacktestAccuracyTrendHandler_InvalidEndDate(t *testing.T) {
 }
 
 func TestBacktestAccuracyTrendHandler_EndBeforeStart(t *testing.T) {
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	// end before start should yield 400
 	req := httptest.NewRequest(
@@ -62,7 +62,7 @@ func TestBacktestAccuracyTrendHandler_EmptyResults(t *testing.T) {
 		return []backtestCandidate{}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,

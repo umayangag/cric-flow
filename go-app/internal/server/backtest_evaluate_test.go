@@ -54,7 +54,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=111", nil)
 
@@ -88,7 +88,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 }
 
 func TestBacktestMatchHandler_EvaluateMode_MissingMatchID(t *testing.T) {
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	// mode will be evaluate because we set it, but match_id missing
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate", nil)
@@ -140,7 +140,7 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=222", nil)
 	app.backtestMatchHandler(rr, req)
@@ -194,7 +194,7 @@ func TestBacktestMatchHandler_EvaluateMode_BowlingMetrics(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=999", nil)
 
@@ -272,7 +272,7 @@ func TestBacktestMatchHandler_EvaluateMode_FieldingMetrics(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=1001", nil)
 
@@ -343,7 +343,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 		return matchAggregates{Runs: 150, Wickets: 7, Extras: 10, WinnerTeamCode: "IND"}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=555", nil)
 
@@ -410,7 +410,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_FromPlayerPreds(t *te
 		return matchAggregates{Runs: 95, Wickets: 6, Extras: 6, WinnerTeamCode: "AUS"}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=777", nil)
 	app.backtestMatchHandler(rr, req)
@@ -470,7 +470,7 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=111", nil)
 
@@ -539,7 +539,7 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
 		return map[int64]map[string]float64{}, nil
 	}
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=313", nil)
 

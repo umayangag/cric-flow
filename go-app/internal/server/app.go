@@ -13,7 +13,7 @@ type App struct {
 
 // NewApp creates an App. jobCtx is cancelled when the process receives SIGTERM/SIGINT;
 // pipeline jobs use it so they stop cleanly during shutdown. Pass nil in tests for context.Background() behavior.
-func NewApp(client Client, jobCtx context.Context) *App {
+func NewApp(jobCtx context.Context, client Client) *App {
 	return &App{
 		mlClient:   client,
 		dbProbe:    newProductionDBProbe(),

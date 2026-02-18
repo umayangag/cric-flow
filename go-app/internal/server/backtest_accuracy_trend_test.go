@@ -111,7 +111,7 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -212,7 +212,7 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -318,7 +318,7 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -402,7 +402,7 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -458,7 +458,7 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS", nil)
 	app.backtestAccuracyTrendHandler(rr, req)
@@ -529,7 +529,7 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -599,7 +599,7 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 		}
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -678,7 +678,7 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		// Not strictly necessary for single-call verification.
 	})
 
-	app := NewApp(nil, nil)
+	app := NewApp(context.Background(), nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(
 		http.MethodGet,

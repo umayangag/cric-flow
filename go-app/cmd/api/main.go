@@ -74,7 +74,7 @@ func run() int {
 
 	// Initialize long-lived dependencies
 	client := mlclient.New()
-	server := apipkg.NewApp(client, jobCtx)
+	server := apipkg.NewApp(jobCtx, client)
 
 	// Build router with dependencies
 	r := apipkg.NewRouter(server)

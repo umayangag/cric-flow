@@ -50,7 +50,7 @@ func buildInProgressOverview(migrations []tracking.Migration) []map[string]any {
 	for _, m := range migrations {
 		out = append(out, map[string]any{
 			"id":         m.ID,
-			"command":   m.Command,
+			"command":    m.Command,
 			"started_at": formatTime(m.StartedAt),
 		})
 	}
@@ -62,9 +62,9 @@ func buildRecentOverview(migrations []tracking.Migration) []map[string]any {
 	for _, m := range migrations {
 		entry := map[string]any{
 			"id":         m.ID,
-			"command":   m.Command,
+			"command":    m.Command,
 			"started_at": formatTime(m.StartedAt),
-			"status":    string(m.Status),
+			"status":     string(m.Status),
 		}
 		if m.CompletedAt != nil {
 			entry["completed_at"] = formatTime(*m.CompletedAt)

@@ -92,8 +92,12 @@ function pipelineOverviewFromData(data: OpsStatus | null): {
   inProgress: PipelineJobSummary[];
   recent: PipelineJobRecent[];
 } {
-  const pipeline = data && typeof data.pipeline === 'object' ? data.pipeline as Record<string, unknown> : null;
-  const overview = pipeline?.overview && typeof pipeline.overview === 'object' ? pipeline.overview as { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] } : null;
+  const pipeline =
+    data && typeof data.pipeline === 'object' ? (data.pipeline as Record<string, unknown>) : null;
+  const overview =
+    pipeline?.overview && typeof pipeline.overview === 'object'
+      ? (pipeline.overview as { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] })
+      : null;
   return {
     inProgress: Array.isArray(overview?.in_progress) ? overview.in_progress : [],
     recent: Array.isArray(overview?.recent) ? overview.recent : [],
@@ -155,7 +159,10 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
                 <TableCell>{job.status ?? '—'}</TableCell>
                 <TableCell>{job.started_at ?? '—'}</TableCell>
                 <TableCell>{job.completed_at ?? '—'}</TableCell>
-                <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} title={job.error_message}>
+                <TableCell
+                  sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  title={job.error_message}
+                >
                   {job.error_message ?? '—'}
                 </TableCell>
               </TableRow>
