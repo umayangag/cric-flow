@@ -34,13 +34,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 		opts = &Options{}
 	}
 	if concurrency <= 0 {
-		concurrency = resources.ConcurrencyLimit(resources.KindImport, 0, func() int {
-			cfg := config.Load()
-			if cfg != nil && cfg.Pipeline.ImportConcurrency > 0 {
-				return cfg.Pipeline.ImportConcurrency
-			}
-			return 0
-		})
+		concurrency = resources.GetLimit(resources.KindImport)
 	}
 	if concurrency < 1 {
 		concurrency = 1

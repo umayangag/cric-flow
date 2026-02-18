@@ -53,7 +53,7 @@ Environment variables:
 - `GO_APP_CONFIG` — path to an alternate `config.json`.
 - `GO_APP_INPUT_DIR` — default input dir for cricsheet importer.
 - `GO_APP_OUTPUT_DIR` — default output dir for exporter.
-- **Resource-aware concurrency** (override auto when set): `PRECOMPUTE_CONCURRENCY`, `CRICSHEET_CONCURRENCY`, `SEQCALC_CONCURRENCY`, `EXPORT_CONCURRENCY`, `FIELDING_CONCURRENCY`. Auto uses **GOMEMLIMIT** (e.g. `GOMEMLIMIT=2GiB`) or cgroup memory limit when available to cap workers and avoid OOM.
+- **Resource-aware concurrency** (override auto when set): `PRECOMPUTE_CONCURRENCY`, `IMPORT_CONCURRENCY`, `SEQCALC_CONCURRENCY`, `EXPORT_CONCURRENCY`, `FIELDING_CONCURRENCY`. Auto uses **GOMEMLIMIT** (e.g. `GOMEMLIMIT=2GiB`) or cgroup memory limit when available to cap workers and avoid OOM.
 
 CLI examples:
 - Precompute for specific formats: `go run ./go-app/cmd/precompute -season=2019 -formats=ODI,T20I`
@@ -99,7 +99,7 @@ Environment variables:
 - `MODELS_DIR` — legacy env var also recognized as an artifacts directory override.
 - `GO_APP_OUTPUT_DIR` — training scripts use this to locate exported CSVs if not specified via `--csv`.
 - `ENABLE_HOT_RELOAD` — when set to `1/true/yes`, enables `POST /admin/reload` to rescan and reload artifacts without restarting the server.
-- **Resource-aware training/tuning:** When `n_jobs` is -1 in config, the service uses CPU count and optional memory limits to choose parallelism. Override: `ML_N_JOBS` (explicit value), `ML_N_JOBS_MAX` (cap), `ML_MEMORY_LIMIT_MB` (for containers). `AUTO_TUNE_N_JOBS` overrides n_jobs for auto_tune only.
+- **Resource-aware training/tuning:** When `n_jobs` is -1 in config, the service uses CPU count and optional memory limits to choose parallelism. Override: `ML_N_JOBS` (explicit value), `ML_N_JOBS_MAX` (cap), `ML_MEMORY_LIMIT_MB` (for containers).
 
 CLI examples:
 - Train all configured formats (from `ml-service` directory): `make train-all`

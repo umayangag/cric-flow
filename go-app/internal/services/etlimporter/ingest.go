@@ -13,7 +13,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
@@ -47,13 +46,7 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 		return Stats{}, errors.New("input directory required")
 	}
 	if conc <= 0 {
-		conc = resources.ConcurrencyLimit(resources.KindImport, 0, func() int {
-			cfg := config.Load()
-			if cfg != nil && cfg.Pipeline.ImportConcurrency > 0 {
-				return cfg.Pipeline.ImportConcurrency
-			}
-			return 0
-		})
+		conc = resources.GetLimit(resources.KindImport)
 	}
 	if conc < 1 {
 		conc = 1

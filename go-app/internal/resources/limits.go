@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 )
 
 // Kind identifies the pipeline or operation for env/config overrides.
@@ -34,21 +36,21 @@ const (
 )
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
-// Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > config callback >
+// Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >
 // memory-based limit (from GOMEMLIMIT or cgroup) > CPU-based default.
 // Floor 1, ceiling is kind-specific (e.g. NumCPU*2 for import).
 func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int {
+	envKey := envKeyForKind(kind)
+	if v := os.Getenv(envKey); v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
+			return clamp(n, 1, ceiling(kind))
+		}
+	}
 	if configLimit > 0 {
 		return clamp(configLimit, 1, ceiling(kind))
 	}
 	if getConfigLimit != nil {
 		if n := getConfigLimit(); n > 0 {
-			return clamp(n, 1, ceiling(kind))
-		}
-	}
-	envKey := envKeyForKind(kind)
-	if v := os.Getenv(envKey); v != "" {
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
 			return clamp(n, 1, ceiling(kind))
 		}
 	}
@@ -70,12 +72,35 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	return n
 }
 
+// GetLimit returns the resource-aware concurrency limit for the given kind,
+// using config.Pipeline when set and ConcurrencyLimit for env/memory/CPU fallback.
+func GetLimit(kind Kind) int {
+	return ConcurrencyLimit(kind, 0, func() int {
+		cfg := config.Load()
+		if cfg == nil {
+			return 0
+		}
+		switch kind {
+		case KindPrecompute:
+			return cfg.Pipeline.PrecomputeConcurrency
+		case KindImport:
+			return cfg.Pipeline.ImportConcurrency
+		case KindSeqCalc:
+			return cfg.Pipeline.SeqCalcConcurrency
+		case KindExport:
+			return cfg.Pipeline.ExportConcurrency
+		default:
+			return 0
+		}
+	})
+}
+
 func envKeyForKind(kind Kind) string {
 	switch kind {
 	case KindPrecompute:
 		return "PRECOMPUTE_CONCURRENCY"
 	case KindImport:
-		return "CRICSHEET_CONCURRENCY"
+		return "IMPORT_CONCURRENCY"
 	case KindExport:
 		return "EXPORT_CONCURRENCY"
 	case KindSeqCalc:

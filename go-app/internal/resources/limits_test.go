@@ -34,6 +34,11 @@ func TestConcurrencyLimit_EnvOverride(t *testing.T) {
 	if got != 2 {
 		t.Errorf("with PRECOMPUTE_CONCURRENCY=2 got %d, want 2", got)
 	}
+	// Env must win over config callback: config says 8, env says 2 → 2
+	got = ConcurrencyLimit(KindPrecompute, 0, func() int { return 8 })
+	if got != 2 {
+		t.Errorf("env should override config callback: got %d, want 2", got)
+	}
 
 	_ = os.Unsetenv(envKey)
 	got = ConcurrencyLimit(KindPrecompute, 0, nil)

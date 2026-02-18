@@ -11,18 +11,11 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
 
 func seqcalcConcurrency() int {
-	return resources.ConcurrencyLimit(resources.KindSeqCalc, 0, func() int {
-		cfg := config.Load()
-		if cfg != nil && cfg.Pipeline.SeqCalcConcurrency > 0 {
-			return cfg.Pipeline.SeqCalcConcurrency
-		}
-		return 0
-	})
+	return resources.GetLimit(resources.KindSeqCalc)
 }
 
 // Registry holds available calculators keyed by target name.
