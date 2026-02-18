@@ -166,9 +166,7 @@ func trackingStaleCancelAge() time.Duration {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
-		if err != nil {
-			slog.Warn("invalid value for TRACKING_STALE_CANCEL_AGE, using default", "value", s, "err", err, "default", defaultAge)
-		}
+		slog.Warn("invalid or non-positive value for TRACKING_STALE_CANCEL_AGE, using default", "value", s, "err", err, "default", defaultAge)
 		return defaultAge
 	}
 	return d
