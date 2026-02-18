@@ -274,54 +274,17 @@ func EffectiveScoreWeightsForFormat(cfg *Config, format string) (bat, bowl, fiel
 	if meta := loadMetaModel(cfg); meta != nil {
 		if len(meta.PerFormat) > 0 {
 			if w, ok := meta.PerFormat[format]; ok {
-				bat, bowl, field, keeperBonus = w.Bat, w.Bowl, w.Field, w.KeeperBonus
-				if bat > 0 || bowl > 0 {
-					if bat == 0 {
-						bat = DefaultScoreWeightBat
-					}
-					if bowl == 0 {
-						bowl = DefaultScoreWeightBowl
-					}
-					if field == 0 {
-						field = DefaultScoreWeightField
-					}
-					return bat, bowl, field, keeperBonus
-				}
+				return w.Bat, w.Bowl, w.Field, w.KeeperBonus
 			}
 		}
 		if meta.Bat > 0 || meta.Bowl > 0 {
-			bat, bowl, field, keeperBonus = meta.Bat, meta.Bowl, meta.Field, meta.KeeperBonus
-			if bat == 0 {
-				bat = DefaultScoreWeightBat
-			}
-			if bowl == 0 {
-				bowl = DefaultScoreWeightBowl
-			}
-			if field == 0 {
-				field = DefaultScoreWeightField
-			}
-			return bat, bowl, field, keeperBonus
+			return meta.Bat, meta.Bowl, meta.Field, meta.KeeperBonus
 		}
 	}
 	// 2. Config score_weights_by_format
 	if cfg != nil && len(cfg.Selection.ScoreWeightsByFormat) > 0 {
-		if w, ok := cfg.Selection.ScoreWeightsByFormat[format]; ok && (w.Bat > 0 || w.Bowl > 0) {
-			bat = w.Bat
-			bowl = w.Bowl
-			field = w.Field
-			keeperBonus = w.KeeperBonus
-			if bat > 0 || bowl > 0 {
-				if bat == 0 {
-					bat = DefaultScoreWeightBat
-				}
-				if bowl == 0 {
-					bowl = DefaultScoreWeightBowl
-				}
-				if field == 0 {
-					field = DefaultScoreWeightField
-				}
-				return bat, bowl, field, keeperBonus
-			}
+		if w, ok := cfg.Selection.ScoreWeightsByFormat[format]; ok {
+			return w.Bat, w.Bowl, w.Field, w.KeeperBonus
 		}
 	}
 	return EffectiveScoreWeights(cfg)

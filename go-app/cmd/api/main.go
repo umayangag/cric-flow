@@ -109,13 +109,13 @@ func run() int {
 		slog.Info("shutdown requested", slog.String("signal", sig.String()))
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer shutdownCancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("server shutdown failed (timeout or error)", slog.Any("err", err))
-			db.Close()
+		shutdownErr := srv.Shutdown(shutdownCtx)
+		db.Close() // Ensure DB connection is closed after shutdown attempt
+		if shutdownErr != nil {
+			slog.Error("server shutdown failed (timeout or error)", slog.Any("err", shutdownErr))
 			return 1
 		}
 		slog.Info("server shutdown complete")
-		db.Close()
 		return 0
 	case err := <-serverErr:
 		if err != nil {

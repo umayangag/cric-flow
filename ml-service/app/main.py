@@ -98,10 +98,8 @@ def _install_crash_logging() -> None:
                 if exc_type and exc_value
                 else "",
             )
-            if _orig_thread_excepthook is not threading.excepthook:
+            if _orig_thread_excepthook:
                 _orig_thread_excepthook(args)
-            elif exc_type and exc_value and exc_tb is not None:
-                sys.__stderr__.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
         threading.excepthook = _thread_excepthook
 
@@ -274,7 +272,8 @@ def _predict_players_with_features(
             X_bat = np.array(bat_vecs, dtype=float)
         else:
             X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
-    except Exception:
+    except Exception as e:
+        logger.warning("predict.feature_transform.failed", error=str(e), exc_info=True)
         X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
     if scaler_bat is not None:
         X_bat = scaler_bat.transform(X_bat)
