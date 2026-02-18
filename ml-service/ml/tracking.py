@@ -15,8 +15,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Commands that form the main pipeline; only one may be IN_PROGRESS at a time (singleton).
-# Single source of truth: keep in sync with go-app/internal/pipeline/job.go PipelineCommands.
-# Any change must be applied in both places. Long-term: shared config or build-time generation.
+# Must stay in sync with go-app/internal/pipeline/job.go PipelineCommands; apply changes in both.
+# Future mitigation options: shared config (JSON/YAML), API endpoint from go-app, or build-time generation.
 PIPELINE_COMMANDS = (
     "cricsheet-import",
     "precompute-features",
@@ -29,6 +29,21 @@ PIPELINE_COMMANDS = (
 
 def get_connection():
     return get_db_connection()
+
+
+@contextmanager
+def db_connection():
+    """Context manager for DB connections; ensures close and logs close errors."""
+    conn = None
+    try:
+        conn = get_connection()
+        yield conn
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.warning("tracking.connection_close_failed", extra={"error": str(e)})
 
 
 # Default age (minutes) for considering an IN_PROGRESS run stale on startup.
@@ -76,62 +91,48 @@ def cancel_in_progress_on_startup(
         stale_minutes = DEFAULT_STALE_CANCEL_AGE_MINUTES
     if stale_minutes <= 0:
         return 0
-    conn = None
     try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE data_migrations
-                SET status = 'CANCELLED', completed_at = NOW(), error_message = %s
-                WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 minute')
-                """,
-                (reason, stale_minutes),
-            )
-            n = cur.rowcount
-        conn.commit()
-        if n:
-            logger.info(
-                "tracking.cancelled_stale_on_startup",
-                extra={"cancelled": n, "stale_minutes": stale_minutes},
-            )
-        return n
+        with db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE data_migrations
+                    SET status = 'CANCELLED', completed_at = NOW(), error_message = %s
+                    WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 minute')
+                    """,
+                    (reason, stale_minutes),
+                )
+                n = cur.rowcount
+            conn.commit()
+            if n:
+                logger.info(
+                    "tracking.cancelled_stale_on_startup",
+                    extra={"cancelled": n, "stale_minutes": stale_minutes},
+                )
+            return n
     except Exception as e:
         logger.warning("tracking.cancel_stale_on_startup_failed", extra={"error": str(e)})
         return 0
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 def has_any_pipeline_in_progress() -> bool:
     """True if any pipeline command has an IN_PROGRESS row (singleton check)."""
-    conn = None
     try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT EXISTS(
-                    SELECT 1 FROM data_migrations
-                    WHERE status = 'IN_PROGRESS' AND command IN %s
+        with db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1 FROM data_migrations
+                        WHERE status = 'IN_PROGRESS' AND command IN %s
+                    )
+                    """,
+                    (tuple(PIPELINE_COMMANDS),),
                 )
-                """,
-                (tuple(PIPELINE_COMMANDS),),
-            )
-            return cur.fetchone()[0]
+                return cur.fetchone()[0]
     except Exception as e:
         logger.warning("tracking.check_pipeline_busy_failed", extra={"error": str(e)})
         return True  # fail-closed: assume a pipeline is running to preserve singleton
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 class Tracker:
