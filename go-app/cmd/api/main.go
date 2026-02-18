@@ -68,9 +68,13 @@ func run() int {
 		return 1
 	}
 
+	// Context cancelled on SIGTERM/SIGINT so in-flight pipeline jobs exit gracefully
+	jobCtx, cancelJob := context.WithCancel(context.Background())
+	defer cancelJob()
+
 	// Initialize long-lived dependencies
 	client := mlclient.New()
-	server := apipkg.NewApp(client)
+	server := apipkg.NewApp(client, jobCtx)
 
 	// Build router with dependencies
 	r := apipkg.NewRouter(server)
@@ -107,6 +111,7 @@ func run() int {
 	select {
 	case sig := <-quit:
 		slog.Info("shutdown requested", slog.String("signal", sig.String()))
+		cancelJob() // cancel pipeline job context so in-flight jobs see ctx.Done() and exit
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer shutdownCancel()
 		shutdownErr := srv.Shutdown(shutdownCtx)

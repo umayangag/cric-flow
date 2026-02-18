@@ -16,7 +16,13 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
-import { TableStat } from '../types';
+import { TableStat, type PipelineJobSummary, type PipelineJobRecent } from '../types';
+import Box from '@mui/material/Box';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 
 // Local helpers for safely reading dynamic sections
 const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
@@ -81,6 +87,89 @@ export type OpsStatus = {
 };
 
 const REFRESH_MS = 15000;
+
+function pipelineOverviewFromData(data: OpsStatus | null): {
+  inProgress: PipelineJobSummary[];
+  recent: PipelineJobRecent[];
+} {
+  const pipeline = data && typeof data.pipeline === 'object' ? data.pipeline as Record<string, unknown> : null;
+  const overview = pipeline?.overview && typeof pipeline.overview === 'object' ? pipeline.overview as { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] } : null;
+  return {
+    inProgress: Array.isArray(overview?.in_progress) ? overview.in_progress : [],
+    recent: Array.isArray(overview?.recent) ? overview.recent : [],
+  };
+}
+
+const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }) => {
+  const { inProgress, recent } = pipelineOverviewFromData(data);
+  const hasPipeline = data && typeof data.pipeline === 'object';
+  if (!hasPipeline) return null;
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        Pipeline progress
+      </Typography>
+      <Typography variant="body2" sx={{ mb: 0.5 }}>
+        <strong>Running:</strong>
+      </Typography>
+      {inProgress.length > 0 ? (
+        <Table size="small" sx={{ mb: 1, maxWidth: 560 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Command</TableCell>
+              <TableCell>Started (UTC)</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {inProgress.map((job, i) => (
+              <TableRow key={job.id ?? i}>
+                <TableCell>{job.command ?? '—'}</TableCell>
+                <TableCell>{job.started_at ?? '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          No jobs in progress.
+        </Typography>
+      )}
+      <Typography variant="body2" sx={{ mb: 0.5 }}>
+        <strong>Recent jobs:</strong>
+      </Typography>
+      {recent.length > 0 ? (
+        <Table size="small" sx={{ maxWidth: 560 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Command</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Started</TableCell>
+              <TableCell>Completed</TableCell>
+              <TableCell>Error</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {recent.map((job, i) => (
+              <TableRow key={job.id ?? i}>
+                <TableCell>{job.command ?? '—'}</TableCell>
+                <TableCell>{job.status ?? '—'}</TableCell>
+                <TableCell>{job.started_at ?? '—'}</TableCell>
+                <TableCell>{job.completed_at ?? '—'}</TableCell>
+                <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} title={job.error_message}>
+                  {job.error_message ?? '—'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          No recent jobs.
+        </Typography>
+      )}
+    </Box>
+  );
+};
 
 const OpsStatusTab: React.FC = () => {
   const [data, setData] = useState<OpsStatus | null>(null);
@@ -176,6 +265,7 @@ const OpsStatusTab: React.FC = () => {
             title="Pipeline"
             subtitle="Data import → precompute → export → train models. Click a step to copy its command."
           >
+            <PipelineProgressOverview data={data} />
             <OpsPipelineGraph data={data} onRefresh={fetchStatus} />
           </SectionCard>
           <SectionCard title="Migration History">

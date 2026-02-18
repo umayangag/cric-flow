@@ -29,10 +29,10 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch step {
 	case "import":
-		importCricSheetHandler(w, r)
+		a.importCricSheetHandler(w, r)
 		return
 	case "precompute":
-		precomputeHandler(w, r)
+		a.precomputeHandler(w, r)
 		return
 	case "export":
 		a.runExportHandler(w, r)
@@ -81,7 +81,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 	go func() {
 		slog.Info("export-dataset started", slog.String("dir", outDir))
 		runErr := pipeline.RunJob(
-			context.Background(),
+			a.JobContext(),
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
 			config.PipelineTimeout(),

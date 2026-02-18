@@ -186,11 +186,27 @@ export type OpsStatusDTO = {
         >
       | undefined;
   };
-  /** Pipeline step running state from backend (steps[stepId].running) */
+  /** Pipeline step running state and overview from backend */
   pipeline?: {
     steps?: Record<string, { running?: boolean }>;
+    overview?: {
+      in_progress?: PipelineJobSummary[];
+      recent?: PipelineJobRecent[];
+    };
   };
   [key: string]: unknown;
+};
+
+export type PipelineJobSummary = {
+  id?: number;
+  command?: string;
+  started_at?: string;
+};
+
+export type PipelineJobRecent = PipelineJobSummary & {
+  status?: string;
+  completed_at?: string;
+  error_message?: string;
 };
 
 /** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */

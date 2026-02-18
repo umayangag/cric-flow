@@ -34,7 +34,7 @@ func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
 		}, nil
 	}
 
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS", nil)
 
@@ -61,7 +61,7 @@ func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
 }
 
 func TestBacktestMatchHandler_SelectMode_MissingParams(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND", nil)
 	app.backtestMatchHandler(rr, req)
@@ -78,7 +78,7 @@ func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
 		return nil, errors.New("db failure")
 	}
 
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS", nil)
 
