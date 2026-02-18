@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -286,17 +287,21 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 // SetPoolAPI allows tests to inject a mock pool implementation.
 func SetPoolAPI(p PoolIface) { PoolAPI = p }
 
+var closeOnce sync.Once
+
 // Close closes the global connection pool if initialized. Safe to call multiple times.
 // Call during graceful shutdown so in-flight connections drain and logs are flushed.
 func Close() {
-	if Pool == nil {
-		return
-	}
-	Pool.Close()
-	Pool = nil
-	defaultDB = nil
-	PoolAPI = nil
-	slog.Info("db.Close: pool closed")
+	closeOnce.Do(func() {
+		if Pool == nil {
+			return
+		}
+		Pool.Close()
+		Pool = nil
+		defaultDB = nil
+		PoolAPI = nil
+		slog.Info("db.Close: pool closed")
+	})
 }
 
 // RunInTx runs fn inside a transaction. Commits on success, rolls back on error or panic.
