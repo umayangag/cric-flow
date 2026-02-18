@@ -79,6 +79,7 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Drop if exists so this works when the same connection is reused (e.g. concurrent seqcalc workers).
 	if err := tx.Exec(ctx, `DROP TABLE IF EXISTS bat_trans_stage`); err != nil {
 		return err
 	}
