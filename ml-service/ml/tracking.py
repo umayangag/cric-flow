@@ -54,7 +54,7 @@ def _parse_go_duration(raw: str) -> Optional[int]:
     """Parse Go-style duration (e.g. 24h, 1h30m, 2h15m30s) into seconds.
     Aligns with Go time.ParseDuration: supports ns, us/µs, ms, s, m, h in any order.
     Returns None on parse failure or non-positive result."""
-    raw = raw.strip().lower()
+    raw = "".join(raw.strip().lower().split())
     if not raw:
         return None
     # Match sequences of number + unit (Go format)

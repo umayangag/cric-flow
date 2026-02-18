@@ -18,6 +18,15 @@ var pipelineStepCommands = map[string]string{
 	// auto_tune has no tracking command; optional step
 }
 
+// getPipelineCommands returns the list of pipeline command names for tracking (in progress / runnable checks).
+func getPipelineCommands() []string {
+	commands := make([]string, 0, len(pipelineStepCommands))
+	for _, cmd := range pipelineStepCommands {
+		commands = append(commands, cmd)
+	}
+	return commands
+}
+
 // pipelineStepOrder defines the run order; step N is only runnable after step N-1 completed successfully.
 // Empty string means no previous step (always runnable when no other pipeline is running).
 var pipelineStepPreviousCommand = map[string]string{
@@ -33,10 +42,7 @@ var pipelineStepPreviousCommand = map[string]string{
 // buildPipelineSection returns a map with "steps" (per-step running, runnable) for /ops/status.
 // A step is runnable only when no pipeline is running and the previous step has completed successfully.
 func buildPipelineSection(ctx context.Context) map[string]any {
-	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, []string{
-		"cricsheet-import", "precompute-features", "export-dataset",
-		"train-batting", "train-bowling", "train-fielding",
-	})
+	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, getPipelineCommands())
 	steps := map[string]any{}
 	for stepID, command := range pipelineStepCommands {
 		running, err := tracking.HasInProgressForCommand(ctx, command)
@@ -88,10 +94,7 @@ func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg str
 	if !hasCommand && stepID != "auto_tune" {
 		return false, "unknown step"
 	}
-	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, []string{
-		"cricsheet-import", "precompute-features", "export-dataset",
-		"train-batting", "train-bowling", "train-fielding",
-	})
+	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, getPipelineCommands())
 	if anyRunning {
 		return false, "another pipeline step is already running"
 	}
