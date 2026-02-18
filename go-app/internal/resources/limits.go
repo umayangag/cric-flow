@@ -182,6 +182,21 @@ func detectMemoryLimitBytes() int64 {
 	return 0
 }
 
+// gomemlimitUnits is the list of size suffixes for parseGOMEMLIMIT (longest first for correct parsing).
+var gomemlimitUnits = []struct {
+	suffix string
+	mult   int64
+}{
+	{"TIB", 1024 * 1024 * 1024 * 1024},
+	{"GIB", 1024 * 1024 * 1024},
+	{"MIB", 1024 * 1024},
+	{"KIB", 1024},
+	{"TB", 1000 * 1000 * 1000 * 1000},
+	{"GB", 1000 * 1000 * 1000},
+	{"MB", 1000 * 1000},
+	{"KB", 1000},
+}
+
 // parseGOMEMLIMIT parses Go 1.19+ GOMEMLIMIT values like "512MiB", "8GiB", "1e9".
 func parseGOMEMLIMIT(s string) int64 {
 	s = strings.TrimSpace(s)
@@ -189,21 +204,8 @@ func parseGOMEMLIMIT(s string) int64 {
 		return 0
 	}
 	s = strings.ToUpper(s)
-	units := []struct {
-		suffix string
-		mult   int64
-	}{
-		{"TIB", 1024 * 1024 * 1024 * 1024},
-		{"GIB", 1024 * 1024 * 1024},
-		{"MIB", 1024 * 1024},
-		{"KIB", 1024},
-		{"TB", 1000 * 1000 * 1000 * 1000},
-		{"GB", 1000 * 1000 * 1000},
-		{"MB", 1000 * 1000},
-		{"KB", 1000},
-	}
 	var mult int64 = 1
-	for _, unit := range units {
+	for _, unit := range gomemlimitUnits {
 		if strings.HasSuffix(s, unit.suffix) {
 			mult, s = unit.mult, strings.TrimSuffix(s, unit.suffix)
 			break

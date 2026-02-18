@@ -268,15 +268,7 @@ func (Runner) RunReplay(
 	}
 
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
-	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-	slog.Info("precompute-features(replay): triggering sequence calculations",
-		slog.String("format", formatCode),
-		slog.Int("seqcalc_concurrency", seqcalcLimit),
-		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
-		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
-	)
+	logSeqCalcTrigger(formatCode, "replay")
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
 		slog.Error(
 			"precompute-features(replay): sequence calculations failed",
@@ -408,15 +400,7 @@ func (Runner) RunPointInTime(
 	)
 
 	// Trigger sequence features calculation
-	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
-	var memAsOf runtime.MemStats
-	runtime.ReadMemStats(&memAsOf)
-	slog.Info("precompute-features(as-of): triggering sequence calculations",
-		slog.String("format", formatCode),
-		slog.Int("seqcalc_concurrency", seqcalcLimit),
-		slog.Uint64("heap_alloc_mb", memAsOf.Alloc/(1024*1024)),
-		slog.Uint64("heap_inuse_mb", memAsOf.HeapInuse/(1024*1024)),
-	)
+	logSeqCalcTrigger(formatCode, "as-of")
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
 		slog.Error(
 			"precompute-features(as-of): sequence calculations failed",
@@ -427,6 +411,19 @@ func (Runner) RunPointInTime(
 	}
 
 	return nil
+}
+
+// logSeqCalcTrigger logs concurrency and heap before triggering sequence calculations (shared by replay and as-of).
+func logSeqCalcTrigger(formatCode, mode string) {
+	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	slog.Info("precompute-features("+mode+"): triggering sequence calculations",
+		slog.String("format", formatCode),
+		slog.Int("seqcalc_concurrency", seqcalcLimit),
+		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
+		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
+	)
 }
 
 func toFeatureInnings(in []db.InnVal) []features.Innings {
