@@ -13,8 +13,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Commands that form the main pipeline; only one may be IN_PROGRESS at a time (singleton).
-# Must stay in sync with go-app/internal/pipeline/job.go PipelineCommands.
-# Shared config (e.g. JSON) could be a future improvement.
+# Single source of truth: keep in sync with go-app/internal/pipeline/job.go PipelineCommands.
+# Any change must be applied in both places. Long-term: shared config or build-time generation.
 PIPELINE_COMMANDS = (
     "cricsheet-import",
     "precompute-features",
