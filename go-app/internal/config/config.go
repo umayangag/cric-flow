@@ -245,10 +245,17 @@ func loadMetaModel(cfg *Config) *metaModelWeights {
 		return metaModelCache
 	}
 	abs := path
-	if !filepath.IsAbs(path) {
-		cwd, _ := os.Getwd()
-		abs = filepath.Join(cwd, path)
-	}
+    if !filepath.IsAbs(path) {
+        // If a config file was loaded, resolve relative to its directory.
+        if loadedFrom != "" {
+            configDir := filepath.Dir(loadedFrom)
+            abs = filepath.Join(configDir, path)
+        } else {
+            // Fallback to CWD if config path is unknown (e.g. in tests)
+            cwd, _ := os.Getwd()
+            abs = filepath.Join(cwd, path)
+        }
+    }
 	b, err := os.ReadFile(abs)
 	if err != nil {
 		slog.Error("config.loadMetaModel failed to read file", "path", abs, "err", err)
