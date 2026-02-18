@@ -56,7 +56,7 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 - **If 1+ threads:** continue:
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
-  - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add . && git commit -m "Fix Gemini comments" && git push`).
+  - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
 
 ### D. Loop or exit
 

@@ -103,6 +103,9 @@ func scanMigrations(rows db.Rows) ([]Migration, error) {
 }
 
 func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
+	if db.Pool == nil {
+		return nil, nil
+	}
 	rows, err := db.Query(ctx, `
 		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
 		FROM data_migrations

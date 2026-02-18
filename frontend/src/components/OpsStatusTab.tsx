@@ -115,7 +115,7 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
         <strong>Running:</strong>
       </Typography>
       {inProgress.length > 0 ? (
-        <Table size="small" sx={{ mb: 1, maxWidth: 560 }}>
+        <Table size="small" sx={{ mb: 1, width: '100%', overflowX: 'auto' }}>
           <TableHead>
             <TableRow>
               <TableCell>Command</TableCell>
@@ -123,8 +123,8 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
             </TableRow>
           </TableHead>
           <TableBody>
-            {inProgress.map((job, i) => (
-              <TableRow key={job.id ?? `${job.command ?? ''}-${job.started_at ?? ''}-${i}`}>
+            {inProgress.map((job) => (
+              <TableRow key={job.id ?? `run-${job.command ?? ''}-${job.started_at ?? ''}`}>
                 <TableCell>{job.command ?? '—'}</TableCell>
                 <TableCell>{job.started_at ?? '—'}</TableCell>
               </TableRow>
@@ -140,7 +140,7 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
         <strong>Recent jobs:</strong>
       </Typography>
       {recent.length > 0 ? (
-        <Table size="small" sx={{ maxWidth: 560 }}>
+        <Table size="small" sx={{ width: '100%', overflowX: 'auto' }}>
           <TableHead>
             <TableRow>
               <TableCell>Command</TableCell>
@@ -151,8 +151,13 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
             </TableRow>
           </TableHead>
           <TableBody>
-            {recent.map((job, i) => (
-              <TableRow key={job.id ?? `${job.command ?? ''}-${job.started_at ?? ''}-${i}`}>
+            {recent.map((job) => (
+              <TableRow
+                key={
+                  job.id ??
+                  `rec-${job.command ?? ''}-${job.started_at ?? ''}-${job.completed_at ?? ''}`
+                }
+              >
                 <TableCell>{job.command ?? '—'}</TableCell>
                 <TableCell>{job.status ?? '—'}</TableCell>
                 <TableCell>{job.started_at ?? '—'}</TableCell>
