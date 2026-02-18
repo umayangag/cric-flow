@@ -88,6 +88,7 @@ type Config struct {
 		ImportConcurrency     int `json:"import_concurrency"`     // 0 = auto (cricsheet)
 		SeqCalcConcurrency    int `json:"seqcalc_concurrency"`    // 0 = auto
 		ExportConcurrency     int `json:"export_concurrency"`     // 0 = auto
+		FieldingConcurrency   int `json:"fielding_concurrency"`   // 0 = auto
 	} `json:"pipeline"`
 }
 

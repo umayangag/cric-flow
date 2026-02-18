@@ -45,6 +45,7 @@ Keys:
   - `import_concurrency` (int, 0 = auto) — max concurrent file imports (cricsheet, ETL).
   - `seqcalc_concurrency` (int, 0 = auto) — max concurrent sequence calculators (ball-event scans).
   - `export_concurrency` (int, 0 = auto) — reserved for future export parallelism.
+  - `fielding_concurrency` (int, 0 = auto) — max concurrent fielding workers (e.g. team selection / fielding enrich).
 - `export`
   - `split_by_format` (bool) — when true, `cmd/export-dataset` writes per-format CSVs by default.
   - `required_format` (string) — when set, exporter writes only this format unless overridden by flags.

@@ -89,6 +89,8 @@ func GetLimit(kind Kind) int {
 			return cfg.Pipeline.SeqCalcConcurrency
 		case KindExport:
 			return cfg.Pipeline.ExportConcurrency
+		case KindFielding:
+			return cfg.Pipeline.FieldingConcurrency
 		default:
 			return 0
 		}
