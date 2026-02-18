@@ -46,13 +46,13 @@ def db_connection():
                 logger.warning("tracking.connection_close_failed", extra={"error": str(e)})
 
 
-# Default age (minutes) for considering an IN_PROGRESS run stale on startup.
-DEFAULT_STALE_CANCEL_AGE_MINUTES = 24 * 60  # 24 hours
+# Default age (seconds) for considering an IN_PROGRESS run stale on startup. Aligns with go-app.
+DEFAULT_STALE_CANCEL_AGE_SECONDS = 24 * 60 * 60  # 24 hours
 
 
-def parse_stale_cancel_age_minutes() -> Optional[int]:
-    """Parse TRACKING_STALE_CANCEL_AGE (e.g. 24h, 30m) or TRACKING_STALE_CANCEL_AGE_MINUTES.
-    Aligns with go-app; returns minutes or None to use default.
+def parse_stale_cancel_age_seconds() -> Optional[int]:
+    """Parse TRACKING_STALE_CANCEL_AGE (e.g. 24h, 30m, 90s) or legacy TRACKING_STALE_CANCEL_AGE_MINUTES.
+    Aligns with go-app; returns seconds or None to use default.
     For seconds ('s'), 0 or negative is treated as use default (not 'no staleness')."""
     raw = os.environ.get("TRACKING_STALE_CANCEL_AGE", "").strip()
     if raw:
@@ -60,14 +60,13 @@ def parse_stale_cancel_age_minutes() -> Optional[int]:
         if m:
             num, unit = int(m.group(1)), m.group(2)
             if unit == "h":
-                return num * 60
+                return num * 3600
             if unit == "m":
-                return num
+                return num * 60
             if unit == "s":
                 if num <= 0:
                     return None  # align with Go: non-positive uses default
-                # Convert to minutes, rounding up to the nearest minute
-                return (num + 59) // 60
+                return num
             return None
         logger.warning("tracking.invalid_TRACKING_STALE_CANCEL_AGE", extra={"value": raw})
         return None
@@ -75,7 +74,7 @@ def parse_stale_cancel_age_minutes() -> Optional[int]:
     if not raw:
         return None
     try:
-        return int(raw)
+        return int(raw) * 60  # legacy: minutes -> seconds
     except ValueError:
         logger.warning("tracking.invalid_TRACKING_STALE_CANCEL_AGE_MINUTES", extra={"value": raw})
         return None
@@ -83,14 +82,14 @@ def parse_stale_cancel_age_minutes() -> Optional[int]:
 
 def cancel_in_progress_on_startup(
     reason: str = "interrupted (ml-service restart or crash)",
-    stale_minutes: Optional[int] = None,
+    stale_seconds: Optional[int] = None,
 ) -> int:
-    """Mark IN_PROGRESS rows as CANCELLED only if started longer than stale_minutes ago.
+    """Mark IN_PROGRESS rows as CANCELLED only if started longer than stale_seconds ago.
     Avoids cancelling a pipeline that another instance is currently running when this one restarts.
     """
-    if stale_minutes is None:
-        stale_minutes = DEFAULT_STALE_CANCEL_AGE_MINUTES
-    if stale_minutes <= 0:
+    if stale_seconds is None:
+        stale_seconds = DEFAULT_STALE_CANCEL_AGE_SECONDS
+    if stale_seconds <= 0:
         return 0
     try:
         with db_connection() as conn:
@@ -99,16 +98,16 @@ def cancel_in_progress_on_startup(
                     """
                     UPDATE data_migrations
                     SET status = 'CANCELLED', completed_at = NOW(), error_message = %s
-                    WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 minute')
+                    WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 second')
                     """,
-                    (reason, stale_minutes),
+                    (reason, stale_seconds),
                 )
                 n = cur.rowcount
             conn.commit()
             if n:
                 logger.info(
                     "tracking.cancelled_stale_on_startup",
-                    extra={"cancelled": n, "stale_minutes": stale_minutes},
+                    extra={"cancelled": n, "stale_seconds": stale_seconds},
                 )
             return n
     except Exception as e:

@@ -64,7 +64,7 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 // by another instance (e.g. B running a pipeline while A restarts).
 // If staleOlderThan <= 0, no rows are cancelled. Returns the number of rows updated.
 func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
-	if db.Pool == nil || staleOlderThan <= 0 {
+	if db.Pool == nil || staleOlderThan < time.Second {
 		return 0, nil
 	}
 	var reasonPtr *string
@@ -72,9 +72,6 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 		reasonPtr = &reason
 	}
 	staleSeconds := int64(staleOlderThan.Seconds())
-	if staleSeconds < 1 {
-		return 0, nil
-	}
 	var n int
 	err := db.QueryRow(ctx, `
 		WITH updated AS (
