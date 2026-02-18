@@ -55,9 +55,13 @@ func TestConcurrencyLimit_ConfigOverride(t *testing.T) {
 }
 
 func TestConcurrencyLimit_FloorAndCeiling(t *testing.T) {
-	// configLimit 0 with getConfig returning 10 should be clamped by ceiling
-	got := ConcurrencyLimit(KindPrecompute, 0, func() int { return 999 })
+	// configLimit 0 with getConfig returning 999 should be clamped by ceiling
+	const highValue = 999
+	got := ConcurrencyLimit(KindPrecompute, 0, func() int { return highValue })
 	if got < 1 {
 		t.Errorf("got %d, want >= 1", got)
+	}
+	if got >= highValue {
+		t.Errorf("got %d, want value to be clamped by ceiling (less than %d)", got, highValue)
 	}
 }
