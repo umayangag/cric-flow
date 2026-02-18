@@ -43,33 +43,22 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	envKey := envKeyForKind(kind)
 	if v := os.Getenv(envKey); v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
-			return clamp(n, 1, ceiling(kind))
+			return clampToCeiling(n, ceiling(kind))
 		}
 	}
 	if configLimit > 0 {
-		return clamp(configLimit, 1, ceiling(kind))
+		return clampToCeiling(configLimit, ceiling(kind))
 	}
 	if getConfigLimit != nil {
 		if n := getConfigLimit(); n > 0 {
-			return clamp(n, 1, ceiling(kind))
+			return clampToCeiling(n, ceiling(kind))
 		}
 	}
-	memLimit := memoryBasedLimit(kind)
-	cpuLimit := runtime.NumCPU()
-	if cpuLimit < 1 {
-		cpuLimit = 1
-	}
-	n := memLimit
+	n := memoryBasedLimit(kind)
 	if n <= 0 {
-		n = cpuLimit
+		n = runtime.NumCPU()
 	}
-	if n > ceiling(kind) {
-		n = ceiling(kind)
-	}
-	if n < 1 {
-		n = 1
-	}
-	return n
+	return clampToCeiling(n, ceiling(kind))
 }
 
 // GetLimit returns the resource-aware concurrency limit for the given kind,
@@ -170,9 +159,10 @@ func defaultMBPerWorker(kind Kind) int {
 	}
 }
 
-func clamp(n, lo, hi int) int {
-	if n < lo {
-		return lo
+// clampToCeiling clamps n to [1, hi].
+func clampToCeiling(n, hi int) int {
+	if n < 1 {
+		return 1
 	}
 	if n > hi {
 		return hi
