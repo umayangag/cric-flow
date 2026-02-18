@@ -172,7 +172,8 @@ func clampToCeiling(n, hi int) int {
 
 // detectMemoryLimitBytes returns process memory limit in bytes (GOMEMLIMIT or cgroup v2).
 // Returns 0 if unknown so callers fall back to CPU-based concurrency.
-func detectMemoryLimitBytes() int64 {
+// Reassignable in tests for table-driven memoryBasedLimit tests.
+var detectMemoryLimitBytes = func() int64 {
 	if b := parseGOMEMLIMIT(os.Getenv("GOMEMLIMIT")); b > 0 {
 		return b
 	}
@@ -195,6 +196,7 @@ var gomemlimitUnits = []struct {
 	{"GB", 1000 * 1000 * 1000},
 	{"MB", 1000 * 1000},
 	{"KB", 1000},
+	{"B", 1},
 }
 
 // parseGOMEMLIMIT parses Go 1.19+ GOMEMLIMIT values like "512MiB", "8GiB", "1e9".

@@ -15,6 +15,7 @@ func TestParseGOMEMLIMIT(t *testing.T) {
 		{"8GiB", 8 * 1024 * 1024 * 1024},
 		{"1e9", 1000000000},
 		{" 100MIB ", 100 * 1024 * 1024},
+		{"100B", 100},
 	}
 	for _, tt := range tests {
 		got := parseGOMEMLIMIT(tt.in)
@@ -63,5 +64,32 @@ func TestConcurrencyLimit_FloorAndCeiling(t *testing.T) {
 	}
 	if got >= highValue {
 		t.Errorf("got %d, want value to be clamped by ceiling (less than %d)", got, highValue)
+	}
+}
+
+func TestMemoryBasedLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		kind     Kind
+		memLimit int64 // in bytes
+		want     int
+	}{
+		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 7},
+		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 9},
+		{"seqcalc 2GiB", KindSeqCalc, 2 * 1024 * 1024 * 1024, 7},
+		{"precompute 512MiB", KindPrecompute, 512 * 1024 * 1024, 1},
+		{"no limit", KindPrecompute, 0, 0},
+	}
+	oldDetect := detectMemoryLimitBytes
+	defer func() { detectMemoryLimitBytes = oldDetect }()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detectMemoryLimitBytes = func() int64 { return tt.memLimit }
+			got := memoryBasedLimit(tt.kind)
+			if got != tt.want {
+				t.Errorf("memoryBasedLimit() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
