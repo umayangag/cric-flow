@@ -108,6 +108,10 @@ func UpsertBowlingSpells(ctx context.Context, rows []BowlingSpellRow) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Drop if exists so this works when the same connection is reused (e.g. concurrent seqcalc workers).
+	if err := tx.Exec(ctx, `DROP TABLE IF EXISTS bowling_spell_stage`); err != nil {
+		return err
+	}
 	// Create a temp staging table with the precise columns we insert into (scope_id0 is generated in the real table).
 	if err := tx.Exec(ctx, `
         CREATE TEMP TABLE bowling_spell_stage AS

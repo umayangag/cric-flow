@@ -79,6 +79,9 @@ func UpsertBattingTransitions(ctx context.Context, rows []BatTransitionRow) erro
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := tx.Exec(ctx, `DROP TABLE IF EXISTS bat_trans_stage`); err != nil {
+		return err
+	}
 	// Create staging table with column types matching target insert columns.
 	if err := tx.Exec(ctx, `
         CREATE TEMP TABLE bat_trans_stage AS

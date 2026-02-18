@@ -81,6 +81,9 @@ func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := tx.Exec(ctx, `DROP TABLE IF EXISTS bowl_seq_stage`); err != nil {
+		return err
+	}
 	// Create a temp staging table with the precise columns we insert into (scope_id0 is generated in the real table).
 	if err := tx.Exec(ctx, `
         CREATE TEMP TABLE bowl_seq_stage AS
