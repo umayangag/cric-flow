@@ -48,9 +48,10 @@ def parse_stale_cancel_age_minutes() -> Optional[int]:
             if unit == "m":
                 return num
             if unit == "s":
-                if num == 0:
+                if num <= 0:
                     return None  # align with Go: non-positive uses default
-                return max(1, num // 60)
+                # Convert to minutes, rounding up to the nearest minute
+                return (num + 59) // 60
             return None
         logger.warning("tracking.invalid_TRACKING_STALE_CANCEL_AGE", extra={"value": raw})
         return None
