@@ -128,6 +128,7 @@ func run() int {
 			db.Close()
 			return 1
 		}
+		db.Close() // Drain pool and flush logs on normal server exit
 		return 0
 	}
 }
