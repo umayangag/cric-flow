@@ -120,6 +120,9 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 }
 
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
+	if db.Pool == nil {
+		return nil, 0, nil
+	}
 	var total int
 	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM data_migrations`).Scan(&total)
 	if err != nil {
