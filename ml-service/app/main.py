@@ -53,15 +53,9 @@ except ImportError:
 async def _lifespan(app: FastAPI) -> Any:
     # On startup: cancel only stale IN_PROGRESS (older than threshold) so we don't cancel another instance's run.
     try:  # pragma: no cover - lifespan startup; tested indirectly via TestClient
-        from ml.tracking import cancel_in_progress_on_startup
+        from ml.tracking import cancel_in_progress_on_startup, parse_stale_cancel_age_minutes
 
-        raw = os.environ.get("TRACKING_STALE_CANCEL_AGE_MINUTES", "").strip()
-        stale_minutes = None
-        if raw:
-            try:
-                stale_minutes = int(raw)
-            except ValueError:
-                logger.warning("invalid TRACKING_STALE_CANCEL_AGE_MINUTES, using default", value=raw)
+        stale_minutes = parse_stale_cancel_age_minutes()
         n = cancel_in_progress_on_startup(stale_minutes=stale_minutes)
         if n:
             logger.info("startup.cancelled_stale_migrations", count=n, stale_minutes=stale_minutes)
