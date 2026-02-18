@@ -46,7 +46,7 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service → cont
 
 ### B. Wait for Gemini (size-based + learning)
 
-If Gemini does not reply after the initial wait, keep polling (every 90 seconds) and **increase total wait time up to a maximum of 15 minutes**; if there is still no response after 15 minutes, proceed to step C and stop.
+If Gemini does not reply after the initial wait, keep polling every 90 seconds. **Total wait is capped at 15 minutes.** If there is still no response after 15 minutes, proceed to step C and stop.
 
 - **Initial wait (PR size–based):** Get PR stats: `gh pr view <PR> --json changedFiles,additions,deletions`. Compute `totalChanges = additions + deletions`.  
   - **Small:** `changedFiles ≤ 5` and `totalChanges < 250` → wait **2** minutes.  

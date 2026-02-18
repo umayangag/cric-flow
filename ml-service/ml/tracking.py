@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Commands that form the main pipeline; only one may be IN_PROGRESS at a time (singleton).
 # Must stay in sync with go-app/internal/pipeline/job.go PipelineCommands; apply changes in both.
-# Future mitigation options: shared config (JSON/YAML), API endpoint from go-app, or build-time generation.
+# Future mitigation: shared config (JSON/YAML), API from go-app, or build-time generation. Until then, keep in sync manually.
 PIPELINE_COMMANDS = (
     "cricsheet-import",
     "precompute-features",
@@ -52,7 +52,8 @@ DEFAULT_STALE_CANCEL_AGE_MINUTES = 24 * 60  # 24 hours
 
 def parse_stale_cancel_age_minutes() -> Optional[int]:
     """Parse TRACKING_STALE_CANCEL_AGE (e.g. 24h, 30m) or TRACKING_STALE_CANCEL_AGE_MINUTES.
-    Aligns with go-app; returns minutes or None to use default."""
+    Aligns with go-app; returns minutes or None to use default.
+    For seconds ('s'), 0 or negative is treated as use default (not 'no staleness')."""
     raw = os.environ.get("TRACKING_STALE_CANCEL_AGE", "").strip()
     if raw:
         m = re.match(r"^(\d+)(h|m|s)$", raw.lower())
