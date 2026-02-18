@@ -77,6 +77,9 @@ export type OpsStatus = {
   precompute?: { formats?: PrecomputeFormats };
   exports?: { formats?: ExportFormats };
   artifacts?: { formats?: ArtifactFormats };
+  pipeline?: {
+    overview?: { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] };
+  };
   // New optional sections surfaced by backend as raw objects
   fielding?: unknown;
   weather?: unknown;
@@ -92,14 +95,10 @@ function pipelineOverviewFromData(data: OpsStatus | null): {
   inProgress: PipelineJobSummary[];
   recent: PipelineJobRecent[];
 } {
-  const overview = (
-    data?.pipeline as {
-      overview?: { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] };
-    }
-  )?.overview;
+  const overview = data?.pipeline?.overview;
   return {
-    inProgress: Array.isArray(overview?.in_progress) ? overview.in_progress : [],
-    recent: Array.isArray(overview?.recent) ? overview.recent : [],
+    inProgress: overview?.in_progress ?? [],
+    recent: overview?.recent ?? [],
   };
 }
 
