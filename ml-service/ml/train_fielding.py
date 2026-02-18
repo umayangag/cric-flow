@@ -21,8 +21,6 @@ import urllib.request
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
-from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -30,6 +28,7 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
+from ml.utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -125,50 +124,7 @@ def train_and_save(
     params = get_training_params("fielding")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    est_type = params.get("estimator", "rf")
-    n_jobs = params.get("n_jobs", -1)
-    lr = params.get("learning_rate", 0.1)
-    quantile_level = params.get("quantile_level", 0.5)
-    if est_type == "quantile":
-        base = GradientBoostingRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            learning_rate=lr,
-            loss="quantile",
-            alpha=quantile_level,
-        )
-    elif est_type == "stacked":
-        rf = RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            n_jobs=n_jobs,
-        )
-        gb = GradientBoostingRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            learning_rate=lr,
-        )
-        base = StackingRegressor(
-            estimators=[("rf", rf), ("gb", gb)],
-            final_estimator=Ridge(alpha=1.0, random_state=params["random_state"]),
-        )
-    elif est_type == "gb":
-        base = GradientBoostingRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            learning_rate=lr,
-        )
-    else:
-        base = RandomForestRegressor(
-            n_estimators=params["n_estimators"],
-            max_depth=params["max_depth"],
-            random_state=params["random_state"],
-            n_jobs=n_jobs,
-        )
+    base = make_base_estimator(params)
     model = MultiOutputRegressor(base)
     model.fit(Xs, Y)
 

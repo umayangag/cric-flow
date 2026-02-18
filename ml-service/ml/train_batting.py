@@ -8,13 +8,12 @@ import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, StackingRegressor
-from sklearn.linear_model import Ridge
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
 from .config import get_training_params
 from .feature_transforms import apply_transforms, get_transform_config
+from .utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -162,54 +161,8 @@ def train_and_save(
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
-    n_estimators = training_params["n_estimators"]
-    max_depth = training_params["max_depth"]
-    random_state = training_params["random_state"]
     compress = training_params["joblib_compress"]
-    n_jobs = training_params.get("n_jobs", -1)
-    estimator_type = training_params.get("estimator", "rf")
-    learning_rate = training_params.get("learning_rate", 0.1)
-    quantile_level = training_params.get("quantile_level", 0.5)
-    if estimator_type == "quantile":
-        base_est = GradientBoostingRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            learning_rate=learning_rate,
-            loss="quantile",
-            alpha=quantile_level,
-        )
-    elif estimator_type == "stacked":
-        rf = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            n_jobs=n_jobs,
-        )
-        gb = GradientBoostingRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            learning_rate=learning_rate,
-        )
-        base_est = StackingRegressor(
-            estimators=[("rf", rf), ("gb", gb)],
-            final_estimator=Ridge(alpha=1.0, random_state=random_state),
-        )
-    elif estimator_type == "gb":
-        base_est = GradientBoostingRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            learning_rate=learning_rate,
-        )
-    else:
-        base_est = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            random_state=random_state,
-            n_jobs=n_jobs,
-        )
+    base_est = make_base_estimator(training_params)
     model = MultiOutputRegressor(base_est)
     model.fit(Xs, Y)
 
