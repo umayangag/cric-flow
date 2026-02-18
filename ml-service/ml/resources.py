@@ -64,8 +64,11 @@ def suggested_n_jobs(kind: str = "training") -> int:
             n = int(explicit)
             if n >= 1:
                 return n
-            if n == -1:
-                pass  # fall through to auto
+            if n != -1:
+                logger.warning(
+                    "ML_N_JOBS=%d is invalid (must be >= 1 or -1 for auto); falling back to auto-detection.", n
+                )
+            # Fall through for n == -1 or other invalid values to use auto-detection
         except ValueError:
             pass
 
