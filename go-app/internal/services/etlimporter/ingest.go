@@ -8,13 +8,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
 
 // Stats summarizes the ingestion results.
@@ -37,7 +37,7 @@ func NewService(repository db.EtlRepository) *Service {
 }
 
 // IngestDir enumerates files by pattern in dir, parses them concurrently, and when apply==true
-// upserts per file to avoid loading all data into memory. conc limits parallel workers; 0 uses runtime.NumCPU().
+// upserts per file to avoid loading all data into memory. conc limits parallel workers; 0 uses resource-aware limit.
 func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool, conc int) (Stats, error) {
 	if s == nil || s.Repository == nil {
 		return Stats{}, errors.New("nil service or dependency")
@@ -45,8 +45,8 @@ func (s *Service) IngestDir(ctx context.Context, dir, pattern string, apply bool
 	if strings.TrimSpace(dir) == "" {
 		return Stats{}, errors.New("input directory required")
 	}
-	if conc < 1 {
-		conc = runtime.NumCPU()
+	if conc <= 0 {
+		conc = resources.GetLimit(resources.KindImport)
 	}
 	if conc < 1 {
 		conc = 1

@@ -12,6 +12,7 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
 
@@ -41,7 +42,12 @@ func (Runner) RunReplay(
 		)
 		return fmt.Errorf("list matches: %w", err)
 	}
-	slog.Info("precompute-features(replay)", slog.Int("matches", len(matches)), slog.String("format", formatCode))
+	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
+	slog.Info("precompute-features(replay)",
+		slog.Int("matches", len(matches)),
+		slog.String("format", formatCode),
+		slog.Int("concurrency", precomputeLimit),
+	)
 	// Optional history window from config is provided by caller via windowN.
 	processed := int64(0)
 	for _, m := range matches {
@@ -58,7 +64,7 @@ func (Runner) RunReplay(
 		}
 
 		g, pCtx := errgroup.WithContext(ctx)
-		g.SetLimit(runtime.NumCPU())
+		g.SetLimit(precomputeLimit)
 
 		for _, pid := range players {
 			pid := pid // capture
@@ -262,7 +268,7 @@ func (Runner) RunReplay(
 	}
 
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
-	slog.Info("precompute-features(replay): triggering sequence calculations", slog.String("format", formatCode))
+	logSeqCalcTrigger(formatCode, "replay")
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
 		slog.Error(
 			"precompute-features(replay): sequence calculations failed",
@@ -297,15 +303,17 @@ func (Runner) RunPointInTime(
 		)
 		return fmt.Errorf("list players with history: %w", err)
 	}
+	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
 	slog.Info(
 		"precompute-features(as-of)",
 		slog.Int("players", len(players)),
 		slog.String("format", formatCode),
 		slog.String("as_of", asOf.Format("2006-01-02")),
+		slog.Int("concurrency", precomputeLimit),
 	)
 
 	g, pCtx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.NumCPU())
+	g.SetLimit(precomputeLimit)
 	var processed int64
 
 	for _, pid := range players {
@@ -392,7 +400,7 @@ func (Runner) RunPointInTime(
 	)
 
 	// Trigger sequence features calculation
-	slog.Info("precompute-features(as-of): triggering sequence calculations", slog.String("format", formatCode))
+	logSeqCalcTrigger(formatCode, "as-of")
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
 		slog.Error(
 			"precompute-features(as-of): sequence calculations failed",
@@ -403,6 +411,19 @@ func (Runner) RunPointInTime(
 	}
 
 	return nil
+}
+
+// logSeqCalcTrigger logs concurrency and heap before triggering sequence calculations (shared by replay and as-of).
+func logSeqCalcTrigger(formatCode, mode string) {
+	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	slog.Info("precompute-features("+mode+"): triggering sequence calculations",
+		slog.String("format", formatCode),
+		slog.Int("seqcalc_concurrency", seqcalcLimit),
+		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
+		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
+	)
 }
 
 func toFeatureInnings(in []db.InnVal) []features.Innings {

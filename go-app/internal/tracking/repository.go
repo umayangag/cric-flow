@@ -88,6 +88,26 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 	return n, nil
 }
 
+// HasCompletedSuccessfullyForCommand returns true if there is at least one row for the given
+// command with status COMPLETED. Used to gate pipeline steps: next step is only runnable
+// after the previous completed successfully. When db pool is nil, returns (false, nil).
+func HasCompletedSuccessfullyForCommand(ctx context.Context, command string) (bool, error) {
+	if db.Pool == nil || command == "" {
+		return false, nil
+	}
+	var exists bool
+	err := db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM data_migrations
+			WHERE command = $1 AND status = $2
+		)
+	`, command, StatusCompleted).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // HasInProgressForAnyCommand returns true if there is at least one row with status IN_PROGRESS
 // and command in the given list. Used to enforce singleton pipeline: only one pipeline step
 // may run across the whole system. When db pool is nil, returns (false, nil).

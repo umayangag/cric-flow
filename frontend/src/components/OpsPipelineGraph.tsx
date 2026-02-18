@@ -28,6 +28,8 @@ export type PipelineStep = {
   status: StepStatus;
   command: string;
   description: string;
+  /** Only runnable when previous step completed successfully (from backend). */
+  runnable: boolean;
 };
 
 function asObj(v: unknown): Record<string, unknown> {
@@ -47,6 +49,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make migrate && make cricsheet-import',
       description: 'Apply migrations and import Cricsheet JSON into the database.',
+      runnable: true,
     },
     {
       id: 'precompute',
@@ -54,6 +57,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make precompute-all-all-formats',
       description: 'Compute form, consistency, and sequence features per format.',
+      runnable: true,
     },
     {
       id: 'export',
@@ -61,6 +65,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make export-dataset',
       description: 'Export training CSVs (batting, bowling) to output/go-app.',
+      runnable: true,
     },
     {
       id: 'train_batting',
@@ -68,6 +73,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-batting',
       description: 'Train batting model from exported CSVs.',
+      runnable: true,
     },
     {
       id: 'train_bowling',
@@ -75,6 +81,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-bowling',
       description: 'Train bowling model from exported CSVs.',
+      runnable: true,
     },
     {
       id: 'train_fielding',
@@ -82,6 +89,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
       description: 'Train fielding model (set CUTOFF and GO_APP_URL as needed).',
+      runnable: true,
     },
     {
       id: 'auto_tune',
@@ -89,6 +97,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description: 'Optional: search best hyperparameters for all models.',
+      runnable: true,
     },
   ];
 
@@ -144,12 +153,15 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   steps[3].status = battingDone ? 'success' : 'pending';
   steps[4].status = bowlingDone ? 'success' : 'pending';
   steps[5].status = fieldingDone ? 'success' : 'pending';
-  // Override with running state from backend
+  // Override with running and runnable from backend (next step only runnable after previous completed)
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-    const running = asObj(pipelineSteps[step.id]).running === true;
+    const stepData = asObj(pipelineSteps[step.id]);
+    const running = stepData.running === true;
     if (running) steps[i].status = 'running';
+    // Default true when backend omits runnable (e.g. older API)
+    steps[i].runnable = stepData.runnable !== false;
   }
   return steps;
 }
@@ -258,6 +270,11 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               type="button"
               elevation={1}
               onClick={() => setDialogStep(step)}
+              title={
+                !step.runnable && step.status !== 'running'
+                  ? 'Complete the previous step first.'
+                  : undefined
+              }
               sx={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -275,9 +292,15 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                       ? 'primary.50'
                       : 'background.paper',
                 transition: 'border-color .15s, box-shadow .15s',
+                ...(!step.runnable &&
+                  step.status !== 'running' && {
+                    opacity: 0.65,
+                    cursor: 'default',
+                  }),
                 '&:hover': {
-                  borderColor: 'primary.main',
-                  boxShadow: 1,
+                  ...(step.runnable || step.status === 'running'
+                    ? { borderColor: 'primary.main', boxShadow: 1 }
+                    : {}),
                 },
                 '&:focus-visible': {
                   outline: '2px solid',
@@ -336,6 +359,14 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 {dialogStep.description}
               </Typography>
+              {!dialogStep.runnable && dialogStep.status !== 'running' && (
+                <Typography
+                  variant="body2"
+                  sx={{ mb: 1.5, p: 1, borderRadius: 1, bgcolor: 'action.hover' }}
+                >
+                  Complete the previous step first.
+                </Typography>
+              )}
               {runMessage && (
                 <Typography
                   variant="body2"
@@ -396,7 +427,7 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               <Button
                 variant="contained"
                 onClick={() => handleRun(dialogStep)}
-                disabled={runState === 'loading'}
+                disabled={runState === 'loading' || !dialogStep.runnable}
               >
                 {runState === 'loading' ? 'Running…' : 'Run'}
               </Button>

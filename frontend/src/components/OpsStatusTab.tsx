@@ -5,6 +5,7 @@ import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
 import OpsSuggestions from './OpsSuggestions';
 import OpsPipelineGraph from './OpsPipelineGraph';
+import MLPredictionGraph from './MLPredictionGraph';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsTableStats from './OpsTableStats';
@@ -178,6 +179,12 @@ const OpsStatusTab: React.FC = () => {
             subtitle="Data import → precompute → export → train models. Click a step to copy its command."
           >
             <OpsPipelineGraph data={data} onRefresh={fetchStatus} />
+          </SectionCard>
+          <SectionCard
+            title="Prediction model flow"
+            subtitle="How ML models connect: batting → bowling → fielding → combined metrics → performance predictor → win model → final team (XI)."
+          >
+            <MLPredictionGraph />
           </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />

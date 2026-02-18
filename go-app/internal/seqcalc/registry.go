@@ -6,21 +6,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
 
 func seqcalcConcurrency() int {
-	if v := os.Getenv("SEQCALC_CONCURRENCY"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
-			return n
-		}
-	}
-	return 1
+	return resources.GetLimit(resources.KindSeqCalc)
 }
 
 // Registry holds available calculators keyed by target name.
@@ -105,12 +100,17 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 }
 
 // Run executes calculators with the given params concurrently.
-// Concurrency is controlled by SEQCALC_CONCURRENCY env (default 1) to avoid OOM from
+// Concurrency is controlled by SEQCALC_CONCURRENCY env or resource-aware limit to avoid OOM from
 // multiple concurrent ball_event scans. Increase on machines with ample memory.
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
 	g, ctx := errgroup.WithContext(ctx)
 	limit := seqcalcConcurrency()
 	g.SetLimit(limit)
+	slog.Info("seqcalc: starting run",
+		slog.Int("calculators", len(calcs)),
+		slog.String("format", params.FormatCode),
+		slog.Int("concurrency", limit),
+	)
 
 	for _, c := range calcs {
 		calc := c // capture for goroutine

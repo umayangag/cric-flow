@@ -50,24 +50,52 @@ def db_connection():
 DEFAULT_STALE_CANCEL_AGE_SECONDS = 24 * 60 * 60  # 24 hours
 
 
+def _parse_go_duration(raw: str) -> Optional[int]:
+    """Parse Go-style duration (e.g. 24h, 1h30m, 2h15m30s) into seconds.
+    Aligns with Go time.ParseDuration: supports ns, us/µs, ms, s, m, h in any order.
+    Returns None on parse failure or non-positive result."""
+    raw = "".join(raw.strip().lower().split())
+    if not raw:
+        return None
+    # Match sequences of number + unit (Go format)
+    pattern = re.compile(r"(\d*\.?\d+)(ns|us|µs|ms|s|m|h)")
+    total_ns = 0.0
+    pos = 0
+    for m in pattern.finditer(raw):
+        if m.start() != pos:
+            return None  # gap before match = invalid
+        pos = m.end()
+        num = float(m.group(1))
+        unit = m.group(2)
+        if unit == "ns":
+            total_ns += num
+        elif unit in ("us", "µs"):
+            total_ns += num * 1000
+        elif unit == "ms":
+            total_ns += num * 1_000_000
+        elif unit == "s":
+            total_ns += num * 1_000_000_000
+        elif unit == "m":
+            total_ns += num * 60 * 1_000_000_000
+        elif unit == "h":
+            total_ns += num * 3600 * 1_000_000_000
+    if pos != len(raw):
+        return None  # trailing junk
+    secs = int(total_ns / 1_000_000_000)
+    if secs <= 0:
+        return None
+    return secs
+
+
 def parse_stale_cancel_age_seconds() -> Optional[int]:
-    """Parse TRACKING_STALE_CANCEL_AGE (e.g. 24h, 30m, 90s) or legacy TRACKING_STALE_CANCEL_AGE_MINUTES.
-    Aligns with go-app; returns seconds or None to use default.
-    For seconds ('s'), 0 or negative is treated as use default (not 'no staleness')."""
+    """Parse TRACKING_STALE_CANCEL_AGE (e.g. 24h, 1h30m, 90s) or legacy TRACKING_STALE_CANCEL_AGE_MINUTES.
+    Aligns with go-app time.ParseDuration; supports compound formats like 1h30m.
+    Returns None to use default. For seconds ('s'), 0 or negative uses default."""
     raw = os.environ.get("TRACKING_STALE_CANCEL_AGE", "").strip()
     if raw:
-        m = re.match(r"^(\d+)(h|m|s)$", raw.lower())
-        if m:
-            num, unit = int(m.group(1)), m.group(2)
-            if unit == "h":
-                return num * 3600
-            if unit == "m":
-                return num * 60
-            if unit == "s":
-                if num <= 0:
-                    return None  # align with Go: non-positive uses default
-                return num
-            return None
+        secs = _parse_go_duration(raw)
+        if secs is not None:
+            return secs
         logger.warning("tracking.invalid_TRACKING_STALE_CANCEL_AGE", extra={"value": raw})
         return None
     raw = os.environ.get("TRACKING_STALE_CANCEL_AGE_MINUTES", "").strip()
@@ -144,19 +172,37 @@ class Tracker:
 
     def start(self):
         try:
-            if self.command in PIPELINE_COMMANDS and has_any_pipeline_in_progress():
-                raise RuntimeError("Another pipeline step is already running")
             self.conn = get_connection()
             with self.conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO data_migrations (command, args, started_at, status)
-                    VALUES (%s, %s, NOW(), 'IN_PROGRESS')
-                    RETURNING id
-                    """,
-                    (self.command, json.dumps(self.args)),
-                )
-                self.id = cur.fetchone()[0]
+                if self.command in PIPELINE_COMMANDS:
+                    # Atomic singleton: insert only if no other pipeline is IN_PROGRESS.
+                    # Prevents race where another instance inserts between check and insert.
+                    cur.execute(
+                        """
+                        INSERT INTO data_migrations (command, args, started_at, status)
+                        SELECT %s, %s, NOW(), 'IN_PROGRESS'
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM data_migrations
+                            WHERE status = 'IN_PROGRESS' AND command IN %s
+                        )
+                        RETURNING id
+                        """,
+                        (self.command, json.dumps(self.args), tuple(PIPELINE_COMMANDS)),
+                    )
+                    row = cur.fetchone()
+                    if row is None:
+                        raise RuntimeError("Another pipeline step is already running")
+                    self.id = row[0]
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO data_migrations (command, args, started_at, status)
+                        VALUES (%s, %s, NOW(), 'IN_PROGRESS')
+                        RETURNING id
+                        """,
+                        (self.command, json.dumps(self.args)),
+                    )
+                    self.id = cur.fetchone()[0]
             self.conn.commit()
             print(f"[Tracking] Started {self.command} (ID: {self.id})")
         except Exception as e:

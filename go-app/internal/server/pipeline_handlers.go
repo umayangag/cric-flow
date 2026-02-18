@@ -17,6 +17,7 @@ import (
 
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
 // Triggers import, precompute, or export in-process; returns 202 started or 501 for train/auto_tune.
+// Next step is only runnable after the previous completed successfully (enforced here and in /ops/status runnable).
 func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	step := strings.TrimSpace(strings.ToLower(vars["step"]))
@@ -26,6 +27,15 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("pipeline run requested", slog.String("step", step))
+
+	// Enforce order: only allow run if previous step completed (and no other step is running).
+	switch step {
+	case "import", "precompute", "export":
+		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
+			return
+		}
+	}
 
 	switch step {
 	case "import":

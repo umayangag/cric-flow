@@ -3,6 +3,8 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+from ml.resources import suggested_n_jobs
+
 logger = logging.getLogger(__name__)
 
 # Simple JSON config loader for ml-service.
@@ -132,10 +134,10 @@ def get_training_params(model: str) -> Dict[str, Any]:
         raise ValueError(
             f"ml.training.{model} is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
         )
-    # Optional: n_jobs for RandomForest (default -1 = all CPUs)
+    # Optional: n_jobs for RandomForest (default -1 = resource-aware)
     n_jobs = block.get("n_jobs", -1)
     if n_jobs == -1:
-        n_jobs = os.cpu_count() or 1
+        n_jobs = suggested_n_jobs("training")
     result = dict(block)
     result["n_jobs"] = int(n_jobs)
     n_estimators = block["n_estimators"]
@@ -199,7 +201,7 @@ def get_tuning_config() -> Dict[str, Any]:
     tuning = (ml.get("tuning") if isinstance(ml, dict) else None) or {}
     n_jobs = tuning.get("n_jobs", -1)
     if n_jobs == -1:
-        n_jobs = os.cpu_count() or 1
+        n_jobs = suggested_n_jobs("tuning")
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
