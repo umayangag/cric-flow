@@ -38,8 +38,6 @@ const WorkbenchTab: React.FC = () => {
   const [format, setFormat] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const [team1] = useState<string>('');
-  const [team2] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -71,8 +69,6 @@ const WorkbenchTab: React.FC = () => {
         format: format || undefined,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
-        team1: team1 || undefined,
-        team2: team2 || undefined,
         order: 'asc',
         limit: Math.min(Math.max(1, limit), MAX_LIMIT),
         cache: 'read',
@@ -85,7 +81,7 @@ const WorkbenchTab: React.FC = () => {
     } finally {
       setTrendLoading(false);
     }
-  }, [format, startDate, endDate, team1, team2, limit]);
+  }, [format, startDate, endDate, limit]);
 
   const handleRegistryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
