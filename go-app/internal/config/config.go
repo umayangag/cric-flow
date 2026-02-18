@@ -249,7 +249,7 @@ func loadMetaModel(cfg *Config) *metaModelWeights {
 		cwd, _ := os.Getwd()
 		abs = filepath.Join(cwd, path)
 	}
- b, err := os.ReadFile(abs)
+	b, err := os.ReadFile(abs)
 	if err != nil {
 		slog.Error("config.loadMetaModel failed to read file", "path", abs, "err", err)
 		metaModelPath = ""
