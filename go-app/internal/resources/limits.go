@@ -199,24 +199,25 @@ func parseGOMEMLIMIT(s string) int64 {
 		return 0
 	}
 	s = strings.ToUpper(s)
+	units := []struct {
+		suffix string
+		mult   int64
+	}{
+		{"TIB", 1024 * 1024 * 1024 * 1024},
+		{"GIB", 1024 * 1024 * 1024},
+		{"MIB", 1024 * 1024},
+		{"KIB", 1024},
+		{"TB", 1000 * 1000 * 1000 * 1000},
+		{"GB", 1000 * 1000 * 1000},
+		{"MB", 1000 * 1000},
+		{"KB", 1000},
+	}
 	var mult int64 = 1
-	switch {
-	case strings.HasSuffix(s, "KIB"):
-		mult, s = 1024, strings.TrimSuffix(s, "KIB")
-	case strings.HasSuffix(s, "MIB"):
-		mult, s = 1024*1024, strings.TrimSuffix(s, "MIB")
-	case strings.HasSuffix(s, "GIB"):
-		mult, s = 1024*1024*1024, strings.TrimSuffix(s, "GIB")
-	case strings.HasSuffix(s, "TIB"):
-		mult, s = 1024*1024*1024*1024, strings.TrimSuffix(s, "TIB")
-	case strings.HasSuffix(s, "KB"):
-		mult, s = 1000, strings.TrimSuffix(s, "KB")
-	case strings.HasSuffix(s, "MB"):
-		mult, s = 1000*1000, strings.TrimSuffix(s, "MB")
-	case strings.HasSuffix(s, "GB"):
-		mult, s = 1000*1000*1000, strings.TrimSuffix(s, "GB")
-	case strings.HasSuffix(s, "TB"):
-		mult, s = 1000*1000*1000*1000, strings.TrimSuffix(s, "TB")
+	for _, unit := range units {
+		if strings.HasSuffix(s, unit.suffix) {
+			mult, s = unit.mult, strings.TrimSuffix(s, unit.suffix)
+			break
+		}
 	}
 	s = strings.TrimSpace(s)
 	n, err := strconv.ParseFloat(s, 64)
