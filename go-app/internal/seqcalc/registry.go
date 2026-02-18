@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
 
 func seqcalcConcurrency() int {
-	if v := os.Getenv("SEQCALC_CONCURRENCY"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
-			return n
+	return resources.ConcurrencyLimit(resources.KindSeqCalc, 0, func() int {
+		cfg := config.Load()
+		if cfg != nil && cfg.Pipeline.SeqCalcConcurrency > 0 {
+			return cfg.Pipeline.SeqCalcConcurrency
 		}
-	}
-	return 1
+		return 0
+	})
 }
 
 // Registry holds available calculators keyed by target name.

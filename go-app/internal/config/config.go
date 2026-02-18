@@ -82,6 +82,13 @@ type Config struct {
 		ScoreWeightsByFormat map[string]ScoreWeights    `json:"score_weights_by_format"`
 		MetaModelPath        string                     `json:"meta_model_path"` // JSON from ml.train_combination_meta
 	} `json:"selection"`
+	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
+	Pipeline struct {
+		PrecomputeConcurrency int `json:"precompute_concurrency"` // 0 = auto
+		ImportConcurrency     int `json:"import_concurrency"`     // 0 = auto (cricsheet)
+		SeqCalcConcurrency    int `json:"seqcalc_concurrency"`    // 0 = auto
+		ExportConcurrency     int `json:"export_concurrency"`     // 0 = auto
+	} `json:"pipeline"`
 }
 
 // ScoreNormParams holds format-specific divisors for normalizing raw predictions to [0,1].
@@ -245,21 +252,21 @@ func loadMetaModel(cfg *Config) *metaModelWeights {
 		return metaModelCache
 	}
 	abs := path
-    if !filepath.IsAbs(path) {
-        // If a config file was loaded, resolve relative to its directory.
-        if loadedFrom != "" {
-            configDir := filepath.Dir(loadedFrom)
-            abs = filepath.Join(configDir, path)
-        } else {
-            // Fallback to CWD if config path is unknown (e.g. in tests)
-            cwd, err := os.Getwd()
-            if err != nil {
-                slog.Error("config.loadMetaModel failed to get CWD", "err", err)
-                return nil
-            }
-            abs = filepath.Join(cwd, path)
-        }
-    }
+	if !filepath.IsAbs(path) {
+		// If a config file was loaded, resolve relative to its directory.
+		if loadedFrom != "" {
+			configDir := filepath.Dir(loadedFrom)
+			abs = filepath.Join(configDir, path)
+		} else {
+			// Fallback to CWD if config path is unknown (e.g. in tests)
+			cwd, err := os.Getwd()
+			if err != nil {
+				slog.Error("config.loadMetaModel failed to get CWD", "err", err)
+				return nil
+			}
+			abs = filepath.Join(cwd, path)
+		}
+	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
 		slog.Error("config.loadMetaModel failed to read file", "path", abs, "err", err)

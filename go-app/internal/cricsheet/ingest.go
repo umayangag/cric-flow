@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 )
 
 // Options controls optional behaviors for Cricsheet import.
@@ -27,14 +27,20 @@ type Options struct {
 }
 
 // ImportDir reads all .json files in dir and imports them into the DB concurrently.
-// concurrency limits parallel file imports; 0 or negative uses runtime.NumCPU().
+// concurrency limits parallel file imports; 0 or negative uses resource-aware limit (memory/CPU).
 // Each file's DB writes run in a single transaction (all-or-nothing per file).
 func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) (int, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
 	if concurrency <= 0 {
-		concurrency = runtime.NumCPU()
+		concurrency = resources.ConcurrencyLimit(resources.KindImport, 0, func() int {
+			cfg := config.Load()
+			if cfg != nil && cfg.Pipeline.ImportConcurrency > 0 {
+				return cfg.Pipeline.ImportConcurrency
+			}
+			return 0
+		})
 	}
 	if concurrency < 1 {
 		concurrency = 1

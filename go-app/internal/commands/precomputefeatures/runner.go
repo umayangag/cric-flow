@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
 )
 
@@ -58,7 +59,14 @@ func (Runner) RunReplay(
 		}
 
 		g, pCtx := errgroup.WithContext(ctx)
-		g.SetLimit(runtime.NumCPU())
+		limit := resources.ConcurrencyLimit(resources.KindPrecompute, 0, func() int {
+			cfg := config.Load()
+			if cfg != nil && cfg.Pipeline.PrecomputeConcurrency > 0 {
+				return cfg.Pipeline.PrecomputeConcurrency
+			}
+			return 0
+		})
+		g.SetLimit(limit)
 
 		for _, pid := range players {
 			pid := pid // capture
@@ -305,7 +313,14 @@ func (Runner) RunPointInTime(
 	)
 
 	g, pCtx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.NumCPU())
+	limit := resources.ConcurrencyLimit(resources.KindPrecompute, 0, func() int {
+		cfg := config.Load()
+		if cfg != nil && cfg.Pipeline.PrecomputeConcurrency > 0 {
+			return cfg.Pipeline.PrecomputeConcurrency
+		}
+		return 0
+	})
+	g.SetLimit(limit)
 	var processed int64
 
 	for _, pid := range players {

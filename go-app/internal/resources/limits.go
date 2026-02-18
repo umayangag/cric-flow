@@ -1,0 +1,224 @@
+// Package resources provides resource-aware concurrency limits for pipelines
+// (precompute, import, export, seqcalc) to avoid OOM while using available CPU/memory.
+// Use more workers when resources are available; use fewer when memory or CPU is limited.
+package resources
+
+import (
+	"log/slog"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+)
+
+// Kind identifies the pipeline or operation for env/config overrides.
+type Kind string
+
+const (
+	KindPrecompute Kind = "precompute"
+	KindImport     Kind = "import"
+	KindExport     Kind = "export"
+	KindSeqCalc    Kind = "seqcalc"
+	KindFielding   Kind = "fielding"
+)
+
+// Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
+// Precompute: each worker holds batting/bowling history + form/consistency for one player.
+// Import: each worker holds one parsed match JSON + DB buffers.
+const (
+	DefaultPrecomputeMBPerWorker = 80
+	DefaultImportMBPerWorker     = 150
+	DefaultExportMBPerWorker     = 100
+	DefaultSeqCalcMBPerWorker    = 200
+	DefaultFieldingMBPerWorker   = 50
+)
+
+// ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
+// Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > config callback >
+// memory-based limit (from GOMEMLIMIT or cgroup) > CPU-based default.
+// Floor 1, ceiling is kind-specific (e.g. NumCPU*2 for import).
+func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int {
+	if configLimit > 0 {
+		return clamp(configLimit, 1, ceiling(kind))
+	}
+	if getConfigLimit != nil {
+		if n := getConfigLimit(); n > 0 {
+			return clamp(n, 1, ceiling(kind))
+		}
+	}
+	envKey := envKeyForKind(kind)
+	if v := os.Getenv(envKey); v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
+			return clamp(n, 1, ceiling(kind))
+		}
+	}
+	memLimit := memoryBasedLimit(kind)
+	cpuLimit := runtime.NumCPU()
+	if cpuLimit < 1 {
+		cpuLimit = 1
+	}
+	n := memLimit
+	if n <= 0 || n > cpuLimit {
+		n = cpuLimit
+	}
+	if n > ceiling(kind) {
+		n = ceiling(kind)
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+func envKeyForKind(kind Kind) string {
+	switch kind {
+	case KindPrecompute:
+		return "PRECOMPUTE_CONCURRENCY"
+	case KindImport:
+		return "CRICSHEET_CONCURRENCY"
+	case KindExport:
+		return "EXPORT_CONCURRENCY"
+	case KindSeqCalc:
+		return "SEQCALC_CONCURRENCY"
+	case KindFielding:
+		return "FIELDING_CONCURRENCY"
+	default:
+		return "PIPELINE_CONCURRENCY"
+	}
+}
+
+func ceiling(kind Kind) int {
+	cpu := runtime.NumCPU()
+	if cpu < 1 {
+		cpu = 1
+	}
+	switch kind {
+	case KindImport:
+		return cpu * 4
+	case KindPrecompute, KindExport, KindSeqCalc:
+		return cpu * 2
+	default:
+		return cpu
+	}
+}
+
+func memoryBasedLimit(kind Kind) int {
+	limitBytes := detectMemoryLimitBytes()
+	if limitBytes <= 0 {
+		return 0
+	}
+	perWorkerMB := defaultMBPerWorker(kind)
+	perWorkerBytes := int64(perWorkerMB) * 1024 * 1024
+	if perWorkerBytes <= 0 {
+		return 0
+	}
+	// Use at most 70% of limit for workers to leave room for runtime, DB, etc.
+	usable := (limitBytes * 70) / 100
+	n := int(usable / perWorkerBytes)
+	if n < 1 {
+		n = 1
+	}
+	slog.Debug("resources: memory-based limit",
+		slog.String("kind", string(kind)),
+		slog.Int64("limit_mb", limitBytes/(1024*1024)),
+		slog.Int("mb_per_worker", perWorkerMB),
+		slog.Int("workers", n))
+	return n
+}
+
+func defaultMBPerWorker(kind Kind) int {
+	switch kind {
+	case KindPrecompute:
+		return DefaultPrecomputeMBPerWorker
+	case KindImport:
+		return DefaultImportMBPerWorker
+	case KindExport:
+		return DefaultExportMBPerWorker
+	case KindSeqCalc:
+		return DefaultSeqCalcMBPerWorker
+	case KindFielding:
+		return DefaultFieldingMBPerWorker
+	default:
+		return DefaultImportMBPerWorker
+	}
+}
+
+func clamp(n, lo, hi int) int {
+	if n < lo {
+		return lo
+	}
+	if n > hi {
+		return hi
+	}
+	return n
+}
+
+// detectMemoryLimitBytes returns process memory limit in bytes (GOMEMLIMIT or cgroup v2).
+// Returns 0 if unknown so callers fall back to CPU-based concurrency.
+func detectMemoryLimitBytes() int64 {
+	if b := parseGOMEMLIMIT(os.Getenv("GOMEMLIMIT")); b > 0 {
+		return b
+	}
+	if b := readCgroupMemoryMax(); b > 0 {
+		return b
+	}
+	return 0
+}
+
+// parseGOMEMLIMIT parses Go 1.19+ GOMEMLIMIT values like "512MiB", "8GiB", "1e9".
+func parseGOMEMLIMIT(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	s = strings.ToUpper(s)
+	var mult int64 = 1
+	switch {
+	case strings.HasSuffix(s, "KIB"):
+		mult, s = 1024, strings.TrimSuffix(s, "KIB")
+	case strings.HasSuffix(s, "MIB"):
+		mult, s = 1024*1024, strings.TrimSuffix(s, "MIB")
+	case strings.HasSuffix(s, "GIB"):
+		mult, s = 1024*1024*1024, strings.TrimSuffix(s, "GIB")
+	case strings.HasSuffix(s, "TIB"):
+		mult, s = 1024*1024*1024*1024, strings.TrimSuffix(s, "TIB")
+	case strings.HasSuffix(s, "KB"):
+		mult, s = 1000, strings.TrimSuffix(s, "KB")
+	case strings.HasSuffix(s, "MB"):
+		mult, s = 1000*1000, strings.TrimSuffix(s, "MB")
+	case strings.HasSuffix(s, "GB"):
+		mult, s = 1000*1000*1000, strings.TrimSuffix(s, "GB")
+	case strings.HasSuffix(s, "TB"):
+		mult, s = 1000*1000*1000*1000, strings.TrimSuffix(s, "TB")
+	}
+	s = strings.TrimSpace(s)
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return int64(n * float64(mult))
+}
+
+// readCgroupMemoryMax reads cgroup v2 memory.max (or v1 memory.limit_in_bytes) in bytes.
+func readCgroupMemoryMax() int64 {
+	// cgroup v2: /sys/fs/cgroup/memory.max (or under slice)
+	for _, path := range []string{
+		"/sys/fs/cgroup/memory.max",
+		"/sys/fs/cgroup/memory/memory.limit_in_bytes",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		s := strings.TrimSpace(string(data))
+		if s == "max" || s == "" {
+			continue
+		}
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			continue
+		}
+		return n
+	}
+	return 0
+}
