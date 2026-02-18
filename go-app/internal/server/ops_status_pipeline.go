@@ -35,9 +35,14 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 	}
 	steps["auto_tune"] = map[string]any{"running": false}
 
-	inProgress, _ := tracking.GetInProgressMigrations(ctx)
-	recent, _ := tracking.GetRecentMigrations(ctx, pipelineRecentLimit)
-
+	inProgress, err := tracking.GetInProgressMigrations(ctx)
+	if err != nil {
+		slog.Warn("pipeline: GetInProgressMigrations failed", "err", err)
+	}
+	recent, err := tracking.GetRecentMigrations(ctx, pipelineRecentLimit)
+	if err != nil {
+		slog.Warn("pipeline: GetRecentMigrations failed", "err", err)
+	}
 	overview := map[string]any{
 		"in_progress": buildInProgressOverview(inProgress),
 		"recent":      buildRecentOverview(recent),

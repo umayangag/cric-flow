@@ -92,12 +92,11 @@ function pipelineOverviewFromData(data: OpsStatus | null): {
   inProgress: PipelineJobSummary[];
   recent: PipelineJobRecent[];
 } {
-  const pipeline =
-    data && typeof data.pipeline === 'object' ? (data.pipeline as Record<string, unknown>) : null;
-  const overview =
-    pipeline?.overview && typeof pipeline.overview === 'object'
-      ? (pipeline.overview as { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] })
-      : null;
+  const overview = (
+    data?.pipeline as {
+      overview?: { in_progress?: PipelineJobSummary[]; recent?: PipelineJobRecent[] };
+    }
+  )?.overview;
   return {
     inProgress: Array.isArray(overview?.in_progress) ? overview.in_progress : [],
     recent: Array.isArray(overview?.recent) ? overview.recent : [],
@@ -126,7 +125,7 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
           </TableHead>
           <TableBody>
             {inProgress.map((job, i) => (
-              <TableRow key={job.id ?? i}>
+              <TableRow key={job.id ?? `${job.command ?? ''}-${job.started_at ?? ''}-${i}`}>
                 <TableCell>{job.command ?? '—'}</TableCell>
                 <TableCell>{job.started_at ?? '—'}</TableCell>
               </TableRow>
@@ -154,7 +153,7 @@ const PipelineProgressOverview: React.FC<{ data: OpsStatus | null }> = ({ data }
           </TableHead>
           <TableBody>
             {recent.map((job, i) => (
-              <TableRow key={job.id ?? i}>
+              <TableRow key={job.id ?? `${job.command ?? ''}-${job.started_at ?? ''}-${i}`}>
                 <TableCell>{job.command ?? '—'}</TableCell>
                 <TableCell>{job.status ?? '—'}</TableCell>
                 <TableCell>{job.started_at ?? '—'}</TableCell>
