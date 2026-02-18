@@ -81,6 +81,7 @@ func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Drop if exists so this works when the same connection is reused (e.g. concurrent seqcalc workers).
 	if err := tx.Exec(ctx, `DROP TABLE IF EXISTS bowl_seq_stage`); err != nil {
 		return err
 	}
