@@ -55,7 +55,9 @@ def cancel_in_progress_on_startup(
                 n = cur.rowcount
             conn.commit()
             if n:
-                print(f"[Tracking] Cancelled {n} stale IN_PROGRESS migration(s) on startup (older than {stale_minutes}m)")
+                print(
+                    f"[Tracking] Cancelled {n} stale IN_PROGRESS migration(s) on startup (older than {stale_minutes}m)"
+                )
             return n
         finally:
             conn.close()
