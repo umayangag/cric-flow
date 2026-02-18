@@ -69,12 +69,13 @@ func run() int {
 		return 1
 	}
 
-	// Mark any IN_PROGRESS pipeline runs as CANCELLED (interrupted by restart/crash/OOM).
-	// With multiple instances sharing one DB, this keeps state correct after any instance restarts.
-	if n, err := tracking.CancelInProgressMigrations(ctx, "interrupted (server restart or crash)"); err != nil {
+	// Cancel only stale IN_PROGRESS runs (started longer ago than threshold), so we don't
+	// cancel a pipeline that another instance (B) is currently running when this instance (A) restarts.
+	staleCancelAge := trackingStaleCancelAge()
+	if n, err := tracking.CancelStaleInProgressMigrations(ctx, "interrupted (server restart or crash)", staleCancelAge); err != nil {
 		slog.Warn("failed to cancel stale in-progress migrations", slog.Any("err", err))
 	} else if n > 0 {
-		slog.Info("cancelled stale in-progress pipeline runs", slog.Int("count", n))
+		slog.Info("cancelled stale in-progress pipeline runs", slog.Int("count", n), slog.Duration("stale_older_than", staleCancelAge))
 	}
 
 	// Context cancelled on SIGTERM/SIGINT so in-flight pipeline jobs exit gracefully
@@ -151,6 +152,21 @@ func memStatsInterval() time.Duration {
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
 		return 0
+	}
+	return d
+}
+
+// trackingStaleCancelAge returns how old an IN_PROGRESS run must be to be cancelled on startup
+// (so we don't cancel another instance's active run). TRACKING_STALE_CANCEL_AGE (e.g. 24h, 30m); default 24h.
+func trackingStaleCancelAge() time.Duration {
+	const defaultAge = 24 * time.Hour
+	s := os.Getenv("TRACKING_STALE_CANCEL_AGE")
+	if s == "" {
+		return defaultAge
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return defaultAge
 	}
 	return d
 }

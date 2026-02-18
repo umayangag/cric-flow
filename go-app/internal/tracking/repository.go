@@ -58,23 +58,29 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
-// CancelInProgressMigrations sets all rows with status IN_PROGRESS to CANCELLED with the given reason.
-// Call on server startup so that interrupted/crashed runs (e.g. OOM, restart) are not left as in-progress.
-// Returns the number of rows updated. When db pool is nil, returns (0, nil).
-func CancelInProgressMigrations(ctx context.Context, reason string) (int, error) {
-	if db.Pool == nil {
+// CancelStaleInProgressMigrations sets IN_PROGRESS rows to CANCELLED only when started_at
+// is older than the given threshold. Use on server startup so that runs interrupted by
+// this instance's restart/crash are cleaned up, without cancelling runs started recently
+// by another instance (e.g. B running a pipeline while A restarts).
+// If staleOlderThan <= 0, no rows are cancelled. Returns the number of rows updated.
+func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
+	if db.Pool == nil || staleOlderThan <= 0 {
 		return 0, nil
 	}
 	var reasonPtr *string
 	if reason != "" {
 		reasonPtr = &reason
 	}
+	staleSeconds := int64(staleOlderThan.Seconds())
+	if staleSeconds < 1 {
+		return 0, nil
+	}
 	rows, err := db.Query(ctx, `
 		UPDATE data_migrations
 		SET status = $1, completed_at = NOW(), error_message = $2
-		WHERE status = $3
+		WHERE status = $3 AND started_at < NOW() - ($4::bigint * interval '1 second')
 		RETURNING id
-	`, StatusCancelled, reasonPtr, StatusInProgress)
+	`, StatusCancelled, reasonPtr, StatusInProgress, staleSeconds)
 	if err != nil {
 		return 0, err
 	}
