@@ -18,6 +18,7 @@ import (
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
 	apipkg "github.com/umayangag/cric-info-scrapers/go-app/internal/server"
+	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
 )
 
 const shutdownTimeout = 25 * time.Second
@@ -66,6 +67,14 @@ func run() int {
 	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
 		return 1
+	}
+
+	// Mark any IN_PROGRESS pipeline runs as CANCELLED (interrupted by restart/crash/OOM).
+	// With multiple instances sharing one DB, this keeps state correct after any instance restarts.
+	if n, err := tracking.CancelInProgressMigrations(ctx, "interrupted (server restart or crash)"); err != nil {
+		slog.Warn("failed to cancel stale in-progress migrations", slog.Any("err", err))
+	} else if n > 0 {
+		slog.Info("cancelled stale in-progress pipeline runs", slog.Int("count", n))
 	}
 
 	// Context cancelled on SIGTERM/SIGINT so in-flight pipeline jobs exit gracefully

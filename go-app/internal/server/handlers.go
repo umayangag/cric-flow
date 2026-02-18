@@ -51,6 +51,10 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
 	slog.Info(
 		"precompute: request accepted, starting background job",
 		slog.String("season", season),
@@ -109,6 +113,10 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	opts := &cricsheet.Options{
 		PlaceholdersWeather:  body.PlaceholdersWeather,
 		PlaceholdersFielding: body.PlaceholdersFielding,
+	}
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
 	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
 	go func() {

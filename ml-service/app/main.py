@@ -273,8 +273,11 @@ def _predict_players_with_features(
         else:
             X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
     except Exception as e:
-        logger.warning("predict.feature_transform.failed", error=str(e), exc_info=True)
-        X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+        logger.exception("predict.feature_transform.failed", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
+        ) from e
     if scaler_bat is not None:
         X_bat = scaler_bat.transform(X_bat)
     Y_bat = model_bat.predict(X_bat)
@@ -297,8 +300,11 @@ def _predict_players_with_features(
         else:
             X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
     except Exception as e:
-        logger.warning("predict.bowling_feature_transform.failed", error=str(e), exc_info=True)
-        X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+        logger.exception("predict.bowling_feature_transform.failed", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Bowling feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
+        ) from e
     if scaler_bowl is not None:
         X_bowl = scaler_bowl.transform(X_bowl)
     Y_bowl = model_bowl.predict(X_bowl)

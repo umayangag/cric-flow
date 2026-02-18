@@ -67,7 +67,7 @@ func stepToCommand(step string) string {
 }
 
 // runExportHandler starts export-dataset in the background with tracking.
-func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
+func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	outDir := config.DefaultExportDir()
 	cfg := config.Load()
 	opts := exportcli.Options{
@@ -76,6 +76,10 @@ func (a *App) runExportHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 	if cfg != nil && cfg.Export.SplitByFormat {
 		opts.Formats = []string{"TEST", "ODI", "T20", "T20I"}
+	}
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
 	}
 
 	go func() {
