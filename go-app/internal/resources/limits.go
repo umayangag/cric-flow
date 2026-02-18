@@ -60,7 +60,7 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 		cpuLimit = 1
 	}
 	n := memLimit
-	if n <= 0 || n > cpuLimit {
+	if n <= 0 {
 		n = cpuLimit
 	}
 	if n > ceiling(kind) {
