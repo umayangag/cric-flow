@@ -75,25 +75,17 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 	if staleSeconds < 1 {
 		return 0, nil
 	}
-	rows, err := db.Query(ctx, `
-		UPDATE data_migrations
-		SET status = $1, completed_at = NOW(), error_message = $2
-		WHERE status = $3 AND started_at < NOW() - ($4::bigint * interval '1 second')
-		RETURNING id
-	`, StatusCancelled, reasonPtr, StatusInProgress, staleSeconds)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
 	var n int
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			return 0, err
-		}
-		n++
-	}
-	if err := rows.Err(); err != nil {
+	err := db.QueryRow(ctx, `
+		WITH updated AS (
+			UPDATE data_migrations
+			SET status = $1, completed_at = NOW(), error_message = $2
+			WHERE status = $3 AND started_at < NOW() - ($4::bigint * interval '1 second')
+			RETURNING 1
+		)
+		SELECT COUNT(*)::int FROM updated
+	`, StatusCancelled, reasonPtr, StatusInProgress, staleSeconds).Scan(&n)
+	if err != nil {
 		return 0, err
 	}
 	return n, nil

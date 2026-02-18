@@ -47,7 +47,11 @@ def parse_stale_cancel_age_minutes() -> Optional[int]:
                 return num * 60
             if unit == "m":
                 return num
-            return max(1, num // 60)  # seconds -> minutes
+            if unit == "s":
+                if num == 0:
+                    return None  # align with Go: non-positive uses default
+                return max(1, num // 60)
+            return None
         logger.warning("tracking.invalid_TRACKING_STALE_CANCEL_AGE", extra={"value": raw})
         return None
     raw = os.environ.get("TRACKING_STALE_CANCEL_AGE_MINUTES", "").strip()
@@ -71,31 +75,35 @@ def cancel_in_progress_on_startup(
         stale_minutes = DEFAULT_STALE_CANCEL_AGE_MINUTES
     if stale_minutes <= 0:
         return 0
+    conn = None
     try:
         conn = get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE data_migrations
-                    SET status = 'CANCELLED', completed_at = NOW(), error_message = %s
-                    WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 minute')
-                    """,
-                    (reason, stale_minutes),
-                )
-                n = cur.rowcount
-            conn.commit()
-            if n:
-                logger.info(
-                    "tracking.cancelled_stale_on_startup",
-                    extra={"cancelled": n, "stale_minutes": stale_minutes},
-                )
-            return n
-        finally:
-            conn.close()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE data_migrations
+                SET status = 'CANCELLED', completed_at = NOW(), error_message = %s
+                WHERE status = 'IN_PROGRESS' AND started_at < NOW() - (%s * interval '1 minute')
+                """,
+                (reason, stale_minutes),
+            )
+            n = cur.rowcount
+        conn.commit()
+        if n:
+            logger.info(
+                "tracking.cancelled_stale_on_startup",
+                extra={"cancelled": n, "stale_minutes": stale_minutes},
+            )
+        return n
     except Exception as e:
         logger.warning("tracking.cancel_stale_on_startup_failed", extra={"error": str(e)})
         return 0
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def has_any_pipeline_in_progress() -> bool:
