@@ -25,10 +25,10 @@ const (
 )
 
 // Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
-// Precompute: each worker holds batting/bowling history + form/consistency for one player.
+// Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player (conservative to avoid OOM in 2GB containers).
 // Import: each worker holds one parsed match JSON + DB buffers.
 const (
-	DefaultPrecomputeMBPerWorker = 80
+	DefaultPrecomputeMBPerWorker = 180
 	DefaultImportMBPerWorker     = 150
 	DefaultExportMBPerWorker     = 100
 	DefaultSeqCalcMBPerWorker    = 200

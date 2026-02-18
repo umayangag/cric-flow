@@ -7,6 +7,8 @@ package precompute
 import (
 	"context"
 	"log/slog"
+	"os"
+	"runtime"
 
 	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
@@ -46,6 +48,18 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 		return err
 	}
 	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
+
+	// Log resource context to diagnose OOM: memory limit env and current heap.
+	if gomemlimit := os.Getenv("GOMEMLIMIT"); gomemlimit != "" {
+		slog.Info("precompute: GOMEMLIMIT", slog.String("value", gomemlimit))
+	}
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	slog.Info("precompute: heap at start",
+		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
+		slog.Uint64("heap_sys_mb", mem.HeapSys/(1024*1024)),
+		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
+	)
 
 	setStart(season, codes)
 	defer func() {

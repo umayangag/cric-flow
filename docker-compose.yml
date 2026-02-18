@@ -36,8 +36,14 @@ services:
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
-      # Optional: log memory stats every 5m to diagnose OOM (see docs/CRASH_DIAGNOSIS.md)
+      # 2GB memory limit for resource-aware pipeline concurrency (override with GOMEMLIMIT=... if needed)
+      GOMEMLIMIT: ${GOMEMLIMIT:-2GiB}
+      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
+      # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 (or 2) for 2GB (override with SEQCALC_CONCURRENCY=...).
+      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
+      # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/CRASH_DIAGNOSIS.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
+    mem_limit: 2g
     ports:
       - "8080:8080"
 
@@ -62,6 +68,9 @@ services:
       # Required for train-on-the-fly when no artifacts are loaded for a format (e.g. T20I)
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
+      # 2GB memory limit for resource-aware training/tuning n_jobs (override with ML_MEMORY_LIMIT_MB=... if needed)
+      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
+    mem_limit: 2g
     ports:
       - "8000:8000"
     volumes:

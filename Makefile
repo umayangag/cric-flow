@@ -2,6 +2,8 @@
 
 # Common variables
 DC:=docker compose
+# Local go-app pipelines: 2GB memory limit so resource-aware concurrency stays safe (override with GOMEMLIMIT=... if needed)
+export GOMEMLIMIT?=2GiB
 APP_SERVICES:=go-api ml-service
 # Frontend configuration (override if your dev server uses a different port)
 FRONTEND_PORT ?= 5173
