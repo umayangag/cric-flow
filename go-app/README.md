@@ -1,150 +1,25 @@
-# Go Application (Importer/ETL/API)
+# Go Application (Importer / API / Export)
 
-Go services for importing Cricsheet JSON, dataset export, and serving an HTTP API. This component integrates with Postgres and the Python ML service.
+Go services: Cricsheet import, dataset export, HTTP API. Integrates with Postgres and the Python ML service. Feature computation for training export and at prediction cutoff runs in go-app; ML service trains models and serves predictions.
 
-Components:
-- `cmd/cricsheet-importer`: CLI to import Cricsheet JSON files into the DB (idempotent; optional placeholders).
-- `cmd/export-dataset`: CLI to export model-ready CSVs for ML training.
-- `cmd/api`: HTTP API server (health/readiness + orchestration endpoints, including `/import/cricsheet` and `/precompute`).
-- `cmd/team-predictor`: CLI to select a cricket team based on ML predictions, reading from a pre-generated player pool.
-- `cmd/team-select`: CLI to run the end-to-end team selection pipeline either from the DB or from a CSV pool.
-- `cmd/migrate`: DB migration runner.
-- `internal/*`: packages for Cricsheet parsing, contracts, repos, ML client, etc. (Note: Feature calculation logic has moved to the ML service).
+**Components:** `cmd/cricsheet-importer`, `cmd/export-dataset`, `cmd/api`, `cmd/team-predictor`, `cmd/team-select`, `cmd/migrate`; `internal/*` (Cricsheet, contracts, repos, ML client).
 
-Prerequisites:
-- Go 1.25+
-- Postgres reachable using the following defaults (override via env):
-  - `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_DB=cricket_data`
-  - `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=postgres`, `POSTGRES_SSLMODE=disable`
+**Prerequisites:** Go 1.25+, Postgres (defaults: `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_DB=cricket_data`, etc.). Override via env.
 
-## One-time setup
-Install tools and download modules used by CI and local dev:
-```
-make init
-```
-This installs `gofumpt` and `golines` into `$(go env GOPATH)/bin`. Ensure that directory is on your `PATH`.
+## Setup and config
+- **One-time:** `make init` — installs gofumpt, golines, golangci-lint; ensure `$(go env GOPATH)/bin` on PATH.
+- **Config:** Precedence: CLI flags → env → `go-app/config.json` → defaults. See **docs/config-and-data.md** for full schema and examples.
 
-## Configuration
-The Go app reads defaults from `go-app/config.json`, environment variables, and CLI flags in this precedence:
-1. CLI flags (e.g., `-dir`, `-out`)
-2. Environment variables (`GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`)
-3. Config file `go-app/config.json`
-4. Built-in defaults
+## Common tasks
+- **Build / run:** `make build`, `make run-api` (API on :8080)
+- **Import:** `make cricsheet-import` (or with `PLACEHOLDERS=1`, `FAIL_FAST=0`). From repo root: `make cricsheet-import`
+- **Export:** `make export-dataset` (unified); optional sequence columns: `ENABLE_SEQ_FEATURES=1` or `-enable-seq=1`. See **docs/config-and-data.md**
+- **Migrations:** `make migrate`
+- **Docker:** `make docker-build`, `make docker-run`
 
-Schema for `go-app/config.json` (Note: `etl_dir` is no longer used as ETL is handled by the ML service):
-```json
-{
-  "inputs": {
-    "cricsheet_dir": "../data/go-app/cricsheet"
-  },
-  "outputs": {
-    "export_dir": "../output/go-app"
-  }
-}
-```
-See `docs/CONFIG.md` for details and examples.
-
-## Common tasks (Makefile)
-- Build binaries:
-```
-make build
-```
-- Run API locally on :8080:
-```
-make run-api
-```
-- Import Cricsheet JSON into the DB (from repo root or here):
-```bash
-make cricsheet-import
-# or with placeholders and custom dir
-make cricsheet-import DIR=../data/go-app/cricsheet PLACEHOLDERS=1
-```
-- Export model datasets (writes to output/go-app by default). Unified cross-format is recommended:
-```bash
-make export-dataset
-# or directly (uses GO_APP_OUTPUT_DIR or config.json default)
-GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1 -out=$GO_APP_OUTPUT_DIR
-```
-
-To append optional sequence feature columns to the exports, enable via flag or environment:
-```
-# Using CLI flag
-GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1 -enable-seq=1 -out=$GO_APP_OUTPUT_DIR
-
-# Using environment gate (equivalent)
-ENABLE_SEQ_FEATURES=1 GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1 -out=$GO_APP_OUTPUT_DIR
-```
-- Apply DB migrations (uses env vars above):
-```
-make migrate
-```
-- Docker images:
-```
-make docker-build
-make docker-run
-```
-
-## Testing & Mocks
-
-We use interfaces and mockery-generated mocks instead of hand-written fakes.
-
-- Interfaces with `//go:generate` live near their packages, e.g.:
-  - `internal/mlclient/predictor.go` defines `Predictor` and has a `mockery` directive.
-  - `internal/db/connector.go` defines `Connector` and has a `mockery` directive.
-- Generate mocks locally:
-```
-make -C go-app mocks
-# or from this directory
-make mocks
-```
-This requires mockery installed:
-```
-brew install mockery
-# Linux/CI: install via your package manager or fallback:
-#   go install github.com/vektra/mockery/v2@latest
-```
-
-## Historical backtest via ML service (delegation)
-
-The backtest API can delegate evaluation of an already-played match to the ML service, which trains/predicts strictly using data available before a given cutoff and returns per-player and match-level comparisons.
-
-- Environment variable:
-  - `ML_SERVICE_URL` — Base URL of the ML service. Default: `http://localhost:8000`.
-
-- Endpoint (Go API):
-  - `GET /api/backtest/match?format=<FMT>&team1=<T1>&team2=<T2>&mode=evaluate&match_id=<ID>&use_ml=1&cutoff=<RFC3339>`
-  - Required query params for delegation: `use_ml=1` and `cutoff` (RFC3339 timestamp). `match_id` identifies the match to evaluate.
-
-- Example:
-```
-curl -s \
-  "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=789&use_ml=1&cutoff=2024-10-30T14:00:00Z"
-```
-
-Response includes:
-- `players`: per-player predicted vs actual with absolute errors.
-- `match_aggregates`: predicted/actual aggregates and MAE per stat.
-- `metrics`: summary metrics including `player_runs_mae`, `player_runs_rmse` (when available), and `winner_accuracy` when provided by ML.
-- `filters.model_version`: model/artifact version used by the ML service.
-
-Notes:
-- `cutoff` should be an RFC3339 timestamp; UTC (`...Z`) recommended.
-- If `use_ml` is omitted, the handler follows the non-delegated baseline path using local seams and DB (where implemented).
-
-- Tests import mocks from `internal/*/mocks` and configure behavior with `testify/mock`:
-```
-ml := &mlclientmocks.Predictor{}
-ml.On("PredictWin", mock.Anything, players).Return(players, nil)
-```
-
-Database testing
-- For simple orchestration tests, depend on the `db.Connector` interface and mock its `Connect` method using `internal/db/mocks`.
-- For repository-level tests that need to simulate `database/sql` primitives (e.g., `Rows`, `Result`), prefer `sqlmock` or explicit small interfaces around usage points. Some packages under `internal/cricsheet/mocks` already use `testify/mock`.
-
-Note: Legacy hand-written fakes have been removed from tests in favor of mocks for consistency and maintainability.
+## Testing and mocks
+- **Mocks:** Generate with `make mock` from repo root (uses `go-app/.mockery.yml`). Install mockery: `go install github.com/vektra/mockery/v3@v3.6.0`. Tests use `internal/*/mocks` and `testify/mock`.
+- **Backtest API:** See **docs/apis-backtest-and-ops.md** for endpoints, `ML_SERVICE_URL`, and evaluate flow.
 
 ### Testing conventions
 
@@ -248,27 +123,7 @@ Notes:
 - Output prints the selected XI ordered by predicted winning probability.
 
 ## Formatting and checks
-- Format Go code (gofumpt + golines):
-```
-make fmt
-```
-- Check formatting only (fails on diff), mirrors CI:
-```
-make fmt-check
-```
-- Vet and tests:
-```
-make vet
-make test
-```
-
-Notes:
-- File IO conventions: inputs under `data/go-app/...`, outputs under `output/go-app`.
-- Formatting/linting conventions match the GitHub Actions workflow.
-- See repo root `README.md` for end-to-end workflows and orchestration commands.
-```
-
----
+`make fmt`, `make fmt-check`, `make vet`, `make test`. Inputs: `data/go-app/...`, outputs: `output/go-app`. See root README and **docs/overview.md**.
 
 ### CLI quick reference (team-select, team-predictor)
 - team-select flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
@@ -333,33 +188,7 @@ Notes:
   make -C go-app coverage-ci
   ```
 
-## Cricsheet adapter seams (offline tests)
-
-To keep tests offline and deterministic, `internal/cricsheet/ingest.go` depends on small interfaces:
-- `CricsheetDB` for DB operations
-- `WeatherClient` for enqueueing async weather jobs
-
-The default adapters delegate to real packages. In tests, swap them with fakes:
-```go
-prevDB := cricsheet.SetCricsheetDB(fakeDB)
-prevW  := cricsheet.SetWeatherClient(fakeWeather)
-// ... run tests ...
-cricsheet.SetCricsheetDB(prevDB)
-cricsheet.SetWeatherClient(prevW)
-```
-
-The integration-style tests under `internal/cricsheet` use in-memory fakes and temporary files only—no network or DB connections.
-
-## Local formatting
-
-CI installs `gofumpt` automatically. Locally, run once:
-```
-make -C go-app init
-```
-Then you can check formatting just like CI:
-```
-make -C go-app fmt-check
-```
+Cricsheet tests use seams (`SetCricsheetDB`, `SetWeatherClient`). See **docs/quality-and-debugging.md**.
 
 
 
@@ -367,105 +196,5 @@ make -C go-app fmt-check
 
 ---
 
-## Coverage & CI gates
-
-Coverage is run for **all packages** (`./...`) by default. CI enforces a minimum threshold (`COV_MIN`). Locally:
-
-```
-make -C go-app coverage && make -C go-app coverage-func && make -C go-app coverage-check
-```
-
-To narrow scope (e.g. for a quick check), set `COVERAGE_PACKAGES`; otherwise all packages are included and `COV_MIN` can be raised as coverage improves.
-
-## Mock generation (mockery)
-
-We prefer interface-driven code with mocks generated by `mockery`. Mock generation is centralized at the repo root with `.mockery.yaml` and pinned to `mockery` v3.5.5 for deterministic output.
-
-```
-# Install mockery (pinned)
-go install github.com/vektra/mockery/v3@v3.6.0
-
-# Generate mocks from repo root
-make mock
-```
-
-Tests can also use small local fakes in table-driven style where appropriate.
-
-## Environment variables
-
-See `.env.example` for commonly used variables. Copy to `.env` and adjust values:
-
-- `LOG_FORMAT` (`json`|`text`)
-- `LOG_LEVEL` (`debug`|`info`|`warn`|`error`)
-- `ML_BASE_URL` (base URL for the Python ML service)
-- Postgres settings used by `cmd/api` and migration tooling: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_SSLMODE`
-
-Commands generally accept flags that override env and config defaults.
-
-## Internal Server Package Layout
-
-The `internal/server` package is organized for readability and testability:
-
-- `backtest_handlers.go` — HTTP handlers for backtest-related endpoints (request parsing, response writing only).
-- `backtest_services.go` — orchestration and pure helpers that implement the backtest logic; small, named functions.
-- `backtest_types.go` — DTOs, small structs, and interfaces used by handlers/services.
-- `backtest_seams.go` — overridable seams/interfaces for DB/ML calls to enable unit testing without real dependencies.
-- `matches.go` — handler for listing matches filtered by season/date/format; uses a DAO seam (`db.ListMatches`).
-- `seasons.go` — handler for querying the next season after a cutoff date; uses a DAO seam (`db.GetNextSeasonAfter`).
-- `squads.go` — handler for fetching squads and player predictions for a match; maps DB rows to response DTOs.
-- `json.go`, `response.go`, `cors.go`, `router.go`, `app.go` — shared HTTP utilities, app setup, and routing.
-
-Guidelines:
-- Handlers: validate/parse, delegate to services, never contain complex logic.
-- Services/helpers: prefer pure functions; keep them under ~80 LoC where practical.
-- Seams: define clear interfaces to decouple handlers/services from persistence and external clients.
-- Tests: use table-driven tests for parsing/aggregation with seams/mocks.
-
-## CLI Flag Helpers and Conventions
-
-The `internal/cli/flags` package provides small, reusable helpers for common
-flag parsing and validation patterns. These helpers exist to keep individual
-CLIs simple and consistent; they do not change behavior of existing commands.
-
-- `ParseDateISO(value string) (time.Time, error)` — parses `YYYY-MM-DD`.
-- `ParseRFC3339(value string) (time.Time, error)` — parses RFC3339 timestamps.
-- `ParseCSVList(value string) []string` — splits on commas, trims spaces, drops empties.
-- `RequireNonEmpty(name, value string) error` — validates required string flags.
-- `ParseDurationFlag(value string) (time.Duration, error)` — parses Go duration strings.
-
-Guidelines:
-- Prefer using these helpers for new code; when adopting in existing commands,
-  ensure error messages remain compatible with current tests and UX.
-- Keep CLI parsing functions pure (no I/O); pass in `*flag.FlagSet` and `[]string`
-  where possible to enable table-driven tests.
-
-## Logging and Config Conventions
-
-This project uses a single structured logger based on Go's `slog` via the
-`internal/logger` package.
-
-- Initialize once at application start (e.g., in `main`):
-  ```go
-  logger.SetupFromEnv() // sets the global slog default logger
-  log := logger.L()
-  log.Info("app started")
-  ```
-- Retrieve the logger in packages with `logger.L()`; prefer structured fields
-  (`log.Info("msg", "key", value)`).
-- Environment variables:
-  - `LOG_FORMAT` = `json` | `text` (default: `json`)
-  - `LOG_LEVEL` = `debug` | `info` | `warn` | `error` (default: `info`)
-
-Configuration loading follows `internal/config.Load()`, with many CLIs allowing
-environment variables to provide defaults for flags (kept for backwards
-compatibility and convenience). Typical patterns seen across `internal/cli`:
-
-- Call `config.Load()` early to ensure config cache readiness where needed.
-- Use `os.Getenv(KEY)` to populate default flag values when present (e.g.,
-  `GO_APP_OUTPUT_DIR`, `ENABLE_SEQ_FEATURES`, and tool-specific keys). This is
-  a convenience only; flags still validate explicitly.
-
-Guidelines:
-- Prefer the shared logger over ad-hoc printing; if adopting in existing code,
-  match current message text and level to avoid behavior drift.
-- Keep CLI flag parsing pure and deterministic; no logging in parsing helpers.
+## Env and layout
+See `.env.example`: `LOG_FORMAT`, `LOG_LEVEL`, `ML_BASE_URL`, Postgres vars. **internal/server:** handlers in `backtest_handlers.go`, orchestration in `backtest_services.go`, seams in `backtest_seams.go`; **internal/cli/flags:** helpers for date/CSV/duration parsing. Logger: `internal/logger` (slog); config: `internal/config.Load()`. See **docs/quality-and-debugging.md** for test standards.

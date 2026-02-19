@@ -119,7 +119,7 @@ def train_and_save(
     """Train fielding model and save scaler + model for format_code.
 
     Input normalization (StandardScaler) on X only; targets Y in raw units.
-    See docs/ML_DATA_AND_NORMALIZATION.md.
+    See docs/ml-and-training.md.
     """
     params = get_training_params("fielding", format_code)
     scaler = StandardScaler()
@@ -154,6 +154,21 @@ def train_and_save(
                 json.dump({"feature_importance": feature_importance}, f, indent=2)
         except OSError as e:
             logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
+
+
+def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
+    """Train one unified fielding model on all data and save as legacy (fielding_scaler.joblib, fielding_model.joblib)."""
+    params = get_training_params("fielding", None)
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+    base = make_base_estimator(params)
+    model = MultiOutputRegressor(base)
+    model.fit(Xs, Y)
+    os.makedirs(out_dir, exist_ok=True)
+    compress = params["joblib_compress"]
+    joblib.dump(scaler, os.path.join(out_dir, "fielding_scaler.joblib"), compress=compress)
+    joblib.dump(model, os.path.join(out_dir, "fielding_model.joblib"), compress=compress)
+    logger.info("train_fielding.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
 def main() -> None:
@@ -195,6 +210,12 @@ def main() -> None:
     for fmt, (X, Y) in by_format.items():
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+
+    # Unified (overall) model: train on all data combined for legacy/fallback
+    all_X = np.vstack([X for _, (X, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    if all_X.shape[0] >= 10:
+        train_and_save_legacy(all_X, all_Y, out_dir)
 
 
 if __name__ == "__main__":

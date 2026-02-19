@@ -1,77 +1,17 @@
-  - Determine next season after a cutoff: `GET /seasons/next?cutoff=YYYY-MM-DD&format=T20|ODI|...`.
-  - List matches: `GET /matches?season=YYYY&after=YYYY-MM-DD&format=...`.
-  - For each match, fetch squads: `GET /match/{id}/squads?asof=YYYY-MM-DD&format=...` and call ML `POST /predict/win` for both teams.
-  - Shows progress, per-match status badges, accuracy, and a labeled 2x2 confusion matrix.
-- Match Compare (DB): enter a match ID and as-of date to fetch squads and compare ML predictions for both teams vs the actual winner; handles 404 (not found) and 422 (incomplete squads).
+# Cric Info Scrapers
 
-CSV schema for Evaluate From CSV (per row):
-```
-match_id,date,season(optional),team_name,actual_win,
-player_name,runs_scored,balls_faced,fours_scored,sixes_scored,batting_position,strike_rate,
-runs_conceded,deliveries,wickets_taken,econ
-```
+## Quick start
+- **Bootstrap:** `make init` then `make dev-up` (Postgres, API, ML). Full pipeline: `make up-all`.
+- **Docs:** **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import, export), **docs/apis-backtest-and-ops.md** (APIs, backtest, ops).
 
-Notes:
-- Ensure both the Go API (`go-app`) and the ML service (`ml-service`) are running for DB-backed tabs.
-- The frontend calls the ML service from the browser. Allow CORS from the frontend origin (e.g., http://localhost:5173) or serve behind the same origin/reverse proxy.
-
-### 9) Run API
-```bash
-make api
-# liveness/readiness
-curl -s http://localhost:8080/health
-curl -s http://localhost:8080/readiness
-```
-
-### 10) Predict team (DB-backed, end-to-end)
-Requires a `match_id` that exists in the DB from the import step. This path mirrors the prototype logic but builds features from the DB and calls the ML service for per-player and win predictions.
-
-**Supported Formats:** `TEST`, `ODI`, `T20`, `T20I`.
-- **Aliases:** `MDM` (TEST), `ODM` (ODI), `IT20` (T20I) are automatically mapped to their canonical counterparts.
-- **T20/T20I Bucket:** For many feature calculations, `T20` (domestic) and `T20I` (international) are treated as a single bucket to ensure richer feature vectors.
-
-```bash
-make team-select MATCH=<match_id> SEASON=2019 FORMAT=T20
-```
-Output shows the ranked XI and the team average winning probability.
-
-Alternative (CSV pool path, prototype-style):
-```bash
-# generate pool.csv with the Python helper and then call the win model via service
-make team-predictor MATCH=<match_id>
-```
-- Team selection parameters can be configured in `go-app/config.json` (sections `team`, `predictor`, and `selection`) or overridden via CLI flags to `go-app/cmd/team-select`.
-
-### 11) Future match team selection (best 11 per team)
-API to select the best 11 players for each team for an upcoming match. Uses ML predictions (batting, bowling, fielding) with venue, opposition, and match-date context. Player pool: players who have played for that team; optionally include extra player IDs (e.g. IPL auction players).
-
-**Endpoint:** `POST /api/predict/team-selection` (or `GET` with query params)
-
-**Request body (JSON) or query params:**
-- `format` (required): e.g. T20, ODI
-- `team1`, `team2` (required): team names
-- `venue` (optional): venue name for venue-specific features
-- `match_date` (required): RFC3339 or YYYY-MM-DD
-- `season_id` (optional)
-- `extra_team1`, `extra_team2` (optional): player IDs to add to pool (e.g. new auction players)
-- `min_bowlers` (optional, default 5)
-- `require_keeper` (optional, default true)
-
-**Response:** `{ "team1": [...], "team2": [...] }` — each array has 11 selected players with predicted runs, wickets, economy, catches, run_outs.
-
-Example:
-```bash
-curl -X POST -H "Content-Type: application/json" -H "X-API-Key: $API_KEY" \
-  -d '{"format":"T20","team1":"India","team2":"Australia","venue":"Wankhede","match_date":"2025-03-15"}' \
-  http://localhost:8080/api/predict/team-selection
-```
-
-Prerequisites: precomputed features (run `make precompute-all` or equivalent), ML service with loaded artifacts, imported match data.
+## Key workflows
+- **Run API:** `make api` — `curl -s http://localhost:8080/health`
+- **Predict team:** `make team-predictor MATCH=<id> FORMAT=T20 SEASON=2019` (or `make team-select ...`). Requires ML + precomputed data.
+- **Team selection API:** `POST /api/predict/team-selection` — `format`, `team1`, `team2`, `match_date`; see **docs/apis-backtest-and-ops.md**.
+- **Frontend:** Ops Status, Evaluate DB, Accuracy Trend. `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
 
 ## System architecture
-For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
-- docs/ARCHITECTURE.md
-- docs/SCHEMA_REDESIGN.md — database schema (match, match_inning, batting_data, bowling_data)
+For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see **docs/overview.md**. Configuration and data (including export/DB schema) are in **docs/config-and-data.md**.
 
 ## Configuration and paths
 This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.
@@ -88,7 +28,7 @@ This repo standardizes file IO locations and makes them configurable via JSON, e
   3. Config file (JSON) in the component directory
   4. Built-in defaults
 
-See `docs/CONFIG.md` for full schema and examples.
+See `docs/config-and-data.md` for full schema and examples.
 
 ## Formatting and linting
 - Run all quality checks (lint, fmt, typecheck, tests) for all components:
@@ -106,7 +46,7 @@ make fmt-check
 - Per component:
   - Go: `make -C go-app fmt` or `make -C go-app fmt-check`
   - Python: `make -C ml-service fmt` or `make -C ml-service fmt-check`
-- Developer hooks (pre-commit runs gofumpt/golines for Go and black/isort for Python):
+- Developer hooks (pre-commit runs gofumpt/golines/golangci-lint for Go, ruff for Python, prettier/eslint for frontend):
 ```
 make install-hooks
 ```
@@ -140,383 +80,52 @@ Notes:
 - `pgxmock` is included as a test dependency in `go-app/go.mod` and has no runtime impact.
 - We avoid `go:generate` for mocks; prefer the centralized `make mock`.
 
-## Notes
-- Data ingestion now uses Cricsheet JSON files (no HTML scraping or external requests during import).
-
-## Historical Backtest UI (frontend)
-The repository includes a minimal React/Vite UI to backtest already‑played matches using only data available before a cutoff and to compare predictions vs actuals.
-
-- Start stack (API + ML):
-  - make dev-up
-  - or run components individually: `make api` (Go API) and `make ml-serve` (ML service)
-- Start the frontend dev server:
-  - make frontend-dev
-  - Opens on http://localhost:5173 (by default)
-- Login (Local Dev):
-  - The UI is protected by an API key for administrative access.
-  - Enter your `API_KEY` (as defined in your backend environment) into the API Key field on the login page.
-  - In local development (e.g., via `make dev-up`), the default API key is typically defined in your `.env` file or environment. If `API_KEY` is not set in the backend, administrative endpoints will be locked.
-- Usage flow in the UI:
-  1. Enter filters: format (e.g., T20), team1, team2, then Search to list already‑played matches.
-  2. Select a match from the results.
-  3. Provide a cutoff timestamp (RFC3339, e.g., 2024-10-30T14:00:00Z) and click Evaluate to delegate to the ML service.
-  4. Review per‑player comparisons, match aggregates (runs/wickets/extras/winner), summary metrics (player_runs_mae, winner_accuracy), and the ML `model_version` used.
-
-Notes:
-- The Go API delegates to the ML service when `use_ml=1&cutoff=<RFC3339>` is provided. Ensure `ML_SERVICE_URL` is set if the ML base URL differs from the default `http://localhost:8000`.
-- See `frontend/` directory for component/file map and quick commands.
-- Unique constraints and upsert logic ensure idempotent persistence.
-- Optional placeholders can be inserted by the importer: weather rows per innings and zeroed fielding rows (see Makefile target `cricsheet-import` or API `/import/cricsheet`).
-- The ML service returns non-zero predictions only when trained artifacts are present.
-- For development speed, this setup targets the happy path first; additional edge cases can be covered by enhancing the importer as needed.
+## Backtest and frontend
+Evaluate DB tab: list played matches by filters, select a match, run evaluation (strict cutoff). See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
 
 ## CI
-Three separate GitHub Actions workflows:
-- Go App: `.github/workflows/go-app-ci.yml` — spins up Postgres, applies migrations, checks formatting (gofumpt/golines), builds and tests Go modules.
-- ML Service: `.github/workflows/ml-service-ci.yml` — installs deps, runs isort/black checks, and sanity-compiles the app and training scripts.
-- Frontend: `.github/workflows/frontend-ci.yml` — sets up Node 20, installs dependencies with `npm ci`, builds (TypeScript + Vite), and runs unit tests with Vitest.
+Three workflows: **go-app** (Postgres, migrate, fmt, build, tests), **ml-service** (deps, fmt/lint, tests), **frontend** (Node, npm ci, build, Vitest). See `.github/workflows/`.
 
 ## Troubleshooting
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
 - If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
 - If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).
-- If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/CRICSHEET_IMPORT.md** for why and how to run with `-fail-fast=false` to skip bad files and list them.
+- If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/config-and-data.md** (Cricsheet import) for why and how to run with `-fail-fast=false` to skip bad files and list them.
 
 
 
-## As-of (time-indexed) precompute — single command for all formats (new)
-The legacy `make precompute` triggers the API’s seasonal/aggregate metrics and does not populate the new `*_asof` tables. To fill the date-indexed snapshot tables (`player_form_asof`, `player_consistency_asof`, `player_vs_opposition_asof`, `player_at_venue_asof`), run the as-of precompute across all formats. If you don’t pass a date, it defaults to today (UTC):
-
-```
-make precompute-asof
-```
-
-Notes and parameters:
-- `ASOF` — optional cutoff date (YYYY-MM-DD). Defaults to today (UTC). Features are computed using only matches strictly BEFORE this date.
-- `ALPHA` — EWM alpha (default 0.3)
-- `LASTN` — window N for consistency (default 10)
-- History window (how many past matches to consider) is controlled by `features.history_window_matches` in `go-app/config.json` (0 = unlimited).
-
-Examples:
-```
-# Snapshots as of today (UTC) for all formats (TEST, ODI, T20I, T20)
-# Note: T20 and T20I features are often computed from a shared data bucket.
-make precompute-asof
-
-# Snapshots as of a specific date
-make precompute-asof ASOF=2020-12-31
-
-# With tuned parameters
-make precompute-asof ASOF=2020-12-31 ALPHA=0.35 LASTN=12
-```
-
-Behind the scenes this runs the Go CLI `go-app/cmd/precompute-features` once per format with `-as-of`, applying DB migrations automatically. Ensure you have already imported data (e.g., via `make cricsheet-import`).
+## As-of precompute
+`make precompute-asof` (default: today UTC). Optional: `ASOF=YYYY-MM-DD`, `ALPHA=0.3`, `LASTN=10`. See **docs/config-and-data.md**.
 
 
-## Logging configuration (Go services & CLIs)
-
-All Go commands in `go-app/` use a centralized `log/slog` logger with structured output.
-
-Environment variables:
-- `LOG_FORMAT` = `json` | `text` (default: `json`)
-- `LOG_LEVEL` = `debug` | `info` | `warn` | `error` (default: `info`)
-
-Examples:
-- API with human-readable logs:
-  ```bash
-  cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api
-  ```
-- CLI with JSON logs:
-  ```bash
-  cd go-app && LOG_FORMAT=json LOG_LEVEL=info go run ./cmd/export-dataset -unified=1
-  ```
-
-Notes:
-- Fatal exits happen only in `main` packages; internal libraries never call `os.Exit` or `panic` for routine errors.
-- Non-fatal cleanup errors (e.g., `Close`/`Flush`) are logged at `warn` level.
+## Logging (Go)
+Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|warn|error). Example: `cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api`.
 
 
 
-## Centralized Feature Vectors (shared config)
-To prevent drift between the Go app and the Python ML service, the ordered feature names for batting and bowling are defined once in a shared JSON config:
-
-- File: `configs/feature_vectors.json`
-- Schema keys: `batting` and `bowling`, each a 15-element ordered list of feature field names matching the public contracts in both services.
-
-Both services consume this configuration:
-- ml-service: builds its input vectors dynamically using `app/feature_config.py` (which reads `FEATURE_CONFIG_PATH` or defaults to `../configs/feature_vectors.json` relative to the repo).
-- go-app: provides a loader/validator in `go-app/internal/featurecfg` that reads the same file and validates names against `internal/contracts` JSON tags.
-
-Override path for experiments or custom deployments via environment variable (both services honor it):
-
-```
-FEATURE_CONFIG_PATH=./configs/feature_vectors.json
-```
-
-Notes:
-- If the file is missing or invalid, ml-service will fail fast with a clear error. Set `FEATURE_CONFIG_PATH` or ensure `configs/feature_vectors.json` exists and is valid.
-- go-app loader will return an error if the file is missing or contains invalid names.
-
-Verification commands:
-- Go tests:
-  - `cd go-app && go test ./...`
-- Python tests (requires a Python venv with deps installed):
-  - `cd ml-service && pytest -q`
-
-To experiment with a different order locally without changing the repo file, point `FEATURE_CONFIG_PATH` at a temporary JSON file and run tests; they should reflect your custom order in vector construction.
+## Feature vectors
+Ordered feature names for batting and bowling are in **configs/feature_vectors.json** (shared by go-app and ml-service). Override: `FEATURE_CONFIG_PATH`. See **docs/config-and-data.md**.
 
 
 
-## Sequence features in exporter (gated by -enable-seq)
-
-The exporter can optionally append a compact subset of bowl/bat sequence features to the CSV outputs. By default this is OFF to preserve the current schema. Enable it via a CLI flag or environment variable.
-
-- Flag: `-enable-seq=1`
-- Env:  `ENABLE_SEQ_FEATURES=1` (truthy values: `1`, `true`, `yes`)
-
-Examples (structure-only runs; values require a DB connection):
-
-- OFF (baseline headers; no extra columns) — per-format export
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -format=T20
-```
-
-- ON (appends sequence columns to the end of the CSV headers) — per-format export
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
-  go run ./cmd/export-dataset -format=T20 -enable-seq=1
-```
-
-- Unified export with sequence columns (recommended for training)
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -unified=1 -enable-seq=1 -out=$GO_APP_OUTPUT_DIR
-```
-
-Convenience Make targets:
-```
-# Precompute sequence features for all formats (TEST, ODI, T20I, T20)
-make precompute-seq
-
-# Exporter OFF vs ON for a given format
-make export-off FORMAT=T20
-make export-on  FORMAT=T20
-```
-
-Bowling columns added when ON:
-- `bowl_prev_bowler_id`, `bowl_prev_phase`, `bowl_prev_wkt_rate`
-- `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`
-- `bowl_extras_wide_rate_pp`
-- `bowl_react_after_boundary_wkt_rate_next`
-- `bowl_spell_first_over_wkt_rate`
-- `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`
-
-Batting columns added when ON:
-- `bat_prev_batter_id`, `bat_prev_phase`, `bat_prev_sr`, `bat_prev_out_rate`
-- `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`
-- `bat_entry_sr_1_6`, `bat_set_sr_13_30`
-- `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`
-
-Notes:
-- These features are joined using latest-as-of semantics (`as_of_date <= match_date`) and filtered by format. For this step, only T20 is wired; ODI/TEST are scheduled under Plan 1.13.
-- Some columns are placeholders (NULLs) until their upstream sources are finalized; headers are stable so downstream consumers can adopt them behind the flag.
+## Sequence features (optional)
+Exporter can append sequence columns: `-enable-seq=1` or `ENABLE_SEQ_FEATURES=1`. Make: `make precompute-seq`, `make export-off FORMAT=T20`, `make export-on FORMAT=T20`. See **docs/config-and-data.md**.
 
 
 
-## ML readers and tiny baselines (T20)
-
-This repo includes tolerant Python readers that can consume exporter CSVs with or without the optional T20 sequence columns (gated by `-enable-seq`). Small, deterministic baselines are provided to validate end‑to‑end wiring.
-
-- Readers live in `ml-service/ml_service/datasets/seq_reader.py` and will backfill zeros for any optional sequence columns that are missing.
-- Tiny baselines live in `ml-service/ml_service/baselines/` and save artifacts under `output/ml-service/`.
-
-Make targets:
-- Run only the new reader/baseline tests (scoped; does not require the full FastAPI test suite):
-```
-make ml-test
-```
-- Train tiny T20 baselines using fixtures (structure only):
-```
-make train-batting-baseline
-make train-bowling-baseline
-```
-
-Notes:
-- These readers handle both exporter modes:
-  - OFF: baseline headers only
-  - ON: baseline + appended T20 sequence columns (see the exporter section on how to enable `-enable-seq`).
-- For full Python tests (FastAPI + readers + baselines), ensure the `ml-service/requirements.txt` dependencies are installed (pandas, scikit-learn, fastapi, etc.).
-
-
-
-### ODI/TEST quick examples (precompute and exporter)
-
-Multi‑format support for the new sequence feature fragments is available for ODI and TEST as well (behind the same -enable-seq flag for the exporter). Default remains OFF; these examples are structure‑only unless DB env is configured.
-
-Unified precompute (as‑of/replay + sequential), recommended:
-```
-cd go-app && go run ./cmd/precompute-all -format=ODI -replay=1
-cd go-app && go run ./cmd/precompute-all -format=TEST -as-of=2020-12-31
-```
-
-Precompute bowl-by-bowl sequence features (dry‑run):
-```
-cd go-app && go run ./cmd/precompute-sequence-features -format=ODI  -targets=all -dry-run
-cd go-app && go run ./cmd/precompute-sequence-features -format=TEST -targets=all -dry-run
-```
-
-Exporter (default OFF vs ON with -enable-seq):
-
-- ODI
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -format=ODI
-
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
-  go run ./cmd/export-dataset -format=ODI -enable-seq=1
-```
-
-- TEST
-```
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app \
-  go run ./cmd/export-dataset -format=TEST
-
-cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 \
-  go run ./cmd/export-dataset -format=TEST -enable-seq=1
-```
-
-Notes:
-- The exporter appends the same compact sequence column subsets when enabled (see the T20 section for the exact column lists); ODI/TEST use latest‑as‑of joins with proper format filters under the hood.
-- The Python readers introduced in 1.12 are tolerant: they work with exporter outputs both with and without the optional sequence columns.
+## ML readers and baselines
+Tolerant Python readers for exporter CSVs (with or without optional sequence columns). `make ml-test` — scoped reader/baseline tests; `make train-batting-baseline`, `make train-bowling-baseline` — tiny T20 baselines from fixtures.
 
 
 ## Backtesting on played matches
 
 A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.
 
-See docs/backtest.md for usage details, example requests, and environment variables.
+See **docs/apis-backtest-and-ops.md** for usage details, example requests, and environment variables.
 
-## Backtest Accuracy Trend API
+## Accuracy Trend and Ops Status
+- **Accuracy Trend:** `GET /api/backtest/accuracy-trend` — query params: `format`, `team1`, `team2`, `start_date`, `end_date`, `limit`, `cache` (off|read|readwrite). Frontend: `/dashboard/accuracy-trend`. Full contract: **docs/apis-backtest-and-ops.md**.
+- **Ops Status:** `GET /ops/status` — services, DB, precompute freshness, exports, artifacts, suggestions. `make dev-up && curl -s http://localhost:8080/ops/status | jq`. See **docs/apis-backtest-and-ops.md**.
 
-Endpoint to evaluate prediction accuracy across historical matches with optional caching of match-level aggregate predictions.
-
-- Method: `GET`
-- Path: `/api/backtest/accuracy-trend`
-
-Query parameters (all optional unless noted):
-- `format`: Match format code, e.g., `T20`, `ODI`, `TEST`.
-- `start_date`: Inclusive start date `YYYY-MM-DD`.
-- `end_date`: Inclusive end date `YYYY-MM-DD`.
-- `team1`: Team code/name (as stored in DB), e.g., `IND`.
-- `team2`: Team code/name, e.g., `AUS`.
-- `order`: `asc` (default) or `desc` by match date.
-- `limit`: Safety cap on number of matches evaluated (default `100`, max `500`).
-- `cache`: `off|read|readwrite` (default `readwrite`). Controls use of the aggregates cache:
-  - `off`: Always compute via ML seams; never read/write cache.
-  - `read`: Use cached aggregates if present; if missing, compute but do not write.
-  - `readwrite`: Use cache if present; otherwise compute and upsert into cache.
-- `metrics`: Optional subset in `player` and/or `team` (comma-separated). Defaults to both when omitted or invalid.
-
-Response (shape excerpt):
-```
-{
-  "filters": { "format": "T20", "team1": "IND", "team2": "AUS", "order": "asc", "limit": 50, "start_date": "2024-10-01", "end_date": "2024-12-31", "cache": "readwrite" },
-  "count": 12,
-  "results": [
-    {
-      "match_id": 123,
-      "date": "2024-11-03T14:00:00Z",
-      "format": "T20",
-      "team1": "IND",
-      "team2": "AUS",
-      "metrics": {
-        "player_runs_mae": 3.67,
-        "team_runs_mae": 5.0,
-        "team_winner_accuracy": 1
-      }
-    }
-  ],
-  "summary": {
-    "player_runs_mae_avg": 2.91,
-    "team_runs_mae_avg": 5.0,
-    "team_winner_accuracy_avg": 0.58,
-    "n": 12
-  },
-  "progressive": [
-    {"n": 1,  "player_runs_mae_avg": 4.10, "team_runs_mae_avg": 6.0,  "team_winner_accuracy_avg": 0.0},
-    {"n": 12, "player_runs_mae_avg": 2.91, "team_runs_mae_avg": 5.0,  "team_winner_accuracy_avg": 0.58}
-  ]
-}
-```
-
-Notes:
-- Player metrics (e.g., `player_runs_mae`) are computed live from XI predictions vs actuals.
-- Team aggregates (`team_runs_mae`, `team_winner_accuracy`) may use cached predictions when `cache` allows. Actuals are always read from DB.
-- Results are ordered by match date, which affects the progressive cumulative series.
-
-Examples:
-```
-curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&start_date=2024-10-01&end_date=2024-12-31&order=asc&limit=25&cache=readwrite" | jq '.'
-
-curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=off" | jq '.summary'
-```
-
-See docs for end‑to‑end usage and the frontend dashboard:
-
-- docs/accuracy-trend.md — endpoint parameters, examples, and dashboard instructions
-- Frontend route (when running the frontend app): `/dashboard/accuracy-trend`
-
-
-### 9) Ops Status — Data & ML Readiness Dashboard
-
-A consolidated readiness view is exposed by the Go API at `GET /ops/status`. It reports:
-- Services availability (Go API and ML service)
-- Database connectivity, basic counts, and migration status
-- Precompute freshness per format (TEST, ODI, T20I, T20)
-- CSV export presence and basic stats
-- ML model artifacts presence and (when available) loaded state
-- Ordered `make` command suggestions to fix any gaps
-
-Read the full contract and examples in `docs/ops-status.md`.
-
-Quick start:
-```
-make dev-up
-curl -s http://localhost:8080/ops/status | jq
-```
-
-Simulate common gaps to see `suggestions` update:
-```
-# Remove ML artifacts then recheck
-rm -rf output/ml-service/*
-curl -s http://localhost:8080/ops/status | jq '.artifacts, .suggestions'
-
-# Remove ODI exports then recheck
-rm -f output/go-app/*ODI* 2>/dev/null || true
-curl -s http://localhost:8080/ops/status | jq '.exports.formats.ODI, .suggestions'
-```
-
-Train everything and recheck:
-```
-make train-all
-curl -s http://localhost:8080/ops/status | jq '.artifacts, .suggestions'
-```
-
-### Frontend UI/UX and Quickstart
-
-The frontend is a Vite + React app with a modern, professional UI powered by MUI (Material UI v5) with a light theme and subtle gradient AppBar.
-
-- Location: `frontend/`
-- Dev server: `cd frontend && npm install && npm run dev`
-- Tests: `cd frontend && npm test`
-- Type check: `cd frontend && npm run typecheck`
-- Production build: `cd frontend && npm run build` (output in `frontend/dist/`)
-
-### Authentication (Local Development)
-Administrative endpoints and UI tabs (Ops Status, Evaluate) are protected. In local development:
-- **Default Credentials**: `admin` / `admin`
-- **Mechanism**: The frontend stores a `dev-local-key` in `localStorage` and sends it via the `X-API-Key` header to the Go API.
-- **Backend**: If the `API_KEY` environment variable is not set, the Go API defaults to accepting `dev-local-key`.
-
-MUI is installed via npm packages and applied through `ThemeProvider` and `CssBaseline` in `src/main.tsx`. The global shell (AppBar, Tabs, Paper) uses MUI components. No Bootstrap is required in `index.html`.
+## Frontend
+Vite + React, MUI. `frontend/` — dev: `make frontend-dev`, test: `npm test`, build: `npm run build`. Auth: default `dev-local-key` or set `API_KEY`; admin tabs use `X-API-Key` header.

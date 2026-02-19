@@ -10,7 +10,7 @@ export POSTGRES_DB?=cricket_data
 export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
-# Resource-aware pipelines: limit process memory so concurrency is capped (see docs/CONFIG.md). Override with GOMEMLIMIT=... if needed.
+# Resource-aware pipelines: limit process memory so concurrency is capped (see docs/config-and-data.md). Override with GOMEMLIMIT=... if needed.
 export GOMEMLIMIT?=2GiB
 
 .PHONY: all build clean run-api team-select team-predictor evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
@@ -200,7 +200,7 @@ help:
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
-	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 80%%)"
 	@echo "  coverage-html      Render HTML coverage report"
 	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo

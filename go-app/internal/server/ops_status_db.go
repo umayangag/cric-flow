@@ -62,6 +62,10 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 	case "matches":
 		// Distinct matches are identified by match.match_id
 		sql = "SELECT COUNT(*) FROM match"
+	case "fielding_data":
+		sql = "SELECT COUNT(*) FROM fielding_data"
+	case "weather_data":
+		sql = "SELECT COUNT(*) FROM weather_data"
 	default:
 		// Reject unknown table names to avoid SQL injection risks.
 		return 0, fmt.Errorf("unsupported table for count: %s", table)

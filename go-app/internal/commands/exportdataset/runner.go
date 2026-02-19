@@ -108,6 +108,34 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
 				return err
 			}
+			// When formats are requested (e.g. SplitByFormat), also write per-format CSVs
+			// so per-format training (train_batting --all-formats, train_bowling --all-formats) has inputs.
+			for _, f := range formats {
+				if f == "" || !safeFormatForFilename(f) {
+					continue
+				}
+				f := f
+				g.Go(func() error {
+					bat := fmt.Sprintf("batting_encoded_%s.csv", f)
+					return r.writeUsing(
+						opts.OutDir,
+						bat,
+						func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) },
+					)
+				})
+				g.Go(func() error {
+					bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
+					return r.writeUsing(
+						opts.OutDir,
+						bow,
+						func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) },
+					)
+				})
+			}
+			if err := g.Wait(); err != nil {
+				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))
+				return err
+			}
 			return nil
 		}
 
@@ -132,6 +160,9 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 						func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) },
 					)
 				})
+				continue
+			}
+			if !safeFormatForFilename(f) {
 				continue
 			}
 			if opts.InferenceOnly {
@@ -184,6 +215,21 @@ func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) err
 		return err
 	}
 	return nil
+}
+
+// safeFormatForFilename returns true if s is safe to use in an export filename (no path
+// components or special chars), to prevent path traversal when writing per-format CSVs.
+func safeFormatForFilename(s string) bool {
+	if len(s) == 0 || len(s) > 32 {
+		return false
+	}
+	for _, r := range s {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // isPermissionDenied returns true if err indicates a permission denied (e.g. mkdir in a read-only dir).

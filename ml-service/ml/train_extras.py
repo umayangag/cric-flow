@@ -29,6 +29,9 @@ from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec
 
 logger = logging.getLogger(__name__)
 
+# Minimum number of samples to train the unified (legacy) extras model
+MIN_SAMPLES_FOR_LEGACY = 10
+
 EXTRAS_FEATURE_COLS = ["format_id", "venue_id", "season_id"]
 EXTRAS_TARGET_COL = "total_extras"
 
@@ -80,7 +83,7 @@ def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in g.columns] + [EXTRAS_TARGET_COL])
-        if g.empty or len(g) < 10:
+        if g.empty or len(g) < MIN_SAMPLES_FOR_LEGACY:
             continue
         X = g[[c for c in EXTRAS_FEATURE_COLS if c in g.columns]].astype(float).values
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
@@ -102,6 +105,22 @@ def train_and_save(X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str)
     compress = params["joblib_compress"]
     code = format_code.replace(" ", "_")
     joblib.dump(model, os.path.join(out_dir, f"extras_model_{code}.joblib"), compress=compress)
+
+
+def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
+    """Train one unified extras model on all data and save as legacy (extras_model.joblib)."""
+    params = get_training_params("extras", None)
+    model = RandomForestRegressor(
+        n_estimators=params["n_estimators"],
+        max_depth=params["max_depth"],
+        random_state=params["random_state"],
+        n_jobs=params.get("n_jobs", -1),
+    )
+    model.fit(X, Y.ravel())
+    os.makedirs(out_dir, exist_ok=True)
+    compress = params["joblib_compress"]
+    joblib.dump(model, os.path.join(out_dir, "extras_model.joblib"), compress=compress)
+    logger.info("train_extras.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
 def main() -> None:
@@ -143,6 +162,12 @@ def main() -> None:
     for fmt, (X, Y) in by_format.items():
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_extras.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+
+    # Unified (overall) model: train on all data combined for legacy/fallback
+    all_X = np.vstack([X for _, (X, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
+        train_and_save_legacy(all_X, all_Y, out_dir)
 
 
 if __name__ == "__main__":

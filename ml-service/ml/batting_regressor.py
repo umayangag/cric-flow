@@ -10,7 +10,7 @@ output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifact
 
 predictor = joblib.load(os.path.join(output_dir, "batting_model.joblib"))
 input_scaler = joblib.load(os.path.join(output_dir, "batting_scaler.joblib"))
-# Optional: legacy artifacts may include output_scaler; we train in raw Y now (see docs/ML_DATA_AND_NORMALIZATION.md)
+# Optional: legacy artifacts may include output_scaler; we train in raw Y now (see docs/ml-and-training.md)
 _output_scaler_path = os.path.join(output_dir, "batting_output_scaler.joblib")
 output_scaler = joblib.load(_output_scaler_path) if os.path.isfile(_output_scaler_path) else None
 

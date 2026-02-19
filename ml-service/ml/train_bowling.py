@@ -150,7 +150,7 @@ def train_and_save(
     """Train and save artifacts. training_params must come from get_training_params("bowling") (config only).
 
     Normalizes X with StandardScaler (fit on provided data); Y kept in raw units.
-    See docs/ML_DATA_AND_NORMALIZATION.md.
+    See docs/ml-and-training.md.
     """
     os.makedirs(out_dir, exist_ok=True)
     scaler = StandardScaler()

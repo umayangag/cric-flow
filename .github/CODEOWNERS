@@ -1,2 +1,4 @@
-# Require code owner review for any changes under src/
-src/**  @umayangag
+# Optional: require review for changes in these directories
+go-app/**     @umayangag
+ml-service/** @umayangag
+frontend/**   @umayangag

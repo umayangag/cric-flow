@@ -44,3 +44,34 @@ func GetLatestMLTunedParams(ctx context.Context, model, format string) (*MLTuned
 	}
 	return &MLTunedParamsRow{Params: params, CreatedAt: createdAt}, nil
 }
+
+// MLTunedParamsEntry holds one row from ml_tuned_params (model, format, created_at).
+// ListLatestMLTunedParams returns the latest such row per (model, format).
+type MLTunedParamsEntry struct {
+	Model     string
+	Format    string
+	CreatedAt string
+}
+
+// ListLatestMLTunedParams returns the latest tuned-params entry per (model, format).
+// Used so operators can see which model+format combinations have saved params for retraining.
+func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT ON (model, format) model, format, created_at
+		FROM ml_tuned_params
+		ORDER BY model, format, created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MLTunedParamsEntry
+	for rows.Next() {
+		var e MLTunedParamsEntry
+		if err := rows.Scan(&e.Model, &e.Format, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}

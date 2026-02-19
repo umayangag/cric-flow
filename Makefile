@@ -10,7 +10,15 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache logs api migrate output-dirs export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
+.PHONY: logs api migrate output-dirs export-dataset export-off export-on
+.PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
+.PHONY: go-test go-test-int ml-serve team-predictor ml-install
+.PHONY: train-batting train-bowling train-fielding train-extras train-win train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta
+.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import
+.PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
+.PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
+.PHONY: check-all frontend-check go-app-check ml-service-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -203,13 +211,15 @@ train-all: train-models
 train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
+# When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+# CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)"
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",)
 
-# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ML_WALK_FORWARD.md)
+# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
 WINDOW_X ?= 50
 WALK_FORMAT ?= T20
@@ -217,7 +227,7 @@ WALK_MODEL ?= batting
 walk-forward:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
 
-# Train meta-model for score combination from backtest CSV (see docs/ML_COMBINATION_META.md)
+# Train meta-model for score combination from backtest CSV (see docs/ml-and-training.md)
 train-combination-meta:
 	$(MAKE) -C ml-service train-combination-meta CSV="$(CSV)" OUT="$(OUT)"
 
@@ -383,7 +393,7 @@ up-all:
 	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
-	$(MAKE) train-all || (echo "Training failed" && exit 1)
+	$(MAKE) train-all CUTOFF=$$(date -u +%Y-%m-%dT%H:%M:%SZ) || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
 	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health), Frontend at http://localhost:$(FRONTEND_PORT)."
@@ -447,9 +457,6 @@ ml-service-check:
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service lint-check fmt-check coverage coverage-check
 
 # --- Formatting & hooks ---
-
-ML_VENV_BIN := $(abspath ml-service/.venv/bin)
-
 # Aggregate formatters for all components
 fmt: fmt-go fmt-py
 
@@ -478,7 +485,7 @@ lint-frontend:
 install-hooks:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit
-	@echo "Git hooks installed. On commit, gofumpt/golines (Go) and black/isort (Python) will run automatically."
+	@echo "Git hooks installed. On commit: gofumpt/golines/golangci-lint (Go), ruff (Python), prettier/eslint (frontend) run on staged files."
 
 # --- Local environment bootstrap ---
 # Initialize all components for local development
@@ -595,10 +602,12 @@ help:
 	@echo "[ML training — precompute → export-dataset → train]"
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding     Train fielding model (needs CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
+	@echo "  train-fielding     Train fielding (CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
+	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
+	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
 	@echo "  train-batting-bowling  Train batting + bowling"
-	@echo "  train-all          Train all models (batting + bowling + fielding)"
-	@echo "  train-models       Train batting + bowling + fielding"
+	@echo "  train-all          Train all models (batting, bowling, fielding, extras, win)"
+	@echo "  train-models       Same as train-all"
 	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo "  walk-forward       Walk-forward train → predict → evaluate; registry for feedback (INITIAL_CUTOFF=, WINDOW_X=, WALK_FORMAT=, WALK_MODEL=)"
 	@echo

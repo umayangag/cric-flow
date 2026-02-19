@@ -9,10 +9,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
-// formats supported for reporting
-var artifactFormats = []string{"TEST", "ODI", "T20I", "T20"}
+// formats supported for reporting (canonical order from internal/formats)
+var artifactFormats = formatsPkg.CanonicalCodes()
+
+// artifactsFallbackRoot returns the filesystem root for the artifacts fallback scan
+// when the ML service is unreachable. GO_APP_ARTIFACTS_ROOT overrides the default.
+func artifactsFallbackRoot() string {
+	if p := strings.TrimSpace(os.Getenv("GO_APP_ARTIFACTS_ROOT")); p != "" {
+		return p
+	}
+	return filepath.Join("output", "ml-service")
+}
 
 // buildArtifactsSection probes the ML service (if available) and/or filesystem to
 // construct the artifacts section for /ops/status. It also returns the mlHealth bool.

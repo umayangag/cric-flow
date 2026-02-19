@@ -390,8 +390,7 @@ const WorkbenchTab: React.FC = () => {
             <li>
               <strong>Auto-tune</strong> — To search for better hyperparameters:{' '}
               <code>make ml-auto-tune MODEL=batting FORMAT=T20</code>. See{' '}
-              <code>docs/ML_WALK_FORWARD.md</code> and <code>docs/ML_AUTO_TUNE.md</code> in the
-              repo.
+              <code>docs/ml-and-training.md</code> (walk-forward and auto-tune) in the repo.
             </li>
           </Box>
         </Typography>

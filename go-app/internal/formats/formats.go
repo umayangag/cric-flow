@@ -14,6 +14,12 @@ const (
 	CodeT20I = "T20I"
 )
 
+// CanonicalCodes returns the list of canonical format codes in standard order (TEST, ODI, T20, T20I).
+// Use this where a single shared list is needed (e.g. precompute handler, ops status artifacts).
+func CanonicalCodes() []string {
+	return []string{CodeTest, CodeODI, CodeT20, CodeT20I}
+}
+
 // Numeric IDs aligned with seed order from migrations (0004_format_dimension.sql):
 // 1=TEST, 2=ODI, 3=T20, 4=T20I.
 const (

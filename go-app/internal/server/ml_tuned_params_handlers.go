@@ -39,7 +39,26 @@ func (a *App) mlTunedParamsPostHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "created", "model": model, "format": format})
 }
 
-// GET /api/ml/tuned-params?model=batting&format=T20 returns latest { "params": {...}, "created_at": "..." } or 404
+// GET /api/ml/tuned-params/list returns all stored (model, format) with latest created_at for each.
+func (a *App) mlTunedParamsListHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiError{Code: "METHOD_NOT_ALLOWED", Message: "GET required"})
+		return
+	}
+	entries, err := db.ListLatestMLTunedParams(r.Context())
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	// Return as list of objects so clients see which model and format each params row belongs to.
+	list := make([]map[string]string, 0, len(entries))
+	for _, e := range entries {
+		list = append(list, map[string]string{"model": e.Model, "format": e.Format, "created_at": e.CreatedAt})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"entries": list})
+}
+
+// GET /api/ml/tuned-params?model=batting&format=T20 returns latest { "model", "format", "params", "created_at" } or 404
 func (a *App) mlTunedParamsGetHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiError{Code: "METHOD_NOT_ALLOWED", Message: "GET required"})
@@ -57,10 +76,17 @@ func (a *App) mlTunedParamsGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if row == nil {
-		writeJSON(w, http.StatusNotFound, apiError{Code: "NOT_FOUND", Message: "no tuned params for this model and format"})
+		writeJSON(
+			w,
+			http.StatusNotFound,
+			apiError{Code: "NOT_FOUND", Message: "no tuned params for this model and format"},
+		)
 		return
 	}
+	// Include model and format so the response is self-describing (which model/format the params belong to).
 	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"model":      model,
+		"format":     format,
 		"params":     json.RawMessage(row.Params),
 		"created_at": row.CreatedAt,
 	})

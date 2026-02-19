@@ -50,7 +50,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Import',
       status: 'pending',
       command: 'make migrate && make cricsheet-import',
-      description: 'Apply migrations and import Cricsheet JSON into the database.',
+      description:
+        'Apply migrations and import Cricsheet JSON into the database. Run from project root.',
       runnable: true,
     },
     {
@@ -58,7 +59,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Precompute',
       status: 'pending',
       command: 'make precompute-all-all-formats',
-      description: 'Compute form, consistency, and sequence features per format.',
+      description:
+        'Compute form, consistency, and sequence features for all formats (TEST, ODI, T20, T20I). Run from project root.',
       runnable: true,
     },
     {
@@ -66,7 +68,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Export',
       status: 'pending',
       command: 'make export-dataset',
-      description: 'Export training CSVs (batting, bowling) to output/go-app.',
+      description:
+        'Export unified and per-format batting/bowling CSVs to output/go-app (when export.split_by_format is on). Run from project root.',
       runnable: true,
     },
     {
@@ -74,7 +77,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Batting',
       status: 'pending',
       command: 'make train-batting',
-      description: 'Train batting model from exported CSVs.',
+      description:
+        'Train per-format and unified (legacy) batting models from exported CSVs. Run from project root.',
       runnable: true,
     },
     {
@@ -82,7 +86,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Bowling',
       status: 'pending',
       command: 'make train-bowling',
-      description: 'Train bowling model from exported CSVs.',
+      description:
+        'Train per-format and unified (legacy) bowling models from exported CSVs. Run from project root.',
       runnable: true,
     },
     {
@@ -90,7 +95,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Fielding',
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train fielding model (set CUTOFF and GO_APP_URL as needed).',
+      description:
+        'Train unified plus per-format fielding models. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -98,7 +104,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Extras',
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train extras prediction model (set CUTOFF and GO_APP_URL as needed).',
+      description:
+        'Train unified plus per-format extras models. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -106,7 +113,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Win',
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train win prediction model (set CUTOFF and GO_APP_URL as needed).',
+      description:
+        'Train unified plus per-format win models. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -114,7 +122,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Auto-tune',
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
-      description: 'Optional: search best hyperparameters for all models.',
+      description:
+        'Optional: tune all models per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed). Run from project root.',
       runnable: true,
     },
   ];

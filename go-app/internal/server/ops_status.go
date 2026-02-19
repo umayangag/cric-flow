@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -49,8 +50,8 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 		Services:       map[string]bool{"api_health": true, "api_readiness": false, "ml_health": false},
 		DB:             map[string]any{"connected": false},
 		Precompute:     buildPrecomputeSection(ctx, now),
-		Exports:        map[string]any{"root": "output/go-app", "formats": map[string]any{}},
-		Artifacts:      map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
+		Exports:        map[string]any{"root": config.DefaultExportDir(), "formats": map[string]any{}},
+		Artifacts:      map[string]any{"root": artifactsFallbackRoot(), "formats": map[string]any{}},
 		Fielding:       map[string]any{},
 		Weather:        map[string]any{},
 		DBFreshness:    map[string]any{},
@@ -66,16 +67,16 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 	if connected, ok := resp.DB["connected"].(bool); ok {
 		resp.Services["api_readiness"] = connected
 	}
-	// Exports
-	resp.Exports = buildExportsSection("output/go-app")
+	// Exports (use GO_APP_OUTPUT_DIR / config so Docker mount and host paths are correct)
+	resp.Exports = buildExportsSection(config.DefaultExportDir())
 	// Fielding & Weather (DB-backed counts)
 	resp.Fielding = buildFieldingSection(ctx, a.dbProbe)
 	resp.Weather = buildWeatherSection(ctx, a.dbProbe)
 	// DB insights: freshness & completeness
 	resp.DBFreshness = buildDBFreshnessSection(ctx, productionInsightsProbe{}, now)
 	resp.DBCompleteness = buildDBCompletenessSection(ctx, productionInsightsProbe{}, now)
-	// Artifacts + ML health
-	if sec, mlOK := buildArtifactsSection(nil, "output/ml-service"); sec != nil {
+	// Artifacts + ML health (HTTP primary; filesystem fallback uses GO_APP_ARTIFACTS_ROOT or default)
+	if sec, mlOK := buildArtifactsSection(nil, artifactsFallbackRoot()); sec != nil {
 		resp.Artifacts = sec
 		resp.Services["ml_health"] = mlOK
 	}

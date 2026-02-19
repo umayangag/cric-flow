@@ -9,7 +9,10 @@ LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Raise as untested CLI/training modules get tests.
 COV_MIN?=35
 
-.PHONY: all venv install run train-models auto-tune docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
+.PHONY: all venv install run train-batting train-bowling train-fielding train-extras train-win train-models
+.PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
+.PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check test test-integration test-e2e
+.PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
 
@@ -51,17 +54,22 @@ train-win:
 
 train-models: train-batting train-bowling train-fielding train-extras train-win
 
-# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
+# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ml-and-training.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
+# When MODEL=all and ALL_FORMATS=1, uses --from-api and CUTOFF so all five models (incl. extras, win) are tuned and params saved to DB when GO_APP_URL is set.
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+CUTOFF ?= 2024-01-01T00:00:00Z
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
 endif
 ifeq ($(ALL_FORMATS),1)
 AUTO_TUNE_ARGS += --all-formats
+ifeq ($(MODEL),all)
+AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
+endif
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
@@ -77,7 +85,7 @@ EXPORT_METRICS ?=
 walk-forward: venv
 	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),) $(if $(EXPORT_METRICS),--export-metrics $(EXPORT_METRICS),)
 
-# Train combination meta-model (Ridge) from backtest CSV. See docs/ML_COMBINATION_META.md.
+# Train combination meta-model (Ridge) from backtest CSV. See docs/ml-and-training.md.
 # Usage: make train-combination-meta CSV=path/to/backtest.csv OUT=output/ml-service/combination_meta.json
 CSV ?=
 OUT ?=
@@ -178,11 +186,13 @@ help:
 	@echo "  run                Start FastAPI with uvicorn (reload)"
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding     Train fielding model (GO_APP_URL + CUTOFF or FIELDING_CSV)"
-	@echo "  train-models      Train batting + bowling + fielding (fielding needs env or CSV)"
-	@echo "  auto-tune          Auto-tune model(s): best algorithm + hyperparameters (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo "  train-fielding    Train fielding (GO_APP_URL + CUTOFF or FIELDING_CSV)"
+	@echo "  train-extras      Train extras model (GO_APP_URL + CUTOFF or EXTRAS_CSV)"
+	@echo "  train-win         Train win model (GO_APP_URL + CUTOFF or WIN_CSV)"
+	@echo "  train-models      Train all (batting, bowling, fielding, extras, win)"
+	@echo "  auto-tune         Auto-tune: best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo ""
-	@echo "  Integration order: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
+	@echo "  Pipeline: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  validate-exports   Validate training exports (all formats, golden)"

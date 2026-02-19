@@ -15,6 +15,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
@@ -51,6 +52,12 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
+	// Align with export: when no formats specified and config uses split-by-format, use the same canonical list.
+	if len(formats) == 0 {
+		if cfg := config.Load(); cfg != nil && cfg.Export.SplitByFormat {
+			formats = formatsPkg.CanonicalCodes()
+		}
+	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
 		return

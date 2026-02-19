@@ -30,6 +30,11 @@ WIN_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level win
 
 
 def _load_legacy(models_dir: str) -> None:
+    """Load legacy (unsuffixed) joblib artifacts into _LEGACY_ registries.
+
+    Security: joblib uses pickle. Restrict filesystem permissions on models_dir
+    and only load artifacts from trusted sources to avoid insecure deserialization.
+    """
     try:
         bat_scaler = joblib.load(os.path.join(models_dir, "batting_scaler.joblib"))
         bat_model = joblib.load(os.path.join(models_dir, "batting_model.joblib"))
@@ -44,9 +49,33 @@ def _load_legacy(models_dir: str) -> None:
         logger.info("artifacts.load_legacy.bowling", models_dir=models_dir)
     except Exception as e:
         logger.debug("artifacts.load_legacy.bowling_skip", models_dir=models_dir, error=str(e))
+    try:
+        field_scaler = joblib.load(os.path.join(models_dir, "fielding_scaler.joblib"))
+        field_model = joblib.load(os.path.join(models_dir, "fielding_model.joblib"))
+        FIELD_MODELS["_LEGACY_"] = (field_scaler, field_model)
+        logger.info("artifacts.load_legacy.fielding", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.fielding_skip", models_dir=models_dir, error=str(e))
+    try:
+        extras_model = joblib.load(os.path.join(models_dir, "extras_model.joblib"))
+        EXTRAS_MODELS["_LEGACY_"] = extras_model
+        logger.info("artifacts.load_legacy.extras", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.extras_skip", models_dir=models_dir, error=str(e))
+    try:
+        win_model = joblib.load(os.path.join(models_dir, "win_model.joblib"))
+        WIN_MODELS["_LEGACY_"] = win_model
+        logger.info("artifacts.load_legacy.win", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.win_skip", models_dir=models_dir, error=str(e))
 
 
 def _load_per_format(models_dir: str) -> None:
+    """Load per-format joblib artifacts.
+
+    Security: joblib uses pickle; only load artifacts from trusted sources and restrict
+    filesystem access to models_dir to avoid insecure deserialization.
+    """
     try:
         entries = os.listdir(models_dir)
     except OSError as e:
@@ -132,9 +161,12 @@ def summary() -> dict:
     return {
         "loaded_batting_formats": sorted([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
         "loaded_bowling_formats": sorted([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_fielding_formats": sorted(FIELD_MODELS.keys()),
-        "loaded_extras_formats": sorted(EXTRAS_MODELS.keys()),
-        "loaded_win_formats": sorted(WIN_MODELS.keys()),
+        "loaded_fielding_formats": sorted([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_extras_formats": sorted([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_win_formats": sorted([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
         "legacy_batting": "_LEGACY_" in BAT_MODELS,
         "legacy_bowling": "_LEGACY_" in BOWL_MODELS,
+        "legacy_fielding": "_LEGACY_" in FIELD_MODELS,
+        "legacy_extras": "_LEGACY_" in EXTRAS_MODELS,
+        "legacy_win": "_LEGACY_" in WIN_MODELS,
     }
