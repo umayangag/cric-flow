@@ -3,8 +3,8 @@ package exportdataset
 import (
 	"strings"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // ResolveFormats returns the list of formats to process for the export-dataset command,

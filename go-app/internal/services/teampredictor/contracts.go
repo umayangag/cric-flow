@@ -3,7 +3,7 @@ package teampredictor
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
 
 // MLClient abstracts the ML prediction dependency for this service.

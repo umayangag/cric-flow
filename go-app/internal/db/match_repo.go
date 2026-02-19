@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // MatchRepo defines persistence operations for parsed Cricsheet matches.

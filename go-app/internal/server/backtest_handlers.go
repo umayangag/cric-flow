@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 // --- Helpers extracted for readability (no behavior change) ---

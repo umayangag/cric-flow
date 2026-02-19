@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func CreateMigration(ctx context.Context, command string, args json.RawMessage) (int, error) {

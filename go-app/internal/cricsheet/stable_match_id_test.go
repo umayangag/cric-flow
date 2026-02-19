@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 )
 
 // TestStableMatchID_Table follows the gold-standard: table-driven, AAA, require assertions.

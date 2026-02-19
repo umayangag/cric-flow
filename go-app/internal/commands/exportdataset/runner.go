@@ -14,9 +14,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 // BattingExporter is the minimal interface Runner needs for batting exports.

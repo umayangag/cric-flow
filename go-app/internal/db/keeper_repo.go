@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 // CountPlayersByLowerName returns count of players whose lower(player_name) equals lowerName.

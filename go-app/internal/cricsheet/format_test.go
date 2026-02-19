@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 )
 
 // NOTE: This file follows the gold-standard for tests: external package,

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // Pipeline step IDs and their corresponding data_migrations command names.

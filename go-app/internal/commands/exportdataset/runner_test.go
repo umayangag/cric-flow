@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset/mocks"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset/mocks"
 )
 
 type assertFn func(t *testing.T, err error)

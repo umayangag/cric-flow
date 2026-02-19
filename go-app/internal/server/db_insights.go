@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // insightsProbe defines minimal methods required to compute DB freshness and completeness.

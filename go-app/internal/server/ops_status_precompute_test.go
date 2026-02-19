@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 )
 
 // helper to extract map[string]any safely

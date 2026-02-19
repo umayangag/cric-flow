@@ -11,7 +11,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // PipelineCommands are the data_migrations command names that form the main pipeline.

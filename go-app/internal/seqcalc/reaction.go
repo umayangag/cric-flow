@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // reactionCalc computes immediate next-ball outcomes conditioned on the prior event

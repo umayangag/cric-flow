@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
 
 // Service orchestrates team prediction via mlclient.

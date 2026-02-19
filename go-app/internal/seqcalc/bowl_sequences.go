@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // overSummary is a minimal per-over rollup used to form consecutive A→B pairs.

@@ -1,6 +1,6 @@
 package server
 
-import "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+import "github.com/umayangag/cric-flow/go-app/internal/db"
 
 // Backtest selection response
 type backtestSelectResponse struct {

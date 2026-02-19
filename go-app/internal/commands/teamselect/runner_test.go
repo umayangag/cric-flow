@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teamselect"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/selection"
 )
 
 type fakeConnector struct {

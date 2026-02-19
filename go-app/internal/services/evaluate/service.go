@@ -3,7 +3,7 @@ package evaluate
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/eval"
+	"github.com/umayangag/cric-flow/go-app/internal/eval"
 )
 
 // Inputs represent time-aligned observations for error metrics.

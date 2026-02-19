@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // mockDB adapts pgxmock pool to our DB interface for tests.

@@ -3,7 +3,7 @@ package cricsheet
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // Loader defines an abstraction to enumerate and load raw Cricsheet documents

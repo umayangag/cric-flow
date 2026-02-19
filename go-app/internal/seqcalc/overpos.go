@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // overPosCalc computes incidence of boundaries and wickets at ball 1 and ball 6 by bowler and phase.

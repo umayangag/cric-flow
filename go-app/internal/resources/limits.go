@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // Kind identifies the pipeline or operation for env/config overrides.

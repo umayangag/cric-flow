@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
 )
 
 type assertFn func(t *testing.T, got cli.Options, err error)

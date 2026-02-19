@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxmock "github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // TestGetMatchDateByID_Table refactors scenarios into table-driven subtests with AAA and require.

@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
 // Options controls constraints for picking the final XI.

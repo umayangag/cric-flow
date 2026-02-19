@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	clieval "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/evaluate"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/evaluate"
+	clieval "github.com/umayangag/cric-flow/go-app/internal/cli/evaluate"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
 )
 
 // Runner orchestrates the evaluate command by loading inputs and computing metrics.

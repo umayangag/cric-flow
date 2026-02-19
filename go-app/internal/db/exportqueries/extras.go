@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // ExtrasTrainingRows returns match-level rows for extras prediction: format_id, venue_id, season_id, total_extras.

@@ -1,4 +1,4 @@
-module github.com/umayangag/cric-info-scrapers/go-app
+module github.com/umayangag/cric-flow/go-app
 
 go 1.25.0
 

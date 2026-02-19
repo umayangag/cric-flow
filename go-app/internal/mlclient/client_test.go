@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // Test helpers

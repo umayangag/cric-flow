@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor/internal/mocks"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/services/teampredictor/internal/mocks"
 )
 
 type assertFn func(t *testing.T, out mlclient.PredictResponse, err error)

@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
 // SelectTeam builds the player pool from DB, constructs features, calls mlCleint service

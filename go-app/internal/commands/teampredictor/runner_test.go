@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor/internal/mocks"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor/internal/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
 
 func TestRunner_Run_Table(t *testing.T) {

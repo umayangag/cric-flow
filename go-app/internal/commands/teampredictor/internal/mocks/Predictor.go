@@ -8,8 +8,8 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
 
 // NewMockPredictor creates a new instance of MockPredictor. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

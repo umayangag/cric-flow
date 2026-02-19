@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // discoverFormatCodes returns the list of format codes to process. If the

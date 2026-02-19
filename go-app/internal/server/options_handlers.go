@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 type OptionsHandler struct{}

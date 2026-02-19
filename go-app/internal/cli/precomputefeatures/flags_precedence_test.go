@@ -4,7 +4,7 @@ import (
 	"flag"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/precomputefeatures"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputefeatures"
 )
 
 func TestMigrationsDefaultFromEnv(t *testing.T) {

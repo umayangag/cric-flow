@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
 // PredictWin calls the /predict-win endpoint of the mlCleint service.

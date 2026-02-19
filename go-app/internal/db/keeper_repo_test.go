@@ -8,7 +8,7 @@ import (
 
 	pgxmock "github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func TestCountPlayersByLowerName(t *testing.T) {

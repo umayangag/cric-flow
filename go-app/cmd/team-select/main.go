@@ -10,10 +10,10 @@ import (
 	"os"
 	"time"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teamselect"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
 )
 
 func main() { os.Exit(run()) }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 )
 
 func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {

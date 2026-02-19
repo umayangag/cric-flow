@@ -8,8 +8,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // spellsCalc computes bowling spell features split by phase and first-over vs later-overs.

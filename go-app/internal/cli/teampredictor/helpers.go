@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // normalizeFormat trims and uppercases the format and validates allowed values.

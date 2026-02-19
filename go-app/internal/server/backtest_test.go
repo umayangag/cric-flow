@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {

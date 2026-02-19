@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // endPressureCalc computes end-of-over pressure metrics for positions 5 and 6 (legal balls only).

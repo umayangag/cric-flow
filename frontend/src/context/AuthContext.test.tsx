@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { AuthProvider, useAuth } from './AuthContext';
 
 // Component that uses useAuth for testing
+// eslint-disable-next-line react/prop-types -- test helper; props are typed via TS
 const Consumer: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
   const { isAuthenticated, login, logout, apiKey } = useAuth();
   return (
@@ -27,18 +28,18 @@ const Consumer: React.FC<{ onLogout?: () => void }> = ({ onLogout }) => {
 };
 
 const createStorage = (): Storage => {
-    const map = new Map<string, string>();
-    return {
-      getItem: (key: string) => map.get(key) ?? null,
-      setItem: (key: string, value: string) => map.set(key, value),
-      removeItem: (key: string) => map.delete(key),
-      clear: () => map.clear(),
-      get length() {
-        return map.size;
-      },
-      key: (i: number) => Array.from(map.keys())[i] ?? null,
-    };
+  const map = new Map<string, string>();
+  return {
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => map.set(key, value),
+    removeItem: (key: string) => map.delete(key),
+    clear: () => map.clear(),
+    get length() {
+      return map.size;
+    },
+    key: (i: number) => Array.from(map.keys())[i] ?? null,
   };
+};
 
 describe('AuthContext', () => {
   const originalFetch = globalThis.fetch;

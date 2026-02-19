@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // OpsStatusResponse is the top-level JSON returned by /ops/status.

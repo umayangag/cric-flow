@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/cricsheetimporter"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // Runner orchestrates the cricsheet-importer workflow.

@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
+	"github.com/umayangag/cric-flow/go-app/internal/resources"
 )
 
 func seqcalcConcurrency() int {

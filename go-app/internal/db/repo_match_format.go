@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // GetMatchFormatIDByCode returns the id from match_format for the provided code.

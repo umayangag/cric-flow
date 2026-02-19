@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
+	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 )
 
 // healthHandler responds with liveness OK.

@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	apipkg "github.com/umayangag/cric-info-scrapers/go-app/internal/server"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	apipkg "github.com/umayangag/cric-flow/go-app/internal/server"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 const shutdownTimeout = 25 * time.Second

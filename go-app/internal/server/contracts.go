@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // Client abstracts mlCleint prediction client used by API handlers.

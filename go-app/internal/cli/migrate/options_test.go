@@ -4,7 +4,7 @@ import (
 	"flag"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/migrate"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/migrate"
 )
 
 type assertFn func(t *testing.T, got cli.Options, err error)

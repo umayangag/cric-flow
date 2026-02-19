@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 func TestPredictBatting_Non2xx_New(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
+	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
 )
 
 func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {

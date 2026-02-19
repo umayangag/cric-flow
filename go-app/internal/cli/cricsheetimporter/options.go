@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // Options captures CLI options for cricsheet-importer.

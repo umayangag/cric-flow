@@ -3,7 +3,7 @@ package evaluate_test
 import (
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/evaluate"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/evaluate"
 )
 
 func TestParseArgs_WithNilFlagSet_UsesDefaults(t *testing.T) {

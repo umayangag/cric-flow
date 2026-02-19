@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
 
 type assertFnG func(t *testing.T, err error)

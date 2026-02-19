@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 func TestSelect_CannotReplaceToSatisfyBowlers(t *testing.T) {

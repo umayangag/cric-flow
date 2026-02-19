@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // WinTrainingRows returns match-level rows for win prediction: format_id, venue_id, team1_opposition_id, team2_opposition_id, toss_winner_opposition_id, team1_wins (0/1).

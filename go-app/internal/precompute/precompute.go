@@ -10,9 +10,9 @@ import (
 	"os"
 	"runtime"
 
-	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // RunOpts holds optional overrides for Run. Nil or zero values mean use config.

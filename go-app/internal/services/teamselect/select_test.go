@@ -3,7 +3,7 @@ package teamselect_test
 import (
 	"testing"
 
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 type assertSelFn func(t *testing.T, team []ts.Player, err error)

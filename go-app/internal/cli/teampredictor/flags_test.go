@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 func TestParseFlags_BlankFormatOrSeasonErrors(t *testing.T) {

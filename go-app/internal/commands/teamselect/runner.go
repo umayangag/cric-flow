@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
-	cliteam "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
+	cliteam "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/selection"
 )
 
 // Runner orchestrates team selection by delegating to a Selector.

@@ -58,7 +58,9 @@ describe('Login', () => {
     renderLogin();
     await user.type(screen.getByLabelText(/api key/i), 'wrong');
     await user.click(screen.getByRole('button', { name: /login/i }));
-    expect(await screen.findByText(/invalid api key or server not configured/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/invalid api key or server not configured/i),
+    ).toBeInTheDocument();
   });
 
   it('navigates to from path when login succeeds', async () => {

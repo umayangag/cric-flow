@@ -4,7 +4,7 @@ import (
 	"flag"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/precomputeall"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputeall"
 )
 
 func TestParseArgs_HappyPaths(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 func TestLoadFromCSV_MoreErrors(t *testing.T) {
