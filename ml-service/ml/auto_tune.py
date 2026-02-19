@@ -250,7 +250,9 @@ def _build_pipeline_single_regression(estimator: Any) -> Pipeline:
     return Pipeline([("scaler", StandardScaler()), ("est", estimator)])
 
 
-def _to_pipeline_params_single(config_space: Dict[str, Any], random_state: int, prefix: str = "est__") -> Dict[str, Any]:
+def _to_pipeline_params_single(
+    config_space: Dict[str, Any], random_state: int, prefix: str = "est__"
+) -> Dict[str, Any]:
     """Param dict for single-estimator pipeline (extras): est__n_estimators, etc."""
     out = {f"{prefix}random_state": [random_state]}
     for k, v in config_space.items():
@@ -269,12 +271,18 @@ def _search_space_regression_single(model_kind: str) -> List[Tuple[str, Any, Dic
     tuning = get_tuning_config()
     rs = tuning.get("random_state", 42)
     rf_space = get_tuning_search_space("rf")
-    rf_params = _to_pipeline_params_single(rf_space, rs) if rf_space else _to_pipeline_params_single(
-        {"n_estimators": [50, 100, 150, 200], "max_depth": [6, 8, 10, 12, None]}, rs
+    rf_params = (
+        _to_pipeline_params_single(rf_space, rs)
+        if rf_space
+        else _to_pipeline_params_single({"n_estimators": [50, 100, 150, 200], "max_depth": [6, 8, 10, 12, None]}, rs)
     )
     gb_space = get_tuning_search_space("gb")
-    gb_params = _to_pipeline_params_single(gb_space, rs) if gb_space else _to_pipeline_params_single(
-        {"n_estimators": [50, 100, 150], "max_depth": [3, 4, 5, 6], "learning_rate": [0.01, 0.05, 0.1]}, rs
+    gb_params = (
+        _to_pipeline_params_single(gb_space, rs)
+        if gb_space
+        else _to_pipeline_params_single(
+            {"n_estimators": [50, 100, 150], "max_depth": [3, 4, 5, 6], "learning_rate": [0.01, 0.05, 0.1]}, rs
+        )
     )
     return [
         ("RandomForestRegressor", RandomForestRegressor(), rf_params),
@@ -287,12 +295,18 @@ def _search_space_classification(model_kind: str) -> List[Tuple[str, Any, Dict[s
     tuning = get_tuning_config()
     rs = tuning.get("random_state", 42)
     rf_space = get_tuning_search_space("rf")
-    rf_params = _to_pipeline_params_single(rf_space, rs) if rf_space else _to_pipeline_params_single(
-        {"n_estimators": [50, 100, 150, 200], "max_depth": [6, 8, 10, 12, None]}, rs
+    rf_params = (
+        _to_pipeline_params_single(rf_space, rs)
+        if rf_space
+        else _to_pipeline_params_single({"n_estimators": [50, 100, 150, 200], "max_depth": [6, 8, 10, 12, None]}, rs)
     )
     gb_space = get_tuning_search_space("gb")
-    gb_params = _to_pipeline_params_single(gb_space, rs) if gb_space else _to_pipeline_params_single(
-        {"n_estimators": [50, 100, 150], "max_depth": [3, 4, 5, 6], "learning_rate": [0.01, 0.05, 0.1]}, rs
+    gb_params = (
+        _to_pipeline_params_single(gb_space, rs)
+        if gb_space
+        else _to_pipeline_params_single(
+            {"n_estimators": [50, 100, 150], "max_depth": [3, 4, 5, 6], "learning_rate": [0.01, 0.05, 0.1]}, rs
+        )
     )
     return [
         ("RandomForestClassifier", RandomForestClassifier(), rf_params),
@@ -738,9 +752,7 @@ def run_auto_tune_extras(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     y = Y.ravel() if Y.ndim > 1 else Y
-    best_pipe, _, report = _run_search_single_regression(
-        X, y, "extras", cv_splits, n_iter, scoring, random_state
-    )
+    best_pipe, _, report = _run_search_single_regression(X, y, "extras", cv_splits, n_iter, scoring, random_state)
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -760,9 +772,7 @@ def run_auto_tune_win(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     y = Y.ravel() if Y.ndim > 1 else Y
-    best_pipe, _, report = _run_search_classification(
-        X, y, "win", cv_splits, n_iter, scoring, random_state
-    )
+    best_pipe, _, report = _run_search_classification(X, y, "win", cv_splits, n_iter, scoring, random_state)
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report
 
@@ -818,9 +828,7 @@ def main() -> None:
         if not go_app_url or not report.get("config_snippet"):
             return
         try:
-            save_tuned_params_to_go_app(
-                go_app_url, model, format_suffix or "", report["config_snippet"], api_key
-            )
+            save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", report["config_snippet"], api_key)
         except ValueError as e:
             logger.warning(
                 "auto_tune.save_tuned_params_failed model=%s format=%s error=%s",
@@ -846,9 +854,7 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune_extras(X, Y, fcode, out_dir)
-                            _maybe_save_tuned_params(
-                                args.go_app_url, "extras", fcode, report, args.api_key or None
-                            )
+                            _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
                                 fcode,
@@ -865,9 +871,7 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune_win(X, Y, fcode, out_dir)
-                            _maybe_save_tuned_params(
-                                args.go_app_url, "win", fcode, report, args.api_key or None
-                            )
+                            _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
                                 fcode,
@@ -889,9 +893,7 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
-                            _maybe_save_tuned_params(
-                                args.go_app_url, model_kind, fcode, report, args.api_key or None
-                            )
+                            _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                                 model_kind,
@@ -907,9 +909,7 @@ def main() -> None:
                     logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                _maybe_save_tuned_params(
-                    args.go_app_url, model_kind, format_suffix, report, args.api_key or None
-                )
+                _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                     model_kind,
@@ -942,9 +942,7 @@ def main() -> None:
                         if X.size == 0 or Y.size == 0:
                             continue
                         report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
-                        _maybe_save_tuned_params(
-                            args.go_app_url, model_kind, fcode, report, args.api_key or None
-                        )
+                        _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                         logger.info(
                             "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                             model_kind,
@@ -972,9 +970,7 @@ def main() -> None:
                     logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
-                _maybe_save_tuned_params(
-                    args.go_app_url, model_kind, format_suffix, report, args.api_key or None
-                )
+                _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                     model_kind,

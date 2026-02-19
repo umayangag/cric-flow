@@ -105,6 +105,10 @@ func TestCanRunPipelineStep(t *testing.T) {
 					Return(scanBoolRow(false))
 				m.On("QueryRow", mock.Anything, mock.Anything, "train-fielding", tracking.StatusCompleted).
 					Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, "train-extras", tracking.StatusCompleted).
+					Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, "train-win", tracking.StatusCompleted).
+					Return(scanBoolRow(true))
 			},
 			stepID:  "auto_tune",
 			wantOk:  true,
