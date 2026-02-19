@@ -89,6 +89,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	runner := pfcmd.NewRunner()
 	for _, code := range codes {
 		setPhase("form")
+		setCurrentFormat(code)
 		slog.Info("precompute: starting format", slog.String("format", code))
 		formatID, err := db.GetMatchFormatIDByCode(ctx, code)
 		if err != nil {

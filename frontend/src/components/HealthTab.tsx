@@ -150,11 +150,21 @@ const HealthTab: React.FC = () => {
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
                 {
                   label: 'Loaded batting',
-                  value: mlData?.loaded_batting_formats?.join(', ') || '—',
+                  value:
+                    (mlData?.loaded_batting_formats?.length ?? 0) > 0
+                      ? mlData!.loaded_batting_formats!.join(', ')
+                      : mlData
+                        ? 'None'
+                        : '—',
                 },
                 {
                   label: 'Loaded bowling',
-                  value: mlData?.loaded_bowling_formats?.join(', ') || '—',
+                  value:
+                    (mlData?.loaded_bowling_formats?.length ?? 0) > 0
+                      ? mlData!.loaded_bowling_formats!.join(', ')
+                      : mlData
+                        ? 'None'
+                        : '—',
                 },
                 { label: 'Models dir', value: mlData?.models_dir || '—' },
                 {
@@ -190,7 +200,7 @@ const HealthTab: React.FC = () => {
                   }, 0);
                   return {
                     label: 'Total size',
-                    value: total > 0 ? formatBytes(total as number) : '—',
+                    value: mlData ? (total > 0 ? formatBytes(total as number) : '0 B') : '—',
                   };
                 })(),
                 (() => {
@@ -208,7 +218,11 @@ const HealthTab: React.FC = () => {
                     })
                     .filter((n): n is number => typeof n === 'number' && isFinite(n));
                   const max = latest.length ? Math.max(...latest) : NaN;
-                  if (!isFinite(max)) return { label: 'Latest modified', value: '—' };
+                  if (!isFinite(max))
+                    return {
+                      label: 'Latest modified',
+                      value: mlData ? 'N/A' : '—',
+                    };
                   const d = new Date(max * 1000);
                   return {
                     label: 'Latest modified',

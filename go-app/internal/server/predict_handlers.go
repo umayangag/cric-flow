@@ -47,13 +47,14 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Format    string `json:"format"`
-		Team1     string `json:"team1"`
-		Team2     string `json:"team2"`
-		Venue     string `json:"venue"`
-		MatchDate string `json:"match_date"` // RFC3339 or YYYY-MM-DD
-		SeasonID  *int64 `json:"season_id"`
-		Weather   *struct {
+		Format          string `json:"format"`
+		Team1           string `json:"team1"`
+		Team2           string `json:"team2"`
+		Venue           string `json:"venue"`
+		MatchDate       string `json:"match_date"` // RFC3339 or YYYY-MM-DD
+		SeasonID        *int64 `json:"season_id"`
+		UseUnifiedModel *bool  `json:"use_unified_model,omitempty"`
+		Weather         *struct {
 			Temp     float64 `json:"temp"`
 			Humidity float64 `json:"humidity"`
 			Wind     float64 `json:"wind"`
@@ -92,6 +93,14 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 			v := strings.EqualFold(s, "true") || s == "1"
 			body.RequireKeeper = &v
 		}
+		if s := q.Get("use_unified_model"); s == "1" || strings.EqualFold(s, "true") {
+			t := true
+			body.UseUnifiedModel = &t
+		}
+		if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
+			t := true
+			body.UseUnifiedModel = &t
+		}
 	}
 
 	if body.Format == "" || body.Team1 == "" || body.Team2 == "" {
@@ -118,16 +127,17 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	input := predictteam.Input{
-		Format:        body.Format,
-		Team1:         body.Team1,
-		Team2:         body.Team2,
-		Venue:         body.Venue,
-		MatchDate:     matchDate,
-		SeasonID:      body.SeasonID,
-		ExtraTeam1:    body.ExtraTeam1,
-		ExtraTeam2:    body.ExtraTeam2,
-		MinBowlers:    body.MinBowlers,
-		RequireKeeper: true,
+		Format:          body.Format,
+		Team1:           body.Team1,
+		Team2:           body.Team2,
+		Venue:           body.Venue,
+		MatchDate:       matchDate,
+		SeasonID:        body.SeasonID,
+		ExtraTeam1:      body.ExtraTeam1,
+		ExtraTeam2:      body.ExtraTeam2,
+		MinBowlers:      body.MinBowlers,
+		RequireKeeper:   true,
+		UseUnifiedModel: body.UseUnifiedModel != nil && *body.UseUnifiedModel,
 	}
 	if body.Weather != nil {
 		input.Weather = &predictteam.WeatherInput{

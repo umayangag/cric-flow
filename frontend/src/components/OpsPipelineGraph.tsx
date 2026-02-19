@@ -192,6 +192,9 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
     // Default true when backend omits runnable (e.g. older API)
     steps[i].runnable = stepData.runnable !== false;
   }
+  // Import can always be retriggered to reset the pipeline; never grey it out
+  const importStep = steps.find((s) => s.id === 'import');
+  if (importStep) importStep.runnable = true;
   return steps;
 }
 

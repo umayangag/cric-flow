@@ -4,14 +4,26 @@ import (
 	"context"
 )
 
-// buildFieldingSection reports simple availability stats for fielding data.
-// It uses DBProbe to remain testable and decoupled from concrete DB layer.
+// buildFieldingSection reports availability and row counts for fielding data per format and overall.
 func buildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
-	out := map[string]any{"available": false}
+	out := map[string]any{"available": false, "formats": map[string]any{}, "overall": map[string]any{"rows": int64(0)}}
 	if probe == nil {
 		return out
 	}
-	// Counts across entire table; can be extended later per-format/season
+	formats := getCricketFormats()
+	fm := map[string]any{}
+	var total int64
+	for _, f := range formats {
+		n, err := probe.CountFieldingByFormat(ctx, f)
+		if err != nil {
+			fm[f] = map[string]any{"rows": int64(0)}
+			continue
+		}
+		fm[f] = map[string]any{"rows": n}
+		total += n
+	}
+	out["formats"] = fm
+	out["overall"] = map[string]any{"rows": total}
 	if n, err := probe.Count(ctx, "fielding_data"); err == nil {
 		out["rows"] = n
 		out["available"] = n > 0

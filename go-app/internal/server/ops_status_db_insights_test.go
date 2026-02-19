@@ -26,6 +26,13 @@ func (f fakeInsightsProbe) LatestMatchDateByFormat(_ context.Context, format str
 	return time.Time{}, nil
 }
 
+func (f fakeInsightsProbe) CountMatchesByFormat(_ context.Context, format string) (int64, error) {
+	if n, ok := f.countByFmt[format]; ok {
+		return n, nil
+	}
+	return 0, nil
+}
+
 func (f fakeInsightsProbe) CountMatchesSinceByFormat(_ context.Context, format string, _ time.Time) (int64, error) {
 	if f.countErr != nil {
 		if err, ok := f.countErr[format]; ok {
@@ -142,6 +149,9 @@ func TestBuildDBCompletenessSection_Table(t *testing.T) {
 	ov := got["overall"].(map[string]any)
 	if st := ov["status"].(string); st != "missing" { // worst is missing
 		t.Fatalf("overall=%q want missing", st)
+	}
+	if n, _ := ov["matches_last_30d"].(int64); n != 8 { // 2+1+0+5
+		t.Fatalf("overall matches_last_30d=%v want 8", n)
 	}
 }
 

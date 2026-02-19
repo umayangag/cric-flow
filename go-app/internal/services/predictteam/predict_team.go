@@ -42,6 +42,7 @@ type Input struct {
 	OppositionPlayerIDs []int64       `json:"opposition_player_ids,omitempty"` // optional; for future batter-bowler matchup features
 	MinBowlers          int           `json:"min_bowlers,omitempty"`           // default 5
 	RequireKeeper       bool          `json:"require_keeper,omitempty"`        // default true
+	UseUnifiedModel     bool          `json:"use_unified_model,omitempty"`     // when true, use legacy unified model instead of format-specific
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -99,6 +100,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		return nil, err
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
+
+	// When UseUnifiedModel is true, pass empty format to ML so it uses the legacy unified model.
+	formatForPrediction := format
+	if input.UseUnifiedModel {
+		formatForPrediction = ""
+	}
 
 	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
 	if fmtErr != nil {
@@ -175,7 +182,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		slog.Error("predictteam.PredictTeams team1 features failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 features: %w", err)
 	}
-	preds1, err := predictor.PredictPlayers(ctx, cutoff, format, ids1, feats1)
+	preds1, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids1, feats1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 predict failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, fmt.Errorf("team1 predict: %w", err)
@@ -204,7 +211,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		slog.Error("predictteam.PredictTeams team2 features failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 features: %w", err)
 	}
-	preds2, err := predictor.PredictPlayers(ctx, cutoff, format, ids2, feats2)
+	preds2, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids2, feats2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 predict failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, fmt.Errorf("team2 predict: %w", err)

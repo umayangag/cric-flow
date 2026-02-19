@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,45 @@ import (
 // healthHandler responds with liveness OK.
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// mlHealthProxyHandler proxies GET to the ML service /health so the frontend can get full health (loaded formats, artifacts) via the Go API.
+func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
+	base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
+	if base == "" {
+		base = "http://localhost:8000"
+	}
+	base = strings.TrimSuffix(base, "/")
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
+	if err != nil {
+		slog.Warn("ml health proxy: new request failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("ml health proxy: request failed", slog.Any("err", err))
+		respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Warn("ml health proxy: upstream non-2xx", slog.Int("status", resp.StatusCode), slog.String("body", string(body)))
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(body)
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		slog.Warn("ml health proxy: decode failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": "invalid ml health response"})
+		return
+	}
+	respondJSON(w, http.StatusOK, payload)
 }
 
 // readinessHandler pings the DB to verify readiness.

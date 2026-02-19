@@ -20,33 +20,35 @@ type evalJobStep struct {
 
 // evalJobStatusResponse is the JSON shape for evaluate-status; no mutex so it is safe to copy.
 type evalJobStatusResponse struct {
-	JobID     string                    `json:"job_id"`
-	MatchID   string                    `json:"match_id"`
-	Format    string                    `json:"format"`
-	Team1     string                    `json:"team1"`
-	Team2     string                    `json:"team2"`
-	Status    string                    `json:"status"` // "running" | "done" | "error"
-	Steps     []evalJobStep             `json:"steps,omitempty"`
-	Result    *backtestEvaluateResponse `json:"result,omitempty"`
-	Error     string                    `json:"error,omitempty"`
-	CreatedAt time.Time                 `json:"created_at"`
-	UpdatedAt time.Time                 `json:"updated_at"`
+	JobID           string                    `json:"job_id"`
+	MatchID         string                    `json:"match_id"`
+	Format          string                    `json:"format"`
+	Team1           string                    `json:"team1"`
+	Team2           string                    `json:"team2"`
+	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
+	Status          string                    `json:"status"` // "running" | "done" | "error"
+	Steps           []evalJobStep             `json:"steps,omitempty"`
+	Result          *backtestEvaluateResponse `json:"result,omitempty"`
+	Error           string                    `json:"error,omitempty"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
 }
 
 // evalJobState holds the state of a single evaluate job (in-memory; survives refresh, not server restart).
 type evalJobState struct {
-	mu        sync.Mutex
-	JobID     string                    `json:"job_id"`
-	MatchID   string                    `json:"match_id"`
-	Format    string                    `json:"format"`
-	Team1     string                    `json:"team1"`
-	Team2     string                    `json:"team2"`
-	Status    string                    `json:"status"` // "running" | "done" | "error"
-	Steps     []evalJobStep             `json:"steps,omitempty"`
-	Result    *backtestEvaluateResponse `json:"result,omitempty"`
-	Error     string                    `json:"error,omitempty"`
-	CreatedAt time.Time                 `json:"created_at"`
-	UpdatedAt time.Time                 `json:"updated_at"`
+	mu              sync.Mutex
+	JobID           string                    `json:"job_id"`
+	MatchID         string                    `json:"match_id"`
+	Format          string                    `json:"format"`
+	Team1           string                    `json:"team1"`
+	Team2           string                    `json:"team2"`
+	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
+	Status          string                    `json:"status"` // "running" | "done" | "error"
+	Steps           []evalJobStep             `json:"steps,omitempty"`
+	Result          *backtestEvaluateResponse `json:"result,omitempty"`
+	Error           string                    `json:"error,omitempty"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
 }
 
 func (s *evalJobState) appendStep(step, message string) {
@@ -78,17 +80,18 @@ func (s *evalJobState) snapshot() evalJobStatusResponse {
 	stepsCopy := make([]evalJobStep, len(s.Steps))
 	copy(stepsCopy, s.Steps)
 	return evalJobStatusResponse{
-		JobID:     s.JobID,
-		MatchID:   s.MatchID,
-		Format:    s.Format,
-		Team1:     s.Team1,
-		Team2:     s.Team2,
-		Status:    s.Status,
-		Steps:     stepsCopy,
-		Result:    s.Result,
-		Error:     s.Error,
-		CreatedAt: s.CreatedAt,
-		UpdatedAt: s.UpdatedAt,
+		JobID:           s.JobID,
+		MatchID:         s.MatchID,
+		Format:          s.Format,
+		Team1:           s.Team1,
+		Team2:           s.Team2,
+		UseUnifiedModel: s.UseUnifiedModel,
+		Status:          s.Status,
+		Steps:           stepsCopy,
+		Result:          s.Result,
+		Error:           s.Error,
+		CreatedAt:       s.CreatedAt,
+		UpdatedAt:       s.UpdatedAt,
 	}
 }
 
@@ -169,7 +172,7 @@ func evalJobCleanup() {
 // The job state is updated with progress and final result or error.
 // Uses a long-lived context (not the request context) so the job is not cancelled when the HTTP
 // request ends, and has a generous deadline so it can run for hours without exceeding it.
-func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (string, error) {
+func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, useUnifiedModel bool) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
 		slog.Error("startEvaluateJob: generate job ID failed", slog.Any("err", err))
@@ -177,15 +180,16 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 	}
 	now := time.Now()
 	job := &evalJobState{
-		JobID:     jobID,
-		MatchID:   matchID,
-		Format:    format,
-		Team1:     team1,
-		Team2:     team2,
-		Status:    "running",
-		Steps:     nil,
-		CreatedAt: now,
-		UpdatedAt: now,
+		JobID:           jobID,
+		MatchID:         matchID,
+		Format:          format,
+		Team1:           team1,
+		Team2:           team2,
+		UseUnifiedModel: useUnifiedModel,
+		Status:          "running",
+		Steps:           nil,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	evalJobStoreMu.Lock()
 	evalJobStore[jobID] = job
@@ -202,6 +206,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 			slog.String("team1", team1),
 			slog.String("team2", team2),
 			slog.String("match_id", matchID),
+			slog.Bool("use_unified_model", useUnifiedModel),
 		)
 		// Not the request context (cancelled when we return 202). Use a long deadline so the job
 		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
@@ -210,7 +215,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string) (
 		progress := func(step, message string) {
 			job.appendStep(step, message)
 		}
-		resp, err := doEvaluateWork(jobCtx, format, team1, team2, matchID, progress)
+		resp, err := doEvaluateWork(jobCtx, format, team1, team2, matchID, job.UseUnifiedModel, progress)
 		if err != nil {
 			slog.Error(
 				"evaluate job failed",

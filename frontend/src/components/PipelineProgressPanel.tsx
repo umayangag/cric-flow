@@ -1,0 +1,158 @@
+import React, { useEffect, useRef, useState } from 'react';
+import Box from '@mui/material/Box';
+import LinearProgress from '@mui/material/LinearProgress';
+import Typography from '@mui/material/Typography';
+import { api } from '../api';
+import type { PipelineProgressPayload } from '../types';
+
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+type PipelineProgressPanelProps = {
+  pipelineRunning: boolean;
+  onRefresh?: () => void;
+};
+
+/**
+ * Live pipeline progress via SSE. Shown below the pipeline graph when a step is running.
+ */
+const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
+  pipelineRunning,
+  onRefresh,
+}) => {
+  const [payload, setPayload] = useState<PipelineProgressPayload | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const wasRunningRef = useRef(false);
+
+  useEffect(() => {
+    if (!pipelineRunning) {
+      setStreamError(null);
+      setPayload((prev) => (prev?.running ? { ...prev, running: false } : prev));
+      return;
+    }
+    setStreamError(null);
+    const ac = new AbortController();
+    let mounted = true;
+    api
+      .subscribePipelineProgress(ac.signal, (p) => {
+        if (mounted) {
+          setPayload(p);
+          if (wasRunningRef.current && p.running === false) {
+            wasRunningRef.current = false;
+            onRefresh?.();
+          } else if (p.running === true) {
+            wasRunningRef.current = true;
+          }
+        }
+      })
+      .then(() => {
+        if (mounted) onRefresh?.();
+      })
+      .catch((e) => {
+        if (mounted && (e as { name?: string }).name !== 'AbortError') {
+          setStreamError(e instanceof Error ? e.message : String(e));
+        }
+      });
+    return () => {
+      mounted = false;
+      ac.abort();
+    };
+  }, [pipelineRunning, onRefresh]);
+
+  if (!pipelineRunning && !payload?.running && !streamError) {
+    return null;
+  }
+
+  const p = payload;
+  const showRunning = p?.running === true;
+  const connecting = pipelineRunning && p == null && !streamError;
+
+  return (
+    <Box
+      sx={{
+        mt: 2,
+        p: 2,
+        borderRadius: 1,
+        bgcolor: showRunning ? 'action.hover' : 'grey.50',
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        Live progress
+      </Typography>
+      {streamError && (
+        <Typography variant="body2" color="error">
+          {streamError}
+        </Typography>
+      )}
+      {!streamError && connecting && (
+        <Typography variant="body2" color="text.secondary">
+          Connecting to live progress…
+        </Typography>
+      )}
+      {!streamError && !connecting && !showRunning && (
+        <Typography variant="body2" color="text.secondary">
+          No pipeline in progress.
+        </Typography>
+      )}
+      {!streamError && showRunning && p && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+            <Typography variant="body2" fontWeight={600}>
+              {p.step_label || p.step_id || 'Running'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Elapsed: {formatElapsed(p.elapsed_sec ?? 0)}
+            </Typography>
+            {p.estimated_remaining_sec != null && p.estimated_remaining_sec > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Est. remaining: ~{formatElapsed(p.estimated_remaining_sec)}
+              </Typography>
+            )}
+          </Box>
+          {p.precompute && (
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Phase: {p.precompute.phase || '—'} · Current format:{' '}
+                {p.precompute.current_format || '—'}
+              </Typography>
+              {p.precompute.formats_total != null && p.precompute.formats_total > 0 && (
+                <Box sx={{ mt: 0.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Formats: {p.precompute.formats?.join(', ') || '—'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {p.precompute.current_index != null && p.precompute.current_index >= 0
+                        ? `${p.precompute.current_index + 1} / ${p.precompute.formats_total}`
+                        : `0 / ${p.precompute.formats_total}`}
+                    </Typography>
+                  </Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={
+                      p.precompute.current_index != null && p.precompute.formats_total > 0
+                        ? ((p.precompute.current_index + 1) / p.precompute.formats_total) * 100
+                        : 0
+                    }
+                    sx={{ height: 6, borderRadius: 1 }}
+                  />
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+export default PipelineProgressPanel;

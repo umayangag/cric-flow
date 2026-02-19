@@ -201,6 +201,23 @@ export type PipelineRunResponse = {
   command?: string;
 };
 
+/** Payload of SSE "progress" event from GET /ops/pipeline/stream */
+export type PipelineProgressPayload = {
+  running: boolean;
+  step_id?: string;
+  step_label?: string;
+  started_at?: string;
+  elapsed_sec?: number;
+  precompute?: {
+    formats?: string[];
+    current_format?: string;
+    phase?: string;
+    current_index?: number;
+    formats_total?: number;
+  };
+  estimated_remaining_sec?: number;
+};
+
 export type Migration = {
   id: number;
   command: string;
@@ -260,6 +277,8 @@ export type AccuracyTrendFilters = {
   limit?: number;
   cache?: 'off' | 'read' | 'readwrite';
   metrics?: string;
+  /** When true, use the unified (legacy) model for predictions instead of the format-specific model. */
+  use_unified_model?: boolean;
 };
 
 // --- Workbench: walk-forward registry (from walk_forward_registry.json) ---

@@ -79,18 +79,22 @@ func getPredictedAggregates(
 
 // computePlayerRunsMAE fetches player-level predictions and actuals and
 // returns the Mean Absolute Error (runs) along with a success flag.
-// It encapsulates the nested checks used previously to improve readability.
+// When useUnifiedModel is true, format is passed as empty so the ML service uses the legacy (unified) model.
 func computePlayerRunsMAE(
 	ctx context.Context,
 	m backtestCandidate,
 	cutoff time.Time,
+	useUnifiedModel bool,
 ) (float64, bool) {
 	squad, err := getBacktestSquadPlayerIDsFunc(ctx, m.MatchID, cutoff, m.Format)
 	if err != nil || len(squad) == 0 {
 		return 0, false
 	}
-
-	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, m.Format, squad, nil)
+	formatForPrediction := m.Format
+	if useUnifiedModel {
+		formatForPrediction = ""
+	}
+	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, nil)
 	acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
 	if err1 != nil || err2 != nil {
 		return 0, false
@@ -114,12 +118,13 @@ func computePlayerRunsMAE(
 }
 
 // computeAccuracyTrendMetrics calculates metrics for a single match candidate.
-// It mirrors the previous inline logic to avoid behavior changes.
+// When useUnifiedModel is true, player predictions use the unified (legacy) model.
 func computeAccuracyTrendMetrics(
 	ctx context.Context,
 	m backtestCandidate,
 	cacheMode string,
 	includePlayer, includeTeam bool,
+	useUnifiedModel bool,
 ) map[string]float64 {
 	metrics := map[string]float64{}
 
@@ -131,7 +136,7 @@ func computeAccuracyTrendMetrics(
 
 	// Player-level MAE on runs (optional)
 	if includePlayer {
-		if mae, ok := computePlayerRunsMAE(ctx, m, cutoff); ok {
+		if mae, ok := computePlayerRunsMAE(ctx, m, cutoff, useUnifiedModel); ok {
 			metrics["player_runs_mae"] = mae
 		}
 	}
@@ -249,16 +254,18 @@ func listAccuracyTrendCandidates(
 
 // computeAccuracyTrendForCandidates computes metrics for each candidate and returns
 // the items along with the summary and progressive aggregates.
+// When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
 func computeAccuracyTrendForCandidates(
 	ctx context.Context,
 	candidates []backtestCandidate,
 	includePlayer bool,
 	includeTeam bool,
 	cacheMode string,
+	useUnifiedModel bool,
 ) ([]accuracyTrendItem, map[string]float64, []map[string]float64) {
 	results := make([]accuracyTrendItem, 0, len(candidates))
 	for _, m := range candidates {
-		metrics := computeAccuracyTrendMetrics(ctx, m, cacheMode, includePlayer, includeTeam)
+		metrics := computeAccuracyTrendMetrics(ctx, m, cacheMode, includePlayer, includeTeam, useUnifiedModel)
 		results = append(results, accuracyTrendItem{
 			MatchID:   m.MatchID,
 			MatchDate: m.MatchDate,

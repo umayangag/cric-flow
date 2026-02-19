@@ -45,6 +45,7 @@ const UpcomingMatchTab: React.FC = () => {
   const [team2, setTeam2] = useState<string>('');
   const [venue, setVenue] = useState<string>('');
   const [matchDate, setMatchDate] = useState<string>('');
+  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
 
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
@@ -160,6 +161,7 @@ const UpcomingMatchTab: React.FC = () => {
         team2: team2.trim(),
         venue: venue.trim() || undefined,
         match_date: matchDate,
+        use_unified_model: predictionModel === 'unified',
       });
       setResult(res);
     } catch (e) {
@@ -242,6 +244,19 @@ const UpcomingMatchTab: React.FC = () => {
           helperText={dateError}
           fullWidth
         />
+
+        <FormControl size="small" sx={{ minWidth: 260 }}>
+          <InputLabel id="upcoming-model-label">Prediction model</InputLabel>
+          <Select
+            labelId="upcoming-model-label"
+            value={predictionModel}
+            onChange={(e) => setPredictionModel(e.target.value as 'format' | 'unified')}
+            label="Prediction model"
+          >
+            <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
+            <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
+          </Select>
+        </FormControl>
 
         <Button
           variant="contained"

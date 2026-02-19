@@ -17,6 +17,8 @@ import (
 type DBProbe interface {
 	Ping(ctx context.Context) error
 	Count(ctx context.Context, table string) (int64, error)
+	// CountFieldingByFormat returns the number of fielding_data rows for the given format (match join).
+	CountFieldingByFormat(ctx context.Context, format string) (int64, error)
 	// MigrationInfo returns (currentApplied, expectedTotal, status)
 	// status: "ok" | "unknown" | "out_of_date"
 	MigrationInfo(ctx context.Context) (int, int, string, error)
@@ -72,6 +74,26 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 	}
 	row := db.Pool.QueryRow(ctx, sql)
 	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (productionDBProbe) CountFieldingByFormat(ctx context.Context, format string) (int64, error) {
+	if db.Pool == nil {
+		return 0, errors.New("db pool not initialized")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var n int64
+	err := db.Pool.QueryRow(ctx, `
+        SELECT COUNT(*)
+        FROM fielding_data fd
+        JOIN match m ON m.match_id = fd.match_id
+        JOIN match_format mf ON mf.id = m.format_id
+        WHERE mf.code = $1
+    `, format).Scan(&n)
+	if err != nil {
 		return 0, err
 	}
 	return n, nil

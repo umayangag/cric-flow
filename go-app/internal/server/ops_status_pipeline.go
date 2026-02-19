@@ -45,6 +45,7 @@ var pipelineStepPreviousCommand = map[string]string{
 
 // buildPipelineSection returns a map with "steps" (per-step running, runnable) for /ops/status.
 // A step is runnable only when no pipeline is running and the previous step has completed successfully.
+// Import is always runnable when not running so the pipeline can be retriggered from the beginning.
 func buildPipelineSection(ctx context.Context) map[string]any {
 	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, getPipelineCommands())
 	steps := map[string]any{}
@@ -74,6 +75,10 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 					runnable = prevDone
 				}
 			}
+		}
+		// Import can always be retriggered to reset the pipeline
+		if stepID == "import" {
+			runnable = !running
 		}
 		steps[stepID] = map[string]any{"running": running, "runnable": runnable}
 	}

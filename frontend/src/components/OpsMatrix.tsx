@@ -7,13 +7,14 @@ type MatrixType = 'precompute' | 'exports' | 'artifacts';
 type PrecomputeData = {
   formats?: Record<string, { status?: string } | undefined>;
 };
-type ExportFile = { name?: string; exists?: boolean };
+type ExportFile = { name?: string; exists?: boolean; rows?: number };
 type ExportsData = {
   formats?: Record<string, { files?: ExportFile[] } | undefined>;
 };
 type ArtifactUnit = { exists?: boolean; loaded?: boolean };
 type ArtifactsData = {
   formats?: Record<string, { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined>;
+  unified?: { batting?: ArtifactUnit; bowling?: ArtifactUnit };
 };
 
 type Props = {
@@ -110,12 +111,23 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     return files.some((e) => !!(e && typeof e === 'object' && (e as ExportFile).exists === true));
   };
 
+  const sumRows = (files: unknown): number => {
+    if (!Array.isArray(files)) return 0;
+    return files.reduce((acc, e) => {
+      if (e && typeof e === 'object' && typeof (e as ExportFile).rows === 'number') {
+        return acc + (e as ExportFile).rows!;
+      }
+      return acc;
+    }, 0);
+  };
+
   const renderExports = () => (
     <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
       {FORMATS.map((f) => {
         const files = (data as ExportsData)?.formats?.[f]?.files ?? [];
         const ok = hasAnyExists(files);
         const state = ok ? 'ok' : 'error';
+        const totalRows = sumRows(files);
         const titleStr = Array.isArray(files)
           ? files
               .map((x) => (x && typeof x === 'object' ? (x as ExportFile).name : undefined))
@@ -130,6 +142,15 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
             <Typography variant="caption" display="block" sx={{ fontSize: 11, opacity: 0.95 }}>
               {ok ? 'present' : 'missing'}
             </Typography>
+            {totalRows > 0 && (
+              <Typography
+                variant="caption"
+                display="block"
+                sx={{ fontSize: 10, color: 'text.secondary' }}
+              >
+                {totalRows.toLocaleString()} rows
+              </Typography>
+            )}
           </Box>
         );
       })}
@@ -159,45 +180,68 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     </Box>
   );
 
-  const renderArtifacts = () => (
-    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-      {FORMATS.map((f) => {
-        const bat = (data as ArtifactsData)?.formats?.[f]?.batting ?? {};
-        const bowl = (data as ArtifactsData)?.formats?.[f]?.bowling ?? {};
-        const ok = bat?.exists === true && bowl?.exists === true;
-        const state = ok ? 'ok' : 'error';
-        return (
-          <Box key={f} sx={cellSx(state)} data-testid={`artifacts-${f}`}>
-            <Typography component="strong" variant="body2" fontWeight={600}>
-              {f}
+  const renderArtifactCell = (
+    label: string,
+    bat: ArtifactUnit,
+    bowl: ArtifactUnit,
+    testId: string,
+  ) => {
+    const ok = bat?.exists === true && bowl?.exists === true;
+    const state = ok ? 'ok' : 'error';
+    return (
+      <Box sx={cellSx(state)} data-testid={testId}>
+        <Typography component="strong" variant="body2" fontWeight={600}>
+          {label}
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {subCell(bat?.exists === true, bat?.loaded === true)}
+            <Typography
+              component="small"
+              variant="caption"
+              sx={{ fontSize: 10, color: 'text.secondary' }}
+            >
+              batting
             </Typography>
-            <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {subCell(bat?.exists === true, bat?.loaded === true)}
-                <Typography
-                  component="small"
-                  variant="caption"
-                  sx={{ fontSize: 10, color: 'text.secondary' }}
-                >
-                  batting
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                {subCell(bowl?.exists === true, bowl?.loaded === true)}
-                <Typography
-                  component="small"
-                  variant="caption"
-                  sx={{ fontSize: 10, color: 'text.secondary' }}
-                >
-                  bowling
-                </Typography>
-              </Box>
-            </Box>
           </Box>
-        );
-      })}
-    </Box>
-  );
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {subCell(bowl?.exists === true, bowl?.loaded === true)}
+            <Typography
+              component="small"
+              variant="caption"
+              sx={{ fontSize: 10, color: 'text.secondary' }}
+            >
+              bowling
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+    );
+  };
+
+  const renderArtifacts = () => {
+    const artData = data as ArtifactsData;
+    const unified = artData?.unified;
+    return (
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+        {unified &&
+          renderArtifactCell(
+            'Unified (all)',
+            unified.batting ?? {},
+            unified.bowling ?? {},
+            'artifacts-unified',
+          )}
+        {FORMATS.map((f) =>
+          renderArtifactCell(
+            f,
+            artData?.formats?.[f]?.batting ?? {},
+            artData?.formats?.[f]?.bowling ?? {},
+            `artifacts-${f}`,
+          ),
+        )}
+      </Box>
+    );
+  };
 
   return (
     <Box component="section" sx={{ mt: 0.5 }}>
