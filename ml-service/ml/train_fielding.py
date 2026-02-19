@@ -156,6 +156,21 @@ def train_and_save(
             logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
 
 
+def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
+    """Train one unified fielding model on all data and save as legacy (fielding_scaler.joblib, fielding_model.joblib)."""
+    params = get_training_params("fielding", None)
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+    base = make_base_estimator(params)
+    model = MultiOutputRegressor(base)
+    model.fit(Xs, Y)
+    os.makedirs(out_dir, exist_ok=True)
+    compress = params["joblib_compress"]
+    joblib.dump(scaler, os.path.join(out_dir, "fielding_scaler.joblib"), compress=compress)
+    joblib.dump(model, os.path.join(out_dir, "fielding_model.joblib"), compress=compress)
+    logger.info("train_fielding.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Train fielding model from go-app training-data API or CSV")
     ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required if not using --csv)")

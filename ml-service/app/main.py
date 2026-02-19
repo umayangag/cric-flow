@@ -976,9 +976,7 @@ async def admin_train_batting():
         )
     logger.info("admin.train.start", step="batting", per_format=True)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess, "ml.train_batting", ["--all-formats"]
-        )
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", ["--all-formats"])
         logger.info("admin.train.success", step="batting")
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
@@ -1009,9 +1007,7 @@ async def admin_train_bowling():
         )
     logger.info("admin.train.start", step="bowling", per_format=True)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess, "ml.train_bowling", ["--all-formats"]
-        )
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", ["--all-formats"])
         logger.info("admin.train.success", step="bowling")
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:
