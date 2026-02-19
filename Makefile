@@ -385,7 +385,7 @@ up-all:
 	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
-	$(MAKE) train-all || (echo "Training failed" && exit 1)
+	$(MAKE) train-all CUTOFF=$$(date -u +%Y-%m-%dT%H:%M:%SZ) || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
 	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health), Frontend at http://localhost:$(FRONTEND_PORT)."
