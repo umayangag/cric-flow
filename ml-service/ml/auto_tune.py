@@ -52,7 +52,7 @@ _ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
-from ml.config import get_training_params, get_tuning_config, get_tuning_search_space
+from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
 
 # Batting/bowling CSV loading inlined (train_batting/train_bowling require top-level config).
 # Fielding / extras / win: optional imports for API data and rows_to_xy_by_format.
@@ -808,6 +808,27 @@ def main() -> None:
     elif args.format:
         formats_to_run = [args.format.strip().upper()]
 
+    def _maybe_save_tuned_params(
+        go_app_url: str,
+        model: str,
+        format_suffix: Optional[str],
+        report: Dict[str, Any],
+        api_key: Optional[str],
+    ) -> None:
+        if not go_app_url or not report.get("config_snippet"):
+            return
+        try:
+            save_tuned_params_to_go_app(
+                go_app_url, model, format_suffix or "", report["config_snippet"], api_key
+            )
+        except ValueError as e:
+            logger.warning(
+                "auto_tune.save_tuned_params_failed model=%s format=%s error=%s",
+                model,
+                format_suffix,
+                e,
+            )
+
     for model_kind in models:
         for fmt in formats_to_run:
             format_suffix = fmt if fmt else None
@@ -825,6 +846,9 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune_extras(X, Y, fcode, out_dir)
+                            _maybe_save_tuned_params(
+                                args.go_app_url, "extras", fcode, report, args.api_key or None
+                            )
                             logger.info(
                                 "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
                                 fcode,
@@ -841,6 +865,9 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune_win(X, Y, fcode, out_dir)
+                            _maybe_save_tuned_params(
+                                args.go_app_url, "win", fcode, report, args.api_key or None
+                            )
                             logger.info(
                                 "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
                                 fcode,
@@ -862,6 +889,9 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
+                            _maybe_save_tuned_params(
+                                args.go_app_url, model_kind, fcode, report, args.api_key or None
+                            )
                             logger.info(
                                 "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                                 model_kind,
@@ -877,6 +907,9 @@ def main() -> None:
                     logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
+                _maybe_save_tuned_params(
+                    args.go_app_url, model_kind, format_suffix, report, args.api_key or None
+                )
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                     model_kind,
@@ -909,6 +942,9 @@ def main() -> None:
                         if X.size == 0 or Y.size == 0:
                             continue
                         report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
+                        _maybe_save_tuned_params(
+                            args.go_app_url, model_kind, fcode, report, args.api_key or None
+                        )
                         logger.info(
                             "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                             model_kind,
@@ -936,6 +972,9 @@ def main() -> None:
                     logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                     continue
                 report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
+                _maybe_save_tuned_params(
+                    args.go_app_url, model_kind, format_suffix, report, args.api_key or None
+                )
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                     model_kind,

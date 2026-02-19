@@ -79,6 +79,10 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 
+	// ML tuned params: save/retrieve auto-tuned training params per model (and format)
+	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsGetHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsPostHandler).Methods(http.MethodPost, http.MethodOptions)
+
 	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
 	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
 

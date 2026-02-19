@@ -249,9 +249,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # All training parameters from config (ml.training.batting); no env overrides or magic values
-    training_params = get_training_params("batting")
-
     targets: list[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -282,6 +279,7 @@ def main():
 
     # If still no targets detected, fall back to legacy single CSV path
     if not targets:
+        training_params = get_training_params("batting", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
         try:
             X, Y, feature_names_used = load_dataset(csv_path)
@@ -306,8 +304,9 @@ def main():
         logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
 
-    # Per-format training loop
+    # Per-format training loop (each format may use latest tuned params from go-app when GO_APP_URL is set)
     for fmt in targets:
+        training_params = get_training_params("batting", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"batting_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):
             logger.warning("train_batting.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)

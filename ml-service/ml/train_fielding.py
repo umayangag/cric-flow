@@ -121,7 +121,7 @@ def train_and_save(
     Input normalization (StandardScaler) on X only; targets Y in raw units.
     See docs/ML_DATA_AND_NORMALIZATION.md.
     """
-    params = get_training_params("fielding")
+    params = get_training_params("fielding", format_code)
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     base = make_base_estimator(params)

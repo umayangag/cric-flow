@@ -96,7 +96,7 @@ def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.
 
 def train_and_save(X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str) -> None:
     """Train win classifier and save model for format_code (no scaler; artifacts loader expects model only)."""
-    params = get_training_params("win")
+    params = get_training_params("win", format_code)
     model = RandomForestClassifier(
         n_estimators=params["n_estimators"],
         max_depth=params["max_depth"],
