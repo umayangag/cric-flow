@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -62,8 +63,21 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		return err
 	}
 	if err := os.MkdirAll(opts.OutDir, fs.FileMode(0o755)); err != nil {
-		slog.Error("exportdataset.Runner.Run mkdir failed", slog.String("out_dir", opts.OutDir), slog.Any("err", err))
-		return fmt.Errorf("mkdir %s: %w", opts.OutDir, err)
+		// Fallback when cwd (or requested path) is not writable (e.g. API in Docker without GO_APP_OUTPUT_DIR).
+		if isPermissionDenied(err) {
+			fallback := filepath.Join(os.TempDir(), "cric-export", "go-app")
+			if fallbackErr := os.MkdirAll(fallback, fs.FileMode(0o755)); fallbackErr == nil {
+				slog.Info("exportdataset.Runner.Run using temp fallback (requested dir not writable)",
+					slog.String("requested", opts.OutDir), slog.String("fallback", fallback))
+				opts.OutDir = fallback
+			} else {
+				slog.Error("exportdataset.Runner.Run mkdir failed", slog.String("out_dir", opts.OutDir), slog.Any("err", err))
+				return fmt.Errorf("mkdir %s: %w", opts.OutDir, err)
+			}
+		} else {
+			slog.Error("exportdataset.Runner.Run mkdir failed", slog.String("out_dir", opts.OutDir), slog.Any("err", err))
+			return fmt.Errorf("mkdir %s: %w", opts.OutDir, err)
+		}
 	}
 	// If services are injected, orchestrate exports here. This path is only active
 	// when Bat and Bow are non-nil. The existing main currently constructs the
@@ -170,4 +184,15 @@ func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) err
 		return err
 	}
 	return nil
+}
+
+// isPermissionDenied returns true if err indicates a permission denied (e.g. mkdir in a read-only dir).
+func isPermissionDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "permission denied")
 }

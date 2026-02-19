@@ -2,7 +2,9 @@ package tracking
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
@@ -106,6 +108,33 @@ func HasCompletedSuccessfullyForCommand(ctx context.Context, command string) (bo
 		return false, err
 	}
 	return exists, nil
+}
+
+// GetLastCompletedAtForCommand returns the completed_at of the most recent COMPLETED row
+// for the given command. Used so the precompute section can show "complete" from persisted
+// tracking (e.g. after API restart or when precompute was run via CLI). When db pool is nil
+// or no completed run exists, returns (nil, nil).
+func GetLastCompletedAtForCommand(ctx context.Context, command string) (*time.Time, error) {
+	if db.Pool == nil || command == "" {
+		return nil, nil
+	}
+	var completedAt *time.Time
+	err := db.QueryRow(ctx, `
+		SELECT completed_at FROM data_migrations
+		WHERE command = $1 AND status = $2
+		ORDER BY completed_at DESC NULLS LAST
+		LIMIT 1
+	`, command, StatusCompleted).Scan(&completedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if completedAt == nil {
+		return nil, nil
+	}
+	return completedAt, nil
 }
 
 // HasInProgressForAnyCommand returns true if there is at least one row with status IN_PROGRESS

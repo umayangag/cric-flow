@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -30,8 +31,8 @@ func TestBuildPrecomputeSection_NoFinishedRun_AllMissing(t *testing.T) {
 	}
 	now := time.Date(2026, 1, 21, 12, 0, 0, 0, time.UTC)
 
-	// Act
-	sec := buildPrecomputeSection(now)
+	// Act (no DB in unit test, so tracking fallback returns nil → all missing)
+	sec := buildPrecomputeSection(context.Background(), now)
 
 	// Assert
 	if sec["last_run"] != "" || sec["as_of"] != "" {
@@ -57,7 +58,7 @@ func TestBuildPrecomputeSection_Today_OkForRanFormats(t *testing.T) {
 	}
 	now := time.Date(2026, 1, 21, 18, 0, 0, 0, time.UTC)
 
-	sec := buildPrecomputeSection(now)
+	sec := buildPrecomputeSection(context.Background(), now)
 	if sec["last_run"] == "" || sec["as_of"] == "" {
 		t.Fatalf("expected last_run/as_of to be set")
 	}
@@ -85,7 +86,7 @@ func TestBuildPrecomputeSection_Yesterday_StaleForRanFormats(t *testing.T) {
 	}
 	now := time.Date(2026, 1, 21, 0, 10, 0, 0, time.UTC)
 
-	sec := buildPrecomputeSection(now)
+	sec := buildPrecomputeSection(context.Background(), now)
 	formats := getMap(sec, "formats", t)
 	if st := getMap(formats, "TEST", t)["status"].(string); st != "stale" {
 		t.Fatalf("TEST expected stale, got %s", st)

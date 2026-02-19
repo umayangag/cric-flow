@@ -36,6 +36,8 @@ services:
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
+      # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
+      GO_APP_OUTPUT_DIR: /output/go-app
       # 2GB memory limit for resource-aware pipeline concurrency (override with GOMEMLIMIT=... if needed)
       GOMEMLIMIT: ${GOMEMLIMIT:-2GiB}
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
@@ -46,6 +48,8 @@ services:
     mem_limit: 2g
     ports:
       - "8080:8080"
+    volumes:
+      - ./output:/output
 
   ml-service:
     build:

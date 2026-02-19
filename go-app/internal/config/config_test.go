@@ -104,10 +104,20 @@ func TestDefaultDirs_UseConfigValues(t *testing.T) {
 func TestDefaultDirs_FallbacksWhenUnset(t *testing.T) {
 	cached = &Config{} // simulate empty config loaded
 	wantCricsheet := filepath.Join("..", "data", "go-app", "cricsheet")
-	wantExport := filepath.Join("..", "output", "go-app")
+	wantExport := filepath.Join("output", "go-app")
 
 	require.Equal(t, wantCricsheet, DefaultCricsheetDir())
 	require.Equal(t, wantExport, DefaultExportDir())
+}
+
+// Not parallel: sets env and mutates cached config.
+func TestDefaultExportDir_EnvOverridesConfig(t *testing.T) {
+	cached = &Config{}
+	cached.Outputs.ExportDir = "/tmp/export"
+	t.Setenv("GO_APP_OUTPUT_DIR", "/output/go-app")
+	defer t.Setenv("GO_APP_OUTPUT_DIR", "")
+
+	require.Equal(t, "/output/go-app", DefaultExportDir())
 }
 
 func TestEffectiveScoreNormParams(t *testing.T) {

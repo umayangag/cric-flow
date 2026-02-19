@@ -324,12 +324,17 @@ func EffectiveScoreWeights(cfg *Config) (bat, bowl, field, keeperBonus float64) 
 }
 
 // DefaultExportDir returns the configured export output dir or a built-in default.
+// GO_APP_OUTPUT_DIR (when set) overrides config so the API can use a writable path in Docker.
+// Otherwise config or cwd-relative "output/go-app" is used.
 func DefaultExportDir() string {
+	if p := os.Getenv("GO_APP_OUTPUT_DIR"); p != "" {
+		return p
+	}
 	cfg := Load()
 	if cfg != nil && cfg.Outputs.ExportDir != "" {
 		return cfg.Outputs.ExportDir
 	}
-	return filepath.Join("..", "output", "go-app")
+	return filepath.Join("output", "go-app")
 }
 
 // ValidateTeamSettings validates a subset of team/predictor settings for sanity.
