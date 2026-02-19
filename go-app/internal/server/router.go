@@ -81,6 +81,9 @@ func NewRouter(a *App) http.Handler {
 	// Accuracy trend endpoint for dashboards
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	// Export backtest contributions CSV for combination meta-model training
+	admin.HandleFunc("/api/backtest/export-contributions", a.backtestExportContributionsHandler).
+		Methods(http.MethodPost, http.MethodOptions)
 
 	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)
 	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).

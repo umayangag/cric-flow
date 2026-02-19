@@ -9,14 +9,15 @@ import (
 
 // Pipeline step IDs and their corresponding data_migrations command names.
 var pipelineStepCommands = map[string]string{
-	"import":         "cricsheet-import",
-	"precompute":     "precompute-features",
-	"export":         "export-dataset",
-	"train_batting":  "train-batting",
-	"train_bowling":  "train-bowling",
-	"train_fielding": "train-fielding",
-	"train_extras":   "train-extras",
-	"train_win":      "train-win",
+	"import":                "cricsheet-import",
+	"precompute":            "precompute-features",
+	"export":                "export-dataset",
+	"train_batting":         "train-batting",
+	"train_bowling":         "train-bowling",
+	"train_fielding":        "train-fielding",
+	"train_extras":          "train-extras",
+	"train_win":             "train-win",
+	"train_combination_meta": "train-combination-meta", // no tracking; optional step
 	// auto_tune has no tracking command; optional step
 }
 
@@ -32,15 +33,16 @@ func getPipelineCommands() []string {
 // pipelineStepOrder defines the run order; step N is only runnable after step N-1 completed successfully.
 // Empty string means no previous step (always runnable when no other pipeline is running).
 var pipelineStepPreviousCommand = map[string]string{
-	"import":         "", // first step
-	"precompute":     "cricsheet-import",
-	"export":         "precompute-features",
-	"train_batting":  "export-dataset",
-	"train_bowling":  "export-dataset",
-	"train_fielding": "export-dataset",
-	"train_extras":   "export-dataset",
-	"train_win":      "export-dataset",
-	"auto_tune":      "train-fielding", // optional; runnable when train-fielding AND train-extras AND train-win all done (checked below)
+	"import":                  "", // first step
+	"precompute":              "cricsheet-import",
+	"export":                  "precompute-features",
+	"train_batting":           "export-dataset",
+	"train_bowling":           "export-dataset",
+	"train_fielding":          "export-dataset",
+	"train_extras":            "export-dataset",
+	"train_win":               "export-dataset",
+	"train_combination_meta":  "train-win", // optional; run after train-win; requires contributions CSV
+	"auto_tune":               "train-fielding", // optional; runnable when train-fielding AND train-extras AND train-win all done (checked below)
 }
 
 // buildPipelineSection returns a map with "steps" (per-step running, runnable) for /ops/status.
