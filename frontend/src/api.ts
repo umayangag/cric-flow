@@ -197,8 +197,8 @@ export const api = {
             try {
               const payload = JSON.parse(data) as PipelineProgressPayload;
               onProgress(payload);
-            } catch {
-              /* ignore malformed */
+            } catch (e) {
+              console.error('Failed to parse pipeline progress SSE data:', e, 'Data:', data);
             }
           }
         }
