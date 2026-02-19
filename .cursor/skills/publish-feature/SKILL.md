@@ -16,6 +16,8 @@ When the user says **/publish-feature**, run the following workflow. First resol
 
 **Thread fetch (same as fix-gemini-reviews):** Use the two-phase approach to keep responses small. **Phase 1** — paginate `reviewThreads` with minimal fields (`id`, `isResolved`, `comments(first:1){ nodes { author { login } } }` only); filter to `isResolved==false` and `author.login=="gemini-code-assist"`. For **count only** (e.g. polling), use Phase 1 and count nodes. For **full thread data** (to implement fixes), add **Phase 2** — for each thread ID, query `node(id)` for `comments(first:1){ nodes { path line body } }`. Resolve threads via the same GraphQL mutation as in fix-gemini-reviews.
 
+**Rate limit (GraphQL / gh blocked):** If any `gh` call fails with a rate-limit message (e.g. `API rate limit already exceeded`, `rate limit exceeded`, or similar), do **not** retry in a loop. Instead: (1) Fetch rate limit expiry with `gh api /rate_limit` (REST; may still succeed when GraphQL is limited). (2) From the JSON, read `resources.graphql.reset` (Unix timestamp; GraphQL is what PR/thread calls use) or, if missing, `resources.core.reset`. (3) Report to the user: **"GitHub API rate limit hit. GraphQL (or core) resets at \<ISO or local time\>. Run /publish-feature again after that time."** Example to get human-readable time: `gh api /rate_limit -q '.resources.graphql.reset' | xargs -I{} date -r {} 2>/dev/null || date -d @{} 2>/dev/null` (or convert the Unix value in code). Then stop the workflow.
+
 ---
 
 ## Initial setup (before the cycle)
@@ -111,3 +113,5 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |
 
 Exit when: **cycle = 10** or **unresolved Gemini threads = 0**.
+
+**If GitHub rate limit is hit:** Run `gh api /rate_limit`, read `resources.graphql.reset` (or `core.reset`), report the reset time to the user and stop.
