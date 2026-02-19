@@ -18,6 +18,8 @@ export type PipelineStepId =
   | 'train_batting'
   | 'train_bowling'
   | 'train_fielding'
+  | 'train_extras'
+  | 'train_win'
   | 'auto_tune';
 
 export type StepStatus = 'success' | 'stale' | 'pending' | 'error' | 'optional' | 'running';
@@ -92,6 +94,22 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       runnable: true,
     },
     {
+      id: 'train_extras',
+      label: 'Train Extras',
+      status: 'pending',
+      command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
+      description: 'Train extras prediction model (set CUTOFF and GO_APP_URL as needed).',
+      runnable: true,
+    },
+    {
+      id: 'train_win',
+      label: 'Train Win',
+      status: 'pending',
+      command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
+      description: 'Train win prediction model (set CUTOFF and GO_APP_URL as needed).',
+      runnable: true,
+    },
+    {
       id: 'auto_tune',
       label: 'Auto-tune',
       status: 'optional',
@@ -153,6 +171,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   steps[3].status = battingDone ? 'success' : 'pending';
   steps[4].status = bowlingDone ? 'success' : 'pending';
   steps[5].status = fieldingDone ? 'success' : 'pending';
+  // train_extras (6) and train_win (7): no artifact check yet; use backend running/runnable only
+  // steps[6], steps[7] stay pending unless running
   // Override with running and runnable from backend (next step only runnable after previous completed)
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {

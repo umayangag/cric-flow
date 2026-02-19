@@ -23,6 +23,8 @@ var PipelineCommands = []string{
 	"train-batting",
 	"train-bowling",
 	"train-fielding",
+	"train-extras",
+	"train-win",
 }
 
 // ErrPipelineBusy is returned when another pipeline step is already running (singleton).
