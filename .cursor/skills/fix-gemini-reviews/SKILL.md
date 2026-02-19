@@ -57,23 +57,19 @@ done
 
 ```bash
 PR_REVIEWS_JSON=$(mktemp)
-while read -r TID; do
-  [ -z "$TID" ] && continue
-  NODE_QUERY='query($id: ID!) {
-    node(id: $id) {
+if [ -s "$UNRESOLVED_IDS" ]; then
+  TIDS_JSON=$(jq -R -s 'split("\n") | map(select(length > 0))' "$UNRESOLVED_IDS")
+  QUERY='query($ids: [ID!]!) {
+    nodes(ids: $ids) {
       ... on PullRequestReviewThread {
         id
         comments(first: 1) { nodes { path line body } }
       }
     }
   }'
-  NODE_RESULT=$(gh api graphql -f query="$NODE_QUERY" -f id="$TID")
-  echo "$NODE_RESULT" | jq -r '
-    .data.node
-    | select(.!=null)
-    | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}
-  ' >> "$PR_REVIEWS_JSON"
-done < "$UNRESOLVED_IDS"
+  gh api graphql -f query="$QUERY" -F ids="$TIDS_JSON" | \
+    jq -c '.data.nodes[] | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
+fi
 ```
 
 Sanity check: `jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | wc -l`
