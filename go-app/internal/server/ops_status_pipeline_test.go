@@ -53,7 +53,8 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "another_running_returns_false",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(true))
 			},
 			stepID:  "import",
 			wantOk:  false,
@@ -63,7 +64,8 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "import_no_previous_runnable",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
 			},
 			stepID:  "import",
 			wantOk:  true,
@@ -73,8 +75,10 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "precompute_prev_done_runnable",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).
+					Return(scanBoolRow(true))
 			},
 			stepID:  "precompute",
 			wantOk:  true,
@@ -84,8 +88,10 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "precompute_prev_not_done_not_runnable",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).
+					Return(scanBoolRow(false))
 			},
 			stepID:  "precompute",
 			wantOk:  false,
@@ -95,8 +101,10 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "auto_tune_allowed_when_no_one_running",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "train-fielding", tracking.StatusCompleted).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, "train-fielding", tracking.StatusCompleted).
+					Return(scanBoolRow(true))
 			},
 			stepID:  "auto_tune",
 			wantOk:  true,

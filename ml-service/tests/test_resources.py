@@ -3,8 +3,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 from ml.resources import suggested_n_jobs
 
 

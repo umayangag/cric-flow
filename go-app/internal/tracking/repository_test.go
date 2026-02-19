@@ -28,19 +28,6 @@ func (r scanBoolRow) Scan(dest ...any) error {
 	return nil
 }
 
-type scanIntRow int
-
-func (r scanIntRow) Scan(dest ...any) error {
-	if len(dest) < 1 {
-		return nil
-	}
-	if p, ok := dest[0].(*int); ok {
-		*p = int(r)
-		return nil
-	}
-	return nil
-}
-
 type scanTimeRow time.Time
 
 func (r scanTimeRow) Scan(dest ...any) error {
@@ -70,17 +57,6 @@ func setupDB(t *testing.T, mock *mocks.DBMock) {
 	t.Cleanup(func() { db.SetDB(nil) })
 }
 
-func assertNoError(t *testing.T, err error) {
-	t.Helper()
-	require.NoError(t, err)
-}
-
-func assertError(t *testing.T, err error, wantContains string) {
-	t.Helper()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), wantContains)
-}
-
 func TestHasInProgressForCommand(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global) and would race.
 
@@ -102,7 +78,8 @@ func TestHasInProgressForCommand(t *testing.T) {
 			name: "exists_true",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusInProgress).Return(scanBoolRow(true))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusInProgress).
+					Return(scanBoolRow(true))
 			},
 			command: "precompute-features",
 			want:    true,
@@ -112,7 +89,8 @@ func TestHasInProgressForCommand(t *testing.T) {
 			name: "exists_false",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "export-dataset", StatusInProgress).Return(scanBoolRow(false))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "export-dataset", StatusInProgress).
+					Return(scanBoolRow(false))
 			},
 			command: "export-dataset",
 			want:    false,
@@ -122,7 +100,8 @@ func TestHasInProgressForCommand(t *testing.T) {
 			name: "query_error",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusInProgress).Return(scanErrRow{err: errors.New("db error")})
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusInProgress).
+					Return(scanErrRow{err: errors.New("db error")})
 			},
 			command: "x",
 			want:    false,
@@ -176,7 +155,8 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			name: "completed_exists",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusCompleted).Return(scanBoolRow(true))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusCompleted).
+					Return(scanBoolRow(true))
 			},
 			command: "precompute-features",
 			want:    true,
@@ -186,7 +166,8 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			name: "no_completed",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "export-dataset", StatusCompleted).Return(scanBoolRow(false))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "export-dataset", StatusCompleted).
+					Return(scanBoolRow(false))
 			},
 			command: "export-dataset",
 			want:    false,
@@ -196,7 +177,8 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			name: "query_error",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).Return(scanErrRow{err: errors.New("db error")})
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).
+					Return(scanErrRow{err: errors.New("db error")})
 			},
 			command: "x",
 			want:    false,
@@ -228,11 +210,11 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 	now := time.Now().UTC()
 
 	cases := []struct {
-		name    string
-		setup   func(*mocks.DBMock)
-		command string
-		wantNil bool
-		wantErr bool
+		name     string
+		setup    func(*mocks.DBMock)
+		command  string
+		wantNil  bool
+		wantErr  bool
 		wantTime *time.Time
 	}{
 		{
@@ -253,7 +235,8 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 			name: "no_rows_returns_nil_nil",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).Return(scanErrRow{err: sql.ErrNoRows})
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).
+					Return(scanErrRow{err: sql.ErrNoRows})
 			},
 			command: "x",
 			wantNil: true,
@@ -263,7 +246,8 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 			name: "returns_completed_at",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusCompleted).Return(scanTimeRow(now))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "precompute-features", StatusCompleted).
+					Return(scanTimeRow(now))
 			},
 			command:  "precompute-features",
 			wantNil:  false,
@@ -274,7 +258,8 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 			name: "query_error",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).Return(scanErrRow{err: errors.New("db error")})
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), "x", StatusCompleted).
+					Return(scanErrRow{err: errors.New("db error")})
 			},
 			command: "x",
 			wantNil: true,
@@ -309,45 +294,47 @@ func TestHasInProgressForAnyCommand(t *testing.T) {
 	commands := []string{"import", "export"}
 
 	cases := []struct {
-		name    string
-		setup   func(*mocks.DBMock)
+		name     string
+		setup    func(*mocks.DBMock)
 		commands []string
-		want    bool
-		wantErr bool
+		want     bool
+		wantErr  bool
 	}{
 		{
-			name:    "db_not_available",
-			setup:   func(*mocks.DBMock) { db.SetDB(nil) },
+			name:     "db_not_available",
+			setup:    func(*mocks.DBMock) { db.SetDB(nil) },
 			commands: commands,
-			want:    false,
-			wantErr: false,
+			want:     false,
+			wantErr:  false,
 		},
 		{
-			name:    "empty_commands",
-			setup:   func(m *mocks.DBMock) { setupDB(t, m) },
+			name:     "empty_commands",
+			setup:    func(m *mocks.DBMock) { setupDB(t, m) },
 			commands: nil,
-			want:    false,
-			wantErr: false,
+			want:     false,
+			wantErr:  false,
 		},
 		{
 			name: "exists_true",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), StatusInProgress, mock.Anything).Return(scanBoolRow(true))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), StatusInProgress, mock.Anything).
+					Return(scanBoolRow(true))
 			},
 			commands: commands,
-			want:    true,
-			wantErr: false,
+			want:     true,
+			wantErr:  false,
 		},
 		{
 			name: "exists_false",
 			setup: func(m *mocks.DBMock) {
 				setupDB(t, m)
-				m.On("QueryRow", mockAnyContext(), mockAnyString(), StatusInProgress, mock.Anything).Return(scanBoolRow(false))
+				m.On("QueryRow", mockAnyContext(), mockAnyString(), StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
 			},
 			commands: commands,
-			want:    false,
-			wantErr: false,
+			want:     false,
+			wantErr:  false,
 		},
 	}
 

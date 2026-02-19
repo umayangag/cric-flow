@@ -36,7 +36,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 		},
 		{
 			name: "errors_on_empty_outdir",
-			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+			arrange: func(_ *testing.T) (*cmd.Runner, cli.Options) {
 				return cmd.NewRunner(), cli.Options{OutDir: ""}
 			},
 			assert: func(t *testing.T, err error) {
@@ -89,7 +89,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				readOnly := filepath.Join(root, "readonly")
 				require.NoError(t, os.MkdirAll(readOnly, 0o755))
 				require.NoError(t, os.Chmod(readOnly, 0o555))
-				t.Cleanup(func() { os.Chmod(readOnly, 0o755) })
+				t.Cleanup(func() { _ = os.Chmod(readOnly, 0o755) })
 				bat := mocks.NewMockBattingExporter(t)
 				bow := mocks.NewMockBowlingExporter(t)
 				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
@@ -111,4 +111,3 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 		})
 	}
 }
-

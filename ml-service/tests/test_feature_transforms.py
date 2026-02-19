@@ -1,11 +1,8 @@
 """Unit tests for ml.feature_transforms (interactions, log1p, extend feature map)."""
 
-import json
-import os
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 from ml.feature_transforms import (
     CSV_COLUMN_MAP,

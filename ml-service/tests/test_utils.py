@@ -1,7 +1,5 @@
 """Unit tests for ml.utils (make_base_estimator and shared ML utilities)."""
 
-import pytest
-
 from ml.utils import make_base_estimator
 
 

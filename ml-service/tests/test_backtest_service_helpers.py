@@ -1,9 +1,5 @@
 """Unit tests for app.backtest_service helper functions (_float, _int, resolve_model_version, etc.)."""
 
-import os
-from datetime import datetime
-from unittest.mock import patch
-
 import pytest
 
 from app.backtest_service import (

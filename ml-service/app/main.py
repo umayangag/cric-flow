@@ -920,6 +920,7 @@ async def admin_reload():
 def _ml_service_root() -> str:
     """Return the ml-service project root (directory containing the 'ml' package)."""
     import ml as _ml  # noqa: PLC0415
+
     return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
 
 

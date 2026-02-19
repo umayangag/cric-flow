@@ -1,8 +1,5 @@
 """Unit tests for ml.config (config load, merge, training params, defaults)."""
 
-import json
-import os
-
 import pytest
 
 import ml.config as config_mod
@@ -184,9 +181,7 @@ def test_get_training_params_estimator_aliases(monkeypatch):
         ("rf", "rf"),
         ("random_forest", "random_forest"),  # config keeps as-is (no normalize to "rf")
     ]:
-        config_mod._cached = {
-            "ml": {"training": {"batting": {**base, "estimator": est_val}}}
-        }
+        config_mod._cached = {"ml": {"training": {"batting": {**base, "estimator": est_val}}}}
         try:
             params = get_training_params("batting")
             assert params["estimator"] == expected

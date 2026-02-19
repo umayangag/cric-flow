@@ -58,23 +58,24 @@ func TestDiscoverFormatCodes(t *testing.T) {
 	}{
 		{
 			name:     "non_empty_returns_provided",
-			setup:   nil,
+			setup:    nil,
 			provided: []string{"T20I", "ODI", "TEST"},
 			want:     []string{"T20I", "ODI", "TEST"},
 			wantErr:  false,
 		},
 		{
-			name:  "empty_uses_db_returns_codes",
+			name: "empty_uses_db_returns_codes",
 			setup: func(m *mocks.DBMock) {
 				setupPrecomputeDB(t, m)
-				m.On("Query", mock.Anything, mock.Anything).Return(&stringRows{vals: []string{"TEST", "ODI", "T20"}}, nil)
+				m.On("Query", mock.Anything, mock.Anything).
+					Return(&stringRows{vals: []string{"TEST", "ODI", "T20"}}, nil)
 			},
 			provided: nil,
 			want:     []string{"TEST", "ODI", "T20"},
 			wantErr:  false,
 		},
 		{
-			name:  "empty_single_code",
+			name: "empty_single_code",
 			setup: func(m *mocks.DBMock) {
 				setupPrecomputeDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything).Return(&stringRows{vals: []string{"T20I"}}, nil)

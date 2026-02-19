@@ -1,9 +1,6 @@
 """Unit tests for app.artifacts edge cases (listdir failure, missing model file, load exception)."""
 
-import os
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 import app.artifacts as artifacts_mod
 

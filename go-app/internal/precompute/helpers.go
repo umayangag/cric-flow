@@ -16,11 +16,12 @@ func discoverFormatCodes(ctx context.Context, provided []string) ([]string, erro
 	}
 	var rows db.Rows
 	var err error
-	if db.Available() {
+	switch {
+	case db.Available():
 		rows, err = db.Query(ctx, `SELECT code FROM match_format ORDER BY id`)
-	} else if db.Pool != nil {
+	case db.Pool != nil:
 		rows, err = db.Pool.Query(ctx, `SELECT code FROM match_format ORDER BY id`)
-	} else {
+	default:
 		return nil, fmt.Errorf("list formats: no database")
 	}
 	if err != nil {

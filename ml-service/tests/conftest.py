@@ -20,9 +20,5 @@ if "ML_SERVICE_OUTPUT_DIR" not in os.environ and "MODELS_DIR" not in os.environ:
 
 def pytest_configure(config):
     """Register custom markers so -m integration / -m e2e work without warnings."""
-    config.addinivalue_line(
-        "markers", "integration: tests that exercise multiple components together (in-process)"
-    )
-    config.addinivalue_line(
-        "markers", "e2e: end-to-end tests requiring live ML service (RUN_E2E=1)"
-    )
+    config.addinivalue_line("markers", "integration: tests that exercise multiple components together (in-process)")
+    config.addinivalue_line("markers", "e2e: end-to-end tests requiring live ML service (RUN_E2E=1)")

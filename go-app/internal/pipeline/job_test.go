@@ -65,7 +65,8 @@ func TestRunJob(t *testing.T) {
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
 				// HasInProgressForAnyCommand: QueryRow(ctx, sql, status, commands) -> 4 args
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(true))
 			},
 			fn:      func(context.Context) (any, error) { return nil, nil },
 			wantErr: ErrPipelineBusy,
@@ -74,9 +75,11 @@ func TestRunJob(t *testing.T) {
 			name: "start_fails_job_still_runs_returns_fn_error",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
 				// CreateMigration: QueryRow(ctx, sql, command, args, status) -> 5 args
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(scanErrRow{err: errors.New("start failed")})
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(scanErrRow{err: errors.New("start failed")})
 			},
 			fn:      func(context.Context) (any, error) { return nil, errors.New("job error") },
 			wantErr: errors.New("job error"),
@@ -85,9 +88,12 @@ func TestRunJob(t *testing.T) {
 			name: "job_fn_returns_error",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(scanIntRow(1))
-				m.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(scanIntRow(1))
+				m.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil)
 			},
 			fn:      func(context.Context) (any, error) { return nil, errors.New("job failed") },
 			wantErr: errors.New("job failed"),
@@ -96,9 +102,12 @@ func TestRunJob(t *testing.T) {
 			name: "job_fn_success",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(scanIntRow(1))
-				m.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				m.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(scanIntRow(1))
+				m.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil)
 			},
 			fn:      func(context.Context) (any, error) { return "ok", nil },
 			wantErr: nil,
@@ -111,13 +120,14 @@ func TestRunJob(t *testing.T) {
 			tc.setup(mockDB)
 			ctx := context.Background()
 			err := RunJob(ctx, "test-job", nil, 0, tc.fn)
-			if tc.wantErr == ErrPipelineBusy {
+			switch {
+			case tc.wantErr == ErrPipelineBusy:
 				require.Error(t, err)
 				assert.True(t, errors.Is(err, ErrPipelineBusy))
-			} else if tc.wantErr != nil {
+			case tc.wantErr != nil:
 				require.Error(t, err)
 				assert.Equal(t, tc.wantErr.Error(), err.Error())
-			} else {
+			default:
 				require.NoError(t, err)
 			}
 			mockDB.AssertExpectations(t)
@@ -130,14 +140,16 @@ func TestHasPipelineBusy(t *testing.T) {
 
 	mockDB := &mocks.DBMock{}
 	setupPipelineDB(t, mockDB)
-	mockDB.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(true))
+	mockDB.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+		Return(scanBoolRow(true))
 	busy, err := HasPipelineBusy(context.Background())
 	require.NoError(t, err)
 	assert.True(t, busy)
 
 	mockDB2 := &mocks.DBMock{}
 	setupPipelineDB(t, mockDB2)
-	mockDB2.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
+	mockDB2.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+		Return(scanBoolRow(false))
 	busy, err = HasPipelineBusy(context.Background())
 	require.NoError(t, err)
 	assert.False(t, busy)
@@ -148,11 +160,14 @@ func TestRunJob_WithTimeout(t *testing.T) {
 
 	mockDB := &mocks.DBMock{}
 	setupPipelineDB(t, mockDB)
-	mockDB.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).Return(scanBoolRow(false))
-	mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(scanIntRow(1))
-	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockDB.On("QueryRow", mock.Anything, mock.Anything, tracking.StatusInProgress, mock.Anything).
+		Return(scanBoolRow(false))
+	mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(scanIntRow(1))
+	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
 	ctx := context.Background()
-	err := RunJob(ctx, "test-job", nil, 10*time.Second, func(ctx context.Context) (any, error) { return nil, nil })
+	err := RunJob(ctx, "test-job", nil, 10*time.Second, func(_ context.Context) (any, error) { return nil, nil })
 	require.NoError(t, err)
 	mockDB.AssertExpectations(t)
 }

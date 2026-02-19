@@ -56,7 +56,15 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			if prevCmd != "" {
 				prevDone, err := tracking.HasCompletedSuccessfullyForCommand(ctx, prevCmd)
 				if err != nil {
-					slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed", "step", stepID, "prev", prevCmd, "err", err)
+					slog.Warn(
+						"pipeline: HasCompletedSuccessfullyForCommand failed",
+						"step",
+						stepID,
+						"prev",
+						prevCmd,
+						"err",
+						err,
+					)
 					runnable = false
 				} else {
 					runnable = prevDone

@@ -3,8 +3,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.settings import _default_models_dir_from_config, get_models_dir
 
 
