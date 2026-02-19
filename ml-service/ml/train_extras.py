@@ -29,6 +29,9 @@ from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec
 
 logger = logging.getLogger(__name__)
 
+# Minimum number of samples to train the unified (legacy) extras model
+MIN_SAMPLES_FOR_LEGACY = 10
+
 EXTRAS_FEATURE_COLS = ["format_id", "venue_id", "season_id"]
 EXTRAS_TARGET_COL = "total_extras"
 
@@ -163,7 +166,7 @@ def main() -> None:
     # Unified (overall) model: train on all data combined for legacy/fallback
     all_X = np.vstack([X for _, (X, _) in by_format.items()])
     all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
-    if all_X.shape[0] >= 10:
+    if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
         train_and_save_legacy(all_X, all_Y, out_dir)
 
 

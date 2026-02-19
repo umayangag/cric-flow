@@ -35,7 +35,7 @@ func TestGenerateSuggestions(t *testing.T) {
 			},
 			seqPopulated: false,
 			expectedTitles: []string{
-				"Fix Missing Sequence Features",
+				"Fix Missing Features",
 			},
 		},
 		{
@@ -45,7 +45,7 @@ func TestGenerateSuggestions(t *testing.T) {
 			},
 			seqPopulated: true,
 			expectedTitles: []string{
-				"Run Precompute",
+				"Run Full Precompute",
 			},
 		},
 		{
@@ -56,7 +56,7 @@ func TestGenerateSuggestions(t *testing.T) {
 			},
 			seqPopulated: true,
 			expectedTitles: []string{
-				"Run Precompute",
+				"Run Full Precompute",
 			},
 		},
 		{
@@ -68,7 +68,7 @@ func TestGenerateSuggestions(t *testing.T) {
 			},
 			seqPopulated: false,
 			expectedTitles: []string{
-				"Fix Missing Sequence Features",
+				"Fix Missing Features",
 			},
 		},
 		{
@@ -109,7 +109,7 @@ func TestGenerateSuggestions(t *testing.T) {
 			// Current logic would suggest Precompute AND Export.
 			// Desired: Only Precompute.
 			expectedTitles: []string{
-				"Run Precompute",
+				"Run Full Precompute",
 			},
 		},
 		{

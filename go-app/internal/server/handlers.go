@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
@@ -54,7 +55,7 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	// Align with export: when no formats specified and config uses split-by-format, use the same canonical list.
 	if len(formats) == 0 {
 		if cfg := config.Load(); cfg != nil && cfg.Export.SplitByFormat {
-			formats = []string{"TEST", "ODI", "T20", "T20I"}
+			formats = formatsPkg.CanonicalCodes()
 		}
 	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
