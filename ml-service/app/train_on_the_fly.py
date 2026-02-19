@@ -126,7 +126,7 @@ def _rows_to_xy(
     ML practices: drop rows with missing required features (no fill); targets Y
     in raw units; feature order must match configs/feature_vectors.json for the
     model kind. Input scaling (StandardScaler) is applied in _train_*_in_memory.
-    See docs/ML_DATA_AND_NORMALIZATION.md.
+    See docs/ml-and-training.md.
     """
     if not headers or not rows:
         return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))

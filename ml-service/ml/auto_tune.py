@@ -17,7 +17,7 @@ Usage:
   # All models, all formats (extras/win from API only)
   python -m ml.auto_tune --model all --all-formats --from-api --cutoff 2024-12-01T00:00:00Z
 
-  # Fine-tune one model for one format then apply best params to config (see docs/ML_AUTO_TUNE.md)
+  # Fine-tune one model for one format then apply best params to config (see docs/ml-and-training.md)
 """
 
 from __future__ import annotations

@@ -119,7 +119,7 @@ def train_and_save(
     """Train fielding model and save scaler + model for format_code.
 
     Input normalization (StandardScaler) on X only; targets Y in raw units.
-    See docs/ML_DATA_AND_NORMALIZATION.md.
+    See docs/ml-and-training.md.
     """
     params = get_training_params("fielding", format_code)
     scaler = StandardScaler()

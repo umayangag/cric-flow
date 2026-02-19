@@ -51,7 +51,7 @@ train-win:
 
 train-models: train-batting train-bowling train-fielding train-extras train-win
 
-# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
+# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ml-and-training.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
 # When MODEL=all and ALL_FORMATS=1, uses --from-api and CUTOFF so all five models (incl. extras, win) are tuned and params saved to DB when GO_APP_URL is set.
 MODEL ?= batting
@@ -82,7 +82,7 @@ EXPORT_METRICS ?=
 walk-forward: venv
 	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),) $(if $(EXPORT_METRICS),--export-metrics $(EXPORT_METRICS),)
 
-# Train combination meta-model (Ridge) from backtest CSV. See docs/ML_COMBINATION_META.md.
+# Train combination meta-model (Ridge) from backtest CSV. See docs/ml-and-training.md.
 # Usage: make train-combination-meta CSV=path/to/backtest.csv OUT=output/ml-service/combination_meta.json
 CSV ?=
 OUT ?=

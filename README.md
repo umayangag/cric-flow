@@ -69,9 +69,7 @@ curl -X POST -H "Content-Type: application/json" -H "X-API-Key: $API_KEY" \
 Prerequisites: precomputed features (run `make precompute-all` or equivalent), ML service with loaded artifacts, imported match data.
 
 ## System architecture
-For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see:
-- docs/ARCHITECTURE.md
-- docs/SCHEMA_REDESIGN.md — database schema (match, match_inning, batting_data, bowling_data)
+For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see **docs/overview.md**. Configuration and data (including export/DB schema) are in **docs/config-and-data.md**.
 
 ## Configuration and paths
 This repo standardizes file IO locations and makes them configurable via JSON, environment variables, and CLI flags.
@@ -88,7 +86,7 @@ This repo standardizes file IO locations and makes them configurable via JSON, e
   3. Config file (JSON) in the component directory
   4. Built-in defaults
 
-See `docs/CONFIG.md` for full schema and examples.
+See `docs/config-and-data.md` for full schema and examples.
 
 ## Formatting and linting
 - Run all quality checks (lint, fmt, typecheck, tests) for all components:
@@ -180,7 +178,7 @@ Three separate GitHub Actions workflows:
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
 - If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
 - If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).
-- If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/CRICSHEET_IMPORT.md** for why and how to run with `-fail-fast=false` to skip bad files and list them.
+- If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/config-and-data.md** (Cricsheet import) for why and how to run with `-fail-fast=false` to skip bad files and list them.
 
 
 
@@ -395,7 +393,7 @@ Notes:
 
 A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.
 
-See docs/backtest.md for usage details, example requests, and environment variables.
+See **docs/apis-backtest-and-ops.md** for usage details, example requests, and environment variables.
 
 ## Backtest Accuracy Trend API
 
@@ -462,10 +460,7 @@ curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&
 curl -s "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS&cache=off" | jq '.summary'
 ```
 
-See docs for end‑to‑end usage and the frontend dashboard:
-
-- docs/accuracy-trend.md — endpoint parameters, examples, and dashboard instructions
-- Frontend route (when running the frontend app): `/dashboard/accuracy-trend`
+- Frontend route (when running the frontend app): `/dashboard/accuracy-trend`. For backtest and ops endpoints, see **docs/apis-backtest-and-ops.md**.
 
 
 ### 9) Ops Status — Data & ML Readiness Dashboard
@@ -478,7 +473,7 @@ A consolidated readiness view is exposed by the Go API at `GET /ops/status`. It 
 - ML model artifacts presence and (when available) loaded state
 - Ordered `make` command suggestions to fix any gaps
 
-Read the full contract and examples in `docs/ops-status.md`.
+Read the full contract and examples in **docs/apis-backtest-and-ops.md** (Ops status dashboard section).
 
 Quick start:
 ```

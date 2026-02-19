@@ -9,7 +9,7 @@
 
 ## Go Unit Test Standards Checklist (required)
 
-For any new/modified Go tests, confirm adherence to our gold standard (see `docs/testing-standards-go.md`).
+For any new/modified Go tests, confirm adherence to our gold standard (see `docs/quality-and-debugging.md`).
 
 - [ ] Table-driven tests with subtests via `t.Run`
 - [ ] `t.Parallel()` at test function start (and in subtests only if fully isolated)

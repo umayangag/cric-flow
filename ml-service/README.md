@@ -36,7 +36,7 @@ Schema for `ml-service/config.json`:
   "outputs": { "artifacts_dir": "../output/ml-service" }
 }
 ```
-See `../docs/CONFIG.md` for full details and examples.
+See `../docs/config-and-data.md` for full details and examples.
 
 ### Model training parameters (config only, per model)
 All training hyperparameters are read **strictly from config**; there are no magic defaults or env overrides in code. Edit `ml-service/config.json` under `ml.training.<model>` to tune each model independently:
@@ -48,9 +48,7 @@ All training hyperparameters are read **strictly from config**; there are no mag
 
 Each block has: `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (0–9). Example: set different `max_depth` for batting vs bowling, then run `make train-models`.
 
-Additional models (fielding, extras, win) have their own config blocks and artifacts; see **docs/ML_MODELS_COMBINED.md** for training data, training scripts, and how all models are combined for final prediction.
-
-For data normalization, feature computation, and ML best practices from import to prediction, see **docs/ML_DATA_AND_NORMALIZATION.md**.
+Additional models (fielding, extras, win) have their own config blocks and artifacts; see **docs/ml-and-training.md** for training data, training scripts, and how all models are combined for final prediction.
 
 ## Unified cross-format datasets (new)
 The Go exporter now emits unified, cross-format CSVs that include leakage-free, time-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
@@ -76,7 +74,7 @@ make train-models
 python3 -m ml.train_batting_model
 python3 -m ml.train_bowling_model
 ```
-- Auto-tune models (find best algorithm and hyperparameters per model/format): see **docs/ML_AUTO_TUNE.md**. Example: `make auto-tune MODEL=batting FORMAT=T20` or `make auto-tune MODEL=all ALL_FORMATS=1`.
+- Auto-tune models (find best algorithm and hyperparameters per model/format): see **docs/ml-and-training.md**. Example: `make auto-tune MODEL=batting FORMAT=T20` or `make auto-tune MODEL=all ALL_FORMATS=1`.
 - Docker image and container:
 ```
 make docker-build

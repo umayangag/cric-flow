@@ -42,7 +42,7 @@ Schema for `go-app/config.json` (Note: `etl_dir` is no longer used as ETL is han
   }
 }
 ```
-See `docs/CONFIG.md` for details and examples.
+See `docs/config-and-data.md` for details and examples.
 
 ## Common tasks (Makefile)
 - Build binaries:

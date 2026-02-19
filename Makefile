@@ -211,7 +211,7 @@ CUTOFF ?=
 ml-auto-tune:
 	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",)
 
-# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ML_WALK_FORWARD.md)
+# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
 WINDOW_X ?= 50
 WALK_FORMAT ?= T20
@@ -219,7 +219,7 @@ WALK_MODEL ?= batting
 walk-forward:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
 
-# Train meta-model for score combination from backtest CSV (see docs/ML_COMBINATION_META.md)
+# Train meta-model for score combination from backtest CSV (see docs/ml-and-training.md)
 train-combination-meta:
 	$(MAKE) -C ml-service train-combination-meta CSV="$(CSV)" OUT="$(OUT)"
 

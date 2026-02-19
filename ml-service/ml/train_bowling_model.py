@@ -62,7 +62,7 @@ def run_training():
     # Impute: fill missing numeric values. Same strategy as train_bowling/train_on_the_fly.
     X = X.fillna(0.0)
 
-    # Normalize inputs only (StandardScaler). Targets Y in raw units. See docs/ML_DATA_AND_NORMALIZATION.md.
+    # Normalize inputs only (StandardScaler). Targets Y in raw units. See docs/ml-and-training.md.
     input_scaler = preprocessing.StandardScaler().fit(X)
     X_scaled = input_scaler.transform(X)
 

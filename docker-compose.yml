@@ -43,7 +43,7 @@ services:
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
       # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 (or 2) for 2GB (override with SEQCALC_CONCURRENCY=...).
       SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
-      # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/CRASH_DIAGNOSIS.md)
+      # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
     mem_limit: 2g
     ports:
@@ -84,7 +84,7 @@ services:
     volumes:
       - ./output:/app/output
 
-  # Watcher: logs go-api (and optionally other) container exit code and OOM status. See docs/CRASH_DIAGNOSIS.md.
+  # Watcher: logs go-api (and optionally other) container exit code and OOM status. See docs/quality-and-debugging.md.
   watcher:
     build:
       context: .

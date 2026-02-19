@@ -10,7 +10,7 @@ export POSTGRES_DB?=cricket_data
 export POSTGRES_USER?=postgres
 export POSTGRES_PASSWORD?=postgres
 export POSTGRES_SSLMODE?=disable
-# Resource-aware pipelines: limit process memory so concurrency is capped (see docs/CONFIG.md). Override with GOMEMLIMIT=... if needed.
+# Resource-aware pipelines: limit process memory so concurrency is capped (see docs/config-and-data.md). Override with GOMEMLIMIT=... if needed.
 export GOMEMLIMIT?=2GiB
 
 .PHONY: all build clean run-api team-select team-predictor evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import

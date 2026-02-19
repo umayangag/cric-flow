@@ -67,7 +67,7 @@ def run_training():
     X = X.fillna(0.0)
 
     # Normalize inputs only (StandardScaler). Targets Y stay in raw units for interpretable API output.
-    # See docs/ML_DATA_AND_NORMALIZATION.md.
+    # See docs/ml-and-training.md.
     input_scaler = preprocessing.StandardScaler().fit(X)
     X_scaled = input_scaler.transform(X)
 
