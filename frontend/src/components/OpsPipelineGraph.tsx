@@ -50,7 +50,8 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Import',
       status: 'pending',
       command: 'make migrate && make cricsheet-import',
-      description: 'Apply migrations and import Cricsheet JSON into the database.',
+      description:
+        'Apply migrations and import Cricsheet JSON into the database. Run from project root.',
       runnable: true,
     },
     {
@@ -59,7 +60,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make precompute-all-all-formats',
       description:
-        'Compute form, consistency, and sequence features for each format (TEST, ODI, T20, T20I).',
+        'Compute form, consistency, and sequence features for all formats (TEST, ODI, T20, T20I). Run from project root.',
       runnable: true,
     },
     {
@@ -68,7 +69,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make export-dataset',
       description:
-        'Export unified (all-formats) and per-format batting/bowling CSVs to output/go-app when split_by_format is on.',
+        'Export unified and per-format batting/bowling CSVs to output/go-app (when export.split_by_format is on). Run from project root.',
       runnable: true,
     },
     {
@@ -77,7 +78,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-batting',
       description:
-        'Train unified (overall) plus per-format batting models (TEST, ODI, T20, T20I) from exported CSVs.',
+        'Train per-format and unified (legacy) batting models from exported CSVs. Run from project root.',
       runnable: true,
     },
     {
@@ -86,7 +87,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-bowling',
       description:
-        'Train unified (overall) plus per-format bowling models (TEST, ODI, T20, T20I) from exported CSVs.',
+        'Train per-format and unified (legacy) bowling models from exported CSVs. Run from project root.',
       runnable: true,
     },
     {
@@ -95,7 +96,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified (overall) plus per-format fielding models (set CUTOFF and GO_APP_URL as needed).',
+        'Train unified plus per-format fielding models. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -104,7 +105,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified (overall) plus per-format extras models (set CUTOFF and GO_APP_URL as needed).',
+        'Train unified plus per-format extras models. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -113,7 +114,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified (overall) plus per-format win prediction models (set CUTOFF and GO_APP_URL as needed).',
+        'Train unified plus per-format win models. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -122,7 +123,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description:
-        'Optional: tune all models (batting, bowling, fielding, extras, win) per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed) so params are stored.',
+        'Optional: tune all models per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed). Run from project root.',
       runnable: true,
     },
   ];

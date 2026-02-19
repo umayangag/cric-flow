@@ -30,6 +30,11 @@ WIN_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level win
 
 
 def _load_legacy(models_dir: str) -> None:
+    """Load legacy (unsuffixed) joblib artifacts into _LEGACY_ registries.
+
+    Security: joblib uses pickle. Restrict filesystem permissions on models_dir
+    and only load artifacts from trusted sources to avoid insecure deserialization.
+    """
     try:
         bat_scaler = joblib.load(os.path.join(models_dir, "batting_scaler.joblib"))
         bat_model = joblib.load(os.path.join(models_dir, "batting_model.joblib"))

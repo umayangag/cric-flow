@@ -20,7 +20,7 @@ source .venv/bin/activate    # Linux/macOS
 # or on Windows (PowerShell):
 # .\\.venv\\Scripts\\Activate.ps1
 ```
-This installs runtime deps from `requirements.txt` and dev tools `black`, `isort`, `flake8`.
+This installs runtime deps from `requirements.txt` and dev tools (ruff, pytest).
 
 ## Configuration
 Default directories are resolved with this precedence:
@@ -50,19 +50,9 @@ Each block has: `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (
 
 Additional models (fielding, extras, win) have their own config blocks and artifacts; see **docs/ml-and-training.md** for training data, training scripts, and how all models are combined for final prediction.
 
-## Unified cross-format datasets (new)
-The Go exporter now emits unified, cross-format CSVs that include leakage-free, time-indexed (as-of) per-format features for TEST/ODI/T20I/T20.
+**Export (from repo root):** `make export-dataset` writes to `output/go-app/` (unified and per-format CSVs). See **docs/overview.md** and **docs/config-and-data.md**.
 
-Export them from the repo root:
-```
-make export-dataset
-# writes to output/go-app/batting_encoded_all.csv and bowling_encoded_all.csv
-```
-Notes:
-- For backward compatibility, the Makefile also generates legacy files `batting_encoded.csv` and `bowling_encoded.csv` which current training scripts read by default.
-- If you switch training to the unified files, update the dataset path arguments or scripts accordingly.
-
-## Common tasks (Makefile)
+## Common tasks
 - Run the service locally on :8000 with auto-reload:
 ```
 make run
@@ -114,17 +104,4 @@ Notes:
 
 
 
-## Centralized feature vectors (shared config)
-This service constructs input vectors based on a single shared configuration file stored at `../configs/feature_vectors.json`. The file defines ordered lists of feature names for `batting` and `bowling`. The loader in `app/feature_config.py` reads this file and returns the order at runtime.
-
-- Override path via environment:
-  - `FEATURE_CONFIG_PATH=../configs/feature_vectors.json`
-- Behavior when missing/invalid:
-  - If the file is missing or malformed, the service will fail fast with a clear error. Set `FEATURE_CONFIG_PATH` or ensure `configs/feature_vectors.json` exists and is valid.
-- Interop with Go:
-  - The Go app reads and validates the same file via `go-app/internal/featurecfg` against its `internal/contracts` JSON tags, ensuring both sides use an identical order.
-
-Example (override temporarily for experiments):
-```
-FEATURE_CONFIG_PATH=$(pwd)/configs/feature_vectors.json pytest -q -k feature_config
-```
+**Feature vectors:** Ordered names in `configs/feature_vectors.json` (shared with go-app). Override: `FEATURE_CONFIG_PATH`. See **docs/config-and-data.md**.

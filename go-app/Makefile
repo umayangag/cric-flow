@@ -200,7 +200,7 @@ help:
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
-	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 80%%)"
 	@echo "  coverage-html      Render HTML coverage report"
 	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo

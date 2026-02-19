@@ -49,7 +49,7 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 - Path filters may exclude `configs/`, root `Makefile`. Add those paths to relevant workflows or add a lightweight “config change” job (vet/lint for go-app and ml-service).
 
 **4. Pre-commit hooks**
-- `.githooks/pre-commit` runs gofumpt/golines (Go), black/isort/ruff (Python), prettier/eslint (frontend) on staged files. Everyone should run `make install-hooks` after clone.
+- `.githooks/pre-commit` runs gofumpt/golines/golangci-lint (Go), ruff (Python), prettier/eslint (frontend) on staged files. Run `make install-hooks` after clone.
 
 **5. Branch protection**
 - Require status checks before merge: e.g. Go App Lint, Go App Tests, ML Service Tests, Frontend Tests. Optional: aggregated “check-all” workflow.

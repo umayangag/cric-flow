@@ -9,7 +9,7 @@ LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Raise as untested CLI/training modules get tests.
 COV_MIN?=35
 
-.PHONY: all venv install run train-models auto-tune docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
+.PHONY: all venv install run train-batting train-bowling train-fielding train-extras train-win train-models auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer docker-build docker-run clean fmt fmt-check init lint lint-check test test-integration test-e2e coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
 
@@ -183,11 +183,13 @@ help:
 	@echo "  run                Start FastAPI with uvicorn (reload)"
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding     Train fielding model (GO_APP_URL + CUTOFF or FIELDING_CSV)"
-	@echo "  train-models      Train batting + bowling + fielding (fielding needs env or CSV)"
-	@echo "  auto-tune          Auto-tune model(s): best algorithm + hyperparameters (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo "  train-fielding    Train fielding (GO_APP_URL + CUTOFF or FIELDING_CSV)"
+	@echo "  train-extras      Train extras model (GO_APP_URL + CUTOFF or EXTRAS_CSV)"
+	@echo "  train-win         Train win model (GO_APP_URL + CUTOFF or WIN_CSV)"
+	@echo "  train-models      Train all (batting, bowling, fielding, extras, win)"
+	@echo "  auto-tune         Auto-tune: best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
 	@echo ""
-	@echo "  Integration order: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
+	@echo "  Pipeline: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  validate-exports   Validate training exports (all formats, golden)"

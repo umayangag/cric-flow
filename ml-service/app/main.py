@@ -963,6 +963,8 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
 async def admin_train_batting():
     """Run batting model training per format (TEST, ODI, T20I, T20) for better accuracy.
     Reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
+    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
+    deployment layer (e.g. reverse proxy or network policy).
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="batting", reason="disabled")
@@ -994,6 +996,8 @@ async def admin_train_batting():
 async def admin_train_bowling():
     """Run bowling model training per format (TEST, ODI, T20I, T20) for better accuracy.
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
+    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
+    deployment layer (e.g. reverse proxy or network policy).
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="bowling", reason="disabled")
