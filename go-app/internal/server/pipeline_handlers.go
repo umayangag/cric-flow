@@ -58,19 +58,19 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		a.runExportHandler(w, r)
 		return
 	case "train_batting":
-		a.runTrainBattingHandler(w, r)
+		a.makeMLTrainHandler("train_batting", "train-batting", "batting", false)(w, r)
 		return
 	case "train_bowling":
-		a.runTrainBowlingHandler(w, r)
+		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling", false)(w, r)
 		return
 	case "train_fielding":
-		a.runTrainFieldingHandler(w, r)
+		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding", true)(w, r)
 		return
 	case "train_extras":
-		a.runTrainExtrasHandler(w, r)
+		a.makeMLTrainHandler("train_extras", "train-extras", "extras", true)(w, r)
 		return
 	case "train_win":
-		a.runTrainWinHandler(w, r)
+		a.makeMLTrainHandler("train_win", "train-win", "win", true)(w, r)
 		return
 	case "auto_tune":
 		respondJSON(w, http.StatusNotImplemented, map[string]string{
@@ -179,126 +179,41 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	return nil
 }
 
-func (a *App) runTrainBattingHandler(w http.ResponseWriter, r *http.Request) {
-	go func() {
-		slog.Info("train-batting started")
-		runErr := pipeline.RunJob(
-			a.JobContext(),
-			"train-batting",
-			map[string]any{"step": "train_batting"},
-			trainStepTimeout,
-			func(ctx context.Context) (any, error) {
-				return nil, callMLTrainEndpoint(ctx, "batting", "")
-			},
-		)
-		if runErr != nil {
-			slog.Error("train-batting failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("train-batting completed")
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_batting"})
-}
-
-func (a *App) runTrainBowlingHandler(w http.ResponseWriter, r *http.Request) {
-	go func() {
-		slog.Info("train-bowling started")
-		runErr := pipeline.RunJob(
-			a.JobContext(),
-			"train-bowling",
-			map[string]any{"step": "train_bowling"},
-			trainStepTimeout,
-			func(ctx context.Context) (any, error) {
-				return nil, callMLTrainEndpoint(ctx, "bowling", "")
-			},
-		)
-		if runErr != nil {
-			slog.Error("train-bowling failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("train-bowling completed")
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_bowling"})
-}
-
 func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-func (a *App) runTrainFieldingHandler(w http.ResponseWriter, r *http.Request) {
-	cutoff := r.URL.Query().Get("cutoff")
-	if cutoff == "" {
-		cutoff = defaultCutoff()
-	}
-	go func() {
-		slog.Info("train-fielding started", slog.String("cutoff", cutoff))
-		runErr := pipeline.RunJob(
-			a.JobContext(),
-			"train-fielding",
-			map[string]any{"step": "train_fielding", "cutoff": cutoff},
-			trainStepTimeout,
-			func(ctx context.Context) (any, error) {
-				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
-				return nil, callMLTrainEndpoint(ctx, "fielding", q)
-			},
-		)
-		if runErr != nil {
-			slog.Error("train-fielding failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("train-fielding completed")
+// makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
+func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string, needsCutoff bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		args := map[string]any{"step": stepID}
+		querySuffix := ""
+		if needsCutoff {
+			cutoff := r.URL.Query().Get("cutoff")
+			if cutoff == "" {
+				cutoff = defaultCutoff()
+			}
+			args["cutoff"] = cutoff
+			querySuffix = "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_fielding"})
-}
 
-func (a *App) runTrainExtrasHandler(w http.ResponseWriter, r *http.Request) {
-	cutoff := r.URL.Query().Get("cutoff")
-	if cutoff == "" {
-		cutoff = defaultCutoff()
+		go func() {
+			slog.Info(command+" started", slog.Any("args", args))
+			runErr := pipeline.RunJob(
+				a.JobContext(),
+				command,
+				args,
+				trainStepTimeout,
+				func(ctx context.Context) (any, error) {
+					return nil, callMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
+				},
+			)
+			if runErr != nil {
+				slog.Error(command+" failed", slog.Any("err", runErr))
+			} else {
+				slog.Info(command + " completed")
+			}
+		}()
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": stepID})
 	}
-	go func() {
-		slog.Info("train-extras started", slog.String("cutoff", cutoff))
-		runErr := pipeline.RunJob(
-			a.JobContext(),
-			"train-extras",
-			map[string]any{"step": "train_extras", "cutoff": cutoff},
-			trainStepTimeout,
-			func(ctx context.Context) (any, error) {
-				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
-				return nil, callMLTrainEndpoint(ctx, "extras", q)
-			},
-		)
-		if runErr != nil {
-			slog.Error("train-extras failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("train-extras completed")
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_extras"})
-}
-
-func (a *App) runTrainWinHandler(w http.ResponseWriter, r *http.Request) {
-	cutoff := r.URL.Query().Get("cutoff")
-	if cutoff == "" {
-		cutoff = defaultCutoff()
-	}
-	go func() {
-		slog.Info("train-win started", slog.String("cutoff", cutoff))
-		runErr := pipeline.RunJob(
-			a.JobContext(),
-			"train-win",
-			map[string]any{"step": "train_win", "cutoff": cutoff},
-			trainStepTimeout,
-			func(ctx context.Context) (any, error) {
-				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
-				return nil, callMLTrainEndpoint(ctx, "win", q)
-			},
-		)
-		if runErr != nil {
-			slog.Error("train-win failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("train-win completed")
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_win"})
 }
