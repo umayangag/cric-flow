@@ -245,9 +245,12 @@ def test_fetch_training_data_sends_api_key():
 def test_fetch_training_data_http_error():
     import urllib.error
 
-    err = urllib.error.HTTPError("http://x", 503, "Service Unavailable", None, None)
-    err.fp = MagicMock()
-    err.fp.read.return_value = b"overloaded"
+    class HTTPErrorWithRead(urllib.error.HTTPError):
+        def read(self):
+            return b"overloaded"
+
+    err = HTTPErrorWithRead("http://x", 503, "Service Unavailable", None, None)
+    err.fp = True  # truthy so code attempts body = e.read().decode()
 
     with patch("app.train_on_the_fly.urllib.request.urlopen", side_effect=err):
         with pytest.raises(ValueError) as excinfo:

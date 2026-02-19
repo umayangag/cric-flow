@@ -118,9 +118,17 @@ _install_test_tools: install
 	@$(PIP) show pytest >/dev/null 2>&1 || { echo "Installing pytest into $(VENV)..."; $(PIP) install pytest >/dev/null; }
 	@$(PIP) show pytest-cov >/dev/null 2>&1 || { echo "Installing pytest-cov into $(VENV)..."; $(PIP) install pytest-cov >/dev/null; }
 
-# Run tests (quiet) ensuring runtime deps are installed in venv
+# Run tests (quiet) ensuring runtime deps are installed in venv (includes integration)
 test: _install_test_tools
 	$(VENV)/bin/pytest -q
+
+# Run only integration tests (multi-component, in-process)
+test-integration: _install_test_tools
+	$(VENV)/bin/pytest -q -m integration -v
+
+# Run e2e tests (requires live ML service; set RUN_E2E=1)
+test-e2e: _install_test_tools
+	RUN_E2E=1 $(VENV)/bin/pytest -q -m e2e -v
 
 # Generate coverage reports (xml + term) ensuring runtime deps are installed
 coverage: _install_test_tools

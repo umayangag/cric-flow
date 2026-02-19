@@ -14,6 +14,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r ./requirements.txt
+COPY config.default.json .
+COPY config.json .
 COPY app ./app
 COPY ml ./ml
 EXPOSE 8000

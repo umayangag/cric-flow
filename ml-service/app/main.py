@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import threading
@@ -911,6 +912,153 @@ async def admin_reload():
             detail=_error_payload(
                 code="RELOAD_FAILED",
                 message="Artifact reload failed",
+                hint=str(e),
+            ),
+        ) from e
+
+
+def _ml_service_root() -> str:
+    """Return the ml-service project root (directory containing the 'ml' package)."""
+    import ml as _ml  # noqa: PLC0415
+    return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
+
+
+def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None) -> None:
+    """Run a training module as subprocess; raises on non-zero exit or timeout (1 hour).
+    Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
+    """
+    import subprocess
+
+    root = _ml_service_root()
+    cmd = [sys.executable, "-m", module]
+    if extra_args:
+        cmd.extend(extra_args)
+    env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
+    timeout_sec = 3600
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.error("admin.train.timeout", module=module, timeout_sec=timeout_sec)
+        raise ValueError(f"Training timed out after {timeout_sec}s") from e
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "")[:500]
+        logger.error(
+            "admin.train.failed",
+            module=module,
+            returncode=proc.returncode,
+            stderr=stderr,
+        )
+        raise ValueError(f"Training failed (exit {proc.returncode}): {stderr}")
+
+
+@app.post("/admin/train/batting")
+async def admin_train_batting():
+    """Run batting model training (reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR).
+    Guarded by ENABLE_HOT_RELOAD. Blocks until training completes.
+    """
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="batting", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    logger.info("admin.train.start", step="batting")
+    try:
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting_model")
+        logger.info("admin.train.success", step="batting")
+        return {"status": "ok", "step": "batting"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Batting training failed",
+                hint=str(e),
+            ),
+        ) from e
+
+
+@app.post("/admin/train/bowling")
+async def admin_train_bowling():
+    """Run bowling model training. Guarded by ENABLE_HOT_RELOAD. Blocks until complete."""
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="bowling", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    logger.info("admin.train.start", step="bowling")
+    try:
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling_model")
+        logger.info("admin.train.success", step="bowling")
+        return {"status": "ok", "step": "bowling"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Bowling training failed",
+                hint=str(e),
+            ),
+        ) from e
+
+
+@app.post("/admin/train/fielding")
+async def admin_train_fielding(cutoff: str = ""):
+    """Run fielding model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
+    """
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="fielding", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    cutoff = (cutoff or "").strip()
+    if not cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="CUTOFF_REQUIRED",
+                message="Fielding training requires cutoff",
+                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
+            ),
+        )
+    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+    logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
+    try:
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_fielding",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+        )
+        logger.info("admin.train.success", step="fielding")
+        return {"status": "ok", "step": "fielding"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Fielding training failed",
                 hint=str(e),
             ),
         ) from e

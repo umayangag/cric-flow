@@ -79,6 +79,9 @@ var defaultDB DB
 // SetDB allows tests to inject a fake DB implementation.
 func SetDB(d DB) { defaultDB = d }
 
+// Available returns true if a DB is set (via Connect or SetDB). Used by packages like tracking so unit tests can inject a mock and exercise query paths.
+func Available() bool { return defaultDB != nil }
+
 // ErrDBNotSet is returned when a DB helper is called before Connect or SetDB.
 var ErrDBNotSet = errors.New("db not initialized")
 

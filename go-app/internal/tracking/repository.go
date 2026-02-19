@@ -44,7 +44,7 @@ func UpdateMigrationStatus(
 // for the given command with status IN_PROGRESS. Used by /ops/status pipeline section.
 // When the db pool is not initialized (e.g. disconnected), returns (false, nil).
 func HasInProgressForCommand(ctx context.Context, command string) (bool, error) {
-	if db.Pool == nil {
+	if !db.Available() {
 		return false, nil
 	}
 	var exists bool
@@ -66,7 +66,7 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 // by another instance (e.g. B running a pipeline while A restarts).
 // If staleOlderThan <= 0, no rows are cancelled. Returns the number of rows updated.
 func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
-	if db.Pool == nil || staleOlderThan < time.Second {
+	if !db.Available() || staleOlderThan < time.Second {
 		return 0, nil
 	}
 	var reasonPtr *string
@@ -94,7 +94,7 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 // command with status COMPLETED. Used to gate pipeline steps: next step is only runnable
 // after the previous completed successfully. When db pool is nil, returns (false, nil).
 func HasCompletedSuccessfullyForCommand(ctx context.Context, command string) (bool, error) {
-	if db.Pool == nil || command == "" {
+	if !db.Available() || command == "" {
 		return false, nil
 	}
 	var exists bool
@@ -115,7 +115,7 @@ func HasCompletedSuccessfullyForCommand(ctx context.Context, command string) (bo
 // tracking (e.g. after API restart or when precompute was run via CLI). When db pool is nil
 // or no completed run exists, returns (nil, nil).
 func GetLastCompletedAtForCommand(ctx context.Context, command string) (*time.Time, error) {
-	if db.Pool == nil || command == "" {
+	if !db.Available() || command == "" {
 		return nil, nil
 	}
 	var completedAt *time.Time
@@ -141,7 +141,7 @@ func GetLastCompletedAtForCommand(ctx context.Context, command string) (*time.Ti
 // and command in the given list. Used to enforce singleton pipeline: only one pipeline step
 // may run across the whole system. When db pool is nil, returns (false, nil).
 func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, error) {
-	if db.Pool == nil || len(commands) == 0 {
+	if !db.Available() || len(commands) == 0 {
 		return false, nil
 	}
 	var exists bool
@@ -158,9 +158,9 @@ func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, e
 }
 
 // GetInProgressMigrations returns all rows with status IN_PROGRESS, ordered by started_at DESC.
-// Used by /ops/status pipeline overview. When db pool is nil, returns (nil, nil).
+// Used by /ops/status pipeline overview. When db is not available, returns (nil, nil).
 func GetInProgressMigrations(ctx context.Context) ([]Migration, error) {
-	if db.Pool == nil {
+	if !db.Available() {
 		return nil, nil
 	}
 	rows, err := db.Query(ctx, `
@@ -202,7 +202,7 @@ func scanMigrations(rows db.Rows) ([]Migration, error) {
 }
 
 func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
-	if db.Pool == nil {
+	if !db.Available() {
 		return nil, nil
 	}
 	rows, err := db.Query(ctx, `
@@ -219,7 +219,7 @@ func GetRecentMigrations(ctx context.Context, limit int) ([]Migration, error) {
 }
 
 func GetMigrationsPaginated(ctx context.Context, limit, offset int) ([]Migration, int, error) {
-	if db.Pool == nil {
+	if !db.Available() {
 		return nil, 0, nil
 	}
 	var total int

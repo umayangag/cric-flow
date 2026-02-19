@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	exportcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
@@ -30,7 +34,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce order: only allow run if previous step completed (and no other step is running).
 	switch step {
-	case "import", "precompute", "export":
+	case "import", "precompute", "export", "train_batting", "train_bowling", "train_fielding":
 		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
@@ -47,7 +51,16 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	case "export":
 		a.runExportHandler(w, r)
 		return
-	case "train_batting", "train_bowling", "train_fielding", "auto_tune":
+	case "train_batting":
+		a.runTrainBattingHandler(w, r)
+		return
+	case "train_bowling":
+		a.runTrainBowlingHandler(w, r)
+		return
+	case "train_fielding":
+		a.runTrainFieldingHandler(w, r)
+		return
+	case "auto_tune":
 		respondJSON(w, http.StatusNotImplemented, map[string]string{
 			"error":   "step must be run from project root",
 			"step":    step,
@@ -117,4 +130,118 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("export-dataset job started", slog.String("out_dir", outDir))
 
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
+}
+
+// trainStepTimeout is the max time to wait for ML service train endpoint (training can take many minutes).
+const trainStepTimeout = 30 * time.Minute
+
+func mlServiceBaseURL() string {
+	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
+	if s != "" {
+		return strings.TrimSuffix(s, "/")
+	}
+	return "http://localhost:8000"
+}
+
+// callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
+func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
+	base := mlServiceBaseURL()
+	url := base + "/admin/train/" + step + querySuffix
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: trainStepTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ml-service %s: %s", url, resp.Status)
+	}
+	return nil
+}
+
+func (a *App) runTrainBattingHandler(w http.ResponseWriter, r *http.Request) {
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	go func() {
+		slog.Info("train-batting started")
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"train-batting",
+			map[string]any{"step": "train_batting"},
+			trainStepTimeout,
+			func(ctx context.Context) (any, error) {
+				return nil, callMLTrainEndpoint(ctx, "batting", "")
+			},
+		)
+		if runErr != nil {
+			slog.Error("train-batting failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("train-batting completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_batting"})
+}
+
+func (a *App) runTrainBowlingHandler(w http.ResponseWriter, r *http.Request) {
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	go func() {
+		slog.Info("train-bowling started")
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"train-bowling",
+			map[string]any{"step": "train_bowling"},
+			trainStepTimeout,
+			func(ctx context.Context) (any, error) {
+				return nil, callMLTrainEndpoint(ctx, "bowling", "")
+			},
+		)
+		if runErr != nil {
+			slog.Error("train-bowling failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("train-bowling completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_bowling"})
+}
+
+// defaultFieldingCutoff is used when the frontend does not send a cutoff for fielding training.
+const defaultFieldingCutoff = "2025-01-01T00:00:00Z"
+
+func (a *App) runTrainFieldingHandler(w http.ResponseWriter, r *http.Request) {
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	cutoff := r.URL.Query().Get("cutoff")
+	if cutoff == "" {
+		cutoff = defaultFieldingCutoff
+	}
+	go func() {
+		slog.Info("train-fielding started", slog.String("cutoff", cutoff))
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"train-fielding",
+			map[string]any{"step": "train_fielding", "cutoff": cutoff},
+			trainStepTimeout,
+			func(ctx context.Context) (any, error) {
+				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+				return nil, callMLTrainEndpoint(ctx, "fielding", q)
+			},
+		)
+		if runErr != nil {
+			slog.Error("train-fielding failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("train-fielding completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_fielding"})
 }

@@ -85,6 +85,14 @@ def run_training():
     )
 
 
+def _skip_tracking() -> bool:
+    """When True, caller (e.g. /admin/train/*) already owns the pipeline step; skip tracking here."""
+    return os.environ.get("SKIP_PIPELINE_TRACKING", "").strip().lower() in ("1", "true", "yes")
+
+
 if __name__ == "__main__":
-    with tracking.track("train-bowling", {"type": "bowling"}):
+    if _skip_tracking():
         run_training()
+    else:
+        with tracking.track("train-bowling", {"type": "bowling"}):
+            run_training()

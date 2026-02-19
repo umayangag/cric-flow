@@ -285,6 +285,10 @@ e2e-backtest-smoke: seed-fixtures
 	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
 	echo "[SMOKE] OK"
 
+# Run ML-service E2E pytest tests (requires ML service and optionally go-api to be up; set RUN_E2E=1)
+e2e-pytest:
+	cd ml-service && RUN_E2E=1 ML_SERVICE_URL=$${ML_SERVICE_URL:-http://localhost:8000} $(ML_VENV_BIN)/pytest -q -m e2e -v
+
 # Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
 ml-test:
 	cd ml-service && pytest -q tests/test_seq_reader.py tests/test_baselines.py

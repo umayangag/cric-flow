@@ -69,8 +69,12 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
-      # Required for train-on-the-fly when no artifacts are loaded for a format (e.g. T20I)
+      # Where to read exported CSVs for /admin/train/* (batting, bowling)
+      GO_APP_OUTPUT_DIR: /app/output/go-app
+      # Required for train-on-the-fly and fielding training from go-app API
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
+      # Enable /admin/reload and /admin/train/* when running from frontend pipeline
+      ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
       # 2GB memory limit for resource-aware training/tuning n_jobs (override with ML_MEMORY_LIMIT_MB=... if needed)
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
