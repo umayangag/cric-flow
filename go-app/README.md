@@ -232,7 +232,7 @@ Flags:
 ### Team predictor (uses ml-service predictions and ml/pool.csv)
 Prerequisites:
 - ML service running: `make -C ../ml-service run` (or `make ml-serve` from repo root)
-- `ml-service/ml/pool.csv` generated: `make -C ../ml-service export-pool MATCH=1193505`
+- For CSV-backed selection, use a pre-generated pool CSV (see team-select `POOL` and `FROM_DB=0`). Pool generation via go-app/DB + ML predict is the supported path.
 
 Using the Makefile convenience target:
 ```

@@ -54,8 +54,7 @@ team-select:
 	FROM_FLAG="-from-db=true"; if [ "$(FROM_DB)" = "0" ]; then FROM_FLAG="-from-db=false -pool=$(POOL)"; fi; \
 	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG $$FROM_FLAG
 
-# Run team predictor (requires ml-service running and ml/pool.csv present)
-# Generate the pool first: `make -C ../ml-service export-pool MATCH=<id>`
+# Run team predictor (requires ml-service running for predict)
 # Examples:
 #  make team-predictor MATCH=1193505 SEASON=2019 FORMAT=T20 BAT=6 BOWL=5
 team-predictor:

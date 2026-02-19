@@ -131,10 +131,9 @@ precompute-all-all-formats:
 		go run ./cmd/precompute-all -format=$$F $(ARGS) || exit 1; \
 	done
 
-# Team predictor (happy path): requires MATCH to be provided
+# Team predictor: requires MATCH, SEASON, FORMAT; uses go-app team-predictor (ML service must be running for predict).
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
 	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
 # Train ML artifacts (batting, bowling, fielding). Prerequisites: precompute + export (see export-dataset).

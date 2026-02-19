@@ -9,7 +9,7 @@ LINE_LENGTH?=120
 # Raise over time; current ~78%. CI and make coverage-check use this.
 COV_MIN?=76
 
-.PHONY: all venv install run train-models auto-tune export-pool docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
+.PHONY: all venv install run train-models auto-tune docker-build docker-run clean fmt fmt-check init lint lint-check wrap wrap-check test coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
 
@@ -77,13 +77,6 @@ OUT ?=
 train-combination-meta: venv
 	@if [ -z "$(CSV)" ] || [ -z "$(OUT)" ]; then echo "Usage: make train-combination-meta CSV=<path> OUT=<path>"; exit 1; fi
 	$(PY) -m ml.train_combination_meta --csv "$(CSV)" --out "$(OUT)"
-
-# Generate ml/pool.csv for a given match id
-# Usage: make export-pool MATCH=<match_id>
-MATCH ?= 0
-export-pool:
-	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make export-pool MATCH=1193505"; exit 1; fi
-	$(PY) ml/export_pool.py $(MATCH)
 
 validate-exports:
 	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)
@@ -168,7 +161,6 @@ help:
 	@echo
 	@echo "[Run & Train]"
 	@echo "  run                Start FastAPI with uvicorn (reload)"
-	@echo "  export-pool        Generate ml/pool.csv for a match (MATCH=<id>)"
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
 	@echo "  train-fielding     Train fielding model (GO_APP_URL + CUTOFF or FIELDING_CSV)"

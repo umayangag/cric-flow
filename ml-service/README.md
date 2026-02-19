@@ -4,7 +4,6 @@ Standalone FastAPI microservice that serves predictions and utilities around the
 
 Components:
 - `app/main.py`: FastAPI app exposing health and prediction endpoints for batting and bowling.
-- `ml/export_pool.py`: Script to generate `pool.csv` for team prediction.
 - `ml/train_batting_model.py`: Script to train the batting prediction model.
 - `ml/train_bowling_model.py`: Script to train the bowling prediction model.
 - `ml/*`: encoders, dataset/feature definitions, and other utility scripts.
@@ -78,13 +77,6 @@ python3 -m ml.train_batting_model
 python3 -m ml.train_bowling_model
 ```
 - Auto-tune models (find best algorithm and hyperparameters per model/format): see **docs/ML_AUTO_TUNE.md**. Example: `make auto-tune MODEL=batting FORMAT=T20` or `make auto-tune MODEL=all ALL_FORMATS=1`.
-- Generate a player pool CSV for team prediction (writes to `ml/pool.csv`):
-```bash
-# requires DB to be populated and accessible via env (POSTGRES_*)
-make export-pool MATCH=1193505
-# or directly
-python3 -m ml.export_pool 1193505
-```
 - Docker image and container:
 ```
 make docker-build
