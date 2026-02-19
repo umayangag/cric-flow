@@ -147,11 +147,12 @@ lint:
 # Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=80 make coverage-check`
 COV_MIN ?= 80
 
-# Generate coverage profile for selected packages (gate scope)
+# Packages included in coverage. Default: all packages (./...). Override with COVERAGE_PACKAGES if needed.
+COVERAGE_PACKAGES ?= ./...
+
+# Generate coverage profile for all packages (or COVERAGE_PACKAGES if set)
 coverage:
-	@PKGS="$(COVERAGE_PACKAGES)"; \
-	if [ -z "$$PKGS" ]; then PKGS="./..."; fi; \
-	go test -covermode=atomic -coverprofile=coverage.out $$PKGS
+	go test -covermode=atomic -coverprofile=coverage.out $(COVERAGE_PACKAGES)
 
 # Generate an HTML coverage report (requires a prior coverage run)
 coverage-html:

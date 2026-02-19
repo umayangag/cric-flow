@@ -10,7 +10,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate output-dirs export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -56,8 +56,13 @@ go-test-int:
 migrate:
 	cd go-app && make migrate
 
+# Ensure output dirs exist from repo root so go-app export (cwd=go-app) can write to ../output/go-app
+.PHONY: output-dirs
+output-dirs:
+	@mkdir -p output/go-app output/ml-service
+
 # Export datasets (unified exports only)
-export-dataset:
+export-dataset: output-dirs
 	# Unified, cross-format CSVs with as-of per-format features
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
 
@@ -69,11 +74,11 @@ precompute-seq:
  	  go run ./cmd/precompute-sequence-features -format=$$F -targets=all || exit 1; \
  	done
 
-export-off:
+export-off: output-dirs
 	# Baseline export without optional sequence columns
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 
-export-on:
+export-on: output-dirs
 	# Export with sequence columns appended (flag and env gate)
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 go run ./cmd/export-dataset -format=$(FORMAT) -enable-seq=1
 
@@ -305,6 +310,7 @@ e2e:
 	@echo "[3/5] Precomputing features..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
 	$(MAKE) ml-install
@@ -320,6 +326,7 @@ e2e-multi:
 	@echo "[3/5] Precomputing features..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
 	$(MAKE) ml-install
@@ -340,6 +347,7 @@ up-all:
 	@echo "[4/7] Precomputing metrics..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[5/7] Exporting datasets..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)

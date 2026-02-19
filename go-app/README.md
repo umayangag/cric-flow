@@ -323,18 +323,11 @@ make -C go-app coverage-html
 ```
 
 Notes:
-- Scope: By default, coverage is calculated over unit-testable internal packages:
-  - `./internal/config ./internal/predictor ./internal/mlclient ./internal/cricsheet`
-  You can override the scope:
+- Scope: Coverage runs over **all packages** (`./...`) by default. Override with `COVERAGE_PACKAGES` if needed:
   ```
   make -C go-app coverage COVERAGE_PACKAGES="./internal/cricsheet ./internal/db"
   ```
-- Gate: The Makefile’s `COV_MIN` default is 80 for flexibility locally; CI enforces 90%:
-  - See `.github/workflows/go-ci.yml` which runs:
-    ```
-    make -C go-app coverage
-    COV_MIN=90 make -C go-app coverage-check
-    ```
+- Gate: The Makefile’s `COV_MIN` default is 80 for flexibility locally; CI may use a lower threshold (see workflow).
 - Convenience: Run a CI-like local check in one go:
   ```
   make -C go-app coverage-ci
@@ -376,16 +369,13 @@ make -C go-app fmt-check
 
 ## Coverage & CI gates
 
-We maintain an informational coverage gate in CI at 50% while we continue to raise coverage across the codebase. CI runs with a curated package scope to reflect actively maintained and tested components. Locally you can reproduce the CI behavior:
+Coverage is run for **all packages** (`./...`) by default. CI enforces a minimum threshold (`COV_MIN`). Locally:
 
 ```
-COVERAGE_PACKAGES="./internal/cli/... ./internal/commands/... ./internal/services/... \
-./internal/adapters/httpx/... ./internal/adapters/clock/... ./internal/adapters/random/... \
-./internal/logger ./internal/config ./internal/mlclient ./internal/predictor" \
-make coverage && make coverage-func && COV_MIN=50 make coverage-check
+make -C go-app coverage && make -C go-app coverage-func && make -C go-app coverage-check
 ```
 
-You can broaden `COVERAGE_PACKAGES` over time and raise `COV_MIN` as coverage improves.
+To narrow scope (e.g. for a quick check), set `COVERAGE_PACKAGES`; otherwise all packages are included and `COV_MIN` can be raised as coverage improves.
 
 ## Mock generation (mockery)
 
