@@ -196,6 +196,12 @@ def main() -> None:
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
+    # Unified (overall) model: train on all data combined for legacy/fallback
+    all_X = np.vstack([X for _, (X, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    if all_X.shape[0] >= 10:
+        train_and_save_legacy(all_X, all_Y, out_dir)
+
 
 if __name__ == "__main__":
     main()

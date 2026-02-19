@@ -53,15 +53,20 @@ train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
+# When MODEL=all and ALL_FORMATS=1, uses --from-api and CUTOFF so all five models (incl. extras, win) are tuned and params saved to DB when GO_APP_URL is set.
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+CUTOFF ?= 2024-01-01T00:00:00Z
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
 endif
 ifeq ($(ALL_FORMATS),1)
 AUTO_TUNE_ARGS += --all-formats
+ifeq ($(MODEL),all)
+AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
+endif
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

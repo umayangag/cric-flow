@@ -825,11 +825,12 @@ def main() -> None:
         report: Dict[str, Any],
         api_key: Optional[str],
     ) -> None:
-        """Save best params to go-app per (model, format) so we know which model/format they belong to for retraining."""
+        """Save best params to go-app per (model, format) so they are stored in DB and used when retraining (GO_APP_URL must be set)."""
         if not go_app_url or not report.get("config_snippet"):
             return
         try:
             save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", report["config_snippet"], api_key)
+            logger.info("auto_tune.params_saved_to_db model=%s format=%s", model, format_suffix or "(unified)")
         except ValueError as e:
             logger.warning(
                 "auto_tune.save_tuned_params_failed model=%s format=%s error=%s",

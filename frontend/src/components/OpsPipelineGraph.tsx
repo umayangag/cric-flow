@@ -66,7 +66,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Export',
       status: 'pending',
       command: 'make export-dataset',
-      description: 'Export training CSVs (batting, bowling) per format to output/go-app when split_by_format is on.',
+      description: 'Export unified (all-formats) and per-format batting/bowling CSVs to output/go-app when split_by_format is on.',
       runnable: true,
     },
     {
@@ -74,7 +74,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Batting',
       status: 'pending',
       command: 'make train-batting',
-      description: 'Train separate batting models per format (TEST, ODI, T20, T20I) from exported CSVs.',
+      description: 'Train unified (overall) plus per-format batting models (TEST, ODI, T20, T20I) from exported CSVs.',
       runnable: true,
     },
     {
@@ -82,7 +82,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Bowling',
       status: 'pending',
       command: 'make train-bowling',
-      description: 'Train separate bowling models per format (TEST, ODI, T20, T20I) from exported CSVs.',
+      description: 'Train unified (overall) plus per-format bowling models (TEST, ODI, T20, T20I) from exported CSVs.',
       runnable: true,
     },
     {
@@ -90,7 +90,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Fielding',
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train separate fielding models per format (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train unified (overall) plus per-format fielding models (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {
@@ -98,7 +98,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Extras',
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train separate extras prediction models per format (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train unified (overall) plus per-format extras models (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {
@@ -106,7 +106,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Win',
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train separate win prediction models per format (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train unified (overall) plus per-format win prediction models (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {
@@ -114,7 +114,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Auto-tune',
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
-      description: 'Optional: search best hyperparameters for all models.',
+      description: 'Optional: tune all models (batting, bowling, fielding, extras, win) per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed) so params are stored.',
       runnable: true,
     },
   ];

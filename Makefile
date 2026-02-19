@@ -203,11 +203,13 @@ train-all: train-models
 train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
+# When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+CUTOFF ?=
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)"
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",)
 
 # Walk-forward: incremental train → predict → evaluate → absorb (see docs/ML_WALK_FORWARD.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z

@@ -342,8 +342,8 @@ def _predict_players_with_features(
             )
         )
 
-    # Fielding: if we have fielding artifacts, predict catches/run_outs and merge into player preds
-    field_pair = FIELD_MODELS.get(fmt_upper) if fmt_upper else None
+    # Fielding: if we have fielding artifacts, predict catches/run_outs and merge into player preds (per-format or legacy)
+    field_pair = (FIELD_MODELS.get(fmt_upper) if fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
     if field_pair is not None:
         scaler_fld, model_fld = field_pair
         field_features_list = [
