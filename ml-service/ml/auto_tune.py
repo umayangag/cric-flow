@@ -825,6 +825,7 @@ def main() -> None:
         report: Dict[str, Any],
         api_key: Optional[str],
     ) -> None:
+        """Save best params to go-app per (model, format) so we know which model/format they belong to for retraining."""
         if not go_app_url or not report.get("config_snippet"):
             return
         try:

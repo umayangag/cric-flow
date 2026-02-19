@@ -58,7 +58,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Precompute',
       status: 'pending',
       command: 'make precompute-all-all-formats',
-      description: 'Compute form, consistency, and sequence features per format.',
+      description: 'Compute form, consistency, and sequence features for each format (TEST, ODI, T20, T20I).',
       runnable: true,
     },
     {
@@ -66,7 +66,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Export',
       status: 'pending',
       command: 'make export-dataset',
-      description: 'Export training CSVs (batting, bowling) to output/go-app.',
+      description: 'Export training CSVs (batting, bowling) per format to output/go-app when split_by_format is on.',
       runnable: true,
     },
     {
@@ -74,7 +74,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Batting',
       status: 'pending',
       command: 'make train-batting',
-      description: 'Train batting model from exported CSVs.',
+      description: 'Train separate batting models per format (TEST, ODI, T20, T20I) from exported CSVs.',
       runnable: true,
     },
     {
@@ -82,7 +82,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Bowling',
       status: 'pending',
       command: 'make train-bowling',
-      description: 'Train bowling model from exported CSVs.',
+      description: 'Train separate bowling models per format (TEST, ODI, T20, T20I) from exported CSVs.',
       runnable: true,
     },
     {
@@ -90,7 +90,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Fielding',
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train fielding model (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train separate fielding models per format (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {
@@ -98,7 +98,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Extras',
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train extras prediction model (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train separate extras prediction models per format (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {
@@ -106,7 +106,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Win',
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
-      description: 'Train win prediction model (set CUTOFF and GO_APP_URL as needed).',
+      description: 'Train separate win prediction models per format (set CUTOFF and GO_APP_URL as needed).',
       runnable: true,
     },
     {

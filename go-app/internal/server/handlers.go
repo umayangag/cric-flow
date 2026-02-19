@@ -51,6 +51,12 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
+	// Align with export: when no formats specified and config uses split-by-format, use the same canonical list.
+	if len(formats) == 0 {
+		if cfg := config.Load(); cfg != nil && cfg.Export.SplitByFormat {
+			formats = []string{"TEST", "ODI", "T20", "T20I"}
+		}
+	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
 		return

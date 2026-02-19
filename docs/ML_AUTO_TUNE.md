@@ -107,7 +107,18 @@ Report contents:
 
 ---
 
-## 5. Applying best params to config
+## 5. Tuned params per (model, format) and retraining
+
+Auto-tune saves the best params to the **go-app** (when **GO_APP_URL** is set) so you know **which model and which format** they belong to, and so **retraining** can use them without editing config.
+
+- **Storage:** Each run POSTs to `POST /api/ml/tuned-params` with `{ "model": "batting", "format": "T20", "params": { ... } }`. The go-app stores one row per (model, format) in `ml_tuned_params` (latest per pair).
+- **Listing:** `GET /api/ml/tuned-params/list` returns all stored (model, format) entries with `created_at`, so you can see which combinations have saved params.
+- **Fetching:** `GET /api/ml/tuned-params?model=batting&format=T20` returns the latest params for that pair; the response includes `model`, `format`, `params`, and `created_at` so it is self-describing.
+- **Retraining:** When you run training (e.g. `make train-batting` or pipeline Train Batting) with **GO_APP_URL** set, each per-format training step calls `get_training_params(model, format_code)`, which fetches the latest tuned params for that model+format from the go-app and overlays them on config. So retraining uses the auto-tuned parameters per format without copying them into `config.json`.
+
+---
+
+## 6. Applying best params to config (manual)
 
 After tuning, you can **update `ml-service/config.json`** so that normal training (and train-on-the-fly) use the best-found hyperparameters:
 
@@ -121,7 +132,7 @@ then set `ml.training.batting` to those values and add `joblib_compress: 3` (or 
 
 ---
 
-## 6. Fine-tune all models (workflow)
+## 7. Fine-tune all models (workflow)
 
 1. **Export training data** (go-app): ensure CSVs exist for the formats you care about, or have go-app running and a chosen cutoff.
 2. **Run auto-tune** for each model (and optionally each format):
@@ -133,7 +144,7 @@ then set `ml.training.batting` to those values and add `joblib_compress: 3` (or 
 
 ---
 
-## 7. References
+## 8. References
 
 - Training scripts: `ml-service/ml/train_batting.py`, `train_bowling.py`, `train_fielding.py`
 - Train-on-the-fly: `ml-service/app/train_on_the_fly.py`

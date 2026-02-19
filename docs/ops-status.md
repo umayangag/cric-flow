@@ -81,12 +81,12 @@ This document describes the `/ops/status` endpoint exposed by the Go API. It agg
   - Freshness rule: A format included in the last run is `ok` if the run finished on the same UTC day; otherwise `stale`. Formats not included are `missing`.
 
 - `exports`
-  - Scans `output/go-app/` (non-recursive).
+  - Scans the exports root (non-recursive). Root is taken from **GO_APP_OUTPUT_DIR** when set (e.g. `/output/go-app` in Docker), otherwise from config or default `output/go-app`. This ensures the dashboard reflects exports when the API runs in Docker with a bind-mounted output dir.
   - Recognizes unified files `batting_on.csv` and `bowling_on.csv` (applied to all formats) and per-format files with tokens like `bat`/`bowl` and the format code in the filename.
   - Each file entry includes `exists`, `modified` (RFC3339), and a capped `rows` count for a quick sanity check.
 
 - `artifacts`
-  - First probes ML service `/artifacts/status` when available; otherwise falls back to scanning `output/ml-service/` for `*.joblib` files using tolerant patterns such as `batting_<FORMAT>.joblib` and `bowling_<FORMAT>.joblib`.
+  - First probes ML service `/artifacts/status` when available; otherwise falls back to scanning a filesystem root for `*.joblib` files. Fallback root is **GO_APP_ARTIFACTS_ROOT** when set, otherwise `output/ml-service`. In Docker, the ML service HTTP path is normally used; the fallback is for host runs when the ML service is down.
   - Per-format fields: `batting` and `bowling` objects with `exists`, optional `loaded`, optional `modified`, and `path` when discovered from FS.
 
 - `fielding`

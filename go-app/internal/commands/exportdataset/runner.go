@@ -108,6 +108,26 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
 				return err
 			}
+			// When formats are requested (e.g. SplitByFormat), also write per-format CSVs
+			// so per-format training (train_batting --all-formats, train_bowling --all-formats) has inputs.
+			for _, f := range formats {
+				if f == "" {
+					continue
+				}
+				f := f
+				g.Go(func() error {
+					bat := fmt.Sprintf("batting_encoded_%s.csv", f)
+					return r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) })
+				})
+				g.Go(func() error {
+					bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
+					return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) })
+				})
+			}
+			if err := g.Wait(); err != nil {
+				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))
+				return err
+			}
 			return nil
 		}
 

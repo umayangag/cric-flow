@@ -961,8 +961,8 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
 
 @app.post("/admin/train/batting")
 async def admin_train_batting():
-    """Run batting model training (reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR).
-    Guarded by ENABLE_HOT_RELOAD. Blocks until training completes.
+    """Run batting model training per format (TEST, ODI, T20I, T20) for better accuracy.
+    Reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="batting", reason="disabled")
@@ -974,9 +974,11 @@ async def admin_train_batting():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="batting")
+    logger.info("admin.train.start", step="batting", per_format=True)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting_model")
+        await asyncio.to_thread(
+            _run_training_subprocess, "ml.train_batting", ["--all-formats"]
+        )
         logger.info("admin.train.success", step="batting")
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
@@ -992,7 +994,9 @@ async def admin_train_batting():
 
 @app.post("/admin/train/bowling")
 async def admin_train_bowling():
-    """Run bowling model training. Guarded by ENABLE_HOT_RELOAD. Blocks until complete."""
+    """Run bowling model training per format (TEST, ODI, T20I, T20) for better accuracy.
+    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
+    """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="bowling", reason="disabled")
         raise HTTPException(
@@ -1003,9 +1007,11 @@ async def admin_train_bowling():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="bowling")
+    logger.info("admin.train.start", step="bowling", per_format=True)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling_model")
+        await asyncio.to_thread(
+            _run_training_subprocess, "ml.train_bowling", ["--all-formats"]
+        )
         logger.info("admin.train.success", step="bowling")
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:
