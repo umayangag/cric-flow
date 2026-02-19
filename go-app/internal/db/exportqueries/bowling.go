@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 // BowlingUnifiedRows returns CSV-shaped rows for the unified bowling export.

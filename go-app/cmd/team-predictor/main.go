@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teampredictor"
-	tpcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
+	tpcmd "github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/teampredictor"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 func main() { os.Exit(run()) }

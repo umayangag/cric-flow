@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/mocks"
 )
 
 func TestTracker_CaptureExit(t *testing.T) {

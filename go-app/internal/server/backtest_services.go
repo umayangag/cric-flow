@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // resolveCandidateCutoff determines the cutoff timestamp for a backtest candidate.

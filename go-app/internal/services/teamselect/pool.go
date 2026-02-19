@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // LoadFromCSV parses a simple CSV pool with header:

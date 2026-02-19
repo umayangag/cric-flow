@@ -3,7 +3,7 @@ package teamselect
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/selection"
+	"github.com/umayangag/cric-flow/go-app/internal/selection"
 )
 
 // Selector abstracts team selection operations, enabling offline tests.

@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	pfcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/precomputefeatures"
-	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
+	pfcli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputefeatures"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 )
 
 func main() { os.Exit(run()) }

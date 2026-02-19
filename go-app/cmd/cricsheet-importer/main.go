@@ -10,11 +10,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	cricsheetcli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/cricsheetimporter"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
+	cricsheetcli "github.com/umayangag/cric-flow/go-app/internal/cli/cricsheetimporter"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 )
 
 func main() { os.Exit(run()) }

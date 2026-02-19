@@ -2,7 +2,7 @@
 package predictor
 
 import (
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // PlayerPrediction aggregates player features and predicted metrics.

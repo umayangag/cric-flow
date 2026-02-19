@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // WinTrainingRows returns match-level rows for win prediction: format_id, venue_id, team1_opposition_id, team2_opposition_id, toss_winner_opposition_id, team1_wins (0/1).
@@ -29,9 +29,11 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 		mi.batting_team_opposition_id AS team1_opposition_id,
 		mi.bowling_team_opposition_id AS team2_opposition_id,
 		COALESCE(m.toss_winner_opposition_id, 0),
-		CASE WHEN m.outcome_winner_opposition_id IS NULL THEN 0 WHEN m.outcome_winner_opposition_id = mi.batting_team_opposition_id THEN 1 ELSE 0 END AS team1_wins
+		CASE WHEN m.outcome_winner_opposition_id IS NULL THEN 0 WHEN m.outcome_winner_opposition_id = mi.batting_team_opposition_id THEN 1 ELSE 0 END AS team1_wins,
+		COALESCE(mf.code, '') AS format_code
 		FROM match m
 		JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
+		LEFT JOIN match_format mf ON m.format_id = mf.id
 		WHERE m.match_date < $1`
 	args := []any{cutoff}
 	if formatIDs != nil {
@@ -56,13 +58,15 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 		"team2_opposition_id",
 		"toss_winner_opposition_id",
 		"team1_wins",
+		"format_code",
 	}
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {
 		var matchID, formatID, venueID, team1, team2, tossWinner int64
 		var team1Wins int
-		if err := rows.Scan(&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins); err != nil {
+		var formatCode string
+		if err := rows.Scan(&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode); err != nil {
 			return nil, err
 		}
 		out = append(out, []string{
@@ -73,6 +77,7 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 			strconv.FormatInt(team2, 10),
 			strconv.FormatInt(tossWinner, 10),
 			strconv.Itoa(team1Wins),
+			formatCode,
 		})
 	}
 	return out, rows.Err()

@@ -10,7 +10,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache logs api migrate output-dirs export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -32,13 +32,20 @@ dev-up-with-frontend: dev-up
 		echo "[frontend] Skipped (no frontend/ or package.json)."; \
 	fi
 
+# Stop and remove containers; output/ (trained models, exports) is on the host and is retained.
 dev-down:
 	$(DC) down
 	@$(MAKE) frontend-stop --no-print-directory
 
+# Remove containers and named volumes (e.g. pgdata). output/ is retained; use dev-purge to remove it.
 dev-destroy:
 	$(DC) down -v
 	@$(MAKE) frontend-stop --no-print-directory
+
+# Remove output/ (trained models and exports). Use when you want a full reset.
+dev-purge: dev-down
+	@rm -rf output
+	@echo "[dev-purge] Removed output/ (trained models and exports)."
 
 logs:
 	$(DC) logs -f --tail=200
@@ -56,8 +63,13 @@ go-test-int:
 migrate:
 	cd go-app && make migrate
 
+# Ensure output dirs exist from repo root so go-app export (cwd=go-app) can write to ../output/go-app
+.PHONY: output-dirs
+output-dirs:
+	@mkdir -p output/go-app output/ml-service
+
 # Export datasets (unified exports only)
-export-dataset:
+export-dataset: output-dirs
 	# Unified, cross-format CSVs with as-of per-format features
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
 
@@ -69,11 +81,11 @@ precompute-seq:
  	  go run ./cmd/precompute-sequence-features -format=$$F -targets=all || exit 1; \
  	done
 
-export-off:
+export-off: output-dirs
 	# Baseline export without optional sequence columns
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 
-export-on:
+export-on: output-dirs
 	# Export with sequence columns appended (flag and env gate)
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 go run ./cmd/export-dataset -format=$(FORMAT) -enable-seq=1
 
@@ -131,10 +143,9 @@ precompute-all-all-formats:
 		go run ./cmd/precompute-all -format=$$F $(ARGS) || exit 1; \
 	done
 
-# Team predictor (happy path): requires MATCH to be provided
+# Team predictor: requires MATCH, SEASON, FORMAT; uses go-app team-predictor (ML service must be running for predict).
 team-predictor:
 	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.export_pool $(MATCH)
 	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
 # Train ML artifacts (batting, bowling, fielding). Prerequisites: precompute + export (see export-dataset).
@@ -148,7 +159,7 @@ train-batting:
 train-bowling:
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling_model
 
-# Train fielding model. Either: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or FIELDING_CSV=<path>.
+# Train fielding/extras/win: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or pass CSV.
 GO_APP_URL ?= http://localhost:8080
 CUTOFF ?=
 train-fielding:
@@ -162,12 +173,34 @@ train-fielding:
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi
 
+train-extras:
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(EXTRAS_CSV)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set EXTRAS_CSV=<path>. Example: make train-extras CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(EXTRAS_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_extras --csv "$(EXTRAS_CSV)"; \
+	else \
+	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_extras --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	fi
+
+train-win:
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(WIN_CSV)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set WIN_CSV=<path>. Example: make train-win CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(WIN_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_win --csv "$(WIN_CSV)"; \
+	else \
+	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	fi
+
 # Train batting + bowling (from exported CSVs). Use train-fielding for fielding (requires API or FIELDING_CSV).
 train-batting-bowling: train-batting train-bowling
 
-# Train all player-level models (batting, bowling, fielding). For fielding set CUTOFF= and GO_APP_URL= if using API.
+# Train all models (batting, bowling, fielding, extras, win). For fielding/extras/win set CUTOFF= and GO_APP_URL= if using API.
 train-all: train-models
-train-models: train-batting train-bowling train-fielding
+train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
 MODEL ?= batting
@@ -281,6 +314,10 @@ e2e-backtest-smoke: seed-fixtures
 	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
 	echo "[SMOKE] OK"
 
+# Run ML-service E2E pytest tests (requires ML service and optionally go-api to be up; set RUN_E2E=1)
+e2e-pytest:
+	cd ml-service && RUN_E2E=1 ML_SERVICE_URL=$${ML_SERVICE_URL:-http://localhost:8000} $(ML_VENV_BIN)/pytest -q -m e2e -v
+
 # Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
 ml-test:
 	cd ml-service && pytest -q tests/test_seq_reader.py tests/test_baselines.py
@@ -306,6 +343,7 @@ e2e:
 	@echo "[3/5] Precomputing features..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
 	$(MAKE) ml-install
@@ -321,6 +359,7 @@ e2e-multi:
 	@echo "[3/5] Precomputing features..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
 	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
 	$(MAKE) ml-install
@@ -341,6 +380,7 @@ up-all:
 	@echo "[4/7] Precomputing metrics..."
 	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
 	@echo "[5/7] Exporting datasets..."
+	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
 	$(MAKE) train-all || (echo "Training failed" && exit 1)
@@ -388,7 +428,7 @@ frontend-stop:
 # --- Unified Quality Checks ---
 
 # Run all quality checks for all components
-check-all: frontend-check go-app-check ml-service-check context-provider-check
+check-all: frontend-check go-app-check ml-service-check
 	@echo "All quality checks passed!"
 
 frontend-check: frontend-install
@@ -406,20 +446,15 @@ ml-service-check:
 	# Assumes venv is initialized
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service lint-check fmt-check coverage coverage-check
 
-context-provider-check:
-	@echo "[context-provider] Running lint, fmt check, tests and coverage..."
-	$(MAKE) -C context-provider vet fmt-check lint coverage coverage-check
-
 # --- Formatting & hooks ---
 
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
 # Aggregate formatters for all components
-fmt: fmt-go fmt-py fmt-context
+fmt: fmt-go fmt-py
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
-	$(MAKE) -C context-provider fmt-check
 	# Assume ml-service venv is already prepared; avoid implicit bootstrapping for speed
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
@@ -427,14 +462,8 @@ fmt-go:
 	# Fast path: require tools to be installed; run formatting only
 	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C go-app fmt
 
-fmt-context:
-	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C context-provider fmt
-
 lint-go:
 	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
-
-lint-context:
-	cd context-provider && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
 
 fmt-py:
 	# Fast path: require venv to be prepared; run formatting only
@@ -453,7 +482,7 @@ install-hooks:
 
 # --- Local environment bootstrap ---
 # Initialize all components for local development
-init: init-go init-py init-context install-hooks
+init: init-go init-py install-hooks
 	@echo "\nLocal dev environment initialized. Next steps:"
 	@echo "- For Python, activate venv: 'cd ml-service && source .venv/bin/activate'"
 	@echo "- Run format checks: 'make fmt-check'"
@@ -462,9 +491,6 @@ init: init-go init-py init-context install-hooks
 # Initialize Go tooling and modules
 init-go:
 	$(MAKE) -C go-app init
-
-init-context:
-	$(MAKE) -C context-provider init
 
 # Initialize Python venv and dev tools
 init-py:
@@ -498,10 +524,9 @@ mock:
 test:
 	cd go-app && make test
 	cd ml-service && make test
-	cd context-provider && make test
 
 # Aggregate lint target
-lint: lint-go lint-py lint-context
+lint: lint-go lint-py
 
 # Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
 dev-rebuild:
@@ -517,7 +542,6 @@ dev-rebuild-nocache:
 # --- CI aggregate helpers ---
 COV_MIN_GO ?= 80
 COV_MIN_ML ?= 80
-COV_MIN_CONTEXT ?= 75
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
@@ -532,15 +556,8 @@ ci-go:
 	$(MAKE) -C go-app coverage
 	COV_MIN=$(COV_MIN_GO) $(MAKE) -C go-app coverage-check
 
-# Run context-provider CI
-ci-context:
-	$(MAKE) -C context-provider vet
-	$(MAKE) -C context-provider fmt-check
-	$(MAKE) -C context-provider coverage
-	COV_MIN=$(COV_MIN_CONTEXT) $(MAKE) -C context-provider coverage-check
-
 # Run all components' CI
-ci: ci-go ci-ml ci-context
+ci: ci-go ci-ml
 
 
 # --- Help & navigation ---
@@ -621,16 +638,3 @@ help-all:
 
 list:
 	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u
-
-# Context MCP Server
-.PHONY: context-build context-serve context-clean
-
-context-build:
-	cd context-provider && go build -o context-provider main.go
-
-context-serve: context-build
-	./context-provider/context-provider
-
-context-clean:
-	rm -f context-provider/context-provider
-	rm -f .junie/context_index.json

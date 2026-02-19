@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"os"
 
-	climig "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/migrate"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/migrate"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	climig "github.com/umayangag/cric-flow/go-app/internal/cli/migrate"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/migrate"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
 )
 
 func main() {

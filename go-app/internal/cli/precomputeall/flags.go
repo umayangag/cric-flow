@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // ParseArgs parses CLI args into Options. Pure and testable.

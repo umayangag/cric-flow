@@ -5,7 +5,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // options represents parsed CLI inputs for team-predictor.

@@ -520,15 +520,3 @@ Administrative endpoints and UI tabs (Ops Status, Evaluate) are protected. In lo
 - **Backend**: If the `API_KEY` environment variable is not set, the Go API defaults to accepting `dev-local-key`.
 
 MUI is installed via npm packages and applied through `ThemeProvider` and `CssBaseline` in `src/main.tsx`. The global shell (AppBar, Tabs, Paper) uses MUI components. No Bootstrap is required in `index.html`.
-
-## Context Provider (AI Integration)
-A standalone tool is available to index the codebase and provide context to AI agents (like Junie).
-
-- **Location**: `context-provider/`
-- **Usage**:
-  ```bash
-  make init-context    # Initialize (download tools)
-  make context-build   # Build the binary
-  make context-serve   # Run as stdio server (re-builds if needed)
-  ```
-- **Documentation**: See `context-provider/README.md` for integration instructions and how to prompt Junie to use it.

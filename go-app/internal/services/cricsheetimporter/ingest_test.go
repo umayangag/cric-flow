@@ -7,10 +7,10 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	cricsheetmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
-	dbmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/cricsheetimporter"
+	cricsheetmocks "github.com/umayangag/cric-flow/go-app/internal/cricsheet/mocks"
+	dbmocks "github.com/umayangag/cric-flow/go-app/internal/db/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/cricsheetimporter"
 )
 
 type assertSvcFn func(t *testing.T, processed int, err error)

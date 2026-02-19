@@ -1,6 +1,9 @@
 import json
 import logging
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, Dict, Optional
 
 from ml.resources import suggested_n_jobs
@@ -100,12 +103,72 @@ TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_c
 TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win")
 
 
-def get_training_params(model: str) -> Dict[str, Any]:
+def get_tuned_params_from_go_app(
+    go_app_url: str, model: str, format_code: str, api_key: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Fetch latest tuned params for model+format from go-app. Returns None on 404 or error."""
+    base = go_app_url.rstrip("/")
+    url = f"{base}/api/ml/tuned-params?model={urllib.parse.quote(model)}&format={urllib.parse.quote(format_code)}"
+    req = urllib.request.Request(url)
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        logger.warning("config.get_tuned_params_from_go_app.http_error url=%s code=%s", url, e.code)
+        return None
+    except OSError as e:
+        logger.warning("config.get_tuned_params_from_go_app.request_failed url=%s error=%s", url, e)
+        return None
+    params = data.get("params")
+    if isinstance(params, dict):
+        return params
+    if isinstance(params, str):
+        try:
+            return json.loads(params)
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def save_tuned_params_to_go_app(
+    go_app_url: str,
+    model: str,
+    format_code: str,
+    params: Dict[str, Any],
+    api_key: Optional[str] = None,
+) -> None:
+    """POST tuned params to go-app so they are stored in the DB for future training."""
+    base = go_app_url.rstrip("/")
+    url = f"{base}/api/ml/tuned-params"
+    payload = json.dumps({"model": model, "format": format_code, "params": params}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if 200 <= resp.status < 300:
+                logger.info("config.save_tuned_params_to_go_app.saved model=%s format=%s", model, format_code)
+            return
+    except urllib.error.HTTPError as e:
+        logger.warning("config.save_tuned_params_to_go_app.http_error url=%s code=%s body=%s", url, e.code, e.read())
+        raise ValueError(f"go-app tuned-params POST failed: HTTP {e.code}") from e
+    except OSError as e:
+        logger.warning("config.save_tuned_params_to_go_app.request_failed url=%s error=%s", url, e)
+        raise ValueError(f"go-app tuned-params request failed: {e}") from e
+
+
+def get_training_params(model: str, format_code: Optional[str] = None) -> Dict[str, Any]:
     """
     Load ML training parameters from config for the given model (ml.training.<model>).
-    All values must be set in config; no defaults or env overrides.
+    If format_code is set and GO_APP_URL is set, fetches latest tuned params from go-app and
+    merges them over config (DB params override config). Falls back to config only when no
+    tuned params exist for that model+format.
     Raises ValueError if config is missing or any required key is absent.
-    model: one of "batting", "bowling". Used by train_batting*, train_bowling*, train_on_the_fly.
     """
     if model not in TRAINING_MODELS:
         logger.error("config.get_training_params.unknown_model model=%s allowed=%s", model, TRAINING_MODELS)
@@ -122,12 +185,18 @@ def get_training_params(model: str) -> Dict[str, Any]:
     if not isinstance(training, dict):
         logger.error("config.get_training_params.missing_training_block model=%s", model)
         raise ValueError("config.json must define 'ml.training' with per-model blocks (batting, bowling).")
-    block = training.get(model)
-    if not isinstance(block, dict):
+    block = dict(training.get(model) or {})
+    if not isinstance(training.get(model), dict):
         logger.error("config.get_training_params.missing_model_block model=%s", model)
         raise ValueError(
             f"config.json must define 'ml.training.{model}' with keys: " + ", ".join(TRAINING_REQUIRED_KEYS)
         )
+    # Overlay latest tuned params from go-app when available
+    go_app_url = os.environ.get("GO_APP_URL", "").strip()
+    if format_code is not None and go_app_url:
+        overlay = get_tuned_params_from_go_app(go_app_url, model, format_code or "", os.environ.get("GO_APP_API_KEY"))
+        if overlay:
+            block = _deep_merge(block, overlay)
     missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
     if missing:
         logger.error("config.get_training_params.missing_keys model=%s missing=%s", model, missing)

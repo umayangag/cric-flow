@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // NormalizeVenue makes a stable lookup key from a raw venue/ground name.

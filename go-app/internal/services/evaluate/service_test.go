@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/evaluate"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
 )
 
 type assertMetricsFn func(t *testing.T, got svc.Metrics)

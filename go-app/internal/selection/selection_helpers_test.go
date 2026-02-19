@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
 func TestSelectTopWithMinBowlers(t *testing.T) {

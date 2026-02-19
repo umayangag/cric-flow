@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // spyTxForMatchInning implements db.CopyFromTx and captures OversBowled from match_inning upserts.

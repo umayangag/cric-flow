@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // FieldingTrainingRows returns fielding export-shaped rows for all matches with match_date < cutoff.

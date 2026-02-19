@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 func main() {

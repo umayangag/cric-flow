@@ -30,8 +30,8 @@ Result: clean (no output)
 ```
 Result: all packages green (sample excerpt):
 ```
-ok  github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx       (ok)
-ok  github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect (ok)
+ok  github.com/umayangag/cric-flow/go-app/internal/db/scanx       (ok)
+ok  github.com/umayangag/cric-flow/go-app/internal/services/teamselect (ok)
 ...
 ```
 

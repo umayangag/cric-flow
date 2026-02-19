@@ -24,6 +24,8 @@ PIPELINE_COMMANDS = (
     "train-batting",
     "train-bowling",
     "train-fielding",
+    "train-extras",
+    "train-win",
 )
 
 

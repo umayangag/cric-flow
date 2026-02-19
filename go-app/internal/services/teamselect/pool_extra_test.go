@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 // fakeRepo implements db.TeamSelectRepo for tests

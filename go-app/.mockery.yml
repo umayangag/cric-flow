@@ -3,53 +3,33 @@ inpackage: false
 filename: "{{.InterfaceName}}.go"
 formatter: goimports
 packages:
-  github.com/umayangag/cric-info-scrapers/go-app/internal/predictor:
+  github.com/umayangag/cric-flow/go-app/internal/predictor:
     config:
       dir: internal/predictor/internal/mocks
       pkgname: mocks
     interfaces:
       Predictor: { }
-  github.com/umayangag/cric-info-scrapers/go-app/internal/services/weatherworker:
-    config:
-      dir: internal/services/weatherworker/internal/mocks
-      pkgname: mocks
-    interfaces:
-      Provider: { }
-      Repository: { }
-  github.com/umayangag/cric-info-scrapers/go-app/internal/services/teampredictor:
+  github.com/umayangag/cric-flow/go-app/internal/services/teampredictor:
     config:
       dir: internal/services/teampredictor/internal/mocks
       pkgname: mocks
     interfaces:
       MLClient: {}
-  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/teampredictor:
+  github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor:
     config:
       dir: internal/commands/teampredictor/internal/mocks
       pkgname: mocks
     interfaces:
       Predictor: { }
       MLClient: {}
-  github.com/umayangag/cric-info-scrapers/go-app/internal/db:
+  github.com/umayangag/cric-flow/go-app/internal/db:
     config:
       dir: internal/db/mocks
       pkgname: mocks
     interfaces:
-      FieldingRepo: {}
       DatasetRepo: {}
       MatchRepo: {}
-  github.com/umayangag/cric-info-scrapers/go-app/internal/jobs:
-    config:
-      dir: internal/services/weatherworker/internal/mocks
-      pkgname: mocks
-    interfaces:
-      Source: {}
-  github.com/umayangag/cric-info-scrapers/go-app/internal/commands/etlimporter:
-    config:
-      dir: internal/commands/etlimporter/internal/mocks
-      pkgname: mocks
-    interfaces:
-      Ingestor: {}
-  github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet:
+  github.com/umayangag/cric-flow/go-app/internal/cricsheet:
     config:
       dir: internal/cricsheet/mocks
       pkgname: mocks

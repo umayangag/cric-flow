@@ -3,7 +3,7 @@ package predictor
 import (
 	"testing"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // TestCalculateOverallPerformanceWithConfig verifies team aggregates are computed

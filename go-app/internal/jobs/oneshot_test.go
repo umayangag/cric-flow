@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	jobs "github.com/umayangag/cric-info-scrapers/go-app/internal/jobs"
+	jobs "github.com/umayangag/cric-flow/go-app/internal/jobs"
 )
 
 // TestOneShotSource_Next_Table follows the gold-standard table-driven style

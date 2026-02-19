@@ -3,9 +3,9 @@ package exportdataset_test
 import (
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/exportdataset"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/exportdataset"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 func mkCfg(split bool, req string) *config.Config {

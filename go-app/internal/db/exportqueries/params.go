@@ -1,7 +1,7 @@
 package exportqueries
 
 import (
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // GetFeatureExtractionParams returns EWM alpha, consistency last-N, form window N,

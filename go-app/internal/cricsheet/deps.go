@@ -3,8 +3,8 @@ package cricsheet
 import (
 	"context"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	weatherSvc "github.com/umayangag/cric-info-scrapers/go-app/internal/weather"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	weatherSvc "github.com/umayangag/cric-flow/go-app/internal/weather"
 )
 
 // CricsheetDB abstracts DB operations used by ingest for testability.

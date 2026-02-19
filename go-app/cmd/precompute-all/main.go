@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	pacli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/precomputeall"
-	pfcmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/precomputefeatures"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/pipeline"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
+	pacli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputeall"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
+	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
 )
 
 func main() { os.Exit(run()) }

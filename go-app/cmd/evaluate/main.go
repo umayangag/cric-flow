@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	clieval "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/evaluate"
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/evaluate"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/evaluate"
+	clieval "github.com/umayangag/cric-flow/go-app/internal/cli/evaluate"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/evaluate"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
 )
 
 // demoRepo preserves existing scaffold behavior by returning fixed arrays.

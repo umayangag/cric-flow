@@ -36,6 +36,8 @@ services:
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
+      # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
+      GO_APP_OUTPUT_DIR: /output/go-app
       # 2GB memory limit for resource-aware pipeline concurrency (override with GOMEMLIMIT=... if needed)
       GOMEMLIMIT: ${GOMEMLIMIT:-2GiB}
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
@@ -46,6 +48,8 @@ services:
     mem_limit: 2g
     ports:
       - "8080:8080"
+    volumes:
+      - ./output:/output
 
   ml-service:
     build:
@@ -65,8 +69,12 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
-      # Required for train-on-the-fly when no artifacts are loaded for a format (e.g. T20I)
+      # Where to read exported CSVs for /admin/train/* (batting, bowling)
+      GO_APP_OUTPUT_DIR: /app/output/go-app
+      # Required for train-on-the-fly and fielding training from go-app API
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
+      # Enable /admin/reload and /admin/train/* when running from frontend pipeline
+      ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
       # 2GB memory limit for resource-aware training/tuning n_jobs (override with ML_MEMORY_LIMIT_MB=... if needed)
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}

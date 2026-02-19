@@ -1,4 +1,4 @@
-// Package selection provides an end-to-end team selection pipeline analogous to src/team_selection/select_pool.py
+// Package selection provides an end-to-end team selection pipeline (replacing the legacy Python prototype).
 package selection
 
 import (
@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
 // Options controls constraints for picking the final XI.

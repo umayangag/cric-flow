@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // OpsStatusResponse is the top-level JSON returned by /ops/status.
@@ -46,7 +48,7 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 		// update after the DB section is built.
 		Services:       map[string]bool{"api_health": true, "api_readiness": false, "ml_health": false},
 		DB:             map[string]any{"connected": false},
-		Precompute:     buildPrecomputeSection(now),
+		Precompute:     buildPrecomputeSection(ctx, now),
 		Exports:        map[string]any{"root": "output/go-app", "formats": map[string]any{}},
 		Artifacts:      map[string]any{"root": "output/ml-service", "formats": map[string]any{}},
 		Fielding:       map[string]any{},
@@ -83,12 +85,12 @@ func (a *App) assembleOpsStatusResponse(ctx context.Context) OpsStatusResponse {
 
 // buildPrecomputeSection constructs the precompute part of the ops status based on
 // the in-memory status from the precompute package and a provided current time.
-// Freshness rule: a format is "ok" if FinishedAt is on the same UTC date as now
-// and the format was included in the last run; otherwise it is "stale". If no
-// successful run (FinishedAt zero), all formats are "missing".
-func buildPrecomputeSection(now time.Time) map[string]any {
+// If in-memory has no finished run (e.g. API restarted or precompute ran via CLI),
+// it falls back to the tracking DB: a completed "precompute-features" run sets
+// precompute as done so the pipeline UI shows Precompute complete regardless of
+// later steps (e.g. Export). Freshness: "ok" if last run is same UTC day, else "stale".
+func buildPrecomputeSection(ctx context.Context, now time.Time) map[string]any {
 	stat := getPrecomputeStatus()
-	// Supported cricket formats
 	formats := getCricketFormats()
 
 	section := map[string]any{
@@ -102,19 +104,33 @@ func buildPrecomputeSection(now time.Time) map[string]any {
 		fm[f] = map[string]any{"status": "missing"}
 	}
 
-	// If we have a finished run time, compute freshness
+	var finishedAt time.Time
+	var formatsRan []string
 	if !stat.FinishedAt.IsZero() {
-		section["last_run"] = stat.FinishedAt.UTC().Format(time.RFC3339)
-		section["as_of"] = stat.FinishedAt.UTC().Format("2006-01-02")
+		finishedAt = stat.FinishedAt.UTC()
+		formatsRan = stat.Formats
+	} else {
+		// Fallback: use persisted tracking so Precompute shows complete after restart or CLI run
+		lastCompleted, err := tracking.GetLastCompletedAtForCommand(ctx, "precompute-features")
+		if err != nil {
+			slog.Warn("precompute section: GetLastCompletedAtForCommand failed", "err", err)
+		}
+		if lastCompleted != nil {
+			finishedAt = lastCompleted.UTC()
+			formatsRan = formats // tracking has no per-format; treat all as ran
+		}
+	}
 
-		// Build a quick lookup for formats included in last run
-		ran := map[string]struct{}{}
-		for _, f := range stat.Formats {
+	if !finishedAt.IsZero() {
+		section["last_run"] = finishedAt.Format(time.RFC3339)
+		section["as_of"] = finishedAt.Format("2006-01-02")
+
+		ran := make(map[string]struct{})
+		for _, f := range formatsRan {
 			ran[f] = struct{}{}
 		}
-		// Same UTC day helper
 		y1, m1, d1 := now.UTC().Date()
-		y2, m2, d2 := stat.FinishedAt.UTC().Date()
+		y2, m2, d2 := finishedAt.Date()
 		sameDay := (y1 == y2 && m1 == m2 && d1 == d2)
 
 		for _, f := range formats {
@@ -125,7 +141,6 @@ func buildPrecomputeSection(now time.Time) map[string]any {
 					fm[f] = map[string]any{"status": "stale"}
 				}
 			} else {
-				// not part of last run => missing
 				fm[f] = map[string]any{"status": "missing"}
 			}
 		}

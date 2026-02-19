@@ -1,5 +1,6 @@
 [run]
-source = app
+# Measure coverage for all application and ML code (app + ml)
+source = app, ml
 branch = True
 omit =
     */.venv/*

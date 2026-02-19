@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	cmd "github.com/umayangag/cric-info-scrapers/go-app/internal/commands/migrate"
+	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/migrate"
 )
 
 type assertErrFn func(t *testing.T, err error)

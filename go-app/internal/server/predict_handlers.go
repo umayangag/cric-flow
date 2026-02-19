@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/services/predictteam"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // mlPredictorAdapter adapts the backtest ML client to predictteam.MLPredictor.

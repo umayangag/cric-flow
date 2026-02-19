@@ -9,9 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	tmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet/mocks"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	tmocks "github.com/umayangag/cric-flow/go-app/internal/cricsheet/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // ingestErrorTestNopPool implements db.PoolIface for cache lookups.

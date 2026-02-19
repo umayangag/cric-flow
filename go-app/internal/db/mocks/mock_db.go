@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // DBMock implements db.DB using testify/mock.

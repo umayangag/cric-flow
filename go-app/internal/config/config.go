@@ -15,7 +15,6 @@ import (
 type Config struct {
 	Inputs struct {
 		CricsheetDir string `json:"cricsheet_dir"`
-		EtlDir       string `json:"etl_dir"`
 	} `json:"inputs"`
 	Outputs struct {
 		ExportDir string `json:"export_dir"`
@@ -189,15 +188,6 @@ func DefaultCricsheetDir() string {
 	return filepath.Join("..", "data", "go-app", "cricsheet")
 }
 
-// DefaultEtlDir returns the configured curated CSV dir for ETL importer or a built-in default.
-func DefaultEtlDir() string {
-	cfg := Load()
-	if cfg != nil && cfg.Inputs.EtlDir != "" {
-		return cfg.Inputs.EtlDir
-	}
-	return filepath.Join("..", "data", "go-app", "createdb")
-}
-
 // EffectiveScoreNormParams returns format-specific normalization divisors for score computation.
 // Falls back to defaults when format is not configured.
 func EffectiveScoreNormParams(cfg *Config, format string) (batDiv, wicketDiv, econBase, fieldDiv float64) {
@@ -334,12 +324,17 @@ func EffectiveScoreWeights(cfg *Config) (bat, bowl, field, keeperBonus float64) 
 }
 
 // DefaultExportDir returns the configured export output dir or a built-in default.
+// GO_APP_OUTPUT_DIR (when set) overrides config so the API can use a writable path in Docker.
+// Otherwise config or cwd-relative "output/go-app" is used.
 func DefaultExportDir() string {
+	if p := os.Getenv("GO_APP_OUTPUT_DIR"); p != "" {
+		return p
+	}
 	cfg := Load()
 	if cfg != nil && cfg.Outputs.ExportDir != "" {
 		return cfg.Outputs.ExportDir
 	}
-	return filepath.Join("..", "output", "go-app")
+	return filepath.Join("output", "go-app")
 }
 
 // ValidateTeamSettings validates a subset of team/predictor settings for sanity.

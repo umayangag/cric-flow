@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/mlclient"
-	apipkg "github.com/umayangag/cric-info-scrapers/go-app/internal/server"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/tracking"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	apipkg "github.com/umayangag/cric-flow/go-app/internal/server"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 const shutdownTimeout = 25 * time.Second
@@ -166,7 +166,15 @@ func trackingStaleCancelAge() time.Duration {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
-		slog.Warn("invalid or non-positive value for TRACKING_STALE_CANCEL_AGE, using default", "value", s, "err", err, "default", defaultAge)
+		slog.Warn(
+			"invalid or non-positive value for TRACKING_STALE_CANCEL_AGE, using default",
+			"value",
+			s,
+			"err",
+			err,
+			"default",
+			defaultAge,
+		)
 		return defaultAge
 	}
 	return d

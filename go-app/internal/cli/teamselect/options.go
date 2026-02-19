@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // Options holds CLI flags for team-select.

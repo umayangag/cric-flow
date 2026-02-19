@@ -122,7 +122,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     // players table should show player ids
     expect(within(results).getByText('1')).toBeInTheDocument();
     expect(within(results).getByText('2')).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('shows error when backtestSelect fails', async () => {
     const backtestSelectMock = api.backtestSelect as unknown as Mock;

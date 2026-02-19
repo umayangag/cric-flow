@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	dbpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	dmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
+	dbpkg "github.com/umayangag/cric-flow/go-app/internal/db"
+	dmocks "github.com/umayangag/cric-flow/go-app/internal/db/mocks"
 )
 
 // Helper to setup a DB mock for migrations tests

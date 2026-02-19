@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/predictor/internal/mocks"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor"
+	"github.com/umayangag/cric-flow/go-app/internal/predictor/internal/mocks"
 )
 
 func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {

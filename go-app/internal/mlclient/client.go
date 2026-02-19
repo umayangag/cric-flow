@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/models"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 // Service calls the Python mlCleint service.
@@ -27,7 +27,7 @@ func New() *Client {
 	return &Client{
 		BaseURL:   base,
 		HTTP:      &http.Client{Timeout: 20 * time.Second},
-		UserAgent: "cric-app-mlclient (+github.com/umayangag/cric-info-scrapers)",
+		UserAgent: "cric-app-mlclient (+github.com/umayangag/cric-flow)",
 		Timeout:   20 * time.Second,
 	}
 }

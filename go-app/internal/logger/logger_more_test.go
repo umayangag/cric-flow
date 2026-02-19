@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	logger "github.com/umayangag/cric-info-scrapers/go-app/internal/logger"
+	logger "github.com/umayangag/cric-flow/go-app/internal/logger"
 )
 
 // Not parallel: mutates env and global slog handler.

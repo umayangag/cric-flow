@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 )
 
 // TestParse_FullShapes follows the gold standard: AAA with require assertions.

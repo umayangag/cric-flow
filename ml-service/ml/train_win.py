@@ -1,0 +1,155 @@
+"""
+Train win model (match-level team1_wins 0/1) from go-app training-data API or CSV.
+
+Fetches GET {GO_APP_URL}/api/backtest/training-data?format=all&cutoff=..., extracts win
+headers/rows, groups by format_code, trains one classifier per format, saves
+win_model_<FMT>.joblib to artifacts dir.
+
+Usage:
+  GO_APP_URL=http://localhost:8080 python -m ml.train_win --cutoff 2024-12-01T00:00:00Z
+  python -m ml.train_win --csv path/to/win_export.csv
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+import urllib.error
+import urllib.request
+
+import joblib
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
+
+logger = logging.getLogger(__name__)
+
+WIN_FEATURE_COLS = [
+    "format_id",
+    "venue_id",
+    "team1_opposition_id",
+    "team2_opposition_id",
+    "toss_winner_opposition_id",
+]
+WIN_TARGET_COL = "team1_wins"
+
+
+def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
+    """Fetch training data from go-app; return dict with win headers and rows."""
+    base = go_app_url.rstrip("/")
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
+    req = urllib.request.Request(url)
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=get_training_data_fetch_timeout_sec()) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        logger.error(
+            "train_win.fetch_win_data.http_error url=%s code=%s body_preview=%s",
+            url,
+            e.code,
+            (body[:200] + "..." if len(body) > 200 else body),
+        )
+        raise ValueError(f"Go-app training-data failed: HTTP {e.code} {body}") from e
+    except OSError as e:
+        logger.error("train_win.fetch_win_data.os_error url=%s error=%s", url, e)
+        raise ValueError(f"Go-app training-data request failed: {e}") from e
+    return data.get("win") or {"headers": [], "rows": []}
+
+
+def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Build X, Y per format_code. Returns dict format_code -> (X, Y). Y is integer 0/1."""
+    if not headers or not rows:
+        return {}
+    df = pd.DataFrame(rows, columns=headers)
+    for c in WIN_FEATURE_COLS + [WIN_TARGET_COL]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in WIN_FEATURE_COLS:
+        if c in df.columns:
+            df[c] = df[c].fillna(0.0)
+    if "format_code" not in df.columns:
+        df = df.dropna(subset=[c for c in WIN_FEATURE_COLS if c in df.columns] + [WIN_TARGET_COL])
+        if df.empty:
+            return {}
+        X = df[[c for c in WIN_FEATURE_COLS if c in df.columns]].astype(float).values
+        Y = df[WIN_TARGET_COL].astype(int).values
+        return {"_ALL_": (X, Y)}
+    out = {}
+    for fmt, g in df.groupby("format_code"):
+        fmt = str(fmt).strip().upper() or "_ALL_"
+        g = g.dropna(subset=[c for c in WIN_FEATURE_COLS if c in g.columns] + [WIN_TARGET_COL])
+        if g.empty or len(g) < 10:
+            continue
+        X = g[[c for c in WIN_FEATURE_COLS if c in g.columns]].astype(float).values
+        Y = g[WIN_TARGET_COL].astype(int).values
+        out[fmt] = (X, Y)
+    return out
+
+
+def train_and_save(X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str) -> None:
+    """Train win classifier and save model for format_code (no scaler; artifacts loader expects model only)."""
+    params = get_training_params("win", format_code)
+    model = RandomForestClassifier(
+        n_estimators=params["n_estimators"],
+        max_depth=params["max_depth"],
+        random_state=params["random_state"],
+        n_jobs=params.get("n_jobs", -1),
+    )
+    model.fit(X, Y)
+    os.makedirs(out_dir, exist_ok=True)
+    compress = params["joblib_compress"]
+    code = format_code.replace(" ", "_")
+    joblib.dump(model, os.path.join(out_dir, f"win_model_{code}.joblib"), compress=compress)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Train win model from go-app training-data API or CSV")
+    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required if not using --csv)")
+    ap.add_argument("--csv", default="", help="Path to win CSV (optional; else fetch from API)")
+    ap.add_argument("--out", default="", help="Artifacts output dir (default from config)")
+    ap.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""), help="Go-app base URL")
+    ap.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""), help="Optional API key")
+    args = ap.parse_args()
+    out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
+
+    if args.csv:
+        if not os.path.isfile(args.csv):
+            logger.error("train_win.csv_not_found path=%s", args.csv)
+            sys.exit(1)
+        logger.info("train_win.loading_csv path=%s", args.csv)
+        df = pd.read_csv(args.csv)
+        headers = list(df.columns)
+        rows = df.values.astype(str).tolist()
+        by_format = rows_to_xy_by_format(headers, rows)
+    else:
+        if not args.go_app_url or not args.cutoff:
+            logger.error("train_win.missing_args hint=Provide --go-app-url and --cutoff, or --csv")
+            sys.exit(1)
+        logger.info("train_win.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
+        try:
+            win = fetch_win_data(args.go_app_url, args.cutoff, args.api_key or None)
+        except ValueError as e:
+            logger.error("train_win.fetch_failed error=%s", e)
+            sys.exit(1)
+        headers = win.get("headers") or []
+        rows = win.get("rows") or []
+        by_format = rows_to_xy_by_format(headers, rows)
+
+    if not by_format:
+        logger.error("train_win.no_data hint=empty or insufficient rows")
+        sys.exit(1)
+    for fmt, (X, Y) in by_format.items():
+        train_and_save(X, Y, out_dir, fmt)
+        logger.info("train_win.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+
+
+if __name__ == "__main__":
+    main()

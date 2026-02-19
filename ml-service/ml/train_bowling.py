@@ -238,9 +238,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # All training parameters from config (ml.training.bowling); no env overrides or magic values
-    training_params = get_training_params("bowling")
-
     targets: list[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -271,6 +268,7 @@ def main():
 
     # If still no targets detected, fall back to legacy single CSV path
     if not targets:
+        training_params = get_training_params("bowling", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
         try:
             X, Y = load_dataset(csv_path)
@@ -294,6 +292,7 @@ def main():
         return
 
     for fmt in targets:
+        training_params = get_training_params("bowling", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):
             logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)

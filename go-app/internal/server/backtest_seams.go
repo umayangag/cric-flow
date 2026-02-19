@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	exq "github.com/umayangag/cric-info-scrapers/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 // testing seam for DB call

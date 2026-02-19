@@ -4,7 +4,7 @@ import (
 	"flag"
 	"testing"
 
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
 )
 
 func TestParseArgs_EnvDefaults(t *testing.T) {

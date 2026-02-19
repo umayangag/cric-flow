@@ -29,8 +29,8 @@ import (
     "testing"
 
     "github.com/stretchr/testify/require"
-    yourpkg "github.com/umayangag/cric-info-scrapers/go-app/internal/yourpkg"
-    "github.com/umayangag/cric-info-scrapers/go-app/internal/yourpkg/internal/mocks"
+    yourpkg "github.com/umayangag/cric-flow/go-app/internal/yourpkg"
+    "github.com/umayangag/cric-flow/go-app/internal/yourpkg/internal/mocks"
 )
 
 func TestYourUnit_Behavior_Table(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/features"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/resources"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/seqcalc"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/features"
+	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
 )
 
 // Runner executes precompute-features workflows.

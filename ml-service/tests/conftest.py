@@ -16,3 +16,9 @@ if str(ML_SERVICE_ROOT) not in sys.path:
 # This runs at conftest load time, which occurs before test collection/import.
 if "ML_SERVICE_OUTPUT_DIR" not in os.environ and "MODELS_DIR" not in os.environ:
     os.environ["ML_SERVICE_OUTPUT_DIR"] = tempfile.mkdtemp(prefix="ml_service_test_")
+
+
+def pytest_configure(config):
+    """Register custom markers so -m integration / -m e2e work without warnings."""
+    config.addinivalue_line("markers", "integration: tests that exercise multiple components together (in-process)")
+    config.addinivalue_line("markers", "e2e: end-to-end tests requiring live ML service (RUN_E2E=1)")

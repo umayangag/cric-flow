@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 // IngestService coordinates loading Cricsheet files, parsing them into matches,

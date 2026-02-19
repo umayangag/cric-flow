@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-info-scrapers/go-app/internal/cli/teamselect"
+	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
 )
 
 // TestParseArgs_DefaultsAndOverrides follows the gold-standard: external package,

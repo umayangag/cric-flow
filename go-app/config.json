@@ -3,7 +3,7 @@
     "cricsheet_dir": "../data/go-app/cricsheet"
   },
   "outputs": {
-    "export_dir": "../output/go-app"
+    "export_dir": "output/go-app"
   },
   "formats": {
     "treat_t20i_as_subset": true,

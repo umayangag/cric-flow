@@ -3,7 +3,7 @@ package cricsheet
 import (
 	"strings"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // DetectFormat returns one of standardized codes: TEST, ODI, T20, T20I

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db"
-	"github.com/umayangag/cric-info-scrapers/go-app/internal/db/scanx"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 // BattingUnifiedRows returns CSV-shaped rows for the unified batting export.

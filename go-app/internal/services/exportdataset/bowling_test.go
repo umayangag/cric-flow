@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	dbmocks "github.com/umayangag/cric-info-scrapers/go-app/internal/db/mocks"
-	svc "github.com/umayangag/cric-info-scrapers/go-app/internal/services/exportdataset"
+	dbmocks "github.com/umayangag/cric-flow/go-app/internal/db/mocks"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
 
 type assertFnB func(t *testing.T, w *bytes.Buffer, err error)

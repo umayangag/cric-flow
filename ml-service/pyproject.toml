@@ -8,3 +8,10 @@ extend-exclude = [".venv"]
 # Pyflakes (F) + isort (I) for import sorting; E501 handled by ruff format
 select = ["F", "I"]
 ignore = ["E501"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that exercise multiple components together (in-process, no live services)",
+    "e2e: end-to-end tests that require live ML service (and optionally go-api); set RUN_E2E=1 to run",
+]
+testpaths = ["tests"]

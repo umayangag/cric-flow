@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	ts "github.com/umayangag/cric-info-scrapers/go-app/internal/services/teamselect"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 type assertFn func(t *testing.T, got float64)
