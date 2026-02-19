@@ -32,13 +32,17 @@ dev-up-with-frontend: dev-up
 		echo "[frontend] Skipped (no frontend/ or package.json)."; \
 	fi
 
+# Stop and remove containers; output/ (trained models, exports) is on the host and is retained.
 dev-down:
 	$(DC) down
 	@$(MAKE) frontend-stop --no-print-directory
 
+# Remove containers, named volumes (e.g. pgdata), and the output/ directory (trained models + exports).
 dev-destroy:
 	$(DC) down -v
 	@$(MAKE) frontend-stop --no-print-directory
+	@rm -rf output
+	@echo "[dev-destroy] Removed output/ (trained models and exports)."
 
 logs:
 	$(DC) logs -f --tail=200
