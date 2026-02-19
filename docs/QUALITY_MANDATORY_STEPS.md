@@ -13,7 +13,6 @@ This document lists **mandatory** quality steps and the current status. Use it t
 | frontend        | lint, format:check, typecheck, build, test | build, test only                 | **CI:** Add lint + typecheck to frontend workflow. |
 | go-app          | vet, fmt-check, lint, coverage     | vet, fmt-check (lint workflow), tests + coverage-check (30%) | **Local:** Add `coverage-check` to go-app-check. **CI:** Align COV_MIN (see below). |
 | ml-service      | lint-check, fmt-check, coverage, coverage-check | coverage-check (80%)             | OK. |
-| context-provider| vet, fmt-check, lint, coverage, coverage-check | coverage-check (75%)             | OK. |
 
 **Done in this repo:** go-app-check now includes `coverage-check`. Frontend workflow now runs lint and typecheck. go-app CI COV_MIN documented below.
 
@@ -27,7 +26,6 @@ This document lists **mandatory** quality steps and the current status. Use it t
 |-----------------|--------------------|------------------|----------------|
 | go-app          | COV_MIN_GO=80      | COV_MIN=30 in workflow | Use one value everywhere. If 80% is not feasible yet, set COV_MIN in the workflow explicitly (e.g. 50) and document in this file. |
 | ml-service      | 80%                | 80%              | OK. |
-| context-provider| 75%                | 75%              | OK. |
 
 **Action:** go-app workflow currently uses COV_MIN=30 so CI stays green (total coverage is ~33%). Raise COV_MIN in `.github/workflows/go-app-tests.yml` as coverage improves; Makefile default is 80 for `make ci-go` and `make check-all`.
 
@@ -62,7 +60,6 @@ This document lists **mandatory** quality steps and the current status. Use it t
   - Go App Tests
   - ML Service Tests
   - Frontend Tests
-  - Context-provider (if applicable)
 - Optional: Require “check-all” or a single aggregated workflow if you add one.
 
 ---

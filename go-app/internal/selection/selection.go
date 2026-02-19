@@ -1,4 +1,4 @@
-// Package selection provides an end-to-end team selection pipeline analogous to src/team_selection/select_pool.py
+// Package selection provides an end-to-end team selection pipeline (replacing the legacy Python prototype).
 package selection
 
 import (

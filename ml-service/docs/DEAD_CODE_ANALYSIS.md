@@ -12,7 +12,7 @@ Summary of dead or outdated code identified in the ml-service codebase that can 
 
 **Reason:** `export_pool.py` is **unrunnable** in the current tree:
 
-- It uses script-relative imports (`from batting_regressor import ...`, `from match_data import ...`) that assume either running from `ml/` with `ml` on `PYTHONPATH`, or a top-level `match_data` module. There is **no `match_data` module** in ml-service; the only `match_data` lives in `src/team_selection/shared/match_data.py` (the prototype).
+- It uses script-relative imports (`from batting_regressor import ...`, `from match_data import ...`) that assume either running from `ml/` with `ml` on `PYTHONPATH`, or a top-level `match_data` module. There is **no `match_data` module** in ml-service; the only `match_data` lived in the removed `src/team_selection/shared/match_data.py` (legacy prototype).
 - The Makefile runs `$(PY) ml/export_pool.py $(MATCH)` from the ml-service root, so imports resolve from the project root and fail (e.g. `ModuleNotFoundError: No module named 'batting_regressor'` or, if that were fixed, `No module named 'match_data'`).
 - `fill_missing_attributes.py` is **only** used by `export_pool.py` within ml-service; no other ml-service code or tests reference it.
 

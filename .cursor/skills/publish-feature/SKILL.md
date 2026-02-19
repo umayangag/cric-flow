@@ -22,7 +22,7 @@ When the user says **/publish-feature**, run the following workflow. First resol
 
 ### 1. Run checks
 
-Apply **run-check-all-incremental** (frontend → go-app → ml-service → context-provider) until all pass. Do not proceed until all pass. In the main cycle, run it again only **before push and only if there are uncommitted changes** when fixing threads.
+Apply **run-check-all-incremental** (frontend → go-app → ml-service) until all pass. Do not proceed until all pass. In the main cycle, run it again only **before push and only if there are uncommitted changes** when fixing threads.
 
 ### 2. Ensure PR exists (do not comment yet)
 

@@ -1,6 +1,6 @@
 # ML Service (Python)
 
-Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. Precomputation of features is now owned by the Go app; this service no longer exposes a /precompute endpoint. The original `src/` prototype remains for reference.
+Standalone FastAPI microservice that serves predictions and utilities around the ML artifacts. Precomputation of features is now owned by the Go app; this service no longer exposes a /precompute endpoint.
 
 Components:
 - `app/main.py`: FastAPI app exposing health and prediction endpoints for batting and bowling.

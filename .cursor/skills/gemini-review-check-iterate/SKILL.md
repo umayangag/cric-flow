@@ -17,7 +17,7 @@ Run a full quality cycle: Gemini code review → fix and pass all local checks �
    ```
    If `gemini` is not on PATH or the command fails, report and skip to manual review.
 
-2. **Apply run-check-all-incremental**: Run lint, format, and tests per component (frontend → go-app → ml-service → context-provider). Fix any failures and re-run only the failed step until all pass. Do not run full `make check-all` in a loop.
+2. **Apply run-check-all-incremental**: Run lint, format, and tests per component (frontend → go-app → ml-service). Fix any failures and re-run only the failed step until all pass. Do not run full `make check-all` in a loop.
 
 3. **Re-run Gemini review**: Run the same `gemini "/code-review" ...` command again. Read `local-review.md` and parse for **high** or **medium** severity issues (or equivalent wording in the review).
 

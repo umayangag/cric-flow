@@ -2,7 +2,6 @@
 .idea/
 __pycache__
 venv
-src/team_selection/cache
 .junie_plans/
 .junie/plans
 .junie/context_index.json
@@ -16,8 +15,6 @@ go-app/export-dataset
 ml-service/.venv
 ml-service/.coverage
 ml-service/coverage.xml
-
-context-provider/context-provider
 
 data
 output

@@ -71,10 +71,9 @@
 - at the completion of a plan, make sure all unit tests and linters pass.
 
 ## Project-Specific
-- `src/` is prototype reference; do not modify.
 - Project not live; prefer clarity/maintainability over legacy.
 - No need of backward compatibility or support for legacy features.
-- Restructure when it streamlines (outside `src/`).
+- Restructure when it streamlines.
 - Ensure code is tested and documented (Makefile, README).
 - All python code is in ml-service/
 - All go code is in go-app/

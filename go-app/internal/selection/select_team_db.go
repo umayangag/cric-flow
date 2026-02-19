@@ -1,4 +1,4 @@
-// Package selection contains DB-backed team selection mirroring src/team_selection/select_pool.py
+// Package selection contains DB-backed team selection (replacing the legacy Python prototype).
 package selection
 
 import (

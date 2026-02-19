@@ -10,7 +10,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check context-provider-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -387,7 +387,7 @@ frontend-stop:
 # --- Unified Quality Checks ---
 
 # Run all quality checks for all components
-check-all: frontend-check go-app-check ml-service-check context-provider-check
+check-all: frontend-check go-app-check ml-service-check
 	@echo "All quality checks passed!"
 
 frontend-check: frontend-install
@@ -405,20 +405,15 @@ ml-service-check:
 	# Assumes venv is initialized
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service lint-check fmt-check coverage coverage-check
 
-context-provider-check:
-	@echo "[context-provider] Running lint, fmt check, tests and coverage..."
-	$(MAKE) -C context-provider vet fmt-check lint coverage coverage-check
-
 # --- Formatting & hooks ---
 
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
 # Aggregate formatters for all components
-fmt: fmt-go fmt-py fmt-context
+fmt: fmt-go fmt-py
 
 fmt-check:
 	$(MAKE) -C go-app fmt-check
-	$(MAKE) -C context-provider fmt-check
 	# Assume ml-service venv is already prepared; avoid implicit bootstrapping for speed
 	PATH="$(ML_VENV_BIN):$$PATH" $(MAKE) -C ml-service fmt-check
 
@@ -426,14 +421,8 @@ fmt-go:
 	# Fast path: require tools to be installed; run formatting only
 	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C go-app fmt
 
-fmt-context:
-	PATH="$(shell go env GOPATH)/bin:$$PATH" $(MAKE) -C context-provider fmt
-
 lint-go:
 	cd go-app && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
-
-lint-context:
-	cd context-provider && go vet ./... && PATH="$(shell go env GOPATH)/bin:$$PATH" make lint
 
 fmt-py:
 	# Fast path: require venv to be prepared; run formatting only
@@ -452,7 +441,7 @@ install-hooks:
 
 # --- Local environment bootstrap ---
 # Initialize all components for local development
-init: init-go init-py init-context install-hooks
+init: init-go init-py install-hooks
 	@echo "\nLocal dev environment initialized. Next steps:"
 	@echo "- For Python, activate venv: 'cd ml-service && source .venv/bin/activate'"
 	@echo "- Run format checks: 'make fmt-check'"
@@ -461,9 +450,6 @@ init: init-go init-py init-context install-hooks
 # Initialize Go tooling and modules
 init-go:
 	$(MAKE) -C go-app init
-
-init-context:
-	$(MAKE) -C context-provider init
 
 # Initialize Python venv and dev tools
 init-py:
@@ -497,10 +483,9 @@ mock:
 test:
 	cd go-app && make test
 	cd ml-service && make test
-	cd context-provider && make test
 
 # Aggregate lint target
-lint: lint-go lint-py lint-context
+lint: lint-go lint-py
 
 # Rebuild app images (API, ML) and restart only those services (keeps Postgres running)
 dev-rebuild:
@@ -516,7 +501,6 @@ dev-rebuild-nocache:
 # --- CI aggregate helpers ---
 COV_MIN_GO ?= 80
 COV_MIN_ML ?= 80
-COV_MIN_CONTEXT ?= 75
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
@@ -531,15 +515,8 @@ ci-go:
 	$(MAKE) -C go-app coverage
 	COV_MIN=$(COV_MIN_GO) $(MAKE) -C go-app coverage-check
 
-# Run context-provider CI
-ci-context:
-	$(MAKE) -C context-provider vet
-	$(MAKE) -C context-provider fmt-check
-	$(MAKE) -C context-provider coverage
-	COV_MIN=$(COV_MIN_CONTEXT) $(MAKE) -C context-provider coverage-check
-
 # Run all components' CI
-ci: ci-go ci-ml ci-context
+ci: ci-go ci-ml
 
 
 # --- Help & navigation ---
@@ -620,16 +597,3 @@ help-all:
 
 list:
 	@awk '/^\.PHONY:/{for(i=2;i<=NF;i++)print $$i}' $(MAKEFILE_LIST) | sort -u
-
-# Context MCP Server
-.PHONY: context-build context-serve context-clean
-
-context-build:
-	cd context-provider && go build -o context-provider main.go
-
-context-serve: context-build
-	./context-provider/context-provider
-
-context-clean:
-	rm -f context-provider/context-provider
-	rm -f .junie/context_index.json
