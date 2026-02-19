@@ -126,8 +126,8 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	// Even if precompute is recent, if data is missing, we must re-run.
 	if !seqPopulated {
 		return []Suggestion{{
-			Title:       "Fix Missing Sequence Features",
-			Description: "Sequence feature tables are empty. Run from project root to compute form, consistency, and sequence features for all formats.",
+			Title:       "Fix Missing Features",
+			Description: "Feature tables (form, consistency, sequence) are empty or incomplete. Run from project root to compute all features for all formats.",
 			Command:     "make precompute-all-all-formats",
 			Priority:    "HIGH",
 		}}
@@ -136,8 +136,8 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	// Rule 1: Import -> Precompute
 	if lastPrecompute == nil || lastPrecompute.StartedAt.Before(lastImport.StartedAt) {
 		return []Suggestion{{
-			Title:       "Run Precompute",
-			Description: "New data imported. Run from project root to compute form, consistency, and sequence features for all formats (TEST, ODI, T20, T20I).",
+			Title:       "Run Full Precompute",
+			Description: "New data imported. Run from project root to compute all features (form, consistency, sequence) for all formats (TEST, ODI, T20, T20I).",
 			Command:     "make precompute-all-all-formats",
 			Priority:    "HIGH",
 		}}

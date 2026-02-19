@@ -45,7 +45,8 @@ func GetLatestMLTunedParams(ctx context.Context, model, format string) (*MLTuned
 	return &MLTunedParamsRow{Params: params, CreatedAt: createdAt}, nil
 }
 
-// MLTunedParamsEntry is one (model, format) entry with its latest created_at.
+// MLTunedParamsEntry holds one row from ml_tuned_params (model, format, created_at).
+// ListLatestMLTunedParams returns the latest such row per (model, format).
 type MLTunedParamsEntry struct {
 	Model     string
 	Format    string
