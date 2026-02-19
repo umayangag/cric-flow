@@ -10,7 +10,7 @@ FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
-.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-rebuild dev-rebuild-nocache logs api migrate output-dirs export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
+.PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache logs api migrate output-dirs export-dataset export-off export-on precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats go-test go-test-int ml-serve team-predictor ml-install train-batting train-bowling train-fielding train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop check-all frontend-check go-app-check ml-service-check
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -37,12 +37,15 @@ dev-down:
 	$(DC) down
 	@$(MAKE) frontend-stop --no-print-directory
 
-# Remove containers, named volumes (e.g. pgdata), and the output/ directory (trained models + exports).
+# Remove containers and named volumes (e.g. pgdata). output/ is retained; use dev-purge to remove it.
 dev-destroy:
 	$(DC) down -v
 	@$(MAKE) frontend-stop --no-print-directory
+
+# Remove output/ (trained models and exports). Use when you want a full reset.
+dev-purge: dev-down
 	@rm -rf output
-	@echo "[dev-destroy] Removed output/ (trained models and exports)."
+	@echo "[dev-purge] Removed output/ (trained models and exports)."
 
 logs:
 	$(DC) logs -f --tail=200

@@ -935,7 +935,7 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
     if extra_args:
         cmd.extend(extra_args)
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
-    timeout_sec = 3600
+    timeout_sec = int(os.environ.get("TRAINING_SUBPROCESS_TIMEOUT_SEC", "3600"))
     try:
         proc = subprocess.run(
             cmd,

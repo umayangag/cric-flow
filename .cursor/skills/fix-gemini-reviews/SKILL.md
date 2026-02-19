@@ -45,7 +45,7 @@ while true; do
     RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select((.isResolved==false) and (.comments.nodes[0].author.login=="gemini-code-assist"))
+        | select((.isResolved==false) and (.comments.nodes[0]?.author.login=="gemini-code-assist"))
         | .id' >> "$UNRESOLVED_IDS"
   HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$HAS_NEXT" != "true" ] && break
@@ -73,6 +73,8 @@ fi
 ```
 
 Sanity check: `jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | wc -l`
+
+**When GraphQL is rate-limited:** Use the REST API to fetch comments and implement fixes; resolving threads still requires GraphQL (run again after reset). Get owner/repo from `git remote get-url origin` (parse github.com/owner/repo). PR number: `gh api "/repos/${OWNER}/${REPO}/pulls?state=open&head=${OWNER}:${BRANCH}" -q '.[0].number'`. List comments: `gh api "/repos/${OWNER}/${REPO}/pulls/${PR}/comments?per_page=100" --paginate`. Filter: `jq -c '.[] | select(.user.login=="gemini-code-assist") | {path, line, body}'`. Use `line` or `original_line` and `path`, `body` to implement fixes. Report rate limit reset time (`gh api /rate_limit` → `resources.graphql.reset`) and that threads can be resolved after GraphQL is back.
 
 ## 2. Implement fixes
 

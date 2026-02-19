@@ -180,10 +180,6 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 }
 
 func (a *App) runTrainBattingHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
-		return
-	}
 	go func() {
 		slog.Info("train-batting started")
 		runErr := pipeline.RunJob(
@@ -205,10 +201,6 @@ func (a *App) runTrainBattingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) runTrainBowlingHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
-		return
-	}
 	go func() {
 		slog.Info("train-bowling started")
 		runErr := pipeline.RunJob(
@@ -229,17 +221,14 @@ func (a *App) runTrainBowlingHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_bowling"})
 }
 
-// defaultFieldingCutoff is used when the frontend does not send a cutoff for fielding training.
-const defaultFieldingCutoff = "2025-01-01T00:00:00Z"
+func defaultCutoff() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
 
 func (a *App) runTrainFieldingHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
-		return
-	}
 	cutoff := r.URL.Query().Get("cutoff")
 	if cutoff == "" {
-		cutoff = defaultFieldingCutoff
+		cutoff = defaultCutoff()
 	}
 	go func() {
 		slog.Info("train-fielding started", slog.String("cutoff", cutoff))
@@ -263,13 +252,9 @@ func (a *App) runTrainFieldingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) runTrainExtrasHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
-		return
-	}
 	cutoff := r.URL.Query().Get("cutoff")
 	if cutoff == "" {
-		cutoff = defaultFieldingCutoff
+		cutoff = defaultCutoff()
 	}
 	go func() {
 		slog.Info("train-extras started", slog.String("cutoff", cutoff))
@@ -293,13 +278,9 @@ func (a *App) runTrainExtrasHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) runTrainWinHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
-		return
-	}
 	cutoff := r.URL.Query().Get("cutoff")
 	if cutoff == "" {
-		cutoff = defaultFieldingCutoff
+		cutoff = defaultCutoff()
 	}
 	go func() {
 		slog.Info("train-win started", slog.String("cutoff", cutoff))
