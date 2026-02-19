@@ -83,7 +83,7 @@ def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in g.columns] + [EXTRAS_TARGET_COL])
-        if g.empty or len(g) < 10:
+        if g.empty or len(g) < MIN_SAMPLES_FOR_LEGACY:
             continue
         X = g[[c for c in EXTRAS_FEATURE_COLS if c in g.columns]].astype(float).values
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)

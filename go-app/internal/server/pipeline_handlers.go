@@ -15,6 +15,7 @@ import (
 	expcmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
@@ -34,7 +35,14 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce order: only allow run if previous step completed (and no other step is running).
 	switch step {
-	case "import", "precompute", "export", "train_batting", "train_bowling", "train_fielding", "train_extras", "train_win":
+	case "import",
+		"precompute",
+		"export",
+		"train_batting",
+		"train_bowling",
+		"train_fielding",
+		"train_extras",
+		"train_win":
 		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
@@ -114,7 +122,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 		Unified: true,
 	}
 	if cfg != nil && cfg.Export.SplitByFormat {
-		opts.Formats = []string{"TEST", "ODI", "T20", "T20I"}
+		opts.Formats = formatsPkg.CanonicalCodes()
 	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
