@@ -26,11 +26,13 @@ func ExtrasTrainingRowsWithFormat(ctx context.Context, format string, cutoff tim
 
 func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
 	q := `SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0), COALESCE(m.season_id, 0),
-		SUM(mi.extras)::int AS total_extras
+		SUM(mi.extras)::int AS total_extras,
+		COALESCE(mf.code, '') AS format_code
 		FROM match m
 		JOIN match_inning mi ON mi.match_id = m.match_id
+		LEFT JOIN match_format mf ON m.format_id = mf.id
 		WHERE m.match_date < $1
-		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id`
+		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, mf.code`
 	args := []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(
@@ -46,13 +48,14 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{"match_id", "format_id", "venue_id", "season_id", "total_extras"}
+	headers := []string{"match_id", "format_id", "venue_id", "season_id", "total_extras", "format_code"}
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {
 		var matchID, formatID, venueID, seasonID int64
 		var totalExtras int
-		if err := rows.Scan(&matchID, &formatID, &venueID, &seasonID, &totalExtras); err != nil {
+		var formatCode string
+		if err := rows.Scan(&matchID, &formatID, &venueID, &seasonID, &totalExtras, &formatCode); err != nil {
 			return nil, err
 		}
 		out = append(out, []string{
@@ -61,6 +64,7 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 			strconv.FormatInt(venueID, 10),
 			strconv.FormatInt(seasonID, 10),
 			strconv.Itoa(totalExtras),
+			formatCode,
 		})
 	}
 	return out, rows.Err()

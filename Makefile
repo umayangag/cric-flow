@@ -152,7 +152,7 @@ train-batting:
 train-bowling:
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling_model
 
-# Train fielding model. Either: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or FIELDING_CSV=<path>.
+# Train fielding/extras/win: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or pass CSV.
 GO_APP_URL ?= http://localhost:8080
 CUTOFF ?=
 train-fielding:
@@ -166,12 +166,34 @@ train-fielding:
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi
 
+train-extras:
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(EXTRAS_CSV)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set EXTRAS_CSV=<path>. Example: make train-extras CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(EXTRAS_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_extras --csv "$(EXTRAS_CSV)"; \
+	else \
+	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_extras --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	fi
+
+train-win:
+	@if [ -z "$(CUTOFF)" ] && [ -z "$(WIN_CSV)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set WIN_CSV=<path>. Example: make train-win CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(WIN_CSV)" ]; then \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_win --csv "$(WIN_CSV)"; \
+	else \
+	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	fi
+
 # Train batting + bowling (from exported CSVs). Use train-fielding for fielding (requires API or FIELDING_CSV).
 train-batting-bowling: train-batting train-bowling
 
-# Train all player-level models (batting, bowling, fielding). For fielding set CUTOFF= and GO_APP_URL= if using API.
+# Train all models (batting, bowling, fielding, extras, win). For fielding/extras/win set CUTOFF= and GO_APP_URL= if using API.
 train-all: train-models
-train-models: train-batting train-bowling train-fielding
+train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
 MODEL ?= batting

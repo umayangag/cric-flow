@@ -1063,3 +1063,95 @@ async def admin_train_fielding(cutoff: str = ""):
                 hint=str(e),
             ),
         ) from e
+
+
+@app.post("/admin/train/extras")
+async def admin_train_extras(cutoff: str = ""):
+    """Run extras model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
+    """
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="extras", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    cutoff = (cutoff or "").strip()
+    if not cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="CUTOFF_REQUIRED",
+                message="Extras training requires cutoff",
+                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
+            ),
+        )
+    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+    logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
+    try:
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_extras",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+        )
+        logger.info("admin.train.success", step="extras")
+        return {"status": "ok", "step": "extras"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Extras training failed",
+                hint=str(e),
+            ),
+        ) from e
+
+
+@app.post("/admin/train/win")
+async def admin_train_win(cutoff: str = ""):
+    """Run win model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
+    """
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="win", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    cutoff = (cutoff or "").strip()
+    if not cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="CUTOFF_REQUIRED",
+                message="Win training requires cutoff",
+                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
+            ),
+        )
+    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+    logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
+    try:
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_win",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+        )
+        logger.info("admin.train.success", step="win")
+        return {"status": "ok", "step": "win"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Win training failed",
+                hint=str(e),
+            ),
+        ) from e

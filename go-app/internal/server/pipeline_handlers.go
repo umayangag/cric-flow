@@ -34,7 +34,13 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce order: only allow run if previous step completed (and no other step is running).
 	switch step {
-	case "import", "precompute", "export", "train_batting", "train_bowling", "train_fielding":
+	case "import", "precompute", "export", "train_batting", "train_bowling", "train_fielding", "train_extras", "train_win":
+		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
+			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
+			return
+		}
+	}
+	if step == "auto_tune" {
 		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
@@ -60,6 +66,12 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	case "train_fielding":
 		a.runTrainFieldingHandler(w, r)
 		return
+	case "train_extras":
+		a.runTrainExtrasHandler(w, r)
+		return
+	case "train_win":
+		a.runTrainWinHandler(w, r)
+		return
 	case "auto_tune":
 		respondJSON(w, http.StatusNotImplemented, map[string]string{
 			"error":   "step must be run from project root",
@@ -82,6 +94,10 @@ func stepToCommand(step string) string {
 		return "make train-bowling"
 	case "train_fielding":
 		return "make train-fielding CUTOFF=2025-01-01T00:00:00Z"
+	case "train_extras":
+		return "make train-extras CUTOFF=2025-01-01T00:00:00Z"
+	case "train_win":
+		return "make train-win CUTOFF=2025-01-01T00:00:00Z"
 	case "auto_tune":
 		return "make ml-auto-tune MODEL=all ALL_FORMATS=1"
 	default:
@@ -244,4 +260,64 @@ func (a *App) runTrainFieldingHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_fielding"})
+}
+
+func (a *App) runTrainExtrasHandler(w http.ResponseWriter, r *http.Request) {
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	cutoff := r.URL.Query().Get("cutoff")
+	if cutoff == "" {
+		cutoff = defaultFieldingCutoff
+	}
+	go func() {
+		slog.Info("train-extras started", slog.String("cutoff", cutoff))
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"train-extras",
+			map[string]any{"step": "train_extras", "cutoff": cutoff},
+			trainStepTimeout,
+			func(ctx context.Context) (any, error) {
+				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+				return nil, callMLTrainEndpoint(ctx, "extras", q)
+			},
+		)
+		if runErr != nil {
+			slog.Error("train-extras failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("train-extras completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_extras"})
+}
+
+func (a *App) runTrainWinHandler(w http.ResponseWriter, r *http.Request) {
+	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+		return
+	}
+	cutoff := r.URL.Query().Get("cutoff")
+	if cutoff == "" {
+		cutoff = defaultFieldingCutoff
+	}
+	go func() {
+		slog.Info("train-win started", slog.String("cutoff", cutoff))
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"train-win",
+			map[string]any{"step": "train_win", "cutoff": cutoff},
+			trainStepTimeout,
+			func(ctx context.Context) (any, error) {
+				q := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+				return nil, callMLTrainEndpoint(ctx, "win", q)
+			},
+		)
+		if runErr != nil {
+			slog.Error("train-win failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("train-win completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "train_win"})
 }

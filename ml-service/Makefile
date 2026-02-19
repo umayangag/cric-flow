@@ -42,7 +42,14 @@ train-bowling:
 train-fielding:
 	$(PY) -m ml.train_fielding
 
-train-models: train-batting train-bowling train-fielding
+# Extras and win: same as fielding (GO_APP_URL + CUTOFF or --csv from root).
+train-extras:
+	$(PY) -m ml.train_extras
+
+train-win:
+	$(PY) -m ml.train_win
+
+train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune model(s): find best algorithm and hyperparameters (see docs/ML_AUTO_TUNE.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1

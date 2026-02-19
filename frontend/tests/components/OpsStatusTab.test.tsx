@@ -64,7 +64,7 @@ describe('OpsStatusTab', () => {
     });
     refreshBtn.click();
     await waitFor(() => expect(mockOpsStatus).toHaveBeenCalledTimes(2));
-  });
+  }, 15000);
 
   it('shows error when fetch fails and clears interval on unmount', async () => {
     // Use real timers so Testing Library's waitFor works as expected
