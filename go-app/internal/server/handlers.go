@@ -27,6 +27,9 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// mlHealthClient is shared for ML health proxy to allow connection reuse.
+var mlHealthClient = &http.Client{Timeout: 10 * time.Second}
+
 // mlHealthProxyHandler proxies GET to the ML service /health so the frontend can get full health (loaded formats, artifacts) via the Go API.
 func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 	base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
@@ -42,8 +45,7 @@ func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 		return
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := mlHealthClient.Do(req)
 	if err != nil {
 		slog.Warn("ml health proxy: request failed", slog.Any("err", err))
 		respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
@@ -51,8 +53,10 @@ func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1048576)) // Limit to 1MB to avoid DoS
 		slog.Warn("ml health proxy: upstream non-2xx", slog.Int("status", resp.StatusCode), slog.String("body", string(body)))
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(body)
 		return

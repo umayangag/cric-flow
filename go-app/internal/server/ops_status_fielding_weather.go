@@ -5,6 +5,7 @@ import (
 )
 
 // buildFieldingSection reports availability and row counts for fielding data per format and overall.
+// Uses a single grouped query when available to avoid N queries per format.
 func buildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
 	out := map[string]any{"available": false, "formats": map[string]any{}, "overall": map[string]any{"rows": int64(0)}}
 	if probe == nil {
@@ -13,14 +14,17 @@ func buildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
 	formats := getCricketFormats()
 	fm := map[string]any{}
 	var total int64
-	for _, f := range formats {
-		n, err := probe.CountFieldingByFormat(ctx, f)
-		if err != nil {
+	counts, err := probe.CountFieldingByFormatGrouped(ctx)
+	if err != nil {
+		for _, f := range formats {
 			fm[f] = map[string]any{"rows": int64(0)}
-			continue
 		}
-		fm[f] = map[string]any{"rows": n}
-		total += n
+	} else {
+		for _, f := range formats {
+			n := counts[f]
+			fm[f] = map[string]any{"rows": n}
+			total += n
+		}
 	}
 	out["formats"] = fm
 	out["overall"] = map[string]any{"rows": total}

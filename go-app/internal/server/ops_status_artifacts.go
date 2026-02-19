@@ -112,16 +112,17 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		}
 	}
 	section["formats"] = fm
-	// Unified (legacy) artifacts: batting.joblib / bowling.joblib without format suffix
+	// Unified (legacy) artifacts: batting.joblib / bowling.joblib without format suffix (read dir once)
 	if unif, ok := section["unified"].(map[string]any); ok {
-		if p, mod, ok := findLegacyArtifact(fsRoot, true); ok {
+		entries, _ := os.ReadDir(fsRoot)
+		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, true); ok {
 			b := unif["batting"].(map[string]any)
 			b["exists"] = true
 			b["path"] = p
 			b["modified"] = mod.UTC().Format(time.RFC3339)
 			unif["batting"] = b
 		}
-		if p, mod, ok := findLegacyArtifact(fsRoot, false); ok {
+		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, false); ok {
 			b := unif["bowling"].(map[string]any)
 			b["exists"] = true
 			b["path"] = p
@@ -230,6 +231,11 @@ func findLegacyArtifact(root string, batting bool) (path string, mod time.Time, 
 	if err != nil {
 		return "", time.Time{}, false
 	}
+	return findLegacyArtifactFromEntries(entries, root, batting)
+}
+
+// findLegacyArtifactFromEntries finds legacy artifact from pre-read dir entries to avoid redundant ReadDir.
+func findLegacyArtifactFromEntries(entries []os.DirEntry, root string, batting bool) (path string, mod time.Time, ok bool) {
 	want := "batting.joblib"
 	if !batting {
 		want = "bowling.joblib"

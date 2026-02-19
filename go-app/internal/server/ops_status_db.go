@@ -19,6 +19,8 @@ type DBProbe interface {
 	Count(ctx context.Context, table string) (int64, error)
 	// CountFieldingByFormat returns the number of fielding_data rows for the given format (match join).
 	CountFieldingByFormat(ctx context.Context, format string) (int64, error)
+	// CountFieldingByFormatGrouped returns row counts per format in one query (avoids N queries in a loop).
+	CountFieldingByFormatGrouped(ctx context.Context) (map[string]int64, error)
 	// MigrationInfo returns (currentApplied, expectedTotal, status)
 	// status: "ok" | "unknown" | "out_of_date"
 	MigrationInfo(ctx context.Context) (int, int, string, error)
@@ -80,23 +82,40 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 }
 
 func (productionDBProbe) CountFieldingByFormat(ctx context.Context, format string) (int64, error) {
-	if db.Pool == nil {
-		return 0, errors.New("db pool not initialized")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	var n int64
-	err := db.Pool.QueryRow(ctx, `
-        SELECT COUNT(*)
-        FROM fielding_data fd
-        JOIN match m ON m.match_id = fd.match_id
-        JOIN match_format mf ON mf.id = m.format_id
-        WHERE mf.code = $1
-    `, format).Scan(&n)
+	m, err := (productionDBProbe{}).CountFieldingByFormatGrouped(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return n, nil
+	return m[format], nil
+}
+
+func (productionDBProbe) CountFieldingByFormatGrouped(ctx context.Context) (map[string]int64, error) {
+	if db.Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := db.Pool.Query(ctx, `
+        SELECT mf.code, COUNT(*)
+        FROM fielding_data fd
+        JOIN match m ON m.match_id = fd.match_id
+        JOIN match_format mf ON mf.id = m.format_id
+        GROUP BY mf.code
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int64)
+	for rows.Next() {
+		var code string
+		var n int64
+		if err := rows.Scan(&code, &n); err != nil {
+			return nil, err
+		}
+		out[code] = n
+	}
+	return out, rows.Err()
 }
 
 func (productionDBProbe) MigrationInfo(ctx context.Context) (int, int, string, error) {

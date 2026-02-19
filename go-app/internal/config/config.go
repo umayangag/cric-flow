@@ -83,11 +83,12 @@ type Config struct {
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {
-		PrecomputeConcurrency int `json:"precompute_concurrency"` // 0 = auto
-		ImportConcurrency     int `json:"import_concurrency"`     // 0 = auto (cricsheet)
-		SeqCalcConcurrency    int `json:"seqcalc_concurrency"`    // 0 = auto
-		ExportConcurrency     int `json:"export_concurrency"`     // 0 = auto
-		FieldingConcurrency   int `json:"fielding_concurrency"`   // 0 = auto
+		PrecomputeConcurrency      int `json:"precompute_concurrency"`         // 0 = auto
+		ImportConcurrency          int `json:"import_concurrency"`             // 0 = auto (cricsheet)
+		SeqCalcConcurrency         int `json:"seqcalc_concurrency"`            // 0 = auto
+		ExportConcurrency          int `json:"export_concurrency"`             // 0 = auto
+		FieldingConcurrency        int `json:"fielding_concurrency"`           // 0 = auto
+		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180 (rough ETA per format in pipeline progress SSE)
 	} `json:"pipeline"`
 }
 

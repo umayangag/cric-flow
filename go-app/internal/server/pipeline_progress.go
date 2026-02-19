@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -122,9 +123,13 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 				CurrentIndex:  idx,
 				FormatsTotal:  len(pc.Formats),
 			}
-			// Rough ETA: assume ~3 min per format remaining (optional)
+			// Rough ETA: seconds per format from config (default 180)
+			secPerFormat := 180
+			if cfg := config.Load(); cfg != nil && cfg.Pipeline.PrecomputeETASecondsPerFmt > 0 {
+				secPerFormat = cfg.Pipeline.PrecomputeETASecondsPerFmt
+			}
 			if idx >= 0 && len(pc.Formats) > 0 {
-				remaining := (len(pc.Formats) - idx - 1) * 180 // 3 min per format
+				remaining := (len(pc.Formats) - idx - 1) * secPerFormat
 				if remaining > 0 {
 					payload.EstimatedSec = ptrInt64(int64(remaining))
 				}
