@@ -117,11 +117,19 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				f := f
 				g.Go(func() error {
 					bat := fmt.Sprintf("batting_encoded_%s.csv", f)
-					return r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						bat,
+						func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) },
+					)
 				})
 				g.Go(func() error {
 					bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
-					return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) })
+					return r.writeUsing(
+						opts.OutDir,
+						bow,
+						func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) },
+					)
 				})
 			}
 			if err := g.Wait(); err != nil {

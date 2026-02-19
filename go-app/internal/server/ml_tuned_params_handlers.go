@@ -76,7 +76,11 @@ func (a *App) mlTunedParamsGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if row == nil {
-		writeJSON(w, http.StatusNotFound, apiError{Code: "NOT_FOUND", Message: "no tuned params for this model and format"})
+		writeJSON(
+			w,
+			http.StatusNotFound,
+			apiError{Code: "NOT_FOUND", Message: "no tuned params for this model and format"},
+		)
 		return
 	}
 	// Include model and format so the response is self-describing (which model/format the params belong to).

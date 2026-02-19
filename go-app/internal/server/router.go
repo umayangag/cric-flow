@@ -80,7 +80,8 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 
 	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)
-	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsGetHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsPostHandler).Methods(http.MethodPost, http.MethodOptions)
 
