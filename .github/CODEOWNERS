@@ -1,4 +1,4 @@
-# Code owners for main code directories (optional: require review for changes)
+# Optional: require review for changes in these directories
 go-app/**     @umayangag
 ml-service/** @umayangag
 frontend/**   @umayangag

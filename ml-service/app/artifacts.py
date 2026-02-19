@@ -71,6 +71,7 @@ def _load_legacy(models_dir: str) -> None:
 
 
 def _load_per_format(models_dir: str) -> None:
+    """Load per-format joblib artifacts. Same security note as _load_legacy: restrict models_dir and trust."""
     try:
         entries = os.listdir(models_dir)
     except OSError as e:
