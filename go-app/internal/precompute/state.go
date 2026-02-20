@@ -9,14 +9,15 @@ import (
 // Status represents the current/last known state of a precompute run.
 // It is intentionally simple and in-memory; resets on process restart.
 type Status struct {
-	Running       bool      `json:"running"`
-	StartedAt     time.Time `json:"started_at,omitempty"`
-	FinishedAt    time.Time `json:"finished_at,omitempty"`
-	Season        string    `json:"season,omitempty"`
-	Formats       []string  `json:"formats,omitempty"`
-	CurrentFormat string    `json:"current_format,omitempty"` // format currently being processed (when running)
-	Phase         string    `json:"phase,omitempty"`          // one of: form, venue, opposition, consistency, starting, done
-	LastError     string    `json:"last_error,omitempty"`
+	Running         bool      `json:"running"`
+	StartedAt       time.Time `json:"started_at,omitempty"`
+	FinishedAt      time.Time `json:"finished_at,omitempty"`
+	Season          string    `json:"season,omitempty"`
+	Formats         []string  `json:"formats,omitempty"`
+	CurrentFormat   string    `json:"current_format,omitempty"`   // format currently being processed (when running)
+	FormatStartedAt time.Time `json:"format_started_at,omitempty"` // when current format started (for ETA)
+	Phase           string    `json:"phase,omitempty"`            // one of: form, venue, opposition, consistency, starting, done
+	LastError       string    `json:"last_error,omitempty"`
 }
 
 var (
@@ -57,6 +58,7 @@ func setCurrentFormat(code string) {
 	mu.Lock()
 	defer mu.Unlock()
 	currentStat.CurrentFormat = code
+	currentStat.FormatStartedAt = time.Now().UTC()
 }
 
 func setDone() {
@@ -66,6 +68,7 @@ func setDone() {
 	currentStat.FinishedAt = time.Now().UTC()
 	currentStat.Phase = "done"
 	currentStat.CurrentFormat = ""
+	currentStat.FormatStartedAt = time.Time{}
 }
 
 // setLastError records the error message in status (e.g. when Run fails). Call before setDone.

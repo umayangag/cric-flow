@@ -94,7 +94,7 @@ type Config struct {
 		SeqCalcConcurrency         int `json:"seqcalc_concurrency"`            // 0 = auto
 		ExportConcurrency          int `json:"export_concurrency"`             // 0 = auto
 		FieldingConcurrency        int `json:"fielding_concurrency"`           // 0 = auto
-		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180 (rough ETA per format in pipeline progress SSE)
+		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180; only used before any format completes; after that ETA uses observed time per format (e.g. set ~2700 for ~45 min per format on slower machines)
 	} `json:"pipeline"`
 }
 

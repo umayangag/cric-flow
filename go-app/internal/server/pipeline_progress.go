@@ -38,6 +38,14 @@ var commandToStepLabel = map[string]string{
 
 const pipelineProgressInterval = 2 * time.Second
 
+// defaultPrecomputeETASecPerFormat returns config precompute_eta_seconds_per_fmt, or 180 if unset (used only before any format completes).
+func defaultPrecomputeETASecPerFormat() int {
+	if cfg := config.Load(); cfg != nil && cfg.Pipeline.PrecomputeETASecondsPerFmt > 0 {
+		return cfg.Pipeline.PrecomputeETASecondsPerFmt
+	}
+	return 180
+}
+
 // pipelineProgressPayload is the JSON sent in each SSE "progress" event.
 type pipelineProgressPayload struct {
 	Running      bool                `json:"running"`
@@ -125,15 +133,37 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 				CurrentIndex:  idx,
 				FormatsTotal:  len(pc.Formats),
 			}
-			// Rough ETA: seconds per format from config (default 180)
-			secPerFormat := 180
-			if cfg := config.Load(); cfg != nil && cfg.Pipeline.PrecomputeETASecondsPerFmt > 0 {
-				secPerFormat = cfg.Pipeline.PrecomputeETASecondsPerFmt
+			// ETA: use observed time per format when available; else config default (fallback for first format).
+			secPerFormat := defaultPrecomputeETASecPerFormat()
+			elapsedTotalSec := time.Since(m.StartedAt).Seconds()
+			elapsedCurrentFormatSec := 0.0
+			if !pc.FormatStartedAt.IsZero() {
+				elapsedCurrentFormatSec = time.Since(pc.FormatStartedAt).Seconds()
+			}
+			if idx >= 1 && !pc.FormatStartedAt.IsZero() {
+				elapsedCompletedSec := elapsedTotalSec - elapsedCurrentFormatSec
+				if elapsedCompletedSec > 0 {
+					secPerFormat = int(elapsedCompletedSec / float64(idx))
+					if secPerFormat < 1 {
+						secPerFormat = 1
+					}
+				}
 			}
 			if idx >= 0 && len(pc.Formats) > 0 {
-				remaining := (len(pc.Formats) - idx - 1) * secPerFormat
-				if remaining > 0 {
-					payload.EstimatedSec = ptrInt64(int64(remaining))
+				remainingCurrentSec := 0.0
+				if !pc.FormatStartedAt.IsZero() {
+					r := float64(secPerFormat) - elapsedCurrentFormatSec
+					if r > 0 {
+						remainingCurrentSec = r
+					}
+				}
+				remainingFormats := len(pc.Formats) - idx - 1
+				if remainingFormats < 0 {
+					remainingFormats = 0
+				}
+				totalRemainingSec := int64(remainingCurrentSec + float64(remainingFormats)*float64(secPerFormat))
+				if totalRemainingSec > 0 {
+					payload.EstimatedSec = ptrInt64(totalRemainingSec)
 				}
 			}
 		}
