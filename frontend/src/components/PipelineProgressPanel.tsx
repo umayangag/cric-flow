@@ -1,9 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { api } from '../api';
 import type { PipelineProgressPayload } from '../types';
+
+const MAX_STREAM_RETRIES = 5;
+const RETRY_DELAY_MS = 3000;
 
 function formatElapsed(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -22,6 +25,7 @@ type PipelineProgressPanelProps = {
 
 /**
  * Live pipeline progress via SSE. Shown below the pipeline graph when a step is running.
+ * Auto-retries the stream connection on failure (e.g. proxy timeout) up to MAX_STREAM_RETRIES.
  */
 const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
   pipelineRunning,
@@ -29,42 +33,68 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
 }) => {
   const [payload, setPayload] = useState<PipelineProgressPayload | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const wasRunningRef = useRef(false);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  const doRefresh = useCallback(() => {
+    onRefreshRef.current?.();
+  }, []);
 
   useEffect(() => {
     if (!pipelineRunning) {
       setStreamError(null);
+      setRetryCount(0);
       setPayload((prev) => (prev?.running ? { ...prev, running: false } : prev));
       return;
     }
     setStreamError(null);
     const ac = new AbortController();
     let mounted = true;
-    api
-      .subscribePipelineProgress(ac.signal, (p) => {
-        if (mounted) {
-          setPayload(p);
-          if (wasRunningRef.current && p.running === false) {
-            wasRunningRef.current = false;
-            onRefresh?.();
-          } else if (p.running === true) {
-            wasRunningRef.current = true;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const runStream = () => {
+      api
+        .subscribePipelineProgress(ac.signal, (p) => {
+          if (mounted) {
+            setPayload(p);
+            if (wasRunningRef.current && p.running === false) {
+              wasRunningRef.current = false;
+              doRefresh();
+            } else if (p.running === true) {
+              wasRunningRef.current = true;
+            }
           }
-        }
-      })
-      .then(() => {
-        if (mounted) onRefresh?.();
-      })
-      .catch((e) => {
-        if (mounted && (e as { name?: string }).name !== 'AbortError') {
-          setStreamError(e instanceof Error ? e.message : String(e));
-        }
-      });
+        })
+        .then(() => {
+          if (mounted) doRefresh();
+        })
+        .catch((e) => {
+          if (!mounted || (e as { name?: string }).name === 'AbortError') return;
+          const message = e instanceof Error ? e.message : String(e);
+          const isLastRetry = retryCount >= MAX_STREAM_RETRIES - 1;
+          setStreamError(
+            isLastRetry
+              ? `${message}. Click Refresh to try again.`
+              : 'Connection lost. Reconnecting…'
+          );
+          if (!isLastRetry) {
+            retryTimeout = setTimeout(() => {
+              setRetryCount((c) => c + 1);
+            }, RETRY_DELAY_MS);
+          }
+        });
+    };
+
+    runStream();
+
     return () => {
       mounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
       ac.abort();
     };
-  }, [pipelineRunning, onRefresh]);
+  }, [pipelineRunning, retryCount, doRefresh]);
 
   if (!pipelineRunning && !payload?.running && !streamError) {
     return null;

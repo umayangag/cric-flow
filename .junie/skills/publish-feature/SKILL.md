@@ -67,11 +67,7 @@ Do this **first**, before waiting or fetching. Then proceed to step B.
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
   - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
-  - **After every push:** post `/gemini review` on the PR so Gemini runs again on the new commits:
-
-```bash
-gh pr comment <PR> --body "/gemini review"
-```
+  - Step C ends with the push. The next iteration's step A will post `/gemini review` to trigger review of the new commits; do **not** post it here (that would duplicate the request).
 
 ### D. Loop or exit
 
@@ -94,7 +90,7 @@ gh pr comment <PR> --body "/gemini review"
 |------|--------|
 | A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
 | B | **Wait 15 minutes** (no polling); then **check once** for unresolved Gemini threads (Phase 1 count only). Proceed to C. If no comments by then, C exits and stop. |
-| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR |
+| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push. |
 | D | If cycle < 10 and threads > 0 → go to A; else exit |
 
 **Exit when:** cycle = 10 or unresolved Gemini threads = 0.

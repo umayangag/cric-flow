@@ -65,7 +65,7 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service) until a
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
   - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
-  - **After every push:** post `/gemini review` on the PR (e.g. `gh pr comment <PR> --body "/gemini review"`) so Gemini runs again on the new commits.
+  - Step C ends with the push. The next iteration's step A will post `/gemini review` to trigger review of the new commits; do **not** post it here (that would duplicate the request).
 
 ### D. Loop or exit
 
