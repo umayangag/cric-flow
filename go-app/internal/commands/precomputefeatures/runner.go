@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
@@ -22,8 +23,10 @@ type Runner struct{}
 
 func NewRunner() Runner { return Runner{} }
 
-// replayMatchPageSize is the number of matches to load per chunk to limit memory (avoids holding all matches in RAM).
-const replayMatchPageSize = 500
+// replayMatchPageSize returns the number of matches to load per chunk (from config or default).
+func replayMatchPageSize() int {
+	return config.PipelineReplayMatchPageSize(config.Load())
+}
 
 // RunReplay iterates through matches chronologically and writes snapshots as of each match date.
 // Matches are fetched in chunks to avoid OOM when a format has many matches.
@@ -36,10 +39,11 @@ func (Runner) RunReplay(
 	windowN int,
 ) error {
 	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
+	pageSize := replayMatchPageSize()
 	slog.Info("precompute-features(replay)",
 		slog.String("format", formatCode),
 		slog.Int("concurrency", precomputeLimit),
-		slog.Int("match_page_size", replayMatchPageSize),
+		slog.Int("match_page_size", pageSize),
 	)
 	resources.LogMemoryAndGoroutines("precompute-features(replay): memory and goroutines at start", slog.String("format", formatCode))
 	// Optional history window from config is provided by caller via windowN.
@@ -47,7 +51,7 @@ func (Runner) RunReplay(
 	totalMatches := int64(0)
 	var after *db.MatchLite
 	for {
-		matches, err := db.ListMatchesByFormatDatePage(ctx, formatID, nil, nil, replayMatchPageSize, after)
+		matches, err := db.ListMatchesByFormatDatePage(ctx, formatID, nil, nil, pageSize, after)
 		if err != nil {
 			slog.Error(
 				"precompute-features(replay): list matches page failed",

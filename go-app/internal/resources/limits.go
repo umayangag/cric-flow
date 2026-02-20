@@ -24,32 +24,7 @@ const (
 	KindFielding   Kind = "fielding"
 )
 
-// Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
-// Used with the detected memory limit (GOMEMLIMIT or cgroup) to cap concurrency so total worker
-// usage stays around memoryUsageFraction of the limit. Precompute: batting/bowling history +
-// opposition/venue variants + form/consistency per player (~450 MB). SeqCalc: one calculator per
-// worker, ball_event scans and in-memory aggregates (~500 MB). Import: one parsed match + DB
-// buffers (~150 MB). Export/Fielding: smaller working sets.
-const (
-	DefaultPrecomputeMBPerWorker = 450
-	DefaultImportMBPerWorker     = 150
-	DefaultExportMBPerWorker     = 100
-	DefaultSeqCalcMBPerWorker    = 500
-	DefaultFieldingMBPerWorker   = 50
-)
-
-// memoryUsageFraction is the share of the detected memory limit (GOMEMLIMIT or cgroup) we allow
-// for pipeline workers; the rest is left for runtime, DB, and spikes. Concurrency = (limit * fraction) / perWorkerMB.
-const memoryUsageFraction = 80 // percent (e.g. 80 => use up to 80% of limit for workers)
-
-// seqcalcLowMemoryLimitBytes: when the detected limit is at or below this, seqcalc concurrency is capped at 1.
-// A single seqcalc worker can still exceed the limit (calculators accumulate ball_event data in memory), but
-// running only one worker avoids multiple heavy calculators competing for the same small budget.
-const seqcalcLowMemoryLimitBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
-
-// defaultPrecomputeConcurrencyWhenNoLimit is used when no memory limit is detected (no GOMEMLIMIT/cgroup)
-// to avoid spawning too many workers and causing OOM (e.g. on bare metal or older k8s).
-const defaultPrecomputeConcurrencyWhenNoLimit = 2
+// Memory per worker and concurrency knobs come from config (see config.Resources*); fallbacks in config/constants.
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
 // Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >
@@ -73,8 +48,9 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
 		// No memory limit detected (no GOMEMLIMIT/cgroup): use conservative default for memory-heavy kinds to avoid OOM.
+		cfg := config.Load()
 		if kind == KindPrecompute {
-			n = defaultPrecomputeConcurrencyWhenNoLimit
+			n = config.ResourcesPrecomputeConcurrencyWhenNoLimit(cfg)
 		} else {
 			n = runtime.NumCPU()
 		}
@@ -143,6 +119,7 @@ func ceiling(kind Kind) int {
 }
 
 func memoryBasedLimit(kind Kind) int {
+	cfg := config.Load()
 	limitBytes := detectMemoryLimitBytes()
 	if limitBytes <= 0 {
 		return 0
@@ -152,14 +129,23 @@ func memoryBasedLimit(kind Kind) int {
 	if perWorkerBytes <= 0 {
 		return 0
 	}
-	// Use up to memoryUsageFraction of limit for workers; rest for runtime, DB, and spikes.
-	usable := (limitBytes * int64(memoryUsageFraction)) / 100
+	frac := config.ResourcesMemoryUsageFractionPercent(cfg)
+	if frac <= 0 {
+		frac = config.DefaultMemoryUsageFractionPercent
+	}
+	// Use up to frac% of limit for workers; rest for runtime, DB, and spikes.
+	usable := (limitBytes * int64(frac)) / 100
 	n := int(usable / perWorkerBytes)
 	if n < 1 {
 		n = 1
 	}
 	// SeqCalc workers run full-format ball_event scans and can each use more than the per-worker estimate.
 	// In low-memory containers, cap at 1 so we don't run multiple such workers.
+	seqCalcLowGiB := config.ResourcesSeqCalcLowMemoryLimitGiB(cfg)
+	if seqCalcLowGiB <= 0 {
+		seqCalcLowGiB = config.DefaultSeqCalcLowMemoryLimitGiB
+	}
+	seqcalcLowMemoryLimitBytes := int64(seqCalcLowGiB) * 1024 * 1024 * 1024
 	if kind == KindSeqCalc && limitBytes <= seqcalcLowMemoryLimitBytes && n > 1 {
 		n = 1
 	}
@@ -172,19 +158,20 @@ func memoryBasedLimit(kind Kind) int {
 }
 
 func defaultMBPerWorker(kind Kind) int {
+	cfg := config.Load()
 	switch kind {
 	case KindPrecompute:
-		return DefaultPrecomputeMBPerWorker
+		return config.ResourcesPrecomputeMBPerWorker(cfg)
 	case KindImport:
-		return DefaultImportMBPerWorker
+		return config.ResourcesImportMBPerWorker(cfg)
 	case KindExport:
-		return DefaultExportMBPerWorker
+		return config.ResourcesExportMBPerWorker(cfg)
 	case KindSeqCalc:
-		return DefaultSeqCalcMBPerWorker
+		return config.ResourcesSeqCalcMBPerWorker(cfg)
 	case KindFielding:
-		return DefaultFieldingMBPerWorker
+		return config.ResourcesFieldingMBPerWorker(cfg)
 	default:
-		return DefaultImportMBPerWorker
+		return config.ResourcesImportMBPerWorker(cfg)
 	}
 }
 

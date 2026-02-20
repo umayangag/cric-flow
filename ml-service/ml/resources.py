@@ -4,6 +4,8 @@ Resource-aware concurrency for ML training and tuning.
 Uses available CPU and optional memory limits to suggest n_jobs so that:
 - With more resources we use more parallelism.
 - With less memory/CPU we use less to avoid OOM and thrashing.
+
+Per-job MB and memory fraction come from config (ml.resources) when present.
 """
 
 import logging
@@ -11,11 +13,18 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Estimated memory per parallel job (MB) for training (RandomForest/GBM trees).
-# Used when a memory limit is detectable (e.g. cgroup in containers).
-_TRAINING_MB_PER_JOB = 400
-_TUNING_MB_PER_JOB = 500  # tuning runs multiple CV fits
-_PREDICTION_MB_PER_JOB = 100
+# Defaults when config ml.resources is missing (documented in config.default.json).
+_DEFAULT_TRAINING_MB_PER_JOB = 400
+_DEFAULT_TUNING_MB_PER_JOB = 500
+_DEFAULT_PREDICTION_MB_PER_JOB = 100
+_DEFAULT_MEMORY_USAGE_FRACTION_PERCENT = 70
+
+
+def _get_resources_config():  # lazy import to avoid circular dependency with config
+    from ml import config as _config
+
+    cfg = _config.get_config()
+    return (cfg.get("ml") or {}).get("resources") or {}
 
 
 def _cpu_count() -> int:
@@ -83,14 +92,26 @@ def suggested_n_jobs(kind: str = "training") -> int:
 
     limit_mb = _memory_limit_mb()
     if limit_mb > 0:
+        res = _get_resources_config()
         if kind == "training":
-            per_job = _TRAINING_MB_PER_JOB
+            per_job = res.get("training_mb_per_job", _DEFAULT_TRAINING_MB_PER_JOB)
         elif kind == "tuning":
-            per_job = _TUNING_MB_PER_JOB
+            per_job = res.get("tuning_mb_per_job", _DEFAULT_TUNING_MB_PER_JOB)
         else:
-            per_job = _PREDICTION_MB_PER_JOB
-        # Use at most 70% of limit for worker processes
-        memory_cap = max(1, (limit_mb * 70 // 100) // per_job)
+            per_job = res.get("prediction_mb_per_job", _DEFAULT_PREDICTION_MB_PER_JOB)
+        frac = res.get("memory_usage_fraction_percent", _DEFAULT_MEMORY_USAGE_FRACTION_PERCENT)
+        if not isinstance(per_job, (int, float)) or per_job < 1:
+            per_job = (
+                _DEFAULT_TRAINING_MB_PER_JOB
+                if kind == "training"
+                else _DEFAULT_TUNING_MB_PER_JOB
+                if kind == "tuning"
+                else _DEFAULT_PREDICTION_MB_PER_JOB
+            )
+        if not isinstance(frac, (int, float)) or frac < 1:
+            frac = _DEFAULT_MEMORY_USAGE_FRACTION_PERCENT
+        # Use at most frac% of limit for worker processes
+        memory_cap = max(1, (limit_mb * int(frac) // 100) // int(per_job))
         cap = min(cap, memory_cap)
         logger.debug(
             "resources: memory-based n_jobs cap kind=%s limit_mb=%s per_job=%s cap=%s",

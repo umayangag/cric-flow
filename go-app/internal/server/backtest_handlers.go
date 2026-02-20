@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
@@ -1053,12 +1054,14 @@ func (a *App) backtestMatchesHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	limit := 50
+	cfg := config.Load()
+	limit := config.BacktestListDefaultLimit(cfg)
 	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			limit = v
-			if limit > 500 {
-				limit = 500
+			maxLimit := config.BacktestListMaxLimit(cfg)
+			if limit > maxLimit {
+				limit = maxLimit
 			}
 		}
 	}
@@ -1101,12 +1104,14 @@ func (a *App) backtestHoldoutDataHandler(w http.ResponseWriter, r *http.Request)
 		)
 		return
 	}
-	limit := 50
+	cfg := config.Load()
+	limit := config.BacktestListDefaultLimit(cfg)
 	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			limit = v
-			if limit > 500 {
-				limit = 500
+			maxLimit := config.BacktestListMaxLimit(cfg)
+			if limit > maxLimit {
+				limit = maxLimit
 			}
 		}
 	}

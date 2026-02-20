@@ -4,15 +4,19 @@ package teamselect
 import (
 	"errors"
 	"sort"
+
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
-// maxPoolSizeForFullEnum is the maximum pool size for which we enumerate all C(n,11) combinations.
+// maxPoolSizeForFullEnum returns the maximum pool size for full enumeration (from config or default).
 // Above this we use greedy selection + hill-climb swaps to avoid combinatorial blow-up.
-const maxPoolSizeForFullEnum = 18
+func maxPoolSizeForFullEnum() int {
+	return config.SelectionMaxPoolSizeForFullEnum(config.Load())
+}
 
 // SelectOptimized chooses a team of c.Size players that maximizes the sum of ScorePlayer(p, w)
 // over the team, subject to c.RequireKeeper (at least one keeper) and c.MinBowlers (at least that many bowlers).
-// For pools of size <= maxPoolSizeForFullEnum, all valid XIs are enumerated; for larger pools,
+// For pools of size <= maxPoolSizeForFullEnum(), all valid XIs are enumerated; for larger pools,
 // greedy selection is used as a starting point and then hill-climb swaps improve the total score.
 // Tie-break: deterministic sort by player names.
 func SelectOptimized(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
@@ -34,7 +38,7 @@ func SelectOptimized(pool []Player, w ScoreWeights, c Constraints) ([]Player, er
 		return nil, errors.New("not enough bowlers to satisfy constraint")
 	}
 
-	if len(pool) <= maxPoolSizeForFullEnum {
+	if len(pool) <= maxPoolSizeForFullEnum() {
 		return selectOptimizedEnum(pool, w, c)
 	}
 	return selectOptimizedHillClimb(pool, w, c)
@@ -60,7 +64,7 @@ func SelectTopK(pool []Player, w ScoreWeights, c Constraints, k int) ([][]Player
 		return nil, errors.New("not enough bowlers to satisfy constraint")
 	}
 
-	if len(pool) <= maxPoolSizeForFullEnum {
+	if len(pool) <= maxPoolSizeForFullEnum() {
 		all := enumerateValidXIs(pool, w, c)
 		if len(all) == 0 {
 			return nil, errors.New("no valid XI satisfying constraints")

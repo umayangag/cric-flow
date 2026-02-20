@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // exportContributionsJobStatusResponse is the JSON shape for export-contributions-status.
@@ -70,11 +72,23 @@ var (
 	exportContributionsCleanupCh  chan struct{}
 )
 
-const (
-	exportContributionsJobCleanupAge   = 24 * time.Hour
-	exportContributionsJobCleanupEvery = 15 * time.Minute
-	exportContributionsJobMaxDuration  = 2 * time.Hour
-)
+func exportContributionsJobCleanupAge() time.Duration {
+	cfg := config.Load()
+	hr := config.BacktestJobCleanupAgeHours(cfg)
+	return time.Duration(hr) * time.Hour
+}
+
+func exportContributionsJobCleanupEvery() time.Duration {
+	cfg := config.Load()
+	mins := config.BacktestJobCleanupIntervalMin(cfg)
+	return time.Duration(mins) * time.Minute
+}
+
+func exportContributionsJobMaxDuration() time.Duration {
+	cfg := config.Load()
+	hr := config.BacktestExportContributionsJobMaxDurationHr(cfg)
+	return time.Duration(hr) * time.Hour
+}
 
 func generateExportContributionsJobID() (string, error) {
 	b := make([]byte, 12)
@@ -91,7 +105,7 @@ func init() {
 }
 
 func exportContributionsCleanupLoop() {
-	ticker := time.NewTicker(exportContributionsJobCleanupEvery)
+	ticker := time.NewTicker(exportContributionsJobCleanupEvery())
 	defer ticker.Stop()
 	for {
 		select {
@@ -104,7 +118,7 @@ func exportContributionsCleanupLoop() {
 }
 
 func exportContributionsCleanup() {
-	cutoff := time.Now().Add(-exportContributionsJobCleanupAge)
+	cutoff := time.Now().Add(-exportContributionsJobCleanupAge())
 	exportContributionsJobStoreMu.Lock()
 	defer exportContributionsJobStoreMu.Unlock()
 	for id, job := range exportContributionsJobStore {
@@ -144,7 +158,7 @@ func startExportContributionsJob(body exportContributionsRequest) (string, error
 			slog.String("job_id", jobID),
 			slog.Int("match_count", len(body.MatchIDs)),
 		)
-		jobCtx, cancel := context.WithTimeout(context.Background(), exportContributionsJobMaxDuration)
+		jobCtx, cancel := context.WithTimeout(context.Background(), exportContributionsJobMaxDuration())
 		defer cancel()
 		path, rows, err := runExportContributionsWork(jobCtx, body)
 		if err != nil {

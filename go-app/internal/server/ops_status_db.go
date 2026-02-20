@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
@@ -40,7 +41,9 @@ func (productionDBProbe) Ping(ctx context.Context) error {
 	if db.Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	return db.Pool.Ping(ctx)
 }
@@ -52,7 +55,9 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 	if db.Pool == nil {
 		return 0, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 
 	var (
@@ -93,7 +98,9 @@ func (productionDBProbe) CountFieldingByFormatGrouped(ctx context.Context) (map[
 	if db.Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	rows, err := db.Pool.Query(ctx, `
         SELECT mf.code, COUNT(*)
@@ -123,7 +130,9 @@ func (productionDBProbe) MigrationInfo(ctx context.Context) (int, int, string, e
 	if db.Pool == nil {
 		return 0, expected, "unknown", errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	var applied int
 	// Try to count rows in schema_migrations; if missing, mark unknown.
@@ -141,7 +150,9 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 	if db.Pool == nil {
 		return time.Time{}, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	// Use match_date for latest available match record date.
 	var ts time.Time
@@ -158,7 +169,9 @@ func (productionDBProbe) TableStats(ctx context.Context) ([]db.TableStat, error)
 	if db.Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeLongTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	return db.GetTableStats(ctx)
 }

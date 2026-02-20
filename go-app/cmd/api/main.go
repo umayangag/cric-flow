@@ -89,20 +89,24 @@ func run() int {
 	// Build router with dependencies
 	r := apipkg.NewRouter(server)
 
-	addr := ":8080"
+	cfg := config.Load()
+	addr := config.ServerListenAddress(cfg)
 	if v := os.Getenv("PORT"); v != "" {
 		addr = ":" + v
 	}
 	slog.Info("API listening", slog.String("address", addr))
 
+	readSec := config.ServerHTTPReadTimeoutSec(cfg)
+	writeSec := config.ServerHTTPWriteTimeoutSec(cfg)
+	idleSec := config.ServerHTTPIdleTimeoutSec(cfg)
 	// Use http.Server to set timeouts (gosec G114)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           r,
-		ReadTimeout:       15 * time.Second,
-		ReadHeaderTimeout: 15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadTimeout:       time.Duration(readSec) * time.Second,
+		ReadHeaderTimeout: time.Duration(readSec) * time.Second,
+		WriteTimeout:      time.Duration(writeSec) * time.Second,
+		IdleTimeout:       time.Duration(idleSec) * time.Second,
 	}
 
 	// Graceful shutdown: on SIGTERM/SIGINT, shut down server and close DB so logs are flushed.

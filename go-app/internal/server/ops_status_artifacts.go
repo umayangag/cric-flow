@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
@@ -30,10 +31,11 @@ func artifactsFallbackRoot() string {
 func buildArtifactsSection(client *http.Client, fsRoot string) (section map[string]any, mlHealth bool) {
 	base := os.Getenv("ML_SERVICE_URL")
 	if strings.TrimSpace(base) == "" {
-		base = "http://localhost:8000"
+		base = config.ServerMLBaseURLFallback(config.Load())
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 3 * time.Second}
+		sec := config.ServerArtifactsTimeoutSec(config.Load())
+		client = &http.Client{Timeout: time.Duration(sec) * time.Second}
 	}
 
 	// default scaffold (formats + unified/legacy for "all formats" model)

@@ -36,14 +36,14 @@ var commandToStepLabel = map[string]string{
 	"train-combination-meta": "Train Combination Meta",
 }
 
-const pipelineProgressInterval = 2 * time.Second
+func pipelineProgressInterval() time.Duration {
+	sec := config.ServerPipelineProgressSec(config.Load())
+	return time.Duration(sec) * time.Second
+}
 
 // defaultPrecomputeETASecPerFormat returns config precompute_eta_seconds_per_fmt, or 180 if unset (used only before any format completes).
 func defaultPrecomputeETASecPerFormat() int {
-	if cfg := config.Load(); cfg != nil && cfg.Pipeline.PrecomputeETASecondsPerFmt > 0 {
-		return cfg.Pipeline.PrecomputeETASecondsPerFmt
-	}
-	return 180
+	return config.PipelinePrecomputeETASecondsPerFmt(config.Load())
 }
 
 // pipelineProgressPayload is the JSON sent in each SSE "progress" event.
@@ -87,7 +87,7 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 		return true
 	}
 
-	ticker := time.NewTicker(pipelineProgressInterval)
+	ticker := time.NewTicker(pipelineProgressInterval())
 	defer ticker.Stop()
 
 	// Send initial event immediately

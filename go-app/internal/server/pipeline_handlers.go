@@ -174,15 +174,17 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
 }
 
-// trainStepTimeout is the max time to wait for ML service train endpoint (training can take many minutes).
-const trainStepTimeout = 30 * time.Minute
+func trainStepTimeout() time.Duration {
+	mins := config.ServerTrainStepTimeoutMin(config.Load())
+	return time.Duration(mins) * time.Minute
+}
 
 func mlServiceBaseURL() string {
 	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
 	if s != "" {
 		return strings.TrimSuffix(s, "/")
 	}
-	return "http://localhost:8000"
+	return config.ServerMLBaseURLFallback(config.Load())
 }
 
 // callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
@@ -193,7 +195,7 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: trainStepTimeout}
+	client := &http.Client{Timeout: trainStepTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -229,7 +231,7 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string, needsCutoff
 				a.JobContext(),
 				command,
 				args,
-				trainStepTimeout,
+				trainStepTimeout(),
 				func(ctx context.Context) (any, error) {
 					return nil, callMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
 				},

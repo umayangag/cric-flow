@@ -283,7 +283,10 @@ func runSimulation(
 
 	samplesPerMatchup := opts.NumSamplesPerMatchup
 	if samplesPerMatchup <= 0 {
-		samplesPerMatchup = 500
+		samplesPerMatchup = config.EffectiveSimulationNumSamplesPerMatchup(config.Load())
+	}
+	if samplesPerMatchup <= 0 {
+		samplesPerMatchup = config.DefaultSimulationNumSamplesPerMatchup
 	}
 	numMatchups := len(topK1) * len(topK2)
 	if opts.MaxMatchups > 0 && opts.MaxMatchups < numMatchups {

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // evalJobStep is one progress step for an evaluation job.
@@ -102,10 +104,23 @@ var (
 	evalJobCleanupCh chan struct{} // closed to stop cleanup goroutine
 )
 
-const (
-	evalJobCleanupAge   = 24 * time.Hour
-	evalJobCleanupEvery = 15 * time.Minute
-)
+func evalJobCleanupAge() time.Duration {
+	cfg := config.Load()
+	hr := config.BacktestJobCleanupAgeHours(cfg)
+	return time.Duration(hr) * time.Hour
+}
+
+func evalJobCleanupEvery() time.Duration {
+	cfg := config.Load()
+	mins := config.BacktestJobCleanupIntervalMin(cfg)
+	return time.Duration(mins) * time.Minute
+}
+
+func evalJobMaxDuration() time.Duration {
+	cfg := config.Load()
+	hr := config.BacktestEvalJobMaxDurationHr(cfg)
+	return time.Duration(hr) * time.Hour
+}
 
 func evalJobMaxConcurrent() int {
 	if v := os.Getenv("EVAL_JOB_MAX_CONCURRENT"); v != "" {
@@ -113,12 +128,15 @@ func evalJobMaxConcurrent() int {
 			return n
 		}
 	}
+	cfg := config.Load()
+	minC := config.BacktestEvalJobConcurrencyMin(cfg)
+	maxC := config.BacktestEvalJobConcurrencyMax(cfg)
 	n := runtime.NumCPU()
-	if n < 2 {
-		return 2
+	if n < minC {
+		return minC
 	}
-	if n > 8 {
-		return 8
+	if n > maxC {
+		return maxC
 	}
 	return n
 }
@@ -131,18 +149,15 @@ func generateEvalJobID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// evalJobMaxDuration is the maximum time an evaluation job may run (e.g. train-on-the-fly can take hours).
-const evalJobMaxDuration = 6 * time.Hour
-
 func init() {
 	evalJobSem = make(chan struct{}, evalJobMaxConcurrent())
 	evalJobCleanupCh = make(chan struct{})
 	go evalJobCleanupLoop()
 }
 
-// evalJobCleanupLoop periodically removes jobs older than evalJobCleanupAge to prevent unbounded memory growth.
+// evalJobCleanupLoop periodically removes jobs older than evalJobCleanupAge() to prevent unbounded memory growth.
 func evalJobCleanupLoop() {
-	ticker := time.NewTicker(evalJobCleanupEvery)
+	ticker := time.NewTicker(evalJobCleanupEvery())
 	defer ticker.Stop()
 	for {
 		select {
@@ -155,7 +170,7 @@ func evalJobCleanupLoop() {
 }
 
 func evalJobCleanup() {
-	cutoff := time.Now().Add(-evalJobCleanupAge)
+	cutoff := time.Now().Add(-evalJobCleanupAge())
 	evalJobStoreMu.Lock()
 	defer evalJobStoreMu.Unlock()
 	for id, job := range evalJobStore {
@@ -210,7 +225,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, u
 		)
 		// Not the request context (cancelled when we return 202). Use a long deadline so the job
 		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
-		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration)
+		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration())
 		defer cancel()
 		progress := func(step, message string) {
 			job.appendStep(step, message)

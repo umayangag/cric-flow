@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
@@ -72,12 +73,12 @@ func parseBacktestAccuracyTrendParams(r *http.Request) (accuracyTrendParams, err
 			out.Limit = v
 		}
 	}
-	// Enforce default limit and max cap
+	cfg := config.Load()
 	if out.Limit <= 0 {
-		out.Limit = 100
+		out.Limit = config.BacktestAccuracyTrendDefaultLimit(cfg)
 	}
-	if out.Limit > 500 {
-		out.Limit = 500
+	if out.Limit > config.BacktestAccuracyTrendMaxLimit(cfg) {
+		out.Limit = config.BacktestAccuracyTrendMaxLimit(cfg)
 	}
 	// Parse dates in YYYY-MM-DD
 	if out.RawStart != "" {

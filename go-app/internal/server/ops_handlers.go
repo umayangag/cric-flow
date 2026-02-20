@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -24,22 +25,23 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Prevent extremely large page values which can cause expensive OFFSET operations
-	if page > 10000 {
-		slog.Warn("pagination page capped", "requested", page, "capped_at", 10000)
-		page = 10000
+	cfg := config.Load()
+	pageCap := config.OpsMigrationsPageCap(cfg)
+	if page > pageCap {
+		slog.Warn("pagination page capped", "requested", page, "capped_at", pageCap)
+		page = pageCap
 	}
 
-	limit := 10
+	limit := config.OpsMigrationsPageDefault(cfg)
 	if limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l
 		}
 	}
-	// Enforce an upper bound to prevent resource exhaustion
-	if limit > 100 {
-		slog.Warn("pagination limit capped", "requested", limit, "capped_at", 100)
-		limit = 100
+	maxLimit := config.OpsMigrationsPageMax(cfg)
+	if limit > maxLimit {
+		slog.Warn("pagination limit capped", "requested", limit, "capped_at", maxLimit)
+		limit = maxLimit
 	}
 
 	offset := (page - 1) * limit
@@ -75,7 +77,7 @@ type Suggestion struct {
 
 func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	migrations, err := tracking.GetRecentMigrations(ctx, 100)
+	migrations, err := tracking.GetRecentMigrations(ctx, config.OpsRecentMigrationsCount(config.Load()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

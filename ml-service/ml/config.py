@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 # Simple JSON config loader for ml-service.
 # Precedence: flag/arg > env > config.json (merged over config.default.json) > config.default.json only.
-# All parameters come from config files; no hardcoded values in code.
+# Defaults when config is missing or invalid are defined below; same values are in config.default.json.
+DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
+DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
+DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 
 _cached: Optional[Dict[str, Any]] = None
 
@@ -72,6 +75,11 @@ def _load() -> Dict[str, Any]:
     return cfg
 
 
+def get_config() -> Dict[str, Any]:
+    """Return the merged config (same as internal _load). Used by resources and other modules."""
+    return _load()
+
+
 def default_go_app_export_dir() -> str:
     """Return go_app_export_dir from config (inputs.go_app_export_dir)."""
     cfg = _load()
@@ -89,11 +97,19 @@ def default_artifacts_dir() -> str:
 def get_training_data_fetch_timeout_sec() -> int:
     """Return timeout in seconds for fetching training data from go-app (inputs.training_data_fetch_timeout_sec)."""
     cfg = _load()
-    val = (cfg.get("inputs") or {}).get("training_data_fetch_timeout_sec", 3600)
+    inputs = cfg.get("inputs") or {}
+    val = inputs.get("training_data_fetch_timeout_sec", DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC)
+    invalid_fallback = inputs.get(
+        "training_data_fetch_timeout_invalid_fallback_sec", DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC
+    )
     try:
         return int(val)
     except (TypeError, ValueError):
-        return 600
+        return (
+            int(invalid_fallback)
+            if isinstance(invalid_fallback, (int, float))
+            else DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC
+        )
 
 
 # Required keys per model under ml.training.<model>; all training scripts use these strictly (no magic defaults).
@@ -101,6 +117,16 @@ TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_c
 
 # Models that have their own training block in config (ml.training.batting, ml.training.bowling, etc.).
 TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win")
+
+
+def _go_app_request_timeout_sec() -> int:
+    """Return timeout in seconds for go-app HTTP requests (inputs.go_app_request_timeout_sec)."""
+    cfg = _load()
+    val = (cfg.get("inputs") or {}).get("go_app_request_timeout_sec", DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC)
+    try:
+        return int(val) if val else DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC
+    except (TypeError, ValueError):
+        return DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC
 
 
 def get_tuned_params_from_go_app(
@@ -113,7 +139,7 @@ def get_tuned_params_from_go_app(
     if api_key:
         req.add_header("X-API-Key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=_go_app_request_timeout_sec()) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -150,7 +176,7 @@ def save_tuned_params_to_go_app(
     if api_key:
         req.add_header("X-API-Key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=_go_app_request_timeout_sec()) as resp:
             if 200 <= resp.status < 300:
                 logger.info("config.save_tuned_params_to_go_app.saved model=%s format=%s", model, format_code)
             return

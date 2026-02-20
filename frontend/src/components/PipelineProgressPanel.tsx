@@ -7,6 +7,8 @@ import type { PipelineProgressPayload } from '../types';
 
 const MAX_STREAM_RETRIES = 5;
 const RETRY_DELAY_MS = 3000;
+/** Keep showing last progress for this long after connection loss before showing error. */
+const STALE_PROGRESS_BUFFER_MS = 15000;
 
 function formatElapsed(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -33,9 +35,11 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
 }) => {
   const [payload, setPayload] = useState<PipelineProgressPayload | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [reconnectingBuffered, setReconnectingBuffered] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const wasRunningRef = useRef(false);
   const onRefreshRef = useRef(onRefresh);
+  const showErrorAfterBufferRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   onRefreshRef.current = onRefresh;
 
   const doRefresh = useCallback(() => {
@@ -45,11 +49,13 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
   useEffect(() => {
     if (!pipelineRunning) {
       setStreamError(null);
+      setReconnectingBuffered(false);
       setRetryCount(0);
       setPayload((prev) => (prev?.running ? { ...prev, running: false } : prev));
       return;
     }
     setStreamError(null);
+    setReconnectingBuffered(false);
     const ac = new AbortController();
     let mounted = true;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -58,6 +64,12 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
       api
         .subscribePipelineProgress(ac.signal, (p) => {
           if (mounted) {
+            if (showErrorAfterBufferRef.current) {
+              clearTimeout(showErrorAfterBufferRef.current);
+              showErrorAfterBufferRef.current = null;
+            }
+            setStreamError(null);
+            setReconnectingBuffered(false);
             setPayload(p);
             if (wasRunningRef.current && p.running === false) {
               wasRunningRef.current = false;
@@ -74,11 +86,20 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           if (!mounted || (e as { name?: string }).name === 'AbortError') return;
           const message = e instanceof Error ? e.message : String(e);
           const isLastRetry = retryCount >= MAX_STREAM_RETRIES - 1;
-          setStreamError(
-            isLastRetry
-              ? `${message}. Click Refresh to try again.`
-              : 'Connection lost. Reconnecting…',
-          );
+          if (mounted) setReconnectingBuffered(true);
+          // Keep showing last progress for STALE_PROGRESS_BUFFER_MS; only then show error.
+          if (showErrorAfterBufferRef.current) clearTimeout(showErrorAfterBufferRef.current);
+          showErrorAfterBufferRef.current = setTimeout(() => {
+            showErrorAfterBufferRef.current = null;
+            if (mounted) {
+              setReconnectingBuffered(false);
+              setStreamError(
+                isLastRetry
+                  ? `${message}. Click Refresh to try again.`
+                  : 'Connection lost. Reconnecting…',
+              );
+            }
+          }, STALE_PROGRESS_BUFFER_MS);
           if (!isLastRetry) {
             retryTimeout = setTimeout(() => {
               setRetryCount((c) => c + 1);
@@ -92,6 +113,10 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
     return () => {
       mounted = false;
       if (retryTimeout) clearTimeout(retryTimeout);
+      if (showErrorAfterBufferRef.current) {
+        clearTimeout(showErrorAfterBufferRef.current);
+        showErrorAfterBufferRef.current = null;
+      }
       ac.abort();
     };
   }, [pipelineRunning, retryCount, doRefresh]);
@@ -135,6 +160,11 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
       )}
       {!streamError && showRunning && p && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {reconnectingBuffered && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              Reconnecting… (showing last status)
+            </Typography>
+          )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
             <Typography variant="body2" fontWeight={600}>
               {p.step_label || p.step_id || 'Running'}
