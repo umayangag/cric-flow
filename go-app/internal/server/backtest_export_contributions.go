@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	contributionsCSVFilenamePrefix   = "backtest_contributions"
-	exportContributionsConcurrency  = 8 // limit concurrent doEvaluateWork calls per export job
+	contributionsCSVFilenamePrefix = "backtest_contributions"
+	exportContributionsConcurrency = 8 // limit concurrent doEvaluateWork calls per export job
 )
 
 // contributionRow is one row for the combination meta-model CSV.
