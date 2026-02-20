@@ -14,9 +14,9 @@ type Status struct {
 	FinishedAt      time.Time `json:"finished_at,omitempty"`
 	Season          string    `json:"season,omitempty"`
 	Formats         []string  `json:"formats,omitempty"`
-	CurrentFormat   string    `json:"current_format,omitempty"`   // format currently being processed (when running)
+	CurrentFormat   string    `json:"current_format,omitempty"`    // format currently being processed (when running)
 	FormatStartedAt time.Time `json:"format_started_at,omitempty"` // when current format started (for ETA)
-	Phase           string    `json:"phase,omitempty"`            // one of: form, venue, opposition, consistency, starting, done
+	Phase           string    `json:"phase,omitempty"`             // one of: form, venue, opposition, consistency, starting, done
 	LastError       string    `json:"last_error,omitempty"`
 }
 

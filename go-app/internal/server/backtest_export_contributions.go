@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"log/slog"
@@ -35,15 +36,9 @@ type exportContributionsRequest struct {
 	MatchIDs []int64 `json:"match_ids"`
 }
 
-// exportContributionsResponse is the JSON response.
-type exportContributionsResponse struct {
-	Path string `json:"path"`
-	Rows int    `json:"rows"`
-}
-
 // backtestExportContributionsHandler handles POST /api/backtest/export-contributions.
-// Runs evaluate for each match_id, builds contribution rows (bat_score, bowl_score, field_score, is_keeper, format, target),
-// writes CSV to output dir, returns path and row count.
+// Starts a background job that runs evaluate for each match_id, builds contribution rows, and writes CSV.
+// Returns 202 Accepted with job_id; client polls GET /api/backtest/export-contributions-status?job_id=...
 func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiError{Code: "METHOD_NOT_ALLOWED", Message: "POST required"})
@@ -79,9 +74,37 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	ctx := r.Context()
+	jobID, err := startExportContributionsJob(body)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+}
+
+// backtestExportContributionsStatusHandler handles GET /api/backtest/export-contributions-status?job_id=...
+func (a *App) backtestExportContributionsStatusHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := strings.TrimSpace(r.URL.Query().Get("job_id"))
+	if jobID == "" {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "job_id is required"})
+		return
+	}
+	snap, ok := getExportContributionsJobStatus(jobID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, apiError{Code: "NOT_FOUND", Message: "job not found (expired or invalid id)"})
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+// runExportContributionsWork runs the export in the calling goroutine (used by the background job).
+// Returns path, row count, and error. Keeper lookup failure is returned as error so the job can report it to the user.
+func runExportContributionsWork(ctx context.Context, body exportContributionsRequest) (path string, rows int, err error) {
+	format := strings.TrimSpace(strings.ToUpper(body.Format))
+	team1 := strings.TrimSpace(body.Team1)
+	team2 := strings.TrimSpace(body.Team2)
+
 	var allPlayers []BacktestPlayerResult
-	// Sequential evaluation is capped by EffectiveExportMaxMatchIDs; consider a background job for large batches.
 	for _, mid := range body.MatchIDs {
 		matchIDStr := strconv.FormatInt(mid, 10)
 		resp, err := doEvaluateWork(ctx, format, team1, team2, matchIDStr, false, nil)
@@ -93,8 +116,15 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 	}
 
 	if len(allPlayers) == 0 {
-		writeJSON(w, http.StatusOK, exportContributionsResponse{Path: "", Rows: 0})
-		return
+		outDir := config.DefaultExportDir()
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			return "", 0, err
+		}
+		csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+".csv")
+		if err := writeContributionsCSV(csvPath, nil); err != nil {
+			return "", 0, err
+		}
+		return csvPath, 0, nil
 	}
 
 	playerIDs := make([]int64, 0, len(allPlayers))
@@ -108,7 +138,7 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 	keeperMap, err := db.ListPlayerIsWicketKeeper(ctx, playerIDs)
 	if err != nil {
 		slog.Warn("export-contributions list keeper failed", "err", err)
-		keeperMap = map[int64]bool{}
+		return "", 0, err
 	}
 
 	cfg := config.Load()
@@ -126,19 +156,16 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		fieldDiv = config.DefaultScoreNormFieldDivisor
 	}
 
-	rows := buildContributionRows(allPlayers, keeperMap, format, batDiv, wicketDiv, econBase, fieldDiv)
+	rowList := buildContributionRows(allPlayers, keeperMap, format, batDiv, wicketDiv, econBase, fieldDiv)
 	outDir := config.DefaultExportDir()
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		respondErr(w, err)
-		return
+		return "", 0, err
 	}
-	// Use fixed filename so pipeline runner (train_combination_meta) and make commands find the file without renaming.
 	csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+".csv")
-	if err := writeContributionsCSV(csvPath, rows); err != nil {
-		respondErr(w, err)
-		return
+	if err := writeContributionsCSV(csvPath, rowList); err != nil {
+		return "", 0, err
 	}
-	writeJSON(w, http.StatusOK, exportContributionsResponse{Path: csvPath, Rows: len(rows)})
+	return csvPath, len(rowList), nil
 }
 
 func buildContributionRows(
