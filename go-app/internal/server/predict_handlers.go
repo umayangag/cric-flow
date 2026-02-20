@@ -185,17 +185,21 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 
 	simulate := body.Simulate != nil && *body.Simulate
 	if simulate {
+		cfg := config.Load()
 		opts := predictteam.DefaultSimulationOpts()
 		if body.SimulationTopK > 0 {
 			opts.TopKPerTeam = body.SimulationTopK
+		} else {
+			opts.TopKPerTeam = config.EffectiveSimulationTopKPerTeam(cfg)
 		}
 		if body.SimulationSamples > 0 {
 			opts.NumSamplesPerMatchup = body.SimulationSamples
+		} else {
+			opts.NumSamplesPerMatchup = config.EffectiveSimulationNumSamplesPerMatchup(cfg)
 		}
 		if body.SimulationMaxPairs > 0 {
 			opts.MaxMatchups = body.SimulationMaxPairs
 		}
-		cfg := config.Load()
 		runsCV, wicketsCV, economyCV := config.EffectiveSimulationCVs(cfg)
 		opts.RunsCV, opts.WicketsCV, opts.EconomyCV = runsCV, wicketsCV, economyCV
 		maxTotalSamples := config.EffectiveMaxTotalSamples(cfg)

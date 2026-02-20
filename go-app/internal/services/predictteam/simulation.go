@@ -34,12 +34,12 @@ type SimulationOpts struct {
 	Seed int64
 }
 
-// DefaultSimulationOpts returns defaults suitable for a domestic PC (moderate k and samples).
+// DefaultSimulationOpts returns defaults; TopKPerTeam and NumSamplesPerMatchup are 0 and must be set by caller from config (or PredictTeamsWithSimulation fills from config when zero).
 // CV values use config defaults; override via config file predictor.simulation (runs_cv, wickets_cv, economy_cv).
 func DefaultSimulationOpts() SimulationOpts {
 	return SimulationOpts{
-		TopKPerTeam:          50,
-		NumSamplesPerMatchup: 500,
+		TopKPerTeam:          0,
+		NumSamplesPerMatchup: 0,
 		MaxMatchups:          0,
 		RunsCV:               config.DefaultSimulationRunsCV,
 		WicketsCV:            config.DefaultSimulationWicketsCV,
@@ -83,10 +83,10 @@ func PredictTeamsWithSimulation(
 		return nil, nil, err
 	}
 	if opts.TopKPerTeam <= 0 {
-		opts.TopKPerTeam = DefaultSimulationOpts().TopKPerTeam
+		opts.TopKPerTeam = config.EffectiveSimulationTopKPerTeam(config.Load())
 	}
 	if opts.NumSamplesPerMatchup <= 0 {
-		opts.NumSamplesPerMatchup = DefaultSimulationOpts().NumSamplesPerMatchup
+		opts.NumSamplesPerMatchup = config.EffectiveSimulationNumSamplesPerMatchup(config.Load())
 	}
 	// We need pools and preds again to get top-k XIs. Re-run the same steps up to selection, then call SelectTopK.
 	format := strings.ToUpper(strings.TrimSpace(input.Format))

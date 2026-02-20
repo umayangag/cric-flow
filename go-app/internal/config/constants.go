@@ -54,10 +54,12 @@ const (
 	DefaultExportMaxMatchIDs = 200
 )
 
-// Monte Carlo simulation defaults (predictor.max_total_samples and simulation CVs).
+// Monte Carlo simulation defaults (predictor.max_total_samples, top_k, samples_per_matchup, and simulation CVs).
 const (
-	DefaultMaxTotalSamples     = 100000
-	DefaultSimulationRunsCV    = 0.35
-	DefaultSimulationWicketsCV = 0.4
-	DefaultSimulationEconomyCV = 0.15
+	DefaultMaxTotalSamples                = 100000
+	DefaultSimulationTopKPerTeam          = 50
+	DefaultSimulationNumSamplesPerMatchup = 500
+	DefaultSimulationRunsCV               = 0.35
+	DefaultSimulationWicketsCV            = 0.4
+	DefaultSimulationEconomyCV            = 0.15
 )

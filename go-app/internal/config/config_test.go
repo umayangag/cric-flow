@@ -236,6 +236,24 @@ func TestEffectiveMaxTotalSamples(t *testing.T) {
 	require.Equal(t, DefaultMaxTotalSamples, EffectiveMaxTotalSamples(cfg))
 }
 
+func TestEffectiveSimulationTopKPerTeam(t *testing.T) {
+	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(nil))
+	cfg := &Config{}
+	cfg.Predictor.SimulationTopKPerTeam = 30
+	require.Equal(t, 30, EffectiveSimulationTopKPerTeam(cfg))
+	cfg.Predictor.SimulationTopKPerTeam = 0
+	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(cfg))
+}
+
+func TestEffectiveSimulationNumSamplesPerMatchup(t *testing.T) {
+	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(nil))
+	cfg := &Config{}
+	cfg.Predictor.SimulationNumSamplesPerMatchup = 200
+	require.Equal(t, 200, EffectiveSimulationNumSamplesPerMatchup(cfg))
+	cfg.Predictor.SimulationNumSamplesPerMatchup = 0
+	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(cfg))
+}
+
 func TestEffectiveSimulationCVs(t *testing.T) {
 	r, w, e := EffectiveSimulationCVs(nil)
 	require.Equal(t, DefaultSimulationRunsCV, r)

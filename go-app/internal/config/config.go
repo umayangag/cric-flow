@@ -70,10 +70,12 @@ type Config struct {
 		} `json:"mocks"`
 	} `json:"weather"`
 	Predictor struct {
-		TeamSize        int               `json:"team_size"`
-		DefaultExtras   float64           `json:"default_extras"`
-		MaxTotalSamples int               `json:"max_total_samples"` // cap on Monte Carlo samples (0 = use default)
-		Simulation      *SimulationParams `json:"simulation"`        // CVs for runs/wickets/economy sampling
+		TeamSize                       int               `json:"team_size"`
+		DefaultExtras                  float64           `json:"default_extras"`
+		MaxTotalSamples                int               `json:"max_total_samples"`                  // cap on Monte Carlo samples (0 = use default)
+		SimulationTopKPerTeam          int               `json:"simulation_top_k_per_team"`          // top XIs per team (0 = use default)
+		SimulationNumSamplesPerMatchup int               `json:"simulation_num_samples_per_matchup"` // samples per matchup (0 = use default)
+		Simulation                     *SimulationParams `json:"simulation"`                         // CVs for runs/wickets/economy sampling
 	} `json:"predictor"`
 	Backtest struct {
 		ExportMaxMatchIDs int `json:"export_max_match_ids"` // max match_ids per export-contributions request (0 = use default)
@@ -351,6 +353,22 @@ func EffectiveMaxTotalSamples(cfg *Config) int {
 		return cfg.Predictor.MaxTotalSamples
 	}
 	return DefaultMaxTotalSamples
+}
+
+// EffectiveSimulationTopKPerTeam returns the default top-k XIs per team for simulation (0 = use default).
+func EffectiveSimulationTopKPerTeam(cfg *Config) int {
+	if cfg != nil && cfg.Predictor.SimulationTopKPerTeam > 0 {
+		return cfg.Predictor.SimulationTopKPerTeam
+	}
+	return DefaultSimulationTopKPerTeam
+}
+
+// EffectiveSimulationNumSamplesPerMatchup returns the default samples per matchup for simulation (0 = use default).
+func EffectiveSimulationNumSamplesPerMatchup(cfg *Config) int {
+	if cfg != nil && cfg.Predictor.SimulationNumSamplesPerMatchup > 0 {
+		return cfg.Predictor.SimulationNumSamplesPerMatchup
+	}
+	return DefaultSimulationNumSamplesPerMatchup
 }
 
 // EffectiveSimulationCVs returns RunsCV, WicketsCV, EconomyCV for Monte Carlo sampling (0 = use default).

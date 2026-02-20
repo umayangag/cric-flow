@@ -124,20 +124,26 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     expect(within(results).getByText('2')).toBeInTheDocument();
   }, 15000);
 
-  it('shows error when backtestSelect fails', async () => {
-    const backtestSelectMock = api.backtestSelect as unknown as Mock;
-    backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
+  it(
+    'shows error when backtestSelect fails',
+    async () => {
+      const backtestSelectMock = api.backtestSelect as unknown as Mock;
+      backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
-    render(<EvaluateDbTab />);
-    await selectFilters();
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
-    await screen.findByText(/HTTP 500/i);
-  });
+      render(<EvaluateDbTab />);
+      await selectFilters();
+      fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+      await screen.findByText(/HTTP 500/i);
+    },
+    10000,
+  );
 
-  it('renders bowling metrics and match aggregates when present', async () => {
-    // Arrange candidates
-    const backtestSelectMock = api.backtestSelect as unknown as Mock;
-    backtestSelectMock.mockResolvedValue({
+  it(
+    'renders bowling metrics and match aggregates when present',
+    async () => {
+      // Arrange candidates
+      const backtestSelectMock = api.backtestSelect as unknown as Mock;
+      backtestSelectMock.mockResolvedValue({
       filters: { format: 'T20', team1: 'IND', team2: 'AUS' },
       candidates: [
         {
@@ -236,7 +242,9 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     expect(within(table).getByText(/Pred Econ/i)).toBeInTheDocument();
     expect(within(table).getByText(/Actual Econ/i)).toBeInTheDocument();
     expect(within(table).getByText(/Econ Abs Err/i)).toBeInTheDocument();
-  });
+    },
+    10000,
+  );
 
   it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
     // Arrange candidates

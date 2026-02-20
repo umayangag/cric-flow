@@ -65,8 +65,8 @@ function processBacktestSSEPart(
   let eventType = '';
   let data = '';
   for (const line of part.split('\n')) {
-    if (line.startsWith('event: ')) eventType = line.slice(7).trim();
-    else if (line.startsWith('data: ')) data = line.slice(6);
+    if (/^event:\s?/.test(line)) eventType = line.replace(/^event:\s?/, '').trim();
+    else if (/^data:\s?/.test(line)) data = line.replace(/^data:\s?/, '');
   }
   if (eventType === 'progress' && data) {
     try {
@@ -191,9 +191,10 @@ export const api = {
         buffer = parts.pop() ?? '';
         for (const part of parts) {
           if (!part.trim()) continue;
-          const dataLines = part.split('\n').filter((l) => l.startsWith('data: '));
+          const dataLines = part.split('\n').filter((l) => /^data:\s?/.test(l));
           if (dataLines.length > 0) {
-            const data = dataLines.map((l) => l.substring(5).trim()).join('');
+            // Per SSE spec: multiple data: lines for one event are joined with newline
+            const data = dataLines.map((l) => l.replace(/^data:\s?/, '')).join('\n');
             try {
               const payload = JSON.parse(data) as PipelineProgressPayload;
               onProgress(payload);

@@ -66,7 +66,8 @@ func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	const maxMLHealthBody = 1 << 20 // 1MB limit to prevent memory exhaustion from unexpectedly large upstream response
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxMLHealthBody)).Decode(&payload); err != nil {
 		slog.Warn("ml health proxy: decode failed", slog.Any("err", err))
 		respondJSON(
 			w,
