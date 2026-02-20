@@ -55,8 +55,9 @@ const (
 )
 
 // Monte Carlo simulation defaults (predictor.max_total_samples, top_k, samples_per_matchup, and simulation CVs).
+// DefaultMaxTotalSamples must allow default TopKPerTeam^2 * NumSamplesPerMatchup (50*50*500 = 1.25e6).
 const (
-	DefaultMaxTotalSamples                = 100000
+	DefaultMaxTotalSamples                = 2000000
 	DefaultSimulationTopKPerTeam          = 50
 	DefaultSimulationNumSamplesPerMatchup = 500
 	DefaultSimulationRunsCV               = 0.35

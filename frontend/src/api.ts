@@ -191,10 +191,10 @@ export const api = {
         buffer = parts.pop() ?? '';
         for (const part of parts) {
           if (!part.trim()) continue;
-          const dataLines = part.split('\n').filter((l) => /^data:\s?/.test(l));
+          const dataLines = part.split('\n').filter((l) => /^data:\s/.test(l) || /^data:/.test(l));
           if (dataLines.length > 0) {
             // Per SSE spec: multiple data: lines for one event are joined with newline
-            const data = dataLines.map((l) => l.replace(/^data:\s?/, '')).join('\n');
+            const data = dataLines.map((l) => l.replace(/^data:\s*/, '')).join('\n');
             try {
               const payload = JSON.parse(data) as PipelineProgressPayload;
               onProgress(payload);
