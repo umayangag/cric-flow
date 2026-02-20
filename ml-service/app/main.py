@@ -925,17 +925,20 @@ def _ml_service_root() -> str:
 
 
 def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None) -> None:
-    """Run a training module as subprocess; raises on non-zero exit or timeout (1 hour).
+    """Run a training module as subprocess; raises on non-zero exit or timeout.
+    Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     """
     import subprocess
+
+    from ml.config import get_training_subprocess_timeout_sec
 
     root = _ml_service_root()
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
-    timeout_sec = int(os.environ.get("TRAINING_SUBPROCESS_TIMEOUT_SEC", "3600"))
+    timeout_sec = get_training_subprocess_timeout_sec()
     try:
         proc = subprocess.run(
             cmd,
@@ -960,11 +963,10 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
 
 
 @app.post("/admin/train/batting")
-async def admin_train_batting():
-    """Run batting model training per format (TEST, ODI, T20I, T20) for better accuracy.
-    Reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
-    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
-    deployment layer (e.g. reverse proxy or network policy).
+async def admin_train_batting(cutoff: str = ""):
+    """Run batting model training per format (TEST, ODI, T20I, T20).
+    If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="batting", reason="disabled")
@@ -976,9 +978,12 @@ async def admin_train_batting():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="batting", per_format=True)
+    cutoff = (cutoff or "").strip()
+    use_api = bool(cutoff)
+    extra = ["--from-api", "--cutoff", cutoff, "--all-formats"] if use_api else ["--all-formats"]
+    logger.info("admin.train.start", step="batting", per_format=True, from_api=use_api)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", ["--all-formats"])
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
         logger.info("admin.train.success", step="batting")
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
@@ -993,11 +998,10 @@ async def admin_train_batting():
 
 
 @app.post("/admin/train/bowling")
-async def admin_train_bowling():
-    """Run bowling model training per format (TEST, ODI, T20I, T20) for better accuracy.
-    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
-    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
-    deployment layer (e.g. reverse proxy or network policy).
+async def admin_train_bowling(cutoff: str = ""):
+    """Run bowling model training per format (TEST, ODI, T20I, T20).
+    If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="bowling", reason="disabled")
@@ -1009,9 +1013,12 @@ async def admin_train_bowling():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="bowling", per_format=True)
+    cutoff = (cutoff or "").strip()
+    use_api = bool(cutoff)
+    extra = ["--from-api", "--cutoff", cutoff, "--all-formats"] if use_api else ["--all-formats"]
+    logger.info("admin.train.start", step="bowling", per_format=True, from_api=use_api)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", ["--all-formats"])
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
         logger.info("admin.train.success", step="bowling")
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:

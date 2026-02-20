@@ -21,7 +21,7 @@ Config file: `go-app/config.json`
   - `ml_health_body_limit_bytes` (default 1048576) — max ML health response size (DoS protection).
   - `ml_base_url_fallback` (default `http://localhost:8000`) — used when `ML_SERVICE_URL`/`ML_BASE_URL` are unset.
   - `readiness_timeout_sec` (default 2) — DB ping timeout for readiness probe.
-  - `train_step_timeout_min` (default 30) — max wait for ML train endpoint.
+  - `train_step_timeout_min` (default 30) — max wait for ML train endpoint (e.g. 10080 = 7 days for long training pipelines).
   - `pipeline_progress_interval_sec` (default 2) — SSE progress poll interval.
   - `db_probe_timeout_sec` (default 2), `db_probe_long_timeout_sec` (default 5) — ops DB probes.
   - `artifacts_timeout_sec` (default 3) — HTTP client timeout for artifacts check.
@@ -62,7 +62,7 @@ Config file: `go-app/config.json`
 Config file: `ml-service/config.json`
 
 **Keys:**
-- `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 3600), `training_data_fetch_timeout_invalid_fallback_sec` (600 — used when the main timeout value is invalid), `go_app_request_timeout_sec` (30 — timeout for tuned-params GET/POST to go-app).
+- `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 604800 = 7 days — HTTP timeout when fetching training data from go-app), `training_data_fetch_timeout_invalid_fallback_sec` (600), `training_subprocess_timeout_sec` (default 604800 = 7 days — max time for each /admin/train/* subprocess; set in config so long training runs don’t hit context deadline), `go_app_request_timeout_sec` (30 — tuned-params GET/POST).
 - `outputs` — `artifacts_dir`.
 - `ml`
   - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (70). Used for resource-aware n_jobs when a memory limit is set.

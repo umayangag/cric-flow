@@ -69,6 +69,8 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
+      # Where training subprocess writes artifacts (must match MODELS_DIR so /admin/train/* persists to volume)
+      ML_SERVICE_OUTPUT_DIR: /app/output/ml-service
       # Where to read exported CSVs for /admin/train/* (batting, bowling)
       GO_APP_OUTPUT_DIR: /app/output/go-app
       # Required for train-on-the-fly and fielding training from go-app API

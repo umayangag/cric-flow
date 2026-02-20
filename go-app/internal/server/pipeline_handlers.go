@@ -68,10 +68,10 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		a.runExportHandler(w, r)
 		return
 	case "train_batting":
-		a.makeMLTrainHandler("train_batting", "train-batting", "batting", false)(w, r)
+		a.makeMLTrainHandler("train_batting", "train-batting", "batting", true)(w, r)
 		return
 	case "train_bowling":
-		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling", false)(w, r)
+		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling", true)(w, r)
 		return
 	case "train_fielding":
 		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding", true)(w, r)
@@ -113,9 +113,9 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 func stepToCommand(step string) string {
 	switch step {
 	case "train_batting":
-		return "make train-batting"
+		return "make train-batting CUTOFF=2025-01-01T00:00:00Z"
 	case "train_bowling":
-		return "make train-bowling"
+		return "make train-bowling CUTOFF=2025-01-01T00:00:00Z"
 	case "train_fielding":
 		return "make train-fielding CUTOFF=2025-01-01T00:00:00Z"
 	case "train_extras":

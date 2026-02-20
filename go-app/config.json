@@ -5,6 +5,9 @@
   "outputs": {
     "export_dir": "output/go-app"
   },
+  "server": {
+    "train_step_timeout_min": 10080
+  },
   "formats": {
     "treat_t20i_as_subset": true,
     "international_teams": [
