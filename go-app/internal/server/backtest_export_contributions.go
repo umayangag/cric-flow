@@ -81,6 +81,7 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 
 	ctx := r.Context()
 	var allPlayers []BacktestPlayerResult
+	// Sequential evaluation is capped by EffectiveExportMaxMatchIDs; consider a background job for large batches.
 	for _, mid := range body.MatchIDs {
 		matchIDStr := strconv.FormatInt(mid, 10)
 		resp, err := doEvaluateWork(ctx, format, team1, team2, matchIDStr, false, nil)
@@ -191,7 +192,6 @@ func writeContributionsCSV(path string, rows []contributionRow) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	defer w.Flush()
 	header := []string{"bat_score", "bowl_score", "field_score", "is_keeper", "format", "target"}
 	if err := w.Write(header); err != nil {
 		return err
@@ -209,5 +209,6 @@ func writeContributionsCSV(path string, rows []contributionRow) error {
 			return err
 		}
 	}
-	return nil
+	w.Flush()
+	return w.Error()
 }

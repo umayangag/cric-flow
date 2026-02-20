@@ -285,7 +285,13 @@ func runSimulation(
 	if samplesPerMatchup <= 0 {
 		samplesPerMatchup = 500
 	}
-	var innings1Samples, innings2Samples []float64
+	numMatchups := len(topK1) * len(topK2)
+	if opts.MaxMatchups > 0 && opts.MaxMatchups < numMatchups {
+		numMatchups = opts.MaxMatchups
+	}
+	totalSamples := numMatchups * samplesPerMatchup
+	innings1Samples := make([]float64, 0, totalSamples)
+	innings2Samples := make([]float64, 0, totalSamples)
 	var team1Wins, team2Wins, draws int
 
 	matchupCount := 0
