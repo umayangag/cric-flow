@@ -30,10 +30,11 @@ type contributionRow struct {
 
 // exportContributionsRequest is the body for POST /api/backtest/export-contributions.
 type exportContributionsRequest struct {
-	Format   string  `json:"format"`
-	Team1    string  `json:"team1"`
-	Team2    string  `json:"team2"`
-	MatchIDs []int64 `json:"match_ids"`
+	Format          string  `json:"format"`
+	Team1           string  `json:"team1"`
+	Team2           string  `json:"team2"`
+	MatchIDs        []int64 `json:"match_ids"`
+	UseUnifiedModel bool    `json:"use_unified_model,omitempty"`
 }
 
 // backtestExportContributionsHandler handles POST /api/backtest/export-contributions.
