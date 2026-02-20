@@ -47,14 +47,18 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Format          string `json:"format"`
-		Team1           string `json:"team1"`
-		Team2           string `json:"team2"`
-		Venue           string `json:"venue"`
-		MatchDate       string `json:"match_date"` // RFC3339 or YYYY-MM-DD
-		SeasonID        *int64 `json:"season_id"`
-		UseUnifiedModel *bool  `json:"use_unified_model,omitempty"`
-		Weather         *struct {
+		Format             string `json:"format"`
+		Team1              string `json:"team1"`
+		Team2              string `json:"team2"`
+		Venue              string `json:"venue"`
+		MatchDate          string `json:"match_date"` // RFC3339 or YYYY-MM-DD
+		SeasonID           *int64 `json:"season_id"`
+		UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
+		Simulate           *bool  `json:"simulate,omitempty"`             // run Monte Carlo for win prob and outcome distributions
+		SimulationTopK     int    `json:"simulation_top_k,omitempty"`    // top XIs per team (default 50)
+		SimulationSamples  int    `json:"simulation_samples,omitempty"`  // samples per matchup (default 500)
+		SimulationMaxPairs int    `json:"simulation_max_pairs,omitempty"` // cap on matchup pairs (0 = no cap)
+		Weather            *struct {
 			Temp     float64 `json:"temp"`
 			Humidity float64 `json:"humidity"`
 			Wind     float64 `json:"wind"`
@@ -100,6 +104,25 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
 			t := true
 			body.UseUnifiedModel = &t
+		}
+		if s := q.Get("simulate"); s == "1" || strings.EqualFold(s, "true") {
+			t := true
+			body.Simulate = &t
+		}
+		if s := q.Get("simulation_top_k"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				body.SimulationTopK = n
+			}
+		}
+		if s := q.Get("simulation_samples"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				body.SimulationSamples = n
+			}
+		}
+		if s := q.Get("simulation_max_pairs"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+				body.SimulationMaxPairs = n
+			}
 		}
 	}
 
@@ -160,6 +183,31 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	simulate := body.Simulate != nil && *body.Simulate
+	if simulate {
+		opts := predictteam.DefaultSimulationOpts()
+		if body.SimulationTopK > 0 {
+			opts.TopKPerTeam = body.SimulationTopK
+		}
+		if body.SimulationSamples > 0 {
+			opts.NumSamplesPerMatchup = body.SimulationSamples
+		}
+		if body.SimulationMaxPairs > 0 {
+			opts.MaxMatchups = body.SimulationMaxPairs
+		}
+		result, sim, err := predictteam.PredictTeamsWithSimulation(r.Context(), input, mlPredictorAdapter{}, opts)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"team1":              result.Team1,
+			"team2":              result.Team2,
+			"scorecard_summary":   result.ScorecardSummary,
+			"simulation":          sim,
+		})
+		return
+	}
 	result, err := predictteam.PredictTeams(r.Context(), input, mlPredictorAdapter{})
 	if err != nil {
 		respondErr(w, err)

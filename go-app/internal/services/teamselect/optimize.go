@@ -40,16 +40,68 @@ func SelectOptimized(pool []Player, w ScoreWeights, c Constraints) ([]Player, er
 	return selectOptimizedHillClimb(pool, w, c)
 }
 
-// selectOptimizedEnum enumerates all C(n, size) combinations, filters to valid XIs, returns the one with max total score.
-func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
+// SelectTopK returns up to k valid XIs sorted by total score descending.
+// When pool size <= maxPoolSizeForFullEnum, all valid XIs are enumerated and the top k returned.
+// When pool is larger, only the single best XI (from hill-climb) is returned, so k is effectively 1.
+// k must be >= 1.
+func SelectTopK(pool []Player, w ScoreWeights, c Constraints, k int) ([][]Player, error) {
+	if k < 1 {
+		return nil, errors.New("k must be at least 1")
+	}
+	if c.Size < 1 || c.MinBowlers < 0 || len(pool) < c.Size {
+		return nil, errors.New("invalid constraints or insufficient pool")
+	}
+	keeperCount := countIf(pool, func(p Player) bool { return p.IsKeeper })
+	bowlerCount := countIf(pool, func(p Player) bool { return p.IsBowler })
+	if c.RequireKeeper && keeperCount == 0 {
+		return nil, errors.New("no keeper available")
+	}
+	if bowlerCount < c.MinBowlers {
+		return nil, errors.New("not enough bowlers to satisfy constraint")
+	}
+
+	if len(pool) <= maxPoolSizeForFullEnum {
+		all := enumerateValidXIs(pool, w, c)
+		if len(all) == 0 {
+			return nil, errors.New("no valid XI satisfying constraints")
+		}
+		// all is already sorted by score desc; take first k
+		n := k
+		if n > len(all) {
+			n = len(all)
+		}
+		out := make([][]Player, n)
+		for i := 0; i < n; i++ {
+			xi := make([]Player, len(all[i]))
+			copy(xi, all[i])
+			sort.Slice(xi, func(a, b int) bool { return xi[a].Name < xi[b].Name })
+			out[i] = xi
+		}
+		return out, nil
+	}
+	// Large pool: return only the best XI
+	best, err := selectOptimizedHillClimb(pool, w, c)
+	if err != nil {
+		return nil, err
+	}
+	return [][]Player{best}, nil
+}
+
+// enumeratedXI holds a valid XI and its total score for sorting.
+type enumeratedXI struct {
+	score float64
+	xi    []int
+}
+
+// enumerateValidXIs enumerates all valid XIs for pool size <= maxPoolSizeForFullEnum,
+// sorted by total score descending.
+func enumerateValidXIs(pool []Player, w ScoreWeights, c Constraints) [][]Player {
 	indices := make([]int, 0, c.Size)
-	var bestScore float64 = -1
-	var bestXI []int
+	var list []enumeratedXI
 
 	var gen func(start, remain int)
 	gen = func(start, remain int) {
 		if remain == 0 {
-			// Check constraints
 			keepers := 0
 			bowlers := 0
 			for _, i := range indices {
@@ -70,11 +122,9 @@ func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player
 			for _, i := range indices {
 				score += ScorePlayer(pool[i], w)
 			}
-			if score > bestScore {
-				bestScore = score
-				bestXI = make([]int, len(indices))
-				copy(bestXI, indices)
-			}
+			xi := make([]int, len(indices))
+			copy(xi, indices)
+			list = append(list, enumeratedXI{score: score, xi: xi})
 			return
 		}
 		for i := start; i <= len(pool)-remain; i++ {
@@ -85,14 +135,38 @@ func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player
 	}
 	gen(0, c.Size)
 
-	if bestXI == nil {
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].score != list[j].score {
+			return list[i].score > list[j].score
+		}
+		// Tie-break: compare names of first differing player
+		for t := 0; t < c.Size; t++ {
+			ni, nj := pool[list[i].xi[t]].Name, pool[list[j].xi[t]].Name
+			if ni != nj {
+				return ni < nj
+			}
+		}
+		return false
+	})
+
+	out := make([][]Player, len(list))
+	for i, e := range list {
+		team := make([]Player, len(e.xi))
+		for j, idx := range e.xi {
+			team[j] = pool[idx]
+		}
+		out[i] = team
+	}
+	return out
+}
+
+// selectOptimizedEnum enumerates all C(n, size) combinations, filters to valid XIs, returns the one with max total score.
+func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
+	all := enumerateValidXIs(pool, w, c)
+	if len(all) == 0 {
 		return nil, errors.New("no valid XI satisfying constraints")
 	}
-
-	out := make([]Player, len(bestXI))
-	for j, i := range bestXI {
-		out[j] = pool[i]
-	}
+	out := all[0]
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }

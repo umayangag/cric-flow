@@ -176,3 +176,58 @@ func TestSelectOptimized_InsufficientPool(t *testing.T) {
 		t.Errorf("expected insufficient pool error, got: %v", err)
 	}
 }
+
+func TestSelectTopK(t *testing.T) {
+	t.Parallel()
+	w := ts.DefaultWeights()
+	pool := []ts.Player{
+		mk("A", 0.9, 0.1, false, false),
+		mk("B", 0.7, 0.8, true, false),
+		mk("C", 0.6, 0.7, true, false),
+		mk("D", 0.5, 0.2, false, false),
+		mk("E", 0.4, 0.9, true, false),
+		mk("K", 0.3, 0.3, false, true),
+		mk("F", 0.35, 0.85, true, false),
+		mk("G", 0.2, 0.1, false, false),
+		mk("H", 0.25, 0.2, false, false),
+		mk("I", 0.15, 0.75, true, false),
+		mk("J", 0.1, 0.5, true, false),
+		mk("K2", 0.2, 0.2, false, true),
+	}
+	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
+	xis, err := ts.SelectTopK(pool, w, c, 5)
+	if err != nil {
+		t.Fatalf("SelectTopK: %v", err)
+	}
+	if len(xis) < 1 || len(xis) > 5 {
+		t.Errorf("want 1–5 XIs, got %d", len(xis))
+	}
+	for i, xi := range xis {
+		if len(xi) != 11 {
+			t.Errorf("XI %d: want size 11, got %d", i, len(xi))
+		}
+		if countIf(xi, func(p ts.Player) bool { return p.IsKeeper }) < 1 {
+			t.Errorf("XI %d: no keeper", i)
+		}
+		if countIf(xi, func(p ts.Player) bool { return p.IsBowler }) < 5 {
+			t.Errorf("XI %d: fewer than 5 bowlers", i)
+		}
+	}
+	// Scores should be non-increasing
+	for i := 1; i < len(xis); i++ {
+		sPrev := totalScore(xis[i-1], w)
+		sCur := totalScore(xis[i], w)
+		if sCur > sPrev {
+			t.Errorf("XI %d score %.4f > XI %d score %.4f", i, sCur, i-1, sPrev)
+		}
+	}
+	// Best XI from SelectTopK should match SelectOptimized
+	best, _ := ts.SelectOptimized(pool, w, c)
+	if len(xis) > 0 && len(best) == 11 {
+		sTopK := totalScore(xis[0], w)
+		sBest := totalScore(best, w)
+		if sTopK != sBest {
+			t.Errorf("SelectTopK[0] score %.4f != SelectOptimized score %.4f", sTopK, sBest)
+		}
+	}
+}
