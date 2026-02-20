@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Optional
 
-import config as svc_config  # loaded from ml-service/config.json if present
+from . import config as svc_config  # ml.config: loads config.json from ml-service root
 import joblib
 import numpy as np
 import pandas as pd

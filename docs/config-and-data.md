@@ -36,7 +36,8 @@ Config file: `go-app/config.json`
   - `treat_t20i_as_subset` (bool) — treat T20 between international teams as T20I.
   - `international_teams` (list) — ICC national teams for the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for precompute/import/export (default 86400000). 0 = no deadline.
+  - `precompute_timeout_ms` (int) — timeout for precompute/import pipeline steps (default 86400000). 0 = no deadline.
+  - `export_timeout_ms` (int) — timeout for the export-dataset step only. 0 = use `precompute_timeout_ms`. Set higher than the pipeline timeout if export writes many format CSVs and was hitting "context canceled" (e.g. 3600000 = 60 min).
   - `min_batting_innings`, `min_bowling_innings`, `form_shrinkage_alpha`, `consistency_per_format`, `history_window_matches` — reserved or optional.
   - **Feature extraction:** `ewm_alpha` (0.3), `ewm_alpha_short` (0.5), `ewm_alpha_long` (0.2), `consistency_last_n` (10), `form_window_n` (0), `momentum_last_n` (5).
   - `fielding_enrich` — when ML has no fielding model: `ewm_alpha`, `form_to_catches_ratio` (0.7).

@@ -150,6 +150,48 @@ func TestBuildExportsSection_Table(t *testing.T) {
 			},
 			assert: assertPerFormat(),
 		},
+		{
+			name: "T20_and_T20I_do_not_cross_match",
+			setup: func(t *testing.T) string {
+				root := newTmp(t)
+				writeFileWithLines(t, root, "batting_encoded_T20.csv", 100)
+				writeFileWithLines(t, root, "bowling_encoded_T20.csv", 200)
+				writeFileWithLines(t, root, "batting_encoded_T20I.csv", 300)
+				writeFileWithLines(t, root, "bowling_encoded_T20I.csv", 400)
+				return root
+			},
+			assert: func(t *testing.T, sec map[string]any) {
+				fm := sec["formats"].(map[string]any)
+				// T20 must have only T20 files (row sum 100+200=300)
+				t20Files := fm["T20"].(map[string]any)["files"].([]map[string]any)
+				if len(t20Files) != 2 {
+					t.Fatalf("T20 should have 2 files, got %d", len(t20Files))
+				}
+				var t20Rows int
+				for _, e := range t20Files {
+					if r, ok := e["rows"].(int); ok {
+						t20Rows += r
+					}
+				}
+				if t20Rows != 300 {
+					t.Fatalf("T20 row sum should be 300, got %d", t20Rows)
+				}
+				// T20I must have only T20I files (row sum 300+400=700)
+				t20iFiles := fm["T20I"].(map[string]any)["files"].([]map[string]any)
+				if len(t20iFiles) != 2 {
+					t.Fatalf("T20I should have 2 files, got %d", len(t20iFiles))
+				}
+				var t20iRows int
+				for _, e := range t20iFiles {
+					if r, ok := e["rows"].(int); ok {
+						t20iRows += r
+					}
+				}
+				if t20iRows != 700 {
+					t.Fatalf("T20I row sum should be 700, got %d", t20iRows)
+				}
+			},
+		},
 	}
 
 	for _, tc := range tests {

@@ -20,6 +20,7 @@ ml-service/coverage.xml
 
 data
 output
+go-app-export
 
 .output.txt
 .coverage
