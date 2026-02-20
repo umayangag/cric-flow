@@ -49,22 +49,29 @@ while true; do
 done
 ```
 
-**Phase 2 — Fetch path, line, body only for those thread IDs:**
+**Phase 2 — Fetch path, line, body only for those thread IDs (batched to reduce cost):**
+
+GitHub’s `nodes(ids)` is most efficient with at most 100 IDs per request. Batch IDs into chunks of 100 to stay under limits and reduce per-request cost.
 
 ```bash
 PR_REVIEWS_JSON=$(mktemp)
-if [ -s "$UNRESOLVED_IDS" ]; then
-  TIDS_JSON=$(jq -R -s 'split("\n") | map(select(length > 0))' "$UNRESOLVED_IDS")
-  QUERY='query($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on PullRequestReviewThread {
-        id
-        comments(first: 1) { nodes { path line body } }
-      }
+NODES_QUERY='query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequestReviewThread {
+      id
+      comments(first: 1) { nodes { path line body } }
     }
-  }'
-  gh api graphql -f query="$QUERY" -F ids="$TIDS_JSON" | \
-    jq -c '.data.nodes[] | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
+  }
+}'
+if [ -s "$UNRESOLVED_IDS" ]; then
+  ID_LIST=$(jq -R -s 'split("\n") | map(select(length > 0))' "$UNRESOLVED_IDS")
+  TOTAL=$(echo "$ID_LIST" | jq 'length')
+  for start in $(seq 0 100 $((TOTAL - 1))); do
+    end=$((start + 100))
+    TIDS_JSON=$(echo "$ID_LIST" | jq ".[$start:$end]")
+    gh api graphql -f query="$NODES_QUERY" -F ids="$TIDS_JSON" | \
+      jq -c '.data.nodes[] | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
+  done
 fi
 ```
 
@@ -81,18 +88,20 @@ For each entry in the reviews file:
 
 ## 3. Resolve fixed threads (GraphQL)
 
+Request only the minimal field to reduce mutation cost:
+
 ```bash
 jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | while read -r TID; do
   echo "Resolving $TID" >&2
   gh api graphql \
-    -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
+    -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }' \
     -f id="$TID"
 done
 ```
 
-## 4. Verify (optional)
+## 4. Verify (optional — saves one full Phase 1 pagination if skipped)
 
-Confirm no remaining unresolved Gemini threads (paginate as in Phase 1), then inspect `isResolved` for threads where author is `gemini-code-assist`. Expect only `true` after resolution.
+Confirm no remaining unresolved Gemini threads (paginate as in Phase 1), then inspect `isResolved` for threads where author is `gemini-code-assist`. Expect only `true` after resolution. Skip this step if you do not need to verify; it runs a full Phase 1–style pagination and costs one extra query.
 
 ## 5. Report, commit, push, re-review
 

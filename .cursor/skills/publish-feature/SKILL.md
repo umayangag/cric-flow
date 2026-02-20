@@ -14,7 +14,7 @@ When the user says **/publish-feature**, run the following workflow. First resol
 - GitHub CLI (`gh`) authenticated with `repo` scope
 - Current branch has commits to publish (PR may or may not exist yet)
 
-**Thread fetch (same as fix-gemini-reviews):** Use the two-phase approach to keep responses small. **Phase 1** — paginate `reviewThreads` with minimal fields (`id`, `isResolved`, `comments(first:1){ nodes { author { login } } }` only); filter to `isResolved==false` and `author.login=="gemini-code-assist"`. For **count only** (e.g. single check after 15 min), use Phase 1 and count nodes. For **full thread data** (to implement fixes), add **Phase 2** — for each thread ID, query `node(id)` for `comments(first:1){ nodes { path line body } }`. Resolve threads via the same GraphQL mutation as in fix-gemini-reviews.
+**Thread fetch (same as fix-gemini-reviews):** Use the two-phase approach to keep responses small. **Phase 1** — paginate `reviewThreads` with minimal fields (`id`, `isResolved`, `comments(first:1){ nodes { author { login } } }` only); filter to `isResolved==false` and `author.login=="gemini-code-assist"`; write IDs to a file. **Phase 2** — for those IDs, query `nodes(ids)` in **chunks of 100** for `comments(first:1){ nodes { path line body } }` only. In the main cycle, step B runs Phase 1 and saves IDs; step C reuses that file and runs Phase 2 only (no second Phase 1). Resolve via the same GraphQL mutation as fix-gemini-reviews (`thread { id }` only).
 
 **Rate limit (GraphQL / gh blocked):** If any `gh` call fails with a rate-limit message (e.g. `API rate limit already exceeded`, `rate limit exceeded`, or similar), do **not** retry in a loop. (1) Fetch rate limit expiry with `gh api /rate_limit` (REST; may still succeed when GraphQL is limited). Read `resources.graphql.reset` (or `resources.core.reset`) and report to the user: **"GitHub API rate limit hit. GraphQL (or core) resets at \<ISO or local time\>. Run /publish-feature again after that time."** (2) **Optional REST fallback:** Use REST (see below) to get the PR number and list **all** review comments by `gemini-code-assist` for that PR. Implement fixes from path/line/body, run **run-check-all-incremental** if there are changes, commit and push. **Limitation:** REST does not expose which threads are unresolved, and **resolving threads is only possible via GraphQL**. So after the REST-based fix and push, tell the user to run /publish-feature again after the rate limit resets so threads can be resolved (and the main cycle can use GraphQL). If REST also fails (e.g. 403/404), just report the reset time and stop.
 
@@ -55,14 +55,13 @@ Apply **run-check-all-incremental** (frontend → go-app → ml-service) until a
 **Wait 15 minutes after posting "/gemini review", then check the PR once for new comments.** Do not poll; a single check minimizes GraphQL usage.
 
 - **If the user says Gemini has already finished:** skip the wait and go to step C.
-- **Otherwise:** wait 15 minutes, then **check once**: fetch unresolved Gemini thread count using **Phase 1 only** (paginate with minimal fields: id, isResolved, comments(first:1){ nodes { author { login } } }; filter to isResolved==false and author=="gemini-code-assist"; count nodes). No path/line/body needed for count.
+- **Otherwise:** wait 15 minutes, then **check once**: run **Phase 1 only** (same as fix-gemini-reviews: paginate with minimal fields id, isResolved, comments(first:1){ nodes { author { login } } }; filter to isResolved==false and author=="gemini-code-assist"). **Write the unresolved thread IDs to a file** (e.g. `CYCLE_UNRESOLVED_IDS`). Count = number of IDs. No path/line/body in this step.
 - Proceed to step C. If count = 0, step C will exit the loop (no comments by then → stop).
 
 ### C. Fetch threads; fix only if needed
 
-- **Fetch** unresolved review threads by `gemini-code-assist` for the PR using the **same two-phase fetch as fix-gemini-reviews** (Phase 1: paginate with minimal fields to get IDs; Phase 2: for each ID, `node(id)` to get path/line/body). Use the resulting list for fixes. (If step B already did a Phase 1 count and it was 0, you can treat count as 0 and exit without a second fetch; otherwise do the full two-phase fetch for fixes.)
-- **If 0 threads:** exit the loop (no fix, no check, no push). Summarize and stop. If no comments appeared after the 15-minute wait, report that and stop.
-- **If 1+ threads:** continue:
+- **If count = 0** (from step B): exit the loop (no fix, no check, no push). Summarize and stop.
+- **If count > 0:** **Reuse the ID file from step B** — do **not** re-run Phase 1. Run **Phase 2 only** (same as fix-gemini-reviews: for those IDs, query `nodes(ids)` in chunks of 100 for path/line/body). Use the resulting list for fixes. This avoids one full Phase 1 pagination per cycle. Then:
   - Implement the suggested fixes (per-thread path/line/body or ```suggestion```).
   - **Before pushing:** run **run-check-all-incremental** only if there are uncommitted changes; fix failures and re-run only the failed part until all pass.
   - Resolve the fixed threads via GraphQL, then commit and push (e.g. `git add -u && git commit -m "Fix Gemini comments" && git push`).
@@ -94,8 +93,8 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 | Step | Action |
 |------|--------|
 | A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
-| B | **Wait 15 minutes** (no polling); then **check once** for unresolved Gemini threads (Phase 1 count only). Proceed to C. If no comments by then, C exits and stop. |
-| C | Fetch unresolved Gemini threads; if 0 → exit; else fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR |
+| B | **Wait 15 minutes** (no polling); then **check once**: run Phase 1, write unresolved IDs to a file, count = number of IDs. Proceed to C. If count 0, C exits and stop. |
+| C | If count 0 → exit. Else **reuse step B’s ID file**; run Phase 2 only (nodes in chunks of 100). Fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR. |
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |
 
 Exit when: **cycle = 10** or **unresolved Gemini threads = 0**.
