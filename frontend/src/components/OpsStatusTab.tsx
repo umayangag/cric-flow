@@ -387,7 +387,7 @@ const OpsStatusTab: React.FC = () => {
                                 <StatusPill state={st} label={st} />
                               </Stack>
                               <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                                {`${n} of E${min} in last 30d`}
+                                {`${n} of ${min} expected in last 30d`}
                               </Typography>
                             </Stack>
                           );
