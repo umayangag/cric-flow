@@ -12,6 +12,20 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
 
+// Ensure feature map has all keys from the canonical contract (configs/feature_vectors.json); fill missing with 0.
+func ensureContractKeys(feats map[string]float64) {
+	for _, k := range features.BattingFeatureNames() {
+		if _, ok := feats[k]; !ok {
+			feats[k] = 0
+		}
+	}
+	for _, k := range features.BowlingFeatureNames() {
+		if _, ok := feats[k]; !ok {
+			feats[k] = 0
+		}
+	}
+}
+
 type battingSnapshotAtCutoff struct {
 	form        float64
 	formShort   float64
@@ -470,10 +484,70 @@ type WeatherOverride struct {
 	Temp, Humidity, Wind, Rain, Cloud, Pressure float64
 }
 
+// computeOppositionStrength returns average batting form and bowling form (as of cutoff) across the
+// given opposition player IDs for the format. Used to add opposition_batting_strength and
+// opposition_bowling_strength at prediction when the opposition pool is known. On error or empty
+// precomp returns 0, 0.
+func computeOppositionStrength(
+	ctx context.Context,
+	cutoff time.Time,
+	formatID int64,
+	oppositionPlayerIDs []int64,
+) (battingStrength, bowlingStrength float64, _ error) {
+	if len(oppositionPlayerIDs) == 0 {
+		return 0, 0, nil
+	}
+	emptyOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
+	for _, pid := range oppositionPlayerIDs {
+		emptyOpps[pid] = struct{ BattingOpp, BowlingOpp *int64 }{nil, nil}
+	}
+	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, formatID, nil, emptyOpps, oppositionPlayerIDs)
+	if err != nil || precomp == nil {
+		return 0, 0, err
+	}
+	var sumBat, sumBowl float64
+	var nBat, nBowl int
+	for _, pc := range precomp {
+		if b, ok := pc["batting_form"]; ok {
+			sumBat += b
+			nBat++
+		}
+		if b, ok := pc["bowling_form"]; ok {
+			sumBowl += b
+			nBowl++
+		}
+	}
+	if nBat > 0 {
+		battingStrength = sumBat / float64(nBat)
+	}
+	if nBowl > 0 {
+		bowlingStrength = sumBowl / float64(nBowl)
+	}
+	return battingStrength, bowlingStrength, nil
+}
+
+// Batting and bowling sequence feature keys from feature_vectors.json.
+// At future-match prediction these are set to 0 until precompute/seqcalc export them per player.
+var (
+	battingSequenceKeys = []string{
+		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
+		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
+	}
+	bowlingSequenceKeys = []string{
+		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
+		"bowl_react_after_boundary_wkt_rate_next", "bowl_spell_first_over_wkt_rate", "bowl_over_ball1_wkt_rate", "bowl_over_ball6_wkt_rate",
+	}
+)
+
 // ComputeFeaturesAtCutoffForFutureMatch returns a feature map per player for a hypothetical future match.
 // Used when predicting team selection: same venue and opposition for all players (the opposition team).
 // Missing precomputed values are filled with 0 to support new/auction players with no prior history.
 // When weather is non-nil, its values override the default 0 for batting_* and bowling_* weather features.
+// Sequence features (bat_*, bowl_*) are set to 0 until precompute exports them; this aligns the key set
+// with configs/feature_vectors.json so the ML service receives a consistent vector. Optional
+// oppositionPlayerIDs (e.g. the opposition team's pool) are used to compute opposition_batting_strength
+// and opposition_bowling_strength; when not provided or empty, those keys are 0 (training does not yet
+// include them; when a weather source is added, use the same feature names in training and prediction).
 func ComputeFeaturesAtCutoffForFutureMatch(
 	ctx context.Context,
 	cutoff time.Time,
@@ -483,6 +557,7 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 	seasonID *int64,
 	playerIDs []int64,
 	weather *WeatherOverride,
+	oppositionPlayerIDs []int64,
 ) (map[int64]map[string]float64, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]map[string]float64{}, nil
@@ -513,6 +588,11 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 	season := 0.0
 	if seasonID != nil && *seasonID != 0 {
 		season = float64(*seasonID)
+	}
+
+	oppBatStr, oppBowlStr := 0.0, 0.0
+	if len(oppositionPlayerIDs) > 0 {
+		oppBatStr, oppBowlStr, _ = computeOppositionStrength(ctx, cutoff, formatID, oppositionPlayerIDs)
 	}
 
 	out := make(map[int64]map[string]float64)
@@ -559,7 +639,18 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"season":              season,
 			"batting_temp":        wt, "batting_wind": ww, "batting_rain": wr, "batting_humidity": wh, "batting_cloud": wc, "batting_pressure": wp, "batting_viscosity": 0,
 			"bowling_temp": wt, "bowling_wind": ww, "bowling_rain": wr, "bowling_humidity": wh, "bowling_cloud": wc, "bowling_pressure": wp, "bowling_viscosity": 0,
+			"batting_inning": 0, "batting_session": 0, "toss": 0,
+			"bowling_session":             0,
+			"opposition_batting_strength": oppBatStr,
+			"opposition_bowling_strength": oppBowlStr,
 		}
+		for _, k := range battingSequenceKeys {
+			feats[k] = 0
+		}
+		for _, k := range bowlingSequenceKeys {
+			feats[k] = 0
+		}
+		ensureContractKeys(feats)
 		out[pid] = feats
 	}
 	return out, nil

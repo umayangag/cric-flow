@@ -24,16 +24,7 @@ const (
 	KindFielding   Kind = "fielding"
 )
 
-// Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
-// Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player (conservative to avoid OOM in 2GB containers).
-// Import: each worker holds one parsed match JSON + DB buffers.
-const (
-	DefaultPrecomputeMBPerWorker = 180
-	DefaultImportMBPerWorker     = 150
-	DefaultExportMBPerWorker     = 100
-	DefaultSeqCalcMBPerWorker    = 200
-	DefaultFieldingMBPerWorker   = 50
-)
+// Memory per worker and concurrency knobs come from config (see config.Resources*); fallbacks in config/constants.
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
 // Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >
@@ -56,7 +47,16 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	}
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
-		n = runtime.NumCPU()
+		// No memory limit detected (no GOMEMLIMIT/cgroup): use conservative default for memory-heavy kinds to avoid OOM.
+		cfg := config.Load()
+		if kind == KindPrecompute {
+			n = config.ResourcesPrecomputeConcurrencyWhenNoLimit(cfg)
+		} else {
+			n = runtime.NumCPU()
+		}
+		if n < 1 {
+			n = 1
+		}
 	}
 	return clampToCeiling(n, ceiling(kind))
 }
@@ -119,6 +119,7 @@ func ceiling(kind Kind) int {
 }
 
 func memoryBasedLimit(kind Kind) int {
+	cfg := config.Load()
 	limitBytes := detectMemoryLimitBytes()
 	if limitBytes <= 0 {
 		return 0
@@ -128,10 +129,24 @@ func memoryBasedLimit(kind Kind) int {
 	if perWorkerBytes <= 0 {
 		return 0
 	}
-	// Use at most 70% of limit for workers to leave room for runtime, DB, etc.
-	usable := (limitBytes * 70) / 100
+	frac := config.ResourcesMemoryUsageFractionPercent(cfg)
+	if frac <= 0 {
+		frac = config.DefaultMemoryUsageFractionPercent
+	}
+	// Use up to frac% of limit for workers; rest for runtime, DB, and spikes.
+	usable := (limitBytes * int64(frac)) / 100
 	n := int(usable / perWorkerBytes)
 	if n < 1 {
+		n = 1
+	}
+	// SeqCalc workers run full-format ball_event scans and can each use more than the per-worker estimate.
+	// In low-memory containers, cap at 1 so we don't run multiple such workers.
+	seqCalcLowGiB := config.ResourcesSeqCalcLowMemoryLimitGiB(cfg)
+	if seqCalcLowGiB <= 0 {
+		seqCalcLowGiB = config.DefaultSeqCalcLowMemoryLimitGiB
+	}
+	seqcalcLowMemoryLimitBytes := int64(seqCalcLowGiB) * 1024 * 1024 * 1024
+	if kind == KindSeqCalc && limitBytes <= seqcalcLowMemoryLimitBytes && n > 1 {
 		n = 1
 	}
 	slog.Debug("resources: memory-based limit",
@@ -143,19 +158,20 @@ func memoryBasedLimit(kind Kind) int {
 }
 
 func defaultMBPerWorker(kind Kind) int {
+	cfg := config.Load()
 	switch kind {
 	case KindPrecompute:
-		return DefaultPrecomputeMBPerWorker
+		return config.ResourcesPrecomputeMBPerWorker(cfg)
 	case KindImport:
-		return DefaultImportMBPerWorker
+		return config.ResourcesImportMBPerWorker(cfg)
 	case KindExport:
-		return DefaultExportMBPerWorker
+		return config.ResourcesExportMBPerWorker(cfg)
 	case KindSeqCalc:
-		return DefaultSeqCalcMBPerWorker
+		return config.ResourcesSeqCalcMBPerWorker(cfg)
 	case KindFielding:
-		return DefaultFieldingMBPerWorker
+		return config.ResourcesFieldingMBPerWorker(cfg)
 	default:
-		return DefaultImportMBPerWorker
+		return config.ResourcesImportMBPerWorker(cfg)
 	}
 }
 
@@ -222,25 +238,66 @@ func parseGOMEMLIMIT(s string) int64 {
 }
 
 // readCgroupMemoryMax reads cgroup v2 memory.max (or v1 memory.limit_in_bytes) in bytes.
+// In containers (Docker/K8s) the limit is usually on the process's cgroup, not the root;
+// we read /proc/self/cgroup to get the cgroup path and then memory.max under it.
 func readCgroupMemoryMax() int64 {
-	// cgroup v2: /sys/fs/cgroup/memory.max (or under slice)
+	// 1) Try cgroup v2 process path (e.g. Docker/K8s: /sys/fs/cgroup/<slice>/memory.max)
+	if b := readCgroupV2MemoryMaxFromProc(); b > 0 {
+		return b
+	}
+	// 2) Root / flat paths (host or older cgroup layout)
 	for _, path := range []string{
 		"/sys/fs/cgroup/memory.max",
 		"/sys/fs/cgroup/memory/memory.limit_in_bytes",
 	} {
-		data, err := os.ReadFile(path)
-		if err != nil {
+		if b := readMemoryMaxFile(path); b > 0 {
+			return b
+		}
+	}
+	return 0
+}
+
+// readMemoryMaxFile reads a memory.max or memory.limit_in_bytes file; returns 0 on any failure or "max".
+func readMemoryMaxFile(path string) int64 {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "max" || s == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+// readCgroupV2MemoryMaxFromProc reads /proc/self/cgroup for the unified cgroup path (v2: "0::/path")
+// and then /sys/fs/cgroup/<path>/memory.max. Used so containers with a 2GB limit are detected.
+func readCgroupV2MemoryMaxFromProc() int64 {
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return 0
+	}
+	// Unified cgroup v2: line like "0::/system.slice/docker-<id>.scope"
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		s := strings.TrimSpace(string(data))
-		if s == "max" || s == "" {
-			continue
+		// Format "0::/path" or "0::path"
+		if strings.HasPrefix(line, "0::") {
+			path := strings.TrimPrefix(line, "0::")
+			if path == "" {
+				path = "/"
+			} else if path[0] != '/' {
+				path = "/" + path
+			}
+			fullPath := "/sys/fs/cgroup" + path + "/memory.max"
+			return readMemoryMaxFile(fullPath)
 		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || n <= 0 {
-			continue
-		}
-		return n
 	}
 	return 0
 }

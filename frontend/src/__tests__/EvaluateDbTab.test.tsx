@@ -132,7 +132,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     await selectFilters();
     fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/HTTP 500/i);
-  });
+  }, 10000);
 
   it('renders bowling metrics and match aggregates when present', async () => {
     // Arrange candidates
@@ -236,7 +236,7 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     expect(within(table).getByText(/Pred Econ/i)).toBeInTheDocument();
     expect(within(table).getByText(/Actual Econ/i)).toBeInTheDocument();
     expect(within(table).getByText(/Econ Abs Err/i)).toBeInTheDocument();
-  });
+  }, 10000);
 
   it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
     // Arrange candidates

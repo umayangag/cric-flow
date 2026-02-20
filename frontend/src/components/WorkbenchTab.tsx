@@ -36,6 +36,7 @@ const MAX_LIMIT = 500;
 
 const WorkbenchTab: React.FC = () => {
   const [format, setFormat] = useState<string>('');
+  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
@@ -72,6 +73,7 @@ const WorkbenchTab: React.FC = () => {
         order: 'asc',
         limit: Math.min(Math.max(1, limit), MAX_LIMIT),
         cache: 'read',
+        use_unified_model: predictionModel === 'unified',
       };
       const data = await api.accuracyTrend(filters);
       setTrendData(data);
@@ -81,7 +83,7 @@ const WorkbenchTab: React.FC = () => {
     } finally {
       setTrendLoading(false);
     }
-  }, [format, startDate, endDate, limit]);
+  }, [format, startDate, endDate, limit, predictionModel]);
 
   const handleRegistryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -130,8 +132,9 @@ const WorkbenchTab: React.FC = () => {
           The Workbench lets you inspect how well the ML models predict real match outcomes. Use{' '}
           <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates),
           and <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
-          (train → predict next window → score). Each match is predicted with the{' '}
-          <strong>model for that match&apos;s format</strong> (T20, ODI, etc.).
+          (train → predict next window → score). Choose <strong>Prediction model</strong>:
+          format-specific (model for the selected format) or <strong>Unified</strong> (legacy
+          all-formats model).
         </Typography>
       </Alert>
 
@@ -141,10 +144,11 @@ const WorkbenchTab: React.FC = () => {
       >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load
-          accuracy trend&quot;. The table shows one row per match with error metrics (e.g. runs_mae,
-          wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include every format, or
-          pick one (e.g. T20) to evaluate that format only. <strong>Limit</strong> caps how many
-          matches are fetched (1–500). Prerequisites: precompute and ML artifacts must be in place.
+          accuracy trend&quot;. Use <strong>Prediction model</strong> to compare format-specific
+          models vs the unified (legacy) model. The table shows one row per match with error metrics
+          (e.g. runs_mae, wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include
+          every format, or pick one (e.g. T20) to evaluate that format only. Prerequisites:
+          precompute and ML artifacts must be in place.
         </Typography>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
@@ -168,6 +172,18 @@ const WorkbenchTab: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel id="workbench-model-label">Prediction model</InputLabel>
+            <Select
+              value={predictionModel}
+              labelId="workbench-model-label"
+              label="Prediction model"
+              onChange={(e) => setPredictionModel(e.target.value as 'format' | 'unified')}
+            >
+              <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
+              <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             size="small"
             label="Start date"
@@ -176,6 +192,7 @@ const WorkbenchTab: React.FC = () => {
             onChange={(e) => setStartDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
             sx={{ width: 160 }}
+            helperText="Only matches on or after this date (YYYY-MM-DD). Leave empty for no start filter."
           />
           <TextField
             size="small"
@@ -185,6 +202,7 @@ const WorkbenchTab: React.FC = () => {
             onChange={(e) => setEndDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
             sx={{ width: 160 }}
+            helperText="Only matches on or before this date (YYYY-MM-DD). Leave empty for no end filter."
           />
           <TextField
             size="small"
@@ -194,7 +212,7 @@ const WorkbenchTab: React.FC = () => {
             onChange={(e) => setLimit(Number(e.target.value) || DEFAULT_LIMIT)}
             inputProps={{ min: 1, max: MAX_LIMIT }}
             sx={{ width: 90 }}
-            helperText={`Max ${MAX_LIMIT} matches`}
+            helperText={`Max matches to evaluate (1–${MAX_LIMIT}). Fewer = faster.`}
           />
           <Button
             variant="contained"
@@ -275,16 +293,67 @@ const WorkbenchTab: React.FC = () => {
 
       <SectionCard
         title="Walk-forward registry"
-        subtitle="Upload a walk-forward registry JSON to view metrics per time window (train → predict next X matches → score)."
+        subtitle="Upload a walk-forward registry JSON to view how well the model generalizes over time."
       >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          <strong>How to use:</strong> Run the walk-forward pipeline from the repo (
-          <Box component="code" sx={{ fontSize: '0.85em', bgcolor: 'action.hover', px: 0.5 }}>
-            make walk-forward
-          </Box>
-          ). It writes <code>walk_forward_registry.json</code> to the ML service output directory.
-          Upload that file here to see MAE, n_train, n_holdout, and other metrics for each window.
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          <strong>What it is:</strong> Walk-forward evaluation tests whether your model stays
+          accurate as time moves forward. For each &quot;window&quot;, the pipeline trains on data
+          only
+          <em> before </em> a cutoff date, then predicts the next X matches (holdout), and compares
+          predictions to actual results. The registry file records each window (model, format,
+          cutoff, metrics like MAE). This helps you spot if the model degrades on newer matches.
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          <strong>Why use it:</strong> A single backtest on a date range can hide that the model
+          performs worse on recent data. Walk-forward simulates real use: train on the past, predict
+          the future, then advance time and repeat. Upload the registry here to inspect metrics per
+          window (e.g. n_train, n_holdout, runs_mae) without re-running the pipeline.
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          <strong>How to get a registry:</strong> Run from the repo:{' '}
+          <Box component="code" sx={{ fontSize: '0.85em', bgcolor: 'action.hover', px: 0.5 }}>
+            make walk-forward INITIAL_CUTOFF=2024-01-01 WINDOW_X=50 WALK_FORMAT=T20
+          </Box>{' '}
+          (adjust dates and format as needed). The pipeline writes{' '}
+          <code>walk_forward_registry.json</code> to the ML service output directory. Upload that
+          file below.
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <strong>Expected file shape:</strong> JSON with <code>run_id</code> (string) and{' '}
+          <code>windows</code> (array). Each window has <code>model_type</code>, <code>format</code>
+          , <code>cutoff_trained_before</code>, <code>window_x</code>, <code>metrics</code> (e.g.{' '}
+          <code>runs_mae</code>), and optionally <code>n_training_samples</code>,{' '}
+          <code>n_holdout_samples</code>. Example:
+        </Typography>
+        <Box
+          component="pre"
+          sx={{
+            fontSize: 11,
+            p: 1.5,
+            bgcolor: 'grey.100',
+            borderRadius: 1,
+            overflow: 'auto',
+            border: '1px solid',
+            borderColor: 'divider',
+            mb: 2,
+          }}
+        >
+          {`{
+  "run_id": "walk-2024-01-15",
+  "windows": [
+    {
+      "model_type": "batting",
+      "format": "T20",
+      "cutoff_trained_before": "2024-01-01T00:00:00Z",
+      "window_x": 50,
+      "n_training_samples": 1200,
+      "n_holdout_samples": 50,
+      "metrics": { "runs_mae": 12.4, "player_runs_mae": 8.2 }
+    }
+  ],
+  "config": { "initial_cutoff": "2024-01-01", "window_x": 50, "format": "T20" }
+}`}
+        </Box>
         <Stack direction="row" alignItems="center" spacing={2}>
           <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
             Choose JSON file

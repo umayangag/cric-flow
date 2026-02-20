@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,68 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// mlHealthClient is created per-request with config timeout to allow config reload; use getMLHealthClient().
+func getMLHealthClient() *http.Client {
+	cfg := config.Load()
+	sec := config.ServerMLHealthTimeoutSec(cfg)
+	return &http.Client{Timeout: time.Duration(sec) * time.Second}
+}
+
+// mlHealthProxyHandler proxies GET to the ML service /health so the frontend can get full health (loaded formats, artifacts) via the Go API.
+func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
+	base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
+	if base == "" {
+		base = config.ServerMLBaseURLFallback(config.Load())
+	}
+	base = strings.TrimSuffix(base, "/")
+	cfg := config.Load()
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.ServerMLHealthTimeoutSec(cfg))*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
+	if err != nil {
+		slog.Warn("ml health proxy: new request failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+	client := getMLHealthClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("ml health proxy: request failed", slog.Any("err", err))
+		respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	maxBody := config.ServerMLHealthBodyLimitBytes(config.Load())
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, int64(maxBody)))
+		slog.Warn(
+			"ml health proxy: upstream non-2xx",
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(body)),
+		)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(body)
+		return
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(io.LimitReader(resp.Body, int64(maxBody))).Decode(&payload); err != nil {
+		slog.Warn("ml health proxy: decode failed", slog.Any("err", err))
+		respondJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{"status": "error", "error": "invalid ml health response"},
+		)
+		return
+	}
+	respondJSON(w, http.StatusOK, payload)
+}
+
 // readinessHandler pings the DB to verify readiness.
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	cfg := config.Load()
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.ServerReadinessTimeoutSec(cfg))*time.Second)
 	defer cancel()
 	if err := db.Pool.Ping(ctx); err != nil {
 		respondJSON(

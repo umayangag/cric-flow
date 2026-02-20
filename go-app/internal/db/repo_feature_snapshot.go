@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -56,6 +57,20 @@ func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff ti
 
 // ListMatchesByFormatDate returns matches filtered by format and date range inclusive, ordered by date asc, id asc.
 func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time.Time) ([]MatchLite, error) {
+	return ListMatchesByFormatDatePage(ctx, formatID, from, to, 0, nil)
+}
+
+// ListMatchesByFormatDatePage returns a page of matches (keyset pagination) for replay.
+// Use afterCursor=nil for the first page; then pass the last match of the previous page.
+// pageSize 0 means no limit (returns all, same as ListMatchesByFormatDate before chunking).
+// This avoids loading all matches into memory and reduces OOM risk.
+func ListMatchesByFormatDatePage(
+	ctx context.Context,
+	formatID int64,
+	from, to *time.Time,
+	pageSize int,
+	afterCursor *MatchLite,
+) ([]MatchLite, error) {
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
@@ -63,19 +78,27 @@ func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time
 		FROM match
 		WHERE format_id = $1`
 	args := []any{formatID}
+	argNum := 2
 	if from != nil {
-		q += ` AND match_date >= $2`
+		q += ` AND match_date >= $` + strconv.Itoa(argNum)
 		args = append(args, *from)
+		argNum++
 	}
 	if to != nil {
-		if len(args) == 1 {
-			q += ` AND match_date <= $2`
-		} else {
-			q += ` AND match_date <= $3`
-		}
+		q += ` AND match_date <= $` + strconv.Itoa(argNum)
 		args = append(args, *to)
+		argNum++
 	}
-	q += ` ORDER BY match_date ASC, id ASC`
+	if afterCursor != nil {
+		q += ` AND (match_date, match_id) > ($` + strconv.Itoa(argNum) + `, $` + strconv.Itoa(argNum+1) + `)`
+		args = append(args, afterCursor.MatchDate, afterCursor.MatchID)
+		argNum += 2
+	}
+	q += ` ORDER BY match_date ASC, match_id ASC`
+	if pageSize > 0 {
+		q += ` LIMIT $` + strconv.Itoa(argNum)
+		args = append(args, pageSize)
+	}
 	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

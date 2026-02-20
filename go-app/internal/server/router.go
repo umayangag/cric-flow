@@ -28,6 +28,8 @@ func NewRouter(a *App) http.Handler {
 	// Import cricsheet data
 	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
+	// ML health proxy (full response for Health tab: loaded formats, artifacts)
+	admin.HandleFunc("/api/health/ml", a.mlHealthProxyHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
 
@@ -36,6 +38,8 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/ops/pipeline/stream", a.pipelineProgressStreamHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}
@@ -77,6 +81,11 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 	// Accuracy trend endpoint for dashboards
 	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	// Export backtest contributions CSV for combination meta-model training (background job)
+	admin.HandleFunc("/api/backtest/export-contributions", a.backtestExportContributionsHandler).
+		Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/api/backtest/export-contributions-status", a.backtestExportContributionsStatusHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 
 	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)

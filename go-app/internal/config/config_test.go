@@ -217,3 +217,59 @@ func TestPipelineTimeout(t *testing.T) {
 	d = PipelineTimeout()
 	require.Equal(t, 60*time.Second, d)
 }
+
+func TestEffectiveExportMaxMatchIDs(t *testing.T) {
+	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(nil))
+	cfg := &Config{}
+	cfg.Backtest.ExportMaxMatchIDs = 500
+	require.Equal(t, 500, EffectiveExportMaxMatchIDs(cfg))
+	cfg.Backtest.ExportMaxMatchIDs = 0
+	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(cfg))
+}
+
+func TestEffectiveMaxTotalSamples(t *testing.T) {
+	require.Equal(t, DefaultMaxTotalSamples, EffectiveMaxTotalSamples(nil))
+	cfg := &Config{}
+	cfg.Predictor.MaxTotalSamples = 50000
+	require.Equal(t, 50000, EffectiveMaxTotalSamples(cfg))
+	cfg.Predictor.MaxTotalSamples = 0
+	require.Equal(t, DefaultMaxTotalSamples, EffectiveMaxTotalSamples(cfg))
+}
+
+func TestEffectiveSimulationTopKPerTeam(t *testing.T) {
+	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(nil))
+	cfg := &Config{}
+	cfg.Predictor.SimulationTopKPerTeam = 30
+	require.Equal(t, 30, EffectiveSimulationTopKPerTeam(cfg))
+	cfg.Predictor.SimulationTopKPerTeam = 0
+	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(cfg))
+}
+
+func TestEffectiveSimulationNumSamplesPerMatchup(t *testing.T) {
+	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(nil))
+	cfg := &Config{}
+	cfg.Predictor.SimulationNumSamplesPerMatchup = 200
+	require.Equal(t, 200, EffectiveSimulationNumSamplesPerMatchup(cfg))
+	cfg.Predictor.SimulationNumSamplesPerMatchup = 0
+	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(cfg))
+}
+
+func TestEffectiveSimulationCVs(t *testing.T) {
+	r, w, e := EffectiveSimulationCVs(nil)
+	require.Equal(t, DefaultSimulationRunsCV, r)
+	require.Equal(t, DefaultSimulationWicketsCV, w)
+	require.Equal(t, DefaultSimulationEconomyCV, e)
+
+	cfg := &Config{}
+	cfg.Predictor.Simulation = &SimulationParams{RunsCV: 0.4, WicketsCV: 0.5, EconomyCV: 0.2}
+	r, w, e = EffectiveSimulationCVs(cfg)
+	require.Equal(t, 0.4, r)
+	require.Equal(t, 0.5, w)
+	require.Equal(t, 0.2, e)
+
+	cfg.Predictor.Simulation = &SimulationParams{RunsCV: 0.3} // partial: others stay default
+	r, w, e = EffectiveSimulationCVs(cfg)
+	require.Equal(t, 0.3, r)
+	require.Equal(t, DefaultSimulationWicketsCV, w)
+	require.Equal(t, DefaultSimulationEconomyCV, e)
+}

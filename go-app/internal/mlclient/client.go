@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
@@ -18,17 +19,20 @@ type Client struct {
 	Timeout   time.Duration
 }
 
-// New returns a client with defaults. Override base URL via ML_BASE_URL env.
+// New returns a client with defaults. Override base URL via ML_BASE_URL env; fallback from config server.ml_base_url_fallback.
 func New() *Client {
 	base := os.Getenv("ML_BASE_URL")
 	if base == "" {
-		base = "http://localhost:8000"
+		base = config.ServerMLBaseURLFallback(config.Load())
 	}
+	cfg := config.Load()
+	sec := config.ServerMLClientTimeoutSec(cfg)
+	timeout := time.Duration(sec) * time.Second
 	return &Client{
 		BaseURL:   base,
-		HTTP:      &http.Client{Timeout: 20 * time.Second},
+		HTTP:      &http.Client{Timeout: timeout},
 		UserAgent: "cric-app-mlclient (+github.com/umayangag/cric-flow)",
-		Timeout:   20 * time.Second,
+		Timeout:   timeout,
 	}
 }
 

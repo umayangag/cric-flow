@@ -21,53 +21,54 @@ import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+from app.feature_config import get_feature_names
 from app.logging import get_struct_logger
 from ml.config import get_training_data_fetch_timeout_sec, get_training_params
 from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
 
-# Align with ml/ml/train_batting.py and train_bowling.py (must match configs/feature_vectors.json order)
-BAT_SEQ_COLS = [
-    "bat_prev_sr",
-    "bat_prev_out_rate",
-    "bat_window_sr_12_pp",
-    "bat_window_boundary_rate_12_pp",
-    "bat_entry_sr_1_6",
-    "bat_set_sr_13_30",
-    "bat_react_after_dot_sr",
-    "bat_after_k_dots_boundary_p_k2",
-]
-BOWL_SEQ_COLS = [
-    "bowl_prev_wkt_rate",
-    "bowl_window_econ_24_death",
-    "bowl_window_wkt_rate_24_death",
-    "bowl_extras_wide_rate_pp",
-    "bowl_react_after_boundary_wkt_rate_next",
-    "bowl_spell_first_over_wkt_rate",
-    "bowl_over_ball1_wkt_rate",
-    "bowl_over_ball6_wkt_rate",
-]
-BATTING_FEATURE_COLS = [
-    "batting_consistency",
-    "batting_form",
-    "batting_form_short",
-    "batting_form_long",
-    "batting_momentum",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "inning",
-    "batting_session",
-    "toss",
-    "batting_venue",
-    "batting_opposition",
-    "season_id",
-] + BAT_SEQ_COLS
+
+# Canonical feature order from configs/feature_vectors.json (single source of truth).
+def _batting_feature_cols() -> List[str]:
+    return get_feature_names("batting")
+
+
+def _bowling_feature_cols() -> List[str]:
+    return get_feature_names("bowling")
+
+
+# Public constants for tests and callers that need the same feature order.
+BATTING_FEATURE_COLS: List[str] = _batting_feature_cols()
+BOWLING_FEATURE_COLS: List[str] = _bowling_feature_cols()
+
+
+# Legacy column names from Go export; when API returns these we map to contract names in preprocess.
+BATTING_LEGACY_ALIAS = {
+    "batting_temp": "temp",
+    "batting_wind": "wind",
+    "batting_rain": "rain",
+    "batting_humidity": "humidity",
+    "batting_cloud": "cloud",
+    "batting_pressure": "pressure",
+    "batting_viscosity": "viscosity",
+    "batting_inning": "inning",
+    "venue": "batting_venue",
+    "opposition": "batting_opposition",
+    "season": "season_id",
+}
+BOWLING_LEGACY_ALIAS = {
+    "bowling_temp": "temp",
+    "bowling_wind": "wind",
+    "bowling_rain": "rain",
+    "bowling_humidity": "humidity",
+    "bowling_cloud": "cloud",
+    "bowling_pressure": "pressure",
+    "bowling_viscosity": "viscosity",
+    "batting_inning": "inning",
+    "season": "season_id",
+}
+
 BATTING_TARGET_COLS = [
     "runs",
     "balls",
@@ -76,26 +77,6 @@ BATTING_TARGET_COLS = [
     "batting_position",
 ]
 
-BOWLING_FEATURE_COLS = [
-    "bowling_consistency",
-    "bowling_form",
-    "bowling_form_short",
-    "bowling_form_long",
-    "bowling_momentum",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "inning",
-    "bowling_session",
-    "toss",
-    "bowling_venue",
-    "bowling_opposition",
-    "season_id",
-] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = [
     "runs",
     "balls",
@@ -170,17 +151,22 @@ def _rows_to_xy(
 
 
 def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Build X, Y from batting headers + rows (same logic as train_batting.load_dataset)."""
+    """Build X, Y from batting headers + rows. Feature order from configs/feature_vectors.json."""
 
     def _batting_preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        feature_cols = _batting_feature_cols()
         for col in ("batting_form_short", "batting_form_long"):
             if col not in df.columns and "batting_form" in df.columns:
                 df = df.assign(**{col: df["batting_form"]})
         if "batting_momentum" not in df.columns:
             df = df.assign(batting_momentum=0.0)
-        for col in BAT_SEQ_COLS:
+        for col in feature_cols:
             if col not in df.columns:
-                df = df.assign(**{col: 0.0})
+                legacy = BATTING_LEGACY_ALIAS.get(col)
+                if legacy and legacy in df.columns:
+                    df = df.assign(**{col: pd.to_numeric(df[legacy], errors="coerce").fillna(0.0)})
+                else:
+                    df = df.assign(**{col: 0.0})
             else:
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
@@ -193,7 +179,7 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
     return _rows_to_xy(
         headers,
         rows,
-        BATTING_FEATURE_COLS,
+        _batting_feature_cols(),
         BATTING_TARGET_COLS,
         n_y_final=6,
         preprocess=_batting_preprocess,
@@ -202,9 +188,10 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
 
 
 def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Build X, Y from bowling headers + rows (same logic as train_bowling.load_dataset)."""
+    """Build X, Y from bowling headers + rows. Feature order from configs/feature_vectors.json."""
 
     def _bowling_preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        feature_cols = _bowling_feature_cols()
         if "bowling_session" in df.columns:
             df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
         for col in ("bowling_form_short", "bowling_form_long"):
@@ -212,9 +199,13 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
                 df = df.assign(**{col: df["bowling_form"]})
         if "bowling_momentum" not in df.columns:
             df = df.assign(bowling_momentum=0.0)
-        for col in BOWL_SEQ_COLS:
+        for col in feature_cols:
             if col not in df.columns:
-                df = df.assign(**{col: 0.0})
+                legacy = BOWLING_LEGACY_ALIAS.get(col)
+                if legacy and legacy in df.columns:
+                    df = df.assign(**{col: pd.to_numeric(df[legacy], errors="coerce").fillna(0.0)})
+                else:
+                    df = df.assign(**{col: 0.0})
             else:
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
@@ -228,7 +219,7 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
     return _rows_to_xy(
         headers,
         rows,
-        BOWLING_FEATURE_COLS,
+        _bowling_feature_cols(),
         BOWLING_TARGET_COLS,
         n_y_final=4,
         preprocess=_bowling_preprocess,

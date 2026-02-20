@@ -9,6 +9,7 @@ import type {
   PaginatedResponse,
   PredictTeamSelectionResponse,
   PipelineRunResponse,
+  PipelineProgressPayload,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
 } from './types';
@@ -48,7 +49,6 @@ function createHttpClient(baseUrl: string) {
 }
 
 // Specific clients
-const http = createHttpClient(BASE_URL);
 const httpApi = createHttpClient(BASE_API_URL);
 
 type SSECallbacks = {
@@ -65,8 +65,8 @@ function processBacktestSSEPart(
   let eventType = '';
   let data = '';
   for (const line of part.split('\n')) {
-    if (line.startsWith('event: ')) eventType = line.slice(7).trim();
-    else if (line.startsWith('data: ')) data = line.slice(6);
+    if (/^event:\s?/.test(line)) eventType = line.replace(/^event:\s?/, '').trim();
+    else if (/^data:\s?/.test(line)) data = line.replace(/^data:\s?/, '');
   }
   if (eventType === 'progress' && data) {
     try {
@@ -102,8 +102,9 @@ export const api = {
   apiHealth(): Promise<{ status: string }> {
     return httpApi('/health');
   },
+  /** ML service health (loaded formats, artifacts). Uses Go API proxy so the frontend gets full details. */
   health(): Promise<HealthResponse> {
-    return http('/health');
+    return httpApi('/api/health/ml');
   },
   // --- Backtest API (select and evaluate) ---
   backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {
@@ -160,6 +161,54 @@ export const api = {
     }
     return { status: res.status, data };
   },
+  /**
+   * Subscribe to pipeline progress SSE (GET /ops/pipeline/stream).
+   * Calls onProgress with each event; runs until stream ends or signal aborts.
+   */
+  async subscribePipelineProgress(
+    signal: AbortSignal,
+    onProgress: (payload: PipelineProgressPayload) => void,
+  ): Promise<void> {
+    const url = `${BASE_API_URL}/ops/pipeline/stream`;
+    const headers: Record<string, string> = {};
+    const apiKey = localStorage.getItem('cric_info_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    const res = await fetch(url, { headers, signal });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          const dataLines = part.split('\n').filter((l) => /^data:\s/.test(l) || /^data:/.test(l));
+          if (dataLines.length > 0) {
+            // Per SSE spec: multiple data: lines for one event are joined with newline
+            const data = dataLines.map((l) => l.replace(/^data:\s*/, '')).join('\n');
+            try {
+              const payload = JSON.parse(data) as PipelineProgressPayload;
+              onProgress(payload);
+            } catch (e) {
+              console.error('Failed to parse pipeline progress SSE data:', e, 'Data:', data);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') return;
+      throw e;
+    }
+  },
   // --- Options ---
   getTeams(): Promise<string[]> {
     return httpApi('/api/options/teams');
@@ -198,6 +247,7 @@ export const api = {
       u.searchParams.set('limit', String(filters.limit));
     if (filters.cache) u.searchParams.set('cache', filters.cache);
     if (filters.metrics) u.searchParams.set('metrics', filters.metrics);
+    if (filters.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
     return httpApi(u.toString());
   },
 
@@ -270,12 +320,14 @@ export const api = {
     team1: string,
     team2: string,
     matchId: number | string,
+    options?: { use_unified_model?: boolean },
   ): Promise<{ job_id: string }> {
     const u = new URL('/api/backtest/evaluate-start', BASE_API_URL);
     u.searchParams.set('format', format);
     u.searchParams.set('team1', team1);
     u.searchParams.set('team2', team2);
     u.searchParams.set('match_id', String(matchId));
+    if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
     const headers: Record<string, string> = {};
     const apiKey = localStorage.getItem('cric_info_api_key');
     if (apiKey) headers['X-API-Key'] = apiKey;
@@ -318,6 +370,7 @@ export const api = {
     extra_team2?: number[];
     min_bowlers?: number;
     require_keeper?: boolean;
+    use_unified_model?: boolean;
   }): Promise<PredictTeamSelectionResponse> {
     return httpApi('/api/predict/team-selection', {
       method: 'POST',

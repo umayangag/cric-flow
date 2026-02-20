@@ -22,6 +22,29 @@ type PlayerConsistency struct {
 	BowlingConsistency float32
 }
 
+// ListPlayerIsWicketKeeper returns a map of player ID -> true if that player is a wicket keeper.
+// IDs not found in the DB are omitted (caller may treat as false).
+func ListPlayerIsWicketKeeper(ctx context.Context, ids []int64) (map[int64]bool, error) {
+	if Pool == nil || len(ids) == 0 {
+		return map[int64]bool{}, nil
+	}
+	rows, err := Pool.Query(ctx, `SELECT id, is_wicket_keeper FROM player WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		var keep int16
+		if err := rows.Scan(&id, &keep); err != nil {
+			return nil, err
+		}
+		out[id] = keep == 1
+	}
+	return out, rows.Err()
+}
+
 // GetPlayerByID returns a player by their ID.
 func GetPlayerByID(ctx context.Context, id int64) (*Player, error) {
 	if Pool == nil {

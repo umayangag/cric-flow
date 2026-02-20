@@ -14,7 +14,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: logs api migrate output-dirs export-dataset export-off export-on
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
-.PHONY: train-batting train-bowling train-fielding train-extras train-win train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta
+.PHONY: train-batting train-bowling train-fielding train-extras train-win train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
 .PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -230,6 +230,18 @@ walk-forward:
 # Train meta-model for score combination from backtest CSV (see docs/ml-and-training.md)
 train-combination-meta:
 	$(MAKE) -C ml-service train-combination-meta CSV="$(CSV)" OUT="$(OUT)"
+
+# Full retrain pipeline: precompute → export → train all models; optionally train-combination-meta if CSV exists.
+# Does not run import. Set CUTOFF= and GO_APP_URL= for fielding/extras/win. Generate contributions CSV via POST /api/backtest/export-contributions first if you want combination meta.
+FULL_PIPELINE_CSV ?= output/go-app/backtest_contributions.csv
+FULL_PIPELINE_OUT ?= output/go-app/combination_meta.json
+full-pipeline: output-dirs precompute-all-all-formats export-dataset train-models
+	@if [ -f "$(FULL_PIPELINE_CSV)" ]; then \
+	  echo "[full-pipeline] Running train-combination-meta (CSV found)"; \
+	  $(MAKE) train-combination-meta CSV="$(FULL_PIPELINE_CSV)" OUT="$(FULL_PIPELINE_OUT)"; \
+	else \
+	  echo "[full-pipeline] Skipping train-combination-meta (no $(FULL_PIPELINE_CSV)); generate via POST /api/backtest/export-contributions"; \
+	fi
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports

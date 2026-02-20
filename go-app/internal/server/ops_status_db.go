@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
@@ -17,6 +18,10 @@ import (
 type DBProbe interface {
 	Ping(ctx context.Context) error
 	Count(ctx context.Context, table string) (int64, error)
+	// CountFieldingByFormat returns the number of fielding_data rows for the given format (match join).
+	CountFieldingByFormat(ctx context.Context, format string) (int64, error)
+	// CountFieldingByFormatGrouped returns row counts per format in one query (avoids N queries in a loop).
+	CountFieldingByFormatGrouped(ctx context.Context) (map[string]int64, error)
 	// MigrationInfo returns (currentApplied, expectedTotal, status)
 	// status: "ok" | "unknown" | "out_of_date"
 	MigrationInfo(ctx context.Context) (int, int, string, error)
@@ -36,7 +41,9 @@ func (productionDBProbe) Ping(ctx context.Context) error {
 	if db.Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	return db.Pool.Ping(ctx)
 }
@@ -48,7 +55,9 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 	if db.Pool == nil {
 		return 0, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 
 	var (
@@ -77,12 +86,53 @@ func (productionDBProbe) Count(ctx context.Context, table string) (int64, error)
 	return n, nil
 }
 
+func (productionDBProbe) CountFieldingByFormat(ctx context.Context, format string) (int64, error) {
+	m, err := (productionDBProbe{}).CountFieldingByFormatGrouped(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return m[format], nil
+}
+
+func (productionDBProbe) CountFieldingByFormatGrouped(ctx context.Context) (map[string]int64, error) {
+	if db.Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
+	defer cancel()
+	rows, err := db.Pool.Query(ctx, `
+        SELECT mf.code, COUNT(*)
+        FROM fielding_data fd
+        JOIN match m ON m.match_id = fd.match_id
+        JOIN match_format mf ON mf.id = m.format_id
+        GROUP BY mf.code
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int64)
+	for rows.Next() {
+		var code string
+		var n int64
+		if err := rows.Scan(&code, &n); err != nil {
+			return nil, err
+		}
+		out[code] = n
+	}
+	return out, rows.Err()
+}
+
 func (productionDBProbe) MigrationInfo(ctx context.Context) (int, int, string, error) {
 	expected := countMigrationFiles()
 	if db.Pool == nil {
 		return 0, expected, "unknown", errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	var applied int
 	// Try to count rows in schema_migrations; if missing, mark unknown.
@@ -100,7 +150,9 @@ func (productionDBProbe) LastMatchImportAt(ctx context.Context) (time.Time, erro
 	if db.Pool == nil {
 		return time.Time{}, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	// Use match_date for latest available match record date.
 	var ts time.Time
@@ -117,7 +169,9 @@ func (productionDBProbe) TableStats(ctx context.Context) ([]db.TableStat, error)
 	if db.Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cfg := config.Load()
+	sec := config.ServerDBProbeLongTimeoutSec(cfg)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(sec)*time.Second)
 	defer cancel()
 	return db.GetTableStats(ctx)
 }

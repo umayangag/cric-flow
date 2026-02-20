@@ -47,13 +47,18 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body struct {
-		Format    string `json:"format"`
-		Team1     string `json:"team1"`
-		Team2     string `json:"team2"`
-		Venue     string `json:"venue"`
-		MatchDate string `json:"match_date"` // RFC3339 or YYYY-MM-DD
-		SeasonID  *int64 `json:"season_id"`
-		Weather   *struct {
+		Format             string `json:"format"`
+		Team1              string `json:"team1"`
+		Team2              string `json:"team2"`
+		Venue              string `json:"venue"`
+		MatchDate          string `json:"match_date"` // RFC3339 or YYYY-MM-DD
+		SeasonID           *int64 `json:"season_id"`
+		UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
+		Simulate           *bool  `json:"simulate,omitempty"`             // run Monte Carlo for win prob and outcome distributions
+		SimulationTopK     int    `json:"simulation_top_k,omitempty"`     // top XIs per team (default 50)
+		SimulationSamples  int    `json:"simulation_samples,omitempty"`   // samples per matchup (default 500)
+		SimulationMaxPairs int    `json:"simulation_max_pairs,omitempty"` // cap on matchup pairs (0 = no cap)
+		Weather            *struct {
 			Temp     float64 `json:"temp"`
 			Humidity float64 `json:"humidity"`
 			Wind     float64 `json:"wind"`
@@ -92,6 +97,33 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 			v := strings.EqualFold(s, "true") || s == "1"
 			body.RequireKeeper = &v
 		}
+		if s := q.Get("use_unified_model"); s == "1" || strings.EqualFold(s, "true") {
+			t := true
+			body.UseUnifiedModel = &t
+		}
+		if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
+			t := true
+			body.UseUnifiedModel = &t
+		}
+		if s := q.Get("simulate"); s == "1" || strings.EqualFold(s, "true") {
+			t := true
+			body.Simulate = &t
+		}
+		if s := q.Get("simulation_top_k"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				body.SimulationTopK = n
+			}
+		}
+		if s := q.Get("simulation_samples"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				body.SimulationSamples = n
+			}
+		}
+		if s := q.Get("simulation_max_pairs"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+				body.SimulationMaxPairs = n
+			}
+		}
 	}
 
 	if body.Format == "" || body.Team1 == "" || body.Team2 == "" {
@@ -118,16 +150,17 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	input := predictteam.Input{
-		Format:        body.Format,
-		Team1:         body.Team1,
-		Team2:         body.Team2,
-		Venue:         body.Venue,
-		MatchDate:     matchDate,
-		SeasonID:      body.SeasonID,
-		ExtraTeam1:    body.ExtraTeam1,
-		ExtraTeam2:    body.ExtraTeam2,
-		MinBowlers:    body.MinBowlers,
-		RequireKeeper: true,
+		Format:          body.Format,
+		Team1:           body.Team1,
+		Team2:           body.Team2,
+		Venue:           body.Venue,
+		MatchDate:       matchDate,
+		SeasonID:        body.SeasonID,
+		ExtraTeam1:      body.ExtraTeam1,
+		ExtraTeam2:      body.ExtraTeam2,
+		MinBowlers:      body.MinBowlers,
+		RequireKeeper:   true,
+		UseUnifiedModel: body.UseUnifiedModel != nil && *body.UseUnifiedModel,
 	}
 	if body.Weather != nil {
 		input.Weather = &predictteam.WeatherInput{
@@ -150,6 +183,54 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	simulate := body.Simulate != nil && *body.Simulate
+	if simulate {
+		cfg := config.Load()
+		opts := predictteam.DefaultSimulationOpts()
+		if body.SimulationTopK > 0 {
+			opts.TopKPerTeam = body.SimulationTopK
+		} else {
+			opts.TopKPerTeam = config.EffectiveSimulationTopKPerTeam(cfg)
+		}
+		if body.SimulationSamples > 0 {
+			opts.NumSamplesPerMatchup = body.SimulationSamples
+		} else {
+			opts.NumSamplesPerMatchup = config.EffectiveSimulationNumSamplesPerMatchup(cfg)
+		}
+		if body.SimulationMaxPairs > 0 {
+			opts.MaxMatchups = body.SimulationMaxPairs
+		}
+		runsCV, wicketsCV, economyCV := config.EffectiveSimulationCVs(cfg)
+		opts.RunsCV, opts.WicketsCV, opts.EconomyCV = runsCV, wicketsCV, economyCV
+		maxTotalSamples := config.EffectiveMaxTotalSamples(cfg)
+		matchups := opts.TopKPerTeam * opts.TopKPerTeam
+		if opts.MaxMatchups > 0 && opts.MaxMatchups < matchups {
+			matchups = opts.MaxMatchups
+		}
+		if matchups*opts.NumSamplesPerMatchup > maxTotalSamples {
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				apiError{
+					Code:    "INVALID_PARAM",
+					Message: "simulation would exceed max samples (reduce simulation_top_k, simulation_samples, or simulation_max_pairs)",
+				},
+			)
+			return
+		}
+		result, sim, err := predictteam.PredictTeamsWithSimulation(r.Context(), input, mlPredictorAdapter{}, opts)
+		if err != nil {
+			respondErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"team1":             result.Team1,
+			"team2":             result.Team2,
+			"scorecard_summary": result.ScorecardSummary,
+			"simulation":        sim,
+		})
+		return
+	}
 	result, err := predictteam.PredictTeams(r.Context(), input, mlPredictorAdapter{})
 	if err != nil {
 		respondErr(w, err)

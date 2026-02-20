@@ -42,6 +42,7 @@ type Input struct {
 	OppositionPlayerIDs []int64       `json:"opposition_player_ids,omitempty"` // optional; for future batter-bowler matchup features
 	MinBowlers          int           `json:"min_bowlers,omitempty"`           // default 5
 	RequireKeeper       bool          `json:"require_keeper,omitempty"`        // default true
+	UseUnifiedModel     bool          `json:"use_unified_model,omitempty"`     // when true, use legacy unified model instead of format-specific
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -55,10 +56,20 @@ type SelectedPlayer struct {
 	RunOuts    float64 `json:"run_outs"`
 }
 
-// Result holds the best 11 for each team.
+// ScorecardSummary holds predicted innings totals and winner for an upcoming match.
+type ScorecardSummary struct {
+	Innings1Total   float64 `json:"innings1_total"`
+	Innings2Total   float64 `json:"innings2_total"`
+	PredictedWinner string  `json:"predicted_winner"`
+	ExtrasInnings1  float64 `json:"extras_innings1,omitempty"`
+	ExtrasInnings2  float64 `json:"extras_innings2,omitempty"`
+}
+
+// Result holds the best 11 for each team and optional scorecard summary.
 type Result struct {
-	Team1 []SelectedPlayer `json:"team1"`
-	Team2 []SelectedPlayer `json:"team2"`
+	Team1            []SelectedPlayer  `json:"team1"`
+	Team2            []SelectedPlayer  `json:"team2"`
+	ScorecardSummary *ScorecardSummary `json:"scorecard_summary,omitempty"`
 }
 
 // MLPredictor provides player predictions from features (e.g. via ML backtest endpoint).
@@ -81,8 +92,24 @@ type PlayerPred struct {
 	RunOuts float64
 }
 
-// PredictTeams runs the full pipeline: pool, features, ML predict, team select.
-func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
+// predictIntermediates holds pool, predictions, and context from the PredictTeams pipeline
+// so callers (e.g. PredictTeamsWithSimulation) can reuse them without re-querying DB or ML.
+type predictIntermediates struct {
+	Pool1, Pool2     []db.PlayerPoolRow
+	Preds1, Preds2   map[int64]PlayerPred
+	FormatID         int64
+	VenueID          *int64
+	Extras1, Extras2 float64
+	Team1, Team2     string
+}
+
+// predictTeamsWithIntermediates runs the full pipeline and returns the result plus
+// intermediates (pools, preds, formatID, venueID, extras, team names) for reuse.
+func predictTeamsWithIntermediates(
+	ctx context.Context,
+	input Input,
+	predictor MLPredictor,
+) (*Result, *predictIntermediates, error) {
 	if input.MinBowlers <= 0 {
 		if cfg := config.Load(); cfg != nil && cfg.Team.MinBowlers > 0 {
 			input.MinBowlers = cfg.Team.MinBowlers
@@ -96,9 +123,15 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if format == "" || team1 == "" || team2 == "" {
 		err := fmt.Errorf("format, team1, team2 are required")
 		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))
-		return nil, err
+		return nil, nil, err
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
+
+	// When UseUnifiedModel is true, pass empty format to ML so it uses the legacy unified model.
+	formatForPrediction := format
+	if input.UseUnifiedModel {
+		formatForPrediction = ""
+	}
 
 	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
 	if fmtErr != nil {
@@ -107,7 +140,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.String("format", format),
 			slog.Any("err", fmtErr),
 		)
-		return nil, fmt.Errorf("resolve format: %w", fmtErr)
+		return nil, nil, fmt.Errorf("resolve format: %w", fmtErr)
 	}
 
 	// Resolve venue ID
@@ -127,12 +160,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	pool1, err := db.ListPlayerPoolByTeam(ctx, format, team1, cutoff, input.ExtraTeam1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 pool failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 pool: %w", err)
+		return nil, nil, fmt.Errorf("team1 pool: %w", err)
 	}
 	pool2, err := db.ListPlayerPoolByTeam(ctx, format, team2, cutoff, input.ExtraTeam2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 pool failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 pool: %w", err)
+		return nil, nil, fmt.Errorf("team2 pool: %w", err)
 	}
 	if len(pool1) < 11 {
 		err := fmt.Errorf("team1 has only %d players, need at least 11", len(pool1))
@@ -142,7 +175,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.Int("len", len(pool1)),
 			slog.Any("err", err),
 		)
-		return nil, err
+		return nil, nil, err
 	}
 	if len(pool2) < 11 {
 		err := fmt.Errorf("team2 has only %d players, need at least 11", len(pool2))
@@ -152,15 +185,28 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.Int("len", len(pool2)),
 			slog.Any("err", err),
 		)
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Features and predictions for team1 (opposition = team2)
+	// Player ID lists for both teams (needed for opposition strength when computing features).
 	ids1 := make([]int64, 0, len(pool1))
 	for _, p := range pool1 {
 		ids1 = append(ids1, p.PlayerID)
 	}
+	ids2 := make([]int64, 0, len(pool2))
+	for _, p := range pool2 {
+		ids2 = append(ids2, p.PlayerID)
+	}
 	weatherOpt := toWeatherOverride(input.Weather)
+	// Opposition strength: use the other team's pool (team1 faces team2, team2 faces team1).
+	// When input.OppositionPlayerIDs is set, use it as override for the opposition pool (e.g. single-team prediction).
+	oppositionIDsTeam1 := ids2
+	oppositionIDsTeam2 := ids1
+	if len(input.OppositionPlayerIDs) > 0 {
+		oppositionIDsTeam1 = input.OppositionPlayerIDs
+		oppositionIDsTeam2 = input.OppositionPlayerIDs
+	}
+	// Features and predictions for team1 (opposition = team2)
 	feats1, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
 		ctx,
 		cutoff,
@@ -170,15 +216,16 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		input.SeasonID,
 		ids1,
 		weatherOpt,
+		oppositionIDsTeam1,
 	)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 features failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 features: %w", err)
+		return nil, nil, fmt.Errorf("team1 features: %w", err)
 	}
-	preds1, err := predictor.PredictPlayers(ctx, cutoff, format, ids1, feats1)
+	preds1, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids1, feats1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 predict failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 predict: %w", err)
+		return nil, nil, fmt.Errorf("team1 predict: %w", err)
 	}
 	// Use ML fielding when the service returned predictions; otherwise fall back to historical EWM.
 	if !hasFieldingPredictions(preds1) {
@@ -186,10 +233,6 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	}
 
 	// Features and predictions for team2 (opposition = team1)
-	ids2 := make([]int64, 0, len(pool2))
-	for _, p := range pool2 {
-		ids2 = append(ids2, p.PlayerID)
-	}
 	feats2, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
 		ctx,
 		cutoff,
@@ -199,15 +242,16 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 		input.SeasonID,
 		ids2,
 		weatherOpt,
+		oppositionIDsTeam2,
 	)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 features failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 features: %w", err)
+		return nil, nil, fmt.Errorf("team2 features: %w", err)
 	}
-	preds2, err := predictor.PredictPlayers(ctx, cutoff, format, ids2, feats2)
+	preds2, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids2, feats2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 predict failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 predict: %w", err)
+		return nil, nil, fmt.Errorf("team2 predict: %w", err)
 	}
 	if !hasFieldingPredictions(preds2) {
 		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
@@ -224,23 +268,21 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	}
 	batW, bowlW, fieldW, keeperW := config.EffectiveScoreWeightsForFormat(cfg, format)
 	weights := teamselect.ScoreWeights{Bat: batW, Bowl: bowlW, Field: fieldW, KeeperBonus: keeperW}
-	sel1, err := teamselect.Select(tsPool1, weights, teamselect.Constraints{
+	constraints := teamselect.Constraints{
 		Size:          teamSize,
 		MinBowlers:    input.MinBowlers,
 		RequireKeeper: input.RequireKeeper,
-	})
+	}
+	useOptimizer := cfg != nil && cfg.Selection.UseOptimizer
+	sel1, err := selectTeam(tsPool1, weights, constraints, useOptimizer)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 select: %w", err)
+		return nil, nil, fmt.Errorf("team1 select: %w", err)
 	}
-	sel2, err := teamselect.Select(tsPool2, weights, teamselect.Constraints{
-		Size:          teamSize,
-		MinBowlers:    input.MinBowlers,
-		RequireKeeper: input.RequireKeeper,
-	})
+	sel2, err := selectTeam(tsPool2, weights, constraints, useOptimizer)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 select failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 select: %w", err)
+		return nil, nil, fmt.Errorf("team2 select: %w", err)
 	}
 
 	// Map selected names back to player IDs and predictions
@@ -291,7 +333,87 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			RunOuts:    pr.RunOuts,
 		})
 	}
-	return result, nil
+
+	// Predicted scorecard summary: innings totals and winner from selected XI predictions.
+	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
+	summary := ComputeScorecardSummary(result.Team1, result.Team2, extras1, extras2, team1, team2)
+	result.ScorecardSummary = &summary
+
+	mid := &predictIntermediates{
+		Pool1:    pool1,
+		Pool2:    pool2,
+		Preds1:   preds1,
+		Preds2:   preds2,
+		FormatID: formatID,
+		VenueID:  venueID,
+		Extras1:  extras1,
+		Extras2:  extras2,
+		Team1:    team1,
+		Team2:    team2,
+	}
+	return result, mid, nil
+}
+
+// PredictTeams runs the full pipeline: pool, features, ML predict, team select.
+func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
+	result, _, err := predictTeamsWithIntermediates(ctx, input, predictor)
+	return result, err
+}
+
+// ComputeScorecardSummary builds the predicted scorecard summary from two selected XIs and their
+// predictions. Innings 1 = team1 batting (sum of runs) + extras1; Innings 2 = team2 batting + extras2.
+// PredictedWinner is team1Code or team2Code by higher total, or "" if tied.
+func ComputeScorecardSummary(
+	team1, team2 []SelectedPlayer,
+	extrasInnings1, extrasInnings2 float64,
+	team1Code, team2Code string,
+) ScorecardSummary {
+	var runs1, runs2 float64
+	for _, p := range team1 {
+		runs1 += p.Runs
+	}
+	for _, p := range team2 {
+		runs2 += p.Runs
+	}
+	innings1Total := runs1 + extrasInnings1
+	innings2Total := runs2 + extrasInnings2
+	predictedWinner := ""
+	if innings1Total > innings2Total {
+		predictedWinner = team1Code
+	} else if innings2Total > innings1Total {
+		predictedWinner = team2Code
+	}
+	return ScorecardSummary{
+		Innings1Total:   innings1Total,
+		Innings2Total:   innings2Total,
+		PredictedWinner: predictedWinner,
+		ExtrasInnings1:  extrasInnings1,
+		ExtrasInnings2:  extrasInnings2,
+	}
+}
+
+// getExtrasForMatch returns predicted extras per innings (same for both innings from format/venue average).
+// Uses db.GetAverageExtrasForFormat; average is total per match so we split in half for each innings.
+func getExtrasForMatch(ctx context.Context, formatID int64, venueID *int64) (extras1, extras2 float64) {
+	avg, err := db.GetAverageExtrasForFormat(ctx, formatID, venueID)
+	if err != nil || avg <= 0 {
+		return 0, 0
+	}
+	half := avg / 2
+	return half, half
+}
+
+// selectTeam returns the selected XI using either constrained optimization or greedy selection.
+func selectTeam(
+	pool []teamselect.Player,
+	weights teamselect.ScoreWeights,
+	constraints teamselect.Constraints,
+	useOptimizer bool,
+) ([]teamselect.Player, error) {
+	if useOptimizer {
+		return teamselect.SelectOptimized(pool, weights, constraints)
+	}
+	return teamselect.Select(pool, weights, constraints)
 }
 
 func buildTeamSelectPool(
@@ -305,12 +427,12 @@ func buildTeamSelectPool(
 	for _, p := range pool {
 		pr := preds[p.PlayerID]
 		isBowler := p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0
-		batScore := normalizeBatScore(pr.Runs, batDiv)
+		batScore := teamselect.NormalizeBatScore(pr.Runs, batDiv)
 		bowlScore := 0.0
 		if isBowler {
-			bowlScore = normalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
+			bowlScore = teamselect.NormalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
 		}
-		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
+		fieldScore := teamselect.NormalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
 		out = append(out, teamselect.Player{
 			Name:       p.PlayerName,
 			IsBowler:   isBowler,
@@ -321,25 +443,6 @@ func buildTeamSelectPool(
 		})
 	}
 	return out
-}
-
-func normalizeBatScore(runs, batDivisor float64) float64 {
-	if batDivisor <= 0 {
-		batDivisor = config.DefaultScoreNormBatDivisor
-	}
-	return math.Min(1, runs/batDivisor)
-}
-
-func normalizeBowlScore(wickets, economy, wicketDivisor, econBase float64) float64 {
-	if wicketDivisor <= 0 {
-		wicketDivisor = config.DefaultScoreNormWicketDivisor
-	}
-	if econBase <= 0 {
-		econBase = config.DefaultScoreNormEconBase
-	}
-	wickPart := math.Min(1, wickets/wicketDivisor)
-	econPart := math.Max(0, 1-(economy/econBase))
-	return (wickPart + econPart) / 2
 }
 
 func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
@@ -354,13 +457,6 @@ func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
 		Cloud:    w.Cloud,
 		Pressure: w.Pressure,
 	}
-}
-
-func normalizeFieldScore(catches, runOuts, fieldDivisor float64) float64 {
-	if fieldDivisor <= 0 {
-		fieldDivisor = config.DefaultScoreNormFieldDivisor
-	}
-	return math.Min(1, (catches+runOuts*1.5)/fieldDivisor)
 }
 
 // hasFieldingPredictions returns true if any prediction has non-zero catches or run_outs,

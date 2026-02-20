@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FormatHierarchyNode } from '../types';
 import { api } from '../api';
-import OpsBadges from './OpsBadges';
 import OpsMatrix from './OpsMatrix';
-import OpsSuggestions from './OpsSuggestions';
 import OpsPipelineGraph from './OpsPipelineGraph';
+import PipelineProgressPanel from './PipelineProgressPanel';
 import MLPredictionGraph from './MLPredictionGraph';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
@@ -169,16 +168,16 @@ const OpsStatusTab: React.FC = () => {
       {data && (
         <Stack spacing={2}>
           <SectionCard
-            title="Suggested Commands"
-            subtitle="Copy and run from project root. Commands include required flags."
-          >
-            <OpsSuggestions />
-          </SectionCard>
-          <SectionCard
             title="Pipeline"
             subtitle="Data import → precompute → export → train models. Click a step to copy its command."
           >
             <OpsPipelineGraph data={data} onRefresh={fetchStatus} />
+            <PipelineProgressPanel
+              pipelineRunning={Object.values(asObj(data.pipeline?.steps ?? {})).some(
+                (s) => asObj(s).running === true,
+              )}
+              onRefresh={fetchStatus}
+            />
           </SectionCard>
           <SectionCard
             title="Prediction model flow"
@@ -188,30 +187,6 @@ const OpsStatusTab: React.FC = () => {
           </SectionCard>
           <SectionCard title="Migration History">
             <OpsMigrationsTable />
-          </SectionCard>
-
-          <SectionCard title="Services">
-            <SimpleStatTiles
-              size="md"
-              items={[
-                {
-                  label: 'API health',
-                  value: data.services?.api_health === true,
-                  state: data.services?.api_health ? 'ok' : 'error',
-                },
-                {
-                  label: 'API ready',
-                  value: data.services?.api_readiness === true,
-                  state: data.services?.api_readiness ? 'ok' : 'error',
-                },
-                {
-                  label: 'ML health',
-                  value: data.services?.ml_health === true,
-                  state: data.services?.ml_health ? 'ok' : 'error',
-                },
-              ]}
-            />
-            <OpsBadges services={data.services} timestamp={data.timestamp} />
           </SectionCard>
 
           <Grid container spacing={2} alignItems="stretch">
@@ -289,7 +264,9 @@ const OpsStatusTab: React.FC = () => {
             <Grid item xs={12} md={6}>
               {(() => {
                 const freshness = asObj((data as { db_freshness?: unknown })?.db_freshness);
-                const overallSt = readStatus(asObj(freshness.overall).status);
+                const overall = asObj(freshness.overall);
+                const overallSt = readStatus(overall.status);
+                const overallCount = readNumber(overall.match_count);
                 const fm = getFormats(freshness);
                 return (
                   <SectionCard
@@ -300,6 +277,11 @@ const OpsStatusTab: React.FC = () => {
                           Overall
                         </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
+                        {overallCount != null && (
+                          <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                            {overallCount.toLocaleString()} matches
+                          </Typography>
+                        )}
                       </Stack>
                     }
                   >
@@ -317,6 +299,7 @@ const OpsStatusTab: React.FC = () => {
                               ? row.latest_match_date
                               : undefined;
                           const days = readNumber(row.days_since);
+                          const matchCount = readNumber(row.match_count);
                           return (
                             <Stack
                               key={f}
@@ -331,13 +314,19 @@ const OpsStatusTab: React.FC = () => {
                                 <StatusPill state={st} label={st} />
                               </Stack>
                               <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                                {matchCount != null && (
+                                  <strong>{matchCount.toLocaleString()} matches</strong>
+                                )}
+                                {matchCount != null && (latest || st === 'missing') && ' · '}
                                 {latest ? (
                                   <>
                                     latest {latest}
                                     {days != null ? ` · ${Math.max(0, Math.floor(days))}d ago` : ''}
                                   </>
+                                ) : st === 'missing' ? (
+                                  'no recent matches'
                                 ) : (
-                                  <>{st === 'missing' ? 'no recent matches' : 'not available'}</>
+                                  'not available'
                                 )}
                               </Typography>
                             </Stack>
@@ -352,7 +341,9 @@ const OpsStatusTab: React.FC = () => {
             <Grid item xs={12} md={6}>
               {(() => {
                 const comp = asObj((data as { db_completeness?: unknown })?.db_completeness);
-                const overallSt = readStatus(asObj(comp.overall).status);
+                const overallObj = asObj(comp.overall);
+                const overallSt = readStatus(overallObj.status);
+                const overallLast30 = readNumber(overallObj.matches_last_30d);
                 const fm = getFormats(comp);
                 return (
                   <SectionCard
@@ -363,6 +354,11 @@ const OpsStatusTab: React.FC = () => {
                           Overall
                         </Typography>
                         <StatusPill state={overallSt} label={overallSt} />
+                        {overallLast30 != null && (
+                          <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                            {overallLast30.toLocaleString()} matches in last 30d
+                          </Typography>
+                        )}
                       </Stack>
                     }
                   >
@@ -391,7 +387,7 @@ const OpsStatusTab: React.FC = () => {
                                 <StatusPill state={st} label={st} />
                               </Stack>
                               <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                                {`${n} of E${min} in last 30d`}
+                                {`${n} of ${min} expected in last 30d`}
                               </Typography>
                             </Stack>
                           );
@@ -404,7 +400,21 @@ const OpsStatusTab: React.FC = () => {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <SectionCard title="Precompute">
+              <SectionCard
+                title="Precompute"
+                subtitle={(() => {
+                  const pre = asObj(data.precompute);
+                  const lastRun = pre.last_run as string | undefined;
+                  const asOf = pre.as_of as string | undefined;
+                  if (!lastRun && !asOf) return 'Unified (all formats). Stats per format below.';
+                  return (
+                    <Typography variant="body2" component="span" sx={{ opacity: 0.9 }}>
+                      Unified (all formats). Last run:{' '}
+                      {lastRun ? new Date(lastRun).toLocaleString() : '—'} · As of: {asOf ?? '—'}
+                    </Typography>
+                  );
+                })()}
+              >
                 <SimpleStatTiles
                   size="md"
                   items={(() => {
@@ -516,33 +526,64 @@ const OpsStatusTab: React.FC = () => {
             <Grid item xs={12} md={6}>
               <SectionCard
                 title="Fielding Data"
-                subtitle={<span>Summary of fielding data availability and stats.</span>}
+                subtitle="Per-format and overall (unified) row counts."
               >
                 {(() => {
                   const f = asObj(data.fielding);
                   const available = (f as Record<string, unknown>).available === true;
                   const rowsVal = (f as Record<string, unknown>).rows;
-                  const rows = typeof rowsVal === 'number' ? rowsVal : undefined;
+                  const totalRows = typeof rowsVal === 'number' ? rowsVal : undefined;
+                  const overall = asObj((f as Record<string, unknown>).overall);
+                  const overallRows = readNumber(overall.rows);
+                  const fmtMap = getFormats(f);
+                  const formatKeys = Object.keys(fmtMap).length > 0 ? FORMATS : [];
                   return (
-                    <SimpleStatTiles
-                      items={[
-                        {
-                          label: 'Available',
-                          value: available,
-                          state: available ? 'ok' : 'error',
-                          title: available ? 'data available' : 'no data',
-                        },
-                        {
-                          label: 'Rows',
-                          value: rows ?? '—',
-                          state: 'neutral',
-                          title: rows != null ? `${rows} rows` : 'unknown',
-                        },
-                      ]}
-                    />
+                    <Stack spacing={1.5}>
+                      <SimpleStatTiles
+                        items={[
+                          {
+                            label: 'Available',
+                            value: available,
+                            state: available ? 'ok' : 'error',
+                            title: available ? 'data available' : 'no data',
+                          },
+                          {
+                            label: 'Total rows',
+                            value: totalRows ?? overallRows ?? '—',
+                            state: 'neutral',
+                            title:
+                              totalRows != null ? `${totalRows.toLocaleString()} rows` : 'unknown',
+                          },
+                        ]}
+                      />
+                      {formatKeys.length > 0 && (
+                        <Stack spacing={0.75}>
+                          <Typography variant="caption" fontWeight={600} color="text.secondary">
+                            Per format
+                          </Typography>
+                          {FORMATS.map((fmt: FormatCode) => {
+                            const row = asObj((fmtMap as Record<string, unknown>)[fmt]);
+                            const r = readNumber(row.rows);
+                            return (
+                              <Stack
+                                key={fmt}
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                              >
+                                <Typography variant="body2">{fmt}</Typography>
+                                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                                  {r != null ? r.toLocaleString() : '—'} rows
+                                </Typography>
+                              </Stack>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                      <JsonCollapse data={data.fielding} summary="Show fielding details" />
+                    </Stack>
                   );
                 })()}
-                <JsonCollapse data={data.fielding} summary="Show fielding details" />
               </SectionCard>
             </Grid>
             <Grid item xs={12} md={6}>

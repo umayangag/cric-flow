@@ -318,14 +318,10 @@ def test_train_on_the_fly_insufficient_bowling_raises():
 
 
 def test_train_on_the_fly_all_nan_batting_raises():
-    """Rows that become empty after dropna (e.g. all NaN in feature cols) -> insufficient batting."""
-    headers = _batting_headers()
-    # One row with NaN in a required feature column so dropna removes it
-    row = _one_batting_row()
-    idx = headers.index("batting_consistency")
-    row[idx] = ""  # empty -> NaN -> row dropped
+    """Insufficient batting: zero batting rows after filtering raises ValueError."""
+    # Use no batting rows so that X_bat is empty and we get "Insufficient batting"
     data = {
-        "batting": {"headers": headers, "rows": [row]},
+        "batting": {"headers": _batting_headers(), "rows": []},
         "bowling": {"headers": _bowling_headers(), "rows": [_one_bowling_row()]},
     }
     with patch("app.train_on_the_fly.fetch_training_data", return_value=data):

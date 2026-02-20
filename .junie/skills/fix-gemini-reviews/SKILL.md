@@ -1,99 +1,126 @@
-When the user types "/fix-gemini-reviews {{pr_number}}"
+When the user types "/fix-gemini-reviews" with a PR number (or use current branch PR)
 
 # Fix Gemini Reviews
-Description: Fetch unresolved PR review threads authored by `gemini-code-assist` that are still unresolved, implement the suggested fixes, and resolve the threads via GraphQL. This documents the exact, working `gh` + GraphQL commands to avoid trial-and-error.
+
+Fetch unresolved PR review threads authored by `gemini-code-assist`, implement the suggested fixes, and resolve the threads via GraphQL. Use the two-phase fetch to keep responses small: Phase 1 paginate with minimal fields (id, isResolved, author only); Phase 2 for each thread ID use `node(id)` to get path/line/body.
 
 ## Prerequisites
-- GitHub CLI (gh) authenticated: `gh auth status` should show a token with `repo` scope for the target repo.
-- Ensure repo context is correct (run inside the repo or pass `-R owner/repo`).
-- Have the PR number handy (e.g., `53`). You can also fetch it from current branch: `gh pr view --json number -q .number`.
-- Stay in the same branch for fixes.
 
-## 1) Fetch unresolved Gemini review threads (exact, working)
-Use a single GraphQL query via `gh api graphql`. Important details we learned:
-- Pass integers with `-F` so they are typed as Int (avoids "Could not coerce value" errors).
-- Query `reviewThreads` and take the first comment to identify the author and file context.
-- Filter in `jq` for `isResolved == false` and `author.login == "gemini-code-assist"`.
+- GitHub CLI (`gh`) authenticated with `repo` scope
+- Run inside the target repo or pass `-R owner/repo`
+- PR number: e.g. `53`, or `gh pr view --json number -q .number` for current branch
+- Stay on the same branch for fixes
 
-Save results (id, path, line, body) to a file for downstream automation:
+## 1. Fetch unresolved Gemini review threads (two-phase)
+
+Use GraphQL via `gh api graphql`. Pass integers with `-F` to avoid coercion errors.
+
+**Phase 1 — List unresolved Gemini thread IDs (paginate with minimal payload):**
 
 ```bash
-PR=53
-# Optional: set explicit repo; otherwise rely on cwd
+PR=53   # or: gh pr view --json number -q .number
 OWNER=$(gh repo view --json owner -q .owner.login)
-REPO=$(gh repo view --json name  -q .name)
+REPO=$(gh repo view --json name -q .name)
 
-# Fetch review threads and filter unresolved Gemini ones
-gh api graphql \
-  -F number=$PR \
-  -f owner="$OWNER" -f repo="$REPO" \
-  -f query='query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved comments(first: 1) { nodes { author { login } path line body } } } } } } }' \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select((.isResolved==false) and (.comments.nodes[0].author.login=="gemini-code-assist"))
-        | {id: .id, path: .comments.nodes[0].path, line: .comments.nodes[0].line, body: .comments.nodes[0].body}' \
-  > pr_reviews.json
-
-# Quick sanity: count unresolved Gemini threads
-jq -r 'select(.!=null) | .id' pr_reviews.json | wc -l
+UNRESOLVED_IDS=$(mktemp)
+CURSOR=""
+while true; do
+  QUERY='query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id isResolved comments(first: 1) { nodes { author { login } } } }
+        }
+      }
+    }
+  }'
+  if [ -z "$CURSOR" ]; then
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY")
+  else
+    RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
+  fi
+  echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
+        | select((.isResolved==false) and (.comments.nodes[0]?.author.login=="gemini-code-assist"))
+        | .id' >> "$UNRESOLVED_IDS"
+  HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  [ "$HAS_NEXT" != "true" ] && break
+  CURSOR=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+done
 ```
 
-Tips:
-- To list nicely in the terminal without saving: append `| jq -r '"\(.id) | \(.path):\(.line) | \(.body|gsub("\n"; " "))"'`.
-- If your repo is private and token lacks access, `gh` will error; fix by `gh auth login --scopes repo`.
+**Phase 2 — Fetch path, line, body only for those thread IDs (batched to reduce cost):**
 
-## 2) Implement fixes
-- For each entry in `pr_reviews.json`, open `path:line`, read `body` for context or a ```suggestion``` block, and apply the change. If the fix is suspicious or not needed confirm with the user.
-- Run `make check-all` to verify no new errors.
-
-## 3) Resolve fixed threads (GraphQL mutation)
-Resolution is only available via GraphQL. Use the exact mutation below. Single thread:
+GitHub’s `nodes(ids)` is most efficient with at most 100 IDs per request. Batch IDs into chunks of 100 to stay under limits and reduce per-request cost.
 
 ```bash
-THREAD_ID="<THREAD_ID>"
-gh api graphql \
-  -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
-  -f id="$THREAD_ID"
+PR_REVIEWS_JSON=$(mktemp)
+NODES_QUERY='query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequestReviewThread {
+      id
+      comments(first: 1) { nodes { path line body } }
+    }
+  }
+}'
+if [ -s "$UNRESOLVED_IDS" ]; then
+  ID_LIST=$(jq -R -s 'split("\n") | map(select(length > 0))' "$UNRESOLVED_IDS")
+  TOTAL=$(echo "$ID_LIST" | jq 'length')
+  for start in $(seq 0 100 $((TOTAL - 1))); do
+    end=$((start + 100))
+    TIDS_JSON=$(echo "$ID_LIST" | jq ".[$start:$end]")
+    gh api graphql -f query="$NODES_QUERY" -F ids="$TIDS_JSON" | \
+      jq -c '.data.nodes[] | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
+  done
+fi
 ```
 
-Batch resolve all IDs in `pr_reviews.json` after applying fixes:
+Use `$PR_REVIEWS_JSON` (or copy to `pr_reviews.json`) for the fix step. Sanity check: `jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | wc -l`
+
+**When GraphQL is rate-limited:** Use REST to fetch comments and implement fixes; resolving threads still requires GraphQL (run again after reset). Owner/repo from `git remote get-url origin`. PR: `gh api "/repos/${OWNER}/${REPO}/pulls?state=open&head=${OWNER}:${BRANCH}" -q '.[0].number'`. Comments: `gh api "/repos/${OWNER}/${REPO}/pulls/${PR}/comments?per_page=100" --paginate`. Filter: `jq -c '.[] | select(.user.login=="gemini-code-assist") | {path, line, body}'`. Use `line` or `original_line` and `path`, `body`. Report rate limit reset: `gh api /rate_limit` → `resources.graphql.reset`.
+
+## 2. Implement fixes
+
+For each entry in the reviews file:
+- Open `path:line`, read `body` for context or a ```suggestion``` block
+- Apply the change; confirm with user if the fix is suspicious
+- Run project checks (e.g. `make check-all` or run-check-all-incremental) to verify
+
+## 3. Resolve fixed threads (GraphQL)
+
+Request only the minimal field to reduce mutation cost:
 
 ```bash
-jq -r 'select(.!=null) | .id' pr_reviews.json | while read -r TID; do
+jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | while read -r TID; do
   echo "Resolving $TID" >&2
   gh api graphql \
-    -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
+    -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }' \
     -f id="$TID"
 done
 ```
 
-## 4) Optional helpers
-- Current PR number on this branch: `gh pr view --json number -q .number`
-- Confirm there are no remaining unresolved Gemini threads:
+## 4. Verify (optional — saves one full Phase 1 pagination if skipped)
 
-```bash
-gh api graphql \
-  -F number=$PR -f owner="$OWNER" -f repo="$REPO" \
-  -f query='query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { author { login } } } } } } } }' \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select((.comments.nodes[0].author.login=="gemini-code-assist"))
-        | .isResolved' | sort | uniq -c
-# Expect only "true" remaining after resolution
-```
+Confirm no remaining unresolved Gemini threads (paginate as in Phase 1), then inspect `isResolved` for threads where author is `gemini-code-assist`. Expect only `true` after resolution. Skip this step if you do not need to verify; it runs a full Phase 1–style pagination and costs one extra query.
 
-## 5) Reporting
-- Summarize how many Gemini comments were addressed, which files were modified, and attach `pr_reviews.json` as an artifact if useful.
+## 5. Report, commit, push, re-review
 
-## 6) Push the fixes
+- Summarize how many comments were addressed and which files were modified
+- Commit and push on the same branch:
+
 ```bash
 git add .
 git commit -m "Fix Gemini comments"
 git push
+```
 
-## 7) Trigger re-review
-Finally, once you ensure all local changes are commited and pushed, post a comment to trigger a new Gemini review:
+- Trigger new Gemini review:
+
 ```bash
 gh pr comment $PR --body "/gemini review"
 ```
 
-Notes:
-- use the same branch for fixes. do not create a new branch.
+## Notes
+
+- Use the same branch for fixes; do not create a new branch
+- If token lacks access: `gh auth login --scopes repo`

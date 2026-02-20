@@ -11,6 +11,7 @@ import (
 // insightsProbe defines minimal methods required to compute DB freshness and completeness.
 type insightsProbe interface {
 	LatestMatchDateByFormat(ctx context.Context, format string) (time.Time, error)
+	CountMatchesByFormat(ctx context.Context, format string) (int64, error)
 	CountMatchesSinceByFormat(ctx context.Context, format string, since time.Time) (int64, error)
 }
 
@@ -37,6 +38,22 @@ func (productionInsightsProbe) LatestMatchDateByFormat(ctx context.Context, form
 		return time.Time{}, nil
 	}
 	return ts.UTC(), nil
+}
+
+func (productionInsightsProbe) CountMatchesByFormat(ctx context.Context, format string) (int64, error) {
+	if db.Pool == nil {
+		return 0, errDBNotInitialized
+	}
+	var n int64
+	if err := db.Pool.QueryRow(ctx, `
+        SELECT COUNT(*)
+        FROM match m
+        JOIN match_format mf ON m.format_id = mf.id
+        WHERE mf.code = $1
+    `, format).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (productionInsightsProbe) CountMatchesSinceByFormat(
@@ -77,6 +94,7 @@ func buildDBFreshnessSection(ctx context.Context, probe insightsProbe, now time.
 	fm := map[string]any{}
 	worst := "ok"
 
+	var totalMatches int64
 	for _, f := range formats {
 		st := map[string]any{"status": "missing"}
 		if probe == nil {
@@ -84,6 +102,10 @@ func buildDBFreshnessSection(ctx context.Context, probe insightsProbe, now time.
 			fm[f] = st
 			worst = worseStatus(worst, "unknown")
 			continue
+		}
+		if count, err := probe.CountMatchesByFormat(ctx, f); err == nil {
+			st["match_count"] = count
+			totalMatches += count
 		}
 		t, err := probe.LatestMatchDateByFormat(ctx, f)
 		if err != nil {
@@ -117,7 +139,7 @@ func buildDBFreshnessSection(ctx context.Context, probe insightsProbe, now time.
 		worst = worseStatus(worst, status)
 	}
 	section["formats"] = fm
-	section["overall"] = map[string]any{"status": worst}
+	section["overall"] = map[string]any{"status": worst, "match_count": totalMatches}
 	return section
 }
 
@@ -131,6 +153,7 @@ func buildDBCompletenessSection(ctx context.Context, probe insightsProbe, now ti
 	fm := map[string]any{}
 	worst := "ok"
 	since := now.AddDate(0, 0, -30)
+	var totalLast30d int64
 
 	for _, f := range formats {
 		st := map[string]any{"status": "unknown", "expected_min_30d": 1}
@@ -148,6 +171,7 @@ func buildDBCompletenessSection(ctx context.Context, probe insightsProbe, now ti
 			continue
 		}
 		st["matches_last_30d"] = n
+		totalLast30d += n
 		status := "missing"
 		if n >= 1 {
 			status = "ok"
@@ -157,7 +181,7 @@ func buildDBCompletenessSection(ctx context.Context, probe insightsProbe, now ti
 		worst = worseStatus(worst, status)
 	}
 	section["formats"] = fm
-	section["overall"] = map[string]any{"status": worst}
+	section["overall"] = map[string]any{"status": worst, "matches_last_30d": totalLast30d}
 	return section
 }
 

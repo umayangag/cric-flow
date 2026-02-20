@@ -82,5 +82,6 @@ Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATC
 - OOMKilled: `docker inspect cric-go-api --format '{{.State.OOMKilled}}'` (valid for current exited instance; watcher captures at die time).
 - Last logs: `docker logs cric-go-api 2>&1 | tail -100` for “exited with code …” and last “memory stats”.
 - Memory limit: If compose sets `mem_limit`, kernel can kill when usage exceeds it; increase limit or reduce workload.
+- **Precompute pipeline:** The precompute step is memory-heavy. Set **GOMEMLIMIT** (e.g. `2GiB`) so the process can scale worker concurrency to available memory; otherwise it uses a low default (4 workers). You can also set **PRECOMPUTE_CONCURRENCY** to cap workers. See **config-and-data.md** (pipeline / precompute and memory).
 
 **Summary:** Exit code 137, OOMKilled=true, high last “memory stats”, and entrypoint “exited 137” in logs all support OOM. Use MEM_STATS_INTERVAL and the watcher container (or host script) for visibility.

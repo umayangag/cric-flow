@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,7 +43,8 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		"train_bowling",
 		"train_fielding",
 		"train_extras",
-		"train_win":
+		"train_win",
+		"train_combination_meta":
 		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
@@ -80,6 +82,20 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	case "train_win":
 		a.makeMLTrainHandler("train_win", "train-win", "win", true)(w, r)
 		return
+	case "train_combination_meta":
+		// Run from project root: make train-combination-meta CSV=<path> OUT=<path>
+		exportDir := config.DefaultExportDir()
+		csvPath := filepath.Join(exportDir, "backtest_contributions.csv")
+		outPath := filepath.Join(exportDir, "combination_meta.json")
+		if cfg := config.Load(); cfg != nil && cfg.Selection.MetaModelPath != "" {
+			outPath = cfg.Selection.MetaModelPath
+		}
+		respondJSON(w, http.StatusNotImplemented, map[string]string{
+			"error":   "step must be run from project root",
+			"step":    step,
+			"command": fmt.Sprintf("make train-combination-meta CSV=%s OUT=%s", csvPath, outPath),
+		})
+		return
 	case "auto_tune":
 		respondJSON(w, http.StatusNotImplemented, map[string]string{
 			"error":   "step must be run from project root",
@@ -106,6 +122,8 @@ func stepToCommand(step string) string {
 		return "make train-extras CUTOFF=2025-01-01T00:00:00Z"
 	case "train_win":
 		return "make train-win CUTOFF=2025-01-01T00:00:00Z"
+	case "train_combination_meta":
+		return "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json"
 	case "auto_tune":
 		return "make ml-auto-tune MODEL=all ALL_FORMATS=1"
 	default:
@@ -156,15 +174,17 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
 }
 
-// trainStepTimeout is the max time to wait for ML service train endpoint (training can take many minutes).
-const trainStepTimeout = 30 * time.Minute
+func trainStepTimeout() time.Duration {
+	mins := config.ServerTrainStepTimeoutMin(config.Load())
+	return time.Duration(mins) * time.Minute
+}
 
 func mlServiceBaseURL() string {
 	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
 	if s != "" {
 		return strings.TrimSuffix(s, "/")
 	}
-	return "http://localhost:8000"
+	return config.ServerMLBaseURLFallback(config.Load())
 }
 
 // callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
@@ -175,7 +195,7 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: trainStepTimeout}
+	client := &http.Client{Timeout: trainStepTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -211,7 +231,7 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string, needsCutoff
 				a.JobContext(),
 				command,
 				args,
-				trainStepTimeout,
+				trainStepTimeout(),
 				func(ctx context.Context) (any, error) {
 					return nil, callMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
 				},

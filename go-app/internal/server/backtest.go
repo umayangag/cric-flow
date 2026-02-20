@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
@@ -30,6 +31,8 @@ type accuracyTrendParams struct {
 	Order  string
 	Limit  int
 	Cache  string
+	// UseUnifiedModel when true requests the unified (legacy) model instead of format-specific.
+	UseUnifiedModel bool
 	// Metrics selection
 	IncludePlayer bool
 	IncludeTeam   bool
@@ -70,12 +73,12 @@ func parseBacktestAccuracyTrendParams(r *http.Request) (accuracyTrendParams, err
 			out.Limit = v
 		}
 	}
-	// Enforce default limit and max cap
+	cfg := config.Load()
 	if out.Limit <= 0 {
-		out.Limit = 100
+		out.Limit = config.BacktestAccuracyTrendDefaultLimit(cfg)
 	}
-	if out.Limit > 500 {
-		out.Limit = 500
+	if out.Limit > config.BacktestAccuracyTrendMaxLimit(cfg) {
+		out.Limit = config.BacktestAccuracyTrendMaxLimit(cfg)
 	}
 	// Parse dates in YYYY-MM-DD
 	if out.RawStart != "" {
@@ -94,6 +97,14 @@ func parseBacktestAccuracyTrendParams(r *http.Request) (accuracyTrendParams, err
 	}
 	if out.HasStart && out.HasEnd && out.End.Before(out.Start) {
 		return accuracyTrendParams{}, errEndBeforeStart
+	}
+
+	// use_unified_model=1 or model=unified to use legacy (all-formats) model for predictions
+	if v := strings.TrimSpace(q.Get("use_unified_model")); v == "1" || strings.EqualFold(v, "true") {
+		out.UseUnifiedModel = true
+	}
+	if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
+		out.UseUnifiedModel = true
 	}
 
 	// Parse metrics selection

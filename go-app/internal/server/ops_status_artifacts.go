@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
@@ -30,16 +31,21 @@ func artifactsFallbackRoot() string {
 func buildArtifactsSection(client *http.Client, fsRoot string) (section map[string]any, mlHealth bool) {
 	base := os.Getenv("ML_SERVICE_URL")
 	if strings.TrimSpace(base) == "" {
-		base = "http://localhost:8000"
+		base = config.ServerMLBaseURLFallback(config.Load())
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 3 * time.Second}
+		sec := config.ServerArtifactsTimeoutSec(config.Load())
+		client = &http.Client{Timeout: time.Duration(sec) * time.Second}
 	}
 
-	// default scaffold
+	// default scaffold (formats + unified/legacy for "all formats" model)
 	section = map[string]any{
 		"root":    fsRoot,
 		"formats": map[string]any{},
+		"unified": map[string]any{
+			"batting": map[string]any{"exists": false},
+			"bowling": map[string]any{"exists": false},
+		},
 	}
 	fm := map[string]any{}
 	for _, f := range artifactFormats {
@@ -79,6 +85,9 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 					}
 				}
 				section["formats"] = fm
+				if legacyAny, ok := art["legacy"].(map[string]any); ok {
+					section["unified"] = legacyAny
+				}
 				return section, mlHealth
 			}
 		}
@@ -105,6 +114,25 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		}
 	}
 	section["formats"] = fm
+	// Unified (legacy) artifacts: batting.joblib / bowling.joblib without format suffix (read dir once)
+	if unif, ok := section["unified"].(map[string]any); ok {
+		entries, _ := os.ReadDir(fsRoot)
+		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, true); ok {
+			b := unif["batting"].(map[string]any)
+			b["exists"] = true
+			b["path"] = p
+			b["modified"] = mod.UTC().Format(time.RFC3339)
+			unif["batting"] = b
+		}
+		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, false); ok {
+			b := unif["bowling"].(map[string]any)
+			b["exists"] = true
+			b["path"] = p
+			b["modified"] = mod.UTC().Format(time.RFC3339)
+			unif["bowling"] = b
+		}
+		section["unified"] = unif
+	}
 	return section, mlHealth
 }
 
@@ -197,6 +225,33 @@ func findArtifact(root, format string, batting bool) (path string, mod time.Time
 		return "", time.Time{}, false
 	}
 	return full, info.ModTime(), true
+}
+
+// findLegacyArtifactFromEntries finds legacy artifact from pre-read dir entries to avoid redundant ReadDir.
+func findLegacyArtifactFromEntries(
+	entries []os.DirEntry,
+	root string,
+	batting bool,
+) (path string, mod time.Time, ok bool) {
+	want := "batting.joblib"
+	if !batting {
+		want = "bowling.joblib"
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.ToLower(e.Name()) != want {
+			continue
+		}
+		full := filepath.Join(root, e.Name())
+		info, err := os.Stat(full)
+		if err != nil || info.IsDir() {
+			return "", time.Time{}, false
+		}
+		return full, info.ModTime(), true
+	}
+	return "", time.Time{}, false
 }
 
 type httpError struct{ code int }

@@ -31,21 +31,34 @@ const OpsTableStats: React.FC<Props> = ({ stats }) => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {stats.map((row) => (
-            <TableRow key={row.table_name}>
-              <TableCell component="th" scope="row" sx={{ fontFamily: 'monospace' }}>
-                {row.table_name}
-              </TableCell>
-              <TableCell align="right">{row.row_count.toLocaleString()}</TableCell>
-              <TableCell align="right">
-                {row.last_record || (
-                  <Typography variant="caption" color="text.secondary">
-                    -
-                  </Typography>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
+          {stats.map((row) => {
+            const isEmpty = row.row_count === 0;
+            return (
+              <TableRow
+                key={row.table_name}
+                sx={
+                  isEmpty
+                    ? {
+                        bgcolor: 'error.light',
+                        '& .MuiTableCell-root': { color: 'error.dark', borderColor: 'error.main' },
+                      }
+                    : undefined
+                }
+              >
+                <TableCell component="th" scope="row" sx={{ fontFamily: 'monospace' }}>
+                  {row.table_name}
+                </TableCell>
+                <TableCell align="right">{row.row_count.toLocaleString()}</TableCell>
+                <TableCell align="right">
+                  {row.last_record || (
+                    <Typography variant="caption" color="text.secondary">
+                      -
+                    </Typography>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>

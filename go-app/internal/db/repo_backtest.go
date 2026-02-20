@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
@@ -288,7 +289,7 @@ func ListMatchIDsAfter(ctx context.Context, formatIDs []int64, after time.Time, 
 		return nil, errors.New("db pool not initialized")
 	}
 	if limit <= 0 {
-		limit = 100
+		limit = config.BacktestListDefaultLimit(config.Load())
 	}
 	q := `SELECT m.match_id, m.match_date
 		FROM match m

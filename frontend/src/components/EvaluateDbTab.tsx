@@ -152,6 +152,9 @@ const EvaluateDbTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
 
+  // Prediction model for evaluate: format-specific or unified (legacy)
+  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
+
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
@@ -389,6 +392,7 @@ const EvaluateDbTab: React.FC = () => {
         team1.trim(),
         team2.trim(),
         selectedMatchId,
+        { use_unified_model: predictionModel === 'unified' },
       );
       const stored: StoredEvalJob = {
         job_id,
@@ -526,7 +530,19 @@ const EvaluateDbTab: React.FC = () => {
         {selectedMatchId != null && (
           <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
         )}
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 260 }}>
+            <InputLabel id="eval-db-model-label">Prediction model</InputLabel>
+            <Select
+              labelId="eval-db-model-label"
+              value={predictionModel}
+              onChange={(e) => setPredictionModel(e.target.value as 'format' | 'unified')}
+              label="Prediction model"
+            >
+              <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
+              <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
+            </Select>
+          </FormControl>
           <Button
             variant="contained"
             color="secondary"
@@ -542,73 +558,70 @@ const EvaluateDbTab: React.FC = () => {
               'Evaluate Selected Match'
             )}
           </Button>
-
-          {/* Status and error directly below button so user doesn't have to scroll up */}
-          {selectedMatchId != null && (statusMessage || error) && (
-            <Box sx={{ mt: 2 }}>
-              {statusMessage && (
-                <Alert severity="info" sx={{ mb: error ? 1 : 0 }}>
-                  {statusMessage}
-                </Alert>
-              )}
-              {error && <Alert severity="error">{error}</Alert>}
-            </Box>
-          )}
-
-          {/* Progress steps while evaluating (SSE stream) */}
-          {evaluating && evaluationSteps.length > 0 && (
-            <Paper
-              variant="outlined"
-              sx={{
-                mt: 2,
-                p: 2,
-                pl: 2.5,
-                position: 'relative',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 4,
-                  background: accentGradient,
-                  borderRadius: '0 4px 4px 0',
-                },
-              }}
-            >
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                Current step
-              </Typography>
-              <LinearProgress sx={{ mb: 2 }} />
-              <List dense disablePadding>
-                {evaluationSteps.map((s, idx) => (
-                  <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
-                    <ListItemIcon sx={{ minWidth: 32 }}>
-                      {idx === evaluationSteps.length - 1 ? (
-                        <CircularProgress size={16} color="primary" />
-                      ) : (
-                        <CheckCircleIcon color="success" fontSize="small" />
-                      )}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={s.message}
-                      primaryTypographyProps={{ variant: 'body2' }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </Paper>
-          )}
-
-          {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
-          {evaluationResult?.predicted_scorecard && (
-            <MatchScorecard
-              scorecard={evaluationResult.predicted_scorecard}
-              title="Predicted scorecard"
-              subtitle="ML prediction using only data before the match date (no actual match data used)."
-            />
-          )}
         </Box>
+
+        {/* Status and error directly below button so user doesn't have to scroll up */}
+        {selectedMatchId != null && (statusMessage || error) && (
+          <Box sx={{ mt: 2 }}>
+            {statusMessage && (
+              <Alert severity="info" sx={{ mb: error ? 1 : 0 }}>
+                {statusMessage}
+              </Alert>
+            )}
+            {error && <Alert severity="error">{error}</Alert>}
+          </Box>
+        )}
+
+        {/* Progress steps while evaluating (SSE stream) */}
+        {evaluating && evaluationSteps.length > 0 && (
+          <Paper
+            variant="outlined"
+            sx={{
+              mt: 2,
+              p: 2,
+              pl: 2.5,
+              position: 'relative',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                background: accentGradient,
+                borderRadius: '0 4px 4px 0',
+              },
+            }}
+          >
+            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+              Current step
+            </Typography>
+            <LinearProgress sx={{ mb: 2 }} />
+            <List dense disablePadding>
+              {evaluationSteps.map((s, idx) => (
+                <ListItem key={`${s.step}-${idx}`} disablePadding sx={{ py: 0.25 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    {idx === evaluationSteps.length - 1 ? (
+                      <CircularProgress size={16} color="primary" />
+                    ) : (
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    )}
+                  </ListItemIcon>
+                  <ListItemText primary={s.message} primaryTypographyProps={{ variant: 'body2' }} />
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        )}
+
+        {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
+        {evaluationResult?.predicted_scorecard && (
+          <MatchScorecard
+            scorecard={evaluationResult.predicted_scorecard}
+            title="Predicted scorecard"
+            subtitle="ML prediction using only data before the match date (no actual match data used)."
+          />
+        )}
       </Box>
 
       {/* Results */}

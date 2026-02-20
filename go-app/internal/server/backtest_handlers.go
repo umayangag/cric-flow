@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
@@ -379,7 +380,7 @@ func (a *App) backtestMatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Evaluate mode
-	a.handleBacktestEvaluate(r.Context(), w, format, team1, team2, matchID, useML, cutoff)
+	a.handleBacktestEvaluate(r.Context(), w, r, format, team1, team2, matchID, useML, cutoff)
 }
 
 // handleBacktestSelect serves the select mode for the backtest endpoint.
@@ -420,9 +421,11 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 type BacktestProgressFunc func(step, message string)
 
 // doEvaluateWork runs the default evaluate pipeline (no use_ml=1). Progress is called after each step when non-nil.
+// When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
 func doEvaluateWork(
 	ctx context.Context,
 	format, team1, team2, matchID string,
+	useUnifiedModel bool,
 	progress BacktestProgressFunc,
 ) (*backtestEvaluateResponse, error) {
 	mid, err := strconv.ParseInt(matchID, 10, 64)
@@ -457,7 +460,11 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting, bowling, fielding when loaded)...")
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features)
+	formatForPrediction := format
+	if useUnifiedModel {
+		formatForPrediction = ""
+	}
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features)
 	if err != nil {
 		return nil, err
 	}
@@ -505,11 +512,24 @@ func doEvaluateWork(
 	return &resp, nil
 }
 
+// parseUseUnifiedModel reads use_unified_model or model=unified from the request (query or JSON body when applicable).
+func parseUseUnifiedModel(r *http.Request, defaultVal bool) bool {
+	q := r.URL.Query()
+	if v := strings.TrimSpace(q.Get("use_unified_model")); v == "1" || strings.EqualFold(v, "true") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
+		return true
+	}
+	return defaultVal
+}
+
 // handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
 // It requires a valid matchID and computes per-player results and summary metrics.
 func (a *App) handleBacktestEvaluate(
 	ctx context.Context,
 	w http.ResponseWriter,
+	r *http.Request,
 	format, team1, team2, matchID string,
 	useMLFlag string,
 	cutoffStr string,
@@ -553,7 +573,8 @@ func (a *App) handleBacktestEvaluate(
 		return
 	}
 
-	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, nil)
+	useUnified := parseUseUnifiedModel(r, false)
+	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useUnified, nil)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -595,6 +616,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 				"format": params.Format, "team1": params.Team1, "team2": params.Team2,
 				"start_date": params.RawStart, "end_date": params.RawEnd,
 				"order": params.Order, "limit": params.Limit,
+				"use_unified_model": params.UseUnifiedModel,
 			},
 			Count:       0,
 			Results:     []accuracyTrendItem{},
@@ -607,7 +629,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 
 	// Compute metrics and aggregates via helper
 	results, summary, progressive := computeAccuracyTrendForCandidates(
-		r.Context(), candidates, params.IncludePlayer, params.IncludeTeam, params.Cache,
+		r.Context(), candidates, params.IncludePlayer, params.IncludeTeam, params.Cache, params.UseUnifiedModel,
 	)
 
 	resp := accuracyTrendResponse{
@@ -615,6 +637,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 			"format": params.Format, "team1": params.Team1, "team2": params.Team2,
 			"start_date": params.RawStart, "end_date": params.RawEnd,
 			"order": params.Order, "limit": params.Limit,
+			"use_unified_model": params.UseUnifiedModel,
 		},
 		Count:       len(results),
 		Results:     results,
@@ -713,12 +736,15 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var format, team1, team2, matchID string
+	var useUnifiedModel bool
+	useUnifiedFromBody := false
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		var body struct {
-			Format  string `json:"format"`
-			Team1   string `json:"team1"`
-			Team2   string `json:"team2"`
-			MatchID int64  `json:"match_id"`
+			Format          string `json:"format"`
+			Team1           string `json:"team1"`
+			Team2           string `json:"team2"`
+			MatchID         int64  `json:"match_id"`
+			UseUnifiedModel *bool  `json:"use_unified_model,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(
@@ -734,6 +760,13 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		if body.MatchID != 0 {
 			matchID = strconv.FormatInt(body.MatchID, 10)
 		}
+		if body.UseUnifiedModel != nil {
+			useUnifiedModel = *body.UseUnifiedModel
+			useUnifiedFromBody = true
+		}
+	}
+	if !useUnifiedFromBody {
+		useUnifiedModel = parseUseUnifiedModel(r, false)
 	}
 	if format == "" || team1 == "" || team2 == "" || matchID == "" {
 		q := r.URL.Query()
@@ -767,7 +800,7 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID)
+	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useUnifiedModel)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -841,7 +874,8 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 		writeSSE("progress", string(data))
 	}
 
-	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, progress)
+	useUnified := parseUseUnifiedModel(r, false)
+	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useUnified, progress)
 	if err != nil {
 		payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)
@@ -1020,12 +1054,14 @@ func (a *App) backtestMatchesHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	limit := 50
+	cfg := config.Load()
+	limit := config.BacktestListDefaultLimit(cfg)
 	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			limit = v
-			if limit > 500 {
-				limit = 500
+			maxLimit := config.BacktestListMaxLimit(cfg)
+			if limit > maxLimit {
+				limit = maxLimit
 			}
 		}
 	}
@@ -1068,12 +1104,14 @@ func (a *App) backtestHoldoutDataHandler(w http.ResponseWriter, r *http.Request)
 		)
 		return
 	}
-	limit := 50
+	cfg := config.Load()
+	limit := config.BacktestListDefaultLimit(cfg)
 	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			limit = v
-			if limit > 500 {
-				limit = 500
+			maxLimit := config.BacktestListMaxLimit(cfg)
+			if limit > maxLimit {
+				limit = maxLimit
 			}
 		}
 	}
