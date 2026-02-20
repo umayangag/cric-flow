@@ -92,8 +92,24 @@ type PlayerPred struct {
 	RunOuts float64
 }
 
-// PredictTeams runs the full pipeline: pool, features, ML predict, team select.
-func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
+// predictIntermediates holds pool, predictions, and context from the PredictTeams pipeline
+// so callers (e.g. PredictTeamsWithSimulation) can reuse them without re-querying DB or ML.
+type predictIntermediates struct {
+	Pool1, Pool2     []db.PlayerPoolRow
+	Preds1, Preds2   map[int64]PlayerPred
+	FormatID         int64
+	VenueID          *int64
+	Extras1, Extras2 float64
+	Team1, Team2     string
+}
+
+// predictTeamsWithIntermediates runs the full pipeline and returns the result plus
+// intermediates (pools, preds, formatID, venueID, extras, team names) for reuse.
+func predictTeamsWithIntermediates(
+	ctx context.Context,
+	input Input,
+	predictor MLPredictor,
+) (*Result, *predictIntermediates, error) {
 	if input.MinBowlers <= 0 {
 		if cfg := config.Load(); cfg != nil && cfg.Team.MinBowlers > 0 {
 			input.MinBowlers = cfg.Team.MinBowlers
@@ -107,7 +123,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	if format == "" || team1 == "" || team2 == "" {
 		err := fmt.Errorf("format, team1, team2 are required")
 		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))
-		return nil, err
+		return nil, nil, err
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
 
@@ -124,7 +140,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.String("format", format),
 			slog.Any("err", fmtErr),
 		)
-		return nil, fmt.Errorf("resolve format: %w", fmtErr)
+		return nil, nil, fmt.Errorf("resolve format: %w", fmtErr)
 	}
 
 	// Resolve venue ID
@@ -144,12 +160,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	pool1, err := db.ListPlayerPoolByTeam(ctx, format, team1, cutoff, input.ExtraTeam1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 pool failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 pool: %w", err)
+		return nil, nil, fmt.Errorf("team1 pool: %w", err)
 	}
 	pool2, err := db.ListPlayerPoolByTeam(ctx, format, team2, cutoff, input.ExtraTeam2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 pool failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 pool: %w", err)
+		return nil, nil, fmt.Errorf("team2 pool: %w", err)
 	}
 	if len(pool1) < 11 {
 		err := fmt.Errorf("team1 has only %d players, need at least 11", len(pool1))
@@ -159,7 +175,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.Int("len", len(pool1)),
 			slog.Any("err", err),
 		)
-		return nil, err
+		return nil, nil, err
 	}
 	if len(pool2) < 11 {
 		err := fmt.Errorf("team2 has only %d players, need at least 11", len(pool2))
@@ -169,7 +185,7 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 			slog.Int("len", len(pool2)),
 			slog.Any("err", err),
 		)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Player ID lists for both teams (needed for opposition strength when computing features).
@@ -204,12 +220,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 features failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 features: %w", err)
+		return nil, nil, fmt.Errorf("team1 features: %w", err)
 	}
 	preds1, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids1, feats1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 predict failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 predict: %w", err)
+		return nil, nil, fmt.Errorf("team1 predict: %w", err)
 	}
 	// Use ML fielding when the service returned predictions; otherwise fall back to historical EWM.
 	if !hasFieldingPredictions(preds1) {
@@ -230,12 +246,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 features failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 features: %w", err)
+		return nil, nil, fmt.Errorf("team2 features: %w", err)
 	}
 	preds2, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids2, feats2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 predict failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 predict: %w", err)
+		return nil, nil, fmt.Errorf("team2 predict: %w", err)
 	}
 	if !hasFieldingPredictions(preds2) {
 		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
@@ -261,12 +277,12 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	sel1, err := selectTeam(tsPool1, weights, constraints, useOptimizer)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, fmt.Errorf("team1 select: %w", err)
+		return nil, nil, fmt.Errorf("team1 select: %w", err)
 	}
 	sel2, err := selectTeam(tsPool2, weights, constraints, useOptimizer)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 select failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, fmt.Errorf("team2 select: %w", err)
+		return nil, nil, fmt.Errorf("team2 select: %w", err)
 	}
 
 	// Map selected names back to player IDs and predictions
@@ -323,7 +339,25 @@ func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Res
 	summary := ComputeScorecardSummary(result.Team1, result.Team2, extras1, extras2, team1, team2)
 	result.ScorecardSummary = &summary
 
-	return result, nil
+	mid := &predictIntermediates{
+		Pool1:    pool1,
+		Pool2:    pool2,
+		Preds1:   preds1,
+		Preds2:   preds2,
+		FormatID: formatID,
+		VenueID:  venueID,
+		Extras1:  extras1,
+		Extras2:  extras2,
+		Team1:    team1,
+		Team2:    team2,
+	}
+	return result, mid, nil
+}
+
+// PredictTeams runs the full pipeline: pool, features, ML predict, team select.
+func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
+	result, _, err := predictTeamsWithIntermediates(ctx, input, predictor)
+	return result, err
 }
 
 // ComputeScorecardSummary builds the predicted scorecard summary from two selected XIs and their

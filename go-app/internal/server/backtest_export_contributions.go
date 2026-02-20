@@ -70,7 +70,10 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		writeJSON(
 			w,
 			http.StatusBadRequest,
-			apiError{Code: "INVALID_PARAM", Message: "match_ids exceeds limit of " + strconv.Itoa(maxMatchIDs) + "; process in batches"},
+			apiError{
+				Code:    "INVALID_PARAM",
+				Message: "match_ids exceeds limit of " + strconv.Itoa(maxMatchIDs) + "; process in batches",
+			},
 		)
 		return
 	}
@@ -100,11 +103,15 @@ func (a *App) backtestExportContributionsStatusHandler(w http.ResponseWriter, r 
 
 // runExportContributionsWork runs the export in the calling goroutine (used by the background job).
 // Returns path, row count, and error. Keeper lookup failure is returned as error so the job can report it to the user.
-func runExportContributionsWork(ctx context.Context, body exportContributionsRequest) (path string, rows int, err error) {
+func runExportContributionsWork(
+	ctx context.Context,
+	body exportContributionsRequest,
+) (path string, rows int, err error) {
 	format := strings.TrimSpace(strings.ToUpper(body.Format))
 	team1 := strings.TrimSpace(body.Team1)
 	team2 := strings.TrimSpace(body.Team2)
 
+	// Sequential evaluate per match; acceptable for a background job. Future: consider batch ML predictions if the service supports it.
 	var allPlayers []BacktestPlayerResult
 	for _, mid := range body.MatchIDs {
 		matchIDStr := strconv.FormatInt(mid, 10)

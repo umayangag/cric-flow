@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
-	"github.com/umayangag/cric-flow/go-app/internal/db"
-	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -70,17 +68,20 @@ type SimulationResult struct {
 	NumSamples  int `json:"num_samples"`
 }
 
-// PredictTeamsWithSimulation runs the same pipeline as PredictTeams, then runs Monte Carlo simulation
-// over top-k XIs per team and returns the best-XI result plus simulation summary.
+// PredictTeamsWithSimulation runs the same pipeline as PredictTeams (sharing pools and ML predictions),
+// then runs Monte Carlo simulation over top-k XIs per team and returns the best-XI result plus simulation summary.
 func PredictTeamsWithSimulation(
 	ctx context.Context,
 	input Input,
 	predictor MLPredictor,
 	opts SimulationOpts,
 ) (*Result, *SimulationResult, error) {
-	result, err := PredictTeams(ctx, input, predictor)
+	result, mid, err := predictTeamsWithIntermediates(ctx, input, predictor)
 	if err != nil {
 		return nil, nil, err
+	}
+	if mid == nil {
+		return result, nil, nil
 	}
 	if opts.TopKPerTeam <= 0 {
 		opts.TopKPerTeam = config.EffectiveSimulationTopKPerTeam(config.Load())
@@ -88,84 +89,10 @@ func PredictTeamsWithSimulation(
 	if opts.NumSamplesPerMatchup <= 0 {
 		opts.NumSamplesPerMatchup = config.EffectiveSimulationNumSamplesPerMatchup(config.Load())
 	}
-	// We need pools and preds again to get top-k XIs. Re-run the same steps up to selection, then call SelectTopK.
 	format := strings.ToUpper(strings.TrimSpace(input.Format))
-	team1 := strings.TrimSpace(input.Team1)
-	team2 := strings.TrimSpace(input.Team2)
-	cutoff := input.MatchDate.Truncate(24 * time.Hour)
-	formatForPrediction := format
-	if input.UseUnifiedModel {
-		formatForPrediction = ""
-	}
-	formatID, fmtErr := getFormatID(ctx, format)
-	if fmtErr != nil {
-		return result, nil, nil
-	}
-	venueID, _ := getVenueID(ctx, input.Venue)
-	pool1, err := getPool(ctx, input, team1, input.ExtraTeam1)
-	if err != nil || len(pool1) < 11 {
-		return result, nil, nil
-	}
-	pool2, err := getPool(ctx, input, team2, input.ExtraTeam2)
-	if err != nil || len(pool2) < 11 {
-		return result, nil, nil
-	}
-	ids1 := poolPlayerIDs(pool1)
-	ids2 := poolPlayerIDs(pool2)
-	oppositionIDsTeam1 := ids2
-	oppositionIDsTeam2 := ids1
-	if len(input.OppositionPlayerIDs) > 0 {
-		oppositionIDsTeam1 = input.OppositionPlayerIDs
-		oppositionIDsTeam2 = input.OppositionPlayerIDs
-	}
-	opp2ID, _ := getOppositionID(ctx, team2) // team1's opposition = team2
-	opp1ID, _ := getOppositionID(ctx, team1) // team2's opposition = team1
-	weatherOpt := toWeatherOverride(input.Weather)
-	feats1, err := getFeatures(
-		ctx,
-		cutoff,
-		format,
-		venueID,
-		opp2ID,
-		input.SeasonID,
-		ids1,
-		weatherOpt,
-		oppositionIDsTeam1,
-	)
-	if err != nil {
-		return result, nil, nil
-	}
-	preds1, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids1, feats1)
-	if err != nil {
-		return result, nil, nil
-	}
-	if !hasFieldingPredictions(preds1) {
-		enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
-	}
-	feats2, err := getFeatures(
-		ctx,
-		cutoff,
-		format,
-		venueID,
-		opp1ID,
-		input.SeasonID,
-		ids2,
-		weatherOpt,
-		oppositionIDsTeam2,
-	)
-	if err != nil {
-		return result, nil, nil
-	}
-	preds2, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids2, feats2)
-	if err != nil {
-		return result, nil, nil
-	}
-	if !hasFieldingPredictions(preds2) {
-		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)
-	}
 	cfg := config.Load()
-	tsPool1 := buildTeamSelectPool(pool1, preds1, format, cfg)
-	tsPool2 := buildTeamSelectPool(pool2, preds2, format, cfg)
+	tsPool1 := buildTeamSelectPool(mid.Pool1, mid.Preds1, format, cfg)
+	tsPool2 := buildTeamSelectPool(mid.Pool2, mid.Preds2, format, cfg)
 	teamSize := config.DefaultTeamSize
 	if cfg != nil && cfg.Predictor.TeamSize > 0 {
 		teamSize = cfg.Predictor.TeamSize
@@ -179,81 +106,24 @@ func PredictTeamsWithSimulation(
 	}
 	topK1, err := teamselect.SelectTopK(tsPool1, weights, constraints, opts.TopKPerTeam)
 	if err != nil {
-		slog.Warn("predictteam simulation: SelectTopK team1 failed", "team", team1, "err", err)
+		slog.Warn("predictteam simulation: SelectTopK team1 failed", "team", mid.Team1, "err", err)
 		return result, nil, nil
 	}
 	topK2, err := teamselect.SelectTopK(tsPool2, weights, constraints, opts.TopKPerTeam)
 	if err != nil {
-		slog.Warn("predictteam simulation: SelectTopK team2 failed", "team", team2, "err", err)
+		slog.Warn("predictteam simulation: SelectTopK team2 failed", "team", mid.Team2, "err", err)
 		return result, nil, nil
 	}
 	nameToPred1 := make(map[string]PlayerPred)
-	for _, p := range pool1 {
-		nameToPred1[p.PlayerName] = preds1[p.PlayerID]
+	for _, p := range mid.Pool1 {
+		nameToPred1[p.PlayerName] = mid.Preds1[p.PlayerID]
 	}
 	nameToPred2 := make(map[string]PlayerPred)
-	for _, p := range pool2 {
-		nameToPred2[p.PlayerName] = preds2[p.PlayerID]
+	for _, p := range mid.Pool2 {
+		nameToPred2[p.PlayerName] = mid.Preds2[p.PlayerID]
 	}
-	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
-	sim := runSimulation(topK1, topK2, nameToPred1, nameToPred2, extras1, extras2, team1, team2, opts)
+	sim := runSimulation(topK1, topK2, nameToPred1, nameToPred2, mid.Extras1, mid.Extras2, mid.Team1, mid.Team2, opts)
 	return result, sim, nil
-}
-
-func getFormatID(ctx context.Context, format string) (int64, error) {
-	return db.GetGlobalCache().GetFormatID(ctx, format)
-}
-
-func getVenueID(ctx context.Context, venue string) (*int64, error) {
-	if venue == "" {
-		return nil, nil
-	}
-	id, err := db.GetGlobalCache().GetVenueID(ctx, venue)
-	if err != nil || id == 0 {
-		return nil, err
-	}
-	return &id, nil
-}
-
-func getOppositionID(ctx context.Context, team string) (int64, error) {
-	return db.GetGlobalCache().GetOppositionID(ctx, team)
-}
-
-func getPool(ctx context.Context, input Input, team string, extra []int64) ([]db.PlayerPoolRow, error) {
-	format := strings.ToUpper(strings.TrimSpace(input.Format))
-	return db.ListPlayerPoolByTeam(ctx, format, team, input.MatchDate.Truncate(24*time.Hour), extra)
-}
-
-func poolPlayerIDs(pool []db.PlayerPoolRow) []int64 {
-	ids := make([]int64, 0, len(pool))
-	for _, p := range pool {
-		ids = append(ids, p.PlayerID)
-	}
-	return ids
-}
-
-func getFeatures(
-	ctx context.Context,
-	cutoff time.Time,
-	format string,
-	venueID *int64,
-	oppID int64,
-	seasonID *int64,
-	playerIDs []int64,
-	weather *exportqueries.WeatherOverride,
-	oppositionIDs []int64,
-) (map[int64]map[string]float64, error) {
-	return exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
-		ctx,
-		cutoff,
-		format,
-		venueID,
-		oppID,
-		seasonID,
-		playerIDs,
-		weather,
-		oppositionIDs,
-	)
 }
 
 // runSimulation runs Monte Carlo over (topK1 × topK2) matchups, each with NumSamplesPerMatchup samples.
