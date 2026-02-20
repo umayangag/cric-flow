@@ -29,12 +29,29 @@ from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec
 
 logger = logging.getLogger(__name__)
 
+# Same feature families as batting/bowling/fielding: format, venue, teams, toss, weather, and
+# team-level aggregates of player consistency/form (team1 = batting inn 1, team2 = bowling inn 1).
 WIN_FEATURE_COLS = [
     "format_id",
     "venue_id",
     "team1_opposition_id",
     "team2_opposition_id",
     "toss_winner_opposition_id",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "team1_bat_consistency_sum",
+    "team1_bowl_consistency_sum",
+    "team2_bat_consistency_sum",
+    "team2_bowl_consistency_sum",
+    "team1_bat_form_sum",
+    "team1_bowl_form_sum",
+    "team2_bat_form_sum",
+    "team2_bowl_form_sum",
 ]
 WIN_TARGET_COL = "team1_wins"
 

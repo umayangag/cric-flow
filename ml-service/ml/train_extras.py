@@ -32,7 +32,24 @@ logger = logging.getLogger(__name__)
 # Minimum number of samples to train the unified (legacy) extras model
 MIN_SAMPLES_FOR_LEGACY = 10
 
-EXTRAS_FEATURE_COLS = ["format_id", "venue_id", "season_id"]
+# Same feature families as batting/bowling/fielding: format, venue, season, weather, and match-level
+# aggregates of player consistency/form (all players who batted or bowled in the match).
+EXTRAS_FEATURE_COLS = [
+    "format_id",
+    "venue_id",
+    "season_id",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "bat_consistency_sum",
+    "bowl_consistency_sum",
+    "bat_form_sum",
+    "bowl_form_sum",
+]
 EXTRAS_TARGET_COL = "total_extras"
 
 

@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
-from .artifacts import BAT_MODELS, BOWL_MODELS, FIELD_MODELS
+from .artifacts import BAT_MODELS, BOWL_MODELS, EXTRAS_MODELS, FIELD_MODELS, WIN_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_service import (
@@ -40,7 +40,11 @@ from .models import (
     BattingPrediction,
     BowlingFeatures,
     BowlingPrediction,
+    ExtrasFeatures,
+    ExtrasPrediction,
     HistoricalMatchBacktestRequest,
+    WinFeatures,
+    WinPrediction,
 )
 from .train_on_the_fly import train_on_the_fly_cached
 
@@ -48,6 +52,14 @@ try:
     from ml.config import get_prediction_defaults
 except ImportError:
     get_prediction_defaults = None
+try:
+    from ml.train_extras import EXTRAS_FEATURE_COLS
+except ImportError:
+    EXTRAS_FEATURE_COLS = []
+try:
+    from ml.train_win import WIN_FEATURE_COLS
+except ImportError:
+    WIN_FEATURE_COLS = []
 
 
 @asynccontextmanager
@@ -882,6 +894,113 @@ async def predict_bowling(features: List[BowlingFeatures]):
                 message="Bowling prediction failed",
                 hint="See server logs for stacktrace using request_id",
             ),
+        )
+
+
+def _extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
+    """Build feature vector in EXTRAS_FEATURE_COLS order (exclude 'format' key)."""
+    if not EXTRAS_FEATURE_COLS:
+        return np.zeros(0)
+    d = f.model_dump()
+    return np.array([float(d.get(c, 0)) for c in EXTRAS_FEATURE_COLS], dtype=float)
+
+
+def _win_feature_vector(f: WinFeatures) -> np.ndarray:
+    """Build feature vector in WIN_FEATURE_COLS order (exclude 'format' key)."""
+    if not WIN_FEATURE_COLS:
+        return np.zeros(0)
+    d = f.model_dump()
+    return np.array([float(d.get(c, 0)) for c in WIN_FEATURE_COLS], dtype=float)
+
+
+@app.post("/predict/extras", response_model=List[ExtrasPrediction])
+async def predict_extras(features: List[ExtrasFeatures]):
+    """Predict total extras per match using the loaded extras model (unified features)."""
+    if not features:
+        logger.info("predict.extras.rejected", reason="empty_batch")
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one ExtrasFeatures row.",
+            ),
+        )
+    fmt = (features[0].format or "").strip().upper()
+    model = EXTRAS_MODELS.get(fmt) if fmt else EXTRAS_MODELS.get("_LEGACY_")
+    if not model:
+        available = [k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]
+        logger.warning("predict.extras.model_not_loaded", format=fmt or "LEGACY", available=available)
+        raise HTTPException(
+            status_code=404,
+            detail=_error_payload(
+                code="MODEL_NOT_LOADED",
+                message="Extras model not loaded",
+                hint="Train extras artifacts (e.g. make train-extras) and ensure format matches or use legacy.",
+                available=available,
+            ),
+        )
+    X = np.array([_extras_feature_vector(f) for f in features], dtype=float)
+    if X.size == 0:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(code="FEATURE_ORDER_EMPTY", message="EXTRAS_FEATURE_COLS not available"),
+        )
+    try:
+        y = model.predict(X)
+        y_flat = np.asarray(y).ravel()
+        return [ExtrasPrediction(total_extras=float(v)) for v in y_flat]
+    except Exception as exc:
+        logger.exception("predict.extras.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(code="PREDICT_FAILED", message="Extras prediction failed", hint="See server logs"),
+        )
+
+
+@app.post("/predict/win", response_model=List[WinPrediction])
+async def predict_win(features: List[WinFeatures]):
+    """Predict team1 win probability per match using the loaded win model (unified features)."""
+    if not features:
+        logger.info("predict.win.rejected", reason="empty_batch")
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one WinFeatures row.",
+            ),
+        )
+    fmt = (features[0].format or "").strip().upper()
+    model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
+    if not model:
+        available = [k for k in WIN_MODELS.keys() if k != "_LEGACY_"]
+        logger.warning("predict.win.model_not_loaded", format=fmt or "LEGACY", available=available)
+        raise HTTPException(
+            status_code=404,
+            detail=_error_payload(
+                code="MODEL_NOT_LOADED",
+                message="Win model not loaded",
+                hint="Train win artifacts (e.g. make train-win) and ensure format matches or use legacy.",
+                available=available,
+            ),
+        )
+    X = np.array([_win_feature_vector(f) for f in features], dtype=float)
+    if X.size == 0:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_FEATURE_COLS not available"),
+        )
+    try:
+        proba = model.predict_proba(X)
+        # class 1 = team1 wins
+        p_team1 = proba[:, 1] if proba.shape[1] > 1 else proba.ravel()
+        return [WinPrediction(team1_win_probability=float(p)) for p in p_team1]
+    except Exception as exc:
+        logger.exception("predict.win.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(code="PREDICT_FAILED", message="Win prediction failed", hint="See server logs"),
         )
 
 
