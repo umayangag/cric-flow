@@ -10,12 +10,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-const contributionsCSVFilename = "backtest_contributions.csv"
+const contributionsCSVFilenamePrefix = "backtest_contributions"
 
 // contributionRow is one row for the combination meta-model CSV.
 type contributionRow struct {
@@ -67,6 +68,15 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 	}
 	if len(body.MatchIDs) == 0 {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_ids must be non-empty"})
+		return
+	}
+	const maxMatchIDs = 200
+	if len(body.MatchIDs) > maxMatchIDs {
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "match_ids exceeds limit of " + strconv.Itoa(maxMatchIDs) + "; process in batches"},
+		)
 		return
 	}
 
@@ -122,7 +132,9 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		respondErr(w, err)
 		return
 	}
-	csvPath := filepath.Join(outDir, contributionsCSVFilename)
+	// Use timestamp in filename to avoid race conditions when multiple users trigger simultaneously.
+	ts := time.Now().UTC().Format("20060102T150405")
+	csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+"_"+ts+".csv")
 	if err := writeContributionsCSV(csvPath, rows); err != nil {
 		respondErr(w, err)
 		return

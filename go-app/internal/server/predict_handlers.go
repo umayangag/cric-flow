@@ -195,6 +195,23 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		if body.SimulationMaxPairs > 0 {
 			opts.MaxMatchups = body.SimulationMaxPairs
 		}
+		// Cap total samples to avoid long response times and API timeouts.
+		const maxTotalSamples = 100000
+		matchups := opts.TopKPerTeam * opts.TopKPerTeam
+		if opts.MaxMatchups > 0 && opts.MaxMatchups < matchups {
+			matchups = opts.MaxMatchups
+		}
+		if matchups*opts.NumSamplesPerMatchup > maxTotalSamples {
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				apiError{
+					Code:    "INVALID_PARAM",
+					Message: "simulation would exceed max samples (reduce simulation_top_k, simulation_samples, or simulation_max_pairs)",
+				},
+			)
+			return
+		}
 		result, sim, err := predictteam.PredictTeamsWithSimulation(r.Context(), input, mlPredictorAdapter{}, opts)
 		if err != nil {
 			respondErr(w, err)
