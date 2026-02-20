@@ -218,6 +218,27 @@ func TestPipelineTimeout(t *testing.T) {
 	require.Equal(t, 60*time.Second, d)
 }
 
+func TestExportTimeout(t *testing.T) {
+	cached = nil
+	cached = &Config{}
+	defer func() { cached = nil }()
+
+	// no config: ExportTimeout falls back to PipelineTimeout (0)
+	d := ExportTimeout()
+	require.Equal(t, time.Duration(0), d)
+
+	// export_timeout_ms set: use it
+	cached.Features.ExportTimeoutMs = 120000
+	d = ExportTimeout()
+	require.Equal(t, 120*time.Second, d)
+
+	// export_timeout_ms 0: fall back to pipeline timeout
+	cached.Features.ExportTimeoutMs = 0
+	cached.Features.PrecomputeTimeoutMs = 90000
+	d = ExportTimeout()
+	require.Equal(t, 90*time.Second, d)
+}
+
 func TestEffectiveExportMaxMatchIDs(t *testing.T) {
 	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(nil))
 	cfg := &Config{}

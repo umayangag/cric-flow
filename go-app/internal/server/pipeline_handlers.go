@@ -153,7 +153,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 			a.JobContext(),
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
-			config.PipelineTimeout(),
+			config.ExportTimeout(),
 			func(ctx context.Context) (any, error) {
 				repo := &exportqueries.Repo{}
 				bat := exportsvc.NewBattingService(repo)
