@@ -10,13 +10,18 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
+	"golang.org/x/sync/errgroup"
 )
 
-const contributionsCSVFilenamePrefix = "backtest_contributions"
+const (
+	contributionsCSVFilenamePrefix   = "backtest_contributions"
+	exportContributionsConcurrency  = 8 // limit concurrent doEvaluateWork calls per export job
+)
 
 // contributionRow is one row for the combination meta-model CSV.
 type contributionRow struct {
@@ -111,16 +116,28 @@ func runExportContributionsWork(
 	team1 := strings.TrimSpace(body.Team1)
 	team2 := strings.TrimSpace(body.Team2)
 
-	// Sequential evaluate per match; acceptable for a background job. Future: consider batch ML predictions if the service supports it.
+	// Evaluate matches in parallel with a concurrency limit to avoid overloading external services.
 	var allPlayers []BacktestPlayerResult
+	var mu sync.Mutex
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(exportContributionsConcurrency)
 	for _, mid := range body.MatchIDs {
-		matchIDStr := strconv.FormatInt(mid, 10)
-		resp, err := doEvaluateWork(ctx, format, team1, team2, matchIDStr, body.UseUnifiedModel, nil)
-		if err != nil {
-			slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
-			continue
-		}
-		allPlayers = append(allPlayers, resp.Players...)
+		mid := mid
+		g.Go(func() error {
+			matchIDStr := strconv.FormatInt(mid, 10)
+			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, nil)
+			if err != nil {
+				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
+				return nil // continue: don't fail the whole job for one match
+			}
+			mu.Lock()
+			allPlayers = append(allPlayers, resp.Players...)
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return "", 0, err
 	}
 
 	if len(allPlayers) == 0 {
