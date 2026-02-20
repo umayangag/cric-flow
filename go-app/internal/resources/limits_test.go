@@ -74,7 +74,8 @@ func TestMemoryBasedLimit(t *testing.T) {
 		memLimit int64 // in bytes
 		want     int
 	}{
-		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 7},
+		// 2GiB * 0.7 / 250 MiB per worker ≈ 5
+		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 5},
 		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 9},
 		{"seqcalc 2GiB", KindSeqCalc, 2 * 1024 * 1024 * 1024, 7},
 		{"precompute 512MiB", KindPrecompute, 512 * 1024 * 1024, 1},

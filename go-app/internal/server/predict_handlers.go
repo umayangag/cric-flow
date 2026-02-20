@@ -195,8 +195,10 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		if body.SimulationMaxPairs > 0 {
 			opts.MaxMatchups = body.SimulationMaxPairs
 		}
-		// Cap total samples to avoid long response times and API timeouts.
-		const maxTotalSamples = 100000
+		cfg := config.Load()
+		runsCV, wicketsCV, economyCV := config.EffectiveSimulationCVs(cfg)
+		opts.RunsCV, opts.WicketsCV, opts.EconomyCV = runsCV, wicketsCV, economyCV
+		maxTotalSamples := config.EffectiveMaxTotalSamples(cfg)
 		matchups := opts.TopKPerTeam * opts.TopKPerTeam
 		if opts.MaxMatchups > 0 && opts.MaxMatchups < matchups {
 			matchups = opts.MaxMatchups

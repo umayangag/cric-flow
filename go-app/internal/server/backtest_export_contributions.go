@@ -4,16 +4,15 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"log/slog"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 const contributionsCSVFilenamePrefix = "backtest_contributions"
@@ -70,7 +69,7 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_ids must be non-empty"})
 		return
 	}
-	const maxMatchIDs = 200
+	maxMatchIDs := config.EffectiveExportMaxMatchIDs(config.Load())
 	if len(body.MatchIDs) > maxMatchIDs {
 		writeJSON(
 			w,
@@ -132,9 +131,8 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 		respondErr(w, err)
 		return
 	}
-	// Use timestamp in filename to avoid race conditions when multiple users trigger simultaneously.
-	ts := time.Now().UTC().Format("20060102T150405")
-	csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+"_"+ts+".csv")
+	// Use fixed filename so pipeline runner (train_combination_meta) and make commands find the file without renaming.
+	csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+".csv")
 	if err := writeContributionsCSV(csvPath, rows); err != nil {
 		respondErr(w, err)
 		return
@@ -162,11 +160,9 @@ func buildContributionRows(
 		runOuts := pred["run_outs"]
 		actualRuns := act["runs"]
 
-		batScore := math.Min(1, runs/batDiv)
-		wickPart := math.Min(1, wickets/wicketDiv)
-		econPart := math.Max(0, 1-(econ/econBase))
-		bowlScore := (wickPart + econPart) / 2
-		fieldScore := math.Min(1, (catches+runOuts*1.5)/fieldDiv)
+		batScore := teamselect.NormalizeBatScore(runs, batDiv)
+		bowlScore := teamselect.NormalizeBowlScore(wickets, econ, wicketDiv, econBase)
+		fieldScore := teamselect.NormalizeFieldScore(catches, runOuts, fieldDiv)
 
 		isKeeper := 0
 		if keeperMap[p.PlayerID] {

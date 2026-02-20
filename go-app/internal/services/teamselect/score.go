@@ -1,5 +1,7 @@
 package teamselect
 
+import "math"
+
 // Package teamselect contains pure helpers to score players for selection.
 // These helpers are deterministic and side-effect-free to enable high coverage tests.
 
@@ -51,4 +53,24 @@ func clamp01(x float64) float64 {
 		return 1
 	}
 	return x
+}
+
+// NormalizeBatScore returns a batting score in [0,1] from runs and batDivisor (must be > 0).
+// Callers typically obtain batDivisor from config.EffectiveScoreNormParams.
+func NormalizeBatScore(runs, batDivisor float64) float64 {
+	return math.Min(1, runs/batDivisor)
+}
+
+// NormalizeBowlScore returns a bowling score in [0,1] from wickets, economy, and divisors (must be > 0).
+// wickPart = min(1, wickets/wicketDivisor), econPart = max(0, 1 - economy/econBase); score = (wickPart + econPart)/2.
+func NormalizeBowlScore(wickets, economy, wicketDivisor, econBase float64) float64 {
+	wickPart := math.Min(1, wickets/wicketDivisor)
+	econPart := math.Max(0, 1-(economy/econBase))
+	return (wickPart + econPart) / 2
+}
+
+// NormalizeFieldScore returns a fielding score in [0,1] from catches, runOuts, and fieldDivisor (must be > 0).
+// Uses (catches + runOuts*1.5) / fieldDivisor capped at 1.
+func NormalizeFieldScore(catches, runOuts, fieldDivisor float64) float64 {
+	return math.Min(1, (catches+runOuts*1.5)/fieldDivisor)
 }

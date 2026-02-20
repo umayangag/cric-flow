@@ -25,15 +25,20 @@ const (
 )
 
 // Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
-// Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player (conservative to avoid OOM in 2GB containers).
+// Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player.
+// Conservative (250 MB) to avoid OOM when GOMEMLIMIT/cgroup is set; when unknown, we use a low default concurrency.
 // Import: each worker holds one parsed match JSON + DB buffers.
 const (
-	DefaultPrecomputeMBPerWorker = 180
+	DefaultPrecomputeMBPerWorker = 250
 	DefaultImportMBPerWorker     = 150
 	DefaultExportMBPerWorker     = 100
 	DefaultSeqCalcMBPerWorker    = 200
 	DefaultFieldingMBPerWorker   = 50
 )
+
+// defaultPrecomputeConcurrencyWhenNoLimit is used when no memory limit is detected (no GOMEMLIMIT/cgroup)
+// to avoid spawning too many workers and causing OOM (e.g. on bare metal or older k8s).
+const defaultPrecomputeConcurrencyWhenNoLimit = 4
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
 // Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >
@@ -56,7 +61,15 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	}
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
-		n = runtime.NumCPU()
+		// No memory limit detected (no GOMEMLIMIT/cgroup): use conservative default for memory-heavy kinds to avoid OOM.
+		if kind == KindPrecompute {
+			n = defaultPrecomputeConcurrencyWhenNoLimit
+		} else {
+			n = runtime.NumCPU()
+		}
+		if n < 1 {
+			n = 1
+		}
 	}
 	return clampToCeiling(n, ceiling(kind))
 }

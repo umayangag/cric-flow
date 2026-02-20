@@ -70,9 +70,14 @@ type Config struct {
 		} `json:"mocks"`
 	} `json:"weather"`
 	Predictor struct {
-		TeamSize      int     `json:"team_size"`
-		DefaultExtras float64 `json:"default_extras"`
+		TeamSize         int               `json:"team_size"`
+		DefaultExtras    float64           `json:"default_extras"`
+		MaxTotalSamples  int               `json:"max_total_samples"` // cap on Monte Carlo samples (0 = use default)
+		Simulation       *SimulationParams `json:"simulation"`        // CVs for runs/wickets/economy sampling
 	} `json:"predictor"`
+	Backtest struct {
+		ExportMaxMatchIDs int `json:"export_max_match_ids"` // max match_ids per export-contributions request (0 = use default)
+	} `json:"backtest"`
 	Selection struct {
 		DefaultPoolCSV       string                     `json:"default_pool_csv"`
 		RequireKeeper        bool                       `json:"require_keeper"`
@@ -91,6 +96,13 @@ type Config struct {
 		FieldingConcurrency        int `json:"fielding_concurrency"`           // 0 = auto
 		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180 (rough ETA per format in pipeline progress SSE)
 	} `json:"pipeline"`
+}
+
+// SimulationParams holds coefficient-of-variation parameters for Monte Carlo outcome sampling.
+type SimulationParams struct {
+	RunsCV    float64 `json:"runs_cv"`    // sigma = mean * RunsCV for runs sampling
+	WicketsCV float64 `json:"wickets_cv"` // same for wickets
+	EconomyCV float64 `json:"economy_cv"` // same for economy
 }
 
 // ScoreNormParams holds format-specific divisors for normalizing raw predictions to [0,1].
@@ -323,6 +335,42 @@ func EffectiveScoreWeights(cfg *Config) (bat, bowl, field, keeperBonus float64) 
 		keeperBonus = DefaultScoreWeightKeeperBonus
 	}
 	return bat, bowl, field, keeperBonus
+}
+
+// EffectiveExportMaxMatchIDs returns the backtest export-contributions match_ids limit.
+func EffectiveExportMaxMatchIDs(cfg *Config) int {
+	if cfg != nil && cfg.Backtest.ExportMaxMatchIDs > 0 {
+		return cfg.Backtest.ExportMaxMatchIDs
+	}
+	return DefaultExportMaxMatchIDs
+}
+
+// EffectiveMaxTotalSamples returns the cap on Monte Carlo total samples (matchups * samples per matchup).
+func EffectiveMaxTotalSamples(cfg *Config) int {
+	if cfg != nil && cfg.Predictor.MaxTotalSamples > 0 {
+		return cfg.Predictor.MaxTotalSamples
+	}
+	return DefaultMaxTotalSamples
+}
+
+// EffectiveSimulationCVs returns RunsCV, WicketsCV, EconomyCV for Monte Carlo sampling (0 = use default).
+func EffectiveSimulationCVs(cfg *Config) (runsCV, wicketsCV, economyCV float64) {
+	runsCV = DefaultSimulationRunsCV
+	wicketsCV = DefaultSimulationWicketsCV
+	economyCV = DefaultSimulationEconomyCV
+	if cfg != nil && cfg.Predictor.Simulation != nil {
+		s := cfg.Predictor.Simulation
+		if s.RunsCV > 0 {
+			runsCV = s.RunsCV
+		}
+		if s.WicketsCV > 0 {
+			wicketsCV = s.WicketsCV
+		}
+		if s.EconomyCV > 0 {
+			economyCV = s.EconomyCV
+		}
+	}
+	return runsCV, wicketsCV, economyCV
 }
 
 // DefaultExportDir returns the configured export output dir or a built-in default.

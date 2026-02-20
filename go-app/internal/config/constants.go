@@ -48,3 +48,16 @@ const (
 	DefaultScoreNormEconBase      = 12
 	DefaultScoreNormFieldDivisor  = 5
 )
+
+// Backtest / export-contributions defaults.
+const (
+	DefaultExportMaxMatchIDs = 200
+)
+
+// Monte Carlo simulation defaults (predictor.max_total_samples and simulation CVs).
+const (
+	DefaultMaxTotalSamples = 100000
+	DefaultSimulationRunsCV    = 0.35
+	DefaultSimulationWicketsCV = 0.4
+	DefaultSimulationEconomyCV = 0.15
+)

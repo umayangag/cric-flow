@@ -393,12 +393,12 @@ func buildTeamSelectPool(
 	for _, p := range pool {
 		pr := preds[p.PlayerID]
 		isBowler := p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0
-		batScore := normalizeBatScore(pr.Runs, batDiv)
+		batScore := teamselect.NormalizeBatScore(pr.Runs, batDiv)
 		bowlScore := 0.0
 		if isBowler {
-			bowlScore = normalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
+			bowlScore = teamselect.NormalizeBowlScore(pr.Wickets, pr.Economy, wicketDiv, econBase)
 		}
-		fieldScore := normalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
+		fieldScore := teamselect.NormalizeFieldScore(pr.Catches, pr.RunOuts, fieldDiv)
 		out = append(out, teamselect.Player{
 			Name:       p.PlayerName,
 			IsBowler:   isBowler,
@@ -409,25 +409,6 @@ func buildTeamSelectPool(
 		})
 	}
 	return out
-}
-
-func normalizeBatScore(runs, batDivisor float64) float64 {
-	if batDivisor <= 0 {
-		batDivisor = config.DefaultScoreNormBatDivisor
-	}
-	return math.Min(1, runs/batDivisor)
-}
-
-func normalizeBowlScore(wickets, economy, wicketDivisor, econBase float64) float64 {
-	if wicketDivisor <= 0 {
-		wicketDivisor = config.DefaultScoreNormWicketDivisor
-	}
-	if econBase <= 0 {
-		econBase = config.DefaultScoreNormEconBase
-	}
-	wickPart := math.Min(1, wickets/wicketDivisor)
-	econPart := math.Max(0, 1-(economy/econBase))
-	return (wickPart + econPart) / 2
 }
 
 func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
@@ -442,13 +423,6 @@ func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
 		Cloud:    w.Cloud,
 		Pressure: w.Pressure,
 	}
-}
-
-func normalizeFieldScore(catches, runOuts, fieldDivisor float64) float64 {
-	if fieldDivisor <= 0 {
-		fieldDivisor = config.DefaultScoreNormFieldDivisor
-	}
-	return math.Min(1, (catches+runOuts*1.5)/fieldDivisor)
 }
 
 // hasFieldingPredictions returns true if any prediction has non-zero catches or run_outs,

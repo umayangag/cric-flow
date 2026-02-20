@@ -22,8 +22,11 @@ type Runner struct{}
 
 func NewRunner() Runner { return Runner{} }
 
+// replayMatchPageSize is the number of matches to load per chunk to limit memory (avoids holding all matches in RAM).
+const replayMatchPageSize = 500
+
 // RunReplay iterates through matches chronologically and writes snapshots as of each match date.
-// Behavior mirrors the previous cmd implementation.
+// Matches are fetched in chunks to avoid OOM when a format has many matches.
 func (Runner) RunReplay(
 	ctx context.Context,
 	formatCode string,
@@ -32,25 +35,32 @@ func (Runner) RunReplay(
 	lastN int,
 	windowN int,
 ) error {
-	matches, err := db.ListMatchesByFormatDate(ctx, formatID, nil, nil)
-	if err != nil {
-		slog.Error(
-			"precompute-features(replay): list matches failed",
-			slog.String("format", formatCode),
-			slog.Int64("format_id", formatID),
-			slog.Any("err", err),
-		)
-		return fmt.Errorf("list matches: %w", err)
-	}
 	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
 	slog.Info("precompute-features(replay)",
-		slog.Int("matches", len(matches)),
 		slog.String("format", formatCode),
 		slog.Int("concurrency", precomputeLimit),
+		slog.Int("match_page_size", replayMatchPageSize),
 	)
 	// Optional history window from config is provided by caller via windowN.
 	processed := int64(0)
-	for _, m := range matches {
+	totalMatches := int64(0)
+	var after *db.MatchLite
+	for {
+		matches, err := db.ListMatchesByFormatDatePage(ctx, formatID, nil, nil, replayMatchPageSize, after)
+		if err != nil {
+			slog.Error(
+				"precompute-features(replay): list matches page failed",
+				slog.String("format", formatCode),
+				slog.Int64("format_id", formatID),
+				slog.Any("err", err),
+			)
+			return fmt.Errorf("list matches: %w", err)
+		}
+		if len(matches) == 0 {
+			break
+		}
+		totalMatches += int64(len(matches))
+		for _, m := range matches {
 		asOf := m.MatchDate
 		players, err := db.ListPlayersInMatch(ctx, m.MatchID)
 		if err != nil {
@@ -265,9 +275,14 @@ func (Runner) RunReplay(
 		if oldValue/1000 < newValue/1000 {
 			slog.Info("progress", slog.Int64("player_snapshots", newValue), slog.String("format", formatCode))
 		}
+		}
+		// Next page: cursor after last match in this chunk
+		after = &matches[len(matches)-1]
 	}
 
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
+	// Run GC to release replay-phase memory before the next heavy phase and reduce OOM risk.
+	runtime.GC()
 	logSeqCalcTrigger(formatCode, "replay")
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
 		slog.Error(
@@ -278,7 +293,7 @@ func (Runner) RunReplay(
 		return fmt.Errorf("sequence calculations failed: %w", err)
 	}
 
-	slog.Info("done (replay)", slog.Int("matches", len(matches)), slog.String("format", formatCode))
+	slog.Info("done (replay)", slog.Int64("matches", totalMatches), slog.String("format", formatCode))
 	return nil
 }
 
@@ -399,7 +414,8 @@ func (Runner) RunPointInTime(
 		slog.String("as_of", asOf.Format("2006-01-02")),
 	)
 
-	// Trigger sequence features calculation
+	// Trigger sequence features calculation. GC to free form/consistency phase memory before seqcalc.
+	runtime.GC()
 	logSeqCalcTrigger(formatCode, "as-of")
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
 		slog.Error(

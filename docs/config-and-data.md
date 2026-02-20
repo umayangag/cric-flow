@@ -28,7 +28,7 @@ Config file: `go-app/config.json`
   - `min_batting_innings`, `min_bowling_innings`, `form_shrinkage_alpha`, `consistency_per_format`, `history_window_matches` — reserved or optional.
   - **Feature extraction:** `ewm_alpha` (0.3), `ewm_alpha_short` (0.5), `ewm_alpha_long` (0.2), `consistency_last_n` (10), `form_window_n` (0), `momentum_last_n` (5).
   - `fielding_enrich` — when ML has no fielding model: `ewm_alpha`, `form_to_catches_ratio` (0.7).
-- `pipeline` (optional) — `precompute_concurrency`, `import_concurrency`, `seqcalc_concurrency`, `export_concurrency`, `fielding_concurrency` (0 = auto from GOMEMLIMIT/cgroup).
+- `pipeline` (optional) — `precompute_concurrency`, `import_concurrency`, `seqcalc_concurrency`, `export_concurrency`, `fielding_concurrency` (0 = auto from GOMEMLIMIT/cgroup). **Precompute and memory:** When no limit is set, precompute uses a low default concurrency (4) to avoid OOM. Set **GOMEMLIMIT** (e.g. `2GiB`) or run in a cgroup with a memory limit so the process can scale workers to available memory. Replay loads matches in pages (500 per chunk) to keep peak memory down.
 - `export`
   - `split_by_format` (bool) — write per-format CSVs by default.
   - `required_format` (string) — restrict export to this format unless overridden by flags.
