@@ -25,16 +25,22 @@ const (
 )
 
 // Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
-// Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player.
-// Use 450 MB per worker (was 250); observed OOM when 250 was too low (multiple history slices per player).
-// Import: each worker holds one parsed match JSON + DB buffers.
+// Used with the detected memory limit (GOMEMLIMIT or cgroup) to cap concurrency so total worker
+// usage stays around memoryUsageFraction of the limit. Precompute: batting/bowling history +
+// opposition/venue variants + form/consistency per player (~450 MB). SeqCalc: one calculator per
+// worker, ball_event scans and in-memory aggregates (~500 MB). Import: one parsed match + DB
+// buffers (~150 MB). Export/Fielding: smaller working sets.
 const (
 	DefaultPrecomputeMBPerWorker = 450
 	DefaultImportMBPerWorker     = 150
 	DefaultExportMBPerWorker     = 100
-	DefaultSeqCalcMBPerWorker    = 200
+	DefaultSeqCalcMBPerWorker    = 500
 	DefaultFieldingMBPerWorker   = 50
 )
+
+// memoryUsageFraction is the share of the detected memory limit (GOMEMLIMIT or cgroup) we allow
+// for pipeline workers; the rest is left for runtime, DB, and spikes. Concurrency = (limit * fraction) / perWorkerMB.
+const memoryUsageFraction = 80 // percent (e.g. 80 => use up to 80% of limit for workers)
 
 // defaultPrecomputeConcurrencyWhenNoLimit is used when no memory limit is detected (no GOMEMLIMIT/cgroup)
 // to avoid spawning too many workers and causing OOM (e.g. on bare metal or older k8s).
@@ -141,8 +147,8 @@ func memoryBasedLimit(kind Kind) int {
 	if perWorkerBytes <= 0 {
 		return 0
 	}
-	// Use at most 70% of limit for workers to leave room for runtime, DB, etc.
-	usable := (limitBytes * 70) / 100
+	// Use up to memoryUsageFraction of limit for workers; rest for runtime, DB, and spikes.
+	usable := (limitBytes * int64(memoryUsageFraction)) / 100
 	n := int(usable / perWorkerBytes)
 	if n < 1 {
 		n = 1
@@ -235,25 +241,66 @@ func parseGOMEMLIMIT(s string) int64 {
 }
 
 // readCgroupMemoryMax reads cgroup v2 memory.max (or v1 memory.limit_in_bytes) in bytes.
+// In containers (Docker/K8s) the limit is usually on the process's cgroup, not the root;
+// we read /proc/self/cgroup to get the cgroup path and then memory.max under it.
 func readCgroupMemoryMax() int64 {
-	// cgroup v2: /sys/fs/cgroup/memory.max (or under slice)
+	// 1) Try cgroup v2 process path (e.g. Docker/K8s: /sys/fs/cgroup/<slice>/memory.max)
+	if b := readCgroupV2MemoryMaxFromProc(); b > 0 {
+		return b
+	}
+	// 2) Root / flat paths (host or older cgroup layout)
 	for _, path := range []string{
 		"/sys/fs/cgroup/memory.max",
 		"/sys/fs/cgroup/memory/memory.limit_in_bytes",
 	} {
-		data, err := os.ReadFile(path)
-		if err != nil {
+		if b := readMemoryMaxFile(path); b > 0 {
+			return b
+		}
+	}
+	return 0
+}
+
+// readMemoryMaxFile reads a memory.max or memory.limit_in_bytes file; returns 0 on any failure or "max".
+func readMemoryMaxFile(path string) int64 {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "max" || s == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+// readCgroupV2MemoryMaxFromProc reads /proc/self/cgroup for the unified cgroup path (v2: "0::/path")
+// and then /sys/fs/cgroup/<path>/memory.max. Used so containers with a 2GB limit are detected.
+func readCgroupV2MemoryMaxFromProc() int64 {
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return 0
+	}
+	// Unified cgroup v2: line like "0::/system.slice/docker-<id>.scope"
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		s := strings.TrimSpace(string(data))
-		if s == "max" || s == "" {
-			continue
+		// Format "0::/path" or "0::path"
+		if strings.HasPrefix(line, "0::") {
+			path := strings.TrimPrefix(line, "0::")
+			if path == "" {
+				path = "/"
+			} else if path[0] != '/' {
+				path = "/" + path
+			}
+			fullPath := "/sys/fs/cgroup" + path + "/memory.max"
+			return readMemoryMaxFile(fullPath)
 		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || n <= 0 {
-			continue
-		}
-		return n
 	}
 	return 0
 }
