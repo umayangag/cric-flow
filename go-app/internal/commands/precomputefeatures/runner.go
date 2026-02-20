@@ -45,7 +45,10 @@ func (Runner) RunReplay(
 		slog.Int("concurrency", precomputeLimit),
 		slog.Int("match_page_size", pageSize),
 	)
-	resources.LogMemoryAndGoroutines("precompute-features(replay): memory and goroutines at start", slog.String("format", formatCode))
+	resources.LogMemoryAndGoroutines(
+		"precompute-features(replay): memory and goroutines at start",
+		slog.String("format", formatCode),
+	)
 	// Optional history window from config is provided by caller via windowN.
 	processed := int64(0)
 	totalMatches := int64(0)
@@ -292,7 +295,10 @@ func (Runner) RunReplay(
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
 	// Run GC to release replay-phase memory before the next heavy phase and reduce OOM risk.
 	runtime.GC()
-	resources.LogMemoryAndGoroutines("precompute-features(replay): after GC, before seqcalc", slog.String("format", formatCode))
+	resources.LogMemoryAndGoroutines(
+		"precompute-features(replay): after GC, before seqcalc",
+		slog.String("format", formatCode),
+	)
 	logSeqCalcTrigger(formatCode, "replay")
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
 		slog.Error(
@@ -433,7 +439,10 @@ func (Runner) RunPointInTime(
 
 	// Trigger sequence features calculation. GC to free form/consistency phase memory before seqcalc.
 	runtime.GC()
-	resources.LogMemoryAndGoroutines("precompute-features(as-of): after GC, before seqcalc", slog.String("format", formatCode))
+	resources.LogMemoryAndGoroutines(
+		"precompute-features(as-of): after GC, before seqcalc",
+		slog.String("format", formatCode),
+	)
 	logSeqCalcTrigger(formatCode, "as-of")
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
 		slog.Error(
