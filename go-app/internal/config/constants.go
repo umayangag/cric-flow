@@ -56,7 +56,7 @@ const (
 
 // Monte Carlo simulation defaults (predictor.max_total_samples and simulation CVs).
 const (
-	DefaultMaxTotalSamples = 100000
+	DefaultMaxTotalSamples     = 100000
 	DefaultSimulationRunsCV    = 0.35
 	DefaultSimulationWicketsCV = 0.4
 	DefaultSimulationEconomyCV = 0.15

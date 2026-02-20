@@ -77,7 +77,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           setStreamError(
             isLastRetry
               ? `${message}. Click Refresh to try again.`
-              : 'Connection lost. Reconnecting…'
+              : 'Connection lost. Reconnecting…',
           );
           if (!isLastRetry) {
             retryTimeout = setTimeout(() => {

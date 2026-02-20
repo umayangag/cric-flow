@@ -61,220 +61,220 @@ func (Runner) RunReplay(
 		}
 		totalMatches += int64(len(matches))
 		for _, m := range matches {
-		asOf := m.MatchDate
-		players, err := db.ListPlayersInMatch(ctx, m.MatchID)
-		if err != nil {
-			slog.Error(
-				"precompute-features(replay): list players in match failed",
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
-			)
-			return fmt.Errorf("list players in match %d: %w", m.MatchID, err)
-		}
+			asOf := m.MatchDate
+			players, err := db.ListPlayersInMatch(ctx, m.MatchID)
+			if err != nil {
+				slog.Error(
+					"precompute-features(replay): list players in match failed",
+					slog.Int64("match_id", m.MatchID),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
+				return fmt.Errorf("list players in match %d: %w", m.MatchID, err)
+			}
 
-		g, pCtx := errgroup.WithContext(ctx)
-		g.SetLimit(precomputeLimit)
+			g, pCtx := errgroup.WithContext(ctx)
+			g.SetLimit(precomputeLimit)
 
-		for _, pid := range players {
-			pid := pid // capture
-			g.Go(func() error {
-				if err := pCtx.Err(); err != nil {
+			for _, pid := range players {
+				pid := pid // capture
+				g.Go(func() error {
+					if err := pCtx.Err(); err != nil {
+						return nil
+					}
+					// Base histories strictly before match date
+					batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
+					if err != nil {
+						slog.Error(
+							"precompute-features(replay): batting history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
+						return fmt.Errorf("batting history pid=%d: %w", pid, err)
+					}
+					bowlHist, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, nil)
+					if err != nil {
+						slog.Error(
+							"precompute-features(replay): bowling history failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
+						return fmt.Errorf("bowling history pid=%d: %w", pid, err)
+					}
+
+					batInn := toFeatureInnings(batHist)
+					bowlInn := toFeatureInnings(bowlHist)
+					batInn = features.SortAndClip(batInn, asOf)
+					bowlInn = features.SortAndClip(bowlInn, asOf)
+					if windowN > 0 {
+						if len(batInn) > windowN {
+							batInn = batInn[len(batInn)-windowN:]
+						}
+						if len(bowlInn) > windowN {
+							bowlInn = bowlInn[len(bowlInn)-windowN:]
+						}
+					}
+
+					batForm, effNbat := features.EWM(batInn, alpha)
+					bowlForm, effNbowl := features.EWM(bowlInn, alpha)
+					batCons, nCbat := features.Consistency(batInn, lastN)
+					bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
+
+					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil,
+						batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+						slog.Error(
+							"precompute-features(replay): upsert form overall failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
+						return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
+					}
+					if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil,
+						batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
+						slog.Error(
+							"precompute-features(replay): upsert consistency overall failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
+						return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
+					}
+
+					// opposition specific form
+					if m.OppositionID != 0 {
+						oppID := m.OppositionID
+						oppBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
+						if err != nil {
+							slog.Error(
+								"precompute-features(replay): opposition batting history failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("opposition_id", oppID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", pid, oppID, err)
+						}
+						oppBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
+						if err != nil {
+							slog.Error(
+								"precompute-features(replay): opposition bowling history failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("opposition_id", oppID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", pid, oppID, err)
+						}
+						oppBatInn := toFeatureInnings(oppBat)
+						oppBowlInn := toFeatureInnings(oppBowl)
+						oppBatInn = features.SortAndClip(oppBatInn, asOf)
+						oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
+						if windowN > 0 {
+							if len(oppBatInn) > windowN {
+								oppBatInn = oppBatInn[len(oppBatInn)-windowN:]
+							}
+							if len(oppBowlInn) > windowN {
+								oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
+							}
+						}
+						oppBatForm, nOppBat := features.EWM(oppBatInn, alpha)
+						oppBowlForm, nOppBowl := features.EWM(oppBowlInn, alpha)
+						if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID,
+							oppBatForm, oppBowlForm, alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
+							slog.Error(
+								"precompute-features(replay): upsert form opposition failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("opposition_id", oppID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("upsert form opposition pid=%d opp=%d: %w", pid, oppID, err)
+						}
+					}
+
+					// venue specific form
+					if m.VenueID != 0 {
+						venueID := m.VenueID
+						venBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
+						if err != nil {
+							slog.Error(
+								"precompute-features(replay): venue batting history failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("venue_id", venueID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("venue batting history pid=%d venue=%d: %w", pid, venueID, err)
+						}
+						venBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
+						if err != nil {
+							slog.Error(
+								"precompute-features(replay): venue bowling history failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("venue_id", venueID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", pid, venueID, err)
+						}
+						venBatInn := toFeatureInnings(venBat)
+						venBowlInn := toFeatureInnings(venBowl)
+						venBatInn = features.SortAndClip(venBatInn, asOf)
+						venBowlInn = features.SortAndClip(venBowlInn, asOf)
+						if windowN > 0 {
+							if len(venBatInn) > windowN {
+								venBatInn = venBatInn[len(venBatInn)-windowN:]
+							}
+							if len(venBowlInn) > windowN {
+								venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
+							}
+						}
+						venBatForm, nVenBat := features.EWM(venBatInn, alpha)
+						venBowlForm, nVenBowl := features.EWM(venBowlInn, alpha)
+						if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID,
+							venBatForm, venBowlForm, alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
+							slog.Error(
+								"precompute-features(replay): upsert form venue failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("venue_id", venueID),
+								slog.Int64("match_id", m.MatchID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("upsert form venue pid=%d venue=%d: %w", pid, venueID, err)
+						}
+					}
 					return nil
-				}
-				// Base histories strictly before match date
-				batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
-				if err != nil {
-					slog.Error(
-						"precompute-features(replay): batting history failed",
-						slog.Int64("player_id", pid),
-						slog.Int64("match_id", m.MatchID),
-						slog.String("format", formatCode),
-						slog.Any("err", err),
-					)
-					return fmt.Errorf("batting history pid=%d: %w", pid, err)
-				}
-				bowlHist, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, nil)
-				if err != nil {
-					slog.Error(
-						"precompute-features(replay): bowling history failed",
-						slog.Int64("player_id", pid),
-						slog.Int64("match_id", m.MatchID),
-						slog.String("format", formatCode),
-						slog.Any("err", err),
-					)
-					return fmt.Errorf("bowling history pid=%d: %w", pid, err)
-				}
+				})
+			}
 
-				batInn := toFeatureInnings(batHist)
-				bowlInn := toFeatureInnings(bowlHist)
-				batInn = features.SortAndClip(batInn, asOf)
-				bowlInn = features.SortAndClip(bowlInn, asOf)
-				if windowN > 0 {
-					if len(batInn) > windowN {
-						batInn = batInn[len(batInn)-windowN:]
-					}
-					if len(bowlInn) > windowN {
-						bowlInn = bowlInn[len(bowlInn)-windowN:]
-					}
-				}
+			if err := g.Wait(); err != nil {
+				slog.Error(
+					"precompute-features(replay): errgroup wait failed for match",
+					slog.Int64("match_id", m.MatchID),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
+				return err
+			}
 
-				batForm, effNbat := features.EWM(batInn, alpha)
-				bowlForm, effNbowl := features.EWM(bowlInn, alpha)
-				batCons, nCbat := features.Consistency(batInn, lastN)
-				bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
-
-				if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil,
-					batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
-					slog.Error(
-						"precompute-features(replay): upsert form overall failed",
-						slog.Int64("player_id", pid),
-						slog.Int64("match_id", m.MatchID),
-						slog.String("format", formatCode),
-						slog.Any("err", err),
-					)
-					return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
-				}
-				if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil,
-					batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
-					slog.Error(
-						"precompute-features(replay): upsert consistency overall failed",
-						slog.Int64("player_id", pid),
-						slog.Int64("match_id", m.MatchID),
-						slog.String("format", formatCode),
-						slog.Any("err", err),
-					)
-					return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
-				}
-
-				// opposition specific form
-				if m.OppositionID != 0 {
-					oppID := m.OppositionID
-					oppBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): opposition batting history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("opposition_id", oppID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", pid, oppID, err)
-					}
-					oppBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): opposition bowling history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("opposition_id", oppID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", pid, oppID, err)
-					}
-					oppBatInn := toFeatureInnings(oppBat)
-					oppBowlInn := toFeatureInnings(oppBowl)
-					oppBatInn = features.SortAndClip(oppBatInn, asOf)
-					oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
-					if windowN > 0 {
-						if len(oppBatInn) > windowN {
-							oppBatInn = oppBatInn[len(oppBatInn)-windowN:]
-						}
-						if len(oppBowlInn) > windowN {
-							oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
-						}
-					}
-					oppBatForm, nOppBat := features.EWM(oppBatInn, alpha)
-					oppBowlForm, nOppBowl := features.EWM(oppBowlInn, alpha)
-					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID,
-						oppBatForm, oppBowlForm, alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
-						slog.Error(
-							"precompute-features(replay): upsert form opposition failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("opposition_id", oppID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("upsert form opposition pid=%d opp=%d: %w", pid, oppID, err)
-					}
-				}
-
-				// venue specific form
-				if m.VenueID != 0 {
-					venueID := m.VenueID
-					venBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): venue batting history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("venue_id", venueID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("venue batting history pid=%d venue=%d: %w", pid, venueID, err)
-					}
-					venBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): venue bowling history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("venue_id", venueID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", pid, venueID, err)
-					}
-					venBatInn := toFeatureInnings(venBat)
-					venBowlInn := toFeatureInnings(venBowl)
-					venBatInn = features.SortAndClip(venBatInn, asOf)
-					venBowlInn = features.SortAndClip(venBowlInn, asOf)
-					if windowN > 0 {
-						if len(venBatInn) > windowN {
-							venBatInn = venBatInn[len(venBatInn)-windowN:]
-						}
-						if len(venBowlInn) > windowN {
-							venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
-						}
-					}
-					venBatForm, nVenBat := features.EWM(venBatInn, alpha)
-					venBowlForm, nVenBowl := features.EWM(venBowlInn, alpha)
-					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID,
-						venBatForm, venBowlForm, alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
-						slog.Error(
-							"precompute-features(replay): upsert form venue failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("venue_id", venueID),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("upsert form venue pid=%d venue=%d: %w", pid, venueID, err)
-					}
-				}
-				return nil
-			})
-		}
-
-		if err := g.Wait(); err != nil {
-			slog.Error(
-				"precompute-features(replay): errgroup wait failed for match",
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
-			)
-			return err
-		}
-
-		newValue := atomic.AddInt64(&processed, int64(len(players)))
-		oldValue := newValue - int64(len(players))
-		if oldValue/1000 < newValue/1000 {
-			slog.Info("progress", slog.Int64("player_snapshots", newValue), slog.String("format", formatCode))
-		}
+			newValue := atomic.AddInt64(&processed, int64(len(players)))
+			oldValue := newValue - int64(len(players))
+			if oldValue/1000 < newValue/1000 {
+				slog.Info("progress", slog.Int64("player_snapshots", newValue), slog.String("format", formatCode))
+			}
 		}
 		// Next page: cursor after last match in this chunk
 		after = &matches[len(matches)-1]

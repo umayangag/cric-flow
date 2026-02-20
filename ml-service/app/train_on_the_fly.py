@@ -28,6 +28,7 @@ from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
 
+
 # Canonical feature order from configs/feature_vectors.json (single source of truth).
 def _batting_feature_cols() -> List[str]:
     return get_feature_names("batting")
@@ -35,6 +36,11 @@ def _batting_feature_cols() -> List[str]:
 
 def _bowling_feature_cols() -> List[str]:
     return get_feature_names("bowling")
+
+
+# Public constants for tests and callers that need the same feature order.
+BATTING_FEATURE_COLS: List[str] = _batting_feature_cols()
+BOWLING_FEATURE_COLS: List[str] = _bowling_feature_cols()
 
 
 # Legacy column names from Go export; when API returns these we map to contract names in preprocess.

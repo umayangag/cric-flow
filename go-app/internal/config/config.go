@@ -70,10 +70,10 @@ type Config struct {
 		} `json:"mocks"`
 	} `json:"weather"`
 	Predictor struct {
-		TeamSize         int               `json:"team_size"`
-		DefaultExtras    float64           `json:"default_extras"`
-		MaxTotalSamples  int               `json:"max_total_samples"` // cap on Monte Carlo samples (0 = use default)
-		Simulation       *SimulationParams `json:"simulation"`        // CVs for runs/wickets/economy sampling
+		TeamSize        int               `json:"team_size"`
+		DefaultExtras   float64           `json:"default_extras"`
+		MaxTotalSamples int               `json:"max_total_samples"` // cap on Monte Carlo samples (0 = use default)
+		Simulation      *SimulationParams `json:"simulation"`        // CVs for runs/wickets/economy sampling
 	} `json:"predictor"`
 	Backtest struct {
 		ExportMaxMatchIDs int `json:"export_max_match_ids"` // max match_ids per export-contributions request (0 = use default)
