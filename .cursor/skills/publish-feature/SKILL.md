@@ -94,7 +94,7 @@ Track the current cycle (1–10). At the start of each iteration, state the cycl
 |------|--------|
 | A | **Post** `/gemini review` on PR (required first; no suggestions without it) |
 | B | **Wait 15 minutes** (no polling); then **check once**: run Phase 1, write unresolved IDs to a file, count = number of IDs. Proceed to C. If count 0, C exits and stop. |
-| C | If count 0 → exit. Else **reuse step B’s ID file**; run Phase 2 only (nodes in chunks of 100). Fix, run-check-all-incremental (if changes), resolve, push, then post `/gemini review` on the PR. |
+| C | If count 0 → exit. Else **reuse step B’s ID file**; run Phase 2 only (nodes in chunks of 100). Fix, run-check-all-incremental (if changes), resolve, push. |
 | D | If cycle &lt; 10 and threads &gt; 0 → go to A; else exit |
 
 Exit when: **cycle = 10** or **unresolved Gemini threads = 0**.
