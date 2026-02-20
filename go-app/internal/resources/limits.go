@@ -42,6 +42,11 @@ const (
 // for pipeline workers; the rest is left for runtime, DB, and spikes. Concurrency = (limit * fraction) / perWorkerMB.
 const memoryUsageFraction = 80 // percent (e.g. 80 => use up to 80% of limit for workers)
 
+// seqcalcLowMemoryLimitBytes: when the detected limit is at or below this, seqcalc concurrency is capped at 1.
+// A single seqcalc worker can still exceed the limit (calculators accumulate ball_event data in memory), but
+// running only one worker avoids multiple heavy calculators competing for the same small budget.
+const seqcalcLowMemoryLimitBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
+
 // defaultPrecomputeConcurrencyWhenNoLimit is used when no memory limit is detected (no GOMEMLIMIT/cgroup)
 // to avoid spawning too many workers and causing OOM (e.g. on bare metal or older k8s).
 const defaultPrecomputeConcurrencyWhenNoLimit = 2
@@ -151,6 +156,11 @@ func memoryBasedLimit(kind Kind) int {
 	usable := (limitBytes * int64(memoryUsageFraction)) / 100
 	n := int(usable / perWorkerBytes)
 	if n < 1 {
+		n = 1
+	}
+	// SeqCalc workers run full-format ball_event scans and can each use more than the per-worker estimate.
+	// In low-memory containers, cap at 1 so we don't run multiple such workers.
+	if kind == KindSeqCalc && limitBytes <= seqcalcLowMemoryLimitBytes && n > 1 {
 		n = 1
 	}
 	slog.Debug("resources: memory-based limit",

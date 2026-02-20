@@ -99,13 +99,11 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 	return nil
 }
 
-// Run executes calculators with the given params concurrently.
-// Concurrency is controlled by SEQCALC_CONCURRENCY env or resource-aware limit to avoid OOM from
-// multiple concurrent ball_event scans. Increase on machines with ample memory.
+// Run executes calculators with the given params. When concurrency is 1, runs them sequentially
+// in the current goroutine to avoid spawning one goroutine per calculator (reduces num_goroutine
+// and keeps memory footprint lower). When concurrency > 1, uses errgroup with SetLimit(limit).
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
-	g, ctx := errgroup.WithContext(ctx)
 	limit := seqcalcConcurrency()
-	g.SetLimit(limit)
 	slog.Info("seqcalc: starting run",
 		slog.Int("calculators", len(calcs)),
 		slog.String("format", params.FormatCode),
@@ -116,8 +114,55 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 		slog.Int("concurrency", limit),
 	)
 
+	if limit <= 1 {
+		return runSequential(ctx, calcs, params, dry)
+	}
+	return runConcurrent(ctx, calcs, params, dry, limit)
+}
+
+func runSequential(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
+	for _, calc := range calcs {
+		if err := ctx.Err(); err != nil {
+			return nil
+		}
+		name := calc.Name()
+		slog.Info(
+			"seqcalc.calculator.start",
+			slog.String("calculator", string(name)),
+			slog.String("format", params.FormatCode),
+		)
+		err := calc.Compute(ctx, params, dry)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				slog.Error("seqcalc.calculator.cancelled_or_timeout",
+					slog.String("calculator", string(name)),
+					slog.String("format", params.FormatCode),
+					slog.Any("err", err),
+				)
+			} else {
+				slog.Error("seqcalc.calculator.failed",
+					slog.String("calculator", string(name)),
+					slog.String("format", params.FormatCode),
+					slog.Any("err", err),
+				)
+			}
+			return err
+		}
+		slog.Info(
+			"seqcalc.calculator.done",
+			slog.String("calculator", string(name)),
+			slog.String("format", params.FormatCode),
+		)
+	}
+	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at end", slog.String("format", params.FormatCode))
+	return nil
+}
+
+func runConcurrent(ctx context.Context, calcs []Calculator, params Params, dry bool, limit int) error {
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(limit)
 	for _, c := range calcs {
-		calc := c // capture for goroutine
+		calc := c
 		name := calc.Name()
 		g.Go(func() error {
 			if err := ctx.Err(); err != nil {
@@ -130,7 +175,6 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 			)
 			err := calc.Compute(ctx, params, dry)
 			if err != nil {
-				// Log immediately so we see DB cancel/timeout in go-app logs (Postgres may show "terminating parallel worker").
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					slog.Error("seqcalc.calculator.cancelled_or_timeout",
 						slog.String("calculator", string(name)),

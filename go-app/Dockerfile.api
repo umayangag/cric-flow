@@ -18,6 +18,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 # Writable output dir for pipeline export-dataset (bind-mount to host ./output in compose).
 RUN mkdir -p /output/go-app && chown -R 65532:65532 /output
+# Default Go memory target so GC runs under 2GB containers; override with -e GOMEMLIMIT=... if needed.
+ENV GOMEMLIMIT=1800MiB
 EXPOSE 8080
 USER 65532:65532
 ENTRYPOINT ["/entrypoint.sh"]

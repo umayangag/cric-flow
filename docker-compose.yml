@@ -38,8 +38,8 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
       GO_APP_OUTPUT_DIR: /output/go-app
-      # 2GB memory limit for resource-aware pipeline concurrency (override with GOMEMLIMIT=... if needed)
-      GOMEMLIMIT: ${GOMEMLIMIT:-2GiB}
+      # Go runtime memory target; 1800MiB leaves headroom under 2GB so GC runs more aggressively (override with GOMEMLIMIT=... if needed)
+      GOMEMLIMIT: ${GOMEMLIMIT:-1800MiB}
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
       # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 (or 2) for 2GB (override with SEQCALC_CONCURRENCY=...).
       SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
