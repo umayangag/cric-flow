@@ -8,11 +8,11 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"runtime"
 
 	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/resources"
 )
 
 // RunOpts holds optional overrides for Run. Nil or zero values mean use config.
@@ -49,17 +49,11 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	}
 	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
 
-	// Log resource context to diagnose OOM: memory limit env and current heap.
+	// Log resource context to diagnose OOM: memory limit env, heap, and goroutine count.
 	if gomemlimit := os.Getenv("GOMEMLIMIT"); gomemlimit != "" {
 		slog.Info("precompute: GOMEMLIMIT", slog.String("value", gomemlimit))
 	}
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-	slog.Info("precompute: heap at start",
-		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
-		slog.Uint64("heap_sys_mb", mem.HeapSys/(1024*1024)),
-		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
-	)
+	resources.LogMemoryAndGoroutines("precompute: memory and goroutines at start")
 
 	setStart(season, codes)
 	defer func() {
@@ -105,7 +99,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 			)
 			return err
 		}
-		slog.Info("precompute: format completed", slog.String("format", code))
+		resources.LogMemoryAndGoroutines("precompute: format completed", slog.String("format", code))
 	}
 	return nil
 }

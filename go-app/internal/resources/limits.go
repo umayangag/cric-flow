@@ -26,10 +26,10 @@ const (
 
 // Default estimated memory per concurrent worker (MB) for memory-heavy tasks.
 // Precompute: each worker holds batting/bowling history + opposition/venue variants + form/consistency for one player.
-// Conservative (250 MB) to avoid OOM when GOMEMLIMIT/cgroup is set; when unknown, we use a low default concurrency.
+// Use 450 MB per worker (was 250); observed OOM when 250 was too low (multiple history slices per player).
 // Import: each worker holds one parsed match JSON + DB buffers.
 const (
-	DefaultPrecomputeMBPerWorker = 250
+	DefaultPrecomputeMBPerWorker = 450
 	DefaultImportMBPerWorker     = 150
 	DefaultExportMBPerWorker     = 100
 	DefaultSeqCalcMBPerWorker    = 200
@@ -38,7 +38,7 @@ const (
 
 // defaultPrecomputeConcurrencyWhenNoLimit is used when no memory limit is detected (no GOMEMLIMIT/cgroup)
 // to avoid spawning too many workers and causing OOM (e.g. on bare metal or older k8s).
-const defaultPrecomputeConcurrencyWhenNoLimit = 4
+const defaultPrecomputeConcurrencyWhenNoLimit = 2
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
 // Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >

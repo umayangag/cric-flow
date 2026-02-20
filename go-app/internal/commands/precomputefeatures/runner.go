@@ -41,6 +41,7 @@ func (Runner) RunReplay(
 		slog.Int("concurrency", precomputeLimit),
 		slog.Int("match_page_size", replayMatchPageSize),
 	)
+	resources.LogMemoryAndGoroutines("precompute-features(replay): memory and goroutines at start", slog.String("format", formatCode))
 	// Optional history window from config is provided by caller via windowN.
 	processed := int64(0)
 	totalMatches := int64(0)
@@ -273,7 +274,11 @@ func (Runner) RunReplay(
 			newValue := atomic.AddInt64(&processed, int64(len(players)))
 			oldValue := newValue - int64(len(players))
 			if oldValue/1000 < newValue/1000 {
-				slog.Info("progress", slog.Int64("player_snapshots", newValue), slog.String("format", formatCode))
+				resources.LogMemoryAndGoroutines("precompute-features(replay): progress",
+					slog.Int64("player_snapshots", newValue),
+					slog.String("format", formatCode),
+					slog.Int64("match_id", m.MatchID),
+				)
 			}
 		}
 		// Next page: cursor after last match in this chunk
@@ -283,6 +288,7 @@ func (Runner) RunReplay(
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
 	// Run GC to release replay-phase memory before the next heavy phase and reduce OOM risk.
 	runtime.GC()
+	resources.LogMemoryAndGoroutines("precompute-features(replay): after GC, before seqcalc", slog.String("format", formatCode))
 	logSeqCalcTrigger(formatCode, "replay")
 	if err := triggerSeqCalc(ctx, formatCode, time.Time{}); err != nil {
 		slog.Error(
@@ -325,6 +331,10 @@ func (Runner) RunPointInTime(
 		slog.String("format", formatCode),
 		slog.String("as_of", asOf.Format("2006-01-02")),
 		slog.Int("concurrency", precomputeLimit),
+	)
+	resources.LogMemoryAndGoroutines("precompute-features(as-of): memory and goroutines at start",
+		slog.String("format", formatCode),
+		slog.Int("players", len(players)),
 	)
 
 	g, pCtx := errgroup.WithContext(ctx)
@@ -393,7 +403,10 @@ func (Runner) RunPointInTime(
 			}
 			p := atomic.AddInt64(&processed, 1)
 			if p%1000 == 0 {
-				slog.Info("progress", slog.Int64("players", p), slog.String("format", formatCode))
+				resources.LogMemoryAndGoroutines("precompute-features(as-of): progress",
+					slog.Int64("players", p),
+					slog.String("format", formatCode),
+				)
 			}
 			return nil
 		})
@@ -416,6 +429,7 @@ func (Runner) RunPointInTime(
 
 	// Trigger sequence features calculation. GC to free form/consistency phase memory before seqcalc.
 	runtime.GC()
+	resources.LogMemoryAndGoroutines("precompute-features(as-of): after GC, before seqcalc", slog.String("format", formatCode))
 	logSeqCalcTrigger(formatCode, "as-of")
 	if err := triggerSeqCalc(ctx, formatCode, asOf); err != nil {
 		slog.Error(
@@ -429,16 +443,12 @@ func (Runner) RunPointInTime(
 	return nil
 }
 
-// logSeqCalcTrigger logs concurrency and heap before triggering sequence calculations (shared by replay and as-of).
+// logSeqCalcTrigger logs concurrency, memory, and goroutine count before triggering sequence calculations (shared by replay and as-of).
 func logSeqCalcTrigger(formatCode, mode string) {
 	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-	slog.Info("precompute-features("+mode+"): triggering sequence calculations",
+	resources.LogMemoryAndGoroutines("precompute-features("+mode+"): triggering sequence calculations",
 		slog.String("format", formatCode),
 		slog.Int("seqcalc_concurrency", seqcalcLimit),
-		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
-		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
 	)
 }
 

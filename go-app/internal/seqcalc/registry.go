@@ -111,6 +111,10 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 		slog.String("format", params.FormatCode),
 		slog.Int("concurrency", limit),
 	)
+	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at start",
+		slog.String("format", params.FormatCode),
+		slog.Int("concurrency", limit),
+	)
 
 	for _, c := range calcs {
 		calc := c // capture for goroutine
@@ -151,6 +155,7 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 		})
 	}
 	err := g.Wait()
+	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at end", slog.String("format", params.FormatCode))
 	if err != nil {
 		slog.Error("seqcalc.run.finished_with_error", slog.String("format", params.FormatCode), slog.Any("err", err))
 	}
