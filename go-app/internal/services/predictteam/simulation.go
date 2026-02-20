@@ -37,13 +37,13 @@ type SimulationOpts struct {
 // DefaultSimulationOpts returns defaults suitable for a domestic PC (moderate k and samples).
 func DefaultSimulationOpts() SimulationOpts {
 	return SimulationOpts{
-		TopKPerTeam:         50,
+		TopKPerTeam:          50,
 		NumSamplesPerMatchup: 500,
-		MaxMatchups:         0,
-		RunsCV:              0.35,
-		WicketsCV:           0.4,
-		EconomyCV:           0.15,
-		Seed:                0,
+		MaxMatchups:          0,
+		RunsCV:               0.35,
+		WicketsCV:            0.4,
+		EconomyCV:            0.15,
+		Seed:                 0,
 	}
 }
 
@@ -65,8 +65,8 @@ type SimulationResult struct {
 	Innings2TotalP50  float64 `json:"innings2_total_p50"`
 	Innings2TotalP90  float64 `json:"innings2_total_p90"`
 
-	NumMatchups  int `json:"num_matchups"`
-	NumSamples   int `json:"num_samples"`
+	NumMatchups int `json:"num_matchups"`
+	NumSamples  int `json:"num_samples"`
 }
 
 // PredictTeamsWithSimulation runs the same pipeline as PredictTeams, then runs Monte Carlo simulation
@@ -120,7 +120,17 @@ func PredictTeamsWithSimulation(
 	opp2ID, _ := getOppositionID(ctx, team2) // team1's opposition = team2
 	opp1ID, _ := getOppositionID(ctx, team1) // team2's opposition = team1
 	weatherOpt := toWeatherOverride(input.Weather)
-	feats1, err := getFeatures(ctx, cutoff, format, venueID, opp2ID, input.SeasonID, ids1, weatherOpt, oppositionIDsTeam1)
+	feats1, err := getFeatures(
+		ctx,
+		cutoff,
+		format,
+		venueID,
+		opp2ID,
+		input.SeasonID,
+		ids1,
+		weatherOpt,
+		oppositionIDsTeam1,
+	)
 	if err != nil {
 		return result, nil, nil
 	}
@@ -131,7 +141,17 @@ func PredictTeamsWithSimulation(
 	if !hasFieldingPredictions(preds1) {
 		enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
 	}
-	feats2, err := getFeatures(ctx, cutoff, format, venueID, opp1ID, input.SeasonID, ids2, weatherOpt, oppositionIDsTeam2)
+	feats2, err := getFeatures(
+		ctx,
+		cutoff,
+		format,
+		venueID,
+		opp1ID,
+		input.SeasonID,
+		ids2,
+		weatherOpt,
+		oppositionIDsTeam2,
+	)
 	if err != nil {
 		return result, nil, nil
 	}
@@ -175,17 +195,14 @@ func PredictTeamsWithSimulation(
 		nameToPred2[p.PlayerName] = preds2[p.PlayerID]
 	}
 	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
-	sim, err := runSimulation(topK1, topK2, nameToPred1, nameToPred2, extras1, extras2, team1, team2, opts)
-	if err != nil {
-		slog.Warn("predictteam simulation: runSimulation failed", "err", err)
-		return result, nil, nil
-	}
+	sim := runSimulation(topK1, topK2, nameToPred1, nameToPred2, extras1, extras2, team1, team2, opts)
 	return result, sim, nil
 }
 
 func getFormatID(ctx context.Context, format string) (int64, error) {
 	return db.GetGlobalCache().GetFormatID(ctx, format)
 }
+
 func getVenueID(ctx context.Context, venue string) (*int64, error) {
 	if venue == "" {
 		return nil, nil
@@ -196,13 +213,16 @@ func getVenueID(ctx context.Context, venue string) (*int64, error) {
 	}
 	return &id, nil
 }
+
 func getOppositionID(ctx context.Context, team string) (int64, error) {
 	return db.GetGlobalCache().GetOppositionID(ctx, team)
 }
+
 func getPool(ctx context.Context, input Input, team string, extra []int64) ([]db.PlayerPoolRow, error) {
 	format := strings.ToUpper(strings.TrimSpace(input.Format))
 	return db.ListPlayerPoolByTeam(ctx, format, team, input.MatchDate.Truncate(24*time.Hour), extra)
 }
+
 func poolPlayerIDs(pool []db.PlayerPoolRow) []int64 {
 	ids := make([]int64, 0, len(pool))
 	for _, p := range pool {
@@ -210,8 +230,29 @@ func poolPlayerIDs(pool []db.PlayerPoolRow) []int64 {
 	}
 	return ids
 }
-func getFeatures(ctx context.Context, cutoff time.Time, format string, venueID *int64, oppID int64, seasonID *int64, playerIDs []int64, weather *exportqueries.WeatherOverride, oppositionIDs []int64) (map[int64]map[string]float64, error) {
-	return exportqueries.ComputeFeaturesAtCutoffForFutureMatch(ctx, cutoff, format, venueID, oppID, seasonID, playerIDs, weather, oppositionIDs)
+
+func getFeatures(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	venueID *int64,
+	oppID int64,
+	seasonID *int64,
+	playerIDs []int64,
+	weather *exportqueries.WeatherOverride,
+	oppositionIDs []int64,
+) (map[int64]map[string]float64, error) {
+	return exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
+		ctx,
+		cutoff,
+		format,
+		venueID,
+		oppID,
+		seasonID,
+		playerIDs,
+		weather,
+		oppositionIDs,
+	)
 }
 
 // runSimulation runs Monte Carlo over (topK1 × topK2) matchups, each with NumSamplesPerMatchup samples.
@@ -219,9 +260,9 @@ func runSimulation(
 	topK1, topK2 [][]teamselect.Player,
 	nameToPred1, nameToPred2 map[string]PlayerPred,
 	extras1, extras2 float64,
-	team1Code, team2Code string,
+	_, _ string, // team1Code, team2Code reserved for future use
 	opts SimulationOpts,
-) (*SimulationResult, error) {
+) *SimulationResult {
 	if opts.RunsCV <= 0 {
 		opts.RunsCV = 0.35
 	}
@@ -235,12 +276,10 @@ func runSimulation(
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
+	// Reproducible sampling for Monte Carlo; crypto/rand not required for simulation.
+	// #nosec G404
 	rng := rand.New(rand.NewSource(seed))
 
-	numMatchups := len(topK1) * len(topK2)
-	if opts.MaxMatchups > 0 && numMatchups > opts.MaxMatchups {
-		numMatchups = opts.MaxMatchups
-	}
 	samplesPerMatchup := opts.NumSamplesPerMatchup
 	if samplesPerMatchup <= 0 {
 		samplesPerMatchup = 500
@@ -260,11 +299,12 @@ func runSimulation(
 				tot1, tot2 := simulateOneMatch(preds1, preds2, extras1, extras2, opts, rng)
 				innings1Samples = append(innings1Samples, tot1)
 				innings2Samples = append(innings2Samples, tot2)
-				if tot1 > tot2 {
+				switch {
+				case tot1 > tot2:
 					team1Wins++
-				} else if tot2 > tot1 {
+				case tot2 > tot1:
 					team2Wins++
-				} else {
+				default:
 					draws++
 				}
 			}
@@ -277,7 +317,7 @@ func runSimulation(
 
 	n := len(innings1Samples)
 	if n == 0 {
-		return &SimulationResult{NumMatchups: 0, NumSamples: 0}, nil
+		return &SimulationResult{NumMatchups: 0, NumSamples: 0}
 	}
 	win1 := float64(team1Wins) / float64(n)
 	win2 := float64(team2Wins) / float64(n)
@@ -304,7 +344,7 @@ func runSimulation(
 		Innings2TotalP90:    p90_2,
 		NumMatchups:         matchupCount,
 		NumSamples:          n,
-	}, nil
+	}
 }
 
 func predsForXI(xi []teamselect.Player, nameToPred map[string]PlayerPred) []PlayerPred {

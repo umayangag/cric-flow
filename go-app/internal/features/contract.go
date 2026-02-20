@@ -13,13 +13,13 @@ import (
 
 // contract holds batting, bowling, and fielding feature name lists (input features only).
 type contract struct {
-	Batting []string `json:"batting"`
-	Bowling []string `json:"bowling"`
+	Batting  []string `json:"batting"`
+	Bowling  []string `json:"bowling"`
 	Fielding []string `json:"fielding"`
 }
 
 var (
-	contractMu   sync.Mutex
+	contractMu    sync.Mutex
 	contractCache *contract
 	contractPath  string
 )

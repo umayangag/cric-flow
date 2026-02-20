@@ -225,17 +225,12 @@ func findArtifact(root, format string, batting bool) (path string, mod time.Time
 	return full, info.ModTime(), true
 }
 
-// findLegacyArtifact looks for legacy (unified) artifact: batting.joblib or bowling.joblib with no format suffix.
-func findLegacyArtifact(root string, batting bool) (path string, mod time.Time, ok bool) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return "", time.Time{}, false
-	}
-	return findLegacyArtifactFromEntries(entries, root, batting)
-}
-
 // findLegacyArtifactFromEntries finds legacy artifact from pre-read dir entries to avoid redundant ReadDir.
-func findLegacyArtifactFromEntries(entries []os.DirEntry, root string, batting bool) (path string, mod time.Time, ok bool) {
+func findLegacyArtifactFromEntries(
+	entries []os.DirEntry,
+	root string,
+	batting bool,
+) (path string, mod time.Time, ok bool) {
 	want := "batting.joblib"
 	if !batting {
 		want = "bowling.joblib"

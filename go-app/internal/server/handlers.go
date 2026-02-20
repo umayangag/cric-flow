@@ -54,7 +54,11 @@ func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1048576)) // Limit to 1MB to avoid DoS
-		slog.Warn("ml health proxy: upstream non-2xx", slog.Int("status", resp.StatusCode), slog.String("body", string(body)))
+		slog.Warn(
+			"ml health proxy: upstream non-2xx",
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(body)),
+		)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(resp.StatusCode)
@@ -64,7 +68,11 @@ func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
 	var payload map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		slog.Warn("ml health proxy: decode failed", slog.Any("err", err))
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": "invalid ml health response"})
+		respondJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{"status": "error", "error": "invalid ml health response"},
+		)
 		return
 	}
 	respondJSON(w, http.StatusOK, payload)

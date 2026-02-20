@@ -67,9 +67,9 @@ type ScorecardSummary struct {
 
 // Result holds the best 11 for each team and optional scorecard summary.
 type Result struct {
-	Team1            []SelectedPlayer   `json:"team1"`
-	Team2            []SelectedPlayer   `json:"team2"`
-	ScorecardSummary *ScorecardSummary  `json:"scorecard_summary,omitempty"`
+	Team1            []SelectedPlayer  `json:"team1"`
+	Team2            []SelectedPlayer  `json:"team2"`
+	ScorecardSummary *ScorecardSummary `json:"scorecard_summary,omitempty"`
 }
 
 // MLPredictor provides player predictions from features (e.g. via ML backtest endpoint).

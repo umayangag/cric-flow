@@ -55,8 +55,8 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		SeasonID           *int64 `json:"season_id"`
 		UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
 		Simulate           *bool  `json:"simulate,omitempty"`             // run Monte Carlo for win prob and outcome distributions
-		SimulationTopK     int    `json:"simulation_top_k,omitempty"`    // top XIs per team (default 50)
-		SimulationSamples  int    `json:"simulation_samples,omitempty"`  // samples per matchup (default 500)
+		SimulationTopK     int    `json:"simulation_top_k,omitempty"`     // top XIs per team (default 50)
+		SimulationSamples  int    `json:"simulation_samples,omitempty"`   // samples per matchup (default 500)
 		SimulationMaxPairs int    `json:"simulation_max_pairs,omitempty"` // cap on matchup pairs (0 = no cap)
 		Weather            *struct {
 			Temp     float64 `json:"temp"`
@@ -201,10 +201,10 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"team1":              result.Team1,
-			"team2":              result.Team2,
-			"scorecard_summary":   result.ScorecardSummary,
-			"simulation":          sim,
+			"team1":             result.Team1,
+			"team2":             result.Team2,
+			"scorecard_summary": result.ScorecardSummary,
+			"simulation":        sim,
 		})
 		return
 	}

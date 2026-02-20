@@ -58,7 +58,11 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 	team1 := strings.TrimSpace(body.Team1)
 	team2 := strings.TrimSpace(body.Team2)
 	if format == "" || team1 == "" || team2 == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"},
+		)
 		return
 	}
 	if len(body.MatchIDs) == 0 {
@@ -114,7 +118,7 @@ func (a *App) backtestExportContributionsHandler(w http.ResponseWriter, r *http.
 
 	rows := buildContributionRows(allPlayers, keeperMap, format, batDiv, wicketDiv, econBase, fieldDiv)
 	outDir := config.DefaultExportDir()
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		respondErr(w, err)
 		return
 	}

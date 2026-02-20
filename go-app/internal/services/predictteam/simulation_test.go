@@ -45,21 +45,22 @@ func TestPercentiles(t *testing.T) {
 func TestRunSimulation(t *testing.T) {
 	t.Parallel()
 	// Two XIs of one player each; deterministic-ish with fixed seed so totals differ
-	topK1 := [][]teamselect.Player{{{Name: "A", BatScore: 0.5, BowlScore: 0, FieldScore: 0, IsBowler: false, IsKeeper: false}}}
-	topK2 := [][]teamselect.Player{{{Name: "B", BatScore: 0.4, BowlScore: 0, FieldScore: 0, IsBowler: false, IsKeeper: false}}}
+	topK1 := [][]teamselect.Player{
+		{{Name: "A", BatScore: 0.5, BowlScore: 0, FieldScore: 0, IsBowler: false, IsKeeper: false}},
+	}
+	topK2 := [][]teamselect.Player{
+		{{Name: "B", BatScore: 0.4, BowlScore: 0, FieldScore: 0, IsBowler: false, IsKeeper: false}},
+	}
 	nameToPred1 := map[string]PlayerPred{"A": {Runs: 25}}
 	nameToPred2 := map[string]PlayerPred{"B": {Runs: 20}}
 	opts := SimulationOpts{
 		TopKPerTeam:          1,
-		NumSamplesPerMatchup:  200,
+		NumSamplesPerMatchup: 200,
 		MaxMatchups:          1,
 		RunsCV:               0.3,
 		Seed:                 42,
 	}
-	res, err := runSimulation(topK1, topK2, nameToPred1, nameToPred2, 2, 2, "T1", "T2", opts)
-	if err != nil {
-		t.Fatalf("runSimulation: %v", err)
-	}
+	res := runSimulation(topK1, topK2, nameToPred1, nameToPred2, 2, 2, "T1", "T2", opts)
 	if res.NumSamples != 200 {
 		t.Errorf("NumSamples = %v, want 200", res.NumSamples)
 	}
@@ -77,6 +78,7 @@ func TestRunSimulation(t *testing.T) {
 
 func TestSampleRuns(t *testing.T) {
 	t.Parallel()
+	// #nosec G404 — reproducible test
 	rng := rand.New(rand.NewSource(1))
 	for i := 0; i < 100; i++ {
 		x := sampleRuns(30, 0.35, rng)

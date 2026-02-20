@@ -639,9 +639,9 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"season":              season,
 			"batting_temp":        wt, "batting_wind": ww, "batting_rain": wr, "batting_humidity": wh, "batting_cloud": wc, "batting_pressure": wp, "batting_viscosity": 0,
 			"bowling_temp": wt, "bowling_wind": ww, "bowling_rain": wr, "bowling_humidity": wh, "bowling_cloud": wc, "bowling_pressure": wp, "bowling_viscosity": 0,
-			"batting_inning":  0, "batting_session": 0, "toss": 0,
-			"bowling_session": 0,
-			"opposition_batting_strength":  oppBatStr,
+			"batting_inning": 0, "batting_session": 0, "toss": 0,
+			"bowling_session":             0,
+			"opposition_batting_strength": oppBatStr,
 			"opposition_bowling_strength": oppBowlStr,
 		}
 		for _, k := range battingSequenceKeys {

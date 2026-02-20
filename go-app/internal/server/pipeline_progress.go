@@ -13,27 +13,27 @@ import (
 
 // commandToStepID maps data_migrations command to pipeline step ID for the UI.
 var commandToStepID = map[string]string{
-	"cricsheet-import":    "import",
-	"precompute-features": "precompute",
-	"export-dataset":      "export",
-	"train-batting":       "train_batting",
-	"train-bowling":       "train_bowling",
-	"train-fielding":      "train_fielding",
-	"train-extras":        "train_extras",
-	"train-win":                 "train_win",
-	"train-combination-meta":    "train_combination_meta",
+	"cricsheet-import":       "import",
+	"precompute-features":    "precompute",
+	"export-dataset":         "export",
+	"train-batting":          "train_batting",
+	"train-bowling":          "train_bowling",
+	"train-fielding":         "train_fielding",
+	"train-extras":           "train_extras",
+	"train-win":              "train_win",
+	"train-combination-meta": "train_combination_meta",
 }
 
 var commandToStepLabel = map[string]string{
-	"cricsheet-import":    "Import",
-	"precompute-features": "Precompute",
-	"export-dataset":      "Export",
-	"train-batting":       "Train Batting",
-	"train-bowling":       "Train Bowling",
-	"train-fielding":      "Train Fielding",
-	"train-extras":        "Train Extras",
-	"train-win":                 "Train Win",
-	"train-combination-meta":    "Train Combination Meta",
+	"cricsheet-import":       "Import",
+	"precompute-features":    "Precompute",
+	"export-dataset":         "Export",
+	"train-batting":          "Train Batting",
+	"train-bowling":          "Train Bowling",
+	"train-fielding":         "Train Fielding",
+	"train-extras":           "Train Extras",
+	"train-win":              "Train Win",
+	"train-combination-meta": "Train Combination Meta",
 }
 
 const pipelineProgressInterval = 2 * time.Second

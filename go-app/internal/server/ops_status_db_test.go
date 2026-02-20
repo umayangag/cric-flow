@@ -25,9 +25,11 @@ func (f fakeDBProbe) Ping(_ context.Context) error { return f.pingErr }
 func (f fakeDBProbe) Count(_ context.Context, table string) (int64, error) {
 	return f.counts[table], nil
 }
+
 func (f fakeDBProbe) CountFieldingByFormat(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
+
 func (f fakeDBProbe) CountFieldingByFormatGrouped(_ context.Context) (map[string]int64, error) {
 	return map[string]int64{}, nil
 }

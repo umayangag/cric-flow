@@ -21,7 +21,8 @@ func totalScore(team []ts.Player, w ts.ScoreWeights) float64 {
 func TestSelectOptimized_Constraints(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	pool := []ts.Player{
+	pool := make([]ts.Player, 0, 12)
+	pool = append(pool,
 		mk("A", 0.9, 0.1, false, false),
 		mk("B", 0.7, 0.8, true, false),
 		mk("C", 0.6, 0.7, true, false),
@@ -33,7 +34,7 @@ func TestSelectOptimized_Constraints(t *testing.T) {
 		mk("H", 0.25, 0.2, false, false),
 		mk("I", 0.15, 0.75, true, false),
 		mk("J", 0.1, 0.5, true, false),
-	}
+	)
 	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
 	if len(pool) < 11 {
 		t.Skip("pool too small for size 11")
@@ -112,7 +113,7 @@ func TestSelectOptimized_ScoreNotWorseThanGreedy(t *testing.T) {
 	w := ts.DefaultWeights()
 	pool := make([]ts.Player, 0, 15)
 	for i := 0; i < 15; i++ {
-		name := string(rune('A'+i))
+		name := string(rune('A' + i))
 		bat := 0.9 - float64(i)*0.05
 		bowl := 0.1 + float64(i%5)*0.15
 		isBowler := i%3 != 0
@@ -180,7 +181,8 @@ func TestSelectOptimized_InsufficientPool(t *testing.T) {
 func TestSelectTopK(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	pool := []ts.Player{
+	pool := make([]ts.Player, 0, 12)
+	pool = append(pool,
 		mk("A", 0.9, 0.1, false, false),
 		mk("B", 0.7, 0.8, true, false),
 		mk("C", 0.6, 0.7, true, false),
@@ -193,7 +195,7 @@ func TestSelectTopK(t *testing.T) {
 		mk("I", 0.15, 0.75, true, false),
 		mk("J", 0.1, 0.5, true, false),
 		mk("K2", 0.2, 0.2, false, true),
-	}
+	)
 	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
 	xis, err := ts.SelectTopK(pool, w, c, 5)
 	if err != nil {
