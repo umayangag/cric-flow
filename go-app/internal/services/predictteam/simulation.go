@@ -35,14 +35,15 @@ type SimulationOpts struct {
 }
 
 // DefaultSimulationOpts returns defaults suitable for a domestic PC (moderate k and samples).
+// CV values use config defaults; override via config file predictor.simulation (runs_cv, wickets_cv, economy_cv).
 func DefaultSimulationOpts() SimulationOpts {
 	return SimulationOpts{
 		TopKPerTeam:          50,
 		NumSamplesPerMatchup: 500,
 		MaxMatchups:          0,
-		RunsCV:               0.35,
-		WicketsCV:            0.4,
-		EconomyCV:            0.15,
+		RunsCV:               config.DefaultSimulationRunsCV,
+		WicketsCV:            config.DefaultSimulationWicketsCV,
+		EconomyCV:            config.DefaultSimulationEconomyCV,
 		Seed:                 0,
 	}
 }
@@ -264,13 +265,13 @@ func runSimulation(
 	opts SimulationOpts,
 ) *SimulationResult {
 	if opts.RunsCV <= 0 {
-		opts.RunsCV = 0.35
+		opts.RunsCV = config.DefaultSimulationRunsCV
 	}
 	if opts.WicketsCV <= 0 {
-		opts.WicketsCV = 0.4
+		opts.WicketsCV = config.DefaultSimulationWicketsCV
 	}
 	if opts.EconomyCV <= 0 {
-		opts.EconomyCV = 0.15
+		opts.EconomyCV = config.DefaultSimulationEconomyCV
 	}
 	seed := opts.Seed
 	if seed == 0 {

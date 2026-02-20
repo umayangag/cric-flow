@@ -163,8 +163,9 @@ coverage-check: _install_test_tools
 ci: fmt-check lint-check coverage coverage-check
 
 
+# Build from repo root so configs/feature_vectors.json is available (app/feature_config.py).
 docker-build:
-	docker build -t $(APP_NAME):latest .
+	docker build -t $(APP_NAME):latest -f Dockerfile ..
 
 docker-run:
 	docker run --rm -p 8000:8000 --name $(APP_NAME) $(APP_NAME):latest

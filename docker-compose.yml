@@ -53,8 +53,8 @@ services:
 
   ml-service:
     build:
-      context: ./ml-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ml-service/Dockerfile
     image: umayangag/cric-app-ml:latest
     container_name: cric-ml-service
     depends_on:
