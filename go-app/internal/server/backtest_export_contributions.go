@@ -107,7 +107,7 @@ func runExportContributionsWork(ctx context.Context, body exportContributionsReq
 	var allPlayers []BacktestPlayerResult
 	for _, mid := range body.MatchIDs {
 		matchIDStr := strconv.FormatInt(mid, 10)
-		resp, err := doEvaluateWork(ctx, format, team1, team2, matchIDStr, false, nil)
+		resp, err := doEvaluateWork(ctx, format, team1, team2, matchIDStr, body.UseUnifiedModel, nil)
 		if err != nil {
 			slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
 			continue
