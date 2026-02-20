@@ -191,9 +191,9 @@ export const api = {
         buffer = parts.pop() ?? '';
         for (const part of parts) {
           if (!part.trim()) continue;
-          const line = part.split('\n').find((l) => l.startsWith('data: '));
-          if (line) {
-            const data = line.slice(6);
+          const dataLines = part.split('\n').filter((l) => l.startsWith('data: '));
+          if (dataLines.length > 0) {
+            const data = dataLines.map((l) => l.substring(5).trim()).join('');
             try {
               const payload = JSON.parse(data) as PipelineProgressPayload;
               onProgress(payload);
