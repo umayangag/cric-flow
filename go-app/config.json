@@ -6,7 +6,8 @@
     "export_dir": "output/go-app"
   },
   "server": {
-    "train_step_timeout_min": 10080
+    "train_step_timeout_min": 10080,
+    "http_write_timeout_sec": 600
   },
   "formats": {
     "treat_t20i_as_subset": true,

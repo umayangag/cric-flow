@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -202,6 +203,11 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		msg := string(body)
+		if msg != "" {
+			return fmt.Errorf("ml-service %s: %s — %s", url, resp.Status, msg)
+		}
 		return fmt.Errorf("ml-service %s: %s", url, resp.Status)
 	}
 	return nil

@@ -1099,8 +1099,16 @@ async def admin_train_batting(cutoff: str = ""):
         )
     cutoff = (cutoff or "").strip()
     use_api = bool(cutoff)
-    extra = ["--from-api", "--cutoff", cutoff, "--all-formats"] if use_api else ["--all-formats"]
-    logger.info("admin.train.start", step="batting", per_format=True, from_api=use_api)
+    if use_api:
+        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or ""
+        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
+        if api_key:
+            extra.extend(["--api-key", api_key])
+        logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
+    else:
+        extra = ["--all-formats"]
+        logger.info("admin.train.start", step="batting", per_format=True, from_api=False)
     try:
         await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
         logger.info("admin.train.success", step="batting")
@@ -1134,8 +1142,16 @@ async def admin_train_bowling(cutoff: str = ""):
         )
     cutoff = (cutoff or "").strip()
     use_api = bool(cutoff)
-    extra = ["--from-api", "--cutoff", cutoff, "--all-formats"] if use_api else ["--all-formats"]
-    logger.info("admin.train.start", step="bowling", per_format=True, from_api=use_api)
+    if use_api:
+        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or ""
+        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
+        if api_key:
+            extra.extend(["--api-key", api_key])
+        logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
+    else:
+        extra = ["--all-formats"]
+        logger.info("admin.train.start", step="bowling", per_format=True, from_api=False)
     try:
         await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
         logger.info("admin.train.success", step="bowling")

@@ -76,8 +76,15 @@ def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
         )
         raise ValueError(f"Go-app training-data failed: HTTP {e.code} {body}") from e
     except OSError as e:
+        err_msg = str(e).strip()
         logger.error("train_win.fetch_win_data.os_error url=%s error=%s", url, e)
-        raise ValueError(f"Go-app training-data request failed: {e}") from e
+        hint = (
+            "Go-app may have closed the connection before the response finished (e.g. server write timeout). "
+            "Increase go-app server.http_write_timeout_sec (e.g. 600) in go-app/config.json and restart go-app."
+        )
+        if "closed connection" in err_msg.lower() or "without response" in err_msg.lower():
+            raise ValueError(f"Go-app training-data request failed: {err_msg}. {hint}") from e
+        raise ValueError(f"Go-app training-data request failed: {err_msg}") from e
     return data.get("win") or {"headers": [], "rows": []}
 
 
