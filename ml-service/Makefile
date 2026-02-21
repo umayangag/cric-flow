@@ -62,6 +62,8 @@ MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
+ALGORITHMS ?=
+VALIDATION_METHOD ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -71,6 +73,12 @@ AUTO_TUNE_ARGS += --all-formats
 ifeq ($(MODEL),all)
 AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
 endif
+endif
+ifneq ($(ALGORITHMS),)
+AUTO_TUNE_ARGS += --algorithms "$(ALGORITHMS)"
+endif
+ifneq ($(VALIDATION_METHOD),)
+AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

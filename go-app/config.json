@@ -7,7 +7,7 @@
   },
   "server": {
     "train_step_timeout_min": 10080,
-    "http_write_timeout_sec": 600
+    "http_write_timeout_sec": 3600
   },
   "formats": {
     "treat_t20i_as_subset": true,

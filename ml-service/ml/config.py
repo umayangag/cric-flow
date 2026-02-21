@@ -320,6 +320,18 @@ def get_tuning_config() -> Dict[str, Any]:
     n_jobs = tuning.get("n_jobs", -1)
     if n_jobs == -1:
         n_jobs = suggested_n_jobs("tuning")
+    algorithms = tuning.get("algorithms")
+    if algorithms == "all" or algorithms is None:
+        algorithms = ["rf", "gb", "quantile", "stacked"]
+    elif isinstance(algorithms, (list, tuple)):
+        algorithms = [str(a).lower().strip() for a in algorithms if a]
+    else:
+        algorithms = ["rf", "gb"]
+
+    validation_method = str(tuning.get("validation_method", "kfold")).lower().strip()
+    if validation_method not in ("kfold", "walk_forward"):
+        validation_method = "kfold"
+
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -327,6 +339,8 @@ def get_tuning_config() -> Dict[str, Any]:
         "random_state": int(tuning.get("random_state", 42)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
         "search_space": tuning.get("search_space"),
+        "algorithms": algorithms,
+        "validation_method": validation_method,
     }
 
 
