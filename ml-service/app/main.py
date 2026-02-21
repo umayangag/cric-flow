@@ -1101,10 +1101,7 @@ async def admin_train_batting(cutoff: str = ""):
     use_api = bool(cutoff)
     if use_api:
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
-        api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or ""
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        if api_key:
-            extra.extend(["--api-key", api_key])
         logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
         extra = ["--all-formats"]
@@ -1144,10 +1141,7 @@ async def admin_train_bowling(cutoff: str = ""):
     use_api = bool(cutoff)
     if use_api:
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
-        api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or ""
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        if api_key:
-            extra.extend(["--api-key", api_key])
         logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
         extra = ["--all-formats"]

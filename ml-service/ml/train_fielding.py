@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import joblib
@@ -54,7 +55,7 @@ FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
 def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
     """Fetch training data from go-app; return dict with fielding headers and rows."""
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)

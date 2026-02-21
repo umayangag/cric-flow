@@ -91,7 +91,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		parentCtx := ctx
 		formats := ResolveFormats(opts, config.Load())
 
-		g, _ := errgroup.WithContext(ctx)
+		var g errgroup.Group
 
 		if opts.Unified {
 			g.Go(func() error {

@@ -11,6 +11,7 @@ import json
 import os
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -261,7 +262,7 @@ def fetch_training_data(
     """
     base = go_app_url.rstrip("/")
     # format=all requests all matches before cutoff (no format filter); required for cross-format features.
-    url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
     timeout_sec = get_training_data_fetch_timeout_sec()
     env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
     if env_timeout is not None:

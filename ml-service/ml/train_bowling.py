@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -161,7 +162,7 @@ def fetch_bowling_from_api(
     from .config import get_training_data_fetch_timeout_sec
 
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format={format_code}&cutoff={cutoff_iso}"
+    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)

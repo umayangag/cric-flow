@@ -70,8 +70,8 @@ func buildExportsSection(root string) map[string]any {
 		}
 		if exists {
 			entry["modified"] = info.ModTime().UTC().Format(time.RFC3339)
-			// Cap high enough to show real per-format variation (was 10k, so 2 files always showed 20k).
-			if rows, err := countCSVRowsCapped(full, 500000); err == nil {
+			// Cap at 100k to balance dashboard responsiveness with per-format variation visibility.
+			if rows, err := countCSVRowsCapped(full, 100000); err == nil {
 				entry["rows"] = rows
 			}
 		}
