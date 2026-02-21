@@ -130,6 +130,7 @@ def _install_crash_logging() -> None:
 _install_crash_logging()
 
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
+MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
@@ -926,6 +927,15 @@ async def predict_extras(features: List[ExtrasFeatures]):
                 hint="Send at least one ExtrasFeatures row.",
             ),
         )
+    if len(features) > MAX_PREDICT_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="BATCH_TOO_LARGE",
+                message="Batch size exceeds limit",
+                hint=f"Send at most {MAX_PREDICT_BATCH_SIZE} features per request.",
+            ),
+        )
     fmt = (features[0].format or "").strip().upper()
     model = EXTRAS_MODELS.get(fmt) if fmt else EXTRAS_MODELS.get("_LEGACY_")
     if not model:
@@ -971,6 +981,15 @@ async def predict_win(features: List[WinFeatures]):
                 hint="Send at least one WinFeatures row.",
             ),
         )
+    if len(features) > MAX_PREDICT_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="BATCH_TOO_LARGE",
+                message="Batch size exceeds limit",
+                hint=f"Send at most {MAX_PREDICT_BATCH_SIZE} features per request.",
+            ),
+        )
     fmt = (features[0].format or "").strip().upper()
     model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
     if not model:
@@ -993,8 +1012,12 @@ async def predict_win(features: List[WinFeatures]):
         )
     try:
         proba = model.predict_proba(X)
-        # class 1 = team1 wins
-        p_team1 = proba[:, 1] if proba.shape[1] > 1 else proba.ravel()
+        if proba.shape[1] > 1:
+            # class 1 = team1 wins
+            p_team1 = proba[:, 1]
+        else:
+            # Single-class training data: check model.classes_ to interpret probability
+            p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
         return [WinPrediction(team1_win_probability=float(p)) for p in p_team1]
     except Exception as exc:
         logger.exception("predict.win.error", error=str(exc))

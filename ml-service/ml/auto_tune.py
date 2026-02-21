@@ -153,7 +153,12 @@ AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "quantile", "stacked"})
 def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42):
     """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward."""
     if validation_method == "walk_forward":
+        # TimeSeriesSplit requires n_samples >= n_splits + 1; fallback to KFold for tiny datasets
         n_splits = min(cv_splits, max(2, n_samples // 3))
+        if n_samples < n_splits + 1 and n_samples >= 2:
+            return KFold(n_splits=min(cv_splits, n_samples - 1), shuffle=True, random_state=random_state)
+        if n_samples < n_splits + 1:
+            return KFold(n_splits=cv_splits, shuffle=True, random_state=random_state)
         return TimeSeriesSplit(n_splits=n_splits)
     return KFold(n_splits=cv_splits, shuffle=True, random_state=random_state)
 
