@@ -6,13 +6,13 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import config as svc_config  # ml.config: loads config.json from ml-service root
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+from . import config as svc_config  # ml.config: loads config.json from ml-service root
 from .config import get_training_params
 from .utils import make_base_estimator
 
@@ -67,14 +67,28 @@ TARGET_COLS = [
 
 def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
     col_map = {
-        "temp": "temp", "wind": "wind", "rain": "rain", "humidity": "humidity",
-        "cloud": "cloud", "pressure": "pressure", "viscosity": "viscosity",
-        "inning": "inning", "bowling_session": "bowling_session", "toss": "toss",
-        "bowling_venue": "bowling_venue", "bowling_opposition": "bowling_opposition",
-        "season_id": "season_id", "bowling_consistency": "bowling_consistency",
-        "bowling_form": "bowling_form", "bowling_form_short": "bowling_form_short",
-        "bowling_form_long": "bowling_form_long", "bowling_momentum": "bowling_momentum",
-        "runs": "runs", "balls": "balls", "wickets": "wickets", "econ": "econ",
+        "temp": "temp",
+        "wind": "wind",
+        "rain": "rain",
+        "humidity": "humidity",
+        "cloud": "cloud",
+        "pressure": "pressure",
+        "viscosity": "viscosity",
+        "inning": "inning",
+        "bowling_session": "bowling_session",
+        "toss": "toss",
+        "bowling_venue": "bowling_venue",
+        "bowling_opposition": "bowling_opposition",
+        "season_id": "season_id",
+        "bowling_consistency": "bowling_consistency",
+        "bowling_form": "bowling_form",
+        "bowling_form_short": "bowling_form_short",
+        "bowling_form_long": "bowling_form_long",
+        "bowling_momentum": "bowling_momentum",
+        "runs": "runs",
+        "balls": "balls",
+        "wickets": "wickets",
+        "econ": "econ",
     }
     for c in BOWL_SEQ_COLS:
         col_map[c] = c

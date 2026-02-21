@@ -85,7 +85,14 @@ const MODEL_FEATURES: Record<
       'bat_react_after_dot_sr',
       'bat_after_k_dots_boundary_p_k2',
     ],
-    outputs: ['runs_scored', 'balls_faced', 'fours_scored', 'sixes_scored', 'batting_position', 'strike_rate'],
+    outputs: [
+      'runs_scored',
+      'balls_faced',
+      'fours_scored',
+      'sixes_scored',
+      'batting_position',
+      'strike_rate',
+    ],
     note: 'Player-level; same feature families used for match-level models. Prediction uses per-format model when format (e.g. T20) is provided and loaded; otherwise legacy.',
   },
   bowling: {
@@ -335,7 +342,9 @@ const WorkbenchTab: React.FC = () => {
         subtitle="End-to-end pipeline: data import, precompute, export, training, and prediction."
       >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          The system runs a strict sequence of steps. Each step depends on the previous; artifacts (DB tables, CSVs, joblib models) are produced in order and consumed by the next stage. Below is the full internal process.
+          The system runs a strict sequence of steps. Each step depends on the previous; artifacts
+          (DB tables, CSVs, joblib models) are produced in order and consumed by the next stage.
+          Below is the full internal process.
         </Typography>
 
         {/* Step 1: Import */}
@@ -344,13 +353,27 @@ const WorkbenchTab: React.FC = () => {
             1. Import (cricsheet-import)
           </Typography>
           <Typography variant="body2" color="text.secondary" component="div">
-            <strong>What:</strong> Apply DB migrations, then ingest Cricsheet JSON (or curated CSVs) into the database.
+            <strong>What:</strong> Apply DB migrations, then ingest Cricsheet JSON (or curated CSVs)
+            into the database.
             <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-              <li>Source: <code>inputs.cricsheet_dir</code> (go-app config) or API body (e.g. <code>POST /import/cricsheet</code> with <code>dir</code>).</li>
-              <li>Writes: <code>match</code>, <code>match_inning</code>, <code>match_format</code>, <code>batting_data</code>, <code>bowling_data</code>, <code>fielding_data</code>, <code>player</code>, <code>venue</code>, <code>opposition</code>, <code>season</code>, <code>weather_data</code>, etc.</li>
-              <li>Each match has innings, player-level runs/balls/wickets, and optional weather. No features yet — only raw facts.</li>
+              <li>
+                Source: <code>inputs.cricsheet_dir</code> (go-app config) or API body (e.g.{' '}
+                <code>POST /import/cricsheet</code> with <code>dir</code>).
+              </li>
+              <li>
+                Writes: <code>match</code>, <code>match_inning</code>, <code>match_format</code>,{' '}
+                <code>batting_data</code>, <code>bowling_data</code>, <code>fielding_data</code>,{' '}
+                <code>player</code>, <code>venue</code>, <code>opposition</code>,{' '}
+                <code>season</code>, <code>weather_data</code>, etc.
+              </li>
+              <li>
+                Each match has innings, player-level runs/balls/wickets, and optional weather. No
+                features yet — only raw facts.
+              </li>
             </Box>
-            <strong>Commands:</strong> <code>make migrate</code> then <code>make cricsheet-import</code> (or trigger Import from Ops → Pipeline). Import must complete before precompute.
+            <strong>Commands:</strong> <code>make migrate</code> then{' '}
+            <code>make cricsheet-import</code> (or trigger Import from Ops → Pipeline). Import must
+            complete before precompute.
           </Typography>
         </Paper>
 
@@ -360,13 +383,28 @@ const WorkbenchTab: React.FC = () => {
             2. Precompute (precompute-features)
           </Typography>
           <Typography variant="body2" color="text.secondary" component="div">
-            <strong>What:</strong> Compute form, consistency, venue/opposition effects, and (when enabled) sequence features per player/format, as-of each snapshot date.
+            <strong>What:</strong> Compute form, consistency, venue/opposition effects, and (when
+            enabled) sequence features per player/format, as-of each snapshot date.
             <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-              <li>Reads: batting_data, bowling_data, fielding_data, match, match_inning; uses <code>features.ewm_alpha</code>, <code>consistency_last_n</code>, <code>momentum_last_n</code>, etc. from go-app config.</li>
-              <li>Writes: <code>feature_form_snapshots</code>, <code>feature_consistency_snapshots</code> (and optionally sequence tables). Snapshots are keyed by player_id, format_id, as_of_date, scope (overall / venue / opposition).</li>
-              <li>Fielding: EWM of historical catches/run_outs per player; used when no ML fielding model is loaded.</li>
+              <li>
+                Reads: batting_data, bowling_data, fielding_data, match, match_inning; uses{' '}
+                <code>features.ewm_alpha</code>, <code>consistency_last_n</code>,{' '}
+                <code>momentum_last_n</code>, etc. from go-app config.
+              </li>
+              <li>
+                Writes: <code>feature_form_snapshots</code>,{' '}
+                <code>feature_consistency_snapshots</code> (and optionally sequence tables).
+                Snapshots are keyed by player_id, format_id, as_of_date, scope (overall / venue /
+                opposition).
+              </li>
+              <li>
+                Fielding: EWM of historical catches/run_outs per player; used when no ML fielding
+                model is loaded.
+              </li>
             </Box>
-            <strong>Commands:</strong> <code>make precompute-all-all-formats</code> (or Precompute from Ops → Pipeline). Prerequisite: Import done. Required before export and before any prediction that needs form/consistency.
+            <strong>Commands:</strong> <code>make precompute-all-all-formats</code> (or Precompute
+            from Ops → Pipeline). Prerequisite: Import done. Required before export and before any
+            prediction that needs form/consistency.
           </Typography>
         </Paper>
 
@@ -376,13 +414,31 @@ const WorkbenchTab: React.FC = () => {
             3. Export (export-dataset)
           </Typography>
           <Typography variant="body2" color="text.secondary" component="div">
-            <strong>What:</strong> Build training rows for batting, bowling, fielding, extras, and win by joining match/innings data with precomputed snapshots and weather. Write CSVs and/or serve the same data via the training-data API.
+            <strong>What:</strong> Build training rows for batting, bowling, fielding, extras, and
+            win by joining match/innings data with precomputed snapshots and weather. Write CSVs
+            and/or serve the same data via the training-data API.
             <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-              <li>Reads: match, match_inning, batting_data, bowling_data, fielding_data, feature_*_snapshots, weather_data. Uses strict cutoff: only matches with <code>{'match_date < cutoff'}</code>.</li>
-              <li>Output: <code>outputs.export_dir</code> (e.g. <code>output/go-app</code>) — <code>batting_encoded_all.csv</code>, <code>bowling_encoded_all.csv</code>, and when <code>export.split_by_format</code> is true, per-format CSVs (e.g. <code>batting_encoded_T20.csv</code>). Fielding/extras/win rows are not written as standalone CSVs by default; they are served via <code>GET /api/backtest/training-data?cutoff=...&amp;format=all</code>.</li>
-              <li>Same feature computation as at prediction: form, consistency, venue, opposition, weather, sequence columns from <code>configs/feature_vectors.json</code>.</li>
+              <li>
+                Reads: match, match_inning, batting_data, bowling_data, fielding_data,
+                feature_*_snapshots, weather_data. Uses strict cutoff: only matches with{' '}
+                <code>{'match_date < cutoff'}</code>.
+              </li>
+              <li>
+                Output: <code>outputs.export_dir</code> (e.g. <code>output/go-app</code>) —{' '}
+                <code>batting_encoded_all.csv</code>, <code>bowling_encoded_all.csv</code>, and when{' '}
+                <code>export.split_by_format</code> is true, per-format CSVs (e.g.{' '}
+                <code>batting_encoded_T20.csv</code>). Fielding/extras/win rows are not written as
+                standalone CSVs by default; they are served via{' '}
+                <code>GET /api/backtest/training-data?cutoff=...&amp;format=all</code>.
+              </li>
+              <li>
+                Same feature computation as at prediction: form, consistency, venue, opposition,
+                weather, sequence columns from <code>configs/feature_vectors.json</code>.
+              </li>
             </Box>
-            <strong>Commands:</strong> <code>make export-dataset</code> (or Export from Pipeline). Prerequisite: Precompute done. Batting/bowling training read from these CSVs; fielding/extras/win training typically use the API with a cutoff.
+            <strong>Commands:</strong> <code>make export-dataset</code> (or Export from Pipeline).
+            Prerequisite: Precompute done. Batting/bowling training read from these CSVs;
+            fielding/extras/win training typically use the API with a cutoff.
           </Typography>
         </Paper>
 
@@ -392,13 +448,33 @@ const WorkbenchTab: React.FC = () => {
             4. Training (train-batting, train-bowling, train-fielding, train-extras, train-win)
           </Typography>
           <Typography variant="body2" color="text.secondary" component="div">
-            <strong>What:</strong> ML service trains per-format and unified (legacy) models; writes scaler + model (or model only) joblib files to the artifacts directory.
+            <strong>What:</strong> ML service trains per-format and unified (legacy) models; writes
+            scaler + model (or model only) joblib files to the artifacts directory.
             <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-              <li><strong>Batting / Bowling:</strong> Read from exported CSVs (or <code>--from-api --cutoff</code>). Fit StandardScaler on X, train regressor (e.g. RandomForest), save <code>batting_scaler_&lt;FMT&gt;.joblib</code>, <code>batting_model_&lt;FMT&gt;.joblib</code> and legacy unsuffixed files.</li>
-              <li><strong>Fielding / Extras / Win:</strong> Fetch training data from go-app <code>GET /api/backtest/training-data?format=all&amp;cutoff=...</code>. Train per format and one legacy model; save to same artifacts dir (fielding: scaler+model; extras/win: model only).</li>
-              <li><strong>Optional — Combination meta:</strong> <code>train_combination_meta</code> reads a CSV of bat_score, bowl_score, field_score, is_keeper, format, target; outputs JSON weights for team selection. Run after train_win when contributions CSV is available.</li>
+              <li>
+                <strong>Batting / Bowling:</strong> Read from exported CSVs (or{' '}
+                <code>--from-api --cutoff</code>). Fit StandardScaler on X, train regressor (e.g.
+                RandomForest), save <code>batting_scaler_&lt;FMT&gt;.joblib</code>,{' '}
+                <code>batting_model_&lt;FMT&gt;.joblib</code> and legacy unsuffixed files.
+              </li>
+              <li>
+                <strong>Fielding / Extras / Win:</strong> Fetch training data from go-app{' '}
+                <code>GET /api/backtest/training-data?format=all&amp;cutoff=...</code>. Train per
+                format and one legacy model; save to same artifacts dir (fielding: scaler+model;
+                extras/win: model only).
+              </li>
+              <li>
+                <strong>Optional — Combination meta:</strong> <code>train_combination_meta</code>{' '}
+                reads a CSV of bat_score, bowl_score, field_score, is_keeper, format, target;
+                outputs JSON weights for team selection. Run after train_win when contributions CSV
+                is available.
+              </li>
             </Box>
-            <strong>Commands:</strong> <code>make train-batting</code>, <code>make train-bowling</code>, <code>make train-fielding CUTOFF=...</code>, <code>make train-extras</code>, <code>make train-win</code> (or trigger from Ops → Pipeline). Prerequisite: Export done; for fielding/extras/win, GO_APP_URL must point at go-app. Artifacts are loaded by the ML service on startup or reload.
+            <strong>Commands:</strong> <code>make train-batting</code>,{' '}
+            <code>make train-bowling</code>, <code>make train-fielding CUTOFF=...</code>,{' '}
+            <code>make train-extras</code>, <code>make train-win</code> (or trigger from Ops →
+            Pipeline). Prerequisite: Export done; for fielding/extras/win, GO_APP_URL must point at
+            go-app. Artifacts are loaded by the ML service on startup or reload.
           </Typography>
         </Paper>
 
@@ -408,14 +484,43 @@ const WorkbenchTab: React.FC = () => {
             5. Prediction (backtest, team selection, scorecard)
           </Typography>
           <Typography variant="body2" color="text.secondary" component="div">
-            <strong>What:</strong> go-app builds a feature map per player (same logic as export: form, consistency, venue, opposition, weather, sequence from snapshots as-of cutoff). Calls ML service to get player and match-level predictions; aggregates to match outcome and optional team selection.
+            <strong>What:</strong> go-app builds a feature map per player (same logic as export:
+            form, consistency, venue, opposition, weather, sequence from snapshots as-of cutoff).
+            Calls ML service to get player and match-level predictions; aggregates to match outcome
+            and optional team selection.
             <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-              <li><strong>Feature map:</strong> For each player and format, go-app computes or looks up form, consistency, venue effect, opposition effect, season, optional weather. Sequence features (e.g. bat_prev_sr) come from precompute/seqcalc when available; otherwise 0. Same keys and order as <code>configs/feature_vectors.json</code>.</li>
-              <li><strong>Player predictions:</strong> go-app sends feature vectors to ML <code>POST /predict/batting</code>, <code>POST /predict/bowling</code>, <code>POST /predict/fielding</code>. ML uses per-format model when request includes format and that model is loaded; else legacy. Returns runs, balls, wickets, economy, catches, run_outs, etc.</li>
-              <li><strong>Match-level:</strong> Extras: from <code>POST /predict/extras</code> (if model loaded) with match-level features, or from DB historical average (<code>GetAverageExtrasForFormat</code>). Win: from <code>POST /predict/win</code> with team/match features, or by comparing innings totals (sum of player runs + extras).</li>
-              <li><strong>Aggregates:</strong> Predicted innings total = sum of selected XI batting runs + extras. Winner = higher total or win model output. Team selection: scores from batting/bowling/fielding predictions, optional combination-meta weights, constraints (min bowlers, keeper); optimizer or greedy selection picks XI.</li>
+              <li>
+                <strong>Feature map:</strong> For each player and format, go-app computes or looks
+                up form, consistency, venue effect, opposition effect, season, optional weather.
+                Sequence features (e.g. bat_prev_sr) come from precompute/seqcalc when available;
+                otherwise 0. Same keys and order as <code>configs/feature_vectors.json</code>.
+              </li>
+              <li>
+                <strong>Player predictions:</strong> go-app sends feature vectors to ML{' '}
+                <code>POST /predict/batting</code>, <code>POST /predict/bowling</code>,{' '}
+                <code>POST /predict/fielding</code>. ML uses per-format model when request includes
+                format and that model is loaded; else legacy. Returns runs, balls, wickets, economy,
+                catches, run_outs, etc.
+              </li>
+              <li>
+                <strong>Match-level:</strong> Extras: from <code>POST /predict/extras</code> (if
+                model loaded) with match-level features, or from DB historical average (
+                <code>GetAverageExtrasForFormat</code>). Win: from <code>POST /predict/win</code>{' '}
+                with team/match features, or by comparing innings totals (sum of player runs +
+                extras).
+              </li>
+              <li>
+                <strong>Aggregates:</strong> Predicted innings total = sum of selected XI batting
+                runs + extras. Winner = higher total or win model output. Team selection: scores
+                from batting/bowling/fielding predictions, optional combination-meta weights,
+                constraints (min bowlers, keeper); optimizer or greedy selection picks XI.
+              </li>
             </Box>
-            <strong>APIs:</strong> Backtest: <code>GET /api/backtest/accuracy-trend</code> (runs predictions and returns MAE, etc.). Team selection: <code>POST /api/predict/team-selection</code> with format, venue, teams, pool; response includes selected XI and predicted stats. All prediction uses data strictly before the requested cutoff so there is no future leakage.
+            <strong>APIs:</strong> Backtest: <code>GET /api/backtest/accuracy-trend</code> (runs
+            predictions and returns MAE, etc.). Team selection:{' '}
+            <code>POST /api/predict/team-selection</code> with format, venue, teams, pool; response
+            includes selected XI and predicted stats. All prediction uses data strictly before the
+            requested cutoff so there is no future leakage.
           </Typography>
         </Paper>
 
@@ -424,11 +529,18 @@ const WorkbenchTab: React.FC = () => {
           <Typography variant="subtitle2" color="text.secondary" gutterBottom>
             Pipeline order summary
           </Typography>
-          <Typography variant="body2" fontFamily="monospace" component="div" sx={{ fontSize: '0.85rem' }}>
-            Import → Precompute → Export → Train (batting, bowling, fielding, extras, win) [→ optional: train_combination_meta] → Prediction
+          <Typography
+            variant="body2"
+            fontFamily="monospace"
+            component="div"
+            sx={{ fontSize: '0.85rem' }}
+          >
+            Import → Precompute → Export → Train (batting, bowling, fielding, extras, win) [→
+            optional: train_combination_meta] → Prediction
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Ops Status → Pipeline shows each step as runnable only after the previous completed. Accuracy trend and walk-forward in this Workbench consume the result of this pipeline.
+            Ops Status → Pipeline shows each step as runnable only after the previous completed.
+            Accuracy trend and walk-forward in this Workbench consume the result of this pipeline.
           </Typography>
         </Paper>
       </SectionCard>
@@ -733,10 +845,12 @@ const WorkbenchTab: React.FC = () => {
         subtitle="All model types, per-format vs unified artifacts, features, outputs, and how they connect."
       >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          The pipeline trains <strong>six model types</strong>: <strong>batting</strong>, <strong>bowling</strong>, <strong>fielding</strong> (player-level),
-          <strong> extras</strong> and <strong>win</strong> (match-level), and optionally <strong>combination meta</strong> (weights for team selection).
-          All share the same feature families (context, form, consistency, venue, opposition, weather). Match-level models use aggregates of player
-          features so team composition influences extras and win probability.
+          The pipeline trains <strong>six model types</strong>: <strong>batting</strong>,{' '}
+          <strong>bowling</strong>, <strong>fielding</strong> (player-level),
+          <strong> extras</strong> and <strong>win</strong> (match-level), and optionally{' '}
+          <strong>combination meta</strong> (weights for team selection). All share the same feature
+          families (context, form, consistency, venue, opposition, weather). Match-level models use
+          aggregates of player features so team composition influences extras and win probability.
         </Typography>
 
         {/* Per-format vs unified (legacy) */}
@@ -749,19 +863,22 @@ const WorkbenchTab: React.FC = () => {
           </Typography>
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
             <li>
-              <strong>Per-format:</strong> one model (and scaler where applicable) per format. Artifacts are named with the format code, e.g.{' '}
-              <code>batting_scaler_T20.joblib</code>, <code>batting_model_T20.joblib</code>. Typical formats: <strong>T20</strong>, <strong>ODI</strong>,{' '}
-              <strong>TEST</strong>, <strong>T20I</strong>.
+              <strong>Per-format:</strong> one model (and scaler where applicable) per format.
+              Artifacts are named with the format code, e.g. <code>batting_scaler_T20.joblib</code>,{' '}
+              <code>batting_model_T20.joblib</code>. Typical formats: <strong>T20</strong>,{' '}
+              <strong>ODI</strong>, <strong>TEST</strong>, <strong>T20I</strong>.
             </li>
             <li>
-              <strong>Unified (legacy):</strong> one model trained on all formats, e.g. <code>batting_scaler.joblib</code>, <code>batting_model.joblib</code>.
-              Used when no per-format model is loaded or when the request does not specify a format.
+              <strong>Unified (legacy):</strong> one model trained on all formats, e.g.{' '}
+              <code>batting_scaler.joblib</code>, <code>batting_model.joblib</code>. Used when no
+              per-format model is loaded or when the request does not specify a format.
             </li>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            At prediction time: if the request includes a format (e.g. T20) and that format&apos;s model is loaded, it is used; otherwise the legacy
-            model is used. The Workbench &quot;Prediction model&quot; selector above lets you compare <strong>format-specific</strong> vs{' '}
-            <strong>unified</strong> for accuracy trend.
+            At prediction time: if the request includes a format (e.g. T20) and that format&apos;s
+            model is loaded, it is used; otherwise the legacy model is used. The Workbench
+            &quot;Prediction model&quot; selector above lets you compare{' '}
+            <strong>format-specific</strong> vs <strong>unified</strong> for accuracy trend.
           </Typography>
         </Paper>
 
@@ -806,7 +923,8 @@ const WorkbenchTab: React.FC = () => {
             <Chip label="Match outcome (totals + winner)" size="small" variant="filled" />
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Optional: combination meta weights combine batting/bowling/fielding scores for team selection.
+            Optional: combination meta weights combine batting/bowling/fielding scores for team
+            selection.
           </Typography>
         </Paper>
 
@@ -814,88 +932,105 @@ const WorkbenchTab: React.FC = () => {
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
           Features, outputs, and artifacts by model
         </Typography>
-        {(['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'] as const).map((key) => {
-          const m = MODEL_FEATURES[key];
-          if (!m) return null;
-          return (
-            <Accordion key={key} defaultExpanded={key === 'batting'} disableGutters sx={{ '&:before': { display: 'none' } }}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-                  <Typography sx={{ textTransform: 'capitalize', fontWeight: 600 }}>
-                    {key.replace('_', ' ')}
-                  </Typography>
-                  <Chip label={m.level} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                  {m.hasScaler !== undefined && (
+        {(['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'] as const).map(
+          (key) => {
+            const m = MODEL_FEATURES[key];
+            if (!m) return null;
+            return (
+              <Accordion
+                key={key}
+                defaultExpanded={key === 'batting'}
+                disableGutters
+                sx={{ '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                    <Typography sx={{ textTransform: 'capitalize', fontWeight: 600 }}>
+                      {key.replace('_', ' ')}
+                    </Typography>
                     <Chip
-                      label={m.hasScaler ? 'scaler + model' : 'model only'}
+                      label={m.level}
                       size="small"
                       variant="outlined"
-                      sx={{ fontSize: '0.65rem' }}
+                      sx={{ fontSize: '0.7rem' }}
                     />
+                    {m.hasScaler !== undefined && (
+                      <Chip
+                        label={m.hasScaler ? 'scaler + model' : 'model only'}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: '0.65rem' }}
+                      />
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      {m.features.length} features → {m.outputs.length} output
+                      {m.outputs.length !== 1 ? 's' : ''}
+                    </Typography>
+                  </Stack>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0 }}>
+                  {m.note && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      {m.note}
+                    </Typography>
                   )}
-                  <Typography variant="caption" color="text.secondary">
-                    {m.features.length} features → {m.outputs.length} output{m.outputs.length !== 1 ? 's' : ''}
-                  </Typography>
-                </Stack>
-              </AccordionSummary>
-              <AccordionDetails sx={{ pt: 0 }}>
-                {m.note && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                    {m.note}
-                  </Typography>
-                )}
-                <Box sx={{ mb: 1.5 }}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary">
-                    Artifacts (per-format &amp; legacy)
-                  </Typography>
-                  <Box
-                    component="ul"
-                    sx={{ m: 0, pl: 2, fontSize: '0.75rem', color: 'text.secondary' }}
-                  >
-                    <li>
-                      <strong>Per-format:</strong> {m.artifactsPattern.perFormat} — FMT = T20, ODI, TEST, T20I, etc.
-                    </li>
-                    <li>
-                      <strong>Legacy (unified):</strong> {m.artifactsPattern.legacy}
-                    </li>
-                  </Box>
-                </Box>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ mb: 1.5 }}>
                     <Typography variant="caption" fontWeight={600} color="text.secondary">
-                      Features
+                      Artifacts (per-format &amp; legacy)
                     </Typography>
                     <Box
                       component="ul"
-                      sx={{
-                        m: 0,
-                        pl: 2,
-                        fontSize: '0.8rem',
-                        fontFamily: 'monospace',
-                        maxHeight: 160,
-                        overflow: 'auto',
-                      }}
+                      sx={{ m: 0, pl: 2, fontSize: '0.75rem', color: 'text.secondary' }}
                     >
-                      {m.features.map((f) => (
-                        <li key={f}>{f}</li>
-                      ))}
+                      <li>
+                        <strong>Per-format:</strong> {m.artifactsPattern.perFormat} — FMT = T20,
+                        ODI, TEST, T20I, etc.
+                      </li>
+                      <li>
+                        <strong>Legacy (unified):</strong> {m.artifactsPattern.legacy}
+                      </li>
                     </Box>
                   </Box>
-                  <Box sx={{ flex: 0, minWidth: 160 }}>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">
-                      Outputs
-                    </Typography>
-                    <Box component="ul" sx={{ m: 0, pl: 2, fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                      {m.outputs.map((o) => (
-                        <li key={o}>{o}</li>
-                      ))}
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">
+                        Features
+                      </Typography>
+                      <Box
+                        component="ul"
+                        sx={{
+                          m: 0,
+                          pl: 2,
+                          fontSize: '0.8rem',
+                          fontFamily: 'monospace',
+                          maxHeight: 160,
+                          overflow: 'auto',
+                        }}
+                      >
+                        {m.features.map((f) => (
+                          <li key={f}>{f}</li>
+                        ))}
+                      </Box>
                     </Box>
-                  </Box>
-                </Stack>
-              </AccordionDetails>
-            </Accordion>
-          );
-        })}
+                    <Box sx={{ flex: 0, minWidth: 160 }}>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">
+                        Outputs
+                      </Typography>
+                      <Box
+                        component="ul"
+                        sx={{ m: 0, pl: 2, fontSize: '0.8rem', fontFamily: 'monospace' }}
+                      >
+                        {m.outputs.map((o) => (
+                          <li key={o}>{o}</li>
+                        ))}
+                      </Box>
+                    </Box>
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+            );
+          },
+        )}
       </SectionCard>
 
       <SectionCard

@@ -1,9 +1,10 @@
 import os
 
-# Load config defaults (with env override support)
-from . import config as svc_config
 import joblib
 import pandas as pd
+
+# Load config defaults (with env override support)
+from . import config as svc_config
 from .dataset_definitions import output_bowling_columns
 
 output_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())

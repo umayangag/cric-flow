@@ -184,7 +184,9 @@ class ExtrasFeatures(BaseModel):
     bowl_consistency_sum: float = Field(default=0.0, ge=0)
     bat_form_sum: float = Field(default=0.0, ge=0)
     bowl_form_sum: float = Field(default=0.0, ge=0)
-    format: Optional[str] = Field(default=None, description="Format code for per-format model selection (e.g. T20, ODI)")
+    format: Optional[str] = Field(
+        default=None, description="Format code for per-format model selection (e.g. T20, ODI)"
+    )
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: Optional[str]) -> Optional[str]:

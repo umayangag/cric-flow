@@ -6,13 +6,13 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import config as svc_config  # ml.config: loads config.json from ml-service root
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+from . import config as svc_config  # ml.config: loads config.json from ml-service root
 from .config import get_training_params
 from .feature_transforms import apply_transforms, get_transform_config
 from .utils import make_base_estimator
@@ -70,15 +70,30 @@ TARGET_COLS = [
 
 def _batting_col_map() -> Dict[str, str]:
     m = {
-        "temp": "temp", "wind": "wind", "rain": "rain", "humidity": "humidity",
-        "cloud": "cloud", "pressure": "pressure", "viscosity": "viscosity",
-        "inning": "inning", "batting_session": "batting_session", "toss": "toss",
-        "batting_venue": "batting_venue", "batting_opposition": "batting_opposition",
-        "season_id": "season_id", "batting_consistency": "batting_consistency",
-        "batting_form": "batting_form", "batting_form_short": "batting_form_short",
-        "batting_form_long": "batting_form_long", "batting_momentum": "batting_momentum",
-        "runs": "runs", "balls": "balls", "fours": "fours", "sixes": "sixes",
-        "batting_position": "batting_position", "strike_rate": "strike_rate",
+        "temp": "temp",
+        "wind": "wind",
+        "rain": "rain",
+        "humidity": "humidity",
+        "cloud": "cloud",
+        "pressure": "pressure",
+        "viscosity": "viscosity",
+        "inning": "inning",
+        "batting_session": "batting_session",
+        "toss": "toss",
+        "batting_venue": "batting_venue",
+        "batting_opposition": "batting_opposition",
+        "season_id": "season_id",
+        "batting_consistency": "batting_consistency",
+        "batting_form": "batting_form",
+        "batting_form_short": "batting_form_short",
+        "batting_form_long": "batting_form_long",
+        "batting_momentum": "batting_momentum",
+        "runs": "runs",
+        "balls": "balls",
+        "fours": "fours",
+        "sixes": "sixes",
+        "batting_position": "batting_position",
+        "strike_rate": "strike_rate",
     }
     for c in BAT_SEQ_COLS:
         m[c] = c

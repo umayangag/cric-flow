@@ -348,9 +348,7 @@ def _run_search_single_regression(
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
     if not candidates:
-        raise ValueError(
-            f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}"
-        )
+        raise ValueError(f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}")
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
     best_pipe = None
@@ -378,7 +376,12 @@ def _run_search_single_regression(
         search.fit(X, y)
         algorithms_used.append(key)
         all_cv_results.append(
-            {"algorithm": key, "estimator": name, "best_score": float(search.best_score_), "best_params": search.best_params_}
+            {
+                "algorithm": key,
+                "estimator": name,
+                "best_score": float(search.best_score_),
+                "best_params": search.best_params_,
+            }
         )
         if best_score is None or search.best_score_ > best_score:
             best_score = search.best_score_
@@ -423,9 +426,7 @@ def _run_search_classification(
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
     if not candidates:
-        raise ValueError(
-            f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}"
-        )
+        raise ValueError(f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}")
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
     best_pipe = None
@@ -453,7 +454,12 @@ def _run_search_classification(
         search.fit(X, y)
         algorithms_used.append(key)
         all_cv_results.append(
-            {"algorithm": key, "estimator": name, "best_score": float(search.best_score_), "best_params": search.best_params_}
+            {
+                "algorithm": key,
+                "estimator": name,
+                "best_score": float(search.best_score_),
+                "best_params": search.best_params_,
+            }
         )
         if best_score is None or search.best_score_ > best_score:
             best_score = search.best_score_

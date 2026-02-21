@@ -69,19 +69,19 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		a.runExportHandler(w, r)
 		return
 	case "train_batting":
-		a.makeMLTrainHandler("train_batting", "train-batting", "batting", true)(w, r)
+		a.makeMLTrainHandler("train_batting", "train-batting", "batting")(w, r)
 		return
 	case "train_bowling":
-		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling", true)(w, r)
+		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling")(w, r)
 		return
 	case "train_fielding":
-		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding", true)(w, r)
+		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding")(w, r)
 		return
 	case "train_extras":
-		a.makeMLTrainHandler("train_extras", "train-extras", "extras", true)(w, r)
+		a.makeMLTrainHandler("train_extras", "train-extras", "extras")(w, r)
 		return
 	case "train_win":
-		a.makeMLTrainHandler("train_win", "train-win", "win", true)(w, r)
+		a.makeMLTrainHandler("train_win", "train-win", "win")(w, r)
 		return
 	case "train_combination_meta":
 		// Run from project root: make train-combination-meta CSV=<path> OUT=<path>
@@ -218,18 +218,15 @@ func defaultCutoff() string {
 }
 
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
-func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string, needsCutoff bool) http.HandlerFunc {
+func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		args := map[string]any{"step": stepID}
-		querySuffix := ""
-		if needsCutoff {
-			cutoff := r.URL.Query().Get("cutoff")
-			if cutoff == "" {
-				cutoff = defaultCutoff()
-			}
-			args["cutoff"] = cutoff
-			querySuffix = "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+		cutoff := r.URL.Query().Get("cutoff")
+		if cutoff == "" {
+			cutoff = defaultCutoff()
 		}
+		args["cutoff"] = cutoff
+		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 
 		go func() {
 			slog.Info(command+" started", slog.Any("args", args))
