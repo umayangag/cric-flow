@@ -169,9 +169,21 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.FormatInt(tossWinner, 10),
 			strconv.Itoa(team1Wins),
 			formatCode,
-			strconv.Itoa(temp), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
-			strconv.FormatFloat(t1BatCons, 'f', -1, 64), strconv.FormatFloat(t1BowlCons, 'f', -1, 64), strconv.FormatFloat(t2BatCons, 'f', -1, 64), strconv.FormatFloat(t2BowlCons, 'f', -1, 64),
-			strconv.FormatFloat(t1BatForm, 'f', -1, 64), strconv.FormatFloat(t1BowlForm, 'f', -1, 64), strconv.FormatFloat(t2BatForm, 'f', -1, 64), strconv.FormatFloat(t2BowlForm, 'f', -1, 64),
+			strconv.Itoa(
+				temp,
+			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
+			strconv.FormatFloat(
+				t1BatCons,
+				'f',
+				-1,
+				64,
+			), strconv.FormatFloat(t1BowlCons, 'f', -1, 64), strconv.FormatFloat(t2BatCons, 'f', -1, 64), strconv.FormatFloat(t2BowlCons, 'f', -1, 64),
+			strconv.FormatFloat(
+				t1BatForm,
+				'f',
+				-1,
+				64,
+			), strconv.FormatFloat(t1BowlForm, 'f', -1, 64), strconv.FormatFloat(t2BatForm, 'f', -1, 64), strconv.FormatFloat(t2BowlForm, 'f', -1, 64),
 		})
 	}
 	return out, rows.Err()

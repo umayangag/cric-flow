@@ -135,8 +135,15 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.FormatInt(seasonID, 10),
 			strconv.Itoa(totalExtras),
 			formatCode,
-			strconv.Itoa(temp), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
-			strconv.FormatFloat(batConsSum, 'f', -1, 64), strconv.FormatFloat(bowlConsSum, 'f', -1, 64), strconv.FormatFloat(batFormSum, 'f', -1, 64), strconv.FormatFloat(bowlFormSum, 'f', -1, 64),
+			strconv.Itoa(
+				temp,
+			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
+			strconv.FormatFloat(
+				batConsSum,
+				'f',
+				-1,
+				64,
+			), strconv.FormatFloat(bowlConsSum, 'f', -1, 64), strconv.FormatFloat(batFormSum, 'f', -1, 64), strconv.FormatFloat(bowlFormSum, 'f', -1, 64),
 		})
 	}
 	return out, rows.Err()

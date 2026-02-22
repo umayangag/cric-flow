@@ -209,11 +209,13 @@ func findPerFormatArtifact(
 		if !strings.HasSuffix(lower, ".joblib") {
 			continue
 		}
-		if needScaler != "" && strings.HasPrefix(lower, strings.ToLower(needScaler)) && strings.HasSuffix(lower, strings.ToLower(scalerSuffix)) {
+		if needScaler != "" && strings.HasPrefix(lower, strings.ToLower(needScaler)) &&
+			strings.HasSuffix(lower, strings.ToLower(scalerSuffix)) {
 			hasScaler = true
 			continue
 		}
-		if strings.HasPrefix(lower, strings.ToLower(modelPrefix)) && strings.HasSuffix(lower, strings.ToLower(modelSuffix)) {
+		if strings.HasPrefix(lower, strings.ToLower(modelPrefix)) &&
+			strings.HasSuffix(lower, strings.ToLower(modelSuffix)) {
 			full := filepath.Join(root, name)
 			info, err := os.Stat(full)
 			if err != nil || info.IsDir() {
