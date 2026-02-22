@@ -160,7 +160,7 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
         # TimeSeriesSplit requires n_samples >= n_splits + 1; fallback to KFold for tiny datasets
         n_splits = min(cv_splits, max(2, n_samples // 3))
         if n_samples < n_splits + 1 and n_samples >= 2:
-            return KFold(n_splits=min(cv_splits, n_samples - 1), shuffle=True, random_state=random_state)
+            return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
         if n_samples < n_splits + 1:
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
         return TimeSeriesSplit(n_splits=n_splits)
