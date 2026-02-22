@@ -1,6 +1,6 @@
 # APIs, backtest, evaluate, and ops
 
-This document covers API contracts (Go and ML), backtesting predictions on played matches, the Evaluate DB pipeline, and the ops status dashboard.
+API contracts (Go and ML), backtest/evaluate on played matches, and the ops status dashboard.
 
 ---
 

@@ -1,6 +1,6 @@
 # Quality and debugging
 
-This document covers Go unit testing standards, mandatory quality steps (check-all, coverage, CI, hooks, branch protection, PR template), and container crash/OOM diagnosis.
+Go unit testing standards, mandatory quality steps (check-all, coverage, CI, hooks, branch protection, PR template), and container crash/OOM diagnosis.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Quick start
 - **Bootstrap:** `make init` then `make dev-up` (Postgres, API, ML). Full pipeline: `make up-all`.
-- **Docs:** **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import, export), **docs/apis-backtest-and-ops.md** (APIs, backtest, ops).
+- **Docs:** **docs/README.md** (reading order, cross-references), **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import, export), **docs/apis-backtest-and-ops.md** (APIs, backtest, ops), **docs/roadmap.md** (planned improvements).
 
 ## Key workflows
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
