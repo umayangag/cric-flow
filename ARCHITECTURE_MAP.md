@@ -53,7 +53,7 @@ All training params from `ml-service/config.json` → `ml.training.<model>`. Bas
 - **Outputs** (5): `runs`, `balls`, `fours`, `sixes`, `batting_position` (strike_rate derived).
 
 ### Bowling
-- **Inputs** (26): `bowling_consistency`, `bowling_form`, `bowling_form_short`, `bowling_form_long`, `bowling_momentum`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `season`, + 8 seq: `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`.
+- **Inputs** (26): `bowling_consistency`, `bowling_form`, `bowling_form_short`, `bowling_form_long`, `bowling_momentum`, `bowling_temp`, `bowling_wind`, `bowling_rain`, `bowling_humidity`, `bowling_cloud`, `bowling_pressure`, `bowling_viscosity`, `inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `season`, + 8 seq: `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`.
 - **Outputs** (3): `runs_conceded`, `deliveries`, `wickets_taken` (econ derived).
 
 ### Fielding
