@@ -43,15 +43,21 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		"root":    fsRoot,
 		"formats": map[string]any{},
 		"unified": map[string]any{
-			"batting": map[string]any{"exists": false},
-			"bowling": map[string]any{"exists": false},
+			"batting":  map[string]any{"exists": false},
+			"bowling":  map[string]any{"exists": false},
+			"fielding": map[string]any{"exists": false},
+			"extras":   map[string]any{"exists": false},
+			"win":      map[string]any{"exists": false},
 		},
 	}
 	fm := map[string]any{}
 	for _, f := range artifactFormats {
 		fm[f] = map[string]any{
-			"batting": map[string]any{"exists": false},
-			"bowling": map[string]any{"exists": false},
+			"batting":  map[string]any{"exists": false},
+			"bowling":  map[string]any{"exists": false},
+			"fielding": map[string]any{"exists": false},
+			"extras":   map[string]any{"exists": false},
+			"win":      map[string]any{"exists": false},
 		}
 	}
 	section["formats"] = fm
@@ -72,14 +78,14 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	if resp, code, err := httpGetRaw(client, base+"/artifacts/status"); err == nil && code >= 200 && code < 300 {
 		if err := json.Unmarshal(resp, &art); err == nil {
 			if formatsAny, ok := art["formats"].(map[string]any); ok {
+				perFormatKeys := []string{"batting", "bowling", "fielding", "extras", "win"}
 				for _, f := range artifactFormats {
 					if fa, ok := formatsAny[f].(map[string]any); ok {
 						tgt := fm[f].(map[string]any)
-						if b, ok := fa["batting"].(map[string]any); ok {
-							tgt["batting"] = b
-						}
-						if b, ok := fa["bowling"].(map[string]any); ok {
-							tgt["bowling"] = b
+						for _, key := range perFormatKeys {
+							if b, ok := fa[key].(map[string]any); ok {
+								tgt[key] = b
+							}
 						}
 						fm[f] = tgt
 					}
@@ -94,42 +100,30 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		// If parse failed, fall through to FS
 	}
 
-	// Filesystem fallback
+	// Filesystem fallback: per-format batting, bowling, fielding, extras, win
+	entries, _ := os.ReadDir(fsRoot)
 	for _, f := range artifactFormats {
-		// batting
-		if p, mod, ok := findArtifact(fsRoot, f, true); ok {
-			b := fm[f].(map[string]any)["batting"].(map[string]any)
-			b["exists"] = true
-			b["path"] = p
-			b["modified"] = mod.UTC().Format(time.RFC3339)
-			fm[f].(map[string]any)["batting"] = b
-		}
-		// bowling
-		if p, mod, ok := findArtifact(fsRoot, f, false); ok {
-			b := fm[f].(map[string]any)["bowling"].(map[string]any)
-			b["exists"] = true
-			b["path"] = p
-			b["modified"] = mod.UTC().Format(time.RFC3339)
-			fm[f].(map[string]any)["bowling"] = b
+		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
+			if p, mod, ok := findPerFormatArtifact(entries, fsRoot, f, kind); ok {
+				m := fm[f].(map[string]any)[kind].(map[string]any)
+				m["exists"] = true
+				m["path"] = p
+				m["modified"] = mod.UTC().Format(time.RFC3339)
+				fm[f].(map[string]any)[kind] = m
+			}
 		}
 	}
 	section["formats"] = fm
-	// Unified (legacy) artifacts: batting.joblib / bowling.joblib without format suffix (read dir once)
+	// Unified (legacy) artifacts: batting_model.joblib, bowling_model.joblib, etc. (reuse entries from above)
 	if unif, ok := section["unified"].(map[string]any); ok {
-		entries, _ := os.ReadDir(fsRoot)
-		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, true); ok {
-			b := unif["batting"].(map[string]any)
-			b["exists"] = true
-			b["path"] = p
-			b["modified"] = mod.UTC().Format(time.RFC3339)
-			unif["batting"] = b
-		}
-		if p, mod, ok := findLegacyArtifactFromEntries(entries, fsRoot, false); ok {
-			b := unif["bowling"].(map[string]any)
-			b["exists"] = true
-			b["path"] = p
-			b["modified"] = mod.UTC().Format(time.RFC3339)
-			unif["bowling"] = b
+		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
+			if p, mod, ok := findLegacyArtifactByKind(entries, fsRoot, kind); ok {
+				m := unif[kind].(map[string]any)
+				m["exists"] = true
+				m["path"] = p
+				m["modified"] = mod.UTC().Format(time.RFC3339)
+				unif[kind] = m
+			}
 		}
 		section["unified"] = unif
 	}
@@ -177,18 +171,35 @@ func httpGetRaw(client *http.Client, url string) ([]byte, int, error) {
 	return b, resp.StatusCode, nil
 }
 
-// findArtifact tries to find a single artifact file for a format and kind (batting=true, bowling=false).
-func findArtifact(root, format string, batting bool) (path string, mod time.Time, ok bool) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
+// findPerFormatArtifact finds a per-format artifact by kind from pre-read dir entries.
+// kind: batting, bowling, fielding (require scaler+model), extras, win (model only).
+// Naming: batting_scaler_<FMT>.joblib + batting_model_<FMT>.joblib, etc.
+func findPerFormatArtifact(
+	entries []os.DirEntry,
+	root string,
+	format string,
+	kind string,
+) (path string, mod time.Time, ok bool) {
+	var needScaler, modelPrefix string
+	switch kind {
+	case "batting":
+		needScaler, modelPrefix = "batting_scaler_", "batting_model_"
+	case "bowling":
+		needScaler, modelPrefix = "bowling_scaler_", "bowling_model_"
+	case "fielding":
+		needScaler, modelPrefix = "fielding_scaler_", "fielding_model_"
+	case "extras":
+		modelPrefix = "extras_model_"
+	case "win":
+		modelPrefix = "win_model_"
+	default:
 		return "", time.Time{}, false
 	}
-	tokenKind := "bat"
-	if !batting {
-		tokenKind = "bowl"
-	}
-	fmtLower := strings.ToLower(format)
-	bestName := ""
+	modelSuffix := format + ".joblib"
+	scalerSuffix := format + ".joblib"
+	hasScaler := needScaler == ""
+	var modelPath string
+	var modelMod time.Time
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -198,58 +209,73 @@ func findArtifact(root, format string, batting bool) (path string, mod time.Time
 		if !strings.HasSuffix(lower, ".joblib") {
 			continue
 		}
-		if strings.Contains(lower, tokenKind) && strings.Contains(lower, fmtLower) {
-			// prefer exact batting_FORMAT.joblib over generic patterns
-			if batting {
-				if strings.HasPrefix(lower, "batting_") && strings.Contains(lower, fmtLower) {
-					bestName = name
-					break
-				}
-			} else {
-				if strings.HasPrefix(lower, "bowling_") && strings.Contains(lower, fmtLower) {
-					bestName = name
-					break
-				}
+		if needScaler != "" && strings.HasPrefix(lower, strings.ToLower(needScaler)) && strings.HasSuffix(lower, strings.ToLower(scalerSuffix)) {
+			hasScaler = true
+			continue
+		}
+		if strings.HasPrefix(lower, strings.ToLower(modelPrefix)) && strings.HasSuffix(lower, strings.ToLower(modelSuffix)) {
+			full := filepath.Join(root, name)
+			info, err := os.Stat(full)
+			if err != nil || info.IsDir() {
+				continue
 			}
-			if bestName == "" {
-				bestName = name
-			}
+			modelPath = full
+			modelMod = info.ModTime()
+			// don't break: we may still need to see the scaler in the same loop
 		}
 	}
-	if bestName == "" {
-		return "", time.Time{}, false
+	if hasScaler && modelPath != "" {
+		return modelPath, modelMod, true
 	}
-	full := filepath.Join(root, bestName)
-	info, err := os.Stat(full)
-	if err != nil || info.IsDir() {
-		return "", time.Time{}, false
-	}
-	return full, info.ModTime(), true
+	return "", time.Time{}, false
 }
 
-// findLegacyArtifactFromEntries finds legacy artifact from pre-read dir entries to avoid redundant ReadDir.
-func findLegacyArtifactFromEntries(
-	entries []os.DirEntry,
-	root string,
-	batting bool,
-) (path string, mod time.Time, ok bool) {
-	want := "batting.joblib"
-	if !batting {
-		want = "bowling.joblib"
+// findLegacyArtifactByKind finds legacy (unified) artifact by kind from pre-read dir entries.
+// kind: batting (requires batting_scaler.joblib + batting_model.joblib), bowling (scaler+model), fielding (scaler+model), extras (extras_model.joblib), win (win_model.joblib).
+func findLegacyArtifactByKind(entries []os.DirEntry, root string, kind string) (path string, mod time.Time, ok bool) {
+	var needScaler, modelName string
+	switch kind {
+	case "batting":
+		needScaler, modelName = "batting_scaler.joblib", "batting_model.joblib"
+	case "bowling":
+		needScaler, modelName = "bowling_scaler.joblib", "bowling_model.joblib"
+	case "fielding":
+		needScaler, modelName = "fielding_scaler.joblib", "fielding_model.joblib"
+	case "extras":
+		modelName = "extras_model.joblib"
+	case "win":
+		modelName = "win_model.joblib"
+	default:
+		return "", time.Time{}, false
 	}
+	hasScaler := needScaler == ""
+	hasModel := false
+	var modelPath string
+	var modelMod time.Time
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		if strings.ToLower(e.Name()) != want {
+		name := e.Name()
+		lower := strings.ToLower(name)
+		if needScaler != "" && lower == strings.ToLower(needScaler) {
+			hasScaler = true
 			continue
 		}
-		full := filepath.Join(root, e.Name())
-		info, err := os.Stat(full)
-		if err != nil || info.IsDir() {
-			return "", time.Time{}, false
+		if lower == strings.ToLower(modelName) {
+			full := filepath.Join(root, name)
+			info, err := os.Stat(full)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			modelPath = full
+			modelMod = info.ModTime()
+			hasModel = true
+			break
 		}
-		return full, info.ModTime(), true
+	}
+	if hasScaler && hasModel {
+		return modelPath, modelMod, true
 	}
 	return "", time.Time{}, false
 }

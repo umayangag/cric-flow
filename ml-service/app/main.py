@@ -670,86 +670,193 @@ def _find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[s
     Preferred names: batting_<FORMAT>.joblib / bowling_<FORMAT>.joblib.
     Fallback: files containing tokens 'bat' or 'bowl' and the format code.
     """
+    hit = _find_per_format_artifact(models_dir, fmt, "batting" if batting else "bowling")
+    return hit
+
+
+def _find_per_format_artifact(
+    models_dir: str,
+    fmt: str,
+    kind: str,
+) -> Optional[Tuple[str, float]]:
+    """Return (path, mtime) for per-format artifact of given kind.
+    kind in: batting, bowling, fielding, extras, win.
+    Batting/bowling/fielding require both scaler and model (e.g. batting_scaler_T20.joblib + batting_model_T20.joblib).
+    """
     try:
         entries = os.listdir(models_dir)
     except OSError as e:
-        logger.debug("artifacts_status.find_artifact.listdir_failed", models_dir=models_dir, fmt=fmt, error=str(e))
+        logger.debug(
+            "artifacts_status.find_per_format.listdir_failed",
+            models_dir=models_dir,
+            fmt=fmt,
+            kind=kind,
+            error=str(e),
+        )
         return None
+    fmt_suffix = f"_{fmt}.joblib"
     fmt_lower = fmt.lower()
-    prefer_prefix = "batting_" if batting else "bowling_"
-    token = "bat" if batting else "bowl"
-    preferred_name = f"{prefer_prefix}{fmt}.joblib"
-    # First pass: exact preferred name
-    for name in entries:
-        if name == preferred_name:
-            path = os.path.join(models_dir, name)
-            try:
-                st = os.stat(path)
-                if not os.path.isdir(path) and name.lower().endswith(".joblib"):
-                    return path, st.st_mtime
-            except Exception:
-                return None
-    # Second pass: tolerant match
-    for name in entries:
-        lower = name.lower()
-        if lower.endswith(".joblib") and (token in lower) and (fmt_lower in lower):
-            path = os.path.join(models_dir, name)
-            try:
-                st = os.stat(path)
-                if not os.path.isdir(path):
-                    return path, st.st_mtime
-            except Exception:
-                continue
-    return None
+    if kind == "batting":
+        scaler_name = f"batting_scaler_{fmt}.joblib"
+        model_name = f"batting_model_{fmt}.joblib"
+    elif kind == "bowling":
+        scaler_name = f"bowling_scaler_{fmt}.joblib"
+        model_name = f"bowling_model_{fmt}.joblib"
+    elif kind == "fielding":
+        scaler_name = f"fielding_scaler_{fmt}.joblib"
+        model_name = f"fielding_model_{fmt}.joblib"
+    elif kind == "extras":
+        model_name = f"extras_model_{fmt}.joblib"
+        scaler_name = None
+    elif kind == "win":
+        model_name = f"win_model_{fmt}.joblib"
+        scaler_name = None
+    else:
+        return None
+    if scaler_name and scaler_name not in entries:
+        return None
+    if model_name not in entries:
+        return None
+    path = os.path.join(models_dir, model_name)
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return None
+        return path, st.st_mtime
+    except Exception:
+        return None
+
+
+def _find_legacy_artifact(models_dir: str, kind: str) -> Optional[Tuple[str, float]]:
+    """Return (path, mtime) for legacy (unified) artifact if present.
+    kind in: batting, bowling, fielding, extras, win.
+    Batting/bowling/fielding require both scaler and model; path/mtime from model file.
+    """
+    try:
+        entries = os.listdir(models_dir)
+    except OSError as e:
+        logger.debug(
+            "artifacts_status.find_legacy.listdir_failed",
+            models_dir=models_dir,
+            kind=kind,
+            error=str(e),
+        )
+        return None
+    if kind == "batting":
+        if "batting_scaler.joblib" not in entries or "batting_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "batting_model.joblib")
+    elif kind == "bowling":
+        if "bowling_scaler.joblib" not in entries or "bowling_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "bowling_model.joblib")
+    elif kind == "fielding":
+        if "fielding_scaler.joblib" not in entries or "fielding_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "fielding_model.joblib")
+    elif kind == "extras":
+        if "extras_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "extras_model.joblib")
+    elif kind == "win":
+        if "win_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "win_model.joblib")
+    else:
+        return None
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return None
+        return path, st.st_mtime
+    except Exception:
+        return None
+
+
+def _legacy_status_obj(
+    models_dir: str,
+    kind: str,
+    loaded: bool,
+) -> Dict[str, Any]:
+    """Build { exists, path?, modified?, loaded } for one legacy model kind."""
+    out: Dict[str, Any] = {"exists": False}
+    hit = _find_legacy_artifact(models_dir, kind)
+    if hit is not None:
+        p, mt = hit
+        out["exists"] = True
+        out["path"] = p
+        out["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+    out["loaded"] = loaded
+    return out
 
 
 @app.get("/artifacts/status")
 async def artifacts_status():
-    """Report presence and (optionally) loaded state of artifacts per format.
+    """Report presence and (optionally) loaded state of artifacts per format and legacy (unified).
 
     Shape:
     {
       "timestamp": ISO8601,
       "root": MODELS_DIR,
       "formats": {
-        "ODI": {"batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool?}, "bowling": {...}},
+        "ODI": {
+          "batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool?},
+          "bowling": {...},
+          "fielding": {...},
+          "extras": {...},
+          "win": {...}
+        },
         ...
+      },
+      "legacy": {
+        "batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool},
+        "bowling": {...},
+        "fielding": {...},
+        "extras": {...},
+        "win": {...}
       }
     }
     """
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     root = MODELS_DIR
-    formats: Dict[str, Dict[str, Any]] = {}
+    artifact_kinds = ["batting", "bowling", "fielding", "extras", "win"]
+    loaded_registries: Dict[str, Any] = {
+        "batting": BAT_MODELS,
+        "bowling": BOWL_MODELS,
+        "fielding": FIELD_MODELS,
+        "extras": EXTRAS_MODELS,
+        "win": WIN_MODELS,
+    }
+    formats_out: Dict[str, Dict[str, Any]] = {}
     for fmt in _FORMATS:
-        b_obj: Dict[str, Any] = {"exists": False}
-        bow_obj: Dict[str, Any] = {"exists": False}
-        # Filesystem presence
-        b_hit = _find_artifact(root, fmt, batting=True)
-        if b_hit is not None:
-            p, mt = b_hit
-            b_obj["exists"] = True
-            b_obj["path"] = p
-            b_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
-        w_hit = _find_artifact(root, fmt, batting=False)
-        if w_hit is not None:
-            p, mt = w_hit
-            bow_obj["exists"] = True
-            bow_obj["path"] = p
-            bow_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
-        # Loaded state (best-effort)
-        try:
-            if fmt in BAT_MODELS:
-                b_obj["loaded"] = True
-        except Exception as e:
-            logger.debug("artifacts_status.batting_loaded_check", fmt=fmt, error=str(e))
-        try:
-            if fmt in BOWL_MODELS:
-                bow_obj["loaded"] = True
-        except Exception as e:
-            logger.debug("artifacts_status.bowling_loaded_check", fmt=fmt, error=str(e))
-        formats[fmt] = {"batting": b_obj, "bowling": bow_obj}
+        row: Dict[str, Dict[str, Any]] = {}
+        for kind in artifact_kinds:
+            obj: Dict[str, Any] = {"exists": False}
+            hit = _find_per_format_artifact(root, fmt, kind)
+            if hit is not None:
+                p, mt = hit
+                obj["exists"] = True
+                obj["path"] = p
+                obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+            try:
+                reg = loaded_registries.get(kind)
+                if reg is not None and fmt in reg:
+                    obj["loaded"] = True
+            except Exception as e:
+                logger.debug("artifacts_status.loaded_check", fmt=fmt, kind=kind, error=str(e))
+            row[kind] = obj
+        formats_out[fmt] = row
+    formats = formats_out
 
-    return {"timestamp": ts, "root": root, "formats": formats}
+    legacy: Dict[str, Dict[str, Any]] = {
+        "batting": _legacy_status_obj(root, "batting", "_LEGACY_" in BAT_MODELS),
+        "bowling": _legacy_status_obj(root, "bowling", "_LEGACY_" in BOWL_MODELS),
+        "fielding": _legacy_status_obj(root, "fielding", "_LEGACY_" in FIELD_MODELS),
+        "extras": _legacy_status_obj(root, "extras", "_LEGACY_" in EXTRAS_MODELS),
+        "win": _legacy_status_obj(root, "win", "_LEGACY_" in WIN_MODELS),
+    }
+
+    return {"timestamp": ts, "root": root, "formats": formats, "legacy": legacy}
 
 
 @app.post("/predict/batting", response_model=List[BattingPrediction])

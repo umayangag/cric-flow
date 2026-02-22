@@ -99,12 +99,13 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 			setup: func(t *testing.T) (*http.Client, string) {
 				client := newHTTPClientForServer(tsUnhealthy)
 				root := t.TempDir()
-				// Place files that findArtifact can discover
-				// batting and bowling for ODI
-				writeFileWithLines(t, root, "batting_ODI.joblib", 1)
-				writeFileWithLines(t, root, "bowling_ODI.joblib", 1)
-				// only bowling for TEST
-				writeFileWithLines(t, root, "bowling_TEST.joblib", 1)
+				// Per-format artifacts: scaler+model for batting/bowling
+				writeFileWithLines(t, root, "batting_scaler_ODI.joblib", 1)
+				writeFileWithLines(t, root, "batting_model_ODI.joblib", 1)
+				writeFileWithLines(t, root, "bowling_scaler_ODI.joblib", 1)
+				writeFileWithLines(t, root, "bowling_model_ODI.joblib", 1)
+				writeFileWithLines(t, root, "bowling_scaler_TEST.joblib", 1)
+				writeFileWithLines(t, root, "bowling_model_TEST.joblib", 1)
 				return client, root
 			},
 			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
