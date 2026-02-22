@@ -96,4 +96,4 @@ make up-all
 6. `make ml-serve` if not using Docker
 7. `make team-predictor MATCH=<id> BAT=6 BOWL=5`
 
-**Dev:** `make init`, `make dev-up`, `make dev-down`, `make logs`. E2E: `make e2e FORMAT=ODI SEASON=2019`. Copy `.env.example` to `.env`; see [config-and-data.md](config-and-data.md) for env vars.
+Dev: `make init`, `make dev-up`, `make dev-down`, `make logs`. E2E: `make e2e FORMAT=ODI SEASON=2019`. Copy `.env.example` to `.env`; see [config-and-data.md](config-and-data.md) for env vars.
