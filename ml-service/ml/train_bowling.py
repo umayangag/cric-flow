@@ -116,28 +116,6 @@ def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     transform_config = get_transform_config("bowling")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
         X, feature_names_used = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
-<<<<<<< HEAD
-    else:
-        X = X_raw
-        feature_names_used = list(FEATURE_COLS)
-    y_cols = [c for c in TARGET_COLS if c in df.columns]
-    Y = df[y_cols].astype(float).values
-    if "econ" in df.columns:
-        econ = df["econ"].astype(float).values.reshape(-1, 1)
-    else:
-        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-        balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-        overs = np.where(balls > 0, balls / 6.0, 1.0)
-        econ = np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-    needed = len(TARGET_COLS)
-    if Y.shape[1] < needed:
-        pad = np.zeros((Y.shape[0], needed - Y.shape[1]))
-        Y = np.concatenate([Y, pad], axis=1)
-    Y = np.concatenate([Y, econ], axis=1)
-    return X, Y, feature_names_used
-        X, _ = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
-=======
->>>>>>> 9256564 (fix review)
     else:
         X = X_raw
         feature_names_used = list(FEATURE_COLS)
