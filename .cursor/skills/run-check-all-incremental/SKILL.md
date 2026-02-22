@@ -26,7 +26,7 @@ From repo root. Run each step; if it fails, fix and re-run **only that step**, t
 | Step       | Command |
 |-----------|--------|
 | install   | `make frontend-install` (optional; do once if needed) |
-| lint      | `cd frontend && npm run lint` |
+| lint      | `cd frontend && npm run lint` (ESLint with `--max-warnings 0`: fails on any warning) |
 | format    | `cd frontend && npm run format:check` |
 | typecheck | `cd frontend && npm run typecheck` |
 | build     | `cd frontend && npm run build` |
@@ -39,7 +39,7 @@ From repo root: `make -C go-app <target>` or `cd go-app && make <target>`.
 | Step   | Command |
 |--------|--------|
 | vet    | `make -C go-app vet` |
-| fmt    | `make -C go-app fmt-check` |
+| fmt    | `make -C go-app fmt-check` (fails if any file needs formatting; fix with `make -C go-app fmt`) |
 | lint   | `make -C go-app lint` (uses golangci-lint; ensure GOPATH/bin on PATH if needed) |
 | tests  | `make -C go-app coverage` |
 

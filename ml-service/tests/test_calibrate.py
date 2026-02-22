@@ -61,7 +61,7 @@ def test_calibrate_classifier_prefit():
     y = (X[:, 0] > 0).astype(int)
     X_tr, X_val = X[:60], X[60:]
     y_tr, y_val = y[:60], y[60:]
-    clf = MLPClassifier(hidden_layer_sizes=(10,), max_iter=200, random_state=42)
+    clf = MLPClassifier(hidden_layer_sizes=(10,), max_iter=500, random_state=42)
     clf.fit(X_tr, y_tr)
     calibrated = calibrate_classifier(clf, X_val, y_val, method="sigmoid", cv="prefit")
     probs = calibrated.predict_proba(X_val)[:, 1]

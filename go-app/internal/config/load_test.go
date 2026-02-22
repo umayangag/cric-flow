@@ -103,6 +103,26 @@ func TestValidateForServer_FailsWhenPrecomputeTimeoutNegative(t *testing.T) {
 	}
 }
 
+func TestValidateForServer_FailsWhenExportTimeoutNegative(t *testing.T) {
+	cached = nil
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "config.json")
+	cfgJSON := `{"features":{"export_timeout_ms":-1}}`
+	if err := os.WriteFile(p, []byte(cfgJSON), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("GO_APP_CONFIG", p)
+
+	Load()
+	err := ValidateForServer()
+	if err == nil {
+		t.Fatal("ValidateForServer expected to fail when export_timeout_ms < 0")
+	}
+	if !strings.Contains(err.Error(), "export_timeout_ms") {
+		t.Errorf("expected 'export_timeout_ms' in error, got: %v", err)
+	}
+}
+
 func TestLoad_CachePersistsUntilReset(t *testing.T) {
 	cached = nil
 	// Use env file to set one value, then mutate the file and ensure Load() keeps cached result until we reset.

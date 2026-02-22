@@ -74,6 +74,7 @@ type Config struct {
 	} `json:"formats"`
 	Features struct {
 		PrecomputeTimeoutMs  int     `json:"precompute_timeout_ms"`
+		ExportTimeoutMs      int     `json:"export_timeout_ms"` // optional; 0 = use pipeline timeout
 		MinBattingInnings    int     `json:"min_batting_innings"`
 		MinBowlingInnings    int     `json:"min_bowling_innings"`
 		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
@@ -240,10 +241,18 @@ func ValidateForServer() error {
 		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
 		return err
 	}
+	if cfg.Features.ExportTimeoutMs < 0 {
+		err := fmt.Errorf(
+			"features.export_timeout_ms must be >= 0 (0 = use pipeline timeout); got %d",
+			cfg.Features.ExportTimeoutMs,
+		)
+		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
+	}
 	return nil
 }
 
-// PipelineTimeout returns the timeout for long-running pipeline jobs (import, precompute, export).
+// PipelineTimeout returns the timeout for long-running pipeline jobs (import, precompute).
 // Uses features.precompute_timeout_ms. 0 = no timeout.
 func PipelineTimeout() time.Duration {
 	cfg := Load()
@@ -251,6 +260,17 @@ func PipelineTimeout() time.Duration {
 		return 0
 	}
 	return time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond
+}
+
+// ExportTimeout returns the timeout for the export-dataset pipeline step.
+// Uses features.export_timeout_ms when set (must be > 0); otherwise falls back to PipelineTimeout().
+// A resulting duration of 0 means no timeout (only shutdown cancels).
+func ExportTimeout() time.Duration {
+	cfg := Load()
+	if cfg != nil && cfg.Features.ExportTimeoutMs > 0 {
+		return time.Duration(cfg.Features.ExportTimeoutMs) * time.Millisecond
+	}
+	return PipelineTimeout()
 }
 
 // DefaultCricsheetDir returns the configured cricsheet input dir or a sensible built-in default.

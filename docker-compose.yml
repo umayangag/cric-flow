@@ -69,14 +69,18 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
+      # Where training subprocess writes artifacts (must match MODELS_DIR so /admin/train/* persists to volume)
+      ML_SERVICE_OUTPUT_DIR: /app/output/ml-service
       # Where to read exported CSVs for /admin/train/* (batting, bowling)
       GO_APP_OUTPUT_DIR: /app/output/go-app
       # Required for train-on-the-fly and fielding training from go-app API
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
+      # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # 2GB memory limit for resource-aware training/tuning n_jobs (override with ML_MEMORY_LIMIT_MB=... if needed)
+      # Resource limit for n_jobs; container mem_limit should match (e.g. 2g). Process uses detected limit.
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
     mem_limit: 2g
     ports:
@@ -84,7 +88,7 @@ services:
     volumes:
       - ./output:/app/output
 
-  # Watcher: logs go-api (and optionally other) container exit code and OOM status. See docs/quality-and-debugging.md.
+  # Watcher: monitors go-api and ml-service for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.
   watcher:
     build:
       context: .
@@ -93,10 +97,14 @@ services:
     container_name: cric-watcher
     depends_on:
       - go-api
+      - ml-service
     environment:
-      WATCH_CONTAINER: ${WATCH_CONTAINER:-cric-go-api}
-      # Optional: set WATCH_LOG=/logs/watcher.log to persist to watcher-logs volume
+      # Comma-separated list; default monitors both. Legacy: WATCH_CONTAINER for single container.
+      WATCH_CONTAINERS: ${WATCH_CONTAINERS:-cric-go-api,cric-ml-service}
+      # Optional: persist to volume
       WATCH_LOG: ${WATCH_LOG:-}
+      # Last N log lines to capture on crash (default 50)
+      WATCH_TAIL_LOGS: ${WATCH_TAIL_LOGS:-50}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - watcher-logs:/logs

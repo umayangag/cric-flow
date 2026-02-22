@@ -18,6 +18,8 @@ _DEFAULT_TRAINING_MB_PER_JOB = 400
 _DEFAULT_TUNING_MB_PER_JOB = 500
 _DEFAULT_PREDICTION_MB_PER_JOB = 100
 _DEFAULT_MEMORY_USAGE_FRACTION_PERCENT = 70
+# When process memory limit (MB) is at or below this, training uses 1 job to avoid OOM.
+_DEFAULT_TRAINING_LOW_MEMORY_THRESHOLD_MB = 2560
 
 
 def _get_resources_config():  # lazy import to avoid circular dependency with config
@@ -91,6 +93,9 @@ def suggested_n_jobs(kind: str = "training") -> int:
             pass
 
     limit_mb = _memory_limit_mb()
+    # When limit is unknown (e.g. subprocess in container without env/cgroup), training uses 1 job to avoid OOM
+    if kind == "training" and limit_mb <= 0:
+        cap = min(cap, 1)
     if limit_mb > 0:
         res = _get_resources_config()
         if kind == "training":
@@ -110,8 +115,15 @@ def suggested_n_jobs(kind: str = "training") -> int:
             )
         if not isinstance(frac, (int, float)) or frac < 1:
             frac = _DEFAULT_MEMORY_USAGE_FRACTION_PERCENT
+        threshold_mb = res.get("training_low_memory_threshold_mb", _DEFAULT_TRAINING_LOW_MEMORY_THRESHOLD_MB)
+        if not isinstance(threshold_mb, (int, float)) or threshold_mb < 0:
+            threshold_mb = _DEFAULT_TRAINING_LOW_MEMORY_THRESHOLD_MB
+        # When memory is tight, treat usable fraction as one job to avoid OOM (fielding/extras/win use significant data + model memory)
+        usable_mb = limit_mb * int(frac) // 100
+        if kind == "training" and usable_mb > 0 and limit_mb <= int(threshold_mb):
+            per_job = max(int(per_job), usable_mb)
         # Use at most frac% of limit for worker processes
-        memory_cap = max(1, (limit_mb * int(frac) // 100) // int(per_job))
+        memory_cap = max(1, usable_mb // int(per_job))
         cap = min(cap, memory_cap)
         logger.debug(
             "resources: memory-based n_jobs cap kind=%s limit_mb=%s per_job=%s cap=%s",

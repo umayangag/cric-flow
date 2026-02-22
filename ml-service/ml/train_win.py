@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import joblib
@@ -29,12 +30,29 @@ from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec
 
 logger = logging.getLogger(__name__)
 
+# Same feature families as batting/bowling/fielding: format, venue, teams, toss, weather, and
+# team-level aggregates of player consistency/form (team1 = batting inn 1, team2 = bowling inn 1).
 WIN_FEATURE_COLS = [
     "format_id",
     "venue_id",
     "team1_opposition_id",
     "team2_opposition_id",
     "toss_winner_opposition_id",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "team1_bat_consistency_sum",
+    "team1_bowl_consistency_sum",
+    "team2_bat_consistency_sum",
+    "team2_bowl_consistency_sum",
+    "team1_bat_form_sum",
+    "team1_bowl_form_sum",
+    "team2_bat_form_sum",
+    "team2_bowl_form_sum",
 ]
 WIN_TARGET_COL = "team1_wins"
 
@@ -42,7 +60,7 @@ WIN_TARGET_COL = "team1_wins"
 def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
     """Fetch training data from go-app; return dict with win headers and rows."""
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format=all&cutoff={cutoff_iso}"
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -59,8 +77,15 @@ def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
         )
         raise ValueError(f"Go-app training-data failed: HTTP {e.code} {body}") from e
     except OSError as e:
+        err_msg = str(e).strip()
         logger.error("train_win.fetch_win_data.os_error url=%s error=%s", url, e)
-        raise ValueError(f"Go-app training-data request failed: {e}") from e
+        hint = (
+            "Go-app may have closed the connection before the response finished (e.g. server write timeout). "
+            "Increase go-app server.http_write_timeout_sec (e.g. 600) in go-app/config.json and restart go-app."
+        )
+        if "closed connection" in err_msg.lower() or "without response" in err_msg.lower():
+            raise ValueError(f"Go-app training-data request failed: {err_msg}. {hint}") from e
+        raise ValueError(f"Go-app training-data request failed: {err_msg}") from e
     return data.get("win") or {"headers": [], "rows": []}
 
 

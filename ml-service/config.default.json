@@ -1,8 +1,9 @@
 {
   "inputs": {
     "go_app_export_dir": "../output/go-app",
-    "training_data_fetch_timeout_sec": 3600,
+    "training_data_fetch_timeout_sec": 14400,
     "training_data_fetch_timeout_invalid_fallback_sec": 600,
+    "training_subprocess_timeout_sec": 14400,
     "go_app_request_timeout_sec": 30
   },
   "outputs": {
@@ -22,7 +23,8 @@
       "training_mb_per_job": 400,
       "tuning_mb_per_job": 500,
       "prediction_mb_per_job": 100,
-      "memory_usage_fraction_percent": 70
+      "memory_usage_fraction_percent": 70,
+      "training_low_memory_threshold_mb": 2560
     },
     "tuning": {
       "cv_splits": 5,
@@ -30,6 +32,8 @@
       "n_jobs": -1,
       "random_state": 42,
       "scoring": "neg_mean_absolute_error",
+      "algorithms": "all",
+      "validation_method": "kfold",
       "search_space": {
         "rf": {
           "n_estimators": [50, 100, 150, 200, 300],

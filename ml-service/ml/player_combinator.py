@@ -26,12 +26,12 @@ def calculate_overall_performance(input_df, match_id, predicted_extras=0.0):
     target = team_df["runs_conceded"].sum() * magic_number
     total_balls_faced = team_df["balls_faced"].sum() * magic_number
 
-    team_df["total_score"] = total_score * magic_number
-    team_df["total_wickets"] = max_wickets
-    team_df["total_balls"] = total_balls_faced
-    team_df["target"] = target
-    team_df["extras"] = extras
-    team_df["match_number"] = match_id
+    team_df.loc[:, "total_score"] = total_score * magic_number
+    team_df.loc[:, "total_wickets"] = max_wickets
+    team_df.loc[:, "total_balls"] = total_balls_faced
+    team_df.loc[:, "target"] = target
+    team_df.loc[:, "extras"] = extras
+    team_df.loc[:, "match_number"] = match_id
 
     def calculate_batting_contribution(row, key):
         return row[key] / total_score
@@ -39,10 +39,10 @@ def calculate_overall_performance(input_df, match_id, predicted_extras=0.0):
     def calculate_bowling_contribution(row, key):
         return row[key] / target
 
-    team_df["bowling_contribution"] = team_df.apply(
+    team_df.loc[:, "bowling_contribution"] = team_df.apply(
         lambda row: calculate_bowling_contribution(row, "runs_conceded"), axis=1
     )
-    team_df["batting_contribution"] = team_df.apply(
+    team_df.loc[:, "batting_contribution"] = team_df.apply(
         lambda row: calculate_batting_contribution(row, "runs_scored"), axis=1
     )
 

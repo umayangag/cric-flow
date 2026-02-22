@@ -57,7 +57,8 @@ def test_suggested_n_jobs_ml_n_jobs_max_caps():
     """ML_N_JOBS_MAX caps the number of jobs."""
     with patch.dict(os.environ, {"ML_N_JOBS_MAX": "2"}, clear=False):
         with patch("ml.resources._cpu_count", return_value=8):
-            with patch("ml.resources._memory_limit_mb", return_value=0):
+            # Use a positive memory limit so the "unknown limit → 1 job" branch is not taken
+            with patch("ml.resources._memory_limit_mb", return_value=4096):
                 n = suggested_n_jobs("training")
                 assert n == 2
 
@@ -66,7 +67,8 @@ def test_suggested_n_jobs_ml_n_jobs_max_invalid_ignored():
     """Invalid ML_N_JOBS_MAX is ignored; cpu count used."""
     with patch.dict(os.environ, {"ML_N_JOBS_MAX": "x"}, clear=False):
         with patch("ml.resources._cpu_count", return_value=4):
-            with patch("ml.resources._memory_limit_mb", return_value=0):
+            # Use a positive memory limit so the "unknown limit → 1 job" branch is not taken
+            with patch("ml.resources._memory_limit_mb", return_value=4096):
                 assert suggested_n_jobs("training") == 4
 
 

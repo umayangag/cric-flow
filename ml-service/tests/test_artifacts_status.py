@@ -26,6 +26,10 @@ def test_artifacts_status_empty_dir(tmp_path):
     for fmt in ["TEST", "ODI", "T20I", "T20"]:
         assert data["formats"][fmt]["batting"]["exists"] is False
         assert data["formats"][fmt]["bowling"]["exists"] is False
+    assert "legacy" in data
+    for kind in ["batting", "bowling", "fielding", "extras", "win"]:
+        assert data["legacy"][kind]["exists"] is False
+        assert "loaded" in data["legacy"][kind]
 
 
 def _touch(path: str):
@@ -38,9 +42,11 @@ def _touch(path: str):
 
 
 def test_artifacts_status_per_format_discovery(tmp_path):
-    # Create ODI batting and bowling artifacts with preferred names
-    _touch(tmp_path / "batting_ODI.joblib")
-    _touch(tmp_path / "bowling_T20I.joblib")
+    # Create per-format artifacts (scaler + model for batting/bowling)
+    _touch(tmp_path / "batting_scaler_ODI.joblib")
+    _touch(tmp_path / "batting_model_ODI.joblib")
+    _touch(tmp_path / "bowling_scaler_T20I.joblib")
+    _touch(tmp_path / "bowling_model_T20I.joblib")
 
     m = reload_app_with_dir(str(tmp_path))
     from fastapi.testclient import TestClient
@@ -54,9 +60,11 @@ def test_artifacts_status_per_format_discovery(tmp_path):
 
 
 def test_artifacts_status_loaded_flags(tmp_path, monkeypatch):
-    # Create artifacts and also mark loaded registries
-    _touch(tmp_path / "batting_TEST.joblib")
-    _touch(tmp_path / "bowling_TEST.joblib")
+    # Create per-format artifacts (scaler + model)
+    _touch(tmp_path / "batting_scaler_TEST.joblib")
+    _touch(tmp_path / "batting_model_TEST.joblib")
+    _touch(tmp_path / "bowling_scaler_TEST.joblib")
+    _touch(tmp_path / "bowling_model_TEST.joblib")
 
     m = reload_app_with_dir(str(tmp_path))
 
@@ -104,3 +112,23 @@ def test_artifacts_reload_per_format(tmp_path):
     assert "T20" in out["loaded_bowling_formats"]
     assert art.BAT_MODELS.get("T20") is not None
     assert art.BOWL_MODELS.get("T20") is not None
+
+
+def test_artifacts_status_legacy_discovery(tmp_path):
+    """Legacy (unified) artifacts are reported in /artifacts/status when files exist."""
+    _touch(tmp_path / "batting_scaler.joblib")
+    _touch(tmp_path / "batting_model.joblib")
+    _touch(tmp_path / "extras_model.joblib")
+
+    m = reload_app_with_dir(str(tmp_path))
+    from fastapi.testclient import TestClient
+
+    client = TestClient(m.app)
+    r = client.get("/artifacts/status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["legacy"]["batting"]["exists"] is True
+    assert data["legacy"]["bowling"]["exists"] is False
+    assert data["legacy"]["extras"]["exists"] is True
+    assert data["legacy"]["fielding"]["exists"] is False
+    assert data["legacy"]["win"]["exists"] is False

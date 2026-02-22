@@ -13,8 +13,8 @@ func TestStepToCommand(t *testing.T) {
 		step string
 		want string
 	}{
-		{"train_batting", "make train-batting"},
-		{"train_bowling", "make train-bowling"},
+		{"train_batting", "make train-batting CUTOFF=2025-01-01T00:00:00Z"},
+		{"train_bowling", "make train-bowling CUTOFF=2025-01-01T00:00:00Z"},
 		{"train_fielding", "make train-fielding CUTOFF=2025-01-01T00:00:00Z"},
 		{"train_extras", "make train-extras CUTOFF=2025-01-01T00:00:00Z"},
 		{"train_win", "make train-win CUTOFF=2025-01-01T00:00:00Z"},

@@ -12,9 +12,23 @@ type ExportsData = {
   formats?: Record<string, { files?: ExportFile[] } | undefined>;
 };
 type ArtifactUnit = { exists?: boolean; loaded?: boolean };
+const UNIFIED_ARTIFACT_KINDS = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
+type FormatArtifacts = {
+  batting?: ArtifactUnit;
+  bowling?: ArtifactUnit;
+  fielding?: ArtifactUnit;
+  extras?: ArtifactUnit;
+  win?: ArtifactUnit;
+};
 type ArtifactsData = {
-  formats?: Record<string, { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined>;
-  unified?: { batting?: ArtifactUnit; bowling?: ArtifactUnit };
+  formats?: Record<string, FormatArtifacts | undefined>;
+  unified?: {
+    batting?: ArtifactUnit;
+    bowling?: ArtifactUnit;
+    fielding?: ArtifactUnit;
+    extras?: ArtifactUnit;
+    win?: ArtifactUnit;
+  };
 };
 
 type Props = {
@@ -180,40 +194,63 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     </Box>
   );
 
-  const renderArtifactCell = (
+  const renderArtifactCellWithKinds = (
     label: string,
-    bat: ArtifactUnit,
-    bowl: ArtifactUnit,
+    row: FormatArtifacts | undefined,
     testId: string,
   ) => {
-    const ok = bat?.exists === true && bowl?.exists === true;
-    const state = ok ? 'ok' : 'error';
+    const units = UNIFIED_ARTIFACT_KINDS.map((k) => ({ kind: k, u: row?.[k] ?? {} }));
+    const allOk = units.every(({ u }) => u?.exists === true);
+    const anyOk = units.some(({ u }) => u?.exists === true);
+    const state = allOk ? 'ok' : anyOk ? 'stale' : 'error';
     return (
       <Box sx={cellSx(state)} data-testid={testId}>
         <Typography component="strong" variant="body2" fontWeight={600}>
           {label}
         </Typography>
         <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            {subCell(bat?.exists === true, bat?.loaded === true)}
-            <Typography
-              component="small"
-              variant="caption"
-              sx={{ fontSize: 10, color: 'text.secondary' }}
-            >
-              batting
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            {subCell(bowl?.exists === true, bowl?.loaded === true)}
-            <Typography
-              component="small"
-              variant="caption"
-              sx={{ fontSize: 10, color: 'text.secondary' }}
-            >
-              bowling
-            </Typography>
-          </Box>
+          {units.map(({ kind, u }) => (
+            <Box key={kind} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {subCell(u?.exists === true, u?.loaded === true)}
+              <Typography
+                component="small"
+                variant="caption"
+                sx={{ fontSize: 10, color: 'text.secondary' }}
+              >
+                {kind}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    );
+  };
+
+  const renderUnifiedArtifactCell = (artData: ArtifactsData) => {
+    const unified = artData?.unified;
+    if (!unified) return null;
+    const units = UNIFIED_ARTIFACT_KINDS.map((k) => ({ kind: k, u: unified[k] ?? {} }));
+    const allOk = units.every(({ u }) => u?.exists === true);
+    const anyOk = units.some(({ u }) => u?.exists === true);
+    const state = allOk ? 'ok' : anyOk ? 'stale' : 'error';
+    return (
+      <Box sx={cellSx(state)} data-testid="artifacts-unified">
+        <Typography component="strong" variant="body2" fontWeight={600}>
+          Unified (all)
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
+          {units.map(({ kind, u }) => (
+            <Box key={kind} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {subCell(u?.exists === true, u?.loaded === true)}
+              <Typography
+                component="small"
+                variant="caption"
+                sx={{ fontSize: 10, color: 'text.secondary' }}
+              >
+                {kind}
+              </Typography>
+            </Box>
+          ))}
         </Box>
       </Box>
     );
@@ -221,23 +258,11 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
 
   const renderArtifacts = () => {
     const artData = data as ArtifactsData;
-    const unified = artData?.unified;
     return (
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-        {unified &&
-          renderArtifactCell(
-            'Unified (all)',
-            unified.batting ?? {},
-            unified.bowling ?? {},
-            'artifacts-unified',
-          )}
+        {renderUnifiedArtifactCell(artData)}
         {FORMATS.map((f) =>
-          renderArtifactCell(
-            f,
-            artData?.formats?.[f]?.batting ?? {},
-            artData?.formats?.[f]?.bowling ?? {},
-            `artifacts-${f}`,
-          ),
+          renderArtifactCellWithKinds(f, artData?.formats?.[f], `artifacts-${f}`),
         )}
       </Box>
     );

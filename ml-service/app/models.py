@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # -------------------- Feature input models --------------------
 
@@ -140,6 +140,8 @@ class BacktestMatchAgg(BaseModel):
 
 
 class BacktestMatchResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     match: BacktestMatchAgg
     # Added to align with Go client expectations
     model_version: str
@@ -162,6 +164,77 @@ class BowlingPrediction(BaseModel):
     deliveries: float
     wickets_taken: float
     econ: float
+
+
+# -------------------- Extras / Win prediction (match-level, unified features) --------------------
+
+
+class ExtrasFeatures(BaseModel):
+    """Match-level features for extras model. Same families as batting/bowling/fielding."""
+
+    format_id: int = Field(default=0, ge=0, description="Format dimension id")
+    venue_id: int = Field(default=0, ge=0)
+    season_id: int = Field(default=0, ge=0)
+    temp: int = Field(default=0)
+    wind: int = Field(default=0, ge=0)
+    rain: int = Field(default=0, ge=0)
+    humidity: int = Field(default=0, ge=0)
+    cloud: int = Field(default=0, ge=0)
+    pressure: int = Field(default=0, ge=0)
+    viscosity: int = Field(default=0, ge=0, le=2)
+    bat_consistency_sum: float = Field(default=0.0, ge=0)
+    bowl_consistency_sum: float = Field(default=0.0, ge=0)
+    bat_form_sum: float = Field(default=0.0, ge=0)
+    bowl_form_sum: float = Field(default=0.0, ge=0)
+    format: Optional[str] = Field(
+        default=None, description="Format code for per-format model selection (e.g. T20, ODI)"
+    )
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+
+class ExtrasPrediction(BaseModel):
+    total_extras: float = Field(..., description="Predicted total extras for the match")
+
+
+class WinFeatures(BaseModel):
+    """Match-level features for win model. Same families as batting/bowling/fielding."""
+
+    format_id: int = Field(default=0, ge=0)
+    venue_id: int = Field(default=0, ge=0)
+    team1_opposition_id: int = Field(default=0, ge=0)
+    team2_opposition_id: int = Field(default=0, ge=0)
+    toss_winner_opposition_id: int = Field(default=0, ge=0)
+    temp: int = Field(default=0)
+    wind: int = Field(default=0, ge=0)
+    rain: int = Field(default=0, ge=0)
+    humidity: int = Field(default=0, ge=0)
+    cloud: int = Field(default=0, ge=0)
+    pressure: int = Field(default=0, ge=0)
+    viscosity: int = Field(default=0, ge=0, le=2)
+    team1_bat_consistency_sum: float = Field(default=0.0, ge=0)
+    team1_bowl_consistency_sum: float = Field(default=0.0, ge=0)
+    team2_bat_consistency_sum: float = Field(default=0.0, ge=0)
+    team2_bowl_consistency_sum: float = Field(default=0.0, ge=0)
+    team1_bat_form_sum: float = Field(default=0.0, ge=0)
+    team1_bowl_form_sum: float = Field(default=0.0, ge=0)
+    team2_bat_form_sum: float = Field(default=0.0, ge=0)
+    team2_bowl_form_sum: float = Field(default=0.0, ge=0)
+    format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+
+class WinPrediction(BaseModel):
+    team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
 
 
 # -------------------- Historical match backtest models --------------------
@@ -240,6 +313,8 @@ class BacktestMetrics(BaseModel):
 
 
 class HistoricalMatchBacktestResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     players: List[PlayerComparison]
     match: MatchComparison
     metrics: BacktestMetrics

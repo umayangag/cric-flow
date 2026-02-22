@@ -1,7 +1,8 @@
 {
 "inputs": {
 "go_app_export_dir": "../output/go-app",
-"training_data_fetch_timeout_sec": 3600
+"training_data_fetch_timeout_sec": 604800,
+"training_subprocess_timeout_sec": 604800
 },
 "outputs": {
 "artifacts_dir": "../output/ml-service"
@@ -31,19 +32,22 @@
 "n_estimators": 150,
 "max_depth": 10,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 },
 "extras": {
 "n_estimators": 100,
 "max_depth": 8,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 },
 "win": {
 "n_estimators": 100,
 "max_depth": 8,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 }
 },
 "tuning": {
@@ -51,7 +55,9 @@
 "n_iter": 25,
 "scoring": "neg_mean_absolute_error",
 "n_jobs": 1,
-"random_state": 42
+"random_state": 42,
+"algorithms": "all",
+"validation_method": "kfold"
 },
 "cv_splits": 5,
 "test_size": 0.2,

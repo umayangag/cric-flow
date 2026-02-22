@@ -167,18 +167,16 @@ train-batting:
 train-bowling:
 	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling_model
 
-# Train fielding/extras/win: CUTOFF=<RFC3339> and GO_APP_URL (default http://localhost:8080), or pass CSV.
+# Train fielding: same as batting/bowling — if CUTOFF set use API; else use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
 GO_APP_URL ?= http://localhost:8080
 CUTOFF ?=
 train-fielding:
-	@if [ -z "$(CUTOFF)" ] && [ -z "$(FIELDING_CSV)" ]; then \
-	  echo "Set CUTOFF=<RFC3339> (e.g. 2025-01-01T00:00:00Z) and optionally GO_APP_URL=, or set FIELDING_CSV=<path>. Example: make train-fielding CUTOFF=2025-01-01T00:00:00Z"; \
-	  exit 1; \
-	fi
 	@if [ -n "$(FIELDING_CSV)" ]; then \
 	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding --csv "$(FIELDING_CSV)"; \
-	else \
+	elif [ -n "$(CUTOFF)" ]; then \
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
+	else \
+	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding; \
 	fi
 
 train-extras:
@@ -203,7 +201,7 @@ train-win:
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi
 
-# Train batting + bowling (from exported CSVs). Use train-fielding for fielding (requires API or FIELDING_CSV).
+# Train batting + bowling (from exported CSVs). Fielding: same — export then make train-fielding (or set CUTOFF for API).
 train-batting-bowling: train-batting train-bowling
 
 # Train all models (batting, bowling, fielding, extras, win). For fielding/extras/win set CUTOFF= and GO_APP_URL= if using API.
@@ -212,12 +210,15 @@ train-models: train-batting train-bowling train-fielding train-extras train-win
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
 # When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
+# Options: ALGORITHMS=rf,gb VALIDATION_METHOD=walk_forward
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+ALGORITHMS ?=
+VALIDATION_METHOD ?=
 # CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",)
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",)
 
 # Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
@@ -614,7 +615,7 @@ help:
 	@echo "[ML training — precompute → export-dataset → train]"
 	@echo "  train-batting      Train batting model (from exported CSVs)"
 	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding     Train fielding (CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
+	@echo "  train-fielding     Train fielding (from export CSV, or CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
 	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
 	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
 	@echo "  train-batting-bowling  Train batting + bowling"

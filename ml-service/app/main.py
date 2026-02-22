@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import os
 import sys
 import threading
@@ -15,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
-from .artifacts import BAT_MODELS, BOWL_MODELS, FIELD_MODELS
+from .artifacts import BAT_MODELS, BOWL_MODELS, EXTRAS_MODELS, FIELD_MODELS, WIN_MODELS
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_service import (
@@ -31,6 +32,7 @@ from .errors import error_payload
 from .feature_config import get_feature_names
 from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
+from .model_metadata import get_model_metadata
 from .models import (
     BacktestMatchResponse,
     BacktestPlayerPred,
@@ -40,7 +42,11 @@ from .models import (
     BattingPrediction,
     BowlingFeatures,
     BowlingPrediction,
+    ExtrasFeatures,
+    ExtrasPrediction,
     HistoricalMatchBacktestRequest,
+    WinFeatures,
+    WinPrediction,
 )
 from .train_on_the_fly import train_on_the_fly_cached
 
@@ -48,6 +54,14 @@ try:
     from ml.config import get_prediction_defaults
 except ImportError:
     get_prediction_defaults = None
+try:
+    from ml.train_extras import EXTRAS_FEATURE_COLS
+except ImportError:
+    EXTRAS_FEATURE_COLS = []
+try:
+    from ml.train_win import WIN_FEATURE_COLS
+except ImportError:
+    WIN_FEATURE_COLS = []
 
 
 @asynccontextmanager
@@ -118,6 +132,37 @@ def _install_crash_logging() -> None:
 _install_crash_logging()
 
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
+ADMIN_API_KEY = (os.environ.get("ADMIN_API_KEY") or "").strip()
+
+# Max concurrent training jobs (admin train); prevents DoS via many concurrent requests
+MAX_CONCURRENT_TRAINING_JOBS = max(1, int(os.environ.get("MAX_CONCURRENT_TRAINING_JOBS", "1")))
+_training_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_training_semaphore() -> asyncio.Semaphore:
+    global _training_semaphore
+    if _training_semaphore is None:
+        _training_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRAINING_JOBS)
+    return _training_semaphore
+
+
+def _verify_admin_api_key(request: Request) -> None:
+    """If ADMIN_API_KEY is set, require X-API-Key header. Raises HTTPException 401 if invalid."""
+    if not ADMIN_API_KEY:
+        return
+    client_key = (request.headers.get("X-API-Key") or "").strip()
+    if not hmac.compare_digest(client_key.encode("utf-8"), ADMIN_API_KEY.encode("utf-8")):
+        raise HTTPException(
+            status_code=401,
+            detail=error_payload(
+                code="UNAUTHORIZED",
+                message="Invalid or missing API key",
+                hint="Set X-API-Key header to ADMIN_API_KEY value.",
+            ),
+        )
+
+
+MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
@@ -626,86 +671,204 @@ def _find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[s
     Preferred names: batting_<FORMAT>.joblib / bowling_<FORMAT>.joblib.
     Fallback: files containing tokens 'bat' or 'bowl' and the format code.
     """
+    hit = _find_per_format_artifact(models_dir, fmt, "batting" if batting else "bowling")
+    return hit
+
+
+def _find_per_format_artifact(
+    models_dir: str,
+    fmt: str,
+    kind: str,
+) -> Optional[Tuple[str, float]]:
+    """Return (path, mtime) for per-format artifact of given kind.
+    kind in: batting, bowling, fielding, extras, win.
+    Batting/bowling/fielding require both scaler and model (e.g. batting_scaler_T20.joblib + batting_model_T20.joblib).
+    """
     try:
         entries = os.listdir(models_dir)
     except OSError as e:
-        logger.debug("artifacts_status.find_artifact.listdir_failed", models_dir=models_dir, fmt=fmt, error=str(e))
+        logger.debug(
+            "artifacts_status.find_per_format.listdir_failed",
+            models_dir=models_dir,
+            fmt=fmt,
+            kind=kind,
+            error=str(e),
+        )
         return None
-    fmt_lower = fmt.lower()
-    prefer_prefix = "batting_" if batting else "bowling_"
-    token = "bat" if batting else "bowl"
-    preferred_name = f"{prefer_prefix}{fmt}.joblib"
-    # First pass: exact preferred name
-    for name in entries:
-        if name == preferred_name:
-            path = os.path.join(models_dir, name)
-            try:
-                st = os.stat(path)
-                if not os.path.isdir(path) and name.lower().endswith(".joblib"):
-                    return path, st.st_mtime
-            except Exception:
-                return None
-    # Second pass: tolerant match
-    for name in entries:
-        lower = name.lower()
-        if lower.endswith(".joblib") and (token in lower) and (fmt_lower in lower):
-            path = os.path.join(models_dir, name)
-            try:
-                st = os.stat(path)
-                if not os.path.isdir(path):
-                    return path, st.st_mtime
-            except Exception:
-                continue
-    return None
+    if kind == "batting":
+        scaler_name = f"batting_scaler_{fmt}.joblib"
+        model_name = f"batting_model_{fmt}.joblib"
+    elif kind == "bowling":
+        scaler_name = f"bowling_scaler_{fmt}.joblib"
+        model_name = f"bowling_model_{fmt}.joblib"
+    elif kind == "fielding":
+        scaler_name = f"fielding_scaler_{fmt}.joblib"
+        model_name = f"fielding_model_{fmt}.joblib"
+    elif kind == "extras":
+        model_name = f"extras_model_{fmt}.joblib"
+        scaler_name = None
+    elif kind == "win":
+        model_name = f"win_model_{fmt}.joblib"
+        scaler_name = None
+    else:
+        return None
+    if scaler_name and scaler_name not in entries:
+        return None
+    if model_name not in entries:
+        return None
+    path = os.path.join(models_dir, model_name)
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return None
+        return path, st.st_mtime
+    except Exception:
+        return None
+
+
+def _find_legacy_artifact(models_dir: str, kind: str) -> Optional[Tuple[str, float]]:
+    """Return (path, mtime) for legacy (unified) artifact if present.
+    kind in: batting, bowling, fielding, extras, win.
+    Batting/bowling/fielding require both scaler and model; path/mtime from model file.
+    """
+    try:
+        entries = os.listdir(models_dir)
+    except OSError as e:
+        logger.debug(
+            "artifacts_status.find_legacy.listdir_failed",
+            models_dir=models_dir,
+            kind=kind,
+            error=str(e),
+        )
+        return None
+    if kind == "batting":
+        if "batting_scaler.joblib" not in entries or "batting_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "batting_model.joblib")
+    elif kind == "bowling":
+        if "bowling_scaler.joblib" not in entries or "bowling_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "bowling_model.joblib")
+    elif kind == "fielding":
+        if "fielding_scaler.joblib" not in entries or "fielding_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "fielding_model.joblib")
+    elif kind == "extras":
+        if "extras_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "extras_model.joblib")
+    elif kind == "win":
+        if "win_model.joblib" not in entries:
+            return None
+        path = os.path.join(models_dir, "win_model.joblib")
+    else:
+        return None
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return None
+        return path, st.st_mtime
+    except Exception:
+        return None
+
+
+def _legacy_status_obj(
+    models_dir: str,
+    kind: str,
+    loaded: bool,
+) -> Dict[str, Any]:
+    """Build { exists, path?, modified?, loaded } for one legacy model kind."""
+    out: Dict[str, Any] = {"exists": False}
+    hit = _find_legacy_artifact(models_dir, kind)
+    if hit is not None:
+        p, mt = hit
+        out["exists"] = True
+        out["path"] = p
+        out["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+    out["loaded"] = loaded
+    return out
 
 
 @app.get("/artifacts/status")
 async def artifacts_status():
-    """Report presence and (optionally) loaded state of artifacts per format.
+    """Report presence and (optionally) loaded state of artifacts per format and legacy (unified).
 
     Shape:
     {
       "timestamp": ISO8601,
       "root": MODELS_DIR,
       "formats": {
-        "ODI": {"batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool?}, "bowling": {...}},
+        "ODI": {
+          "batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool?},
+          "bowling": {...},
+          "fielding": {...},
+          "extras": {...},
+          "win": {...}
+        },
         ...
+      },
+      "legacy": {
+        "batting": {"exists": bool, "path": str?, "modified": str?, "loaded": bool},
+        "bowling": {...},
+        "fielding": {...},
+        "extras": {...},
+        "win": {...}
       }
     }
     """
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     root = MODELS_DIR
-    formats: Dict[str, Dict[str, Any]] = {}
+    artifact_kinds = ["batting", "bowling", "fielding", "extras", "win"]
+    loaded_registries: Dict[str, Any] = {
+        "batting": BAT_MODELS,
+        "bowling": BOWL_MODELS,
+        "fielding": FIELD_MODELS,
+        "extras": EXTRAS_MODELS,
+        "win": WIN_MODELS,
+    }
+    formats_out: Dict[str, Dict[str, Any]] = {}
     for fmt in _FORMATS:
-        b_obj: Dict[str, Any] = {"exists": False}
-        bow_obj: Dict[str, Any] = {"exists": False}
-        # Filesystem presence
-        b_hit = _find_artifact(root, fmt, batting=True)
-        if b_hit is not None:
-            p, mt = b_hit
-            b_obj["exists"] = True
-            b_obj["path"] = p
-            b_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
-        w_hit = _find_artifact(root, fmt, batting=False)
-        if w_hit is not None:
-            p, mt = w_hit
-            bow_obj["exists"] = True
-            bow_obj["path"] = p
-            bow_obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
-        # Loaded state (best-effort)
-        try:
-            if fmt in BAT_MODELS:
-                b_obj["loaded"] = True
-        except Exception as e:
-            logger.debug("artifacts_status.batting_loaded_check", fmt=fmt, error=str(e))
-        try:
-            if fmt in BOWL_MODELS:
-                bow_obj["loaded"] = True
-        except Exception as e:
-            logger.debug("artifacts_status.bowling_loaded_check", fmt=fmt, error=str(e))
-        formats[fmt] = {"batting": b_obj, "bowling": bow_obj}
+        row: Dict[str, Dict[str, Any]] = {}
+        for kind in artifact_kinds:
+            obj: Dict[str, Any] = {"exists": False}
+            hit = _find_per_format_artifact(root, fmt, kind)
+            if hit is not None:
+                p, mt = hit
+                obj["exists"] = True
+                obj["path"] = p
+                obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
+            try:
+                reg = loaded_registries.get(kind)
+                if reg is not None and fmt in reg:
+                    obj["loaded"] = True
+            except Exception as e:
+                logger.debug("artifacts_status.loaded_check", fmt=fmt, kind=kind, error=str(e))
+            row[kind] = obj
+        formats_out[fmt] = row
+    formats = formats_out
 
-    return {"timestamp": ts, "root": root, "formats": formats}
+    legacy: Dict[str, Dict[str, Any]] = {
+        "batting": _legacy_status_obj(root, "batting", "_LEGACY_" in BAT_MODELS),
+        "bowling": _legacy_status_obj(root, "bowling", "_LEGACY_" in BOWL_MODELS),
+        "fielding": _legacy_status_obj(root, "fielding", "_LEGACY_" in FIELD_MODELS),
+        "extras": _legacy_status_obj(root, "extras", "_LEGACY_" in EXTRAS_MODELS),
+        "win": _legacy_status_obj(root, "win", "_LEGACY_" in WIN_MODELS),
+    }
+
+    return {"timestamp": ts, "root": root, "formats": formats, "legacy": legacy}
+
+
+@app.get("/model-metadata")
+async def model_metadata():
+    """Return model metadata (features, outputs, level, artifacts pattern) from the source of truth.
+
+    Used by the Workbench UI so it stays in sync with feature_vectors.json and training scripts.
+    """
+    try:
+        return get_model_metadata()
+    except Exception as e:
+        logger.exception("model_metadata.error", error=str(e))
+        raise HTTPException(status_code=500, detail={"code": "METADATA_ERROR", "message": str(e)}) from e
 
 
 @app.post("/predict/batting", response_model=List[BattingPrediction])
@@ -885,10 +1048,139 @@ async def predict_bowling(features: List[BowlingFeatures]):
         )
 
 
+def _extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
+    """Build feature vector in EXTRAS_FEATURE_COLS order (exclude 'format' key)."""
+    if not EXTRAS_FEATURE_COLS:
+        return np.zeros(0)
+    d = f.model_dump()
+    return np.array([float(d.get(c, 0)) for c in EXTRAS_FEATURE_COLS], dtype=float)
+
+
+def _win_feature_vector(f: WinFeatures) -> np.ndarray:
+    """Build feature vector in WIN_FEATURE_COLS order (exclude 'format' key)."""
+    if not WIN_FEATURE_COLS:
+        return np.zeros(0)
+    d = f.model_dump()
+    return np.array([float(d.get(c, 0)) for c in WIN_FEATURE_COLS], dtype=float)
+
+
+@app.post("/predict/extras", response_model=List[ExtrasPrediction])
+async def predict_extras(features: List[ExtrasFeatures]):
+    """Predict total extras per match using the loaded extras model (unified features)."""
+    if not features:
+        logger.info("predict.extras.rejected", reason="empty_batch")
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one ExtrasFeatures row.",
+            ),
+        )
+    if len(features) > MAX_PREDICT_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="BATCH_TOO_LARGE",
+                message="Batch size exceeds limit",
+                hint=f"Send at most {MAX_PREDICT_BATCH_SIZE} features per request.",
+            ),
+        )
+    fmt = (features[0].format or "").strip().upper()
+    model = EXTRAS_MODELS.get(fmt) if fmt else EXTRAS_MODELS.get("_LEGACY_")
+    if not model:
+        available = [k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]
+        logger.warning("predict.extras.model_not_loaded", format=fmt or "LEGACY", available=available)
+        raise HTTPException(
+            status_code=404,
+            detail=_error_payload(
+                code="MODEL_NOT_LOADED",
+                message="Extras model not loaded",
+                hint="Train extras artifacts (e.g. make train-extras) and ensure format matches or use legacy.",
+                available=available,
+            ),
+        )
+    X = np.array([_extras_feature_vector(f) for f in features], dtype=float)
+    if X.size == 0:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(code="FEATURE_ORDER_EMPTY", message="EXTRAS_FEATURE_COLS not available"),
+        )
+    try:
+        y = model.predict(X)
+        y_flat = np.asarray(y).ravel()
+        return [ExtrasPrediction(total_extras=float(v)) for v in y_flat]
+    except Exception as exc:
+        logger.exception("predict.extras.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(code="PREDICT_FAILED", message="Extras prediction failed", hint="See server logs"),
+        )
+
+
+@app.post("/predict/win", response_model=List[WinPrediction])
+async def predict_win(features: List[WinFeatures]):
+    """Predict team1 win probability per match using the loaded win model (unified features)."""
+    if not features:
+        logger.info("predict.win.rejected", reason="empty_batch")
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="EMPTY_BATCH",
+                message="Empty features list",
+                hint="Send at least one WinFeatures row.",
+            ),
+        )
+    if len(features) > MAX_PREDICT_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="BATCH_TOO_LARGE",
+                message="Batch size exceeds limit",
+                hint=f"Send at most {MAX_PREDICT_BATCH_SIZE} features per request.",
+            ),
+        )
+    fmt = (features[0].format or "").strip().upper()
+    model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
+    if not model:
+        available = [k for k in WIN_MODELS.keys() if k != "_LEGACY_"]
+        logger.warning("predict.win.model_not_loaded", format=fmt or "LEGACY", available=available)
+        raise HTTPException(
+            status_code=404,
+            detail=_error_payload(
+                code="MODEL_NOT_LOADED",
+                message="Win model not loaded",
+                hint="Train win artifacts (e.g. make train-win) and ensure format matches or use legacy.",
+                available=available,
+            ),
+        )
+    X = np.array([_win_feature_vector(f) for f in features], dtype=float)
+    if X.size == 0:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_FEATURE_COLS not available"),
+        )
+    try:
+        proba = model.predict_proba(X)
+        if proba.shape[1] > 1:
+            # class 1 = team1 wins
+            p_team1 = proba[:, 1]
+        else:
+            # Single-class training data: check model.classes_ to interpret probability
+            p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
+        return [WinPrediction(team1_win_probability=float(p)) for p in p_team1]
+    except Exception as exc:
+        logger.exception("predict.win.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(code="PREDICT_FAILED", message="Win prediction failed", hint="See server logs"),
+        )
+
+
 @app.post("/admin/reload")
-async def admin_reload():
+async def admin_reload(request: Request):
     """Rescan the models directory and reload artifacts.
-    Guarded by ENABLE_HOT_RELOAD env flag to avoid accidental reloads in prod.
+    Guarded by ENABLE_HOT_RELOAD env flag. If ADMIN_API_KEY is set, requires X-API-Key header.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.reload.rejected", reason="disabled")
@@ -900,6 +1192,7 @@ async def admin_reload():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload.",
             ),
         )
+    _verify_admin_api_key(request)
     logger.info("admin.reload.start", models_dir=MODELS_DIR)
     try:
         summary = _reload_artifacts()
@@ -925,17 +1218,20 @@ def _ml_service_root() -> str:
 
 
 def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None) -> None:
-    """Run a training module as subprocess; raises on non-zero exit or timeout (1 hour).
+    """Run a training module as subprocess; raises on non-zero exit or timeout.
+    Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     """
     import subprocess
+
+    from ml.config import get_training_subprocess_timeout_sec
 
     root = _ml_service_root()
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
-    timeout_sec = int(os.environ.get("TRAINING_SUBPROCESS_TIMEOUT_SEC", "3600"))
+    timeout_sec = get_training_subprocess_timeout_sec()
     try:
         proc = subprocess.run(
             cmd,
@@ -960,11 +1256,10 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
 
 
 @app.post("/admin/train/batting")
-async def admin_train_batting():
-    """Run batting model training per format (TEST, ODI, T20I, T20) for better accuracy.
-    Reads from GO_APP_OUTPUT_DIR, writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
-    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
-    deployment layer (e.g. reverse proxy or network policy).
+async def admin_train_batting(request: Request, cutoff: str = ""):
+    """Run batting model training per format (TEST, ODI, T20I, T20).
+    If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="batting", reason="disabled")
@@ -976,9 +1271,19 @@ async def admin_train_batting():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="batting", per_format=True)
+    _verify_admin_api_key(request)
+    cutoff = (cutoff or "").strip()
+    use_api = bool(cutoff)
+    if use_api:
+        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
+        logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
+    else:
+        extra = ["--all-formats"]
+        logger.info("admin.train.start", step="batting", per_format=True, from_api=False)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", ["--all-formats"])
+        async with _get_training_semaphore():
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
         logger.info("admin.train.success", step="batting")
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
@@ -993,11 +1298,10 @@ async def admin_train_batting():
 
 
 @app.post("/admin/train/bowling")
-async def admin_train_bowling():
-    """Run bowling model training per format (TEST, ODI, T20I, T20) for better accuracy.
-    Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
-    When ENABLE_HOT_RELOAD is on, protect this endpoint with authentication at the
-    deployment layer (e.g. reverse proxy or network policy).
+async def admin_train_bowling(request: Request, cutoff: str = ""):
+    """Run bowling model training per format (TEST, ODI, T20I, T20).
+    If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="bowling", reason="disabled")
@@ -1009,9 +1313,19 @@ async def admin_train_bowling():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
-    logger.info("admin.train.start", step="bowling", per_format=True)
+    _verify_admin_api_key(request)
+    cutoff = (cutoff or "").strip()
+    use_api = bool(cutoff)
+    if use_api:
+        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
+        logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
+    else:
+        extra = ["--all-formats"]
+        logger.info("admin.train.start", step="bowling", per_format=True, from_api=False)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", ["--all-formats"])
+        async with _get_training_semaphore():
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
         logger.info("admin.train.success", step="bowling")
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:
@@ -1026,8 +1340,9 @@ async def admin_train_bowling():
 
 
 @app.post("/admin/train/fielding")
-async def admin_train_fielding(cutoff: str = ""):
-    """Run fielding model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+async def admin_train_fielding(request: Request, cutoff: str = ""):
+    """Run fielding model training. Same pipeline as batting/bowling: optional cutoff.
+    If cutoff provided: fetch from go-app training-data API. If omitted: use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
     if not ENABLE_HOT_RELOAD:
@@ -1040,24 +1355,22 @@ async def admin_train_fielding(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
-    if not cutoff:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CUTOFF_REQUIRED",
-                message="Fielding training requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
-            ),
-        )
-    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
-    logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
+    if cutoff:
+        go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+        args = ["--cutoff", cutoff, "--go-app-url", go_app_url]
+        logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
+    else:
+        args = []
+        logger.info("admin.train.start", step="fielding", source="csv")
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_fielding",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_fielding",
+                args,
+            )
         logger.info("admin.train.success", step="fielding")
         return {"status": "ok", "step": "fielding"}
     except ValueError as e:
@@ -1072,7 +1385,7 @@ async def admin_train_fielding(cutoff: str = ""):
 
 
 @app.post("/admin/train/extras")
-async def admin_train_extras(cutoff: str = ""):
+async def admin_train_extras(request: Request, cutoff: str = ""):
     """Run extras model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
@@ -1086,6 +1399,7 @@ async def admin_train_extras(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1099,11 +1413,12 @@ async def admin_train_extras(cutoff: str = ""):
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_extras",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_extras",
+                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            )
         logger.info("admin.train.success", step="extras")
         return {"status": "ok", "step": "extras"}
     except ValueError as e:
@@ -1118,7 +1433,7 @@ async def admin_train_extras(cutoff: str = ""):
 
 
 @app.post("/admin/train/win")
-async def admin_train_win(cutoff: str = ""):
+async def admin_train_win(request: Request, cutoff: str = ""):
     """Run win model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
@@ -1132,6 +1447,7 @@ async def admin_train_win(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1145,11 +1461,12 @@ async def admin_train_win(cutoff: str = ""):
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_win",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_win",
+                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            )
         logger.info("admin.train.success", step="win")
         return {"status": "ok", "step": "win"}
     except ValueError as e:

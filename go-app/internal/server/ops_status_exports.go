@@ -70,7 +70,8 @@ func buildExportsSection(root string) map[string]any {
 		}
 		if exists {
 			entry["modified"] = info.ModTime().UTC().Format(time.RFC3339)
-			if rows, err := countCSVRowsCapped(full, 10000); err == nil {
+			// Cap at 100k to balance dashboard responsiveness with per-format variation visibility.
+			if rows, err := countCSVRowsCapped(full, 100000); err == nil {
 				entry["rows"] = rows
 			}
 		}
@@ -93,7 +94,20 @@ func buildExportsSection(root string) map[string]any {
 		}
 	}
 
-	// Next, scan for per-format files
+	// Next, scan for per-format files. Match format as a token (e.g. _ODI.csv or _T20_) so
+	// that "T20" does not match "T20I" (which would incorrectly attach T20I files to T20).
+	fileMatchesFormat := func(lowerName, format string) bool {
+		fLower := strings.ToLower(format)
+		// Suffix like batting_encoded_ODI.csv or batting_encoded_T20I.csv
+		if strings.HasSuffix(lowerName, "_"+fLower+".csv") {
+			return true
+		}
+		// Token in middle like my_batting_ODI_2020.csv
+		if strings.Contains(lowerName, "_"+fLower+"_") {
+			return true
+		}
+		return false
+	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -114,7 +128,7 @@ func buildExportsSection(root string) map[string]any {
 			continue
 		}
 		for _, f := range formats {
-			if strings.Contains(strings.ToLower(name), strings.ToLower(f)) {
+			if fileMatchesFormat(lower, f) {
 				appendFile(f, name)
 			}
 		}

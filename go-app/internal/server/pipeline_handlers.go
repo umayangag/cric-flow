@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -68,19 +69,19 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		a.runExportHandler(w, r)
 		return
 	case "train_batting":
-		a.makeMLTrainHandler("train_batting", "train-batting", "batting", false)(w, r)
+		a.makeMLTrainHandler("train_batting", "train-batting", "batting")(w, r)
 		return
 	case "train_bowling":
-		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling", false)(w, r)
+		a.makeMLTrainHandler("train_bowling", "train-bowling", "bowling")(w, r)
 		return
 	case "train_fielding":
-		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding", true)(w, r)
+		a.makeMLTrainHandler("train_fielding", "train-fielding", "fielding")(w, r)
 		return
 	case "train_extras":
-		a.makeMLTrainHandler("train_extras", "train-extras", "extras", true)(w, r)
+		a.makeMLTrainHandler("train_extras", "train-extras", "extras")(w, r)
 		return
 	case "train_win":
-		a.makeMLTrainHandler("train_win", "train-win", "win", true)(w, r)
+		a.makeMLTrainHandler("train_win", "train-win", "win")(w, r)
 		return
 	case "train_combination_meta":
 		// Run from project root: make train-combination-meta CSV=<path> OUT=<path>
@@ -113,9 +114,9 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 func stepToCommand(step string) string {
 	switch step {
 	case "train_batting":
-		return "make train-batting"
+		return "make train-batting CUTOFF=2025-01-01T00:00:00Z"
 	case "train_bowling":
-		return "make train-bowling"
+		return "make train-bowling CUTOFF=2025-01-01T00:00:00Z"
 	case "train_fielding":
 		return "make train-fielding CUTOFF=2025-01-01T00:00:00Z"
 	case "train_extras":
@@ -153,12 +154,13 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 			a.JobContext(),
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
-			config.PipelineTimeout(),
+			config.ExportTimeout(),
 			func(ctx context.Context) (any, error) {
 				repo := &exportqueries.Repo{}
 				bat := exportsvc.NewBattingService(repo)
 				bow := exportsvc.NewBowlingService(repo)
-				runner := expcmd.NewRunnerWithServices(bat, bow)
+				field := exportsvc.NewFieldingService(repo)
+				runner := expcmd.NewRunnerWithServices(bat, bow, field)
 				err := runner.Run(ctx, opts)
 				return map[string]any{"out_dir": outDir}, err
 			},
@@ -188,12 +190,18 @@ func mlServiceBaseURL() string {
 }
 
 // callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
+// When ml-service ADMIN_API_KEY is set, send X-API-Key (use ML_SERVICE_ADMIN_API_KEY or API_KEY so it matches).
 func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
 	base := mlServiceBaseURL()
 	url := base + "/admin/train/" + step + querySuffix
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
+	}
+	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
+	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
 	}
 	client := &http.Client{Timeout: trainStepTimeout()}
 	resp, err := client.Do(req)
@@ -202,6 +210,11 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		msg := string(body)
+		if msg != "" {
+			return fmt.Errorf("ml-service %s: %s — %s", url, resp.Status, msg)
+		}
 		return fmt.Errorf("ml-service %s: %s", url, resp.Status)
 	}
 	return nil
@@ -212,18 +225,15 @@ func defaultCutoff() string {
 }
 
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
-func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string, needsCutoff bool) http.HandlerFunc {
+func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		args := map[string]any{"step": stepID}
-		querySuffix := ""
-		if needsCutoff {
-			cutoff := r.URL.Query().Get("cutoff")
-			if cutoff == "" {
-				cutoff = defaultCutoff()
-			}
-			args["cutoff"] = cutoff
-			querySuffix = "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+		cutoff := r.URL.Query().Get("cutoff")
+		if cutoff == "" {
+			cutoff = defaultCutoff()
 		}
+		args["cutoff"] = cutoff
+		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 
 		go func() {
 			slog.Info(command+" started", slog.Any("args", args))

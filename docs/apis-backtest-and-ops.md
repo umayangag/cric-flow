@@ -14,7 +14,9 @@ This document covers API contracts (Go and ML), backtesting predictions on playe
 - **GET /health** — 200 `{ "status": "ok" }`
 - **POST /predict/batting** — Body: BattingFeatures (consistency, form, temp, wind, rain, humidity, cloud, pressure, viscosity, inning, session, toss, venue, opposition, season, player_name, format). Response: runs_scored, balls_faced, fours_scored, sixes_scored, batting_position, strike_rate. Constraints: batting_consistency ≥ 0, batting_inning ∈ {1,2}, batting_session ∈ {1,2,3}, format optional.
 - **POST /predict/bowling** — Body: BowlingFeatures (bowling_* names, batting_inning, bowling_session, toss, bowling_venue, bowling_opposition, season, player_name, format). Response: runs_conceded, deliveries, wickets_taken, econ.
-- **POST /predict-win** (or **POST /predict/win** alias) — Body: array of PlayerPrediction (no winning_probability). Response: array with winning_probability, or wrapper with `players` and `team_win_probability` (mean of player probs).
+- **POST /predict/extras** — Body: array of **ExtrasFeatures** (format_id, venue_id, season_id, temp, wind, rain, humidity, cloud, pressure, viscosity, bat_consistency_sum, bowl_consistency_sum, bat_form_sum, bowl_form_sum; optional `format` for per-format model). Response: array of `{ "total_extras": float }`. Uses the same unified feature set as extras training.
+- **POST /predict/win** — Body: array of **WinFeatures** (format_id, venue_id, team1_opposition_id, team2_opposition_id, toss_winner_opposition_id, weather columns, team1/team2 bat/bowl consistency and form sums; optional `format`). Response: array of `{ "team1_win_probability": float }`. Uses the same unified feature set as win training.
+- **POST /predict-win** (legacy) — Body: array of PlayerPrediction (no winning_probability). Response: array with winning_probability. Distinct from **POST /predict/win** above (match-level WinFeatures).
 
 ### Go API (mux) — base `http://localhost:8080`
 

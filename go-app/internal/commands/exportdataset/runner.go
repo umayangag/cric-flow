@@ -35,18 +35,26 @@ type BowlingExporter interface {
 	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
 
+// FieldingExporter is the minimal interface Runner needs for fielding exports (unified + per-format).
+type FieldingExporter interface {
+	ExportUnified(ctx context.Context, w io.Writer) error
+	ExportFormat(ctx context.Context, format string, w io.Writer) error
+}
+
 // Runner orchestrates the export-dataset workflow behind interfaces for testability.
 type Runner struct {
-	Bat BattingExporter
-	Bow BowlingExporter
+	Bat   BattingExporter
+	Bow   BowlingExporter
+	Field FieldingExporter
 }
 
 // NewRunner constructs a Runner with only filesystem dependency (backward compatible during migration).
 func NewRunner() *Runner { return &Runner{} }
 
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
-func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter) *Runner {
-	return &Runner{Bat: bat, Bow: bow}
+// Field can be nil to skip fielding export (e.g. backward compatibility).
+func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter, field FieldingExporter) *Runner {
+	return &Runner{Bat: bat, Bow: bow, Field: field}
 }
 
 // Run executes the export based on CLI options provided by the caller.
@@ -85,25 +93,38 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 	if r.Bat != nil && r.Bow != nil {
 		// Inject the exporter sequence flag into context so lower layers can gate joins.
 		ctx = exq.WithSeqEnabled(ctx, opts.EnableSeq)
+		// Use parent context for export calls so one failing goroutine does not cancel the
+		// others (errgroup cancels its context on first error, which would cause cascading
+		// "context canceled" in all in-flight exports).
+		parentCtx := ctx
 		formats := ResolveFormats(opts, config.Load())
 
-		g, ctx := errgroup.WithContext(ctx)
+		var g errgroup.Group
 
 		if opts.Unified {
 			g.Go(func() error {
 				return r.writeUsing(
 					opts.OutDir,
 					"batting_encoded_all.csv",
-					func(w io.Writer) error { return r.Bat.ExportUnified(ctx, w) },
+					func(w io.Writer) error { return r.Bat.ExportUnified(parentCtx, w) },
 				)
 			})
 			g.Go(func() error {
 				return r.writeUsing(
 					opts.OutDir,
 					"bowling_encoded_all.csv",
-					func(w io.Writer) error { return r.Bow.ExportUnified(ctx, w) },
+					func(w io.Writer) error { return r.Bow.ExportUnified(parentCtx, w) },
 				)
 			})
+			if r.Field != nil {
+				g.Go(func() error {
+					return r.writeUsing(
+						opts.OutDir,
+						"fielding_encoded_all.csv",
+						func(w io.Writer) error { return r.Field.ExportUnified(parentCtx, w) },
+					)
+				})
+			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
 				return err
@@ -116,21 +137,28 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				}
 				f := f
 				g.Go(func() error {
-					bat := fmt.Sprintf("batting_encoded_%s.csv", f)
 					return r.writeUsing(
 						opts.OutDir,
-						bat,
-						func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) },
+						fmt.Sprintf("batting_encoded_%s.csv", f),
+						func(w io.Writer) error { return r.Bat.ExportFormat(parentCtx, f, w) },
 					)
 				})
 				g.Go(func() error {
-					bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
 					return r.writeUsing(
 						opts.OutDir,
-						bow,
-						func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) },
+						fmt.Sprintf("bowling_encoded_%s.csv", f),
+						func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 					)
 				})
+				if r.Field != nil {
+					g.Go(func() error {
+						return r.writeUsing(
+							opts.OutDir,
+							fmt.Sprintf("fielding_encoded_%s.csv", f),
+							func(w io.Writer) error { return r.Field.ExportFormat(parentCtx, f, w) },
+						)
+					})
+				}
 			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))
@@ -150,14 +178,14 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					return r.writeUsing(
 						opts.OutDir,
 						"batting_encoded.csv",
-						func(w io.Writer) error { return r.Bat.ExportLegacy(ctx, w) },
+						func(w io.Writer) error { return r.Bat.ExportLegacy(parentCtx, w) },
 					)
 				})
 				g.Go(func() error {
 					return r.writeUsing(
 						opts.OutDir,
 						"bowling_encoded.csv",
-						func(w io.Writer) error { return r.Bow.ExportLegacy(ctx, w) },
+						func(w io.Writer) error { return r.Bow.ExportLegacy(parentCtx, w) },
 					)
 				})
 				continue
@@ -167,31 +195,35 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 			}
 			if opts.InferenceOnly {
 				g.Go(func() error {
-					bat := fmt.Sprintf("batting_infer_%s.csv", f)
 					return r.writeUsing(
 						opts.OutDir,
-						bat,
-						func(w io.Writer) error { return r.Bat.ExportInference(ctx, f, w) },
+						fmt.Sprintf("batting_infer_%s.csv", f),
+						func(w io.Writer) error { return r.Bat.ExportInference(parentCtx, f, w) },
 					)
 				})
 				g.Go(func() error {
-					bow := fmt.Sprintf("bowling_infer_%s.csv", f)
 					return r.writeUsing(
 						opts.OutDir,
-						bow,
-						func(w io.Writer) error { return r.Bow.ExportInference(ctx, f, w) },
+						fmt.Sprintf("bowling_infer_%s.csv", f),
+						func(w io.Writer) error { return r.Bow.ExportInference(parentCtx, f, w) },
 					)
 				})
 				continue
 			}
 			// Per-format training exports (non-inference)
 			g.Go(func() error {
-				bat := fmt.Sprintf("batting_encoded_%s.csv", f)
-				return r.writeUsing(opts.OutDir, bat, func(w io.Writer) error { return r.Bat.ExportFormat(ctx, f, w) })
+				return r.writeUsing(
+					opts.OutDir,
+					fmt.Sprintf("batting_encoded_%s.csv", f),
+					func(w io.Writer) error { return r.Bat.ExportFormat(parentCtx, f, w) },
+				)
 			})
 			g.Go(func() error {
-				bow := fmt.Sprintf("bowling_encoded_%s.csv", f)
-				return r.writeUsing(opts.OutDir, bow, func(w io.Writer) error { return r.Bow.ExportFormat(ctx, f, w) })
+				return r.writeUsing(
+					opts.OutDir,
+					fmt.Sprintf("bowling_encoded_%s.csv", f),
+					func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
+				)
 			})
 		}
 		if err := g.Wait(); err != nil {

@@ -42,7 +42,7 @@ from sklearn.ensemble import (
     StackingRegressor,
 )
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -146,6 +146,27 @@ def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
 
 
+# Algorithm keys for filtering: rf, gb, quantile, stacked
+AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "quantile", "stacked"})
+
+
+def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42):
+    """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward."""
+    if n_samples < 2:
+        raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
+    # KFold requires n_splits <= n_samples and n_splits >= 2
+    kfold_splits = max(2, min(cv_splits, n_samples))
+    if validation_method == "walk_forward":
+        # TimeSeriesSplit requires n_samples >= n_splits + 1; fallback to KFold for tiny datasets
+        n_splits = min(cv_splits, max(2, n_samples // 3))
+        if n_samples < n_splits + 1 and n_samples >= 2:
+            return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
+        if n_samples < n_splits + 1:
+            return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
+        return TimeSeriesSplit(n_splits=n_splits)
+    return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
+
+
 def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
     """Convert config search_space dict to Pipeline param format (est__estimator__*)."""
     out = {"est__estimator__random_state": [random_state]}
@@ -192,9 +213,9 @@ def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, 
             "est__estimator__min_samples_leaf": [1, 2],
         }
 
-    candidates = [
-        ("RandomForestRegressor", RandomForestRegressor(), rf_params),
-        ("GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
+    candidates: List[Tuple[str, str, Any, Dict[str, Any]]] = [
+        ("rf", "RandomForestRegressor", RandomForestRegressor(), rf_params),
+        ("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
     ]
     # Add quantile (GBM with loss=quantile) for median/interval prediction
     try:
@@ -208,7 +229,9 @@ def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, 
             loss="quantile",
             alpha=quantile_level,
         )
-        candidates.append(("QuantileRegressor", qr, {"est__estimator__max_depth": [tp.get("max_depth", 12)]}))
+        candidates.append(
+            ("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [tp.get("max_depth", 12)]})
+        )
     except (ValueError, KeyError):
         pass
 
@@ -230,7 +253,9 @@ def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, 
             estimators=[("rf", rf), ("gb", gb)],
             final_estimator=Ridge(alpha=1.0, random_state=rs),
         )
-        candidates.append(("StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]}))
+        candidates.append(
+            ("stacked", "StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]})
+        )
     except (ValueError, KeyError):
         pass
     return candidates
@@ -266,7 +291,7 @@ def _to_pipeline_params_single(
     return out
 
 
-def _search_space_regression_single(model_kind: str) -> List[Tuple[str, Any, Dict[str, Any]]]:
+def _search_space_regression_single(model_kind: str) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
     """Search space for single-output regression (extras)."""
     tuning = get_tuning_config()
     rs = tuning.get("random_state", 42)
@@ -285,12 +310,12 @@ def _search_space_regression_single(model_kind: str) -> List[Tuple[str, Any, Dic
         )
     )
     return [
-        ("RandomForestRegressor", RandomForestRegressor(), rf_params),
-        ("GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
+        ("rf", "RandomForestRegressor", RandomForestRegressor(), rf_params),
+        ("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
     ]
 
 
-def _search_space_classification(model_kind: str) -> List[Tuple[str, Any, Dict[str, Any]]]:
+def _search_space_classification(model_kind: str) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
     """Search space for binary classification (win)."""
     tuning = get_tuning_config()
     rs = tuning.get("random_state", 42)
@@ -309,8 +334,8 @@ def _search_space_classification(model_kind: str) -> List[Tuple[str, Any, Dict[s
         )
     )
     return [
-        ("RandomForestClassifier", RandomForestClassifier(), rf_params),
-        ("GradientBoostingClassifier", GradientBoostingClassifier(), gb_params),
+        ("rf", "RandomForestClassifier", RandomForestClassifier(), rf_params),
+        ("gb", "GradientBoostingClassifier", GradientBoostingClassifier(), gb_params),
     ]
 
 
@@ -322,35 +347,50 @@ def _run_search_single_regression(
     n_iter: int,
     scoring: str,
     random_state: int = 42,
+    algorithms: Optional[List[str]] = None,
+    validation_method: str = "kfold",
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for single-output regression. Returns (best_pipeline, best_params, report)."""
-    candidates = _search_space_regression_single(model_kind)
+    tuning_cfg = get_tuning_config()
+    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
+    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    allow = frozenset(a.lower() for a in algorithms)
+    candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
+    if not candidates:
+        raise ValueError(f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}")
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
     best_pipe = None
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
-    tuning_cfg = get_tuning_config()
     n_jobs = tuning_cfg.get("n_jobs", 1)
     if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
         try:
             n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
         except ValueError:
             pass
-    for name, base_est, param_dist in candidates:
+    algorithms_used: List[str] = []
+    for key, name, base_est, param_dist in candidates:
         pipe = _build_pipeline_single_regression(base_est)
         search = RandomizedSearchCV(
             pipe,
             param_distributions=param_dist,
             n_iter=min(n_iter, max(1, _count_combinations(param_dist) // 2)),
-            cv=cv_splits,
+            cv=cv,
             scoring=scoring,
             random_state=random_state,
             n_jobs=n_jobs,
             error_score="raise",
         )
         search.fit(X, y)
+        algorithms_used.append(key)
         all_cv_results.append(
-            {"estimator": name, "best_score": float(search.best_score_), "best_params": search.best_params_}
+            {
+                "algorithm": key,
+                "estimator": name,
+                "best_score": float(search.best_score_),
+                "best_params": search.best_params_,
+            }
         )
         if best_score is None or search.best_score_ > best_score:
             best_score = search.best_score_
@@ -368,6 +408,8 @@ def _run_search_single_regression(
         "config_snippet": config_snippet,
         "scoring": scoring,
         "cv_splits": cv_splits,
+        "validation_method": validation_method,
+        "algorithms": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
@@ -383,35 +425,50 @@ def _run_search_classification(
     n_iter: int,
     scoring: str,
     random_state: int = 42,
+    algorithms: Optional[List[str]] = None,
+    validation_method: str = "kfold",
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for binary classification (win). Returns (best_pipeline, best_params, report)."""
-    candidates = _search_space_classification(model_kind)
+    tuning_cfg = get_tuning_config()
+    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
+    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    allow = frozenset(a.lower() for a in algorithms)
+    candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
+    if not candidates:
+        raise ValueError(f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}")
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
     best_pipe = None
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
-    tuning_cfg = get_tuning_config()
     n_jobs = tuning_cfg.get("n_jobs", 1)
     if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
         try:
             n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
         except ValueError:
             pass
-    for name, base_est, param_dist in candidates:
+    algorithms_used: List[str] = []
+    for key, name, base_est, param_dist in candidates:
         pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
         search = RandomizedSearchCV(
             pipe,
             param_distributions=param_dist,
             n_iter=min(n_iter, max(1, _count_combinations(param_dist) // 2)),
-            cv=cv_splits,
+            cv=cv,
             scoring=scoring,
             random_state=random_state,
             n_jobs=n_jobs,
             error_score="raise",
         )
         search.fit(X, y)
+        algorithms_used.append(key)
         all_cv_results.append(
-            {"estimator": name, "best_score": float(search.best_score_), "best_params": search.best_params_}
+            {
+                "algorithm": key,
+                "estimator": name,
+                "best_score": float(search.best_score_),
+                "best_params": search.best_params_,
+            }
         )
         if best_score is None or search.best_score_ > best_score:
             best_score = search.best_score_
@@ -429,6 +486,8 @@ def _run_search_classification(
         "config_snippet": config_snippet,
         "scoring": scoring,
         "cv_splits": cv_splits,
+        "validation_method": validation_method,
+        "algorithms": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
@@ -466,36 +525,49 @@ def _run_search(
     n_iter: int,
     scoring: str,
     random_state: int = 42,
+    algorithms: Optional[List[str]] = None,
+    validation_method: str = "kfold",
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
-    candidates = _search_space_regression(model_kind)
+    tuning_cfg = get_tuning_config()
+    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
+    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    allow = frozenset(a.lower() for a in algorithms)
+    candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression(model_kind) if k in allow]
+    if not candidates:
+        raise ValueError(
+            f"No algorithms selected for {model_kind}; available: rf, gb, quantile, stacked. You requested: {list(algorithms)}"
+        )
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
     best_pipe = None
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
 
-    tuning_cfg = get_tuning_config()
     n_jobs = tuning_cfg.get("n_jobs", 1)
     if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
         try:
             n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
         except ValueError:
             pass
-    for name, base_est, param_dist in candidates:
+    algorithms_used: List[str] = []
+    for key, name, base_est, param_dist in candidates:
         pipe = _build_pipeline(base_est)
         search = RandomizedSearchCV(
             pipe,
             param_distributions=param_dist,
             n_iter=min(n_iter, max(1, _count_combinations(param_dist) // 2)),
-            cv=cv_splits,
+            cv=cv,
             scoring=scoring,
             random_state=random_state,
             n_jobs=n_jobs,
             error_score="raise",
         )
         search.fit(X, Y)
+        algorithms_used.append(key)
         all_cv_results.append(
             {
+                "algorithm": key,
                 "estimator": name,
                 "best_score": float(search.best_score_),
                 "best_params": search.best_params_,
@@ -511,8 +583,8 @@ def _run_search(
     if best_params:
         for k, v in best_params.items():
             if k.startswith("est__estimator__"):
-                key = k.replace("est__estimator__", "")
-                config_snippet[key] = v
+                key_str = k.replace("est__estimator__", "")
+                config_snippet[key_str] = v
 
     report = {
         "model_kind": model_kind,
@@ -521,6 +593,8 @@ def _run_search(
         "config_snippet": config_snippet,
         "scoring": scoring,
         "cv_splits": cv_splits,
+        "validation_method": validation_method,
+        "algorithms": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "n_targets": int(Y.shape[1]),
@@ -722,6 +796,8 @@ def run_auto_tune(
     Y: np.ndarray,
     format_suffix: Optional[str],
     out_dir: str,
+    algorithms: Optional[List[str]] = None,
+    validation_method: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -731,8 +807,12 @@ def run_auto_tune(
     random_state = tuning.get("random_state") or get_training_params(model_kind).get("random_state", 42)
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
+    algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    validation_method = validation_method or tuning.get("validation_method", "kfold")
 
-    best_pipe, best_params, report = _run_search(X, Y, model_kind, cv_splits, n_iter, scoring, random_state)
+    best_pipe, best_params, report = _run_search(
+        X, Y, model_kind, cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+    )
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
 
@@ -742,6 +822,8 @@ def run_auto_tune_extras(
     Y: np.ndarray,
     format_suffix: Optional[str],
     out_dir: str,
+    algorithms: Optional[List[str]] = None,
+    validation_method: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -751,8 +833,12 @@ def run_auto_tune_extras(
     params = get_training_params("extras")
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
+    algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    validation_method = validation_method or tuning.get("validation_method", "kfold")
     y = Y.ravel() if Y.ndim > 1 else Y
-    best_pipe, _, report = _run_search_single_regression(X, y, "extras", cv_splits, n_iter, scoring, random_state)
+    best_pipe, _, report = _run_search_single_regression(
+        X, y, "extras", cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+    )
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -762,6 +848,8 @@ def run_auto_tune_win(
     Y: np.ndarray,
     format_suffix: Optional[str],
     out_dir: str,
+    algorithms: Optional[List[str]] = None,
+    validation_method: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run classification search for win; save model only + report."""
     tuning = _get_tuning_config()
@@ -771,8 +859,12 @@ def run_auto_tune_win(
     params = get_training_params("win")
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
+    algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    validation_method = validation_method or tuning.get("validation_method", "kfold")
     y = Y.ravel() if Y.ndim > 1 else Y
-    best_pipe, _, report = _run_search_classification(X, y, "win", cv_splits, n_iter, scoring, random_state)
+    best_pipe, _, report = _run_search_classification(
+        X, y, "win", cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+    )
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report
 
@@ -794,7 +886,23 @@ def main() -> None:
     parser.add_argument("--out", default="", help="Output dir (default: ML_SERVICE_OUTPUT_DIR or config)")
     parser.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""))
     parser.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""))
+    parser.add_argument(
+        "--algorithms",
+        default="",
+        help="Comma-separated algorithms to tune: rf, gb, quantile (regression only), stacked (batting/bowling/fielding only). Default: all from config.",
+    )
+    parser.add_argument(
+        "--validation-method",
+        choices=["kfold", "walk_forward"],
+        default="",
+        help="Validation method: kfold or walk_forward (temporal). Default: from config.",
+    )
     args = parser.parse_args()
+
+    algorithms_override: Optional[List[str]] = None
+    if args.algorithms:
+        algorithms_override = [a.strip().lower() for a in args.algorithms.split(",") if a.strip()]
+    validation_method_override: Optional[str] = args.validation_method or None
 
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR")
     if not out_dir:
@@ -828,8 +936,11 @@ def main() -> None:
         """Save best params to go-app per (model, format) so they are stored in DB and used when retraining (GO_APP_URL must be set)."""
         if not go_app_url or not report.get("config_snippet"):
             return
+        params_to_save = dict(report["config_snippet"])
+        params_to_save["algorithms"] = report.get("algorithms", [])
+        params_to_save["validation_method"] = report.get("validation_method", "kfold")
         try:
-            save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", report["config_snippet"], api_key)
+            save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", params_to_save, api_key)
             logger.info("auto_tune.params_saved_to_db model=%s format=%s", model, format_suffix or "(unified)")
         except ValueError as e:
             logger.warning(
@@ -855,7 +966,9 @@ def main() -> None:
                         for fcode, (X, Y) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
-                            report = run_auto_tune_extras(X, Y, fcode, out_dir)
+                            report = run_auto_tune_extras(
+                                X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                            )
                             _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
@@ -872,7 +985,9 @@ def main() -> None:
                         for fcode, (X, Y) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
-                            report = run_auto_tune_win(X, Y, fcode, out_dir)
+                            report = run_auto_tune_win(
+                                X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                            )
                             _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
@@ -894,7 +1009,9 @@ def main() -> None:
                         for fcode, (X, Y) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
-                            report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
+                            report = run_auto_tune(
+                                model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                            )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
@@ -910,7 +1027,9 @@ def main() -> None:
                 if X.size == 0 or Y.size == 0:
                     logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                     continue
-                report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
+                report = run_auto_tune(
+                    model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override
+                )
                 _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
@@ -971,7 +1090,9 @@ def main() -> None:
                 if X.size == 0 or Y.size == 0:
                     logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                     continue
-                report = run_auto_tune(model_kind, X, Y, format_suffix, out_dir)
+                report = run_auto_tune(
+                    model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override
+                )
                 _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                 logger.info(
                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",

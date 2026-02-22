@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,7 +59,7 @@ def fetch_matches_after(
     api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """List match_id and match_date for matches strictly after cutoff (for walk-forward windows)."""
-    path = f"/api/backtest/matches?after={after_iso}&format={format_code}&limit={limit}"
+    path = f"/api/backtest/matches?after={urllib.parse.quote(after_iso)}&format={urllib.parse.quote(format_code)}&limit={limit}"
     data = _fetch_json(go_app_url, path, api_key)
     return data.get("matches") or []
 
@@ -70,7 +71,9 @@ def fetch_training_data(
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fetch training data (match_date < cutoff). Use format= to get per-format rows."""
-    path = f"/api/backtest/training-data?format={format_code}&cutoff={cutoff_iso}"
+    path = (
+        f"/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
+    )
     return _fetch_json(go_app_url, path, api_key)
 
 
@@ -82,7 +85,7 @@ def fetch_holdout_data(
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fetch holdout data (matches after cutoff, features at cutoff). Same shape as training-data."""
-    path = f"/api/backtest/holdout-data?format={format_code}&cutoff={cutoff_iso}&limit={limit}"
+    path = f"/api/backtest/holdout-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}&limit={limit}"
     return _fetch_json(go_app_url, path, api_key)
 
 

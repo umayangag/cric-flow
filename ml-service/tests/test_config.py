@@ -13,6 +13,7 @@ from ml.config import (
     get_prediction_defaults,
     get_training_data_fetch_timeout_sec,
     get_training_params,
+    get_training_subprocess_timeout_sec,
     get_tuning_config,
     get_tuning_search_space,
 )
@@ -257,6 +258,25 @@ def test_get_training_data_fetch_timeout_sec_invalid_returns_600(monkeypatch):
     config_mod._cached = {"inputs": {"training_data_fetch_timeout_sec": "x"}}
     try:
         assert get_training_data_fetch_timeout_sec() == 600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_from_config():
+    """training_subprocess_timeout_sec from config when set."""
+    config_mod._cached = {"inputs": {"training_subprocess_timeout_sec": 120}}
+    try:
+        assert get_training_subprocess_timeout_sec() == 120
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_default_7_days(monkeypatch):
+    """When config and env are unset, default is 7 days (604800 sec)."""
+    config_mod._cached = {"inputs": {}}
+    monkeypatch.delenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", raising=False)
+    try:
+        assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
     finally:
         config_mod._cached = None
 

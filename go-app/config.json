@@ -5,6 +5,10 @@
   "outputs": {
     "export_dir": "output/go-app"
   },
+  "server": {
+    "train_step_timeout_min": 10080,
+    "http_write_timeout_sec": 3600
+  },
   "formats": {
     "treat_t20i_as_subset": true,
     "international_teams": [
@@ -24,9 +28,10 @@
   },
   "features": {
     "precompute_timeout_ms": 86400000,
+    "export_timeout_ms": 3600000,
     "min_batting_innings": 5,
     "min_bowling_innings": 5,
-    "form_shrinkage_alpha": 0.0,
+    "form_shrinkage_alpha": 0,
     "consistency_per_format": false,
     "ewm_alpha": 0.3,
     "ewm_alpha_short": 0.5,

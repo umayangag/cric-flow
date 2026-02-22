@@ -2,15 +2,18 @@ import argparse
 import json
 import logging
 import os
-from typing import Optional
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
 
-import config as svc_config  # loaded from ml-service/config.json if present
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
+from . import config as svc_config  # ml.config: loads config.json from ml-service root
 from .config import get_training_params
 from .feature_transforms import apply_transforms, get_transform_config
 from .utils import make_base_estimator
@@ -66,13 +69,8 @@ TARGET_COLS = [
 ]
 
 
-def load_dataset(path: str):
-    if not os.path.exists(path):
-        logger.error("train_batting.load_dataset.file_not_found path=%s", path)
-        raise FileNotFoundError(path)
-    df = pd.read_csv(path)
-    # Map Go export headers to expected names if needed
-    col_map = {
+def _batting_col_map() -> Dict[str, str]:
+    m = {
         "temp": "temp",
         "wind": "wind",
         "rain": "rain",
@@ -99,21 +97,28 @@ def load_dataset(path: str):
         "strike_rate": "strike_rate",
     }
     for c in BAT_SEQ_COLS:
-        col_map[c] = c
-    df = df.rename(columns=col_map)
-    # Backward compat: fill new columns from old exports (form_short/form_long=form, momentum=0)
+        m[c] = c
+    return m
+
+
+def _prepare_batting_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize column names and fill missing columns (for CSV or API-sourced DataFrame)."""
+    df = df.rename(columns=_batting_col_map())
     for col in ("batting_form_short", "batting_form_long"):
         if col not in df.columns and "batting_form" in df.columns:
             df[col] = df["batting_form"]
     if "batting_momentum" not in df.columns:
         df["batting_momentum"] = 0.0
-    # Backward compat: optional seq columns (fill with 0 when absent or NaN)
     for col in BAT_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
-    # Filter rows with required feature columns (exclude seq from dropna so NULL seq doesn't drop rows)
+    return df
+
+
+def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Build X, Y and feature_names from a prepared batting DataFrame."""
     required = [c for c in FEATURE_COLS if c not in BAT_SEQ_COLS]
     df = df.dropna(subset=[c for c in required if c in df.columns])
     X_raw = df[FEATURE_COLS].astype(float).values
@@ -123,25 +128,72 @@ def load_dataset(path: str):
     else:
         X = X_raw
         feature_names_used = list(FEATURE_COLS)
-    # Build Y with up to 6 outputs (pad strike_rate if missing)
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
-    # Add strike_rate column if present; else derive from runs/balls
     if "strike_rate" in df.columns:
         sr = df["strike_rate"].astype(float).values.reshape(-1, 1)
     else:
-        # Avoid division by zero: sr = (runs/balls)*100 if balls>0 else 0
         runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
         balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
         sr = np.where(balls > 0, (runs / balls) * 100.0, 0.0).reshape(-1, 1)
-    # Ensure Y has 5 columns (TARGET_COLS) then append sr to make 6
-    # If some target columns are missing, pad with zeros
     needed = len(TARGET_COLS)
     if Y.shape[1] < needed:
         pad = np.zeros((Y.shape[0], needed - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
     Y = np.concatenate([Y, sr], axis=1)
     return X, Y, feature_names_used
+
+
+def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    if not os.path.exists(path):
+        logger.error("train_batting.load_dataset.file_not_found path=%s", path)
+        raise FileNotFoundError(path)
+    df = pd.read_csv(path)
+    df = _prepare_batting_df(df)
+    return _df_to_xy(df)
+
+
+def load_dataset_from_memory(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Build X, Y from API-style (headers, rows). Same contract as load_dataset."""
+    if not headers or not rows:
+        return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 6)), list(FEATURE_COLS)
+    df = pd.DataFrame(rows, columns=headers)
+    df = _prepare_batting_df(df)
+    return _df_to_xy(df)
+
+
+def fetch_batting_from_api(
+    go_app_url: str,
+    format_code: str,
+    cutoff_iso: str,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch batting training data from go-app GET /api/backtest/training-data. Returns {headers, rows}."""
+    from .config import get_training_data_fetch_timeout_sec
+
+    base = go_app_url.rstrip("/")
+    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
+    req = urllib.request.Request(url)
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=get_training_data_fetch_timeout_sec()) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        logger.error("train_batting.fetch_batting_from_api.http_error url=%s code=%s", url, e.code)
+        raise ValueError(f"Go-app training-data failed: HTTP {e.code} {body}") from e
+    except OSError as e:
+        err_msg = str(e).strip()
+        logger.error("train_batting.fetch_batting_from_api.os_error url=%s error=%s", url, e)
+        hint = (
+            "Go-app may have closed the connection before the response finished (e.g. server write timeout). "
+            "Increase go-app server.http_write_timeout_sec (e.g. 600) in go-app/config.json and restart go-app."
+        )
+        if "closed connection" in err_msg.lower() or "without response" in err_msg.lower():
+            raise ValueError(f"Go-app training-data request failed: {err_msg}. {hint}") from e
+        raise ValueError(f"Go-app training-data request failed: {err_msg}") from e
+    return data.get("batting") or {"headers": [], "rows": []}
 
 
 def train_and_save(
@@ -247,6 +299,26 @@ def main():
         action="store_true",
         help="Train for all formats from config (ml.formats).",
     )
+    parser.add_argument(
+        "--from-api",
+        action="store_true",
+        help="Fetch training data from go-app API (GO_APP_URL + cutoff) instead of CSV. Same contract as fielding/extras/win.",
+    )
+    parser.add_argument(
+        "--cutoff",
+        default="",
+        help="RFC3339 cutoff for API fetch (required if --from-api).",
+    )
+    parser.add_argument(
+        "--go-app-url",
+        default=os.environ.get("GO_APP_URL", ""),
+        help="Go-app base URL for --from-api (default: GO_APP_URL).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("GO_APP_API_KEY", ""),
+        help="Optional API key for go-app (default: GO_APP_API_KEY).",
+    )
     args = parser.parse_args()
 
     targets: list[str] = []
@@ -256,6 +328,57 @@ def main():
         targets = [s.strip().upper() for s in args.formats.split(",") if s.strip()]
     elif args.format:
         targets = [args.format.strip().upper()]
+
+    # Consistent data source: fetch from go-app API (same as fielding/extras/win)
+    if args.from_api:
+        cutoff = (args.cutoff or "").strip()
+        go_app_url = (args.go_app_url or os.environ.get("GO_APP_URL", "")).strip()
+        if not cutoff or not go_app_url:
+            logger.error(
+                "train_batting.from_api_requires cutoff and go_app_url (or GO_APP_URL)",
+                has_cutoff=bool(cutoff),
+                has_go_app_url=bool(go_app_url),
+            )
+            raise SystemExit(1)
+        if not targets:
+            targets = _config_formats()
+        api_key = (args.api_key or os.environ.get("GO_APP_API_KEY", "")).strip() or None
+        saved_count = 0
+        for fmt in targets:
+            bat = fetch_batting_from_api(go_app_url, fmt, cutoff, api_key)
+            headers = bat.get("headers") or []
+            rows = bat.get("rows") or []
+            if not headers or not rows:
+                logger.warning("train_batting.skip_format_no_data_from_api format=%s", fmt)
+                continue
+            try:
+                X, Y, feature_names_used = load_dataset_from_memory(headers, rows)
+            except Exception as e:
+                logger.error("train_batting.load_from_api_failed format=%s error=%s", fmt, e)
+                continue
+            if X.size == 0 or Y.size == 0:
+                logger.warning("train_batting.skip_format_no_data format=%s", fmt)
+                continue
+            training_params = get_training_params("batting", fmt)
+            transform_config = get_transform_config("batting")
+            meta = {
+                "source": "api",
+                "format": fmt,
+                "cutoff": cutoff,
+                "rows": int(X.shape[0]),
+                "n_features": int(X.shape[1]),
+                "n_targets": int(Y.shape[1]),
+                "model": "RandomForestRegressor",
+                "hyperparams": training_params,
+                "feature_names": feature_names_used,
+            }
+            train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config)
+            logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
+            saved_count += 1
+        if targets and saved_count == 0:
+            logger.error("train_batting.no_models_saved from_api=True cutoff=%s", cutoff)
+            raise SystemExit(1)
+        return
 
     # Auto-detect formats when none explicitly provided
     if not targets and not args.csv:
@@ -305,6 +428,7 @@ def main():
         return
 
     # Per-format training loop (each format may use latest tuned params from go-app when GO_APP_URL is set)
+    saved_count = 0
     for fmt in targets:
         training_params = get_training_params("batting", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"batting_encoded_{fmt}.csv")
@@ -332,6 +456,10 @@ def main():
         }
         train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config)
         logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
+        saved_count += 1
+    if targets and saved_count == 0:
+        logger.error("train_batting.no_models_saved csv_dir=%s out_dir=%s", default_csv_dir, args.out)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -94,6 +94,29 @@ def default_artifacts_dir() -> str:
     return str(val) if val else os.path.join("..", "..", "output", "ml-service")
 
 
+# Default for training subprocess (admin train batting/bowling/fielding/etc.): 7 days.
+DEFAULT_TRAINING_SUBPROCESS_TIMEOUT_SEC = 7 * 24 * 3600  # 604800
+
+
+def get_training_subprocess_timeout_sec() -> int:
+    """Return timeout in seconds for the training subprocess (inputs.training_subprocess_timeout_sec).
+    Fallback: env TRAINING_SUBPROCESS_TIMEOUT_SEC, then 7 days."""
+    cfg = _load()
+    val = (cfg.get("inputs") or {}).get("training_subprocess_timeout_sec")
+    if val is not None:
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            pass
+    env_val = os.environ.get("TRAINING_SUBPROCESS_TIMEOUT_SEC")
+    if env_val is not None:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return DEFAULT_TRAINING_SUBPROCESS_TIMEOUT_SEC
+
+
 def get_training_data_fetch_timeout_sec() -> int:
     """Return timeout in seconds for fetching training data from go-app (inputs.training_data_fetch_timeout_sec)."""
     cfg = _load()
@@ -297,6 +320,18 @@ def get_tuning_config() -> Dict[str, Any]:
     n_jobs = tuning.get("n_jobs", -1)
     if n_jobs == -1:
         n_jobs = suggested_n_jobs("tuning")
+    algorithms = tuning.get("algorithms")
+    if algorithms == "all" or algorithms is None:
+        algorithms = ["rf", "gb", "quantile", "stacked"]
+    elif isinstance(algorithms, (list, tuple)):
+        algorithms = [str(a).lower().strip() for a in algorithms if a]
+    else:
+        algorithms = ["rf", "gb"]
+
+    validation_method = str(tuning.get("validation_method", "kfold")).lower().strip()
+    if validation_method not in ("kfold", "walk_forward"):
+        validation_method = "kfold"
+
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -304,6 +339,8 @@ def get_tuning_config() -> Dict[str, Any]:
         "random_state": int(tuning.get("random_state", 42)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
         "search_space": tuning.get("search_space"),
+        "algorithms": algorithms,
+        "validation_method": validation_method,
     }
 
 

@@ -21,7 +21,7 @@ Config file: `go-app/config.json`
   - `ml_health_body_limit_bytes` (default 1048576) — max ML health response size (DoS protection).
   - `ml_base_url_fallback` (default `http://localhost:8000`) — used when `ML_SERVICE_URL`/`ML_BASE_URL` are unset.
   - `readiness_timeout_sec` (default 2) — DB ping timeout for readiness probe.
-  - `train_step_timeout_min` (default 30) — max wait for ML train endpoint.
+  - `train_step_timeout_min` (default 30) — max wait for ML train endpoint (e.g. 10080 = 7 days for long training pipelines).
   - `pipeline_progress_interval_sec` (default 2) — SSE progress poll interval.
   - `db_probe_timeout_sec` (default 2), `db_probe_long_timeout_sec` (default 5) — ops DB probes.
   - `artifacts_timeout_sec` (default 3) — HTTP client timeout for artifacts check.
@@ -36,7 +36,8 @@ Config file: `go-app/config.json`
   - `treat_t20i_as_subset` (bool) — treat T20 between international teams as T20I.
   - `international_teams` (list) — ICC national teams for the subset rule.
 - `features`
-  - `precompute_timeout_ms` (int) — timeout for precompute/import/export (default 86400000). 0 = no deadline.
+  - `precompute_timeout_ms` (int) — timeout for precompute/import pipeline steps (default 86400000). 0 = no deadline.
+  - `export_timeout_ms` (int) — timeout for the export-dataset step only. 0 = use `precompute_timeout_ms`. Set higher than the pipeline timeout if export writes many format CSVs and was hitting "context canceled" (e.g. 3600000 = 60 min).
   - `min_batting_innings`, `min_bowling_innings`, `form_shrinkage_alpha`, `consistency_per_format`, `history_window_matches` — reserved or optional.
   - **Feature extraction:** `ewm_alpha` (0.3), `ewm_alpha_short` (0.5), `ewm_alpha_long` (0.2), `consistency_last_n` (10), `form_window_n` (0), `momentum_last_n` (5).
   - `fielding_enrich` — when ML has no fielding model: `ewm_alpha`, `form_to_catches_ratio` (0.7).
@@ -61,14 +62,14 @@ Config file: `go-app/config.json`
 Config file: `ml-service/config.json`
 
 **Keys:**
-- `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 3600), `training_data_fetch_timeout_invalid_fallback_sec` (600 — used when the main timeout value is invalid), `go_app_request_timeout_sec` (30 — timeout for tuned-params GET/POST to go-app).
+- `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 604800 = 7 days — HTTP timeout when fetching training data from go-app), `training_data_fetch_timeout_invalid_fallback_sec` (600), `training_subprocess_timeout_sec` (default 604800 = 7 days — max time for each /admin/train/* subprocess; set in config so long training runs don’t hit context deadline), `go_app_request_timeout_sec` (30 — tuned-params GET/POST).
 - `outputs` — `artifacts_dir`.
 - `ml`
-  - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (70). Used for resource-aware n_jobs when a memory limit is set.
+  - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (70), `training_low_memory_threshold_mb` (2560 — when process memory limit is at or below this MB, training uses 1 job to avoid OOM). Used for resource-aware n_jobs when a memory limit is set.
   - `formats` — list of format codes to train/serve.
   - `training` — **required** per-model block: `batting`, `bowling`, `fielding`, `extras`, `win` each with `n_estimators`, `max_depth`, `random_state`, `joblib_compress`; optional `estimator` (rf/gb/stacked/quantile), `learning_rate`, `quantile_level`.
   - `feature_defaults` (optional) — defaults when go-app feature map omits keys: `common` (weather/context), `fielding`.
-  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, etc.
+  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (kfold or walk_forward).
   - `walk_forward` (optional) — for walk-forward: `initial_cutoff`, `window_x`, `registry_path`.
   - `prediction_defaults` — e.g. `economy` (default 6.0).
   - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10).

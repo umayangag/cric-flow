@@ -34,12 +34,13 @@ run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Per-model training (artifacts go to ML_SERVICE_OUTPUT_DIR or outputs.artifacts_dir).
-# Prerequisites: precompute (go-app) and export (batting/bowling CSVs); fielding needs GO_APP_URL + CUTOFF or --csv.
+# Batting/bowling: if CUTOFF is set (e.g. make train-batting CUTOFF=2025-01-01T00:00:00Z), use API; else read from CSVs.
+# Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
 train-batting:
-	$(PY) -m ml.train_batting --all-formats
+	$(if $(CUTOFF),$(PY) -m ml.train_batting --from-api --cutoff "$(CUTOFF)" --all-formats,$(PY) -m ml.train_batting --all-formats)
 
 train-bowling:
-	$(PY) -m ml.train_bowling --all-formats
+	$(if $(CUTOFF),$(PY) -m ml.train_bowling --from-api --cutoff "$(CUTOFF)" --all-formats,$(PY) -m ml.train_bowling --all-formats)
 
 # Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
 train-fielding:
@@ -61,6 +62,8 @@ MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
+ALGORITHMS ?=
+VALIDATION_METHOD ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -70,6 +73,12 @@ AUTO_TUNE_ARGS += --all-formats
 ifeq ($(MODEL),all)
 AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
 endif
+endif
+ifneq ($(ALGORITHMS),)
+AUTO_TUNE_ARGS += --algorithms "$(ALGORITHMS)"
+endif
+ifneq ($(VALIDATION_METHOD),)
+AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

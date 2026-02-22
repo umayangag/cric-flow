@@ -1,6 +1,9 @@
 package exportqueries
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Repo implements db.DatasetRepo using local functions.
 type Repo struct{}
@@ -35,4 +38,12 @@ func (r *Repo) BowlingInferenceRows(ctx context.Context, format string) ([][]str
 
 func (r *Repo) BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	return BowlingFormatRows(ctx, format)
+}
+
+func (r *Repo) FieldingUnifiedRows(ctx context.Context) ([][]string, error) {
+	return FieldingTrainingRows(ctx, time.Now())
+}
+
+func (r *Repo) FieldingFormatRows(ctx context.Context, format string) ([][]string, error) {
+	return FieldingTrainingRowsWithFormat(ctx, format, time.Now())
 }

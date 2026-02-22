@@ -1,5 +1,6 @@
 import type {
   HealthResponse,
+  ModelMetadataResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
   EvaluateStatusResponse,
@@ -15,7 +16,6 @@ import type {
 } from './types';
 import type { OpsStatusDTO } from './types';
 
-const BASE_URL = import.meta.env.VITE_ML_SERVICE_URL || 'http://localhost:8000';
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
 
 // Generic HTTP client factory to avoid duplication between different base URLs
@@ -105,6 +105,10 @@ export const api = {
   /** ML service health (loaded formats, artifacts). Uses Go API proxy so the frontend gets full details. */
   health(): Promise<HealthResponse> {
     return httpApi('/api/health/ml');
+  },
+  /** Model metadata (features, outputs, artifacts pattern) from ml-service for Workbench UI. */
+  getModelMetadata(): Promise<ModelMetadataResponse> {
+    return httpApi('/api/ml/model-metadata');
   },
   // --- Backtest API (select and evaluate) ---
   backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {
