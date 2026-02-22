@@ -49,7 +49,7 @@ All training params from `ml-service/config.json` → `ml.training.<model>`. Bas
 | **Win** | Match | 20 | 1 (prob) | 100 | 8 | RandomForestClassifier; no scaler |
 
 ### Batting
-- **Inputs** (26): `batting_consistency`, `batting_form`, `batting_form_short`, `batting_form_long`, `batting_momentum`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `inning`, `batting_session`, `toss`, `venue`, `opposition`, `season`, + 8 seq: `bat_prev_sr`, `bat_prev_out_rate`, `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`.
+- **Inputs** (26): `batting_consistency`, `batting_form`, `batting_form_short`, `batting_form_long`, `batting_momentum`, `batting_temp`, `batting_wind`, `batting_rain`, `batting_humidity`, `batting_cloud`, `batting_pressure`, `batting_viscosity`, `inning`, `batting_session`, `toss`, `venue`, `opposition`, `season`, + 8 seq: `bat_prev_sr`, `bat_prev_out_rate`, `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`.
 - **Outputs** (5): `runs`, `balls`, `fours`, `sixes`, `batting_position` (strike_rate derived).
 
 ### Bowling
