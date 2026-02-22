@@ -20,7 +20,7 @@ Architecture, data flow, and how to run the pipeline. For a concise data-flow an
   - `app/main.py` — FastAPI; loads artifacts, prediction endpoints
   - Artifacts in `output/ml-service/`
 
-**Config precedence:** CLI → env → `config.json` → defaults. See [config-and-data.md](config-and-data.md).
+Config precedence: CLI → env → `config.json` → defaults. See [config-and-data.md](config-and-data.md).
 
 ---
 
