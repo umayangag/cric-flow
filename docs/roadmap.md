@@ -14,11 +14,10 @@ Planned improvements that move the system toward:
 |---|-------------|--------------|--------|
 | 1 | Combinatorial team selection (or meta-model by default) | Goal 1 | Medium–High |
 | 2 | Feature alignment, weather, opposition features | Goal 2 | Medium |
-| 3 | Predicted scorecard summary for upcoming match | Goal 3 | Low–Medium |
-| 4 | Single feature contract, weather ingestion, sequence at prediction | Goals 1–3 | Medium |
-| 5 | Automate meta-model, walk-forward, one-command retrain+evaluate | Goals 1–3 | Low–Medium |
+| 3 | Single feature contract, weather ingestion, sequence at prediction | Goals 1–3 | Medium |
+| 4 | Automate meta-model, walk-forward, one-command retrain+evaluate | Goals 1–3 | Low–Medium |
 
-Implementing **3** and **5** gives immediate value with limited risk. **2** and **4** improve prediction accuracy. **1** makes selection truly optimize performance.
+Implementing **4** gives immediate value with limited risk. **2** and **3** improve prediction accuracy. **1** makes selection truly optimize performance.
 
 ---
 
@@ -47,17 +46,7 @@ Implementing **3** and **5** gives immediate value with limited risk. **2** and 
 
 ---
 
-## 3. Predicted scorecard for upcoming match
-
-**Current:** Backtest evaluate builds a predicted scorecard from actual layout + ML preds. Team-selection API returns selected XI and per-player predictions but no innings totals or predicted winner.
-
-**Improvement:** Add a **scorecard summary** (innings1_total, innings2_total, predicted_winner, extras). Either extend `POST /api/predict/team-selection` response or add `POST /api/predict/scorecard-summary`. Reuse aggregation (sum runs, wickets, extras; compare totals for winner).
-
-**Touch:** `go-app/internal/services/predictteam/predict_team.go`, `internal/server/predict_handlers.go`.
-
----
-
-## 4. Feature pipeline consistency
+## 3. Feature pipeline consistency
 
 **Improvements:**  
 - **Single contract:** `configs/feature_vectors.json` (or one canonical list) as source of truth; go-app export and training-data API emit same order/names; `ComputeFeaturesAtCutoffForFutureMatch` and backtest use same set (or documented subset + fill rules).  
@@ -68,7 +57,7 @@ Implementing **3** and **5** gives immediate value with limited risk. **2** and 
 
 ---
 
-## 5. Pipeline and meta-model automation
+## 4. Pipeline and meta-model automation
 
 **Improvements:**  
 - **Meta-model:** After backtest evaluate (or batch job), produce contributions CSV → run `train_combination_meta` → set `selection.meta_model_path`.  
