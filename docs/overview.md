@@ -57,9 +57,9 @@ flowchart LR
   ART --> SVC
   TP --> SVC
   SVC --> TP
-  API -.-> CI
-  API -.-> PRE
-  API -.-> EXP
+  API -. orchestration .-> CI
+  API -. orchestration .-> PRE
+  API -. orchestration .-> EXP
 ```
 
 Detailed flow (backtest, team prediction, Monte Carlo) is in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
