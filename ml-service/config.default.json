@@ -23,7 +23,8 @@
       "training_mb_per_job": 400,
       "tuning_mb_per_job": 500,
       "prediction_mb_per_job": 100,
-      "memory_usage_fraction_percent": 70
+      "memory_usage_fraction_percent": 70,
+      "training_low_memory_threshold_mb": 2560
     },
     "tuning": {
       "cv_splits": 5,
