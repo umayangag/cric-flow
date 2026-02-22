@@ -159,7 +159,8 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 				repo := &exportqueries.Repo{}
 				bat := exportsvc.NewBattingService(repo)
 				bow := exportsvc.NewBowlingService(repo)
-				runner := expcmd.NewRunnerWithServices(bat, bow)
+				field := exportsvc.NewFieldingService(repo)
+				runner := expcmd.NewRunnerWithServices(bat, bow, field)
 				err := runner.Run(ctx, opts)
 				return map[string]any{"out_dir": outDir}, err
 			},
@@ -189,12 +190,18 @@ func mlServiceBaseURL() string {
 }
 
 // callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
+// When ml-service ADMIN_API_KEY is set, send X-API-Key (use ML_SERVICE_ADMIN_API_KEY or API_KEY so it matches).
 func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
 	base := mlServiceBaseURL()
 	url := base + "/admin/train/" + step + querySuffix
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
+	}
+	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
+	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
 	}
 	client := &http.Client{Timeout: trainStepTimeout()}
 	resp, err := client.Do(req)

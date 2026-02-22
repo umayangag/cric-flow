@@ -26,4 +26,9 @@ type DatasetRepo interface {
 	BowlingInferenceRows(ctx context.Context, format string) ([][]string, error)
 	// BowlingFormatRows returns rows for per-format training bowling export.
 	BowlingFormatRows(ctx context.Context, format string) ([][]string, error)
+
+	// FieldingUnifiedRows returns rows for the unified fielding export (all formats, as of now).
+	FieldingUnifiedRows(ctx context.Context) ([][]string, error)
+	// FieldingFormatRows returns rows for per-format training fielding export.
+	FieldingFormatRows(ctx context.Context, format string) ([][]string, error)
 }

@@ -35,18 +35,26 @@ type BowlingExporter interface {
 	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
 
+// FieldingExporter is the minimal interface Runner needs for fielding exports (unified + per-format).
+type FieldingExporter interface {
+	ExportUnified(ctx context.Context, w io.Writer) error
+	ExportFormat(ctx context.Context, format string, w io.Writer) error
+}
+
 // Runner orchestrates the export-dataset workflow behind interfaces for testability.
 type Runner struct {
-	Bat BattingExporter
-	Bow BowlingExporter
+	Bat  BattingExporter
+	Bow  BowlingExporter
+	Field FieldingExporter
 }
 
 // NewRunner constructs a Runner with only filesystem dependency (backward compatible during migration).
 func NewRunner() *Runner { return &Runner{} }
 
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
-func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter) *Runner {
-	return &Runner{Bat: bat, Bow: bow}
+// Field can be nil to skip fielding export (e.g. backward compatibility).
+func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter, field FieldingExporter) *Runner {
+	return &Runner{Bat: bat, Bow: bow, Field: field}
 }
 
 // Run executes the export based on CLI options provided by the caller.
@@ -112,6 +120,17 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				}
 				return nil
 			})
+			if r.Field != nil {
+				g.Go(func() error {
+					name := "fielding_encoded_all.csv"
+					err := r.writeUsing(opts.OutDir, name, func(w io.Writer) error { return r.Field.ExportUnified(parentCtx, w) })
+					if err != nil {
+						slog.Error("exportdataset.Runner.Run export failed", "file", name, slog.Any("err", err))
+						return err
+					}
+					return nil
+				})
+			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
 				return err
@@ -141,6 +160,17 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					}
 					return nil
 				})
+				if r.Field != nil {
+					g.Go(func() error {
+						field := fmt.Sprintf("fielding_encoded_%s.csv", f)
+						err := r.writeUsing(opts.OutDir, field, func(w io.Writer) error { return r.Field.ExportFormat(parentCtx, f, w) })
+						if err != nil {
+							slog.Error("exportdataset.Runner.Run export failed", "file", field, slog.Any("err", err))
+							return err
+						}
+						return nil
+					})
+				}
 			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))

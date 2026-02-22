@@ -1222,7 +1222,8 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
 
 @app.post("/admin/train/fielding")
 async def admin_train_fielding(request: Request, cutoff: str = ""):
-    """Run fielding model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+    """Run fielding model training. Same pipeline as batting/bowling: optional cutoff.
+    If cutoff provided: fetch from go-app training-data API. If omitted: use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
     if not ENABLE_HOT_RELOAD:
@@ -1237,23 +1238,19 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
         )
     _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
-    if not cutoff:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CUTOFF_REQUIRED",
-                message="Fielding training requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
-            ),
-        )
-    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
-    logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
+    if cutoff:
+        go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+        args = ["--cutoff", cutoff, "--go-app-url", go_app_url]
+        logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
+    else:
+        args = []
+        logger.info("admin.train.start", step="fielding", source="csv")
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(
                 _run_training_subprocess,
                 "ml.train_fielding",
-                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+                args,
             )
         logger.info("admin.train.success", step="fielding")
         return {"status": "ok", "step": "fielding"}

@@ -53,7 +53,8 @@ func run() int {
 		repo := &exportqueries.Repo{}
 		bat := exportsvc.NewBattingService(repo)
 		bow := exportsvc.NewBowlingService(repo)
-		runner := expcmd.NewRunnerWithServices(bat, bow)
+		field := exportsvc.NewFieldingService(repo)
+		runner := expcmd.NewRunnerWithServices(bat, bow, field)
 		err := runner.Run(jobCtx, opts)
 		return map[string]any{"out_dir": outDir}, err
 	})

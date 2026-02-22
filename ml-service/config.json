@@ -32,19 +32,22 @@
 "n_estimators": 150,
 "max_depth": 10,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 },
 "extras": {
 "n_estimators": 100,
 "max_depth": 8,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 },
 "win": {
 "n_estimators": 100,
 "max_depth": 8,
 "random_state": 42,
-"joblib_compress": 3
+"joblib_compress": 3,
+"n_jobs": 1
 }
 },
 "tuning": {

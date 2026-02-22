@@ -1,16 +1,19 @@
 """
-Train fielding model (catches, run_outs, stumpings) from go-app training-data API or CSV.
+Train fielding model (catches, run_outs, stumpings) from go-app export CSV or training-data API.
 
-Fetches GET {GO_APP_URL}/api/backtest/training-data?format=all&cutoff=..., extracts fielding
-headers/rows, groups by format_code, trains one (scaler, model) per format, saves
-fielding_scaler_<FMT>.joblib and fielding_model_<FMT>.joblib to artifacts dir.
+Same pipeline as batting/bowling: when no --cutoff/--go-app-url, reads from GO_APP_OUTPUT_DIR
+fielding_encoded_all.csv (and per-format fielding_encoded_<FMT>.csv when present). With
+--cutoff and --go-app-url, fetches from GET .../api/backtest/training-data?format=all&cutoff=...
+Saves fielding_scaler_<FMT>.joblib and fielding_model_<FMT>.joblib to artifacts dir.
 
 Usage:
-  GO_APP_URL=http://localhost:8080 python -m ml.train_fielding --cutoff 2024-12-01T00:00:00Z
-  python -m ml.train_fielding --csv path/to/fielding_export.csv  # if go-app exported CSV
+  python -m ml.train_fielding  # use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (after export)
+  GO_APP_URL=... python -m ml.train_fielding --cutoff 2024-12-01T00:00:00Z  # fetch from API
+  python -m ml.train_fielding --csv path/to/fielding_export.csv
 """
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -28,7 +31,12 @@ from sklearn.preprocessing import StandardScaler
 # Add parent so ml.config and app.train_on_the_fly are importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
+from ml.config import (
+    default_artifacts_dir,
+    default_go_app_export_dir,
+    get_training_data_fetch_timeout_sec,
+    get_training_params,
+)
 from ml.utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
@@ -180,14 +188,17 @@ def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Train fielding model from go-app training-data API or CSV")
-    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required if not using --csv)")
-    ap.add_argument("--csv", default="", help="Path to fielding CSV (optional; else fetch from API)")
+    ap = argparse.ArgumentParser(
+        description="Train fielding model from go-app export CSV or training-data API (same pipeline as batting/bowling)"
+    )
+    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff for API fetch (optional; if unset, use CSV from export dir)")
+    ap.add_argument("--csv", default="", help="Path to fielding CSV (optional; else use GO_APP_OUTPUT_DIR/fielding_encoded_all.csv or API)")
     ap.add_argument("--out", default="", help="Artifacts output dir (default from config)")
-    ap.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""), help="Go-app base URL")
+    ap.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""), help="Go-app base URL for API fetch")
     ap.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""), help="Optional API key")
     args = ap.parse_args()
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
+    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR") or default_go_app_export_dir()
 
     if args.csv:
         if not os.path.isfile(args.csv):
@@ -198,10 +209,7 @@ def main() -> None:
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
-    else:
-        if not args.go_app_url or not args.cutoff:
-            logger.error("train_fielding.missing_args hint=Provide --go-app-url and --cutoff, or --csv")
-            sys.exit(1)
+    elif args.go_app_url and args.cutoff:
         logger.info("train_fielding.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
         try:
             field = fetch_fielding_data(args.go_app_url, args.cutoff, args.api_key or None)
@@ -210,6 +218,20 @@ def main() -> None:
             sys.exit(1)
         headers = field.get("headers") or []
         rows = field.get("rows") or []
+        by_format = rows_to_xy_by_format(headers, rows)
+    else:
+        # Same as batting/bowling: read from export dir (run export-dataset first)
+        csv_path = os.path.join(default_csv_dir, "fielding_encoded_all.csv")
+        if not os.path.isfile(csv_path):
+            logger.error(
+                "train_fielding.csv_not_found path=%s hint=Run export-dataset first (pipeline or make export-dataset)",
+                csv_path,
+            )
+            sys.exit(1)
+        logger.info("train_fielding.loading_csv path=%s", csv_path)
+        df = pd.read_csv(csv_path)
+        headers = list(df.columns)
+        rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
 
     if not by_format:
@@ -222,6 +244,8 @@ def main() -> None:
     # Unified (overall) model: train on all data combined for legacy/fallback
     all_X = np.vstack([X for _, (X, _) in by_format.items()])
     all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    del by_format
+    gc.collect()
     if all_X.shape[0] >= 10:
         train_and_save_legacy(all_X, all_Y, out_dir)
 
