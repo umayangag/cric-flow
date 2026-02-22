@@ -15,6 +15,7 @@ from sklearn.preprocessing import StandardScaler
 
 from . import config as svc_config  # ml.config: loads config.json from ml-service root
 from .config import get_training_params
+from .feature_transforms import apply_transforms, get_transform_config
 from .utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
@@ -107,15 +108,15 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-    from .feature_transforms import apply_transforms, get_transform_config
-
+def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Build X, Y and feature_names from a prepared bowling DataFrame (align with train_batting)."""
     required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
     df = df.dropna(subset=[c for c in required if c in df.columns])
     X_raw = df[FEATURE_COLS].astype(float).values
     transform_config = get_transform_config("bowling")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
         X, feature_names_used = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
+<<<<<<< HEAD
     else:
         X = X_raw
         feature_names_used = list(FEATURE_COLS)
@@ -135,8 +136,11 @@ def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     Y = np.concatenate([Y, econ], axis=1)
     return X, Y, feature_names_used
         X, _ = apply_transforms(X_raw, list(FEATURE_COLS), transform_config, "bowling")
+=======
+>>>>>>> 9256564 (fix review)
     else:
         X = X_raw
+        feature_names_used = list(FEATURE_COLS)
     y_cols = [c for c in TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if "econ" in df.columns:
@@ -151,10 +155,10 @@ def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         pad = np.zeros((Y.shape[0], needed - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
     Y = np.concatenate([Y, econ], axis=1)
-    return X, Y
+    return X, Y, feature_names_used
 
 
-def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray]:
+def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     if not os.path.exists(path):
         logger.error("train_bowling.load_dataset.file_not_found path=%s", path)
         raise FileNotFoundError(path)
@@ -163,9 +167,9 @@ def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray]:
     return _df_to_xy(df)
 
 
-def load_dataset_from_memory(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
+def load_dataset_from_memory(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     if not headers or not rows:
-        return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 4))
+        return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 4)), list(FEATURE_COLS)
     df = pd.DataFrame(rows, columns=headers)
     df = _prepare_bowling_df(df)
     return _df_to_xy(df)
@@ -227,6 +231,9 @@ def train_and_save(
     model.fit(Xs, Y)
 
     # Extract and store feature importance (average across MultiOutputRegressor estimators)
+    feature_names_for_importance = metadata.get("feature_names") if metadata else None
+    if feature_names_for_importance is None:
+        feature_names_for_importance = FEATURE_COLS
     feature_importance = None
     if hasattr(model, "estimators_") and len(model.estimators_) > 0:
         imps = []
@@ -234,9 +241,9 @@ def train_and_save(
             if hasattr(est, "feature_importances_"):
                 imps.append(est.feature_importances_)
         if imps:
+            n_f = min(len(feature_names_for_importance), len(imps[0]))
             feature_importance = {
-                FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
-                for i in range(min(len(FEATURE_COLS), len(imps[0])))
+                feature_names_for_importance[i]: float(np.mean([arr[i] for arr in imps])) for i in range(n_f)
             }
             top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
             logger.info("train_bowling.feature_importance_top5 %s", top)
@@ -355,7 +362,7 @@ def main():
                 logger.warning("train_bowling.skip_format_no_data_from_api format=%s", fmt)
                 continue
             try:
-                X, Y = load_dataset_from_memory(headers, rows)
+                X, Y, feature_names_used = load_dataset_from_memory(headers, rows)
             except Exception as e:
                 logger.error("train_bowling.load_from_api_failed format=%s error=%s", fmt, e)
                 continue
@@ -372,6 +379,7 @@ def main():
                 "n_targets": int(Y.shape[1]),
                 "model": "RandomForestRegressor",
                 "hyperparams": training_params,
+                "feature_names": feature_names_used,
             }
             train_and_save(X, Y, args.out, training_params, fmt, meta)
             logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
@@ -406,7 +414,7 @@ def main():
         training_params = get_training_params("bowling", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
         try:
-            X, Y = load_dataset(csv_path)
+            X, Y, feature_names_used = load_dataset(csv_path)
         except FileNotFoundError as e:
             logger.error("train_bowling.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
@@ -421,6 +429,7 @@ def main():
             "format": None,
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
+            "feature_names": feature_names_used,
         }
         train_and_save(X, Y, args.out, training_params, None, meta)
         logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
@@ -434,7 +443,7 @@ def main():
             logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             continue
         try:
-            X, Y = load_dataset(csv_path)
+            X, Y, feature_names_used = load_dataset(csv_path)
         except Exception as e:
             logger.error("train_bowling.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             continue
@@ -449,6 +458,7 @@ def main():
             "format": fmt,
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
+            "feature_names": feature_names_used,
         }
         train_and_save(X, Y, args.out, training_params, fmt, meta)
         logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))

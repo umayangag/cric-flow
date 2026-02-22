@@ -155,7 +155,7 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
     if n_samples < 2:
         raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
     # KFold requires n_splits <= n_samples and n_splits >= 2
-    kfold_splits = min(cv_splits, n_samples)
+    kfold_splits = max(2, min(cv_splits, n_samples))
     if validation_method == "walk_forward":
         # TimeSeriesSplit requires n_samples >= n_splits + 1; fallback to KFold for tiny datasets
         n_splits = min(cv_splits, max(2, n_samples // 3))

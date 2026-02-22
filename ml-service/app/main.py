@@ -133,6 +133,17 @@ _install_crash_logging()
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
 ADMIN_API_KEY = (os.environ.get("ADMIN_API_KEY") or "").strip()
 
+# Max concurrent training jobs (admin train); prevents DoS via many concurrent requests
+MAX_CONCURRENT_TRAINING_JOBS = max(1, int(os.environ.get("MAX_CONCURRENT_TRAINING_JOBS", "1")))
+_training_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_training_semaphore() -> asyncio.Semaphore:
+    global _training_semaphore
+    if _training_semaphore is None:
+        _training_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRAINING_JOBS)
+    return _training_semaphore
+
 
 def _verify_admin_api_key(request: Request) -> None:
     """If ADMIN_API_KEY is set, require X-API-Key header. Raises HTTPException 401 if invalid."""
@@ -1152,7 +1163,8 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
         extra = ["--all-formats"]
         logger.info("admin.train.start", step="batting", per_format=True, from_api=False)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
+        async with _get_training_semaphore():
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
         logger.info("admin.train.success", step="batting")
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
@@ -1193,7 +1205,8 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
         extra = ["--all-formats"]
         logger.info("admin.train.start", step="bowling", per_format=True, from_api=False)
     try:
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
+        async with _get_training_semaphore():
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
         logger.info("admin.train.success", step="bowling")
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:
@@ -1236,11 +1249,12 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_fielding",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_fielding",
+                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            )
         logger.info("admin.train.success", step="fielding")
         return {"status": "ok", "step": "fielding"}
     except ValueError as e:
@@ -1283,11 +1297,12 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_extras",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_extras",
+                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            )
         logger.info("admin.train.success", step="extras")
         return {"status": "ok", "step": "extras"}
     except ValueError as e:
@@ -1330,11 +1345,12 @@ async def admin_train_win(request: Request, cutoff: str = ""):
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
     try:
-        await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_win",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        )
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.train_win",
+                ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            )
         logger.info("admin.train.success", step="win")
         return {"status": "ok", "step": "win"}
     except ValueError as e:

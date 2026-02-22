@@ -77,6 +77,8 @@ services:
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
+      # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
       # Resource limit for n_jobs; container mem_limit should match (e.g. 2g). Process uses detected limit.
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
