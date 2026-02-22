@@ -1,26 +1,26 @@
 # System overview
 
-This document describes the current architecture, data flow, and how to run the pipeline.
+Architecture, data flow, and how to run the pipeline. For a concise data-flow and ML-shape reference, see [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
 ## Components
 
-- **Data sources:** Cricsheet JSON under `data/go-app/cricsheet`; optional curated CSVs under `data/go-app/createdb` (legacy).
-- **Go application (go-app):**
-  - `cmd/cricsheet-importer` — imports Cricsheet JSON into Postgres
-  - `cmd/etl-importer` — imports curated CSVs (optional)
-  - `cmd/precompute` — computes per-player features (form, venue, opposition, consistency)
-  - `cmd/export-dataset` — exports model-ready CSVs to `output/go-app/`
-  - `cmd/api` — HTTP API (optional orchestration)
-  - `cmd/team-predictor` — CLI: assembles features, calls ML service, selects team
-- **Postgres** — system of record for ingested and computed data
-- **ML service (ml-service):**
-  - `ml/train_batting.py`, `train_bowling.py`, `train_fielding.py`, etc. — train models from exported data or API
-  - `app/main.py` — FastAPI that loads artifacts and serves prediction endpoints
-  - Artifacts (*.joblib) in `output/ml-service/`
+- **Data:** Cricsheet JSON under `data/go-app/cricsheet`; optional curated CSVs under `data/go-app/createdb`.
+- **go-app (Go):**
+  - `cmd/cricsheet-importer` — import Cricsheet JSON into Postgres
+  - `cmd/etl-importer` — import curated CSVs (optional)
+  - `cmd/precompute` — form, venue, opposition, consistency, sequences
+  - `cmd/export-dataset` — export model-ready CSVs to output dir
+  - `cmd/api` — HTTP API and pipeline orchestration
+  - `cmd/team-predictor` — CLI: features → ML → team selection
+- **Postgres** — system of record
+- **ml-service (Python):**
+  - `ml/train_*.py` — train from exported CSVs or go-app API
+  - `app/main.py` — FastAPI; loads artifacts, prediction endpoints
+  - Artifacts in `output/ml-service/`
 
-**Configuration:** Precedence is CLI flags/args > environment variables > component `config.json` > built-in defaults. See **config-and-data.md** for full config.
+**Config precedence:** CLI → env → `config.json` → defaults. See [config-and-data.md](config-and-data.md).
 
 ---
 
@@ -29,18 +29,16 @@ This document describes the current architecture, data flow, and how to run the 
 ```mermaid
 flowchart LR
   subgraph LocalFS[Local filesystem]
-    CS[Cricsheet JSON\n data/go-app/cricsheet]
-    CSV[Curated CSVs (optional)\n data/go-app/createdb]
-    GOEXP[Exported CSVs\n output/go-app]
-    ART[ML Artifacts\n output/ml-service]
+    CS[Cricsheet JSON]
+    GOEXP[Exported CSVs]
+    ART[ML Artifacts]
   end
 
   subgraph GoApp[go-app]
     CI[cricsheet-importer]
-    ETL[etl-importer]
     PRE[precompute]
     EXP[export-dataset]
-    API[api (optional)]
+    API[api]
     TP[team-predictor]
   end
 
@@ -48,60 +46,45 @@ flowchart LR
   end
 
   subgraph ML[ml-service]
-    TRAINB[train_batting.py]
-    TRAINW[train_bowling.py]
-    SVC[FastAPI app\n app/main.py]
+    TRAIN[train_*.py]
+    SVC[FastAPI]
   end
 
   CS --> CI --> DB
-  CSV -. optional .-> ETL --> DB
   DB --> PRE --> DB
   DB --> EXP --> GOEXP
-  GOEXP --> TRAINB --> ART
-  GOEXP --> TRAINW --> ART
+  GOEXP --> TRAIN --> ART
   ART --> SVC
-
-  TP -- features from DB + context --> SVC
+  TP --> SVC
   SVC --> TP
-
-  API -. optional orchestration .-> CI
-  API -. optional orchestration .-> PRE
-  API -. optional orchestration .-> EXP
+  API -.-> CI
+  API -.-> PRE
+  API -.-> EXP
 ```
 
----
-
-## Generating a team prediction (happy path)
-
-1. **Prerequisites (one-time or periodic):** Cricsheet JSON → `cricsheet-importer` → DB; `precompute`; `export-dataset` → CSVs; `train_batting` / `train_bowling` (and optionally fielding, extras, win) → artifacts; ML service loads artifacts from `output/ml-service`.
-2. **Per match:** go-app queries DB for players and context, builds feature vectors, calls ML `POST /predict/batting` and `POST /predict/bowling` (and fielding when loaded), then selects best XI (constraints: e.g. min 5 bowlers).
+Detailed flow (backtest, team prediction, Monte Carlo) is in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
-## Format-aware pipeline
+## Pipeline and team prediction
 
-- Features are computed **per format** (`TEST`, `ODI`, `T20`, `T20I`). Schema: `match_details.format_id`, format-keyed feature tables (`player_form_data_fmt`, etc.).
-- Export produces per-format CSVs (e.g. `batting_encoded_ODI.csv`) and optionally unified files (`batting_encoded_all.csv`). ML trains per-format and unified (legacy) artifacts.
-- Prediction requests include `format`; the ML service routes to the matching artifact (or legacy fallback).
+**Pipeline order:** Precompute → export-dataset → train models → run/restart ML service. Batting/bowling use CSVs; fielding/extras/win can use API with cutoff. See [ml-and-training.md](ml-and-training.md).
 
-**Quick commands:**
+**Team prediction (per match):** go-app gets players and context from DB, builds feature vectors, calls ML `/predict/batting`, `/predict/bowling`, `/predict/fielding`, then selects best XI (e.g. ≥5 bowlers, ≥1 keeper).
 
-- Precompute: `go run ./go-app/cmd/precompute -formats=ODI,T20I -season=2019`
-- Export: `go run ./go-app/cmd/export-dataset -formats=ODI,T20I`
-- Train: `make -C ml-service train-all`
-- Predict: `go run ./go-app/cmd/team-predictor -match=<id> -format=ODI`
+**Formats:** Features and export are per-format (`TEST`, `ODI`, `T20`, `T20I`). Export can produce per-format and unified CSVs; ML trains both; prediction uses format when present.
 
 ---
 
-## How to run the pipeline
+## How to run
 
-**One-line bootstrap:**
+**Bootstrap:**
 
 ```bash
 make up-all
 ```
 
-Brings up Postgres and services, runs migrations, import, precompute, export, trains ML artifacts, restarts ML service.
+(Postgres, services, migrations, import, precompute, export, train, restart ML.)
 
 **Step-by-step:**
 
@@ -109,16 +92,8 @@ Brings up Postgres and services, runs migrations, import, precompute, export, tr
 2. `make cricsheet-import`
 3. `make precompute SEASON=2019` (or `make precompute-all-all-formats`)
 4. `make export-dataset`
-5. `make train-all` (from ml-service or repo root via Makefile)
-6. `make ml-serve` (if not using Docker)
-7. `make team-predictor MATCH=<match_id> BAT=6 BOWL=5`
+5. `make train-all` (see [ml-and-training.md](ml-and-training.md))
+6. `make ml-serve` if not using Docker
+7. `make team-predictor MATCH=<id> BAT=6 BOWL=5`
 
-**Dev environment:**
-
-- `make init` — tooling init
-- `make dev-up` — Docker services (Postgres, API, ML)
-- `make dev-down` — tear down
-- `make logs` — tail logs
-- `make e2e FORMAT=ODI SEASON=2019` — format-aware end-to-end
-
-Environment: copy `.env.example` to `.env`. Go services use `POSTGRES_*`, optional `LOG_LEVEL`, `GO_APP_CONFIG`, `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `MIGRATIONS_DIR`.
+**Dev:** `make init`, `make dev-up`, `make dev-down`, `make logs`. E2E: `make e2e FORMAT=ODI SEASON=2019`. Copy `.env.example` to `.env`; see [config-and-data.md](config-and-data.md) for env vars.

@@ -1,19 +1,21 @@
 # ML models and training
 
-This document describes the ML models, data normalization, pipeline training (per-format and unified), auto-tune, walk-forward, calibration, and the combination meta-model.
+ML models, data normalization, pipeline training (per-format and unified), auto-tune, walk-forward, calibration, and the combination meta-model. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
 ## Combined models for prediction
 
-| Model       | Level   | Outputs                                                                 | Used in                          |
-|------------|---------|-------------------------------------------------------------------------|----------------------------------|
-| Batting    | Player  | runs, balls, fours, sixes, batting_position, strike_rate                | Backtest, team selection score   |
-| Bowling    | Player  | runs, deliveries, wickets, economy                                     | Backtest, team selection score   |
-| Fielding   | Player  | catches, run_outs (stumpings in training)                               | Backtest, team selection score   |
-| Extras     | Match   | total extras per match                                                  | Match aggregates (or historical)  |
-| Win        | Match   | winner / team1_wins                                                     | Match outcome                    |
-| Combination| —       | —                                                                       | Not a separate model; team selection uses batting + bowling + fielding scores and constraints (min bowlers, keeper). Optional extras/win improve aggregates and outcome. |
+| Model        | Level  | Outputs / role |
+|-------------|--------|----------------|
+| Batting     | Player | runs, balls, fours, sixes, batting_position, strike_rate → backtest, team score |
+| Bowling     | Player | runs_conceded, deliveries, wickets, economy → backtest, team score |
+| Fielding    | Player | catches, run_outs, stumpings → backtest, team score |
+| Extras      | Match  | total_extras → match aggregates (or historical average) |
+| Win         | Match  | team1_win_probability → match outcome |
+| Combination | —      | Learned weights for bat/bowl/field scores; not a separate model. Team selection uses constraints (≥1 keeper, ≥5 bowlers). |
+
+Input dimensions, estimators, and aggregation (e.g. sum runs, win prob) are in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 **Training data (go-app):** `GET /api/backtest/training-data?cutoff=...&format=all` returns batting, bowling, fielding, extras, win (headers + rows). Fielding/extras/win use cutoff and format.
 

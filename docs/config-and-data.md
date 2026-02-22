@@ -1,12 +1,8 @@
 # Configuration and data
 
-This document covers configuration for go-app and ml-service, Cricsheet import behavior, and export-schema alignment with ML.
+go-app and ml-service configuration, Cricsheet import, and export-schema alignment with ML. Feature vectors and model inputs: [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
----
-
-## Configuration overview
-
-**Precedence:** Flags/CLI args → environment variables → component `config.json` → built-in defaults.
+**Precedence:** CLI/flags → env → component `config.json` → built-in defaults.
 
 ---
 
