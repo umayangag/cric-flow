@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # -------------------- Feature input models --------------------
 
@@ -140,6 +140,8 @@ class BacktestMatchAgg(BaseModel):
 
 
 class BacktestMatchResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     match: BacktestMatchAgg
     # Added to align with Go client expectations
     model_version: str
@@ -311,6 +313,8 @@ class BacktestMetrics(BaseModel):
 
 
 class HistoricalMatchBacktestResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     players: List[PlayerComparison]
     match: MatchComparison
     metrics: BacktestMetrics

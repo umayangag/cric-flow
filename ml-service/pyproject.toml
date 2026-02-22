@@ -15,3 +15,10 @@ markers = [
     "e2e: end-to-end tests that require live ML service (and optionally go-api); set RUN_E2E=1 to run",
 ]
 testpaths = ["tests"]
+# 4 skipped by default: e2e tests in tests/e2e/test_ml_service_live.py (run with RUN_E2E=1)
+filterwarnings = [
+    "ignore::DeprecationWarning:joblib.*",
+    "ignore::DeprecationWarning:scipy.*",
+    "ignore:.*disp.*iprint.*:DeprecationWarning",
+    "ignore:.*Maximum iterations.*:sklearn.exceptions.ConvergenceWarning",
+]
