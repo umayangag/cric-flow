@@ -55,7 +55,8 @@ flowchart LR
   DB --> EXP --> GOEXP
   GOEXP --> TRAIN --> ART
   ART --> SVC
-  TP --> SVC
+  TP -- features from DB + context --> SVC
+  SVC -- predictions --> TP
   SVC --> TP
   API -. orchestration .-> CI
   API -. orchestration .-> PRE
