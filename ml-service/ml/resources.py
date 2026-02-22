@@ -110,8 +110,12 @@ def suggested_n_jobs(kind: str = "training") -> int:
             )
         if not isinstance(frac, (int, float)) or frac < 1:
             frac = _DEFAULT_MEMORY_USAGE_FRACTION_PERCENT
+        # When memory is tight, treat usable fraction as one job to avoid OOM (fielding/extras/win use significant data + model memory)
+        usable_mb = limit_mb * int(frac) // 100
+        if kind == "training" and usable_mb > 0 and limit_mb <= 2560:
+            per_job = max(int(per_job), usable_mb)
         # Use at most frac% of limit for worker processes
-        memory_cap = max(1, (limit_mb * int(frac) // 100) // int(per_job))
+        memory_cap = max(1, usable_mb // int(per_job))
         cap = min(cap, memory_cap)
         logger.debug(
             "resources: memory-based n_jobs cap kind=%s limit_mb=%s per_job=%s cap=%s",

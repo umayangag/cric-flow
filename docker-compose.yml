@@ -78,7 +78,7 @@ services:
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # 2GB memory limit for resource-aware training/tuning n_jobs (override with ML_MEMORY_LIMIT_MB=... if needed)
+      # Resource limit for n_jobs; container mem_limit should match (e.g. 2g). Process uses detected limit.
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
     mem_limit: 2g
     ports:
