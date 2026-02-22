@@ -86,7 +86,7 @@ services:
     volumes:
       - ./output:/app/output
 
-  # Watcher: logs go-api (and optionally other) container exit code and OOM status. See docs/quality-and-debugging.md.
+  # Watcher: monitors go-api and ml-service for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.
   watcher:
     build:
       context: .
@@ -95,10 +95,14 @@ services:
     container_name: cric-watcher
     depends_on:
       - go-api
+      - ml-service
     environment:
-      WATCH_CONTAINER: ${WATCH_CONTAINER:-cric-go-api}
-      # Optional: set WATCH_LOG=/logs/watcher.log to persist to watcher-logs volume
+      # Comma-separated list; default monitors both. Legacy: WATCH_CONTAINER for single container.
+      WATCH_CONTAINERS: ${WATCH_CONTAINERS:-cric-go-api,cric-ml-service}
+      # Optional: persist to volume
       WATCH_LOG: ${WATCH_LOG:-}
+      # Last N log lines to capture on crash (default 50)
+      WATCH_TAIL_LOGS: ${WATCH_TAIL_LOGS:-50}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - watcher-logs:/logs
