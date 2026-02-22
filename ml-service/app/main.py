@@ -30,9 +30,9 @@ from .backtest_service import predict_match_baseline as svc_predict_match_baseli
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
 from .feature_config import get_feature_names
-from .model_metadata import get_model_metadata
 from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
+from .model_metadata import get_model_metadata
 from .models import (
     BacktestMatchResponse,
     BacktestPlayerPred,

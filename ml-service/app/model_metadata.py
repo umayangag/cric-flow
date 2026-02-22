@@ -86,6 +86,7 @@ _STATIC: Dict[str, Dict[str, Any]] = {
 def _extras_feature_cols() -> List[str]:
     try:
         from ml.train_extras import EXTRAS_FEATURE_COLS
+
         return list(EXTRAS_FEATURE_COLS)
     except ImportError:
         return []
@@ -94,6 +95,7 @@ def _extras_feature_cols() -> List[str]:
 def _win_feature_cols() -> List[str]:
     try:
         from ml.train_win import WIN_FEATURE_COLS
+
         return list(WIN_FEATURE_COLS)
     except ImportError:
         return []
@@ -109,11 +111,7 @@ def get_model_metadata() -> Dict[str, Dict[str, Any]]:
         except Exception:
             features = []
         static = _STATIC[kind]
-        outputs = (
-            BATTING_OUTPUTS
-            if kind == "batting"
-            else (BOWLING_OUTPUTS if kind == "bowling" else FIELDING_OUTPUTS)
-        )
+        outputs = BATTING_OUTPUTS if kind == "batting" else (BOWLING_OUTPUTS if kind == "bowling" else FIELDING_OUTPUTS)
         out[kind] = {
             "features": features,
             "outputs": outputs,

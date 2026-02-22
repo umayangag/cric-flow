@@ -4,10 +4,12 @@ import WorkbenchTab from './WorkbenchTab';
 
 const mockGetFormats = vi.fn();
 const mockAccuracyTrend = vi.fn();
+const mockGetModelMetadata = vi.fn();
 vi.mock('../api', () => ({
   api: {
     getFormats: (...args: unknown[]) => mockGetFormats(...args),
     accuracyTrend: (...args: unknown[]) => mockAccuracyTrend(...args),
+    getModelMetadata: (...args: unknown[]) => mockGetModelMetadata(...args),
   },
 }));
 
@@ -15,6 +17,8 @@ describe('WorkbenchTab', () => {
   beforeEach(() => {
     mockGetFormats.mockReset();
     mockAccuracyTrend.mockReset();
+    mockGetModelMetadata.mockReset();
+    mockGetModelMetadata.mockResolvedValue({});
   });
 
   it('loads formats on mount and renders format selector', async () => {
