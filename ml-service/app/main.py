@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import os
 import sys
 import threading
@@ -130,6 +131,23 @@ def _install_crash_logging() -> None:
 _install_crash_logging()
 
 ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
+ADMIN_API_KEY = (os.environ.get("ADMIN_API_KEY") or "").strip()
+
+
+def _verify_admin_api_key(request: Request) -> None:
+    """If ADMIN_API_KEY is set, require X-API-Key header. Raises HTTPException 401 if invalid."""
+    if not ADMIN_API_KEY:
+        return
+    client_key = (request.headers.get("X-API-Key") or "").strip()
+    if not hmac.compare_digest(client_key.encode("utf-8"), ADMIN_API_KEY.encode("utf-8")):
+        raise HTTPException(
+            status_code=401,
+            detail=error_payload(
+                code="UNAUTHORIZED",
+                message="Invalid or missing API key",
+                hint="Set X-API-Key header to ADMIN_API_KEY value.",
+            ),
+        )
 MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
@@ -1028,9 +1046,9 @@ async def predict_win(features: List[WinFeatures]):
 
 
 @app.post("/admin/reload")
-async def admin_reload():
+async def admin_reload(request: Request):
     """Rescan the models directory and reload artifacts.
-    Guarded by ENABLE_HOT_RELOAD env flag to avoid accidental reloads in prod.
+    Guarded by ENABLE_HOT_RELOAD env flag. If ADMIN_API_KEY is set, requires X-API-Key header.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.reload.rejected", reason="disabled")
@@ -1042,6 +1060,7 @@ async def admin_reload():
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload.",
             ),
         )
+    _verify_admin_api_key(request)
     logger.info("admin.reload.start", models_dir=MODELS_DIR)
     try:
         summary = _reload_artifacts()
@@ -1105,7 +1124,7 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
 
 
 @app.post("/admin/train/batting")
-async def admin_train_batting(cutoff: str = ""):
+async def admin_train_batting(request: Request, cutoff: str = ""):
     """Run batting model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
@@ -1120,6 +1139,7 @@ async def admin_train_batting(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     use_api = bool(cutoff)
     if use_api:
@@ -1145,7 +1165,7 @@ async def admin_train_batting(cutoff: str = ""):
 
 
 @app.post("/admin/train/bowling")
-async def admin_train_bowling(cutoff: str = ""):
+async def admin_train_bowling(request: Request, cutoff: str = ""):
     """Run bowling model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
@@ -1160,6 +1180,7 @@ async def admin_train_bowling(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     use_api = bool(cutoff)
     if use_api:
@@ -1185,7 +1206,7 @@ async def admin_train_bowling(cutoff: str = ""):
 
 
 @app.post("/admin/train/fielding")
-async def admin_train_fielding(cutoff: str = ""):
+async def admin_train_fielding(request: Request, cutoff: str = ""):
     """Run fielding model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
@@ -1199,6 +1220,7 @@ async def admin_train_fielding(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1231,7 +1253,7 @@ async def admin_train_fielding(cutoff: str = ""):
 
 
 @app.post("/admin/train/extras")
-async def admin_train_extras(cutoff: str = ""):
+async def admin_train_extras(request: Request, cutoff: str = ""):
     """Run extras model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
@@ -1245,6 +1267,7 @@ async def admin_train_extras(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1277,7 +1300,7 @@ async def admin_train_extras(cutoff: str = ""):
 
 
 @app.post("/admin/train/win")
-async def admin_train_win(cutoff: str = ""):
+async def admin_train_win(request: Request, cutoff: str = ""):
     """Run win model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
@@ -1291,6 +1314,7 @@ async def admin_train_win(cutoff: str = ""):
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
             ),
         )
+    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(

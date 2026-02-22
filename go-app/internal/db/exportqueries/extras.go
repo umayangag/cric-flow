@@ -41,34 +41,46 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 		COALESCE(w.cloud, 0),
 		COALESCE(w.pressure, 0),
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
-		(SELECT COALESCE(SUM(s.v), 0) FROM (
-			SELECT DISTINCT ON (bd.player_id) fcs.batting_value AS v
-			FROM batting_data bd
-			JOIN feature_consistency_snapshots fcs ON fcs.player_id = bd.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
-			WHERE bd.match_id = m.match_id
-			ORDER BY bd.player_id, fcs.as_of_date DESC
-		) s) AS bat_consistency_sum,
-		(SELECT COALESCE(SUM(s.v), 0) FROM (
-			SELECT DISTINCT ON (bw.player_id) fcs.bowling_value AS v
-			FROM bowling_data bw
-			JOIN feature_consistency_snapshots fcs ON fcs.player_id = bw.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
-			WHERE bw.match_id = m.match_id
-			ORDER BY bw.player_id, fcs.as_of_date DESC
-		) s) AS bowl_consistency_sum,
-		(SELECT COALESCE(SUM(s.v), 0) FROM (
-			SELECT DISTINCT ON (bd.player_id) ff.batting_value AS v
-			FROM batting_data bd
-			JOIN feature_form_snapshots ff ON ff.player_id = bd.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
-			WHERE bd.match_id = m.match_id
-			ORDER BY bd.player_id, ff.as_of_date DESC
-		) s) AS bat_form_sum,
-		(SELECT COALESCE(SUM(s.v), 0) FROM (
-			SELECT DISTINCT ON (bw.player_id) ff.bowling_value AS v
-			FROM bowling_data bw
-			JOIN feature_form_snapshots ff ON ff.player_id = bw.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
-			WHERE bw.match_id = m.match_id
-			ORDER BY bw.player_id, ff.as_of_date DESC
-		) s) AS bowl_form_sum
+		(SELECT COALESCE(SUM(snap.v), 0)
+		 FROM batting_data bd
+		 LEFT JOIN LATERAL (
+			SELECT fcs.batting_value AS v
+			FROM feature_consistency_snapshots fcs
+			WHERE fcs.player_id = bd.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
+			ORDER BY fcs.as_of_date DESC LIMIT 1
+		 ) snap ON TRUE
+		 WHERE bd.match_id = m.match_id
+		) AS bat_consistency_sum,
+		(SELECT COALESCE(SUM(snap.v), 0)
+		 FROM bowling_data bw
+		 LEFT JOIN LATERAL (
+			SELECT fcs.bowling_value AS v
+			FROM feature_consistency_snapshots fcs
+			WHERE fcs.player_id = bw.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
+			ORDER BY fcs.as_of_date DESC LIMIT 1
+		 ) snap ON TRUE
+		 WHERE bw.match_id = m.match_id
+		) AS bowl_consistency_sum,
+		(SELECT COALESCE(SUM(snap.v), 0)
+		 FROM batting_data bd
+		 LEFT JOIN LATERAL (
+			SELECT ff.batting_value AS v
+			FROM feature_form_snapshots ff
+			WHERE ff.player_id = bd.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
+			ORDER BY ff.as_of_date DESC LIMIT 1
+		 ) snap ON TRUE
+		 WHERE bd.match_id = m.match_id
+		) AS bat_form_sum,
+		(SELECT COALESCE(SUM(snap.v), 0)
+		 FROM bowling_data bw
+		 LEFT JOIN LATERAL (
+			SELECT ff.bowling_value AS v
+			FROM feature_form_snapshots ff
+			WHERE ff.player_id = bw.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
+			ORDER BY ff.as_of_date DESC LIMIT 1
+		 ) snap ON TRUE
+		 WHERE bw.match_id = m.match_id
+		) AS bowl_form_sum
 	FROM match m
 	JOIN match_inning mi ON mi.match_id = m.match_id
 	LEFT JOIN match_format mf ON m.format_id = mf.id
