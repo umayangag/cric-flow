@@ -1,5 +1,6 @@
 import type {
   HealthResponse,
+  ModelMetadataResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
   EvaluateStatusResponse,
@@ -104,6 +105,10 @@ export const api = {
   /** ML service health (loaded formats, artifacts). Uses Go API proxy so the frontend gets full details. */
   health(): Promise<HealthResponse> {
     return httpApi('/api/health/ml');
+  },
+  /** Model metadata (features, outputs, artifacts pattern) from ml-service for Workbench UI. */
+  getModelMetadata(): Promise<ModelMetadataResponse> {
+    return httpApi('/api/ml/model-metadata');
   },
   // --- Backtest API (select and evaluate) ---
   backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {

@@ -31,6 +31,17 @@ export type HealthResponse = {
   };
 };
 
+/** Model metadata from ml-service GET /model-metadata (via go-app proxy). One source of truth for Workbench UI. */
+export type ModelMetadataEntry = {
+  features: string[];
+  outputs: string[];
+  level: 'player' | 'match' | 'meta';
+  hasScaler?: boolean;
+  artifactsPattern: { perFormat: string; legacy: string };
+  note?: string;
+};
+export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
+
 // --- Backtest API DTOs ---
 export type BacktestCandidate = {
   match_id: number;

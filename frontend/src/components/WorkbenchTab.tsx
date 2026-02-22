@@ -33,23 +33,13 @@ import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   AccuracyTrendItem,
+  ModelMetadataResponse,
   WalkForwardRegistry,
   WalkForwardWindowEntry,
 } from '../types';
 
-// Canonical feature and output lists per model (aligned with configs/feature_vectors.json and train_* scripts).
-// artifactsPattern: per-format files (FMT = T20, ODI, TEST, T20I) and legacy (unified) files.
-const MODEL_FEATURES: Record<
-  string,
-  {
-    features: string[];
-    outputs: string[];
-    level: 'player' | 'match' | 'meta';
-    note?: string;
-    artifactsPattern: { perFormat: string; legacy: string };
-    hasScaler?: boolean;
-  }
-> = {
+// Fallback when GET /api/ml/model-metadata is unavailable (e.g. ML service down). Kept in sync with ml-service for offline/dev.
+const DEFAULT_MODEL_FEATURES: ModelMetadataResponse = {
   batting: {
     level: 'player',
     hasScaler: true,
@@ -230,6 +220,8 @@ const MODEL_FEATURES: Record<
   },
 };
 
+const MODEL_KEYS = ['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'] as const;
+
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
@@ -248,12 +240,27 @@ const WorkbenchTab: React.FC = () => {
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<WalkForwardRegistry | null>(null);
 
+  const [modelFeatures, setModelFeatures] = useState<ModelMetadataResponse | null>(null);
+
   useEffect(() => {
     let active = true;
     api
       .getFormats()
       .then((f) => {
         if (active) setAvailableFormats(f);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getModelMetadata()
+      .then((data) => {
+        if (active) setModelFeatures(data);
       })
       .catch(() => {});
     return () => {
@@ -932,9 +939,9 @@ const WorkbenchTab: React.FC = () => {
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
           Features, outputs, and artifacts by model
         </Typography>
-        {(['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'] as const).map(
-          (key) => {
-            const m = MODEL_FEATURES[key];
+        {(modelFeatures ?? DEFAULT_MODEL_FEATURES) &&
+          MODEL_KEYS.map((key) => {
+            const m = (modelFeatures ?? DEFAULT_MODEL_FEATURES)[key];
             if (!m) return null;
             return (
               <Accordion
@@ -1029,8 +1036,7 @@ const WorkbenchTab: React.FC = () => {
                 </AccordionDetails>
               </Accordion>
             );
-          },
-        )}
+          })}
       </SectionCard>
 
       <SectionCard

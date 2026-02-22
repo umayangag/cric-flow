@@ -30,6 +30,7 @@ from .backtest_service import predict_match_baseline as svc_predict_match_baseli
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
 from .feature_config import get_feature_names
+from .model_metadata import get_model_metadata
 from .features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .models import (
@@ -855,6 +856,19 @@ async def artifacts_status():
     }
 
     return {"timestamp": ts, "root": root, "formats": formats, "legacy": legacy}
+
+
+@app.get("/model-metadata")
+async def model_metadata():
+    """Return model metadata (features, outputs, level, artifacts pattern) from the source of truth.
+
+    Used by the Workbench UI so it stays in sync with feature_vectors.json and training scripts.
+    """
+    try:
+        return get_model_metadata()
+    except Exception as e:
+        logger.exception("model_metadata.error", error=str(e))
+        raise HTTPException(status_code=500, detail={"code": "METADATA_ERROR", "message": str(e)}) from e
 
 
 @app.post("/predict/batting", response_model=List[BattingPrediction])
