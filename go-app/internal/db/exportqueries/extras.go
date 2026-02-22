@@ -26,67 +26,75 @@ func ExtrasTrainingRowsWithFormat(ctx context.Context, format string, cutoff tim
 }
 
 func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
-	// Match-level row with weather and aggregated batting/bowling features (same feature families as batting/bowling/fielding).
-	q := `SELECT
-		m.match_id,
-		m.format_id,
-		COALESCE(m.venue_id, 0),
-		COALESCE(m.season_id, 0),
-		SUM(mi.extras)::int AS total_extras,
-		COALESCE(mf.code, '') AS format_code,
-		COALESCE(w.temp, 0),
-		COALESCE(w.wind, 0),
-		COALESCE(w.rain, 0),
-		COALESCE(w.humidity, 0),
-		COALESCE(w.cloud, 0),
-		COALESCE(w.pressure, 0),
-		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
-		(SELECT COALESCE(SUM(snap.v), 0)
-		 FROM batting_data bd
-		 LEFT JOIN LATERAL (
-			SELECT fcs.batting_value AS v
-			FROM feature_consistency_snapshots fcs
-			WHERE fcs.player_id = bd.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
-			ORDER BY fcs.as_of_date DESC LIMIT 1
-		 ) snap ON TRUE
-		 WHERE bd.match_id = m.match_id
-		) AS bat_consistency_sum,
-		(SELECT COALESCE(SUM(snap.v), 0)
-		 FROM bowling_data bw
-		 LEFT JOIN LATERAL (
-			SELECT fcs.bowling_value AS v
-			FROM feature_consistency_snapshots fcs
-			WHERE fcs.player_id = bw.player_id AND fcs.format_id = m.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= m.match_date
-			ORDER BY fcs.as_of_date DESC LIMIT 1
-		 ) snap ON TRUE
-		 WHERE bw.match_id = m.match_id
-		) AS bowl_consistency_sum,
-		(SELECT COALESCE(SUM(snap.v), 0)
-		 FROM batting_data bd
-		 LEFT JOIN LATERAL (
-			SELECT ff.batting_value AS v
-			FROM feature_form_snapshots ff
-			WHERE ff.player_id = bd.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
-			ORDER BY ff.as_of_date DESC LIMIT 1
-		 ) snap ON TRUE
-		 WHERE bd.match_id = m.match_id
-		) AS bat_form_sum,
-		(SELECT COALESCE(SUM(snap.v), 0)
-		 FROM bowling_data bw
-		 LEFT JOIN LATERAL (
-			SELECT ff.bowling_value AS v
-			FROM feature_form_snapshots ff
-			WHERE ff.player_id = bw.player_id AND ff.format_id = m.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= m.match_date
-			ORDER BY ff.as_of_date DESC LIMIT 1
-		 ) snap ON TRUE
-		 WHERE bw.match_id = m.match_id
-		) AS bowl_form_sum
-	FROM match m
-	JOIN match_inning mi ON mi.match_id = m.match_id
-	LEFT JOIN match_format mf ON m.format_id = mf.id
-	LEFT JOIN (SELECT match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting') w ON w.match_id = m.match_id
-	WHERE m.match_date < $1
-	GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity`
+	// Match-level row with weather and aggregated batting/bowling features. Uses CTEs to avoid
+	// correlated subqueries: pre-aggregate per match via CTEs, then join once.
+	q := `WITH matches_filtered AS (
+		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id, COALESCE(m.season_id, 0) AS season_id,
+			m.match_date, COALESCE(mf.code, '') AS format_code,
+			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
+			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
+			CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
+			SUM(mi.extras)::int AS total_extras
+		FROM match m
+		JOIN match_inning mi ON mi.match_id = m.match_id
+		LEFT JOIN match_format mf ON m.format_id = mf.id
+		LEFT JOIN (SELECT match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting') w ON w.match_id = m.match_id
+		WHERE m.match_date < $1
+		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
+	),
+	bat_players AS (
+		SELECT bd.match_id, bd.player_id, m.format_id, m.match_date
+		FROM batting_data bd
+		JOIN matches_filtered m ON m.match_id = bd.match_id
+	),
+	bowl_players AS (
+		SELECT bw.match_id, bw.player_id, m.format_id, m.match_date
+		FROM bowling_data bw
+		JOIN matches_filtered m ON m.match_id = bw.match_id
+	),
+	bat_consistency AS (
+		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id)
+			bp.match_id, fcs.batting_value AS v
+		FROM bat_players bp
+		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
+		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, fcs.as_of_date DESC
+	),
+	bowl_consistency AS (
+		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id)
+			bp.match_id, fcs.bowling_value AS v
+		FROM bowl_players bp
+		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
+		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, fcs.as_of_date DESC
+	),
+	bat_form AS (
+		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id)
+			bp.match_id, ff.batting_value AS v
+		FROM bat_players bp
+		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
+		ORDER BY ff.player_id, ff.format_id, bp.match_id, ff.as_of_date DESC
+	),
+	bowl_form AS (
+		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id)
+			bp.match_id, ff.bowling_value AS v
+		FROM bowl_players bp
+		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
+		ORDER BY ff.player_id, ff.format_id, bp.match_id, ff.as_of_date DESC
+	),
+	bat_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_consistency GROUP BY match_id),
+	bowl_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_consistency GROUP BY match_id),
+	bat_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_form GROUP BY match_id),
+	bowl_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id)
+	SELECT m.match_id, m.format_id, m.venue_id, m.season_id, m.total_extras, m.format_code,
+		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
+		COALESCE(bc.s, 0) AS bat_consistency_sum,
+		COALESCE(bwc.s, 0) AS bowl_consistency_sum,
+		COALESCE(bf.s, 0) AS bat_form_sum,
+		COALESCE(bwf.s, 0) AS bowl_form_sum
+	FROM matches_filtered m
+	LEFT JOIN bat_cons_agg bc ON bc.match_id = m.match_id
+	LEFT JOIN bowl_cons_agg bwc ON bwc.match_id = m.match_id
+	LEFT JOIN bat_form_agg bf ON bf.match_id = m.match_id
+	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = m.match_id`
 	args := []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(
