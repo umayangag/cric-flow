@@ -1,9 +1,9 @@
 {
   "inputs": {
     "go_app_export_dir": "../output/go-app",
-    "training_data_fetch_timeout_sec": 604800,
+    "training_data_fetch_timeout_sec": 14400,
     "training_data_fetch_timeout_invalid_fallback_sec": 600,
-    "training_subprocess_timeout_sec": 604800,
+    "training_subprocess_timeout_sec": 14400,
     "go_app_request_timeout_sec": 30
   },
   "outputs": {
