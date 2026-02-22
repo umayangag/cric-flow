@@ -556,3 +556,133 @@ func (_c *MockDatasetRepo_BowlingUnifiedRows_Call) RunAndReturn(run func(ctx con
 	_c.Call.Return(run)
 	return _c
 }
+
+// FieldingFormatRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) FieldingFormatRows(ctx context.Context, format string) ([][]string, error) {
+	ret := _mock.Called(ctx, format)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FieldingFormatRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([][]string, error)); ok {
+		return returnFunc(ctx, format)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) [][]string); ok {
+		r0 = returnFunc(ctx, format)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, format)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_FieldingFormatRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FieldingFormatRows'
+type MockDatasetRepo_FieldingFormatRows_Call struct {
+	*mock.Call
+}
+
+// FieldingFormatRows is a helper method to define mock.On call
+//   - ctx context.Context
+//   - format string
+func (_e *MockDatasetRepo_Expecter) FieldingFormatRows(ctx interface{}, format interface{}) *MockDatasetRepo_FieldingFormatRows_Call {
+	return &MockDatasetRepo_FieldingFormatRows_Call{Call: _e.mock.On("FieldingFormatRows", ctx, format)}
+}
+
+func (_c *MockDatasetRepo_FieldingFormatRows_Call) Run(run func(ctx context.Context, format string)) *MockDatasetRepo_FieldingFormatRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_FieldingFormatRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_FieldingFormatRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_FieldingFormatRows_Call) RunAndReturn(run func(ctx context.Context, format string) ([][]string, error)) *MockDatasetRepo_FieldingFormatRows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FieldingUnifiedRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) FieldingUnifiedRows(ctx context.Context) ([][]string, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FieldingUnifiedRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([][]string, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) [][]string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_FieldingUnifiedRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FieldingUnifiedRows'
+type MockDatasetRepo_FieldingUnifiedRows_Call struct {
+	*mock.Call
+}
+
+// FieldingUnifiedRows is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockDatasetRepo_Expecter) FieldingUnifiedRows(ctx interface{}) *MockDatasetRepo_FieldingUnifiedRows_Call {
+	return &MockDatasetRepo_FieldingUnifiedRows_Call{Call: _e.mock.On("FieldingUnifiedRows", ctx)}
+}
+
+func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) Run(run func(ctx context.Context)) *MockDatasetRepo_FieldingUnifiedRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_FieldingUnifiedRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_FieldingUnifiedRows_Call {
+	_c.Call.Return(run)
+	return _c
+}

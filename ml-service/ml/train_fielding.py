@@ -191,8 +191,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Train fielding model from go-app export CSV or training-data API (same pipeline as batting/bowling)"
     )
-    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff for API fetch (optional; if unset, use CSV from export dir)")
-    ap.add_argument("--csv", default="", help="Path to fielding CSV (optional; else use GO_APP_OUTPUT_DIR/fielding_encoded_all.csv or API)")
+    ap.add_argument(
+        "--cutoff", default="", help="RFC3339 cutoff for API fetch (optional; if unset, use CSV from export dir)"
+    )
+    ap.add_argument(
+        "--csv",
+        default="",
+        help="Path to fielding CSV (optional; else use GO_APP_OUTPUT_DIR/fielding_encoded_all.csv or API)",
+    )
     ap.add_argument("--out", default="", help="Artifacts output dir (default from config)")
     ap.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""), help="Go-app base URL for API fetch")
     ap.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""), help="Optional API key")

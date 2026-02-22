@@ -694,8 +694,6 @@ def _find_per_format_artifact(
             error=str(e),
         )
         return None
-    fmt_suffix = f"_{fmt}.joblib"
-    fmt_lower = fmt.lower()
     if kind == "batting":
         scaler_name = f"batting_scaler_{fmt}.joblib"
         model_name = f"batting_model_{fmt}.joblib"
