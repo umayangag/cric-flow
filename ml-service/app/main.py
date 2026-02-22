@@ -148,6 +148,8 @@ def _verify_admin_api_key(request: Request) -> None:
                 hint="Set X-API-Key header to ADMIN_API_KEY value.",
             ),
         )
+
+
 MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 
 # -------------------- Simple in-memory cache for backtest endpoint --------------------

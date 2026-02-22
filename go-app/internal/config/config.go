@@ -263,7 +263,7 @@ func PipelineTimeout() time.Duration {
 }
 
 // ExportTimeout returns the timeout for the export-dataset pipeline step.
-// When the value is 0, falls back to PipelineTimeout(); when set (must be > 0), uses that.
+// Uses features.export_timeout_ms when set (must be > 0); otherwise falls back to PipelineTimeout().
 // A resulting duration of 0 means no timeout (only shutdown cancels).
 func ExportTimeout() time.Duration {
 	cfg := Load()
