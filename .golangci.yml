@@ -12,7 +12,7 @@ linters:
     - ineffassign
     - unparam
     - unused
-    - gosec
+    # - gosec  # disabled: G703/G704/G705/G706 taint rules produce many false positives
     - gocritic
     - prealloc
   exclusions:
