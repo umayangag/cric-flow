@@ -1,0 +1,12 @@
+# Direct dependencies only. Pinned output: pip-compile requirements.in -> requirements.txt
+fastapi
+uvicorn
+pydantic
+numpy
+pandas
+scikit-learn
+joblib
+structlog
+httpx
+psycopg2-binary
+python-dotenv
