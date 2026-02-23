@@ -45,7 +45,6 @@ services:
       SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
-    mem_limit: 2g
     ports:
       - "8080:8080"
     volumes:
@@ -80,9 +79,8 @@ services:
       # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
       ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # Resource limit for n_jobs; container mem_limit should match (e.g. 2g). Process uses detected limit.
+      # Resource limit for n_jobs; process uses detected limit (override with ML_MEMORY_LIMIT_MB if needed).
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
-    mem_limit: 2g
     ports:
       - "8000:8000"
     volumes:
