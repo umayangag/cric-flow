@@ -9,7 +9,7 @@ LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Raise as untested CLI/training modules get tests.
 COV_MIN?=34
 
-.PHONY: all venv install run train-batting train-bowling train-fielding train-extras train-win train-models
+.PHONY: all venv install compile-requirements run train-batting train-bowling train-fielding train-extras train-win train-models
 .PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
 .PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
@@ -22,6 +22,11 @@ venv:
 install: venv
 	$(PIP) install --upgrade pip
 	PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 $(PIP) install -r requirements.txt
+
+# Regenerate requirements.txt from requirements.in (pip-tools). Run after editing requirements.in or to upgrade pins.
+compile-requirements: venv
+	$(PIP) install pip-tools
+	$(VENV)/bin/pip-compile -U --strip-extras requirements.in -o requirements.txt
 
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install
@@ -190,6 +195,7 @@ help:
 	@echo "[Setup]"
 	@echo "  venv               Create local virtualenv (.venv)"
 	@echo "  install            Install runtime dependencies into venv"
+	@echo "  compile-requirements  Regenerate requirements.txt from requirements.in (pip-tools)"
 	@echo "  init               Install dev tools (ruff, pytest, etc.)"
 	@echo
 	@echo "[Run & Train]"

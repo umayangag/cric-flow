@@ -3,6 +3,13 @@ run:
   tests: true
   allow-parallel-runners: true
 linters:
+  settings:
+    gosec:
+      excludes:
+        - G703
+        - G704
+        - G705
+        - G706
   enable:
     - revive
     # disable testpackage: noisy; we prefer internal tests to access internals

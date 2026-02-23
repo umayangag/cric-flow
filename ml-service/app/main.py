@@ -136,7 +136,7 @@ ADMIN_API_KEY = (os.environ.get("ADMIN_API_KEY") or "").strip()
 
 # Max concurrent training jobs (admin train); prevents DoS via many concurrent requests
 MAX_CONCURRENT_TRAINING_JOBS = max(1, int(os.environ.get("MAX_CONCURRENT_TRAINING_JOBS", "1")))
-_training_semaphore: asyncio.Semaphore | None = None
+_training_semaphore: Optional[asyncio.Semaphore] = None
 
 
 def _get_training_semaphore() -> asyncio.Semaphore:

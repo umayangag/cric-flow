@@ -19,7 +19,7 @@ func TestBuildDSN_Table(t *testing.T) {
 		in   args
 		want string
 	}{
-		{
+		{ //nolint:gosec // G101: test placeholder values only
 			name: "basic dsn",
 			in:   args{"u", "p", "h", "5432", "d", "disable"},
 			want: "postgres://u:p@h:5432/d?sslmode=disable",
