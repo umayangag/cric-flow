@@ -31,7 +31,8 @@ func NewRouter(a *App) http.Handler {
 	// ML health proxy (full response for Health tab: loaded formats, artifacts)
 	admin.HandleFunc("/api/health/ml", a.mlHealthProxyHandler).Methods(http.MethodGet, http.MethodOptions)
 	// ML model metadata (features, outputs, artifacts pattern for Workbench UI)
-	admin.HandleFunc("/api/ml/model-metadata", a.mlModelMetadataProxyHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/ml/model-metadata", a.mlModelMetadataProxyHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
 

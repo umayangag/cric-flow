@@ -7,6 +7,7 @@ package resources
 import (
 	"encoding/json"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,9 +20,9 @@ import (
 const observationsFilename = "resource_observations.json"
 
 var (
-	observationsMu    sync.RWMutex
-	observations      = make(map[Kind]int) // MB per worker, last observed
-	observationsPath  string               // set once from env or config
+	observationsMu     sync.RWMutex
+	observations       = make(map[Kind]int) // MB per worker, last observed
+	observationsPath   string               // set once from env or config
 	observationsLoaded sync.Once
 )
 
@@ -101,8 +102,8 @@ func saveObservations() {
 		return
 	}
 	dir := filepath.Dir(path)
-	_ = os.MkdirAll(dir, 0755)
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	_ = os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		slog.Warn("resources: could not save observations", slog.String("path", path), slog.Any("err", err))
 		return
 	}
@@ -121,7 +122,11 @@ func RecordWorkerMemorySample(kind Kind, concurrency int) {
 	observationsLoaded.Do(loadObservations)
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
-	heapMB := int(ms.HeapAlloc / (1024 * 1024))
+	chunk := ms.HeapAlloc / (1024 * 1024)
+	heapMB := math.MaxInt
+	if chunk <= uint64(math.MaxInt) {
+		heapMB = int(chunk)
+	}
 	perWorker := heapMB / concurrency
 	if perWorker < 1 {
 		perWorker = 1
@@ -137,7 +142,6 @@ func RecordWorkerMemorySample(kind Kind, concurrency int) {
 	)
 	saveObservations()
 }
-
 
 // SetObservationsPathForTest sets the observations file path (for tests). Call with "" to reset.
 func SetObservationsPathForTest(path string) {
