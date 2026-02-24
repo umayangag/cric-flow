@@ -18,7 +18,6 @@ import {
   TableCell,
   CodeCell,
   DetailsCell,
-  ErrorMessage,
   ErrorText,
   EmptyStateCell,
   PaginationContainer,
@@ -163,7 +162,10 @@ const OpsMigrationsTable: React.FC = () => {
         PaperProps={{ sx: { maxHeight: '80vh' } }}
       >
         <DialogTitle>
-          Details {detailsMigration != null ? `— ${detailsMigration.command} (ID ${detailsMigration.id})` : ''}
+          Details{' '}
+          {detailsMigration != null
+            ? `— ${detailsMigration.command} (ID ${detailsMigration.id})`
+            : ''}
         </DialogTitle>
         <DialogContent dividers>
           {detailsMigration != null &&

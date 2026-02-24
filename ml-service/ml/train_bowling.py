@@ -108,9 +108,7 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].fillna(0.0)
     # Normalize toss: CSV/API may have "bat"/"field" strings; model expects 0/1
     if "toss" in df.columns and df["toss"].dtype == object:
-        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(
-            lambda x: 1.0 if x == "bat" else 0.0
-        )
+        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(lambda x: 1.0 if x == "bat" else 0.0)
     return df
 
 
@@ -342,6 +340,7 @@ def main():
         if not targets:
             targets = _config_formats()
         api_key = (args.api_key or os.environ.get("GO_APP_API_KEY", "")).strip() or None
+
         def _train_one_api(fmt: str) -> int:
             bowl = fetch_bowling_from_api(go_app_url, fmt, cutoff, api_key)
             headers = bowl.get("headers") or []

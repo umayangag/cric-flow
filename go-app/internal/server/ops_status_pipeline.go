@@ -21,15 +21,6 @@ var pipelineStepCommands = map[string]string{
 	// auto_tune has no tracking command; optional step
 }
 
-// getPipelineCommands returns the list of pipeline command names for tracking (in progress / runnable checks).
-func getPipelineCommands() []string {
-	commands := make([]string, 0, len(pipelineStepCommands))
-	for _, cmd := range pipelineStepCommands {
-		commands = append(commands, cmd)
-	}
-	return commands
-}
-
 // pipelineStepOrder defines the run order; step N is only runnable after step N-1 completed successfully.
 // Empty string means no previous step (always runnable when no other pipeline is running).
 var pipelineStepPreviousCommand = map[string]string{

@@ -1277,9 +1277,8 @@ def _unified_batting_csv_available() -> bool:
     out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
     if not out_dir or not os.path.isdir(out_dir):
         return False
-    return (
-        os.path.isfile(os.path.join(out_dir, "batting_encoded_all.csv"))
-        or os.path.isfile(os.path.join(out_dir, "batting_encoded.csv"))
+    return os.path.isfile(os.path.join(out_dir, "batting_encoded_all.csv")) or os.path.isfile(
+        os.path.join(out_dir, "batting_encoded.csv")
     )
 
 
@@ -1290,9 +1289,8 @@ def _unified_bowling_csv_available() -> bool:
     out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
     if not out_dir or not os.path.isdir(out_dir):
         return False
-    return (
-        os.path.isfile(os.path.join(out_dir, "bowling_encoded_all.csv"))
-        or os.path.isfile(os.path.join(out_dir, "bowling_encoded.csv"))
+    return os.path.isfile(os.path.join(out_dir, "bowling_encoded_all.csv")) or os.path.isfile(
+        os.path.join(out_dir, "bowling_encoded.csv")
     )
 
 

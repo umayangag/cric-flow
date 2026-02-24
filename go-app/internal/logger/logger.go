@@ -40,25 +40,26 @@ func (h *colorHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 	b := buf.Bytes()
 	out := os.Stdout
-	if r.Level >= slog.LevelError {
+	switch {
+	case r.Level >= slog.LevelError:
 		_, _ = out.Write([]byte(ansiRed))
 		_, _ = out.Write(b)
 		_, _ = out.Write([]byte(ansiReset))
-	} else if r.Level >= slog.LevelWarn {
+	case r.Level >= slog.LevelWarn:
 		_, _ = out.Write([]byte(ansiYellow))
 		_, _ = out.Write(b)
 		_, _ = out.Write([]byte(ansiReset))
-	} else {
+	default:
 		_, _ = out.Write(b)
 	}
 	return nil
 }
 
-func (h *colorHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *colorHandler) WithAttrs(_ []slog.Attr) slog.Handler {
 	return h
 }
 
-func (h *colorHandler) WithGroup(name string) slog.Handler {
+func (h *colorHandler) WithGroup(_ string) slog.Handler {
 	return h
 }
 
