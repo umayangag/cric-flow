@@ -105,6 +105,11 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
+    # Normalize toss: CSV/API may have "bat"/"field" strings; model expects 0/1
+    if "toss" in df.columns and df["toss"].dtype == object:
+        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(
+            lambda x: 1.0 if x == "bat" else 0.0
+        )
     return df
 
 
