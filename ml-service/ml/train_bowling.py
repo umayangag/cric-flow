@@ -111,7 +111,12 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
 def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     """Build X, Y and feature_names from a prepared bowling DataFrame (align with train_batting)."""
     required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
+    required_in_df = [c for c in required if c in df.columns]
+    for c in required_in_df:
+        df[c] = df[c].fillna(0.0)
+    target_subset = [c for c in TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
     X_raw = df[FEATURE_COLS].astype(float).values
     transform_config = get_transform_config("bowling")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):

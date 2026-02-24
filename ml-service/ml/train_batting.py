@@ -120,7 +120,14 @@ def _prepare_batting_df(df: pd.DataFrame) -> pd.DataFrame:
 def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     """Build X, Y and feature_names from a prepared batting DataFrame."""
     required = [c for c in FEATURE_COLS if c not in BAT_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
+    required_in_df = [c for c in required if c in df.columns]
+    # Fill NaN in feature columns with 0 so export with NULL form/consistency/venue/opposition (e.g. precompute not run) still yields trainable rows
+    for c in required_in_df:
+        df[c] = df[c].fillna(0.0)
+    # Drop only rows missing essential targets (runs/balls) so we don't train on invalid labels
+    target_subset = [c for c in TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
     X_raw = df[FEATURE_COLS].astype(float).values
     transform_config = get_transform_config("batting")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
