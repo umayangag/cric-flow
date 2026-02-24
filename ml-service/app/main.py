@@ -1256,10 +1256,25 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
         raise ValueError(f"Training failed (exit {proc.returncode}): {stderr}")
 
 
+def _export_csvs_available(prefix: str) -> bool:
+    """True if GO_APP_OUTPUT_DIR contains at least one CSV matching prefix (e.g. batting_encoded_*, bowling_encoded_*)."""
+    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
+    if not out_dir or not os.path.isdir(out_dir):
+        return False
+    try:
+        for name in os.listdir(out_dir):
+            if name.startswith(prefix) and name.endswith(".csv"):
+                return True
+    except OSError:
+        pass
+    return False
+
+
 @app.post("/admin/train/batting")
 async def admin_train_batting(request: Request, cutoff: str = ""):
     """Run batting model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    When cutoff is set but GO_APP_OUTPUT_DIR has batting_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
@@ -1274,14 +1289,21 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
         )
     _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
-    use_api = bool(cutoff)
+    csv_available = _export_csvs_available("batting_encoded_")
+    use_api = bool(cutoff) and not csv_available
     if use_api:
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
         logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
         extra = ["--all-formats"]
-        logger.info("admin.train.start", step="batting", per_format=True, from_api=False)
+        logger.info(
+            "admin.train.start",
+            step="batting",
+            per_format=True,
+            from_api=False,
+            from_csv=bool(cutoff and csv_available),
+        )
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
@@ -1302,6 +1324,7 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
 async def admin_train_bowling(request: Request, cutoff: str = ""):
     """Run bowling model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
+    When cutoff is set but GO_APP_OUTPUT_DIR has bowling_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
@@ -1316,14 +1339,21 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
         )
     _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
-    use_api = bool(cutoff)
+    csv_available = _export_csvs_available("bowling_encoded_")
+    use_api = bool(cutoff) and not csv_available
     if use_api:
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
         logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
         extra = ["--all-formats"]
-        logger.info("admin.train.start", step="bowling", per_format=True, from_api=False)
+        logger.info(
+            "admin.train.start",
+            step="bowling",
+            per_format=True,
+            from_api=False,
+            from_csv=bool(cutoff and csv_available),
+        )
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
