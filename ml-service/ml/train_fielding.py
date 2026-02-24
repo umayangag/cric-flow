@@ -21,6 +21,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import joblib
 import numpy as np
@@ -243,9 +244,20 @@ def main() -> None:
     if not by_format:
         logger.error("train_fielding.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y) in by_format.items():
+
+    formats_items = list(by_format.items())
+    max_workers = min(
+        len(formats_items),
+        max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+    )
+
+    def _train_one_format(item):
+        fmt, (X, Y) = item
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(_train_one_format, formats_items))
 
     # Unified (overall) model: train on all data combined for legacy/fallback
     all_X = np.vstack([X for _, (X, _) in by_format.items()])

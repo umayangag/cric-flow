@@ -1270,6 +1270,32 @@ def _export_csvs_available(prefix: str) -> bool:
     return False
 
 
+def _unified_batting_csv_available() -> bool:
+    """True if batting_encoded_all.csv (or legacy batting_encoded.csv) exists in export dir for unified model training."""
+    from ml.config import default_go_app_export_dir
+
+    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
+    if not out_dir or not os.path.isdir(out_dir):
+        return False
+    return (
+        os.path.isfile(os.path.join(out_dir, "batting_encoded_all.csv"))
+        or os.path.isfile(os.path.join(out_dir, "batting_encoded.csv"))
+    )
+
+
+def _unified_bowling_csv_available() -> bool:
+    """True if bowling_encoded_all.csv (or legacy bowling_encoded.csv) exists in export dir for unified model training."""
+    from ml.config import default_go_app_export_dir
+
+    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
+    if not out_dir or not os.path.isdir(out_dir):
+        return False
+    return (
+        os.path.isfile(os.path.join(out_dir, "bowling_encoded_all.csv"))
+        or os.path.isfile(os.path.join(out_dir, "bowling_encoded.csv"))
+    )
+
+
 @app.post("/admin/train/batting")
 async def admin_train_batting(request: Request, cutoff: str = ""):
     """Run batting model training per format (TEST, ODI, T20I, T20).
@@ -1307,7 +1333,25 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
-        logger.info("admin.train.success", step="batting")
+        # Also train unified model (batting_model.joblib / batting_scaler.joblib) when unified CSV exists
+        if _unified_batting_csv_available():
+            try:
+                from ml.train_batting_model import run_training as run_unified_batting
+
+                prev = os.environ.get("SKIP_PIPELINE_TRACKING")
+                os.environ["SKIP_PIPELINE_TRACKING"] = "1"
+                try:
+                    await asyncio.to_thread(run_unified_batting)
+                finally:
+                    if prev is None:
+                        os.environ.pop("SKIP_PIPELINE_TRACKING", None)
+                    else:
+                        os.environ["SKIP_PIPELINE_TRACKING"] = prev
+                logger.info("admin.train.success", step="batting", unified=True)
+            except Exception as e:
+                logger.warning("admin.train.unified_batting_failed", error=str(e))
+        else:
+            logger.info("admin.train.success", step="batting", unified=False)
         return {"status": "ok", "step": "batting"}
     except ValueError as e:
         raise HTTPException(
@@ -1357,7 +1401,25 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
-        logger.info("admin.train.success", step="bowling")
+        # Also train unified model (bowling_model.joblib / bowling_scaler.joblib) when unified CSV exists
+        if _unified_bowling_csv_available():
+            try:
+                from ml.train_bowling_model import run_training as run_unified_bowling
+
+                prev = os.environ.get("SKIP_PIPELINE_TRACKING")
+                os.environ["SKIP_PIPELINE_TRACKING"] = "1"
+                try:
+                    await asyncio.to_thread(run_unified_bowling)
+                finally:
+                    if prev is None:
+                        os.environ.pop("SKIP_PIPELINE_TRACKING", None)
+                    else:
+                        os.environ["SKIP_PIPELINE_TRACKING"] = prev
+                logger.info("admin.train.success", step="bowling", unified=True)
+            except Exception as e:
+                logger.warning("admin.train.unified_bowling_failed", error=str(e))
+        else:
+            logger.info("admin.train.success", step="bowling", unified=False)
         return {"status": "ok", "step": "bowling"}
     except ValueError as e:
         raise HTTPException(

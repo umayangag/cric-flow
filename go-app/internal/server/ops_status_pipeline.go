@@ -46,10 +46,10 @@ var pipelineStepPreviousCommand = map[string]string{
 }
 
 // buildPipelineSection returns a map with "steps" (per-step running, runnable) for /ops/status.
-// A step is runnable only when no pipeline is running and the previous step has completed successfully.
+// A step is runnable when it is not running and its previous step has completed successfully.
+// Steps that share the same previous (e.g. train_batting, train_bowling, train_fielding after export) can run concurrently.
 // Import is always runnable when not running so the pipeline can be retriggered from the beginning.
 func buildPipelineSection(ctx context.Context) map[string]any {
-	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, getPipelineCommands())
 	steps := map[string]any{}
 	for stepID, command := range pipelineStepCommands {
 		running, err := tracking.HasInProgressForCommand(ctx, command)
@@ -57,7 +57,7 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			slog.Warn("pipeline: HasInProgressForCommand failed", "step", stepID, "command", command, "err", err)
 			running = false
 		}
-		runnable := !anyRunning && !running
+		runnable := !running
 		if runnable {
 			prevCmd := pipelineStepPreviousCommand[stepID]
 			if prevCmd != "" {
@@ -84,15 +84,13 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 		}
 		steps[stepID] = map[string]any{"running": running, "runnable": runnable}
 	}
-	// auto_tune: runnable only when no pipeline running and all API-based training (fielding, extras, win) have completed
-	autoTuneRunnable := !anyRunning
-	if autoTuneRunnable {
-		for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
-			done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, cmd)
-			if err != nil || !done {
-				autoTuneRunnable = false
-				break
-			}
+	// auto_tune: runnable when train-fielding, train-extras, train-win have all completed (may run in parallel with other steps)
+	autoTuneRunnable := true
+	for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
+		done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, cmd)
+		if err != nil || !done {
+			autoTuneRunnable = false
+			break
 		}
 	}
 	steps["auto_tune"] = map[string]any{"running": false, "runnable": autoTuneRunnable}
@@ -111,15 +109,19 @@ var stepLabelByCommand = map[string]string{
 
 // CanRunPipelineStep returns whether the step can be started and an error message if not.
 // Used by pipeline run handler to enforce order: next step only after previous completed successfully.
+// Multiple steps that share the same previous (e.g. train_batting, train_bowling) may run concurrently.
 // auto_tune requires train-fielding, train-extras, and train-win all completed.
 func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg string) {
 	_, hasCommand := pipelineStepCommands[stepID]
 	if !hasCommand && stepID != "auto_tune" {
 		return false, "unknown step"
 	}
-	anyRunning, _ := tracking.HasInProgressForAnyCommand(ctx, getPipelineCommands())
-	if anyRunning {
-		return false, "another pipeline step is already running"
+	if stepID != "auto_tune" {
+		command := pipelineStepCommands[stepID]
+		running, _ := tracking.HasInProgressForCommand(ctx, command)
+		if running {
+			return false, "this step is already running"
+		}
 	}
 	if stepID == "auto_tune" {
 		for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
