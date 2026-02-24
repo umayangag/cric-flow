@@ -45,6 +45,8 @@ services:
       SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
+      # Error (red) and warn (yellow) in docker logs for visibility
+      LOG_COLOR: "1"
     ports:
       - "8080:8080"
     volumes:
@@ -81,6 +83,8 @@ services:
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
       # Resource limit for n_jobs; process uses detected limit (override with ML_MEMORY_LIMIT_MB if needed).
       ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
+      # Error (red) and warn (yellow) in docker logs for visibility
+      LOG_COLOR: "1"
     ports:
       - "8000:8000"
     volumes:

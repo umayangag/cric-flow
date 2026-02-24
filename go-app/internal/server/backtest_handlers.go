@@ -937,6 +937,33 @@ type trainingDataPart struct {
 	Rows    [][]string `json:"rows"`
 }
 
+// respondTrainingDataErr maps known training-data errors to appropriate HTTP status and message.
+// Format-not-found (e.g. migrations not run or match_format empty) -> 400; DB not ready -> 503; else 500.
+func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "no rows") {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "FORMAT_NOT_FOUND",
+			Message: "format not found or database not ready for training-data",
+			Hint:    "Ensure migrations are applied and match_format is populated (TEST, ODI, T20, T20I). Format requested: " + format,
+		})
+		slog.Info("training-data: format not found or no rows", slog.String("format", format), slog.Any("err", err))
+		return
+	}
+	if strings.Contains(err.Error(), "db pool not initialized") {
+		writeJSON(w, http.StatusServiceUnavailable, apiError{
+			Code:    "SERVICE_UNAVAILABLE",
+			Message: "database not connected",
+			Hint:    "Go-app may still be starting; retry shortly.",
+		})
+		slog.Warn("training-data: db pool not initialized", slog.Any("err", err))
+		return
+	}
+	respondErr(w, err)
+}
+
 // backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...
 // cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
@@ -952,54 +979,58 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	format := strings.TrimSpace(r.URL.Query().Get("format"))
 	useAll := format == "" || strings.EqualFold(format, "all")
+	formatForErr := format
+	if formatForErr == "" {
+		formatForErr = "all"
+	}
 	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
 	if useAll {
 		batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
 	} else {
 		batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
 		if err != nil {
-			respondErr(w, err)
+			respondTrainingDataErr(w, err, formatForErr)
 			return
 		}
 		winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
 	}
 	if err != nil {
-		respondErr(w, err)
+		respondTrainingDataErr(w, err, formatForErr)
 		return
 	}
 	part := func(rows [][]string) (headers []string, data [][]string) {
