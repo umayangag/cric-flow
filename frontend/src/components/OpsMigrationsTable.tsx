@@ -3,6 +3,12 @@ import { api } from '../api';
 import { Migration } from '../types';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
+import Box from '@mui/material/Box';
 import {
   TableContainer,
   Table,
@@ -11,11 +17,13 @@ import {
   TableRow,
   TableCell,
   CodeCell,
+  DetailsCell,
   ErrorMessage,
   ErrorText,
   EmptyStateCell,
   PaginationContainer,
   PaginationButton,
+  ViewDetailsButton,
 } from './OpsMigrationsTable.styles';
 
 // Helper to format duration or time ago
@@ -59,6 +67,7 @@ const OpsMigrationsTable: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [detailsMigration, setDetailsMigration] = useState<Migration | null>(null);
   const limit = 10;
 
   const load = useCallback(
@@ -116,13 +125,15 @@ const OpsMigrationsTable: React.FC = () => {
               </TableCell>
               <TableCell>{formatTimeAgo(m.started_at)}</TableCell>
               <TableCell>{formatDuration(m.started_at, m.completed_at)}</TableCell>
-              <TableCell>
-                {m.error_message ? (
-                  <ErrorMessage>{m.error_message}</ErrorMessage>
-                ) : (
-                  <JsonCollapse summary="Meta" data={{ args: m.args, meta: m.metadata }} />
-                )}
-              </TableCell>
+              <DetailsCell>
+                <ViewDetailsButton
+                  type="button"
+                  onClick={() => setDetailsMigration(m)}
+                  aria-label={`View details for migration ${m.id}`}
+                >
+                  View details
+                </ViewDetailsButton>
+              </DetailsCell>
             </TableRow>
           ))}
           {migrations.length === 0 && (
@@ -143,6 +154,49 @@ const OpsMigrationsTable: React.FC = () => {
           Older
         </PaginationButton>
       </PaginationContainer>
+
+      <Dialog
+        open={detailsMigration !== null}
+        onClose={() => setDetailsMigration(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { maxHeight: '80vh' } }}
+      >
+        <DialogTitle>
+          Details {detailsMigration != null ? `— ${detailsMigration.command} (ID ${detailsMigration.id})` : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          {detailsMigration != null &&
+            (detailsMigration.error_message ? (
+              <Box
+                component="pre"
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: '60vh',
+                  overflow: 'auto',
+                  margin: 0,
+                  fontSize: 12,
+                  color: '#dc2626',
+                  fontFamily: 'ui-monospace, Menlo, monospace',
+                }}
+              >
+                {detailsMigration.error_message}
+              </Box>
+            ) : (
+              <JsonCollapse
+                summary="Meta"
+                data={{
+                  args: detailsMigration.args,
+                  meta: detailsMigration.metadata,
+                }}
+              />
+            ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailsMigration(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </TableContainer>
   );
 };
