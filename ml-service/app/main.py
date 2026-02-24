@@ -575,6 +575,7 @@ except Exception:
     svc_config = None  # type: ignore
 
 MODELS_DIR = app_settings.get_models_dir(svc_config)
+os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Registries provided by app.artifacts module (imported above)
 
