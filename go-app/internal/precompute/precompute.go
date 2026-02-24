@@ -8,6 +8,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
+
+	"golang.org/x/sync/errgroup"
 
 	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
@@ -24,6 +27,8 @@ type RunOpts struct {
 // Run orchestrates precompute for the given season and list of format codes.
 // It populates feature_form_snapshots and feature_consistency_snapshots (and
 // triggers sequence features) per format. If formats is empty, computes for all formats.
+// Multiple formats run in parallel, sharing the resource-aware concurrency limit (80%
+// of available memory/CPU from config/env); each format gets an equal share of workers.
 // Season is ignored; the snapshot runner replays all matches chronologically.
 // Pass nil for opts to use config for alpha and lastN.
 // Run uses the parent context as-is; no extra deadline is applied here.
@@ -46,6 +51,9 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 			slog.Any("formats_requested", formats),
 		)
 		return err
+	}
+	if len(codes) == 0 {
+		return nil
 	}
 	slog.Info("precompute: starting run", slog.String("season", season), slog.Any("format_codes", codes))
 
@@ -80,26 +88,57 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 		windowN = cfg.Features.HistoryWindowMatches
 	}
 
-	runner := pfcmd.NewRunner()
-	for _, code := range codes {
-		setPhase("form")
-		setCurrentFormat(code)
-		slog.Info("precompute: starting format", slog.String("format", code))
-		formatID, err := db.GetMatchFormatIDByCode(ctx, code)
-		if err != nil {
-			slog.Error("precompute: get format ID failed", slog.String("format", code), slog.Any("err", err))
-			return err
-		}
-		if err := runner.RunReplay(ctx, code, formatID, alpha, lastN, windowN); err != nil {
-			slog.Error(
-				"precompute: RunReplay failed",
-				slog.String("format", code),
-				slog.Int64("format_id", formatID),
-				slog.Any("err", err),
-			)
-			return err
-		}
-		resources.LogMemoryAndGoroutines("precompute: format completed", slog.String("format", code))
+	// Resource-aware limit (from env/config: 80% of available memory/CPU). Split across formats when running in parallel.
+	totalLimit := resources.GetLimit(resources.KindPrecompute)
+	if totalLimit < 1 {
+		totalLimit = 1
 	}
-	return nil
+	perFormatLimit := totalLimit / len(codes)
+	if perFormatLimit < 1 {
+		perFormatLimit = 1
+	}
+	slog.Info("precompute: running formats",
+		slog.Int("formats", len(codes)),
+		slog.Int("total_concurrency", totalLimit),
+		slog.Int("per_format_concurrency", perFormatLimit),
+	)
+
+	// Resolve format IDs before starting parallel work so we fail fast on invalid codes.
+	type formatJob struct {
+		code     string
+		formatID int64
+	}
+	jobs := make([]formatJob, 0, len(codes))
+	for _, code := range codes {
+		formatID, idErr := db.GetMatchFormatIDByCode(ctx, code)
+		if idErr != nil {
+			slog.Error("precompute: get format ID failed", slog.String("format", code), slog.Any("err", idErr))
+			return idErr
+		}
+		jobs = append(jobs, formatJob{code: code, formatID: formatID})
+	}
+
+	setPhase("form")
+	setCurrentFormat(strings.Join(codes, ", "))
+
+	runner := pfcmd.NewRunner()
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, job := range jobs {
+		job := job
+		g.Go(func() error {
+			slog.Info("precompute: starting format", slog.String("format", job.code))
+			if runErr := runner.RunReplay(gCtx, job.code, job.formatID, alpha, lastN, windowN, perFormatLimit); runErr != nil {
+				slog.Error(
+					"precompute: RunReplay failed",
+					slog.String("format", job.code),
+					slog.Int64("format_id", job.formatID),
+					slog.Any("err", runErr),
+				)
+				return runErr
+			}
+			resources.LogMemoryAndGoroutines("precompute: format completed", slog.String("format", job.code))
+			return nil
+		})
+	}
+	return g.Wait()
 }

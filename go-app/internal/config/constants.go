@@ -117,7 +117,7 @@ const (
 	DefaultImportMBPerWorker                = 150
 	DefaultExportMBPerWorker                = 100
 	DefaultSeqCalcMBPerWorker               = 500
-	DefaultFieldingMBPerWorker              = 50
+	DefaultFieldingMBPerWorker              = 100
 	DefaultMemoryUsageFractionPercent       = 80
 	DefaultSeqCalcLowMemoryLimitGiB         = 2
 	DefaultPrecomputeConcurrencyWhenNoLimit = 2

@@ -101,6 +101,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 		)
 		return int(count), err
 	}
+	resources.RecordWorkerMemorySample(resources.KindImport, concurrency)
 	if len(failedFiles) > 0 {
 		slog.Warn("cricsheet.ImportDir finished with skipped files",
 			slog.String("dir", dir),

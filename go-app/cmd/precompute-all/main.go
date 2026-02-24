@@ -104,7 +104,7 @@ func run() int {
 		}
 		// Single-date mode (as-of): not supported by precompute.Run, use runner directly
 		runner := pfcmd.NewRunner()
-		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
+		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN, 0); err != nil {
 			return nil, err
 		}
 		return meta, nil
