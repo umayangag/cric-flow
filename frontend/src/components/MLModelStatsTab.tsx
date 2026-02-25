@@ -37,6 +37,14 @@ function formatModified(iso: string | undefined): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+function formatDuration(seconds: number | undefined): string {
+  if (seconds == null || !isFinite(seconds) || seconds < 0) return '—';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
 function ModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
   const params = model.tuned_parameters;
@@ -68,10 +76,12 @@ function ModelRow({ model }: { model: MLModelStat }) {
         <TableCell>{formatBytes(model.size_bytes)}</TableCell>
         <TableCell sx={{ fontSize: '0.85rem' }}>{formatModified(model.modified)}</TableCell>
         <TableCell>{model.tuned ? 'Yes' : 'No'}</TableCell>
+        <TableCell sx={{ fontSize: '0.85rem' }}>{formatModified(model.trained_at)}</TableCell>
+        <TableCell>{formatDuration(model.duration_seconds)}</TableCell>
       </TableRow>
       {hasDetails && (
         <TableRow>
-          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box sx={{ py: 2, px: 1 }}>
                 {params && Object.keys(params).length > 0 && (
@@ -177,7 +187,7 @@ const MLModelStatsTab: React.FC = () => {
       {data && (
         <SectionCard
           title="ML model stats"
-          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, and artifact size."
+          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, size. Trained at and duration come from the linked data migration (auto_tune runs)."
         >
           {data.models.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
@@ -196,6 +206,8 @@ const MLModelStatsTab: React.FC = () => {
                     <TableCell>Size</TableCell>
                     <TableCell>Modified</TableCell>
                     <TableCell>Tuned</TableCell>
+                    <TableCell>Trained at</TableCell>
+                    <TableCell>Duration</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>

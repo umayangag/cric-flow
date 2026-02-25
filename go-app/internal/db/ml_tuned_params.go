@@ -4,13 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // InsertMLTunedParams inserts a row into ml_tuned_params. params and metrics are stored as JSONB.
 // metrics may be nil; a nil value is stored as NULL.
-func InsertMLTunedParams(ctx context.Context, model, format string, params json.RawMessage, metrics json.RawMessage) error {
+// dataMigrationID links to data_migrations (e.g. the IN_PROGRESS ml-auto-tune run); pass 0 to omit.
+func InsertMLTunedParams(ctx context.Context, model, format string, params json.RawMessage, metrics json.RawMessage, dataMigrationID int) error {
+	if dataMigrationID > 0 {
+		_, err := Pool.Exec(ctx, `
+			INSERT INTO ml_tuned_params (model, format, params, metrics, data_migration_id)
+			VALUES ($1, $2, $3, $4, $5)
+		`, model, format, params, metrics, dataMigrationID)
+		return err
+	}
 	_, err := Pool.Exec(ctx, `
 		INSERT INTO ml_tuned_params (model, format, params, metrics)
 		VALUES ($1, $2, $3, $4)
@@ -91,6 +100,57 @@ func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) 
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// MigrationInfoForModelStats holds started_at, completed_at, and duration for model-stats enrichment.
+type MigrationInfoForModelStats struct {
+	TrainedAt     string  // ISO8601
+	CompletedAt   string  // ISO8601
+	DurationSecs  float64 // completed_at - started_at in seconds
+}
+
+// GetMigrationInfoForTunedParams returns migration info (trained_at, duration) keyed by "model|format".
+// model and format are lower/upper-cased to match ml_tuned_params. Returns empty map when DB unavailable.
+func GetMigrationInfoForTunedParams(ctx context.Context) (map[string]MigrationInfoForModelStats, error) {
+	if !Available() {
+		return nil, nil
+	}
+	rows, err := Query(ctx, `
+		SELECT DISTINCT ON (tp.model, tp.format) tp.model, tp.format,
+			dm.started_at, dm.completed_at,
+			EXTRACT(EPOCH FROM (dm.completed_at - dm.started_at)) AS duration_secs
+		FROM ml_tuned_params tp
+		JOIN data_migrations dm ON dm.id = tp.data_migration_id
+		WHERE tp.data_migration_id IS NOT NULL
+		ORDER BY tp.model, tp.format, tp.created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]MigrationInfoForModelStats)
+	for rows.Next() {
+		var model, format string
+		var startedAt time.Time
+		var completedAt *time.Time
+		var durationSecs *float64
+		if err := rows.Scan(&model, &format, &startedAt, &completedAt, &durationSecs); err != nil {
+			return nil, err
+		}
+		key := model + "|" + format
+		info := MigrationInfoForModelStats{
+			TrainedAt:    startedAt.UTC().Format(time.RFC3339),
+			DurationSecs: 0,
+		}
+		if completedAt != nil {
+			info.CompletedAt = completedAt.UTC().Format(time.RFC3339)
+		}
+		if durationSecs != nil {
+			info.DurationSecs = *durationSecs
+		}
+		out[key] = info
 	}
 	return out, rows.Err()
 }

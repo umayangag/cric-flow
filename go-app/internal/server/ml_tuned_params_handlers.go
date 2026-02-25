@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // POST /api/ml/tuned-params body: { "model": "batting", "format": "T20", "params": { ... }, "metrics": { ... } }
@@ -33,7 +34,8 @@ func (a *App) mlTunedParamsPostHandler(w http.ResponseWriter, r *http.Request) {
 	if body.Params == nil {
 		body.Params = []byte("{}")
 	}
-	if err := db.InsertMLTunedParams(r.Context(), model, format, body.Params, body.Metrics); err != nil {
+	dataMigrationID, _ := tracking.GetInProgressMigrationIDForCommand(r.Context(), "ml-auto-tune")
+	if err := db.InsertMLTunedParams(r.Context(), model, format, body.Params, body.Metrics, dataMigrationID); err != nil {
 		respondErr(w, err)
 		return
 	}

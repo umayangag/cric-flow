@@ -59,6 +59,12 @@ export type MLModelStat = {
   n_features?: number;
   metrics?: Record<string, unknown>;
   accuracy_display?: string;
+  /** Training start time (from linked data_migration) — when auto_tune run started. */
+  trained_at?: string;
+  /** Training completion time (from linked data_migration). */
+  completed_at?: string;
+  /** Training duration in seconds (from data_migration.completed_at - started_at). */
+  duration_seconds?: number;
 };
 export type ModelStatsResponse = {
   models_dir: string;

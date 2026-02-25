@@ -184,6 +184,38 @@ func (a *App) mlModelStatsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	// Enrich with migration info (trained_at, duration) when available
+	if modelsVal, ok := payload["models"]; ok {
+		if modelsList, ok := modelsVal.([]any); ok && db.Available() {
+			migrationInfo, err := db.GetMigrationInfoForTunedParams(r.Context())
+			if err != nil {
+				slog.Warn("ml model-stats proxy: migration info fetch failed", slog.Any("err", err))
+			} else if len(migrationInfo) > 0 {
+				for _, m := range modelsList {
+					modelMap, _ := m.(map[string]any)
+					if modelMap == nil {
+						continue
+					}
+					modelName, _ := modelMap["model_name"].(string)
+					matchFormat, _ := modelMap["match_format"].(string)
+					formatKey := matchFormat
+					if matchFormat == "Unified" || matchFormat == "" {
+						formatKey = ""
+					}
+					key := strings.ToLower(modelName) + "|" + formatKey
+					if info, has := migrationInfo[key]; has {
+						modelMap["trained_at"] = info.TrainedAt
+						if info.CompletedAt != "" {
+							modelMap["completed_at"] = info.CompletedAt
+						}
+						if info.DurationSecs > 0 {
+							modelMap["duration_seconds"] = info.DurationSecs
+						}
+					}
+				}
+			}
+		}
+	}
 	respondJSON(w, http.StatusOK, payload)
 }
 
