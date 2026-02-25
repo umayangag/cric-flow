@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // getUniqueStringsWithParams runs a query that returns a single string column and returns distinct values.
@@ -82,4 +83,23 @@ func GetOpponentsByFormatAndTeam(ctx context.Context, format, teamName string) (
 		ORDER BY opponent
 	`
 	return getUniqueStringsWithParams(ctx, query, format, teamName)
+}
+
+// GetVenuesByQuery returns venue names (display_name or venue_name) that match the query.
+// Query must be at least 3 characters; otherwise returns nil, nil (no error, no results).
+// Matching is case-insensitive (ILIKE) with the pattern %q%.
+func GetVenuesByQuery(ctx context.Context, q string) ([]string, error) {
+	q = strings.TrimSpace(q)
+	if len(q) < 3 {
+		return nil, nil
+	}
+	pattern := "%" + q + "%"
+	query := `
+		SELECT DISTINCT COALESCE(NULLIF(trim(display_name), ''), venue_name) AS name
+		FROM venue
+		WHERE (COALESCE(display_name, venue_name) ILIKE $1 OR venue_name ILIKE $1)
+		ORDER BY name
+		LIMIT 50
+	`
+	return getUniqueStringsWithParams(ctx, query, pattern)
 }

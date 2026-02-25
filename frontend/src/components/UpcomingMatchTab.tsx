@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -50,6 +50,9 @@ const UpcomingMatchTab: React.FC = () => {
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
   const [availableTeam2s, setAvailableTeam2s] = useState<string[]>([]);
+  const [venueOptions, setVenueOptions] = useState<string[]>([]);
+  const [venueLoading, setVenueLoading] = useState<boolean>(false);
+  const venueSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +132,39 @@ const UpcomingMatchTab: React.FC = () => {
       active = false;
     };
   }, [format, team1]);
+
+  const fetchVenueOptions = (query: string) => {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) {
+      setVenueOptions([]);
+      return;
+    }
+    setVenueLoading(true);
+    api
+      .searchVenues(trimmed)
+      .then((list) => setVenueOptions(list))
+      .catch(() => setVenueOptions([]))
+      .finally(() => setVenueLoading(false));
+  };
+
+  const handleVenueInputChange = (_: React.SyntheticEvent, value: string) => {
+    setVenue(value);
+    if (venueSearchRef.current) {
+      clearTimeout(venueSearchRef.current);
+      venueSearchRef.current = null;
+    }
+    if (value.trim().length < 3) {
+      setVenueOptions([]);
+      return;
+    }
+    venueSearchRef.current = setTimeout(() => fetchVenueOptions(value), 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (venueSearchRef.current) clearTimeout(venueSearchRef.current);
+    };
+  }, []);
 
   const dateError = useMemo(() => {
     if (!matchDate) return 'Match date is required';
@@ -220,13 +256,22 @@ const UpcomingMatchTab: React.FC = () => {
           )}
         />
 
-        <TextField
+        <Autocomplete
           size="small"
-          label="Venue (optional)"
+          freeSolo
+          options={venueOptions}
           value={venue}
-          onChange={(e) => setVenue(e.target.value)}
-          placeholder="e.g. Wankhede Stadium"
-          fullWidth
+          onInputChange={handleVenueInputChange}
+          onChange={(_, v) => setVenue(typeof v === 'string' ? v : v ?? '')}
+          filterOptions={(opts) => opts}
+          loading={venueLoading}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Venue (optional)"
+              placeholder="Type 3+ characters to search venues"
+            />
+          )}
         />
 
         <TextField

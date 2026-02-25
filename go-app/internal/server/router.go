@@ -54,6 +54,8 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
 		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/options/venues", optionsHandler.HandleGetVenues).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Domain queries
 	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet, http.MethodOptions)

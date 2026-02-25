@@ -262,6 +262,14 @@ export const api = {
   getFormats(): Promise<string[]> {
     return httpApi('/api/options/formats');
   },
+  /** Search venues by query; returns empty array if query has fewer than 3 characters. */
+  searchVenues(q: string): Promise<string[]> {
+    const trimmed = (q ?? '').trim();
+    if (trimmed.length < 3) return Promise.resolve([]);
+    const u = new URL('/api/options/venues', BASE_API_URL);
+    u.searchParams.set('q', trimmed);
+    return httpApi(u.toString());
+  },
   /** Match scorecard (innings, batting and bowling card) for evaluate DB tab. */
   getMatchScorecard(matchId: number): Promise<MatchScorecardResponse> {
     const u = new URL('/api/backtest/scorecard', BASE_API_URL);
