@@ -60,6 +60,24 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
+// CancelInProgressMigration sets the most recent IN_PROGRESS migration to CANCELLED (e.g. user stop).
+// Returns true if a row was updated, false if none in progress.
+func CancelInProgressMigration(ctx context.Context, reason string) (bool, error) {
+	if !db.Available() {
+		return false, nil
+	}
+	inProgress, err := GetInProgressMigrations(ctx)
+	if err != nil || len(inProgress) == 0 {
+		return false, err
+	}
+	m := inProgress[0]
+	err = UpdateMigrationStatus(ctx, m.ID, StatusCancelled, nil, reason)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CancelStaleInProgressMigrations sets IN_PROGRESS rows to CANCELLED only when started_at
 // is older than the given threshold. Use on server startup so that runs interrupted by
 // this instance's restart/crash are cleaned up, without cancelling runs started recently
@@ -155,6 +173,29 @@ func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, e
 		return false, err
 	}
 	return exists, nil
+}
+
+// GetInProgressMigrationIDForCommand returns the ID of the most recent IN_PROGRESS migration
+// for the given command, or 0 if none. Used when inserting ml_tuned_params to link to the
+// current auto_tune run.
+func GetInProgressMigrationIDForCommand(ctx context.Context, command string) (int, error) {
+	if !db.Available() || command == "" {
+		return 0, nil
+	}
+	var id int
+	err := db.QueryRow(ctx, `
+		SELECT id FROM data_migrations
+		WHERE command = $1 AND status = $2
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, command, StatusInProgress).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return id, nil
 }
 
 // GetInProgressMigrations returns all rows with status IN_PROGRESS, ordered by started_at DESC.

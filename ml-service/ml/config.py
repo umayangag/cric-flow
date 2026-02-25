@@ -189,11 +189,15 @@ def save_tuned_params_to_go_app(
     format_code: str,
     params: Dict[str, Any],
     api_key: Optional[str] = None,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """POST tuned params to go-app so they are stored in the DB for future training."""
+    """POST tuned params and metrics to go-app so they are stored in the DB for future training."""
     base = go_app_url.rstrip("/")
     url = f"{base}/api/ml/tuned-params"
-    payload = json.dumps({"model": model, "format": format_code, "params": params}).encode("utf-8")
+    payload_dict: Dict[str, Any] = {"model": model, "format": format_code, "params": params}
+    if metrics:
+        payload_dict["metrics"] = metrics
+    payload = json.dumps(payload_dict).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST")
     req.add_header("Content-Type", "application/json")
     if api_key:
@@ -240,10 +244,11 @@ def get_training_params(model: str, format_code: Optional[str] = None) -> Dict[s
         raise ValueError(
             f"config.json must define 'ml.training.{model}' with keys: " + ", ".join(TRAINING_REQUIRED_KEYS)
         )
-    # Overlay latest tuned params from go-app when available
+    # Overlay latest tuned params from go-app when available (per-format or unified with format "")
     go_app_url = os.environ.get("GO_APP_URL", "").strip()
-    if format_code is not None and go_app_url:
-        overlay = get_tuned_params_from_go_app(go_app_url, model, format_code or "", os.environ.get("GO_APP_API_KEY"))
+    if go_app_url:
+        format_key = format_code if format_code is not None else ""
+        overlay = get_tuned_params_from_go_app(go_app_url, model, format_key, os.environ.get("GO_APP_API_KEY"))
         if overlay:
             block = _deep_merge(block, overlay)
     missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
@@ -328,9 +333,9 @@ def get_tuning_config() -> Dict[str, Any]:
     else:
         algorithms = ["rf", "gb"]
 
-    validation_method = str(tuning.get("validation_method", "kfold")).lower().strip()
+    validation_method = str(tuning.get("validation_method", "walk_forward")).lower().strip()
     if validation_method not in ("kfold", "walk_forward"):
-        validation_method = "kfold"
+        validation_method = "walk_forward"
 
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),

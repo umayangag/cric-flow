@@ -36,7 +36,19 @@ def bowling_feature_vector(f: Any) -> List[float]:
     return [_feature_value(f, n) for n in names]
 
 
+# Config/export names used in feature_vectors.json and training vs FieldingFeatures attribute names
+_FIELDING_NAME_TO_ATTR = {
+    "inning": "fielding_inning",
+    "toss": "fielding_toss",
+    "season_id": "fielding_season",
+}
+
+
 def fielding_feature_vector(f: Any) -> List[float]:
-    """Build the fielding feature vector in the exact order defined in config."""
+    """Build the fielding feature vector in the exact order defined in config.
+
+    Config names (e.g. inning, toss, season_id) are mapped to FieldingFeatures
+    attribute names (fielding_inning, fielding_toss, fielding_season) when present.
+    """
     names = get_feature_names("fielding")
-    return [getattr(f, n) for n in names]
+    return [_feature_value(f, _FIELDING_NAME_TO_ATTR.get(n, n)) for n in names]

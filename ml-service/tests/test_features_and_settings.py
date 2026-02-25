@@ -174,11 +174,11 @@ def test_fielding_feature_vector(tmp_path):
         fielding_cloud=5,
         fielding_pressure=1010,
         fielding_viscosity=0,
-        inning=1,
-        toss=1,
+        fielding_inning=1,
+        fielding_toss=1,
         fielding_venue=0.4,
         fielding_opposition=0.6,
-        season_id=2024,
+        fielding_season=2024,
     )
     vec = features_mod.fielding_feature_vector(fld)
     assert len(vec) == 14

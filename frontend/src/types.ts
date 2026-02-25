@@ -42,6 +42,35 @@ export type ModelMetadataEntry = {
 };
 export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
 
+/** ML model stats from ml-service GET /model-stats (via go-app proxy). Used by ML Model Stats tab. */
+export type MLModelStat = {
+  model_name: string;
+  match_format: string;
+  size_bytes?: number;
+  modified?: string;
+  tuned?: boolean;
+  best_cv_score?: number;
+  scoring?: string;
+  algorithm?: string;
+  tuned_parameters?: Record<string, unknown>;
+  cv_splits?: number;
+  validation_method?: string;
+  n_samples?: number;
+  n_features?: number;
+  metrics?: Record<string, unknown>;
+  accuracy_display?: string;
+  /** Training start time (from linked data_migration) — when auto_tune run started. */
+  trained_at?: string;
+  /** Training completion time (from linked data_migration). */
+  completed_at?: string;
+  /** Training duration in seconds (from data_migration.completed_at - started_at). */
+  duration_seconds?: number;
+};
+export type ModelStatsResponse = {
+  models_dir: string;
+  models: MLModelStat[];
+};
+
 // --- Backtest API DTOs ---
 export type BacktestCandidate = {
   match_id: number;
@@ -214,12 +243,15 @@ export type OpsStatusDTO = {
   [key: string]: unknown;
 };
 
-/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */
+/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 200 requires_confirmation, 4xx/5xx error) */
 export type PipelineRunResponse = {
   status?: string;
   step?: string;
   error?: string;
   command?: string;
+  /** When true, no auto-tuned params in DB; UI should prompt before training with default config */
+  requires_confirmation?: boolean;
+  message?: string;
 };
 
 /** Payload of SSE "progress" event from GET /ops/pipeline/stream */
@@ -227,6 +259,10 @@ export type PipelineProgressPayload = {
   running: boolean;
   step_id?: string;
   step_label?: string;
+  /** Human-readable description of what is happening */
+  detail?: string;
+  /** Current parameters (e.g. model, format, cutoff) for display */
+  params?: Record<string, unknown>;
   started_at?: string;
   elapsed_sec?: number;
   precompute?: {

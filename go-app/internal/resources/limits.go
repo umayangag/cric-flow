@@ -47,10 +47,13 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	}
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
-		// No memory limit detected (no GOMEMLIMIT/cgroup): use conservative default for memory-heavy kinds to avoid OOM.
+		// No memory limit detected (no GOMEMLIMIT/cgroup): use CPU-based concurrency for optimum throughput.
 		cfg := config.Load()
 		if kind == KindPrecompute {
 			n = config.ResourcesPrecomputeConcurrencyWhenNoLimit(cfg)
+			if n <= 0 {
+				n = runtime.NumCPU()
+			}
 		} else {
 			n = runtime.NumCPU()
 		}

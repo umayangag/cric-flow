@@ -36,8 +36,18 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 			defaultLastN = cfg.Features.ConsistencyLastN
 		}
 	}
-	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20); ignored if -all-formats")
-	fs.BoolVar(&allFormats, "all-formats", false, "Run all canonical formats (TEST, ODI, T20I, T20) in parallel; requires -replay")
+	fs.StringVar(
+		&format,
+		"format",
+		"ODI",
+		"Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20); ignored if -all-formats",
+	)
+	fs.BoolVar(
+		&allFormats,
+		"all-formats",
+		false,
+		"Run all canonical formats (TEST, ODI, T20I, T20) in parallel; requires -replay",
+	)
 	fs.StringVar(&asOf, "as-of", "", "Cutoff date (YYYY-MM-DD); used only when -replay is false")
 	fs.BoolVar(
 		&replay,

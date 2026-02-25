@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
@@ -22,6 +24,7 @@ var commandToStepID = map[string]string{
 	"train-extras":           "train_extras",
 	"train-win":              "train_win",
 	"train-combination-meta": "train_combination_meta",
+	"ml-auto-tune":           "auto_tune",
 }
 
 var commandToStepLabel = map[string]string{
@@ -34,6 +37,7 @@ var commandToStepLabel = map[string]string{
 	"train-extras":           "Train Extras",
 	"train-win":              "Train Win",
 	"train-combination-meta": "Train Combination Meta",
+	"ml-auto-tune":           "Auto-tune",
 }
 
 func pipelineProgressInterval() time.Duration {
@@ -48,13 +52,15 @@ func defaultPrecomputeETASecPerFormat() int {
 
 // pipelineProgressPayload is the JSON sent in each SSE "progress" event.
 type pipelineProgressPayload struct {
-	Running      bool                `json:"running"`
-	StepID       string              `json:"step_id,omitempty"`
-	StepLabel    string              `json:"step_label,omitempty"`
-	StartedAt    string              `json:"started_at,omitempty"`
-	ElapsedSec   int64               `json:"elapsed_sec,omitempty"`
-	Precompute   *precomputeProgress `json:"precompute,omitempty"`
-	EstimatedSec *int64              `json:"estimated_remaining_sec,omitempty"`
+	Running      bool                   `json:"running"`
+	StepID       string                 `json:"step_id,omitempty"`
+	StepLabel    string                 `json:"step_label,omitempty"`
+	Detail       string                 `json:"detail,omitempty"` // Human-readable: what is happening
+	Params       map[string]interface{} `json:"params,omitempty"` // Current parameters (from migration args)
+	StartedAt    string                 `json:"started_at,omitempty"`
+	ElapsedSec   int64                  `json:"elapsed_sec,omitempty"`
+	Precompute   *precomputeProgress    `json:"precompute,omitempty"`
+	EstimatedSec *int64                 `json:"estimated_remaining_sec,omitempty"`
 }
 
 type precomputeProgress struct {
@@ -64,6 +70,83 @@ type precomputeProgress struct {
 	// Index of current format in Formats (0-based) for progress bar
 	CurrentIndex int `json:"current_index,omitempty"`
 	FormatsTotal int `json:"formats_total,omitempty"`
+}
+
+// buildProgressDetailAndParams returns a short human-readable detail string and a params map from migration command and args.
+func buildProgressDetailAndParams(
+	command string,
+	argsJSON json.RawMessage,
+) (detail string, params map[string]interface{}) {
+	params = make(map[string]interface{})
+	if len(argsJSON) > 0 {
+		_ = json.Unmarshal(argsJSON, &params)
+	}
+	// Omit internal "step" from params for display
+	delete(params, "step")
+
+	switch command {
+	case "cricsheet-import":
+		if dir, _ := params["dir"].(string); dir != "" {
+			detail = fmt.Sprintf("Importing Cricsheet from %s", dir)
+		} else {
+			detail = "Importing Cricsheet data"
+		}
+	case "precompute-features":
+		detail = "Computing features and consistency per format"
+		if season, _ := params["season"].(string); season != "" {
+			params["season"] = season
+		}
+	case "export-dataset":
+		if outDir, _ := params["out_dir"].(string); outDir != "" {
+			detail = fmt.Sprintf("Exporting training dataset to %s", outDir)
+		} else {
+			detail = "Exporting training dataset"
+		}
+	case "train-batting", "train-bowling", "train-fielding", "train-extras", "train-win":
+		model := strings.TrimPrefix(command, "train-")
+		if len(model) > 0 {
+			model = strings.ToUpper(model[:1]) + model[1:]
+		}
+		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
+			detail = fmt.Sprintf("Training %s models (cutoff %s)", model, cutoff)
+		} else {
+			detail = fmt.Sprintf("Training %s models", model)
+		}
+	case "ml-auto-tune":
+		model, _ := params["model"].(string)
+		if model == "" {
+			model = "all"
+		}
+		format, _ := params["format"].(string)
+		allFormats, _ := params["all_formats"].(string)
+		switch {
+		case allFormats != "":
+			detail = fmt.Sprintf(
+				"Auto-tuning: model %s, all formats (searching best algorithm and hyperparameters)",
+				model,
+			)
+		case format != "":
+			detail = fmt.Sprintf(
+				"Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)",
+				model,
+				format,
+			)
+		default:
+			detail = fmt.Sprintf("Auto-tuning: model %s (searching best algorithm and hyperparameters)", model)
+		}
+		params["model"] = model
+		if format != "" {
+			params["format"] = format
+		}
+		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
+			params["cutoff"] = cutoff
+		}
+	case "train-combination-meta":
+		detail = "Training combination meta-model"
+	default:
+		detail = command
+	}
+	return detail, params
 }
 
 // pipelineProgressStreamHandler handles GET /ops/pipeline/stream and streams pipeline progress via SSE.
@@ -110,10 +193,13 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 			stepLabel = m.Command
 		}
 		elapsed := time.Since(m.StartedAt).Seconds()
+		detail, params := buildProgressDetailAndParams(m.Command, m.Args)
 		payload := pipelineProgressPayload{
 			Running:    true,
 			StepID:     stepID,
 			StepLabel:  stepLabel,
+			Detail:     detail,
+			Params:     params,
 			StartedAt:  m.StartedAt.UTC().Format(time.RFC3339),
 			ElapsedSec: int64(elapsed),
 		}

@@ -44,7 +44,17 @@ from sklearn.ensemble import (
     StackingRegressor,
 )
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit, cross_val_predict
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -149,7 +159,7 @@ def _get_tuning_config() -> Dict[str, Any]:
 
 
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
-    """Resolve n_jobs: override if set, else config (resource-aware when n_jobs=-1), else env AUTO_TUNE_N_JOBS."""
+    """Resolve n_jobs: override if set, else config, else env AUTO_TUNE_N_JOBS. When result is -1, use resource-aware suggested_n_jobs('tuning') for multi-CPU."""
     if n_jobs_override is not None and n_jobs_override >= 1:
         return n_jobs_override
     n_jobs = tuning_cfg.get("n_jobs", 1)
@@ -158,6 +168,10 @@ def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int]
             n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
         except ValueError:
             pass
+    if n_jobs == -1:
+        from ml.resources import suggested_n_jobs
+
+        return max(1, suggested_n_jobs("tuning"))
     return max(1, int(n_jobs))
 
 
@@ -180,6 +194,59 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
         return TimeSeriesSplit(n_splits=n_splits)
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
+
+
+def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
+    """Compute regression metrics from cross-validated predictions. Returns dict with mae, rmse, r2, r2_pct."""
+    try:
+        y_pred = cross_val_predict(pipe, X, y, cv=cv)
+        mae = float(mean_absolute_error(y, y_pred))
+        rmse = float(np.sqrt(mean_squared_error(y, y_pred)))
+        r2 = float(r2_score(y, y_pred))
+        # r2 can be negative; clamp for display
+        r2_pct = max(0.0, min(100.0, r2 * 100))
+        return {
+            "mae": round(mae, 4),
+            "rmse": round(rmse, 4),
+            "r2": round(r2, 4),
+            "r2_pct": round(r2_pct, 2),
+        }
+    except Exception as e:
+        logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)
+        return {}
+
+
+def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
+    """Compute classification metrics from cross-validated predictions. Returns dict with accuracy, accuracy_pct, etc."""
+    try:
+        y_pred = cross_val_predict(pipe, X, y, cv=cv)
+        accuracy = float(accuracy_score(y, y_pred))
+        precision = float(precision_score(y, y_pred, zero_division=0))
+        recall = float(recall_score(y, y_pred, zero_division=0))
+        f1 = float(f1_score(y, y_pred, zero_division=0))
+        metrics: Dict[str, Any] = {
+            "accuracy": round(accuracy, 4),
+            "accuracy_pct": round(accuracy * 100, 2),
+            "precision": round(precision, 4),
+            "precision_pct": round(precision * 100, 2),
+            "recall": round(recall, 4),
+            "recall_pct": round(recall * 100, 2),
+            "f1": round(f1, 4),
+            "f1_pct": round(f1 * 100, 2),
+        }
+        if hasattr(pipe, "predict_proba"):
+            try:
+                y_proba = cross_val_predict(pipe, X, y, cv=cv, method="predict_proba")
+                if y_proba.ndim == 2 and y_proba.shape[1] >= 2:
+                    auc = float(roc_auc_score(y, y_proba[:, 1]))
+                    metrics["roc_auc"] = round(auc, 4)
+                    metrics["roc_auc_pct"] = round(auc * 100, 2)
+            except Exception:
+                pass
+        return metrics
+    except Exception as e:
+        logger.warning("auto_tune.compute_metrics_classification_failed error=%s", e)
+        return {}
 
 
 def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
@@ -363,13 +430,13 @@ def _run_search_single_regression(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for single-output regression. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
     if not candidates:
@@ -425,6 +492,8 @@ def _run_search_single_regression(
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
     }
+    if best_pipe is not None:
+        report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
     return best_pipe, best_params, report
 
 
@@ -437,13 +506,13 @@ def _run_search_classification(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for binary classification (win). Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
     if not candidates:
@@ -499,6 +568,8 @@ def _run_search_classification(
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
     }
+    if best_pipe is not None:
+        report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
     return best_pipe, best_params, report
 
 
@@ -533,13 +604,13 @@ def _run_search(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression(model_kind) if k in allow]
     if not candidates:
@@ -603,6 +674,8 @@ def _run_search(
         "n_targets": int(Y.shape[1]),
         "candidates": all_cv_results,
     }
+    if best_pipe is not None:
+        report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
     return best_pipe, best_params, report
 
 
@@ -729,7 +802,7 @@ def load_batting_from_api(
 ) -> Tuple[np.ndarray, np.ndarray]:
     from app.train_on_the_fly import _batting_rows_to_xy, fetch_training_data
 
-    data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
+    data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="batting")
     bat = data.get("batting") or {}
     headers = bat.get("headers") or []
     rows = bat.get("rows") or []
@@ -741,7 +814,7 @@ def load_bowling_from_api(
 ) -> Tuple[np.ndarray, np.ndarray]:
     from app.train_on_the_fly import _bowling_rows_to_xy, fetch_training_data
 
-    data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
+    data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="bowling")
     bowl = data.get("bowling") or {}
     headers = bowl.get("headers") or []
     rows = bowl.get("rows") or []
@@ -812,7 +885,7 @@ def run_auto_tune(
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
     best_pipe, best_params, report = _run_search(
         X, Y, model_kind, cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -839,7 +912,7 @@ def run_auto_tune_extras(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_single_regression(
         X, y, "extras", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -866,7 +939,7 @@ def run_auto_tune_win(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_classification(
         X, y, "win", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -901,7 +974,7 @@ def main() -> None:
         "--validation-method",
         choices=["kfold", "walk_forward"],
         default="",
-        help="Validation method: kfold or walk_forward (temporal). Default: from config.",
+        help="Validation method: kfold or walk_forward (temporal). Default: walk_forward (from config).",
     )
     parser.add_argument(
         "--parallel",
@@ -949,9 +1022,12 @@ def main() -> None:
             return
         params_to_save = dict(report["config_snippet"])
         params_to_save["algorithms"] = report.get("algorithms", [])
-        params_to_save["validation_method"] = report.get("validation_method", "kfold")
+        params_to_save["validation_method"] = report.get("validation_method", "walk_forward")
+        metrics_to_save = report.get("metrics")
         try:
-            save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", params_to_save, api_key)
+            save_tuned_params_to_go_app(
+                go_app_url, model, format_suffix or "", params_to_save, api_key, metrics=metrics_to_save
+            )
             logger.info("auto_tune.params_saved_to_db model=%s format=%s", model, format_suffix or "(unified)")
         except ValueError as e:
             logger.warning(
