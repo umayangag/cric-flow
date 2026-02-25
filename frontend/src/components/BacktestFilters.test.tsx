@@ -84,16 +84,20 @@ describe('BacktestFilters component', () => {
 
     render(<BacktestFilters onSelect={onSelect} />);
 
-    // Wait for cascade to complete (formats -> teams -> opponents)
+    // Wait for cascade to complete so Search is enabled (formats -> teams -> opponents resolved)
     await waitFor(() => expect(fetchOpponents).toHaveBeenCalled());
-    fireEvent.click(screen.getByLabelText('search'));
+    const searchBtn = screen.getByLabelText('search');
+    await waitFor(() => expect(searchBtn).not.toBeDisabled());
+    fireEvent.click(searchBtn);
 
     await waitFor(() => expect(fetchBacktestSelect).toHaveBeenCalledTimes(1));
     const table = await screen.findByRole('table', { name: /candidates-table/i });
     expect(table).toBeInTheDocument();
     const selectBtn = await screen.findByLabelText('select-9000111');
     fireEvent.click(selectBtn);
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith(9000111, expect.objectContaining({ match_id: 9000111 }));
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(9000111, expect.objectContaining({ match_id: 9000111 }));
+    });
   });
 });
