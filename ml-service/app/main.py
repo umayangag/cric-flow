@@ -1525,10 +1525,12 @@ async def admin_train_auto_tune(
     cutoff: str = "",
     model: str = "all",
     all_formats: str = "",
+    unified: str = "",
 ):
     """Run auto-tune for selected model(s) and format(s).
     Query params: model (batting|bowling|fielding|extras|win|all), format (TEST|ODI|T20|T20I),
-    all_formats (1|true = tune all formats). When all_formats is set, format is ignored.
+    all_formats (1|true = tune each per-format), unified (1|true = tune unified model only, no format).
+    When all_formats is set, format is ignored. When unified is set, no --format or --all-formats is passed.
     Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
     model = (model or "all").strip().lower()
@@ -1542,15 +1544,16 @@ async def admin_train_auto_tune(
             ),
         )
     use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
+    use_unified = (unified or "").strip().lower() in ("1", "true", "yes")
     fmt = (request.query_params.get("format") or "").strip().upper()
-    if not use_all_formats:
+    if not use_all_formats and not use_unified:
         if not fmt or fmt not in _VALID_AUTO_TUNE_FORMATS:
             raise HTTPException(
                 status_code=400,
                 detail=_error_payload(
                     code="FORMAT_REQUIRED",
-                    message="Single format required when not using all formats",
-                    hint="Pass format (TEST, ODI, T20, T20I) or all_formats=1",
+                    message="Single format required when not using all formats or unified",
+                    hint="Pass format (TEST, ODI, T20, T20I), all_formats=1, or unified=1",
                 ),
             )
     cutoff = (cutoff or "").strip()
@@ -1568,11 +1571,11 @@ async def admin_train_auto_tune(
     ]
     if use_all_formats:
         extra.append("--all-formats")
-    else:
+    elif not use_unified:
         extra.extend(["--format", fmt])
     # Use parallel when multiple (model, format) tasks will run; each parallel subprocess uses 1 job.
-    # When single task (one model + one format), allow multi-CPU via AUTO_TUNE_N_JOBS=-1 (resource-aware).
-    single_task = model != "all" and not use_all_formats
+    # When single task (one model + one format or unified), allow multi-CPU via AUTO_TUNE_N_JOBS=-1 (resource-aware).
+    single_task = model != "all" and (not use_all_formats or use_unified)
     if model == "all" or use_all_formats:
         extra.append("--parallel")
     subprocess_env: Optional[Dict[str, str]] = None
@@ -1588,6 +1591,7 @@ async def admin_train_auto_tune(
         go_app_url=go_app_url,
         model=model,
         all_formats=use_all_formats,
+        unified=use_unified,
         format=fmt or None,
         single_task=single_task,
     )

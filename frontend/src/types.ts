@@ -214,12 +214,15 @@ export type OpsStatusDTO = {
   [key: string]: unknown;
 };
 
-/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */
+/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 200 requires_confirmation, 4xx/5xx error) */
 export type PipelineRunResponse = {
   status?: string;
   step?: string;
   error?: string;
   command?: string;
+  /** When true, no auto-tuned params in DB; UI should prompt before training with default config */
+  requires_confirmation?: boolean;
+  message?: string;
 };
 
 /** Payload of SSE "progress" event from GET /ops/pipeline/stream */

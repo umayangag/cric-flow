@@ -16,6 +16,7 @@ import (
 	exportcli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
 	expcmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
@@ -240,16 +241,79 @@ func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
+// trainingStepToModel maps pipeline train step ID to ml model name for tuned-params lookup.
+func trainingStepToModel(stepID string) string {
+	switch stepID {
+	case "train_batting":
+		return "batting"
+	case "train_bowling":
+		return "bowling"
+	case "train_fielding":
+		return "fielding"
+	case "train_extras":
+		return "extras"
+	case "train_win":
+		return "win"
+	default:
+		return ""
+	}
+}
+
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
+// For auto_tune, forwards query params: model, format, all_formats, unified.
+// For train_* steps: if no auto-tuned params exist in DB and confirm_use_default is not set, returns 200 with
+// requires_confirmation so the UI can prompt; if user confirms, client re-posts with confirm_use_default=1.
 func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		args := map[string]any{"step": stepID}
-		cutoff := r.URL.Query().Get("cutoff")
+		q := r.URL.Query()
+		cutoff := q.Get("cutoff")
 		if cutoff == "" {
 			cutoff = defaultCutoff()
 		}
 		args["cutoff"] = cutoff
 		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+
+		// Training steps: require user confirmation when no tuned params in DB (unless confirm_use_default is set).
+		if model := trainingStepToModel(stepID); model != "" {
+			confirmVal := strings.TrimSpace(strings.ToLower(q.Get("confirm_use_default")))
+			confirmUseDefault := confirmVal == "1" || confirmVal == "true" || confirmVal == "yes"
+			if !confirmUseDefault && db.Pool != nil {
+				hasParams, err := db.HasAnyTunedParamsForModel(r.Context(), model)
+				if err != nil {
+					slog.Warn("pipeline: tuned params check failed", "step", stepID, "model", model, "err", err)
+					respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check tuned params"})
+					return
+				}
+				if !hasParams {
+					respondJSON(w, http.StatusOK, map[string]any{
+						"requires_confirmation": true,
+						"message":              "No auto-tuned parameters found for this model. Train with default config parameters?",
+						"step":                 stepID,
+					})
+					return
+				}
+			}
+		}
+
+		if stepID == "auto_tune" {
+			if v := strings.TrimSpace(q.Get("model")); v != "" {
+				querySuffix += "&model=" + url.QueryEscape(v)
+				args["model"] = v
+			}
+			if v := strings.TrimSpace(q.Get("format")); v != "" {
+				querySuffix += "&format=" + url.QueryEscape(v)
+				args["format"] = v
+			}
+			if v := strings.TrimSpace(q.Get("all_formats")); v != "" {
+				querySuffix += "&all_formats=" + url.QueryEscape(v)
+				args["all_formats"] = v
+			}
+			if v := strings.TrimSpace(q.Get("unified")); v != "" {
+				querySuffix += "&unified=" + url.QueryEscape(v)
+				args["unified"] = v
+			}
+		}
 
 		jobCtx, cancel := context.WithCancel(a.JobContext())
 		a.SetCurrentJobCancel(cancel)

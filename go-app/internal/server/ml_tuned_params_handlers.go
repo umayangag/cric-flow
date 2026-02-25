@@ -8,16 +8,17 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// POST /api/ml/tuned-params body: { "model": "batting", "format": "T20", "params": { ... } }
+// POST /api/ml/tuned-params body: { "model": "batting", "format": "T20", "params": { ... }, "metrics": { ... } }
 func (a *App) mlTunedParamsPostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiError{Code: "METHOD_NOT_ALLOWED", Message: "POST required"})
 		return
 	}
 	var body struct {
-		Model  string          `json:"model"`
-		Format string          `json:"format"`
-		Params json.RawMessage `json:"params"`
+		Model   string          `json:"model"`
+		Format  string          `json:"format"`
+		Params  json.RawMessage `json:"params"`
+		Metrics json.RawMessage `json:"metrics"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_JSON", Message: err.Error()})
@@ -32,7 +33,7 @@ func (a *App) mlTunedParamsPostHandler(w http.ResponseWriter, r *http.Request) {
 	if body.Params == nil {
 		body.Params = []byte("{}")
 	}
-	if err := db.InsertMLTunedParams(r.Context(), model, format, body.Params); err != nil {
+	if err := db.InsertMLTunedParams(r.Context(), model, format, body.Params, body.Metrics); err != nil {
 		respondErr(w, err)
 		return
 	}
@@ -51,9 +52,13 @@ func (a *App) mlTunedParamsListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Return as list of objects so clients see which model and format each params row belongs to.
-	list := make([]map[string]string, 0, len(entries))
+	list := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
-		list = append(list, map[string]string{"model": e.Model, "format": e.Format, "created_at": e.CreatedAt})
+		m := map[string]interface{}{"model": e.Model, "format": e.Format, "created_at": e.CreatedAt}
+		if e.Metrics != nil && len(e.Metrics) > 0 {
+			m["metrics"] = json.RawMessage(e.Metrics)
+		}
+		list = append(list, m)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"entries": list})
 }
@@ -84,10 +89,14 @@ func (a *App) mlTunedParamsGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Include model and format so the response is self-describing (which model/format the params belong to).
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	out := map[string]interface{}{
 		"model":      model,
 		"format":     format,
 		"params":     json.RawMessage(row.Params),
 		"created_at": row.CreatedAt,
-	})
+	}
+	if row.Metrics != nil && len(row.Metrics) > 0 {
+		out["metrics"] = json.RawMessage(row.Metrics)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
