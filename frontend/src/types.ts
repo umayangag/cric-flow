@@ -227,6 +227,10 @@ export type PipelineProgressPayload = {
   running: boolean;
   step_id?: string;
   step_label?: string;
+  /** Human-readable description of what is happening */
+  detail?: string;
+  /** Current parameters (e.g. model, format, cutoff) for display */
+  params?: Record<string, unknown>;
   started_at?: string;
   elapsed_sec?: number;
   precompute?: {

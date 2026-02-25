@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Migration } from '../types';
 import StatusPill from './common/StatusPill';
-import JsonCollapse from './common/JsonCollapse';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -186,13 +185,31 @@ const OpsMigrationsTable: React.FC = () => {
                 {detailsMigration.error_message}
               </Box>
             ) : (
-              <JsonCollapse
-                summary="Meta"
-                data={{
-                  args: detailsMigration.args,
-                  meta: detailsMigration.metadata,
+              <Box
+                component="pre"
+                sx={{
+                  p: 1.5,
+                  bgcolor: 'grey.100',
+                  color: 'text.primary',
+                  borderRadius: 1,
+                  overflow: 'auto',
+                  maxHeight: '60vh',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  fontSize: 12,
+                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  margin: 0,
                 }}
-              />
+              >
+                {JSON.stringify(
+                  {
+                    args: detailsMigration.args,
+                    meta: detailsMigration.metadata,
+                  },
+                  null,
+                  2,
+                )}
+              </Box>
             ))}
         </DialogContent>
         <DialogActions>

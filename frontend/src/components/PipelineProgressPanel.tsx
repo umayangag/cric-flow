@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { api } from '../api';
@@ -37,6 +38,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
   const [streamError, setStreamError] = useState<string | null>(null);
   const [reconnectingBuffered, setReconnectingBuffered] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [stopLoading, setStopLoading] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const wasRunningRef = useRef(false);
   const onRefreshRef = useRef(onRefresh);
   const showErrorAfterBufferRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,9 +152,32 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
         </Typography>
       )}
       {!streamError && connecting && (
-        <Typography variant="body2" color="text.secondary">
-          Connecting to live progress…
-        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Connecting to live progress…
+          </Typography>
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            disabled={stopLoading}
+            onClick={async () => {
+              setStopError(null);
+              setStopLoading(true);
+              try {
+                const { status, data: res } = await api.opsPipelineStop();
+                if (status === 200) doRefresh();
+                else setStopError(res.error || `Failed (${status})`);
+              } catch (e) {
+                setStopError(e instanceof Error ? e.message : 'Request failed');
+              } finally {
+                setStopLoading(false);
+              }
+            }}
+          >
+            {stopLoading ? 'Stopping…' : 'Stop pipeline'}
+          </Button>
+        </Box>
       )}
       {!streamError && !connecting && !showRunning && (
         <Typography variant="body2" color="text.secondary">
@@ -163,6 +189,30 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           {reconnectingBuffered && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
               Reconnecting… (showing last status)
+            </Typography>
+          )}
+          {p.detail && (
+            <Typography variant="body2" color="text.secondary">
+              {p.detail}
+            </Typography>
+          )}
+          {p.params && Object.keys(p.params).length > 0 && (
+            <Typography variant="caption" color="text.secondary" component="div">
+              {Object.entries(p.params)
+                .map(([key, value]) => {
+                  const label = key.replace(/_/g, ' ');
+                  const val =
+                    typeof value === 'object' && value !== null && !Array.isArray(value)
+                      ? JSON.stringify(value)
+                      : String(value);
+                  return `${label}: ${val}`;
+                })
+                .join(' · ')}
+            </Typography>
+          )}
+          {p.step_id === 'auto_tune' && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              Algorithms (e.g. rf, gb, stacked) are chosen during search; best params are saved to DB.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
@@ -177,7 +227,36 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
                 Est. remaining: ~{formatElapsed(p.estimated_remaining_sec)}
               </Typography>
             )}
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              disabled={stopLoading}
+              onClick={async () => {
+                setStopError(null);
+                setStopLoading(true);
+                try {
+                  const { status, data: res } = await api.opsPipelineStop();
+                  if (status === 200) {
+                    doRefresh();
+                  } else {
+                    setStopError(res.error || `Failed (${status})`);
+                  }
+                } catch (e) {
+                  setStopError(e instanceof Error ? e.message : 'Request failed');
+                } finally {
+                  setStopLoading(false);
+                }
+              }}
+            >
+              {stopLoading ? 'Stopping…' : 'Stop pipeline'}
+            </Button>
           </Box>
+          {stopError && (
+            <Typography variant="caption" color="error">
+              {stopError}
+            </Typography>
+          )}
           {p.precompute && (
             <Box>
               <Typography variant="caption" color="text.secondary" display="block">

@@ -178,7 +178,10 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		slog.String("season", season),
 		slog.Any("formats", formats),
 	)
+	jobCtx, cancel := context.WithCancel(a.JobContext())
+	a.SetCurrentJobCancel(cancel)
 	go func() {
+		defer a.ClearCurrentJobCancel()
 		timeout := config.PipelineTimeout()
 		slog.Info(
 			"precompute job started",
@@ -187,7 +190,7 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Any("formats", formats),
 		)
 		runErr := pipeline.RunJob(
-			a.JobContext(),
+			jobCtx,
 			"precompute-features",
 			map[string]any{"season": season, "formats": formats},
 			timeout,
@@ -237,10 +240,13 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
+	jobCtx, cancel := context.WithCancel(a.JobContext())
+	a.SetCurrentJobCancel(cancel)
 	go func() {
+		defer a.ClearCurrentJobCancel()
 		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
-			a.JobContext(),
+			jobCtx,
 			"cricsheet-import",
 			map[string]any{"dir": dir},
 			config.PipelineTimeout(),

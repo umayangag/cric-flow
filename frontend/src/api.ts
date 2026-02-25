@@ -148,10 +148,22 @@ export const api = {
   },
   /**
    * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).
+   * For auto_tune, pass params: { model?, format?, all_formats? } (query string).
    * Returns status and body so UI can handle 202 (started), 501 (run from root), or error.
    */
-  async opsPipelineRun(step: string): Promise<{ status: number; data: PipelineRunResponse }> {
-    const url = `${BASE_API_URL}/ops/pipeline/run/${encodeURIComponent(step)}`;
+  async opsPipelineRun(
+    step: string,
+    params?: Record<string, string>,
+  ): Promise<{ status: number; data: PipelineRunResponse }> {
+    let url = `${BASE_API_URL}/ops/pipeline/run/${encodeURIComponent(step)}`;
+    if (params && Object.keys(params).length > 0) {
+      const search = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== '') search.set(k, v);
+      });
+      const q = search.toString();
+      if (q) url += `?${q}`;
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const apiKey = localStorage.getItem('cric_info_api_key');
     if (apiKey) headers['X-API-Key'] = apiKey;
@@ -160,6 +172,25 @@ export const api = {
     try {
       const text = await res.text();
       if (text) data = JSON.parse(text) as PipelineRunResponse;
+    } catch {
+      data = { error: res.statusText || 'Invalid response' };
+    }
+    return { status: res.status, data };
+  },
+  /**
+   * Stop the currently running pipeline step (POST /ops/pipeline/stop).
+   * Returns 200 with { status: 'cancelled' } or 409 if no step is running.
+   */
+  async opsPipelineStop(): Promise<{ status: number; data: { status?: string; error?: string } }> {
+    const url = `${BASE_API_URL}/ops/pipeline/stop`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const apiKey = localStorage.getItem('cric_info_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    const res = await fetch(url, { method: 'POST', headers });
+    let data: { status?: string; error?: string } = {};
+    try {
+      const text = await res.text();
+      if (text) data = JSON.parse(text) as { status?: string; error?: string };
     } catch {
       data = { error: res.statusText || 'Invalid response' };
     }

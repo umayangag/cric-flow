@@ -25,6 +25,7 @@ var PipelineCommands = []string{
 	"train-fielding",
 	"train-extras",
 	"train-win",
+	"ml-auto-tune",
 }
 
 // ErrPipelineBusy is returned when another pipeline step is already running (singleton).

@@ -60,6 +60,24 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
+// CancelInProgressMigration sets the most recent IN_PROGRESS migration to CANCELLED (e.g. user stop).
+// Returns true if a row was updated, false if none in progress.
+func CancelInProgressMigration(ctx context.Context, reason string) (bool, error) {
+	if !db.Available() {
+		return false, nil
+	}
+	inProgress, err := GetInProgressMigrations(ctx)
+	if err != nil || len(inProgress) == 0 {
+		return false, err
+	}
+	m := inProgress[0]
+	err = UpdateMigrationStatus(ctx, m.ID, StatusCancelled, nil, reason)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // CancelStaleInProgressMigrations sets IN_PROGRESS rows to CANCELLED only when started_at
 // is older than the given threshold. Use on server startup so that runs interrupted by
 // this instance's restart/crash are cleaned up, without cancelling runs started recently

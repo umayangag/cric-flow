@@ -10,6 +10,10 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 
 export type PipelineStepId =
   | 'import'
@@ -212,6 +216,23 @@ type OpsPipelineGraphProps = {
   onRefresh?: () => void;
 };
 
+const AUTO_TUNE_MODELS = [
+  { value: 'all', label: 'All' },
+  { value: 'batting', label: 'Batting' },
+  { value: 'bowling', label: 'Bowling' },
+  { value: 'fielding', label: 'Fielding' },
+  { value: 'extras', label: 'Extras' },
+  { value: 'win', label: 'Win' },
+] as const;
+
+const AUTO_TUNE_FORMATS = [
+  { value: '', label: 'All formats' },
+  { value: 'TEST', label: 'TEST' },
+  { value: 'ODI', label: 'ODI' },
+  { value: 'T20', label: 'T20' },
+  { value: 'T20I', label: 'T20I' },
+] as const;
+
 const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) => {
   const [dialogStep, setDialogStep] = useState<PipelineStep | null>(null);
   const [copied, setCopied] = useState(false);
@@ -220,6 +241,8 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
   >('idle');
   const [runMessage, setRunMessage] = useState<string>('');
   const [runCommand, setRunCommand] = useState<string>('');
+  const [autoTuneModel, setAutoTuneModel] = useState<string>('all');
+  const [autoTuneFormat, setAutoTuneFormat] = useState<string>('');
 
   const steps = useMemo(() => derivePipelineSteps(data), [data]);
 
@@ -228,7 +251,16 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
     setRunMessage('');
     setRunCommand('');
     try {
-      const { status, data: res } = await api.opsPipelineRun(step.id);
+      const params =
+        step.id === 'auto_tune'
+          ? {
+              model: autoTuneModel,
+              ...(autoTuneFormat === ''
+                ? { all_formats: '1' }
+                : { format: autoTuneFormat }),
+            }
+          : undefined;
+      const { status, data: res } = await api.opsPipelineRun(step.id, params);
       if (status === 202) {
         setRunState('started');
         setRunMessage('Step started. Status will update on refresh.');
@@ -247,9 +279,18 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
     }
   };
 
+  const getAutoTuneCommand = () => {
+    const modelPart = `MODEL=${autoTuneModel}`;
+    const formatPart =
+      autoTuneFormat === '' ? 'ALL_FORMATS=1' : `FORMAT=${autoTuneFormat}`;
+    return `make ml-auto-tune ${modelPart} ${formatPart}`;
+  };
+
   const handleCopy = async (step: PipelineStep) => {
     try {
-      await navigator.clipboard.writeText(step.command);
+      const text =
+        step.id === 'auto_tune' ? getAutoTuneCommand() : runCommand || step.command;
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -392,6 +433,40 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 {dialogStep.description}
               </Typography>
+              {dialogStep.id === 'auto_tune' && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1.5 }}>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="autotune-model-label">Model</InputLabel>
+                    <Select
+                      labelId="autotune-model-label"
+                      value={autoTuneModel}
+                      label="Model"
+                      onChange={(e) => setAutoTuneModel(e.target.value)}
+                    >
+                      {AUTO_TUNE_MODELS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="autotune-format-label">Format</InputLabel>
+                    <Select
+                      labelId="autotune-format-label"
+                      value={autoTuneFormat}
+                      label="Format"
+                      onChange={(e) => setAutoTuneFormat(e.target.value)}
+                    >
+                      {AUTO_TUNE_FORMATS.map((o) => (
+                        <MenuItem key={o.value || 'all'} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
               {!dialogStep.runnable && dialogStep.status !== 'running' && (
                 <Typography
                   variant="body2"
@@ -434,7 +509,11 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                     borderColor: 'divider',
                   }}
                 >
-                  {runState === 'run_from_root' && runCommand ? runCommand : dialogStep.command}
+                  {runState === 'run_from_root' && runCommand
+                    ? runCommand
+                    : dialogStep.id === 'auto_tune'
+                      ? getAutoTuneCommand()
+                      : dialogStep.command}
                 </Box>
               ) : null}
             </DialogContent>

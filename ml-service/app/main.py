@@ -1559,11 +1559,21 @@ async def admin_train_win(request: Request, cutoff: str = ""):
         ) from e
 
 
+_VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "all")
+_VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
+
+
 @app.post("/admin/train/auto-tune")
-async def admin_train_auto_tune(request: Request, cutoff: str = ""):
-    """Run auto-tune for all models (batting, bowling, fielding, extras, win) and all formats (unified + per-format).
-    Uses go-app training-data API (--from-api). Optional query param cutoff (RFC3339); default from env or recent date.
-    When GO_APP_URL is set, best params are saved to DB. Guarded by ENABLE_HOT_RELOAD.
+async def admin_train_auto_tune(
+    request: Request,
+    cutoff: str = "",
+    model: str = "all",
+    all_formats: str = "",
+):
+    """Run auto-tune for selected model(s) and format(s).
+    Query params: model (batting|bowling|fielding|extras|win|all), format (TEST|ODI|T20|T20I),
+    all_formats (1|true = tune all formats). When all_formats is set, format is ignored.
+    Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.train.rejected", step="auto-tune", reason="disabled")
@@ -1576,22 +1586,57 @@ async def admin_train_auto_tune(request: Request, cutoff: str = ""):
             ),
         )
     _verify_admin_api_key(request)
+    model = (model or "all").strip().lower()
+    if model not in _VALID_AUTO_TUNE_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="INVALID_MODEL",
+                message="Invalid model",
+                hint=f"model must be one of: {', '.join(_VALID_AUTO_TUNE_MODELS)}",
+            ),
+        )
+    use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
+    fmt = (request.query_params.get("format") or "").strip().upper()
+    if not use_all_formats:
+        if not fmt or fmt not in _VALID_AUTO_TUNE_FORMATS:
+            raise HTTPException(
+                status_code=400,
+                detail=_error_payload(
+                    code="FORMAT_REQUIRED",
+                    message="Single format required when not using all formats",
+                    hint="Pass format (TEST, ODI, T20, T20I) or all_formats=1",
+                ),
+            )
     cutoff = (cutoff or "").strip()
     if not cutoff:
         cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
     go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
     extra = [
-        "--model", "all",
-        "--all-formats",
+        "--model", model,
         "--from-api",
         "--cutoff", cutoff,
         "--go-app-url", go_app_url,
-        "--parallel",
     ]
+    if use_all_formats:
+        extra.append("--all-formats")
+    else:
+        extra.extend(["--format", fmt])
+    # Use parallel when multiple (model, format) tasks will run
+    if model == "all" or use_all_formats:
+        extra.append("--parallel")
     api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
     if api_key:
         extra.extend(["--api-key", api_key])
-    logger.info("admin.train.start", step="auto-tune", cutoff=cutoff, go_app_url=go_app_url)
+    logger.info(
+        "admin.train.start",
+        step="auto-tune",
+        cutoff=cutoff,
+        go_app_url=go_app_url,
+        model=model,
+        all_formats=use_all_formats,
+        format=fmt or None,
+    )
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(

@@ -20,7 +20,24 @@ import (
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
+
+// pipelineStopHandler handles POST /ops/pipeline/stop. Cancels the current pipeline job context and marks the in-progress migration as CANCELLED.
+func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
+	a.CancelCurrentJob()
+	cancelled, err := tracking.CancelInProgressMigration(r.Context(), "cancelled by user")
+	if err != nil {
+		slog.Warn("pipeline stop: cancel migration failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !cancelled {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
 
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
 // Triggers import, precompute, export, train_*, or auto_tune (train/auto_tune via ML service); returns 202 started or 501 for train_combination_meta.
@@ -144,10 +161,13 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jobCtx, cancel := context.WithCancel(a.JobContext())
+	a.SetCurrentJobCancel(cancel)
 	go func() {
+		defer a.ClearCurrentJobCancel()
 		slog.Info("export-dataset started", slog.String("dir", outDir))
 		runErr := pipeline.RunJob(
-			a.JobContext(),
+			jobCtx,
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
 			config.ExportTimeout(),
@@ -220,20 +240,43 @@ func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// autoTuneHandler starts auto-tune (all models, all formats) via ML service /admin/train/auto-tune.
+// autoTuneHandler starts auto-tune via ML service /admin/train/auto-tune with optional model, format, all_formats.
 func (a *App) autoTuneHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	args := map[string]any{"step": "auto_tune"}
-	cutoff := r.URL.Query().Get("cutoff")
+	cutoff := strings.TrimSpace(q.Get("cutoff"))
 	if cutoff == "" {
 		cutoff = defaultCutoff()
 	}
 	args["cutoff"] = cutoff
-	querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+	model := strings.TrimSpace(strings.ToLower(q.Get("model")))
+	if model == "" {
+		model = "all"
+	}
+	args["model"] = model
+	format := strings.TrimSpace(q.Get("format"))
+	args["format"] = format
+	allFormats := strings.TrimSpace(q.Get("all_formats"))
+	args["all_formats"] = allFormats
 
+	params := url.Values{}
+	params.Set("cutoff", cutoff)
+	params.Set("model", model)
+	if format != "" {
+		params.Set("format", format)
+	}
+	if allFormats != "" {
+		params.Set("all_formats", allFormats)
+	}
+	querySuffix := "?" + params.Encode()
+
+	jobCtx, cancel := context.WithCancel(a.JobContext())
+	a.SetCurrentJobCancel(cancel)
 	go func() {
+		defer a.ClearCurrentJobCancel()
 		slog.Info("ml-auto-tune started", slog.Any("args", args))
 		runErr := pipeline.RunJob(
-			a.JobContext(),
+			jobCtx,
 			"ml-auto-tune",
 			args,
 			trainStepTimeout(),
@@ -261,10 +304,13 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 		args["cutoff"] = cutoff
 		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 
+		jobCtx, cancel := context.WithCancel(a.JobContext())
+		a.SetCurrentJobCancel(cancel)
 		go func() {
+			defer a.ClearCurrentJobCancel()
 			slog.Info(command+" started", slog.Any("args", args))
 			runErr := pipeline.RunJob(
-				a.JobContext(),
+				jobCtx,
 				command,
 				args,
 				trainStepTimeout(),
