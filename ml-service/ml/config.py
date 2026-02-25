@@ -328,9 +328,9 @@ def get_tuning_config() -> Dict[str, Any]:
     else:
         algorithms = ["rf", "gb"]
 
-    validation_method = str(tuning.get("validation_method", "kfold")).lower().strip()
+    validation_method = str(tuning.get("validation_method", "walk_forward")).lower().strip()
     if validation_method not in ("kfold", "walk_forward"):
-        validation_method = "kfold"
+        validation_method = "walk_forward"
 
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),

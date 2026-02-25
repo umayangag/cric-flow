@@ -68,7 +68,7 @@
       "random_state": 42,
       "scoring": "neg_mean_absolute_error",
       "algorithms": "all",
-      "validation_method": "kfold",
+      "validation_method": "walk_forward",
       "search_space": {
         "rf": {
           "n_estimators": [

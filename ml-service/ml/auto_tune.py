@@ -367,13 +367,13 @@ def _run_search_single_regression(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for single-output regression. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
     if not candidates:
@@ -441,13 +441,13 @@ def _run_search_classification(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for binary classification (win). Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
     if not candidates:
@@ -537,13 +537,13 @@ def _run_search(
     scoring: str,
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
-    validation_method: str = "kfold",
+    validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
     algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
-    validation_method = validation_method or tuning_cfg.get("validation_method", "kfold")
+    validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression(model_kind) if k in allow]
     if not candidates:
@@ -816,7 +816,7 @@ def run_auto_tune(
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
     best_pipe, best_params, report = _run_search(
         X, Y, model_kind, cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -843,7 +843,7 @@ def run_auto_tune_extras(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_single_regression(
         X, y, "extras", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -870,7 +870,7 @@ def run_auto_tune_win(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    validation_method = validation_method or tuning.get("validation_method", "kfold")
+    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_classification(
         X, y, "win", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
@@ -905,7 +905,7 @@ def main() -> None:
         "--validation-method",
         choices=["kfold", "walk_forward"],
         default="",
-        help="Validation method: kfold or walk_forward (temporal). Default: from config.",
+        help="Validation method: kfold or walk_forward (temporal). Default: walk_forward (from config).",
     )
     parser.add_argument(
         "--parallel",
@@ -953,7 +953,7 @@ def main() -> None:
             return
         params_to_save = dict(report["config_snippet"])
         params_to_save["algorithms"] = report.get("algorithms", [])
-        params_to_save["validation_method"] = report.get("validation_method", "kfold")
+        params_to_save["validation_method"] = report.get("validation_method", "walk_forward")
         try:
             save_tuned_params_to_go_app(go_app_url, model, format_suffix or "", params_to_save, api_key)
             logger.info("auto_tune.params_saved_to_db model=%s format=%s", model, format_suffix or "(unified)")

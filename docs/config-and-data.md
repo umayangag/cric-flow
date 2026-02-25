@@ -65,7 +65,7 @@ Config file: `ml-service/config.json`
   - `formats` — list of format codes to train/serve.
   - `training` — **required** per-model block: `batting`, `bowling`, `fielding`, `extras`, `win` each with `n_estimators`, `max_depth`, `random_state`, `joblib_compress`; optional `estimator` (rf/gb/stacked/quantile), `learning_rate`, `quantile_level`.
   - `feature_defaults` (optional) — defaults when go-app feature map omits keys: `common` (weather/context), `fielding`.
-  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (kfold or walk_forward).
+  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (walk_forward default, or kfold).
   - `walk_forward` (optional) — for walk-forward: `initial_cutoff`, `window_x`, `registry_path`.
   - `prediction_defaults` — e.g. `economy` (default 6.0).
   - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10).
