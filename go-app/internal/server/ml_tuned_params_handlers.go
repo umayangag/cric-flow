@@ -61,7 +61,7 @@ func (a *App) mlTunedParamsListHandler(w http.ResponseWriter, r *http.Request) {
 	list := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
 		m := map[string]interface{}{"model": e.Model, "format": e.Format, "created_at": e.CreatedAt}
-		if e.Metrics != nil && len(e.Metrics) > 0 {
+		if len(e.Metrics) > 0 {
 			m["metrics"] = json.RawMessage(e.Metrics)
 		}
 		list = append(list, m)
@@ -101,7 +101,7 @@ func (a *App) mlTunedParamsGetHandler(w http.ResponseWriter, r *http.Request) {
 		"params":     json.RawMessage(row.Params),
 		"created_at": row.CreatedAt,
 	}
-	if row.Metrics != nil && len(row.Metrics) > 0 {
+	if len(row.Metrics) > 0 {
 		out["metrics"] = json.RawMessage(row.Metrics)
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -99,12 +99,28 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 	}
 	autoTuneRunning, err := tracking.HasInProgressForCommand(ctx, "ml-auto-tune")
 	if err != nil {
-		slog.Warn("pipeline: HasInProgressForCommand failed", "step", "auto_tune", "command", "ml-auto-tune", "err", err)
+		slog.Warn(
+			"pipeline: HasInProgressForCommand failed",
+			"step",
+			"auto_tune",
+			"command",
+			"ml-auto-tune",
+			"err",
+			err,
+		)
 		autoTuneRunning = false
 	}
 	autoTuneCompleted, err := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
 	if err != nil {
-		slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed", "step", "auto_tune", "command", "ml-auto-tune", "err", err)
+		slog.Warn(
+			"pipeline: HasCompletedSuccessfullyForCommand failed",
+			"step",
+			"auto_tune",
+			"command",
+			"ml-auto-tune",
+			"err",
+			err,
+		)
 		autoTuneCompleted = false
 	}
 	steps["auto_tune"] = map[string]any{

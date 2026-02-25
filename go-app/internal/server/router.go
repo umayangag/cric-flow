@@ -29,7 +29,8 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// ML health proxy (full response for Health tab: loaded formats, artifacts)
-	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy", nil)).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy", nil)).
+		Methods(http.MethodGet, http.MethodOptions)
 	// ML model metadata (features, outputs, artifacts pattern for Workbench UI)
 	admin.HandleFunc("/api/ml/model-metadata", a.mlServiceProxy("/model-metadata", "ml model-metadata proxy", nil)).
 		Methods(http.MethodGet, http.MethodOptions)

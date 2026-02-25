@@ -37,7 +37,11 @@ func getMLHealthClient() *http.Client {
 // mlServiceProxy returns an http.HandlerFunc that proxies GET to the ML service at the given endpoint.
 // label is used in log messages (e.g., "ml health proxy").
 // enrich, if non-nil, is called with the decoded payload and request after successful decode; it may modify payload in place.
-func (a *App) mlServiceProxy(endpoint string, label string, enrich func(map[string]any, *http.Request)) http.HandlerFunc {
+func (a *App) mlServiceProxy(
+	endpoint string,
+	label string,
+	enrich func(map[string]any, *http.Request),
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
 		if base == "" {

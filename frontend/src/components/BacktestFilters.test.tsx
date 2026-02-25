@@ -97,7 +97,10 @@ describe('BacktestFilters component', () => {
     fireEvent.click(selectBtn);
     await waitFor(() => {
       expect(onSelect).toHaveBeenCalledTimes(1);
-      expect(onSelect).toHaveBeenCalledWith(9000111, expect.objectContaining({ match_id: 9000111 }));
+      expect(onSelect).toHaveBeenCalledWith(
+        9000111,
+        expect.objectContaining({ match_id: 9000111 }),
+      );
     });
   });
 });

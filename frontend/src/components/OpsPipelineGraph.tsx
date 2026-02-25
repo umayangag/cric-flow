@@ -562,9 +562,8 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                     variant="contained"
                     color="warning"
                     onClick={() => handleRunWithDefaultConfirm(dialogStep)}
-                    disabled={runState === 'loading'}
                   >
-                    {runState === 'loading' ? 'Starting…' : 'Train with defaults'}
+                    Train with defaults
                   </Button>
                 </>
               ) : (

@@ -12,7 +12,13 @@ import (
 // InsertMLTunedParams inserts a row into ml_tuned_params. params and metrics are stored as JSONB.
 // metrics may be nil; a nil value is stored as NULL.
 // dataMigrationID links to data_migrations (e.g. the IN_PROGRESS ml-auto-tune run); pass 0 to omit.
-func InsertMLTunedParams(ctx context.Context, model, format string, params json.RawMessage, metrics json.RawMessage, dataMigrationID int) error {
+func InsertMLTunedParams(
+	ctx context.Context,
+	model, format string,
+	params json.RawMessage,
+	metrics json.RawMessage,
+	dataMigrationID int,
+) error {
 	if dataMigrationID > 0 {
 		_, err := Pool.Exec(ctx, `
 			INSERT INTO ml_tuned_params (model, format, params, metrics, data_migration_id)
@@ -106,9 +112,9 @@ func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) 
 
 // MigrationInfoForModelStats holds started_at, completed_at, and duration for model-stats enrichment.
 type MigrationInfoForModelStats struct {
-	TrainedAt     string  // ISO8601
-	CompletedAt   string  // ISO8601
-	DurationSecs  float64 // completed_at - started_at in seconds
+	TrainedAt    string  // ISO8601
+	CompletedAt  string  // ISO8601
+	DurationSecs float64 // completed_at - started_at in seconds
 }
 
 // GetMigrationInfoForTunedParams returns migration info (trained_at, duration) keyed by "model|format".

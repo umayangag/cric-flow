@@ -51,11 +51,21 @@ function formatDuration(seconds: number | undefined): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
+function getAccuracyDisplay(model: MLModelStat): string {
+  if (model.accuracy_display) return model.accuracy_display;
+  if (model.best_cv_score != null && isFinite(model.best_cv_score)) {
+    const pct = (model.best_cv_score * 100).toFixed(1);
+    return model.scoring ? `${pct}% (${model.scoring})` : `${pct}%`;
+  }
+  return '—';
+}
+
 function ModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
   const params = model.tuned_parameters;
   const metrics = model.metrics;
-  const hasDetails = (params && Object.keys(params).length > 0) || (metrics && Object.keys(metrics).length > 0);
+  const hasDetails =
+    (params && Object.keys(params).length > 0) || (metrics && Object.keys(metrics).length > 0);
 
   return (
     <>
@@ -197,7 +207,8 @@ const MLModelStatsTab: React.FC = () => {
         >
           {data.models.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No model artifacts found. Train models via Ops Status → Pipeline (e.g. train-batting, train-bowling).
+              No model artifacts found. Train models via Ops Status → Pipeline (e.g. train-batting,
+              train-bowling).
             </Typography>
           ) : (
             <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560 }}>
@@ -217,7 +228,7 @@ const MLModelStatsTab: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data.models.map((model, idx) => (
+                  {data.models.map((model) => (
                     <ModelRow key={`${model.model_name}-${model.match_format}`} model={model} />
                   ))}
                 </TableBody>
