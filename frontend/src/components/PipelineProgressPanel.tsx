@@ -49,6 +49,23 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
     onRefreshRef.current?.();
   }, []);
 
+  const handleStopPipeline = useCallback(async () => {
+    setStopError(null);
+    setStopLoading(true);
+    try {
+      const { status, data: res } = await api.opsPipelineStop();
+      if (status === 200) {
+        doRefresh();
+      } else {
+        setStopError(res.error || `Failed (${status})`);
+      }
+    } catch (e) {
+      setStopError(e instanceof Error ? e.message : 'Request failed');
+    } finally {
+      setStopLoading(false);
+    }
+  }, [doRefresh]);
+
   useEffect(() => {
     if (!pipelineRunning) {
       setStreamError(null);
@@ -161,19 +178,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
             color="error"
             variant="outlined"
             disabled={stopLoading}
-            onClick={async () => {
-              setStopError(null);
-              setStopLoading(true);
-              try {
-                const { status, data: res } = await api.opsPipelineStop();
-                if (status === 200) doRefresh();
-                else setStopError(res.error || `Failed (${status})`);
-              } catch (e) {
-                setStopError(e instanceof Error ? e.message : 'Request failed');
-              } finally {
-                setStopLoading(false);
-              }
-            }}
+            onClick={handleStopPipeline}
           >
             {stopLoading ? 'Stopping…' : 'Stop pipeline'}
           </Button>
@@ -233,22 +238,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
               color="error"
               variant="outlined"
               disabled={stopLoading}
-              onClick={async () => {
-                setStopError(null);
-                setStopLoading(true);
-                try {
-                  const { status, data: res } = await api.opsPipelineStop();
-                  if (status === 200) {
-                    doRefresh();
-                  } else {
-                    setStopError(res.error || `Failed (${status})`);
-                  }
-                } catch (e) {
-                  setStopError(e instanceof Error ? e.message : 'Request failed');
-                } finally {
-                  setStopLoading(false);
-                }
-              }}
+              onClick={handleStopPipeline}
             >
               {stopLoading ? 'Stopping…' : 'Stop pipeline'}
             </Button>

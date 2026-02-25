@@ -18,23 +18,23 @@ import type { OpsStatusDTO } from './types';
 
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
 
+/** Build headers for go-app API requests. Optionally omit Content-Type for GET/stream requests. */
+function apiHeaders(includeJsonContentType = true): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (includeJsonContentType) headers['Content-Type'] = 'application/json';
+  const apiKey = localStorage.getItem('cric_info_api_key');
+  if (apiKey) headers['X-API-Key'] = apiKey;
+  return headers;
+}
+
 // Generic HTTP client factory to avoid duplication between different base URLs
 function createHttpClient(baseUrl: string) {
   return async function httpClient<T>(pathOrUrl: string, options?: RequestInit): Promise<T> {
     const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${baseUrl}${pathOrUrl}`;
 
-    // Read API key from localStorage for go-app requests
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
     // Improved detection: matches BASE_API_URL, has go-app port, or final URL has go-app port
     const isGoApp = baseUrl === BASE_API_URL || baseUrl.includes(':8080') || url.includes(':8080');
-
-    if (isGoApp) {
-      const apiKey = localStorage.getItem('cric_info_api_key');
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
-      }
-    }
+    const headers = isGoApp ? apiHeaders(true) : { 'Content-Type': 'application/json' };
 
     const res = await fetch(url, {
       headers,
@@ -165,10 +165,7 @@ export const api = {
         if (q) url += `?${q}`;
       }
     }
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const apiKey = localStorage.getItem('cric_info_api_key');
-    if (apiKey) headers['X-API-Key'] = apiKey;
-    const res = await fetch(url, { method: 'POST', headers });
+    const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
     let data: PipelineRunResponse = {};
     try {
       const text = await res.text();
@@ -184,10 +181,7 @@ export const api = {
    */
   async opsPipelineStop(): Promise<{ status: number; data: { status?: string; error?: string } }> {
     const url = `${BASE_API_URL}/ops/pipeline/stop`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const apiKey = localStorage.getItem('cric_info_api_key');
-    if (apiKey) headers['X-API-Key'] = apiKey;
-    const res = await fetch(url, { method: 'POST', headers });
+    const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
     let data: { status?: string; error?: string } = {};
     try {
       const text = await res.text();
@@ -206,10 +200,7 @@ export const api = {
     onProgress: (payload: PipelineProgressPayload) => void,
   ): Promise<void> {
     const url = `${BASE_API_URL}/ops/pipeline/stream`;
-    const headers: Record<string, string> = {};
-    const apiKey = localStorage.getItem('cric_info_api_key');
-    if (apiKey) headers['X-API-Key'] = apiKey;
-    const res = await fetch(url, { headers, signal });
+    const res = await fetch(url, { headers: apiHeaders(false), signal });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`HTTP ${res.status}: ${text}`);
@@ -315,10 +306,7 @@ export const api = {
     u.searchParams.set('team1', team1);
     u.searchParams.set('team2', team2);
     u.searchParams.set('match_id', String(matchId));
-    const headers: Record<string, string> = {};
-    const apiKey = localStorage.getItem('cric_info_api_key');
-    if (apiKey) headers['X-API-Key'] = apiKey;
-    const res = await fetch(u.toString(), { headers });
+    const res = await fetch(u.toString(), { headers: apiHeaders(false) });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       callbacks.onError(new Error(`HTTP ${res.status}: ${text}`));
@@ -372,14 +360,15 @@ export const api = {
     u.searchParams.set('team2', team2);
     u.searchParams.set('match_id', String(matchId));
     if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
-    const headers: Record<string, string> = {};
-    const apiKey = localStorage.getItem('cric_info_api_key');
-    if (apiKey) headers['X-API-Key'] = apiKey;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-    return fetch(u.toString(), { method: 'POST', headers, signal: controller.signal })
+    return fetch(u.toString(), {
+      method: 'POST',
+      headers: apiHeaders(false),
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text().catch(() => '');
