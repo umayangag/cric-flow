@@ -38,10 +38,14 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
       GO_APP_OUTPUT_DIR: /output/go-app
-      # Go runtime memory target; 1800MiB leaves headroom under 2GB so GC runs more aggressively (override with GOMEMLIMIT=... if needed)
+      # Go runtime memory target. Default 1800MiB is for ~2GB containers; for 12+ cores / 20GB+ RAM set e.g. GOMEMLIMIT=8GiB in .env and raise *_CONCURRENCY below.
       GOMEMLIMIT: ${GOMEMLIMIT:-1800MiB}
+      # Pipeline concurrency (workers). Defaults are conservative for 2GB; for multi-CPU use set in .env (e.g. PRECOMPUTE_CONCURRENCY=8, SEQCALC_CONCURRENCY=4).
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
-      # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 (or 2) for 2GB (override with SEQCALC_CONCURRENCY=...).
+      IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
+      EXPORT_CONCURRENCY: ${EXPORT_CONCURRENCY:-}
+      FIELDING_CONCURRENCY: ${FIELDING_CONCURRENCY:-}
+      # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 for 2GB; for 12 cores / 8GiB try SEQCALC_CONCURRENCY=4.
       SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
