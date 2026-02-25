@@ -1012,59 +1012,31 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	runAllSections := len(wantSection) == 0
 
 	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
-	if runAllSections || wantSection["batting"] {
-		if useAll {
-			batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
-		} else {
-			batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		}
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
-		}
+	type sectionLoader struct {
+		name       string
+		rows       *[][]string
+		loadAll    func(context.Context, time.Time) ([][]string, error)
+		loadFormat func(context.Context, string, time.Time) ([][]string, error)
 	}
-	if runAllSections || wantSection["bowling"] {
-		if useAll {
-			bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
-		} else {
-			bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		}
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
-		}
+	loaders := []sectionLoader{
+		{"batting", &batRows, exq.BattingTrainingRows, exq.BattingTrainingRowsWithFormat},
+		{"bowling", &bowlRows, exq.BowlingTrainingRows, exq.BowlingTrainingRowsWithFormat},
+		{"fielding", &fieldRows, exq.FieldingTrainingRows, exq.FieldingTrainingRowsWithFormat},
+		{"extras", &extrasRows, exq.ExtrasTrainingRows, exq.ExtrasTrainingRowsWithFormat},
+		{"win", &winRows, exq.WinTrainingRows, exq.WinTrainingRowsWithFormat},
 	}
-	if runAllSections || wantSection["fielding"] {
-		if useAll {
-			fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
-		} else {
-			fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		}
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
-		}
-	}
-	if runAllSections || wantSection["extras"] {
-		if useAll {
-			extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
-		} else {
-			extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
-		}
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
-		}
-	}
-	if runAllSections || wantSection["win"] {
-		if useAll {
-			winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
-		} else {
-			winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
-		}
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+	for _, loader := range loaders {
+		if runAllSections || wantSection[loader.name] {
+			var loadErr error
+			if useAll {
+				*loader.rows, loadErr = loader.loadAll(r.Context(), cutoff)
+			} else {
+				*loader.rows, loadErr = loader.loadFormat(r.Context(), format, cutoff)
+			}
+			if loadErr != nil {
+				respondTrainingDataErr(w, loadErr, formatForErr)
+				return
+			}
 		}
 	}
 	part := func(rows [][]string) (headers []string, data [][]string) {
