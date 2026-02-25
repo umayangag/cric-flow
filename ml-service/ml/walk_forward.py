@@ -69,11 +69,15 @@ def fetch_training_data(
     format_code: str,
     cutoff_iso: str,
     api_key: Optional[str] = None,
+    sections: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Fetch training data (match_date < cutoff). Use format= to get per-format rows."""
+    """Fetch training data (match_date < cutoff). Use format= to get per-format rows.
+    sections: optional (e.g. 'batting' or 'bowling') to reduce go-app/DB load."""
     path = (
         f"/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
     )
+    if sections:
+        path += f"&sections={urllib.parse.quote(sections)}"
     return _fetch_json(go_app_url, path, api_key)
 
 
@@ -160,7 +164,7 @@ def run_walk_forward_window_batting(
     window_index: int,
 ) -> Tuple[Dict[str, Any], Optional[str]]:
     """Train batting on data before cutoff, predict holdout, return (registry_entry, next_cutoff_iso)."""
-    train_data = fetch_training_data(go_app_url, format_code, cutoff_iso, api_key)
+    train_data = fetch_training_data(go_app_url, format_code, cutoff_iso, api_key, sections="batting")
     bat = train_data.get("batting") or {}
     train_headers = bat.get("headers") or []
     train_rows = bat.get("rows") or []
@@ -241,7 +245,7 @@ def run_walk_forward_window_bowling(
     window_index: int,
 ) -> Tuple[Dict[str, Any], Optional[str]]:
     """Train bowling on data before cutoff, predict holdout, return (registry_entry, next_cutoff_iso)."""
-    train_data = fetch_training_data(go_app_url, format_code, cutoff_iso, api_key)
+    train_data = fetch_training_data(go_app_url, format_code, cutoff_iso, api_key, sections="bowling")
     bowl = train_data.get("bowling") or {}
     train_headers = bowl.get("headers") or []
     train_rows = bowl.get("rows") or []

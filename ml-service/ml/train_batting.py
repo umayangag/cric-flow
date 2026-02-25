@@ -180,7 +180,7 @@ def fetch_batting_from_api(
     from .config import get_training_data_fetch_timeout_sec
 
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
+    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}&sections=batting"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)

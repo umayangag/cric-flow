@@ -732,7 +732,7 @@ def load_batting_from_api(
 ) -> Tuple[np.ndarray, np.ndarray]:
     from app.train_on_the_fly import _batting_rows_to_xy, fetch_training_data
 
-    data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
+    data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="batting")
     bat = data.get("batting") or {}
     headers = bat.get("headers") or []
     rows = bat.get("rows") or []
@@ -744,7 +744,7 @@ def load_bowling_from_api(
 ) -> Tuple[np.ndarray, np.ndarray]:
     from app.train_on_the_fly import _bowling_rows_to_xy, fetch_training_data
 
-    data = fetch_training_data(go_app_url, format_code, cutoff, api_key)
+    data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="bowling")
     bowl = data.get("bowling") or {}
     headers = bowl.get("headers") or []
     rows = bowl.get("rows") or []

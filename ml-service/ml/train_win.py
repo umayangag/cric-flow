@@ -60,7 +60,7 @@ WIN_TARGET_COL = "team1_wins"
 def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
     """Fetch training data from go-app; return dict with win headers and rows."""
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}&sections=win"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)

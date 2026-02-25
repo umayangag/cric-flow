@@ -973,8 +973,14 @@ func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
 	respondErr(w, err)
 }
 
-// backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...
+// allowedTrainingDataSections is the set of valid section names for training-data ?sections= (reduces go-app/DB load when only one model is needed).
+var allowedTrainingDataSections = map[string]bool{
+	"batting": true, "bowling": true, "fielding": true, "extras": true, "win": true,
+}
+
+// backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...&sections=...
 // cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
+// sections: optional comma-separated list (batting,bowling,fielding,extras,win). If omitted, all sections are returned (legacy). If set, only those sections are queried to reduce go-app and DB CPU during auto-tune.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
 	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
 	if cutoffStr == "" {
@@ -992,51 +998,92 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	if formatForErr == "" {
 		formatForErr = "all"
 	}
+	// Parse optional sections=batting,bowling,... so we only run the requested queries (reduces CPU when ml-service only needs one section).
+	sectionsParam := strings.TrimSpace(r.URL.Query().Get("sections"))
+	wantSection := map[string]bool{}
+	if sectionsParam != "" {
+		for _, s := range strings.Split(sectionsParam, ",") {
+			s = strings.TrimSpace(strings.ToLower(s))
+			if allowedTrainingDataSections[s] {
+				wantSection[s] = true
+			}
+		}
+	}
+	runAllSections := len(wantSection) == 0
+
 	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
 	if useAll {
-		batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["batting"] {
+			batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["bowling"] {
+			bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["fielding"] {
+			fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["extras"] {
+			extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
+		if runAllSections || wantSection["win"] {
+			winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
+		}
 	} else {
-		batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["batting"] {
+			batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["bowling"] {
+			bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["fielding"] {
+			fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondTrainingDataErr(w, err, formatForErr)
-			return
+		if runAllSections || wantSection["extras"] {
+			extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
 		}
-		winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
+		if runAllSections || wantSection["win"] {
+			winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
+			if err != nil {
+				respondTrainingDataErr(w, err, formatForErr)
+				return
+			}
+		}
 	}
 	if err != nil {
 		respondTrainingDataErr(w, err, formatForErr)
