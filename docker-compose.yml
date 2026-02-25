@@ -38,13 +38,20 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
       GO_APP_OUTPUT_DIR: /output/go-app
-      # Go runtime memory target; 1800MiB leaves headroom under 2GB so GC runs more aggressively (override with GOMEMLIMIT=... if needed)
-      GOMEMLIMIT: ${GOMEMLIMIT:-1800MiB}
-      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
-      # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 (or 2) for 2GB (override with SEQCALC_CONCURRENCY=...).
-      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
+      # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
+      # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
+      GOMEMLIMIT: ${GOMEMLIMIT:-}
+      # Pipeline concurrency (workers). If unset, concurrency is derived automatically from GOMEMLIMIT / cgroup memory and CPU.
+      # Set these in .env only when you want to override auto-detection.
+      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-}
+      IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
+      EXPORT_CONCURRENCY: ${EXPORT_CONCURRENCY:-}
+      FIELDING_CONCURRENCY: ${FIELDING_CONCURRENCY:-}
+      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
+      # Error (red) and warn (yellow) in docker logs for visibility
+      LOG_COLOR: "1"
     ports:
       - "8080:8080"
     volumes:
@@ -76,11 +83,16 @@ services:
       GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
+      # Max concurrent training jobs (default 4 for ~12 CPUs; adjust for your machine)
+      MAX_CONCURRENT_TRAINING_JOBS: ${MAX_CONCURRENT_TRAINING_JOBS:-4}
       # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
       ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # Resource limit for n_jobs; process uses detected limit (override with ML_MEMORY_LIMIT_MB if needed).
-      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
+      # Resource limit for n_jobs; when unset, ML uses detected cgroup memory (80% fraction) to choose n_jobs automatically.
+      # Set ML_MEMORY_LIMIT_MB in .env only when you want to cap ML memory explicitly.
+      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-}
+      # Error (red) and warn (yellow) in docker logs for visibility
+      LOG_COLOR: "1"
     ports:
       - "8000:8000"
     volumes:

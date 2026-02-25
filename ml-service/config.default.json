@@ -10,20 +10,55 @@
     "artifacts_dir": "../output/ml-service"
   },
   "ml": {
-    "formats": ["TEST", "ODI", "T20", "T20I"],
+    "formats": [
+      "TEST",
+      "ODI",
+      "T20",
+      "T20I"
+    ],
     "artifact_template": "{kind}_{name}_{format}.joblib",
     "training": {
-      "batting": {"n_estimators": 200, "max_depth": 12, "random_state": 42, "joblib_compress": 3},
-      "bowling": {"n_estimators": 200, "max_depth": 12, "random_state": 42, "joblib_compress": 3},
-      "fielding": {"n_estimators": 150, "max_depth": 10, "random_state": 42, "joblib_compress": 3},
-      "extras": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3},
-      "win": {"n_estimators": 100, "max_depth": 8, "random_state": 42, "joblib_compress": 3}
+      "batting": {
+        "n_estimators": 200,
+        "max_depth": 12,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "bowling": {
+        "n_estimators": 200,
+        "max_depth": 12,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "fielding": {
+        "n_estimators": 150,
+        "max_depth": 10,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "extras": {
+        "n_estimators": 100,
+        "max_depth": 8,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "win": {
+        "n_estimators": 100,
+        "max_depth": 8,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      }
     },
     "resources": {
       "training_mb_per_job": 400,
       "tuning_mb_per_job": 500,
       "prediction_mb_per_job": 100,
-      "memory_usage_fraction_percent": 70,
+      "memory_usage_fraction_percent": 80,
       "training_low_memory_threshold_mb": 2560
     },
     "tuning": {
@@ -33,20 +68,63 @@
       "random_state": 42,
       "scoring": "neg_mean_absolute_error",
       "algorithms": "all",
-      "validation_method": "kfold",
+      "validation_method": "walk_forward",
       "search_space": {
         "rf": {
-          "n_estimators": [50, 100, 150, 200, 300],
-          "max_depth": [6, 8, 10, 12, 16, 20, null],
-          "min_samples_split": [2, 5, 10],
-          "min_samples_leaf": [1, 2, 4]
+          "n_estimators": [
+            50,
+            100,
+            150,
+            200,
+            300
+          ],
+          "max_depth": [
+            6,
+            8,
+            10,
+            12,
+            16,
+            20,
+            null
+          ],
+          "min_samples_split": [
+            2,
+            5,
+            10
+          ],
+          "min_samples_leaf": [
+            1,
+            2,
+            4
+          ]
         },
         "gb": {
-          "n_estimators": [50, 100, 150, 200],
-          "max_depth": [3, 4, 5, 6, 8],
-          "learning_rate": [0.01, 0.05, 0.1],
-          "min_samples_split": [2, 5],
-          "min_samples_leaf": [1, 2]
+          "n_estimators": [
+            50,
+            100,
+            150,
+            200
+          ],
+          "max_depth": [
+            3,
+            4,
+            5,
+            6,
+            8
+          ],
+          "learning_rate": [
+            0.01,
+            0.05,
+            0.1
+          ],
+          "min_samples_split": [
+            2,
+            5
+          ],
+          "min_samples_leaf": [
+            1,
+            2
+          ]
         }
       }
     },

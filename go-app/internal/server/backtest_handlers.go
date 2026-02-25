@@ -937,8 +937,50 @@ type trainingDataPart struct {
 	Rows    [][]string `json:"rows"`
 }
 
-// backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...
+// allowedTrainingDataFormats is the fixed set of format codes safe to include in API error hints (avoids reflected input).
+var allowedTrainingDataFormats = map[string]bool{
+	"TEST": true, "ODI": true, "T20": true, "T20I": true, "all": true,
+}
+
+// respondTrainingDataErr maps known training-data errors to appropriate HTTP status and message.
+// Format-not-found (e.g. migrations not run or match_format empty) -> 400; DB not ready -> 503; else 500.
+func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "no rows") {
+		hint := "Ensure migrations are applied and match_format is populated (TEST, ODI, T20, T20I)."
+		if allowedTrainingDataFormats[format] {
+			hint += " Format requested: " + format
+		}
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "FORMAT_NOT_FOUND",
+			Message: "format not found or database not ready for training-data",
+			Hint:    hint,
+		})
+		slog.Info("training-data: format not found or no rows", slog.String("format", format), slog.Any("err", err))
+		return
+	}
+	if strings.Contains(err.Error(), "db pool not initialized") {
+		writeJSON(w, http.StatusServiceUnavailable, apiError{
+			Code:    "SERVICE_UNAVAILABLE",
+			Message: "database not connected",
+			Hint:    "Go-app may still be starting; retry shortly.",
+		})
+		slog.Warn("training-data: db pool not initialized", slog.Any("err", err))
+		return
+	}
+	respondErr(w, err)
+}
+
+// allowedTrainingDataSections is the set of valid section names for training-data ?sections= (reduces go-app/DB load when only one model is needed).
+var allowedTrainingDataSections = map[string]bool{
+	"batting": true, "bowling": true, "fielding": true, "extras": true, "win": true,
+}
+
+// backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...&sections=...
 // cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
+// sections: optional comma-separated list (batting,bowling,fielding,extras,win). If omitted, all sections are returned (legacy). If set, only those sections are queried to reduce go-app and DB CPU during auto-tune.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
 	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
 	if cutoffStr == "" {
@@ -952,55 +994,50 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	format := strings.TrimSpace(r.URL.Query().Get("format"))
 	useAll := format == "" || strings.EqualFold(format, "all")
-	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
-	if useAll {
-		batRows, err = exq.BattingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		bowlRows, err = exq.BowlingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		fieldRows, err = exq.FieldingTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		extrasRows, err = exq.ExtrasTrainingRows(r.Context(), cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		winRows, err = exq.WinTrainingRows(r.Context(), cutoff)
-	} else {
-		batRows, err = exq.BattingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		bowlRows, err = exq.BowlingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		fieldRows, err = exq.FieldingTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		extrasRows, err = exq.ExtrasTrainingRowsWithFormat(r.Context(), format, cutoff)
-		if err != nil {
-			respondErr(w, err)
-			return
-		}
-		winRows, err = exq.WinTrainingRowsWithFormat(r.Context(), format, cutoff)
+	formatForErr := format
+	if formatForErr == "" {
+		formatForErr = "all"
 	}
-	if err != nil {
-		respondErr(w, err)
-		return
+	// Parse optional sections=batting,bowling,... so we only run the requested queries (reduces CPU when ml-service only needs one section).
+	sectionsParam := strings.TrimSpace(r.URL.Query().Get("sections"))
+	wantSection := map[string]bool{}
+	if sectionsParam != "" {
+		for _, s := range strings.Split(sectionsParam, ",") {
+			s = strings.TrimSpace(strings.ToLower(s))
+			if allowedTrainingDataSections[s] {
+				wantSection[s] = true
+			}
+		}
+	}
+	runAllSections := len(wantSection) == 0
+
+	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
+	type sectionLoader struct {
+		name       string
+		rows       *[][]string
+		loadAll    func(context.Context, time.Time) ([][]string, error)
+		loadFormat func(context.Context, string, time.Time) ([][]string, error)
+	}
+	loaders := []sectionLoader{
+		{"batting", &batRows, exq.BattingTrainingRows, exq.BattingTrainingRowsWithFormat},
+		{"bowling", &bowlRows, exq.BowlingTrainingRows, exq.BowlingTrainingRowsWithFormat},
+		{"fielding", &fieldRows, exq.FieldingTrainingRows, exq.FieldingTrainingRowsWithFormat},
+		{"extras", &extrasRows, exq.ExtrasTrainingRows, exq.ExtrasTrainingRowsWithFormat},
+		{"win", &winRows, exq.WinTrainingRows, exq.WinTrainingRowsWithFormat},
+	}
+	for _, loader := range loaders {
+		if runAllSections || wantSection[loader.name] {
+			var loadErr error
+			if useAll {
+				*loader.rows, loadErr = loader.loadAll(r.Context(), cutoff)
+			} else {
+				*loader.rows, loadErr = loader.loadFormat(r.Context(), format, cutoff)
+			}
+			if loadErr != nil {
+				respondTrainingDataErr(w, loadErr, formatForErr)
+				return
+			}
+		}
 	}
 	part := func(rows [][]string) (headers []string, data [][]string) {
 		if len(rows) > 0 {

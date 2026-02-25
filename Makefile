@@ -142,14 +142,10 @@ precompute-asof:
 precompute-all:
 	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
 
-# Run unified command for all formats (order: TEST, ODI, T20I, T20). Each format once; do not add aliases (MDM→TEST, IT20→T20I).
+# Run unified command for all formats in parallel (TEST, ODI, T20I, T20). Single process, same as pipeline API.
 # Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
 precompute-all-all-formats:
-	cd go-app; \
-	for F in TEST ODI T20I T20; do \
-		echo "[unified] precompute-all for $$F"; \
-		go run ./cmd/precompute-all -format=$$F $(ARGS) || exit 1; \
-	done
+	cd go-app && go run ./cmd/precompute-all -all-formats -replay $(ARGS) || exit 1
 
 # Team predictor: requires MATCH, SEASON, FORMAT; uses go-app team-predictor (ML service must be running for predict).
 team-predictor:
@@ -161,11 +157,12 @@ team-predictor:
 ml-install:
 	$(MAKE) -C ml-service install
 
+# Per-format then unified (legacy) artifacts; run export-dataset first so batting_encoded_*.csv and batting_encoded_all.csv exist.
 train-batting:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting_model
+	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --all-formats && $(ML_VENV_BIN)/python -m ml.train_batting_model
 
 train-bowling:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling_model
+	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling --all-formats && $(ML_VENV_BIN)/python -m ml.train_bowling_model
 
 # Train fielding: same as batting/bowling — if CUTOFF set use API; else use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
 GO_APP_URL ?= http://localhost:8080
@@ -218,7 +215,7 @@ ALGORITHMS ?=
 VALIDATION_METHOD ?=
 # CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",)
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",)
 
 # Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z

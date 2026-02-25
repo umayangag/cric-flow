@@ -84,6 +84,10 @@ func TestMemoryBasedLimit(t *testing.T) {
 	}
 	oldDetect := detectMemoryLimitBytes
 	defer func() { detectMemoryLimitBytes = oldDetect }()
+	// Use constants (disable observations) so test is deterministic.
+	oldObs := os.Getenv("USE_RESOURCE_OBSERVATIONS")
+	defer func() { _ = os.Setenv("USE_RESOURCE_OBSERVATIONS", oldObs) }()
+	_ = os.Setenv("USE_RESOURCE_OBSERVATIONS", "false")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

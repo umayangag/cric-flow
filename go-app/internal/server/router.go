@@ -29,9 +29,14 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// ML health proxy (full response for Health tab: loaded formats, artifacts)
-	admin.HandleFunc("/api/health/ml", a.mlHealthProxyHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy", nil)).
+		Methods(http.MethodGet, http.MethodOptions)
 	// ML model metadata (features, outputs, artifacts pattern for Workbench UI)
-	admin.HandleFunc("/api/ml/model-metadata", a.mlModelMetadataProxyHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/ml/model-metadata", a.mlServiceProxy("/model-metadata", "ml model-metadata proxy", nil)).
+		Methods(http.MethodGet, http.MethodOptions)
+	// ML model stats (name, format, params, accuracy, size for ML Model Stats tab)
+	admin.HandleFunc("/api/ml/model-stats", a.mlServiceProxy("/model-stats", "ml model-stats proxy", enrichModelStatsPayload)).
+		Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
 
@@ -40,6 +45,7 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/ops/pipeline/stop", a.pipelineStopHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/stream", a.pipelineProgressStreamHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 
@@ -51,6 +57,8 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/options/opponents", optionsHandler.HandleGetOpponents).
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/options/venues", optionsHandler.HandleGetVenues).
 		Methods(http.MethodGet, http.MethodOptions)
 
 	// Domain queries

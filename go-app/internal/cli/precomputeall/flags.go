@@ -15,6 +15,7 @@ import (
 func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var (
 		format     string
+		allFormats bool
 		asOf       string
 		replay     bool
 		alpha      float64
@@ -35,7 +36,18 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 			defaultLastN = cfg.Features.ConsistencyLastN
 		}
 	}
-	fs.StringVar(&format, "format", "ODI", "Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20)")
+	fs.StringVar(
+		&format,
+		"format",
+		"ODI",
+		"Match format code: TEST|ODI|T20|T20I (aliases accepted: MDM, ODM, IT20); ignored if -all-formats",
+	)
+	fs.BoolVar(
+		&allFormats,
+		"all-formats",
+		false,
+		"Run all canonical formats (TEST, ODI, T20I, T20) in parallel; requires -replay",
+	)
 	fs.StringVar(&asOf, "as-of", "", "Cutoff date (YYYY-MM-DD); used only when -replay is false")
 	fs.BoolVar(
 		&replay,
@@ -69,8 +81,11 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
-	if strings.TrimSpace(format) == "" {
-		return Options{}, errors.New("format must not be empty")
+	if !allFormats && strings.TrimSpace(format) == "" {
+		return Options{}, errors.New("format must not be empty (or use -all-formats)")
+	}
+	if allFormats && !replay {
+		return Options{}, errors.New("-all-formats requires -replay")
 	}
 	if !(alpha > 0 && alpha <= 1) {
 		return Options{}, errors.New("ewm-alpha must be in (0,1]")
@@ -80,6 +95,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	}
 	return Options{
 		Format:        format,
+		AllFormats:    allFormats,
 		AsOf:          asOf,
 		Replay:        replay,
 		EWMAlpha:      alpha,

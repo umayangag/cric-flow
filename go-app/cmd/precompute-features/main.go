@@ -66,7 +66,7 @@ func run() int {
 	runErr := pipeline.RunJob(ctx, "precompute-features", startMeta, 0, func(jobCtx context.Context) (any, error) {
 		runner := pfcmd.NewRunner()
 		if opts.Replay {
-			err := runner.RunReplay(jobCtx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN)
+			err := runner.RunReplay(jobCtx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN, 0)
 			return map[string]any{"type": "replay"}, err
 		}
 		var asOf time.Time
@@ -80,7 +80,7 @@ func run() int {
 				return nil, parseErr
 			}
 		}
-		err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN)
+		err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN, 0)
 		return map[string]any{"type": "as-of", "as_of": asOf.Format("2006-01-02")}, err
 	})
 	if runErr != nil {

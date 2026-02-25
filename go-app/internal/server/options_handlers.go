@@ -58,3 +58,17 @@ func (h *OptionsHandler) HandleGetOpponents(w http.ResponseWriter, r *http.Reque
 	}
 	writeJSON(w, http.StatusOK, opponents)
 }
+
+func (h *OptionsHandler) HandleGetVenues(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query().Get("q")
+	venues, err := db.GetVenuesByQuery(ctx, q)
+	if err != nil {
+		respondErr(w, err)
+		return
+	}
+	if venues == nil {
+		venues = []string{}
+	}
+	writeJSON(w, http.StatusOK, venues)
+}

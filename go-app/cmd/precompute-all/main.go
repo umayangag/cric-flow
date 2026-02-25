@@ -16,6 +16,7 @@ import (
 	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
@@ -49,6 +50,26 @@ func run() int {
 	if err := db.RunMigrations(ctx, migDir); err != nil {
 		slog.Error("migrations failed", slog.Any("err", err))
 		return 1
+	}
+
+	// -all-formats: run all canonical formats in parallel (same as pipeline API)
+	if opts.AllFormats {
+		precomputeOpts := &precompute.RunOpts{Alpha: opts.EWMAlpha, LastN: opts.LastN}
+		meta := map[string]any{"all_formats": true, "replay": true}
+		runErr := pipeline.RunJob(
+			ctx,
+			"precompute-features",
+			meta,
+			opts.Timeout,
+			func(jobCtx context.Context) (any, error) {
+				return meta, precompute.Run(jobCtx, "", formats.CanonicalCodes(), precomputeOpts)
+			},
+		)
+		if runErr != nil {
+			slog.Error("precompute all-formats failed", slog.Any("err", runErr))
+			return 1
+		}
+		return 0
 	}
 
 	// Resolve format_id
@@ -104,7 +125,7 @@ func run() int {
 		}
 		// Single-date mode (as-of): not supported by precompute.Run, use runner directly
 		runner := pfcmd.NewRunner()
-		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN); err != nil {
+		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN, 0); err != nil {
 			return nil, err
 		}
 		return meta, nil

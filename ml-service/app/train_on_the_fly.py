@@ -253,16 +253,22 @@ def fetch_training_data(
     format_code: str,
     cutoff_iso: str,
     api_key: Optional[str] = None,
+    sections: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fetch training data from go-app. Returns dict with batting/bowling headers and rows.
 
     Timeout is from config (training_data_fetch_timeout_sec) or TRAINING_DATA_FETCH_TIMEOUT.
     Align this with the Go backend's pipeline timeout (e.g. features.precompute_timeout_ms)
     to avoid the client closing before the server responds on large datasets.
+
+    sections: optional comma-separated list (e.g. "batting" or "batting,bowling"). If set,
+    go-app only runs those section queries, reducing go-app and DB CPU during auto-tune.
     """
     base = go_app_url.rstrip("/")
     # format=all requests all matches before cutoff (no format filter); required for cross-format features.
     url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
+    if sections:
+        url += f"&sections={urllib.parse.quote(sections)}"
     timeout_sec = get_training_data_fetch_timeout_sec()
     env_timeout = os.environ.get("TRAINING_DATA_FETCH_TIMEOUT")
     if env_timeout is not None:

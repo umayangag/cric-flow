@@ -113,14 +113,15 @@ const DefaultPipelineReplayMatchPageSize = 500
 
 // Resources: memory per worker (MB), fraction of limit for workers (percent), seqcalc low-memory threshold (GiB), default precompute concurrency when no limit.
 const (
-	DefaultPrecomputeMBPerWorker            = 450
-	DefaultImportMBPerWorker                = 150
-	DefaultExportMBPerWorker                = 100
-	DefaultSeqCalcMBPerWorker               = 500
-	DefaultFieldingMBPerWorker              = 50
-	DefaultMemoryUsageFractionPercent       = 80
-	DefaultSeqCalcLowMemoryLimitGiB         = 2
-	DefaultPrecomputeConcurrencyWhenNoLimit = 2
+	DefaultPrecomputeMBPerWorker      = 450
+	DefaultImportMBPerWorker          = 150
+	DefaultExportMBPerWorker          = 100
+	DefaultSeqCalcMBPerWorker         = 500
+	DefaultFieldingMBPerWorker        = 100
+	DefaultMemoryUsageFractionPercent = 80
+	DefaultSeqCalcLowMemoryLimitGiB   = 2
+	// 0 = use NumCPU() when no memory limit (optimum resources); set > 0 to cap precompute concurrency.
+	DefaultPrecomputeConcurrencyWhenNoLimit = 0
 )
 
 // Selection: max pool size for full enumeration; above this use greedy + hill-climb.

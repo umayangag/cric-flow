@@ -58,6 +58,12 @@ export const CodeCell = styled(TableCell)`
   color: #475569;
 `;
 
+export const DetailsCell = styled(TableCell)`
+  max-width: 120px;
+  vertical-align: middle;
+  white-space: nowrap;
+`;
+
 export const ErrorMessage = styled.div`
   color: #dc2626;
   max-width: 320px;
@@ -87,6 +93,26 @@ export const PaginationContainer = styled.div`
   border-radius: 0 0 12px 12px;
   font-size: 13px;
   color: #64748b;
+`;
+
+export const ViewDetailsButton = styled.button`
+  background: #f1f5f9;
+  color: #475569;
+  border: ${borderSofter};
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover {
+    background: #e2e8f0;
+    border-color: rgba(0, 0, 0, 0.1);
+  }
 `;
 
 export const PaginationButton = styled.button`

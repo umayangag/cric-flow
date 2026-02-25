@@ -5,6 +5,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
@@ -105,13 +106,21 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
+    # Normalize toss: CSV/API may have "bat"/"field" strings; model expects 0/1
+    if "toss" in df.columns and df["toss"].dtype == object:
+        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(lambda x: 1.0 if x == "bat" else 0.0)
     return df
 
 
 def _df_to_xy(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     """Build X, Y and feature_names from a prepared bowling DataFrame (align with train_batting)."""
     required = [c for c in FEATURE_COLS if c not in BOWL_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
+    required_in_df = [c for c in required if c in df.columns]
+    for c in required_in_df:
+        df[c] = df[c].fillna(0.0)
+    target_subset = [c for c in TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
     X_raw = df[FEATURE_COLS].astype(float).values
     transform_config = get_transform_config("bowling")
     if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
@@ -163,7 +172,7 @@ def fetch_bowling_from_api(
     from .config import get_training_data_fetch_timeout_sec
 
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}"
+    url = f"{base}/api/backtest/training-data?format={urllib.parse.quote(format_code)}&cutoff={urllib.parse.quote(cutoff_iso)}&sections=bowling"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -331,22 +340,22 @@ def main():
         if not targets:
             targets = _config_formats()
         api_key = (args.api_key or os.environ.get("GO_APP_API_KEY", "")).strip() or None
-        saved_count = 0
-        for fmt in targets:
+
+        def _train_one_api(fmt: str) -> int:
             bowl = fetch_bowling_from_api(go_app_url, fmt, cutoff, api_key)
             headers = bowl.get("headers") or []
             rows = bowl.get("rows") or []
             if not headers or not rows:
                 logger.warning("train_bowling.skip_format_no_data_from_api format=%s", fmt)
-                continue
+                return 0
             try:
                 X, Y, feature_names_used = load_dataset_from_memory(headers, rows)
             except Exception as e:
                 logger.error("train_bowling.load_from_api_failed format=%s error=%s", fmt, e)
-                continue
+                return 0
             if X.size == 0 or Y.size == 0:
                 logger.warning("train_bowling.skip_format_no_data format=%s", fmt)
-                continue
+                return 0
             training_params = get_training_params("bowling", fmt)
             meta = {
                 "source": "api",
@@ -361,7 +370,20 @@ def main():
             }
             train_and_save(X, Y, args.out, training_params, fmt, meta)
             logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
-            saved_count += 1
+            return 1
+
+        max_workers = min(
+            len(targets),
+            max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+        )
+        saved_count = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_train_one_api, fmt): fmt for fmt in targets}
+            for fut in as_completed(futures):
+                try:
+                    saved_count += fut.result()
+                except Exception:
+                    raise
         if targets and saved_count == 0:
             logger.error("train_bowling.no_models_saved from_api=True cutoff=%s", cutoff)
             raise SystemExit(1)
@@ -413,21 +435,20 @@ def main():
         logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
         return
 
-    saved_count = 0
-    for fmt in targets:
+    def _train_one_csv(fmt: str) -> int:
         training_params = get_training_params("bowling", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):
             logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
-            continue
+            return 0
         try:
             X, Y, feature_names_used = load_dataset(csv_path)
         except Exception as e:
             logger.error("train_bowling.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
-            continue
+            return 0
         if X.size == 0 or Y.size == 0:
             logger.warning("train_bowling.skip_format_no_data format=%s path=%s", fmt, csv_path)
-            continue
+            return 0
         meta = {
             "csv_path": csv_path,
             "rows": int(X.shape[0]),
@@ -440,7 +461,20 @@ def main():
         }
         train_and_save(X, Y, args.out, training_params, fmt, meta)
         logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
-        saved_count += 1
+        return 1
+
+    max_workers = min(
+        len(targets),
+        max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+    )
+    saved_count = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_train_one_csv, fmt): fmt for fmt in targets}
+        for fut in as_completed(futures):
+            try:
+                saved_count += fut.result()
+            except Exception:
+                raise
     if targets and saved_count == 0:
         logger.error("train_bowling.no_models_saved csv_dir=%s out_dir=%s", default_csv_dir, args.out)
         raise SystemExit(1)

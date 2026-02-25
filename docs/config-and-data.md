@@ -61,11 +61,11 @@ Config file: `ml-service/config.json`
 - `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 604800 = 7 days — HTTP timeout when fetching training data from go-app), `training_data_fetch_timeout_invalid_fallback_sec` (600), `training_subprocess_timeout_sec` (default 604800 = 7 days — max time for each /admin/train/* subprocess; set in config so long training runs don’t hit context deadline), `go_app_request_timeout_sec` (30 — tuned-params GET/POST).
 - `outputs` — `artifacts_dir`.
 - `ml`
-  - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (70), `training_low_memory_threshold_mb` (2560 — when process memory limit is at or below this MB, training uses 1 job to avoid OOM). Used for resource-aware n_jobs when a memory limit is set.
+  - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (80 — use up to 80% of available memory for training/tuning workers), `training_low_memory_threshold_mb` (2560 — when process memory limit is at or below this MB, training uses 1 job to avoid OOM). Used for resource-aware n_jobs when a memory limit is set.
   - `formats` — list of format codes to train/serve.
   - `training` — **required** per-model block: `batting`, `bowling`, `fielding`, `extras`, `win` each with `n_estimators`, `max_depth`, `random_state`, `joblib_compress`; optional `estimator` (rf/gb/stacked/quantile), `learning_rate`, `quantile_level`.
   - `feature_defaults` (optional) — defaults when go-app feature map omits keys: `common` (weather/context), `fielding`.
-  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (kfold or walk_forward).
+  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (walk_forward default, or kfold).
   - `walk_forward` (optional) — for walk-forward: `initial_cutoff`, `window_x`, `registry_path`.
   - `prediction_defaults` — e.g. `economy` (default 6.0).
   - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10).

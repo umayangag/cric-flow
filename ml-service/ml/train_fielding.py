@@ -21,6 +21,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import joblib
 import numpy as np
@@ -63,7 +64,7 @@ FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
 def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
     """Fetch training data from go-app; return dict with fielding headers and rows."""
     base = go_app_url.rstrip("/")
-    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}"
+    url = f"{base}/api/backtest/training-data?format=all&cutoff={urllib.parse.quote(cutoff_iso)}&sections=fielding"
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -243,9 +244,20 @@ def main() -> None:
     if not by_format:
         logger.error("train_fielding.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y) in by_format.items():
+
+    formats_items = list(by_format.items())
+    max_workers = min(
+        len(formats_items),
+        max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+    )
+
+    def _train_one_format(item):
+        fmt, (X, Y) = item
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(_train_one_format, formats_items))
 
     # Unified (overall) model: train on all data combined for legacy/fallback
     all_X = np.vstack([X for _, (X, _) in by_format.items()])

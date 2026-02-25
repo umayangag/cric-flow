@@ -6,6 +6,7 @@ import "time"
 type Options struct {
 	// Common
 	Format        string
+	AllFormats    bool   // run all canonical formats in parallel (replay only)
 	AsOf          string // YYYY-MM-DD or empty
 	Replay        bool
 	EWMAlpha      float64

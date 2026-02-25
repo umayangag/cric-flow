@@ -155,6 +155,7 @@ func runSequential(ctx context.Context, calcs []Calculator, params Params, dry b
 		)
 	}
 	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at end", slog.String("format", params.FormatCode))
+	resources.RecordWorkerMemorySample(resources.KindSeqCalc, 1) // sequential run = 1 worker
 	return nil
 }
 
@@ -200,6 +201,7 @@ func runConcurrent(ctx context.Context, calcs []Calculator, params Params, dry b
 	}
 	err := g.Wait()
 	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at end", slog.String("format", params.FormatCode))
+	resources.RecordWorkerMemorySample(resources.KindSeqCalc, limit)
 	if err != nil {
 		slog.Error("seqcalc.run.finished_with_error", slog.String("format", params.FormatCode), slog.Any("err", err))
 	}

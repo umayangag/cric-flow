@@ -16,14 +16,32 @@ import (
 	exportcli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
 	expcmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
+// pipelineStopHandler handles POST /ops/pipeline/stop. Cancels the current pipeline job context and marks the in-progress migration as CANCELLED.
+func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
+	a.CancelCurrentJob()
+	cancelled, err := tracking.CancelInProgressMigration(r.Context(), "cancelled by user")
+	if err != nil {
+		slog.Warn("pipeline stop: cancel migration failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !cancelled {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
-// Triggers import, precompute, or export in-process; returns 202 started or 501 for train/auto_tune.
+// Triggers import, precompute, export, train_*, or auto_tune (train/auto_tune via ML service); returns 202 started or 501 for train_combination_meta.
 // Next step is only runnable after the previous completed successfully (enforced here and in /ops/status runnable).
 func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -98,11 +116,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case "auto_tune":
-		respondJSON(w, http.StatusNotImplemented, map[string]string{
-			"error":   "step must be run from project root",
-			"step":    step,
-			"command": stepToCommand(step),
-		})
+		a.makeMLTrainHandler("auto_tune", "ml-auto-tune", "auto-tune")(w, r)
 		return
 	default:
 		slog.Info("pipeline run: unknown step", slog.String("step", step))
@@ -148,10 +162,13 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jobCtx, cancel := context.WithCancel(a.JobContext())
+	a.SetCurrentJobCancel(cancel)
 	go func() {
+		defer a.ClearCurrentJobCancel()
 		slog.Info("export-dataset started", slog.String("dir", outDir))
 		runErr := pipeline.RunJob(
-			a.JobContext(),
+			jobCtx,
 			"export-dataset",
 			map[string]any{"out_dir": outDir},
 			config.ExportTimeout(),
@@ -224,21 +241,91 @@ func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
+// trainingStepToModel maps pipeline train step ID to ml model name for tuned-params lookup.
+func trainingStepToModel(stepID string) string {
+	switch stepID {
+	case "train_batting":
+		return "batting"
+	case "train_bowling":
+		return "bowling"
+	case "train_fielding":
+		return "fielding"
+	case "train_extras":
+		return "extras"
+	case "train_win":
+		return "win"
+	default:
+		return ""
+	}
+}
+
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
+// For auto_tune, forwards query params: model, format, all_formats, unified.
+// For train_* steps: if no auto-tuned params exist in DB and confirm_use_default is not set, returns 200 with
+// requires_confirmation so the UI can prompt; if user confirms, client re-posts with confirm_use_default=1.
 func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		args := map[string]any{"step": stepID}
-		cutoff := r.URL.Query().Get("cutoff")
+		q := r.URL.Query()
+		cutoff := q.Get("cutoff")
 		if cutoff == "" {
 			cutoff = defaultCutoff()
 		}
 		args["cutoff"] = cutoff
 		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 
+		// Training steps: require user confirmation when no tuned params in DB (unless confirm_use_default is set).
+		if model := trainingStepToModel(stepID); model != "" {
+			confirmVal := strings.TrimSpace(strings.ToLower(q.Get("confirm_use_default")))
+			confirmUseDefault := confirmVal == "1" || confirmVal == "true" || confirmVal == "yes"
+			if !confirmUseDefault && db.Pool != nil {
+				hasParams, err := db.HasAnyTunedParamsForModel(r.Context(), model)
+				if err != nil {
+					slog.Warn("pipeline: tuned params check failed", "step", stepID, "model", model, "err", err)
+					respondJSON(
+						w,
+						http.StatusInternalServerError,
+						map[string]string{"error": "failed to check tuned params"},
+					)
+					return
+				}
+				if !hasParams {
+					respondJSON(w, http.StatusOK, map[string]any{
+						"requires_confirmation": true,
+						"message":               "No auto-tuned parameters found for this model. Train with default config parameters?",
+						"step":                  stepID,
+					})
+					return
+				}
+			}
+		}
+
+		if stepID == "auto_tune" {
+			if v := strings.TrimSpace(q.Get("model")); v != "" {
+				querySuffix += "&model=" + url.QueryEscape(v)
+				args["model"] = v
+			}
+			if v := strings.TrimSpace(q.Get("format")); v != "" {
+				querySuffix += "&format=" + url.QueryEscape(v)
+				args["format"] = v
+			}
+			if v := strings.TrimSpace(q.Get("all_formats")); v != "" {
+				querySuffix += "&all_formats=" + url.QueryEscape(v)
+				args["all_formats"] = v
+			}
+			if v := strings.TrimSpace(q.Get("unified")); v != "" {
+				querySuffix += "&unified=" + url.QueryEscape(v)
+				args["unified"] = v
+			}
+		}
+
+		jobCtx, cancel := context.WithCancel(a.JobContext())
+		a.SetCurrentJobCancel(cancel)
 		go func() {
+			defer a.ClearCurrentJobCancel()
 			slog.Info(command+" started", slog.Any("args", args))
 			runErr := pipeline.RunJob(
-				a.JobContext(),
+				jobCtx,
 				command,
 				args,
 				trainStepTimeout(),

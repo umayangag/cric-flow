@@ -10,6 +10,10 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 
 export type PipelineStepId =
   | 'import'
@@ -123,7 +127,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description:
-        'Optional: tune all models per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed). Run from project root.',
+        'Optional: tune the unified model and all per-format models (batting, bowling, fielding, extras, win). Best params are saved to DB when GO_APP_URL is set. You can run this from the UI or from project root.',
       runnable: true,
     },
   ];
@@ -180,15 +184,16 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   steps[3].status = battingDone ? 'success' : 'pending';
   steps[4].status = bowlingDone ? 'success' : 'pending';
   steps[5].status = fieldingDone ? 'success' : 'pending';
-  // train_extras (6) and train_win (7): no artifact check yet; use backend running/runnable only
-  // steps[6], steps[7] stay pending unless running
-  // Override with running and runnable from backend (next step only runnable after previous completed)
+  // train_extras (6) and train_win (7): no artifact check; use backend completed + running/runnable
+  // Override with running, runnable, and completed from backend
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const stepData = asObj(pipelineSteps[step.id]);
     const running = stepData.running === true;
+    const completed = stepData.completed === true;
     if (running) steps[i].status = 'running';
+    else if (completed) steps[i].status = 'success';
     // Default true when backend omits runnable (e.g. older API)
     steps[i].runnable = stepData.runnable !== false;
   }
@@ -211,23 +216,60 @@ type OpsPipelineGraphProps = {
   onRefresh?: () => void;
 };
 
+const AUTO_TUNE_MODELS = [
+  { value: 'all', label: 'All' },
+  { value: 'batting', label: 'Batting' },
+  { value: 'bowling', label: 'Bowling' },
+  { value: 'fielding', label: 'Fielding' },
+  { value: 'extras', label: 'Extras' },
+  { value: 'win', label: 'Win' },
+] as const;
+
+const AUTO_TUNE_FORMATS = [
+  { value: 'unified', label: 'Unified only' },
+  { value: '', label: 'All formats' },
+  { value: 'TEST', label: 'TEST' },
+  { value: 'ODI', label: 'ODI' },
+  { value: 'T20', label: 'T20' },
+  { value: 'T20I', label: 'T20I' },
+] as const;
+
 const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) => {
   const [dialogStep, setDialogStep] = useState<PipelineStep | null>(null);
   const [copied, setCopied] = useState(false);
   const [runState, setRunState] = useState<
-    'idle' | 'loading' | 'started' | 'run_from_root' | 'error'
+    'idle' | 'loading' | 'started' | 'run_from_root' | 'error' | 'requires_confirmation'
   >('idle');
   const [runMessage, setRunMessage] = useState<string>('');
   const [runCommand, setRunCommand] = useState<string>('');
+  const [autoTuneModel, setAutoTuneModel] = useState<string>('all');
+  const [autoTuneFormat, setAutoTuneFormat] = useState<string>('unified');
 
   const steps = useMemo(() => derivePipelineSteps(data), [data]);
 
-  const handleRun = async (step: PipelineStep) => {
+  const buildRunParams = (step: PipelineStep, extra?: Record<string, string>) =>
+    step.id === 'auto_tune'
+      ? {
+          model: autoTuneModel,
+          ...(autoTuneFormat === 'unified'
+            ? { unified: '1' }
+            : autoTuneFormat === ''
+              ? { all_formats: '1' }
+              : { format: autoTuneFormat }),
+          ...extra,
+        }
+      : { ...extra };
+
+  const handleRun = async (step: PipelineStep, confirmUseDefault = false) => {
     setRunState('loading');
     setRunMessage('');
     setRunCommand('');
     try {
-      const { status, data: res } = await api.opsPipelineRun(step.id);
+      const params = confirmUseDefault
+        ? { ...buildRunParams(step), confirm_use_default: '1' }
+        : buildRunParams(step);
+      const effectiveParams = Object.keys(params).length ? params : undefined;
+      const { status, data: res } = await api.opsPipelineRun(step.id, effectiveParams);
       if (status === 202) {
         setRunState('started');
         setRunMessage('Step started. Status will update on refresh.');
@@ -236,6 +278,9 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
         setRunState('run_from_root');
         setRunMessage(res.error || 'Run from project root');
         setRunCommand(res.command || step.command);
+      } else if (status === 200 && res.requires_confirmation) {
+        setRunState('requires_confirmation');
+        setRunMessage(res.message || 'No auto-tuned parameters found. Train with default config?');
       } else {
         setRunState('error');
         setRunMessage(res.error || `HTTP ${status}`);
@@ -246,9 +291,25 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
     }
   };
 
+  const handleRunWithDefaultConfirm = async (step: PipelineStep) => {
+    await handleRun(step, true);
+  };
+
+  const getAutoTuneCommand = () => {
+    const modelPart = `MODEL=${autoTuneModel}`;
+    const formatPart =
+      autoTuneFormat === 'unified'
+        ? ''
+        : autoTuneFormat === ''
+          ? 'ALL_FORMATS=1'
+          : `FORMAT=${autoTuneFormat}`;
+    return `make ml-auto-tune ${modelPart}${formatPart ? ` ${formatPart}` : ''}`;
+  };
+
   const handleCopy = async (step: PipelineStep) => {
     try {
-      await navigator.clipboard.writeText(step.command);
+      const text = step.id === 'auto_tune' ? getAutoTuneCommand() : runCommand || step.command;
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -391,6 +452,40 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 {dialogStep.description}
               </Typography>
+              {dialogStep.id === 'auto_tune' && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1.5 }}>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="autotune-model-label">Model</InputLabel>
+                    <Select
+                      labelId="autotune-model-label"
+                      value={autoTuneModel}
+                      label="Model"
+                      onChange={(e) => setAutoTuneModel(e.target.value)}
+                    >
+                      {AUTO_TUNE_MODELS.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel id="autotune-format-label">Format</InputLabel>
+                    <Select
+                      labelId="autotune-format-label"
+                      value={autoTuneFormat}
+                      label="Format"
+                      onChange={(e) => setAutoTuneFormat(e.target.value)}
+                    >
+                      {AUTO_TUNE_FORMATS.map((o) => (
+                        <MenuItem key={o.value || 'all'} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
               {!dialogStep.runnable && dialogStep.status !== 'running' && (
                 <Typography
                   variant="body2"
@@ -409,7 +504,7 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                     bgcolor:
                       runState === 'error'
                         ? 'error.light'
-                        : runState === 'run_from_root'
+                        : runState === 'run_from_root' || runState === 'requires_confirmation'
                           ? 'warning.light'
                           : 'action.selected',
                   }}
@@ -433,7 +528,11 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                     borderColor: 'divider',
                   }}
                 >
-                  {runState === 'run_from_root' && runCommand ? runCommand : dialogStep.command}
+                  {runState === 'run_from_root' && runCommand
+                    ? runCommand
+                    : dialogStep.id === 'auto_tune'
+                      ? getAutoTuneCommand()
+                      : dialogStep.command}
                 </Box>
               ) : null}
             </DialogContent>
@@ -448,21 +547,44 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
               >
                 Close
               </Button>
-              <Button
-                variant="outlined"
-                onClick={() =>
-                  handleCopy({ ...dialogStep, command: runCommand || dialogStep.command })
-                }
-              >
-                {copied ? 'Copied!' : 'Copy command'}
-              </Button>
-              <Button
-                variant="contained"
-                onClick={() => handleRun(dialogStep)}
-                disabled={runState === 'loading' || !dialogStep.runnable}
-              >
-                {runState === 'loading' ? 'Running…' : 'Run'}
-              </Button>
+              {runState === 'requires_confirmation' ? (
+                <>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setRunState('idle');
+                      setRunMessage('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    onClick={() => handleRunWithDefaultConfirm(dialogStep)}
+                  >
+                    Train with defaults
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outlined"
+                    onClick={() =>
+                      handleCopy({ ...dialogStep, command: runCommand || dialogStep.command })
+                    }
+                  >
+                    {copied ? 'Copied!' : 'Copy command'}
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={() => handleRun(dialogStep)}
+                    disabled={runState === 'loading' || !dialogStep.runnable}
+                  >
+                    {runState === 'loading' ? 'Running…' : 'Run'}
+                  </Button>
+                </>
+              )}
             </DialogActions>
           </>
         )}

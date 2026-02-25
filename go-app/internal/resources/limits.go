@@ -47,10 +47,13 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	}
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
-		// No memory limit detected (no GOMEMLIMIT/cgroup): use conservative default for memory-heavy kinds to avoid OOM.
+		// No memory limit detected (no GOMEMLIMIT/cgroup): use CPU-based concurrency for optimum throughput.
 		cfg := config.Load()
 		if kind == KindPrecompute {
 			n = config.ResourcesPrecomputeConcurrencyWhenNoLimit(cfg)
+			if n <= 0 {
+				n = runtime.NumCPU()
+			}
 		} else {
 			n = runtime.NumCPU()
 		}
@@ -124,7 +127,7 @@ func memoryBasedLimit(kind Kind) int {
 	if limitBytes <= 0 {
 		return 0
 	}
-	perWorkerMB := defaultMBPerWorker(kind)
+	perWorkerMB := effectiveMBPerWorker(kind)
 	perWorkerBytes := int64(perWorkerMB) * 1024 * 1024
 	if perWorkerBytes <= 0 {
 		return 0
@@ -155,6 +158,15 @@ func memoryBasedLimit(kind Kind) int {
 		slog.Int("mb_per_worker", perWorkerMB),
 		slog.Int("workers", n))
 	return n
+}
+
+// effectiveMBPerWorker returns MB per worker for the kind: observed from last run when
+// UseObservations() and ObservedMBPerWorker(kind) > 0, otherwise config or default constant.
+func effectiveMBPerWorker(kind Kind) int {
+	if observed := ObservedMBPerWorker(kind); observed > 0 {
+		return observed
+	}
+	return defaultMBPerWorker(kind)
 }
 
 func defaultMBPerWorker(kind Kind) int {

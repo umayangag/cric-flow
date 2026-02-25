@@ -6,6 +6,11 @@ from typing import Optional
 
 import structlog
 
+# ANSI escape codes for coloring error/warn lines in docker logs and terminals
+_ANSI_RED = "\033[31m"
+_ANSI_YELLOW = "\033[33m"
+_ANSI_RESET = "\033[0m"
+
 # Context variables
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
 service_var: ContextVar[str] = ContextVar("service", default="ml-service")
@@ -15,18 +20,39 @@ version_var: ContextVar[Optional[str]] = ContextVar("version", default=None)
 _std_logger_singleton: Optional[logging.Logger] = None
 
 
+class _ColorStreamHandler(logging.StreamHandler):
+    """StreamHandler that wraps error lines in red and warning lines in yellow when LOG_COLOR=1."""
+
+    def __init__(self, stream, formatter: logging.Formatter, use_color: bool) -> None:
+        super().__init__(stream)
+        self._formatter = formatter
+        self._use_color = use_color
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = self._formatter.format(record)
+        if not self._use_color:
+            return msg
+        if record.levelno >= logging.ERROR:
+            return f"{_ANSI_RED}{msg}{_ANSI_RESET}"
+        if record.levelno >= logging.WARNING:
+            return f"{_ANSI_YELLOW}{msg}{_ANSI_RESET}"
+        return msg
+
+
 def init_logging(service: str = "ml-service", version: Optional[str] = None) -> None:
     """Initialize structlog + stdlib logging.
 
     Respects environment variables:
       - LOG_LEVEL: DEBUG|INFO|WARNING|ERROR (default INFO)
       - LOG_FORMAT: json|console (default json)
+      - LOG_COLOR: 1 to enable ANSI color for error (red) and warn (yellow) in docker/terminal logs
     """
     global _std_logger_singleton
 
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     log_format = os.environ.get("LOG_FORMAT", "json").lower()
+    use_color = os.environ.get("LOG_COLOR", "").strip() == "1"
 
     # Set context defaults
     service_var.set(service)
@@ -35,17 +61,19 @@ def init_logging(service: str = "ml-service", version: Optional[str] = None) -> 
     # Configure stdlib root logger
     root = logging.getLogger()
     root.setLevel(level)
-    # Replace handlers
-    handler = logging.StreamHandler(stream=sys.stdout)
 
     if log_format == "console":
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=use_color,
+            force_colors=use_color,  # so docker logs (non-TTY) still get colors
+        )
         formatter = structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=[
                 structlog.contextvars.merge_contextvars,
                 structlog.processors.add_log_level,
                 structlog.processors.TimeStamper(fmt="iso"),
             ],
-            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, structlog.dev.ConsoleRenderer()],
+            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
         )
     else:
         formatter = structlog.stdlib.ProcessorFormatter(
@@ -59,7 +87,12 @@ def init_logging(service: str = "ml-service", version: Optional[str] = None) -> 
                 structlog.processors.JSONRenderer(sort_keys=True),
             ],
         )
-    handler.setFormatter(formatter)
+
+    if use_color and log_format == "json":
+        handler = _ColorStreamHandler(sys.stdout, formatter, use_color=True)
+    else:
+        handler = logging.StreamHandler(stream=sys.stdout)
+        handler.setFormatter(formatter)
     root.handlers = [handler]
 
     # Configure structlog

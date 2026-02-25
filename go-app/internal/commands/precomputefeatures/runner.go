@@ -30,6 +30,8 @@ func replayMatchPageSize() int {
 
 // RunReplay iterates through matches chronologically and writes snapshots as of each match date.
 // Matches are fetched in chunks to avoid OOM when a format has many matches.
+// concurrencyLimit: when > 0, caps concurrent player work for this format (e.g. when multiple formats run in parallel);
+// when 0, uses resource-aware limit from config/env (80% of available memory/CPU).
 func (Runner) RunReplay(
 	ctx context.Context,
 	formatCode string,
@@ -37,8 +39,9 @@ func (Runner) RunReplay(
 	alpha float64,
 	lastN int,
 	windowN int,
+	concurrencyLimit int,
 ) error {
-	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
 	pageSize := replayMatchPageSize()
 	slog.Info("precompute-features(replay)",
 		slog.String("format", formatCode),
@@ -292,6 +295,9 @@ func (Runner) RunReplay(
 		after = &matches[len(matches)-1]
 	}
 
+	// Record observed heap/concurrency so next run can use dynamic MB-per-worker (no hardcoded constant).
+	resources.RecordWorkerMemorySample(resources.KindPrecompute, precomputeLimit)
+
 	// Trigger sequence features calculation (fill bowling_sequence_features, event_reaction_features, etc.)
 	// Run GC to release replay-phase memory before the next heavy phase and reduce OOM risk.
 	runtime.GC()
@@ -314,6 +320,7 @@ func (Runner) RunReplay(
 }
 
 // RunPointInTime computes snapshots for all players strictly before the cutoff date concurrently.
+// concurrencyLimit: when > 0 use it; when 0 use resource-aware limit (80% of available resources).
 func (Runner) RunPointInTime(
 	ctx context.Context,
 	formatCode string,
@@ -322,6 +329,7 @@ func (Runner) RunPointInTime(
 	alpha float64,
 	lastN int,
 	windowN int,
+	concurrencyLimit int,
 ) error {
 	players, err := db.ListPlayersWithHistoryBefore(ctx, formatID, asOf)
 	if err != nil {
@@ -334,7 +342,7 @@ func (Runner) RunPointInTime(
 		)
 		return fmt.Errorf("list players with history: %w", err)
 	}
-	precomputeLimit := resources.GetLimit(resources.KindPrecompute)
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
 	slog.Info(
 		"precompute-features(as-of)",
 		slog.Int("players", len(players)),
@@ -437,6 +445,8 @@ func (Runner) RunPointInTime(
 		slog.String("as_of", asOf.Format("2006-01-02")),
 	)
 
+	resources.RecordWorkerMemorySample(resources.KindPrecompute, precomputeLimit)
+
 	// Trigger sequence features calculation. GC to free form/consistency phase memory before seqcalc.
 	runtime.GC()
 	resources.LogMemoryAndGoroutines(
@@ -500,4 +510,17 @@ func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) erro
 		return fmt.Errorf("seqcalc run: %w", err)
 	}
 	return nil
+}
+
+// resolveConcurrencyLimit returns the effective concurrency limit: uses requestedLimit when > 0,
+// otherwise resources.GetLimit(kind), and ensures at least 1.
+func resolveConcurrencyLimit(requestedLimit int, kind resources.Kind) int {
+	limit := requestedLimit
+	if limit <= 0 {
+		limit = resources.GetLimit(kind)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	return limit
 }
