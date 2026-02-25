@@ -85,6 +85,9 @@ endif
 ifneq ($(VALIDATION_METHOD),)
 AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
 endif
+ifeq ($(PARALLEL),1)
+AUTO_TUNE_ARGS += --parallel
+endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
 

@@ -26,7 +26,9 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -144,6 +146,19 @@ BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
 def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
+
+
+def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
+    """Resolve n_jobs: override if set, else config (resource-aware when n_jobs=-1), else env AUTO_TUNE_N_JOBS."""
+    if n_jobs_override is not None and n_jobs_override >= 1:
+        return n_jobs_override
+    n_jobs = tuning_cfg.get("n_jobs", 1)
+    if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
+        try:
+            n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
+        except ValueError:
+            pass
+    return max(1, int(n_jobs))
 
 
 # Algorithm keys for filtering: rf, gb, quantile, stacked
@@ -349,6 +364,7 @@ def _run_search_single_regression(
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
     validation_method: str = "kfold",
+    n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for single-output regression. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -363,12 +379,7 @@ def _run_search_single_regression(
     best_pipe = None
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
-    n_jobs = tuning_cfg.get("n_jobs", 1)
-    if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
-        try:
-            n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
-        except ValueError:
-            pass
+    n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     algorithms_used: List[str] = []
     for key, name, base_est, param_dist in candidates:
         pipe = _build_pipeline_single_regression(base_est)
@@ -427,6 +438,7 @@ def _run_search_classification(
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
     validation_method: str = "kfold",
+    n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for binary classification (win). Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -441,12 +453,7 @@ def _run_search_classification(
     best_pipe = None
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
-    n_jobs = tuning_cfg.get("n_jobs", 1)
-    if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
-        try:
-            n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
-        except ValueError:
-            pass
+    n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     algorithms_used: List[str] = []
     for key, name, base_est, param_dist in candidates:
         pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
@@ -527,6 +534,7 @@ def _run_search(
     random_state: int = 42,
     algorithms: Optional[List[str]] = None,
     validation_method: str = "kfold",
+    n_jobs_override: Optional[int] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -544,12 +552,7 @@ def _run_search(
     best_params = None
     all_cv_results: List[Dict[str, Any]] = []
 
-    n_jobs = tuning_cfg.get("n_jobs", 1)
-    if os.environ.get("AUTO_TUNE_N_JOBS") is not None:
-        try:
-            n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
-        except ValueError:
-            pass
+    n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     algorithms_used: List[str] = []
     for key, name, base_est, param_dist in candidates:
         pipe = _build_pipeline(base_est)
@@ -798,6 +801,7 @@ def run_auto_tune(
     out_dir: str,
     algorithms: Optional[List[str]] = None,
     validation_method: Optional[str] = None,
+    n_jobs_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -811,7 +815,7 @@ def run_auto_tune(
     validation_method = validation_method or tuning.get("validation_method", "kfold")
 
     best_pipe, best_params, report = _run_search(
-        X, Y, model_kind, cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+        X, Y, model_kind, cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
     )
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
@@ -824,6 +828,7 @@ def run_auto_tune_extras(
     out_dir: str,
     algorithms: Optional[List[str]] = None,
     validation_method: Optional[str] = None,
+    n_jobs_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -837,7 +842,7 @@ def run_auto_tune_extras(
     validation_method = validation_method or tuning.get("validation_method", "kfold")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_single_regression(
-        X, y, "extras", cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+        X, y, "extras", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
     )
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
@@ -850,6 +855,7 @@ def run_auto_tune_win(
     out_dir: str,
     algorithms: Optional[List[str]] = None,
     validation_method: Optional[str] = None,
+    n_jobs_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run classification search for win; save model only + report."""
     tuning = _get_tuning_config()
@@ -863,7 +869,7 @@ def run_auto_tune_win(
     validation_method = validation_method or tuning.get("validation_method", "kfold")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_classification(
-        X, y, "win", cv_splits, n_iter, scoring, random_state, algorithms, validation_method
+        X, y, "win", cv_splits, n_iter, scoring, random_state, algorithms, validation_method, n_jobs_override
     )
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report
@@ -896,6 +902,11 @@ def main() -> None:
         choices=["kfold", "walk_forward"],
         default="",
         help="Validation method: kfold or walk_forward (temporal). Default: from config.",
+    )
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Run multiple (model, format) tasks in parallel, using up to 80%% of available CPUs (each task uses 1 job).",
     )
     args = parser.parse_args()
 
@@ -949,6 +960,66 @@ def main() -> None:
                 format_suffix,
                 e,
             )
+
+    def _build_parallel_tasks() -> List[List[str]]:
+        """Build list of argv for each (model, format) to run as subprocess (AUTO_TUNE_N_JOBS=1)."""
+        cmds: List[List[str]] = []
+        for model_kind in models:
+            if model_kind in ("extras", "win") and not args.from_api:
+                continue
+            for fmt in formats_to_run:
+                argv = [sys.executable, "-m", "ml.auto_tune", "--model", model_kind, "--out", out_dir]
+                if fmt:
+                    argv.extend(["--format", fmt])
+                if args.from_api:
+                    argv.extend(["--from-api", "--cutoff", args.cutoff or "", "--go-app-url", args.go_app_url or ""])
+                    if args.api_key:
+                        argv.extend(["--api-key", args.api_key])
+                if args.csv:
+                    argv.extend(["--csv", args.csv])
+                if algorithms_override:
+                    argv.extend(["--algorithms", ",".join(algorithms_override)])
+                if validation_method_override:
+                    argv.extend(["--validation-method", validation_method_override])
+                cmds.append(argv)
+        return cmds
+
+    if args.parallel:
+        parallel_tasks = _build_parallel_tasks()
+        cpu_count = os.cpu_count() or 1
+        max_workers = min(len(parallel_tasks), max(1, int(cpu_count * 0.8)))
+        if len(parallel_tasks) <= 1:
+            logger.info("auto_tune.parallel only one task, running sequentially")
+        else:
+            logger.info(
+                "auto_tune.parallel running %s tasks with max_workers=%s (80%% of %s CPUs)",
+                len(parallel_tasks),
+                max_workers,
+                cpu_count,
+            )
+            env = os.environ.copy()
+            env["AUTO_TUNE_N_JOBS"] = "1"
+            failed = 0
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        subprocess.run, argv, env=env, cwd=_ML_ROOT, capture_output=False
+                    ): argv
+                    for argv in parallel_tasks
+                }
+                for future in as_completed(futures):
+                    argv = futures[future]
+                    try:
+                        result = future.result()
+                        if result.returncode != 0:
+                            failed += 1
+                            logger.warning("auto_tune.parallel task failed: %s", " ".join(argv[:10]))
+                    except Exception as e:
+                        failed += 1
+                        logger.warning("auto_tune.parallel task error: %s", e)
+            if failed:
+                sys.exit(1)
+            return
 
     for model_kind in models:
         for fmt in formats_to_run:
