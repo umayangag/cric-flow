@@ -87,7 +87,7 @@ function ModelRow({ model }: { model: MLModelStat }) {
       </TableRow>
       {hasDetails && (
         <TableRow>
-          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+          <TableCell sx={{ py: 0 }} colSpan={10}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box sx={{ py: 2, px: 1 }}>
                 {params && Object.keys(params).length > 0 && (
