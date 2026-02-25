@@ -937,6 +937,11 @@ type trainingDataPart struct {
 	Rows    [][]string `json:"rows"`
 }
 
+// allowedTrainingDataFormats is the fixed set of format codes safe to include in API error hints (avoids reflected input).
+var allowedTrainingDataFormats = map[string]bool{
+	"TEST": true, "ODI": true, "T20": true, "T20I": true, "all": true,
+}
+
 // respondTrainingDataErr maps known training-data errors to appropriate HTTP status and message.
 // Format-not-found (e.g. migrations not run or match_format empty) -> 400; DB not ready -> 503; else 500.
 func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
@@ -944,10 +949,14 @@ func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
 		return
 	}
 	if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "no rows") {
+		hint := "Ensure migrations are applied and match_format is populated (TEST, ODI, T20, T20I)."
+		if allowedTrainingDataFormats[format] {
+			hint += " Format requested: " + format
+		}
 		writeJSON(w, http.StatusBadRequest, apiError{
 			Code:    "FORMAT_NOT_FOUND",
 			Message: "format not found or database not ready for training-data",
-			Hint:    "Ensure migrations are applied and match_format is populated (TEST, ODI, T20, T20I). Format requested: " + format,
+			Hint:    hint,
 		})
 		slog.Info("training-data: format not found or no rows", slog.String("format", format), slog.Any("err", err))
 		return

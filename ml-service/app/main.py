@@ -1336,15 +1336,9 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
             try:
                 from ml.train_batting_model import run_training as run_unified_batting
 
-                prev = os.environ.get("SKIP_PIPELINE_TRACKING")
-                os.environ["SKIP_PIPELINE_TRACKING"] = "1"
-                try:
-                    await asyncio.to_thread(run_unified_batting)
-                finally:
-                    if prev is None:
-                        os.environ.pop("SKIP_PIPELINE_TRACKING", None)
-                    else:
-                        os.environ["SKIP_PIPELINE_TRACKING"] = prev
+                # run_training() is called directly (no __main__ block), so it does not use
+                # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
+                await asyncio.to_thread(run_unified_batting)
                 logger.info("admin.train.success", step="batting", unified=True)
             except Exception as e:
                 logger.warning("admin.train.unified_batting_failed", error=str(e))
@@ -1404,15 +1398,9 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
             try:
                 from ml.train_bowling_model import run_training as run_unified_bowling
 
-                prev = os.environ.get("SKIP_PIPELINE_TRACKING")
-                os.environ["SKIP_PIPELINE_TRACKING"] = "1"
-                try:
-                    await asyncio.to_thread(run_unified_bowling)
-                finally:
-                    if prev is None:
-                        os.environ.pop("SKIP_PIPELINE_TRACKING", None)
-                    else:
-                        os.environ["SKIP_PIPELINE_TRACKING"] = prev
+                # run_training() is called directly (no __main__ block), so it does not use
+                # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
+                await asyncio.to_thread(run_unified_bowling)
                 logger.info("admin.train.success", step="bowling", unified=True)
             except Exception as e:
                 logger.warning("admin.train.unified_bowling_failed", error=str(e))

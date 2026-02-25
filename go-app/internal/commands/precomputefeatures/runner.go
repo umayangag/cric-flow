@@ -41,13 +41,7 @@ func (Runner) RunReplay(
 	windowN int,
 	concurrencyLimit int,
 ) error {
-	precomputeLimit := concurrencyLimit
-	if precomputeLimit <= 0 {
-		precomputeLimit = resources.GetLimit(resources.KindPrecompute)
-	}
-	if precomputeLimit < 1 {
-		precomputeLimit = 1
-	}
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
 	pageSize := replayMatchPageSize()
 	slog.Info("precompute-features(replay)",
 		slog.String("format", formatCode),
@@ -348,13 +342,7 @@ func (Runner) RunPointInTime(
 		)
 		return fmt.Errorf("list players with history: %w", err)
 	}
-	precomputeLimit := concurrencyLimit
-	if precomputeLimit <= 0 {
-		precomputeLimit = resources.GetLimit(resources.KindPrecompute)
-	}
-	if precomputeLimit < 1 {
-		precomputeLimit = 1
-	}
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
 	slog.Info(
 		"precompute-features(as-of)",
 		slog.Int("players", len(players)),
@@ -522,4 +510,17 @@ func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) erro
 		return fmt.Errorf("seqcalc run: %w", err)
 	}
 	return nil
+}
+
+// resolveConcurrencyLimit returns the effective concurrency limit: uses requestedLimit when > 0,
+// otherwise resources.GetLimit(kind), and ensures at least 1.
+func resolveConcurrencyLimit(requestedLimit int, kind resources.Kind) int {
+	limit := requestedLimit
+	if limit <= 0 {
+		limit = resources.GetLimit(kind)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	return limit
 }

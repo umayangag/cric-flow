@@ -31,8 +31,15 @@ func observationsFilePath() string {
 		return observationsPath
 	}
 	if p := strings.TrimSpace(os.Getenv("RESOURCE_OBSERVATIONS_PATH")); p != "" {
-		observationsPath = p
-		return p
+		// Sanitize the env-provided path by treating it as a filename and
+		// always placing it under the default export directory. This prevents
+		// arbitrary file writes outside the configured export directory.
+		filename := filepath.Base(p)
+		if filename == "" || filename == "." || filename == string(os.PathSeparator) {
+			filename = observationsFilename
+		}
+		observationsPath = filepath.Join(config.DefaultExportDir(), filename)
+		return observationsPath
 	}
 	observationsPath = filepath.Join(config.DefaultExportDir(), observationsFilename)
 	return observationsPath
@@ -102,7 +109,10 @@ func saveObservations() {
 		return
 	}
 	dir := filepath.Dir(path)
-	_ = os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("resources: could not create observations directory", slog.String("dir", dir), slog.Any("err", err))
+		return
+	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		slog.Warn("resources: could not save observations", slog.String("path", path), slog.Any("err", err))
 		return

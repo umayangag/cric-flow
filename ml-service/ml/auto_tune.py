@@ -1002,9 +1002,7 @@ def main() -> None:
             failed = 0
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
-                    executor.submit(
-                        subprocess.run, argv, env=env, cwd=_ML_ROOT, capture_output=False
-                    ): argv
+                    executor.submit(subprocess.run, argv, env=env, cwd=_ML_ROOT, capture_output=False): argv
                     for argv in parallel_tasks
                 }
                 for future in as_completed(futures):
