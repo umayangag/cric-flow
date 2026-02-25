@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -34,7 +35,10 @@ func (a *App) mlTunedParamsPostHandler(w http.ResponseWriter, r *http.Request) {
 	if body.Params == nil {
 		body.Params = []byte("{}")
 	}
-	dataMigrationID, _ := tracking.GetInProgressMigrationIDForCommand(r.Context(), "ml-auto-tune")
+	dataMigrationID, migrationErr := tracking.GetInProgressMigrationIDForCommand(r.Context(), "ml-auto-tune")
+	if migrationErr != nil {
+		slog.Warn("failed to get in-progress migration ID for ml-auto-tune", "err", migrationErr)
+	}
 	if err := db.InsertMLTunedParams(r.Context(), model, format, body.Params, body.Metrics, dataMigrationID); err != nil {
 		respondErr(w, err)
 		return

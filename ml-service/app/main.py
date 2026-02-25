@@ -174,6 +174,10 @@ MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
 CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
 
+# -------------------- Simple in-memory cache for model-stats endpoint --------------------
+MODEL_STATS_CACHE_TTL = int(os.environ.get("MODEL_STATS_CACHE_TTL", "60") or "60")
+_model_stats_cache: Optional[Tuple[float, Dict[str, Any]]] = None
+
 # Cache key: (mode, cutoff_iso, tuple(sorted(ids)))
 _backtest_cache: Dict[Tuple[str, str, Tuple[Any, ...]], Tuple[float, Dict[str, Any]]] = {}
 BACKTEST_PLAYERS_COMPUTE_COUNT = 0
@@ -973,7 +977,11 @@ def _build_model_stats(models_dir: str) -> Dict[str, Any]:
                 # Strip pipeline prefixes for display
                 params: Dict[str, Any] = {}
                 for k, v in config.items():
-                    k_clean = k.replace("est__estimator__", "").replace("est__", "")
+                    k_clean = k
+                    if k.startswith("est__estimator__"):
+                        k_clean = k[len("est__estimator__"):]
+                    elif k.startswith("est__"):
+                        k_clean = k[len("est__"):]
                     params[k_clean] = v
                 rec["tuned_parameters"] = params
                 rec["cv_splits"] = report.get("cv_splits")
@@ -1010,8 +1018,16 @@ async def model_stats():
 
     Used by the ML Model Stats tab in the frontend.
     """
+    global _model_stats_cache
     try:
-        return _build_model_stats(MODELS_DIR)
+        if MODEL_STATS_CACHE_TTL > 0 and _model_stats_cache is not None:
+            ts, payload = _model_stats_cache
+            if (time.time() - ts) <= MODEL_STATS_CACHE_TTL:
+                return payload
+        result = _build_model_stats(MODELS_DIR)
+        if MODEL_STATS_CACHE_TTL > 0:
+            _model_stats_cache = (time.time(), result)
+        return result
     except Exception as e:
         logger.exception("model_stats.error", error=str(e))
         raise HTTPException(status_code=500, detail={"code": "MODEL_STATS_ERROR", "message": str(e)}) from e
@@ -1340,6 +1356,8 @@ async def admin_reload(request: Request):
         )
     _verify_admin_api_key(request)
     logger.info("admin.reload.start", models_dir=MODELS_DIR)
+    global _model_stats_cache
+    _model_stats_cache = None  # Invalidate so next model-stats returns fresh data
     try:
         summary = _reload_artifacts()
         logger.info("admin.reload.success", models_dir=MODELS_DIR, summary=summary)
