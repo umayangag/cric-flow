@@ -42,7 +42,7 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 		FROM match m
 		JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
 		LEFT JOIN match_format mf ON m.format_id = mf.id
-LEFT JOIN (SELECT match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting') w ON w.match_id = m.match_id
+LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, created_at DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
 	),
 	t1_bat AS (SELECT bd.match_id, bd.player_id, m.format_id, m.match_date FROM batting_data bd JOIN matches_filtered m ON m.match_id = bd.match_id WHERE bd.inning_number = 1),
