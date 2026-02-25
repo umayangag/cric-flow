@@ -1586,6 +1586,7 @@ async def admin_train_auto_tune(request: Request, cutoff: str = ""):
         "--from-api",
         "--cutoff", cutoff,
         "--go-app-url", go_app_url,
+        "--parallel",
     ]
     api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
     if api_key:
