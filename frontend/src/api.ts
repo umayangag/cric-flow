@@ -156,13 +156,14 @@ export const api = {
     params?: Record<string, string>,
   ): Promise<{ status: number; data: PipelineRunResponse }> {
     let url = `${BASE_API_URL}/ops/pipeline/run/${encodeURIComponent(step)}`;
-    if (params && Object.keys(params).length > 0) {
-      const search = new URLSearchParams();
-      Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined && v !== '') search.set(k, v);
-      });
-      const q = search.toString();
-      if (q) url += `?${q}`;
+    if (params) {
+      const validParams = Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== ''),
+      );
+      if (Object.keys(validParams).length > 0) {
+        const q = new URLSearchParams(validParams).toString();
+        if (q) url += `?${q}`;
+      }
     }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const apiKey = localStorage.getItem('cric_info_api_key');
