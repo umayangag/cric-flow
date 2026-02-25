@@ -38,15 +38,16 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
       GO_APP_OUTPUT_DIR: /output/go-app
-      # Go runtime memory target. Default 1800MiB is for ~2GB containers; for 12+ cores / 20GB+ RAM set e.g. GOMEMLIMIT=8GiB in .env and raise *_CONCURRENCY below.
-      GOMEMLIMIT: ${GOMEMLIMIT:-1800MiB}
-      # Pipeline concurrency (workers). Defaults are conservative for 2GB; for multi-CPU use set in .env (e.g. PRECOMPUTE_CONCURRENCY=8, SEQCALC_CONCURRENCY=4).
-      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-2}
+      # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
+      # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
+      GOMEMLIMIT: ${GOMEMLIMIT:-}
+      # Pipeline concurrency (workers). If unset, concurrency is derived automatically from GOMEMLIMIT / cgroup memory and CPU.
+      # Set these in .env only when you want to override auto-detection.
+      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-}
       IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
       EXPORT_CONCURRENCY: ${EXPORT_CONCURRENCY:-}
       FIELDING_CONCURRENCY: ${FIELDING_CONCURRENCY:-}
-      # Seqcalc runs after each format; 7 workers OOM in 2GB. Use 1 for 2GB; for 12 cores / 8GiB try SEQCALC_CONCURRENCY=4.
-      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-1}
+      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
       # Error (red) and warn (yellow) in docker logs for visibility
@@ -87,8 +88,9 @@ services:
       # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
       ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # Resource limit for n_jobs; process uses detected limit (override with ML_MEMORY_LIMIT_MB if needed).
-      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-2048}
+      # Resource limit for n_jobs; when unset, ML uses detected cgroup memory (80% fraction) to choose n_jobs automatically.
+      # Set ML_MEMORY_LIMIT_MB in .env only when you want to cap ML memory explicitly.
+      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-}
       # Error (red) and warn (yellow) in docker logs for visibility
       LOG_COLOR: "1"
     ports:

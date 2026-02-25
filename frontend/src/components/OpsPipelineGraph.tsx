@@ -180,15 +180,16 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   steps[3].status = battingDone ? 'success' : 'pending';
   steps[4].status = bowlingDone ? 'success' : 'pending';
   steps[5].status = fieldingDone ? 'success' : 'pending';
-  // train_extras (6) and train_win (7): no artifact check yet; use backend running/runnable only
-  // steps[6], steps[7] stay pending unless running
-  // Override with running and runnable from backend (next step only runnable after previous completed)
+  // train_extras (6) and train_win (7): no artifact check; use backend completed + running/runnable
+  // Override with running, runnable, and completed from backend
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const stepData = asObj(pipelineSteps[step.id]);
     const running = stepData.running === true;
+    const completed = stepData.completed === true;
     if (running) steps[i].status = 'running';
+    else if (completed) steps[i].status = 'success';
     // Default true when backend omits runnable (e.g. older API)
     steps[i].runnable = stepData.runnable !== false;
   }

@@ -48,6 +48,11 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			slog.Warn("pipeline: HasInProgressForCommand failed", "step", stepID, "command", command, "err", err)
 			running = false
 		}
+		completed, err := tracking.HasCompletedSuccessfullyForCommand(ctx, command)
+		if err != nil {
+			slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed", "step", stepID, "command", command, "err", err)
+			completed = false
+		}
 		runnable := !running
 		if runnable {
 			prevCmd := pipelineStepPreviousCommand[stepID]
@@ -73,7 +78,7 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 		if stepID == "import" {
 			runnable = !running
 		}
-		steps[stepID] = map[string]any{"running": running, "runnable": runnable}
+		steps[stepID] = map[string]any{"running": running, "runnable": runnable, "completed": completed}
 	}
 	// auto_tune: runnable when train-fielding, train-extras, train-win have all completed (may run in parallel with other steps)
 	autoTuneRunnable := true
@@ -84,7 +89,7 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			break
 		}
 	}
-	steps["auto_tune"] = map[string]any{"running": false, "runnable": autoTuneRunnable}
+	steps["auto_tune"] = map[string]any{"running": false, "runnable": autoTuneRunnable, "completed": false}
 	return map[string]any{"steps": steps}
 }
 
