@@ -126,7 +126,11 @@ func buildProgressDetailAndParams(
 				model,
 			)
 		case format != "":
-			detail = fmt.Sprintf("Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)", model, format)
+			detail = fmt.Sprintf(
+				"Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)",
+				model,
+				format,
+			)
 		default:
 			detail = fmt.Sprintf("Auto-tuning: model %s (searching best algorithm and hyperparameters)", model)
 		}

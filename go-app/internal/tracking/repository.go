@@ -175,6 +175,29 @@ func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, e
 	return exists, nil
 }
 
+// GetInProgressMigrationIDForCommand returns the ID of the most recent IN_PROGRESS migration
+// for the given command, or 0 if none. Used when inserting ml_tuned_params to link to the
+// current auto_tune run.
+func GetInProgressMigrationIDForCommand(ctx context.Context, command string) (int, error) {
+	if !db.Available() || command == "" {
+		return 0, nil
+	}
+	var id int
+	err := db.QueryRow(ctx, `
+		SELECT id FROM data_migrations
+		WHERE command = $1 AND status = $2
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, command, StatusInProgress).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return id, nil
+}
+
 // GetInProgressMigrations returns all rows with status IN_PROGRESS, ordered by started_at DESC.
 // Used by /ops/status pipeline overview. When db is not available, returns (nil, nil).
 func GetInProgressMigrations(ctx context.Context) ([]Migration, error) {

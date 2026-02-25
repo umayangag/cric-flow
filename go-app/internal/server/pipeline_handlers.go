@@ -282,14 +282,18 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 				hasParams, err := db.HasAnyTunedParamsForModel(r.Context(), model)
 				if err != nil {
 					slog.Warn("pipeline: tuned params check failed", "step", stepID, "model", model, "err", err)
-					respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check tuned params"})
+					respondJSON(
+						w,
+						http.StatusInternalServerError,
+						map[string]string{"error": "failed to check tuned params"},
+					)
 					return
 				}
 				if !hasParams {
 					respondJSON(w, http.StatusOK, map[string]any{
 						"requires_confirmation": true,
-						"message":              "No auto-tuned parameters found for this model. Train with default config parameters?",
-						"step":                 stepID,
+						"message":               "No auto-tuned parameters found for this model. Train with default config parameters?",
+						"step":                  stepID,
 					})
 					return
 				}

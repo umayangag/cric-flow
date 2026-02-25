@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import hmac
+import json
 import os
 import sys
 import threading
@@ -173,6 +174,10 @@ MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
 CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
+
+# -------------------- Simple in-memory cache for model-stats endpoint --------------------
+MODEL_STATS_CACHE_TTL = int(os.environ.get("MODEL_STATS_CACHE_TTL", "60") or "60")
+_model_stats_cache: Optional[Tuple[float, Dict[str, Any]]] = None
 
 # Cache key: (mode, cutoff_iso, tuple(sorted(ids)))
 _backtest_cache: Dict[Tuple[str, str, Tuple[Any, ...]], Tuple[float, Dict[str, Any]]] = {}
@@ -878,6 +883,178 @@ async def model_metadata():
         raise HTTPException(status_code=500, detail={"code": "METADATA_ERROR", "message": str(e)}) from e
 
 
+# Algorithm key -> display name for model-stats UI
+_ALGORITHM_NAMES: Dict[str, str] = {
+    "rf": "Random Forest",
+    "gb": "Gradient Boosting",
+    "quantile": "Quantile Regressor",
+    "stacked": "Stacking Regressor",
+    "ridge": "Ridge",
+}
+
+# Model kinds that have .joblib artifacts (model + optional scaler)
+_MODEL_STATS_KINDS = ["batting", "bowling", "fielding", "extras", "win"]
+_MODEL_STATS_HAS_SCALER = {"batting", "bowling", "fielding"}
+
+
+def _parse_model_filename(fname: str) -> Optional[Tuple[str, Optional[str]]]:
+    """Parse model artifact filename. Return (kind, format) or None. format is None for legacy (unified)."""
+    lower = fname.lower()
+    if not lower.endswith(".joblib") or "_model" not in lower:
+        return None
+    for kind in _MODEL_STATS_KINDS:
+        prefix = f"{kind}_model"
+        if lower.startswith(prefix):
+            rest = fname[len(prefix) :].lstrip("_").rstrip(".joblib")
+            fmt = rest.upper() if rest else None
+            return (kind, fmt)
+    return None
+
+
+def _get_model_artifact_stats(
+    models_dir: str,
+    entries: List[str],
+    kind: str,
+    fmt: Optional[str],
+    fname: str,
+) -> Optional[Dict[str, Any]]:
+    """Process a single model artifact file to get basic stats (size, modified date).
+    Returns None if the file is not accessible; otherwise a dict with model_name, match_format, size_bytes, modified.
+    """
+    model_path = os.path.join(models_dir, fname)
+    try:
+        st = os.stat(model_path)
+        if not os.path.isfile(model_path):
+            return None
+    except OSError:
+        return None
+
+    size_bytes = st.st_size
+    modified_ts = int(st.st_mtime)
+    modified_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(modified_ts))
+
+    # Include scaler size for kinds that have one
+    if kind in _MODEL_STATS_HAS_SCALER:
+        scaler_suffix = f"_{fmt}" if fmt else ""
+        scaler_name = f"{kind}_scaler{scaler_suffix}.joblib"
+        scaler_path = os.path.join(models_dir, scaler_name)
+        if scaler_name in entries and os.path.isfile(scaler_path):
+            try:
+                size_bytes += os.path.getsize(scaler_path)
+            except OSError:
+                pass
+
+    return {
+        "model_name": kind.capitalize(),
+        "match_format": fmt or "Unified",
+        "size_bytes": size_bytes,
+        "modified": modified_iso,
+    }
+
+
+def _enrich_with_tuning_report(
+    rec: Dict[str, Any],
+    models_dir: str,
+    entries: List[str],
+    kind: str,
+    fmt: Optional[str],
+) -> None:
+    """Load and parse tuning report if present; enrich rec with tuned params, algorithm, metrics, etc."""
+    report_suffix = f"_{fmt}" if fmt else ""
+    report_name = f"tuning_report_{kind}{report_suffix}.json"
+    report_path = os.path.join(models_dir, report_name)
+    if report_name not in entries or not os.path.isfile(report_path):
+        rec["tuned"] = False
+        return
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            report = json.load(f)
+        rec["tuned"] = True
+        rec["best_cv_score"] = report.get("best_cv_score")
+        rec["scoring"] = report.get("scoring", "neg_mean_absolute_error")
+        algorithms = report.get("algorithms") or []
+        algo_names = [_ALGORITHM_NAMES.get(a, a) for a in algorithms]
+        rec["algorithm"] = ", ".join(algo_names) if algo_names else None
+        config = report.get("config_snippet") or report.get("best_params") or {}
+        params: Dict[str, Any] = {}
+        for k, v in config.items():
+            k_clean = k
+            if k.startswith("est__estimator__"):
+                k_clean = k[len("est__estimator__") :]
+            elif k.startswith("est__"):
+                k_clean = k[len("est__") :]
+            params[k_clean] = v
+        rec["tuned_parameters"] = params
+        rec["cv_splits"] = report.get("cv_splits")
+        rec["validation_method"] = report.get("validation_method")
+        rec["n_samples"] = report.get("n_samples")
+        rec["n_features"] = report.get("n_features")
+        metrics = report.get("metrics") or {}
+        if metrics:
+            rec["metrics"] = metrics
+            if "accuracy_pct" in metrics:
+                rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
+            elif "mae" in metrics:
+                rec["accuracy_display"] = f"MAE={metrics['mae']}"
+            elif "r2_pct" in metrics:
+                rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+    except Exception as e:
+        logger.debug("model_stats.read_report_failed", path=report_path, error=str(e))
+        rec["tuned"] = False
+
+
+def _build_model_stats(models_dir: str) -> Dict[str, Any]:
+    """Scan MODELS_DIR for model artifacts and tuning reports; return unified model stats."""
+    stats: List[Dict[str, Any]] = []
+    try:
+        entries = os.listdir(models_dir)
+    except OSError as e:
+        logger.warning("model_stats.listdir_failed", models_dir=models_dir, error=str(e))
+        return {"models_dir": models_dir, "models": []}
+
+    seen: set = set()
+    for fname in entries:
+        parsed = _parse_model_filename(fname)
+        if not parsed:
+            continue
+        kind, fmt = parsed
+        key = (kind, fmt or "Unified")
+        if key in seen:
+            continue
+        seen.add(key)
+
+        rec = _get_model_artifact_stats(models_dir, entries, kind, fmt, fname)
+        if rec is None:
+            continue
+
+        _enrich_with_tuning_report(rec, models_dir, entries, kind, fmt)
+        stats.append(rec)
+
+    stats.sort(key=lambda x: (x["model_name"], x["match_format"]))
+    return {"models_dir": models_dir, "models": stats}
+
+
+@app.get("/model-stats")
+async def model_stats():
+    """Return details of trained ML models: name, format, tuned params, algorithm, accuracy, size, modified.
+
+    Used by the ML Model Stats tab in the frontend.
+    """
+    global _model_stats_cache
+    try:
+        if MODEL_STATS_CACHE_TTL > 0 and _model_stats_cache is not None:
+            ts, payload = _model_stats_cache
+            if (time.time() - ts) <= MODEL_STATS_CACHE_TTL:
+                return payload
+        result = _build_model_stats(MODELS_DIR)
+        if MODEL_STATS_CACHE_TTL > 0:
+            _model_stats_cache = (time.time(), result)
+        return result
+    except Exception as e:
+        logger.exception("model_stats.error", error=str(e))
+        raise HTTPException(status_code=500, detail={"code": "MODEL_STATS_ERROR", "message": str(e)}) from e
+
+
 @app.post("/predict/batting", response_model=List[BattingPrediction])
 async def predict_batting(features: List[BattingFeatures]):
     if not features:
@@ -1201,6 +1378,8 @@ async def admin_reload(request: Request):
         )
     _verify_admin_api_key(request)
     logger.info("admin.reload.start", models_dir=MODELS_DIR)
+    global _model_stats_cache
+    _model_stats_cache = None  # Invalidate so next model-stats returns fresh data
     try:
         summary = _reload_artifacts()
         logger.info("admin.reload.success", models_dir=MODELS_DIR, summary=summary)

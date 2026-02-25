@@ -34,106 +34,111 @@ func getMLHealthClient() *http.Client {
 	return &http.Client{Timeout: time.Duration(sec) * time.Second}
 }
 
-// mlHealthProxyHandler proxies GET to the ML service /health so the frontend can get full health (loaded formats, artifacts) via the Go API.
-func (a *App) mlHealthProxyHandler(w http.ResponseWriter, r *http.Request) {
-	base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
-	if base == "" {
-		base = config.ServerMLBaseURLFallback(config.Load())
+// mlServiceProxy returns an http.HandlerFunc that proxies GET to the ML service at the given endpoint.
+// label is used in log messages (e.g., "ml health proxy").
+// enrich, if non-nil, is called with the decoded payload and request after successful decode; it may modify payload in place.
+func (a *App) mlServiceProxy(
+	endpoint string,
+	label string,
+	enrich func(map[string]any, *http.Request),
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
+		if base == "" {
+			base = config.ServerMLBaseURLFallback(config.Load())
+		}
+		base = strings.TrimSuffix(base, "/")
+		cfg := config.Load()
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.ServerMLHealthTimeoutSec(cfg))*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+endpoint, nil)
+		if err != nil {
+			slog.Warn(label+": new request failed", slog.Any("err", err))
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		client := getMLHealthClient()
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Warn(label+": request failed", slog.Any("err", err))
+			respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+		maxBody := config.ServerMLHealthBodyLimitBytes(config.Load())
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, int64(maxBody)))
+			slog.Warn(
+				label+": upstream non-2xx",
+				slog.Int("status", resp.StatusCode),
+				slog.String("body", string(body)),
+			)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(body)
+			return
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(io.LimitReader(resp.Body, int64(maxBody))).Decode(&payload); err != nil {
+			slog.Warn(label+": decode failed", slog.Any("err", err))
+			respondJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]string{"status": "error", "error": "invalid " + label + " response"},
+			)
+			return
+		}
+		if enrich != nil {
+			enrich(payload, r)
+		}
+		respondJSON(w, http.StatusOK, payload)
 	}
-	base = strings.TrimSuffix(base, "/")
-	cfg := config.Load()
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.ServerMLHealthTimeoutSec(cfg))*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", nil)
-	if err != nil {
-		slog.Warn("ml health proxy: new request failed", slog.Any("err", err))
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
-		return
-	}
-	client := getMLHealthClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		slog.Warn("ml health proxy: request failed", slog.Any("err", err))
-		respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-	maxBody := config.ServerMLHealthBodyLimitBytes(config.Load())
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, int64(maxBody)))
-		slog.Warn(
-			"ml health proxy: upstream non-2xx",
-			slog.Int("status", resp.StatusCode),
-			slog.String("body", string(body)),
-		)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(body)
-		return
-	}
-	var payload map[string]any
-	if err := json.NewDecoder(io.LimitReader(resp.Body, int64(maxBody))).Decode(&payload); err != nil {
-		slog.Warn("ml health proxy: decode failed", slog.Any("err", err))
-		respondJSON(
-			w,
-			http.StatusInternalServerError,
-			map[string]string{"status": "error", "error": "invalid ml health response"},
-		)
-		return
-	}
-	respondJSON(w, http.StatusOK, payload)
 }
 
-// mlModelMetadataProxyHandler proxies GET to the ML service /model-metadata for the Workbench UI.
-func (a *App) mlModelMetadataProxyHandler(w http.ResponseWriter, r *http.Request) {
-	base := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
-	if base == "" {
-		base = config.ServerMLBaseURLFallback(config.Load())
+// enrichModelStatsPayload adds migration info (trained_at, duration) to each model when available from DB.
+func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
+	modelsVal, ok := payload["models"]
+	if !ok {
+		return
 	}
-	base = strings.TrimSuffix(base, "/")
-	cfg := config.Load()
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.ServerMLHealthTimeoutSec(cfg))*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/model-metadata", nil)
+	modelsList, ok := modelsVal.([]any)
+	if !ok || !db.Available() {
+		return
+	}
+	migrationInfo, err := db.GetMigrationInfoForTunedParams(r.Context())
 	if err != nil {
-		slog.Warn("ml model-metadata proxy: new request failed", slog.Any("err", err))
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+		slog.Warn("ml model-stats proxy: migration info fetch failed", slog.Any("err", err))
 		return
 	}
-	client := getMLHealthClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		slog.Warn("ml model-metadata proxy: request failed", slog.Any("err", err))
-		respondJSON(w, http.StatusBadGateway, map[string]string{"status": "error", "error": err.Error()})
+	if len(migrationInfo) == 0 {
 		return
 	}
-	defer resp.Body.Close()
-	maxBody := config.ServerMLHealthBodyLimitBytes(config.Load())
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, int64(maxBody)))
-		slog.Warn(
-			"ml model-metadata proxy: upstream non-2xx",
-			slog.Int("status", resp.StatusCode),
-			slog.String("body", string(body)),
-		)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(body)
-		return
+	for _, m := range modelsList {
+		modelMap, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		modelName, ok := modelMap["model_name"].(string)
+		if !ok {
+			continue
+		}
+		matchFormat, _ := modelMap["match_format"].(string)
+		formatKey := matchFormat
+		if matchFormat == "Unified" || matchFormat == "" {
+			formatKey = ""
+		}
+		key := strings.ToLower(modelName) + "|" + formatKey
+		if info, has := migrationInfo[key]; has {
+			modelMap["trained_at"] = info.TrainedAt
+			if info.CompletedAt != "" {
+				modelMap["completed_at"] = info.CompletedAt
+			}
+			if info.DurationSecs > 0 {
+				modelMap["duration_seconds"] = info.DurationSecs
+			}
+		}
 	}
-	var payload map[string]any
-	if err := json.NewDecoder(io.LimitReader(resp.Body, int64(maxBody))).Decode(&payload); err != nil {
-		slog.Warn("ml model-metadata proxy: decode failed", slog.Any("err", err))
-		respondJSON(
-			w,
-			http.StatusInternalServerError,
-			map[string]string{"status": "error", "error": "invalid ml model-metadata response"},
-		)
-		return
-	}
-	respondJSON(w, http.StatusOK, payload)
 }
 
 // readinessHandler pings the DB to verify readiness.

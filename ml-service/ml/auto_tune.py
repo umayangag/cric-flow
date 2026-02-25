@@ -196,9 +196,7 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
-def _compute_metrics_regression(
-    pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any
-) -> Dict[str, Any]:
+def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
     """Compute regression metrics from cross-validated predictions. Returns dict with mae, rmse, r2, r2_pct."""
     try:
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
@@ -218,9 +216,7 @@ def _compute_metrics_regression(
         return {}
 
 
-def _compute_metrics_classification(
-    pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any
-) -> Dict[str, Any]:
+def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
     """Compute classification metrics from cross-validated predictions. Returns dict with accuracy, accuracy_pct, etc."""
     try:
         y_pred = cross_val_predict(pipe, X, y, cv=cv)

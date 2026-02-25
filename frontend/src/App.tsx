@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import HealthTab from './components/HealthTab';
 import EvaluateDbTab from './components/EvaluateDbTab';
 import OpsStatusTab from './components/OpsStatusTab';
+import MLModelStatsTab from './components/MLModelStatsTab';
 import UpcomingMatchTab from './components/UpcomingMatchTab';
 import WorkbenchTab from './components/WorkbenchTab';
 import Login from './pages/Login';
@@ -39,6 +40,7 @@ const AppContent: React.FC = () => {
   // Determine active tab from path
   const currentTab = (() => {
     if (location.pathname.startsWith('/ops')) return 'ops';
+    if (location.pathname.startsWith('/ml-model-stats')) return 'mlModelStats';
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
     if (location.pathname.startsWith('/upcoming')) return 'upcoming';
     if (location.pathname.startsWith('/workbench')) return 'workbench';
@@ -48,6 +50,7 @@ const AppContent: React.FC = () => {
   const handleChange = (_: React.SyntheticEvent, newValue: string) => {
     if (newValue === 'health') navigate('/health');
     else if (newValue === 'ops') navigate('/ops');
+    else if (newValue === 'mlModelStats') navigate('/ml-model-stats');
     else if (newValue === 'evaluateDb') navigate('/evaluate');
     else if (newValue === 'upcoming') navigate('/upcoming');
     else if (newValue === 'workbench') navigate('/workbench');
@@ -164,6 +167,7 @@ const AppContent: React.FC = () => {
           >
             <Tab value="health" label="Health" />
             <Tab value="ops" label="Ops Status" />
+            <Tab value="mlModelStats" label="ML model stats" />
             <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluate (DB)" />
             <Tab value="upcoming" label="Upcoming match prediction" />
@@ -189,6 +193,14 @@ const AppContent: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <OpsStatusTab />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ml-model-stats"
+                element={
+                  <ProtectedRoute>
+                    <MLModelStatsTab />
                   </ProtectedRoute>
                 }
               />
