@@ -212,7 +212,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           )}
           {p.step_id === 'auto_tune' && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms (e.g. rf, gb, stacked) are chosen during search; best params are saved to DB.
+              Algorithms (e.g. rf, gb, stacked) are chosen during search; best params are saved to
+              DB.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>

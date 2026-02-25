@@ -255,9 +255,7 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
         step.id === 'auto_tune'
           ? {
               model: autoTuneModel,
-              ...(autoTuneFormat === ''
-                ? { all_formats: '1' }
-                : { format: autoTuneFormat }),
+              ...(autoTuneFormat === '' ? { all_formats: '1' } : { format: autoTuneFormat }),
             }
           : undefined;
       const { status, data: res } = await api.opsPipelineRun(step.id, params);
@@ -281,15 +279,13 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
 
   const getAutoTuneCommand = () => {
     const modelPart = `MODEL=${autoTuneModel}`;
-    const formatPart =
-      autoTuneFormat === '' ? 'ALL_FORMATS=1' : `FORMAT=${autoTuneFormat}`;
+    const formatPart = autoTuneFormat === '' ? 'ALL_FORMATS=1' : `FORMAT=${autoTuneFormat}`;
     return `make ml-auto-tune ${modelPart} ${formatPart}`;
   };
 
   const handleCopy = async (step: PipelineStep) => {
     try {
-      const text =
-        step.id === 'auto_tune' ? getAutoTuneCommand() : runCommand || step.command;
+      const text = step.id === 'auto_tune' ? getAutoTuneCommand() : runCommand || step.command;
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);

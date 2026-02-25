@@ -160,6 +160,7 @@ def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int]
             pass
     if n_jobs == -1:
         from ml.resources import suggested_n_jobs
+
         return max(1, suggested_n_jobs("tuning"))
     return max(1, int(n_jobs))
 

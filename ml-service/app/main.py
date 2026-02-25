@@ -1628,10 +1628,13 @@ async def admin_train_auto_tune(
         cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
     go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
     extra = [
-        "--model", model,
+        "--model",
+        model,
         "--from-api",
-        "--cutoff", cutoff,
-        "--go-app-url", go_app_url,
+        "--cutoff",
+        cutoff,
+        "--go-app-url",
+        go_app_url,
     ]
     if use_all_formats:
         extra.append("--all-formats")

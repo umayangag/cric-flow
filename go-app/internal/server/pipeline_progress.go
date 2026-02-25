@@ -55,8 +55,8 @@ type pipelineProgressPayload struct {
 	Running      bool                   `json:"running"`
 	StepID       string                 `json:"step_id,omitempty"`
 	StepLabel    string                 `json:"step_label,omitempty"`
-	Detail       string                 `json:"detail,omitempty"`   // Human-readable: what is happening
-	Params       map[string]interface{} `json:"params,omitempty"`  // Current parameters (from migration args)
+	Detail       string                 `json:"detail,omitempty"` // Human-readable: what is happening
+	Params       map[string]interface{} `json:"params,omitempty"` // Current parameters (from migration args)
 	StartedAt    string                 `json:"started_at,omitempty"`
 	ElapsedSec   int64                  `json:"elapsed_sec,omitempty"`
 	Precompute   *precomputeProgress    `json:"precompute,omitempty"`
@@ -73,7 +73,10 @@ type precomputeProgress struct {
 }
 
 // buildProgressDetailAndParams returns a short human-readable detail string and a params map from migration command and args.
-func buildProgressDetailAndParams(command string, argsJSON json.RawMessage) (detail string, params map[string]interface{}) {
+func buildProgressDetailAndParams(
+	command string,
+	argsJSON json.RawMessage,
+) (detail string, params map[string]interface{}) {
 	params = make(map[string]interface{})
 	if len(argsJSON) > 0 {
 		_ = json.Unmarshal(argsJSON, &params)
@@ -116,11 +119,15 @@ func buildProgressDetailAndParams(command string, argsJSON json.RawMessage) (det
 		}
 		format, _ := params["format"].(string)
 		allFormats, _ := params["all_formats"].(string)
-		if allFormats != "" {
-			detail = fmt.Sprintf("Auto-tuning: model %s, all formats (searching best algorithm and hyperparameters)", model)
-		} else if format != "" {
+		switch {
+		case allFormats != "":
+			detail = fmt.Sprintf(
+				"Auto-tuning: model %s, all formats (searching best algorithm and hyperparameters)",
+				model,
+			)
+		case format != "":
 			detail = fmt.Sprintf("Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)", model, format)
-		} else {
+		default:
 			detail = fmt.Sprintf("Auto-tuning: model %s (searching best algorithm and hyperparameters)", model)
 		}
 		params["model"] = model

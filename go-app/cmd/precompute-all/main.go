@@ -56,9 +56,15 @@ func run() int {
 	if opts.AllFormats {
 		precomputeOpts := &precompute.RunOpts{Alpha: opts.EWMAlpha, LastN: opts.LastN}
 		meta := map[string]any{"all_formats": true, "replay": true}
-		runErr := pipeline.RunJob(ctx, "precompute-features", meta, opts.Timeout, func(jobCtx context.Context) (any, error) {
-			return meta, precompute.Run(jobCtx, "", formats.CanonicalCodes(), precomputeOpts)
-		})
+		runErr := pipeline.RunJob(
+			ctx,
+			"precompute-features",
+			meta,
+			opts.Timeout,
+			func(jobCtx context.Context) (any, error) {
+				return meta, precompute.Run(jobCtx, "", formats.CanonicalCodes(), precomputeOpts)
+			},
+		)
 		if runErr != nil {
 			slog.Error("precompute all-formats failed", slog.Any("err", runErr))
 			return 1

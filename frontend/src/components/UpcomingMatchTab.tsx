@@ -262,7 +262,7 @@ const UpcomingMatchTab: React.FC = () => {
           options={venueOptions}
           value={venue}
           onInputChange={handleVenueInputChange}
-          onChange={(_, v) => setVenue(typeof v === 'string' ? v : v ?? '')}
+          onChange={(_, v) => setVenue(typeof v === 'string' ? v : (v ?? ''))}
           filterOptions={(opts) => opts}
           loading={venueLoading}
           renderInput={(params) => (
