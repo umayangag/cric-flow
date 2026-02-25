@@ -120,7 +120,8 @@ const (
 	DefaultFieldingMBPerWorker              = 100
 	DefaultMemoryUsageFractionPercent       = 80
 	DefaultSeqCalcLowMemoryLimitGiB         = 2
-	DefaultPrecomputeConcurrencyWhenNoLimit = 2
+	// 0 = use NumCPU() when no memory limit (optimum resources); set > 0 to cap precompute concurrency.
+	DefaultPrecomputeConcurrencyWhenNoLimit = 0
 )
 
 // Selection: max pool size for full enumeration; above this use greedy + hill-climb.

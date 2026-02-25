@@ -1218,10 +1218,15 @@ def _ml_service_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
 
 
-def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None) -> None:
+def _run_training_subprocess(
+    module: str,
+    extra_args: Optional[List[str]] = None,
+    extra_env: Optional[Dict[str, str]] = None,
+) -> None:
     """Run a training module as subprocess; raises on non-zero exit or timeout.
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
+    extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
     """
     import subprocess
 
@@ -1232,6 +1237,8 @@ def _run_training_subprocess(module: str, extra_args: Optional[List[str]] = None
     if extra_args:
         cmd.extend(extra_args)
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
+    if extra_env:
+        env.update(extra_env)
     timeout_sec = get_training_subprocess_timeout_sec()
     try:
         proc = subprocess.run(
@@ -1328,9 +1335,10 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
             from_api=False,
             from_csv=bool(cutoff and csv_available),
         )
+    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     try:
         async with _get_training_semaphore():
-            await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra)
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra, _train_env)
         # Also train unified model (batting_model.joblib / batting_scaler.joblib) when unified CSV exists
         if _unified_batting_csv_available():
             try:
@@ -1390,9 +1398,10 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
             from_api=False,
             from_csv=bool(cutoff and csv_available),
         )
+    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     try:
         async with _get_training_semaphore():
-            await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra)
+            await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra, _train_env)
         # Also train unified model (bowling_model.joblib / bowling_scaler.joblib) when unified CSV exists
         if _unified_bowling_csv_available():
             try:
@@ -1443,12 +1452,14 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
     else:
         args = []
         logger.info("admin.train.start", step="fielding", source="csv")
+    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(
                 _run_training_subprocess,
                 "ml.train_fielding",
                 args,
+                _train_env,
             )
         logger.info("admin.train.success", step="fielding")
         return {"status": "ok", "step": "fielding"}
@@ -1491,12 +1502,14 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
         )
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
+    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(
                 _run_training_subprocess,
                 "ml.train_extras",
                 ["--cutoff", cutoff, "--go-app-url", go_app_url],
+                _train_env,
             )
         logger.info("admin.train.success", step="extras")
         return {"status": "ok", "step": "extras"}
@@ -1539,12 +1552,14 @@ async def admin_train_win(request: Request, cutoff: str = ""):
         )
     go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
     logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
+    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     try:
         async with _get_training_semaphore():
             await asyncio.to_thread(
                 _run_training_subprocess,
                 "ml.train_win",
                 ["--cutoff", cutoff, "--go-app-url", go_app_url],
+                _train_env,
             )
         logger.info("admin.train.success", step="win")
         return {"status": "ok", "step": "win"}
@@ -1622,9 +1637,14 @@ async def admin_train_auto_tune(
         extra.append("--all-formats")
     else:
         extra.extend(["--format", fmt])
-    # Use parallel when multiple (model, format) tasks will run
+    # Use parallel when multiple (model, format) tasks will run; each parallel subprocess uses 1 job.
+    # When single task (one model + one format), allow multi-CPU via AUTO_TUNE_N_JOBS=-1 (resource-aware).
+    single_task = model != "all" and not use_all_formats
     if model == "all" or use_all_formats:
         extra.append("--parallel")
+    subprocess_env: Optional[Dict[str, str]] = None
+    if single_task:
+        subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}
     api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
     if api_key:
         extra.extend(["--api-key", api_key])
@@ -1636,6 +1656,7 @@ async def admin_train_auto_tune(
         model=model,
         all_formats=use_all_formats,
         format=fmt or None,
+        single_task=single_task,
     )
     try:
         async with _get_training_semaphore():
@@ -1643,6 +1664,7 @@ async def admin_train_auto_tune(
                 _run_training_subprocess,
                 "ml.auto_tune",
                 extra,
+                subprocess_env,
             )
         logger.info("admin.train.success", step="auto-tune")
         return {"status": "ok", "step": "auto-tune"}

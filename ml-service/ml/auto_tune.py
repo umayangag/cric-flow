@@ -149,7 +149,7 @@ def _get_tuning_config() -> Dict[str, Any]:
 
 
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
-    """Resolve n_jobs: override if set, else config (resource-aware when n_jobs=-1), else env AUTO_TUNE_N_JOBS."""
+    """Resolve n_jobs: override if set, else config, else env AUTO_TUNE_N_JOBS. When result is -1, use resource-aware suggested_n_jobs('tuning') for multi-CPU."""
     if n_jobs_override is not None and n_jobs_override >= 1:
         return n_jobs_override
     n_jobs = tuning_cfg.get("n_jobs", 1)
@@ -158,6 +158,9 @@ def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int]
             n_jobs = int(os.environ["AUTO_TUNE_N_JOBS"])
         except ValueError:
             pass
+    if n_jobs == -1:
+        from ml.resources import suggested_n_jobs
+        return max(1, suggested_n_jobs("tuning"))
     return max(1, int(n_jobs))
 
 
