@@ -111,11 +111,14 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		return
 	}
 	for _, m := range modelsList {
-		modelMap, _ := m.(map[string]any)
-		if modelMap == nil {
+		modelMap, ok := m.(map[string]any)
+		if !ok {
 			continue
 		}
-		modelName, _ := modelMap["model_name"].(string)
+		modelName, ok := modelMap["model_name"].(string)
+		if !ok {
+			continue
+		}
 		matchFormat, _ := modelMap["match_format"].(string)
 		formatKey := matchFormat
 		if matchFormat == "Unified" || matchFormat == "" {

@@ -115,16 +115,16 @@ type MigrationInfoForModelStats struct {
 // model and format are lower/upper-cased to match ml_tuned_params. Returns empty map when DB unavailable.
 func GetMigrationInfoForTunedParams(ctx context.Context) (map[string]MigrationInfoForModelStats, error) {
 	if !Available() {
-		return nil, nil
+		return make(map[string]MigrationInfoForModelStats), nil
 	}
 	rows, err := Query(ctx, `
-		SELECT DISTINCT ON (tp.model, tp.format) tp.model, tp.format,
+		SELECT DISTINCT ON (LOWER(tp.model), tp.format) LOWER(tp.model), tp.format,
 			dm.started_at, dm.completed_at,
 			EXTRACT(EPOCH FROM (dm.completed_at - dm.started_at)) AS duration_secs
 		FROM ml_tuned_params tp
 		JOIN data_migrations dm ON dm.id = tp.data_migration_id
 		WHERE tp.data_migration_id IS NOT NULL
-		ORDER BY tp.model, tp.format, tp.created_at DESC
+		ORDER BY LOWER(tp.model), tp.format, tp.created_at DESC
 	`)
 	if err != nil {
 		return nil, err

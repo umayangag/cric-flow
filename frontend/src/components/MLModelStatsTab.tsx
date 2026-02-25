@@ -34,7 +34,13 @@ function formatBytes(n: number | undefined): string {
 function formatModified(iso: string | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+  if (isNaN(d.getTime())) {
+    return iso;
+  }
+  const pad = (num: number) => num.toString().padStart(2, '0');
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${date} ${time}`;
 }
 
 function formatDuration(seconds: number | undefined): string {
