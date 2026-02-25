@@ -97,8 +97,16 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			break
 		}
 	}
-	autoTuneRunning, _ := tracking.HasInProgressForCommand(ctx, "ml-auto-tune")
-	autoTuneCompleted, _ := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
+	autoTuneRunning, err := tracking.HasInProgressForCommand(ctx, "ml-auto-tune")
+	if err != nil {
+		slog.Warn("pipeline: HasInProgressForCommand failed", "step", "auto_tune", "command", "ml-auto-tune", "err", err)
+		autoTuneRunning = false
+	}
+	autoTuneCompleted, err := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
+	if err != nil {
+		slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed", "step", "auto_tune", "command", "ml-auto-tune", "err", err)
+		autoTuneCompleted = false
+	}
 	steps["auto_tune"] = map[string]any{
 		"running":   autoTuneRunning,
 		"runnable":  autoTuneRunnable && !autoTuneRunning,
@@ -127,7 +135,10 @@ func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg str
 		return false, "unknown step"
 	}
 	command := pipelineStepCommands[stepID]
-	running, _ := tracking.HasInProgressForCommand(ctx, command)
+	running, err := tracking.HasInProgressForCommand(ctx, command)
+	if err != nil {
+		return false, "could not verify if step is running"
+	}
 	if running {
 		return false, "this step is already running"
 	}

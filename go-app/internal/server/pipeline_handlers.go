@@ -115,7 +115,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case "auto_tune":
-		a.autoTuneHandler(w, r)
+		a.makeMLTrainHandler("auto_tune", "ml-auto-tune", "auto-tune")(w, r)
 		return
 	default:
 		slog.Info("pipeline run: unknown step", slog.String("step", step))
@@ -238,59 +238,6 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 
 func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
-}
-
-// autoTuneHandler starts auto-tune via ML service /admin/train/auto-tune with optional model, format, all_formats.
-func (a *App) autoTuneHandler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	args := map[string]any{"step": "auto_tune"}
-	cutoff := strings.TrimSpace(q.Get("cutoff"))
-	if cutoff == "" {
-		cutoff = defaultCutoff()
-	}
-	args["cutoff"] = cutoff
-	model := strings.TrimSpace(strings.ToLower(q.Get("model")))
-	if model == "" {
-		model = "all"
-	}
-	args["model"] = model
-	format := strings.TrimSpace(q.Get("format"))
-	args["format"] = format
-	allFormats := strings.TrimSpace(q.Get("all_formats"))
-	args["all_formats"] = allFormats
-
-	params := url.Values{}
-	params.Set("cutoff", cutoff)
-	params.Set("model", model)
-	if format != "" {
-		params.Set("format", format)
-	}
-	if allFormats != "" {
-		params.Set("all_formats", allFormats)
-	}
-	querySuffix := "?" + params.Encode()
-
-	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetCurrentJobCancel(cancel)
-	go func() {
-		defer a.ClearCurrentJobCancel()
-		slog.Info("ml-auto-tune started", slog.Any("args", args))
-		runErr := pipeline.RunJob(
-			jobCtx,
-			"ml-auto-tune",
-			args,
-			trainStepTimeout(),
-			func(ctx context.Context) (any, error) {
-				return nil, callMLTrainEndpoint(ctx, "auto-tune", querySuffix)
-			},
-		)
-		if runErr != nil {
-			slog.Error("ml-auto-tune failed", slog.Any("err", runErr))
-		} else {
-			slog.Info("ml-auto-tune completed")
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "auto_tune"})
 }
 
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.

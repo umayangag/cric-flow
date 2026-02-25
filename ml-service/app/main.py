@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import hmac
 import os
 import sys
@@ -144,6 +145,11 @@ def _get_training_semaphore() -> asyncio.Semaphore:
     if _training_semaphore is None:
         _training_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRAINING_JOBS)
     return _training_semaphore
+
+
+def _get_go_app_url() -> str:
+    """Return GO_APP_URL env with fallback to http://localhost:8080 (empty/missing -> default)."""
+    return (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
 
 
 def _verify_admin_api_key(request: Request) -> None:
@@ -1263,6 +1269,40 @@ def _run_training_subprocess(
         raise ValueError(f"Training failed (exit {proc.returncode}): {stderr}")
 
 
+def _require_admin_train(step: str, fail_message: str):
+    """Decorator for /admin/train/* endpoints: ENABLE_HOT_RELOAD check, admin API key verification, ValueError -> 500."""
+
+    def decorator(f):
+        @functools.wraps(f)
+        async def wrapped(request: Request, *args: Any, **kwargs: Any) -> Any:
+            if not ENABLE_HOT_RELOAD:
+                logger.info("admin.train.rejected", step=step, reason="disabled")
+                raise HTTPException(
+                    status_code=403,
+                    detail=_error_payload(
+                        code="TRAIN_DISABLED",
+                        message="Admin train is disabled",
+                        hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+                    ),
+                )
+            _verify_admin_api_key(request)
+            try:
+                return await f(request, *args, **kwargs)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_payload(
+                        code="TRAIN_FAILED",
+                        message=fail_message,
+                        hint=str(e),
+                    ),
+                ) from e
+
+        return wrapped
+
+    return decorator
+
+
 def _export_csvs_available(prefix: str) -> bool:
     """True if GO_APP_OUTPUT_DIR contains at least one CSV matching prefix (e.g. batting_encoded_*, bowling_encoded_*)."""
     out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
@@ -1302,28 +1342,18 @@ def _unified_bowling_csv_available() -> bool:
 
 
 @app.post("/admin/train/batting")
+@_require_admin_train("batting", "Batting training failed")
 async def admin_train_batting(request: Request, cutoff: str = ""):
     """Run batting model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
     When cutoff is set but GO_APP_OUTPUT_DIR has batting_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="batting", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     csv_available = _export_csvs_available("batting_encoded_")
     use_api = bool(cutoff) and not csv_available
     if use_api:
-        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        go_app_url = _get_go_app_url()
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
         logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
@@ -1336,57 +1366,37 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
             from_csv=bool(cutoff and csv_available),
         )
     _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra, _train_env)
-        # Also train unified model (batting_model.joblib / batting_scaler.joblib) when unified CSV exists
-        if _unified_batting_csv_available():
-            try:
-                from ml.train_batting_model import run_training as run_unified_batting
+    async with _get_training_semaphore():
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra, _train_env)
+    # Also train unified model (batting_model.joblib / batting_scaler.joblib) when unified CSV exists
+    if _unified_batting_csv_available():
+        try:
+            from ml.train_batting_model import run_training as run_unified_batting
 
-                # run_training() is called directly (no __main__ block), so it does not use
-                # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
-                await asyncio.to_thread(run_unified_batting)
-                logger.info("admin.train.success", step="batting", unified=True)
-            except Exception as e:
-                logger.warning("admin.train.unified_batting_failed", error=str(e))
-        else:
-            logger.info("admin.train.success", step="batting", unified=False)
-        return {"status": "ok", "step": "batting"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Batting training failed",
-                hint=str(e),
-            ),
-        ) from e
+            # run_training() is called directly (no __main__ block), so it does not use
+            # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
+            await asyncio.to_thread(run_unified_batting)
+            logger.info("admin.train.success", step="batting", unified=True)
+        except Exception as e:
+            logger.warning("admin.train.unified_batting_failed", error=str(e))
+    else:
+        logger.info("admin.train.success", step="batting", unified=False)
+    return {"status": "ok", "step": "batting"}
 
 
 @app.post("/admin/train/bowling")
+@_require_admin_train("bowling", "Bowling training failed")
 async def admin_train_bowling(request: Request, cutoff: str = ""):
     """Run bowling model training per format (TEST, ODI, T20I, T20).
     If query param cutoff (RFC3339) is set: fetch training data from go-app API (same as fielding).
     When cutoff is set but GO_APP_OUTPUT_DIR has bowling_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="bowling", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     csv_available = _export_csvs_available("bowling_encoded_")
     use_api = bool(cutoff) and not csv_available
     if use_api:
-        go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+        go_app_url = _get_go_app_url()
         extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
         logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
     else:
@@ -1399,97 +1409,57 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
             from_csv=bool(cutoff and csv_available),
         )
     _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra, _train_env)
-        # Also train unified model (bowling_model.joblib / bowling_scaler.joblib) when unified CSV exists
-        if _unified_bowling_csv_available():
-            try:
-                from ml.train_bowling_model import run_training as run_unified_bowling
+    async with _get_training_semaphore():
+        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra, _train_env)
+    # Also train unified model (bowling_model.joblib / bowling_scaler.joblib) when unified CSV exists
+    if _unified_bowling_csv_available():
+        try:
+            from ml.train_bowling_model import run_training as run_unified_bowling
 
-                # run_training() is called directly (no __main__ block), so it does not use
-                # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
-                await asyncio.to_thread(run_unified_bowling)
-                logger.info("admin.train.success", step="bowling", unified=True)
-            except Exception as e:
-                logger.warning("admin.train.unified_bowling_failed", error=str(e))
-        else:
-            logger.info("admin.train.success", step="bowling", unified=False)
-        return {"status": "ok", "step": "bowling"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Bowling training failed",
-                hint=str(e),
-            ),
-        ) from e
+            # run_training() is called directly (no __main__ block), so it does not use
+            # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
+            await asyncio.to_thread(run_unified_bowling)
+            logger.info("admin.train.success", step="bowling", unified=True)
+        except Exception as e:
+            logger.warning("admin.train.unified_bowling_failed", error=str(e))
+    else:
+        logger.info("admin.train.success", step="bowling", unified=False)
+    return {"status": "ok", "step": "bowling"}
 
 
 @app.post("/admin/train/fielding")
+@_require_admin_train("fielding", "Fielding training failed")
 async def admin_train_fielding(request: Request, cutoff: str = ""):
     """Run fielding model training. Same pipeline as batting/bowling: optional cutoff.
     If cutoff provided: fetch from go-app training-data API. If omitted: use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="fielding", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if cutoff:
-        go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+        go_app_url = _get_go_app_url()
         args = ["--cutoff", cutoff, "--go-app-url", go_app_url]
         logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
     else:
         args = []
         logger.info("admin.train.start", step="fielding", source="csv")
     _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(
-                _run_training_subprocess,
-                "ml.train_fielding",
-                args,
-                _train_env,
-            )
-        logger.info("admin.train.success", step="fielding")
-        return {"status": "ok", "step": "fielding"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Fielding training failed",
-                hint=str(e),
-            ),
-        ) from e
+    async with _get_training_semaphore():
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_fielding",
+            args,
+            _train_env,
+        )
+    logger.info("admin.train.success", step="fielding")
+    return {"status": "ok", "step": "fielding"}
 
 
 @app.post("/admin/train/extras")
+@_require_admin_train("extras", "Extras training failed")
 async def admin_train_extras(request: Request, cutoff: str = ""):
     """Run extras model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="extras", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1500,46 +1470,26 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )
-    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+    go_app_url = _get_go_app_url()
     logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
     _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(
-                _run_training_subprocess,
-                "ml.train_extras",
-                ["--cutoff", cutoff, "--go-app-url", go_app_url],
-                _train_env,
-            )
-        logger.info("admin.train.success", step="extras")
-        return {"status": "ok", "step": "extras"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Extras training failed",
-                hint=str(e),
-            ),
-        ) from e
+    async with _get_training_semaphore():
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_extras",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            _train_env,
+        )
+    logger.info("admin.train.success", step="extras")
+    return {"status": "ok", "step": "extras"}
 
 
 @app.post("/admin/train/win")
+@_require_admin_train("win", "Win training failed")
 async def admin_train_win(request: Request, cutoff: str = ""):
     """Run win model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="win", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
@@ -1550,28 +1500,18 @@ async def admin_train_win(request: Request, cutoff: str = ""):
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )
-    go_app_url = os.environ.get("GO_APP_URL", "http://localhost:8080")
+    go_app_url = _get_go_app_url()
     logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
     _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(
-                _run_training_subprocess,
-                "ml.train_win",
-                ["--cutoff", cutoff, "--go-app-url", go_app_url],
-                _train_env,
-            )
-        logger.info("admin.train.success", step="win")
-        return {"status": "ok", "step": "win"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Win training failed",
-                hint=str(e),
-            ),
-        ) from e
+    async with _get_training_semaphore():
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_win",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            _train_env,
+        )
+    logger.info("admin.train.success", step="win")
+    return {"status": "ok", "step": "win"}
 
 
 _VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "all")
@@ -1579,6 +1519,7 @@ _VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
 
 
 @app.post("/admin/train/auto-tune")
+@_require_admin_train("auto-tune", "Auto-tune failed")
 async def admin_train_auto_tune(
     request: Request,
     cutoff: str = "",
@@ -1590,17 +1531,6 @@ async def admin_train_auto_tune(
     all_formats (1|true = tune all formats). When all_formats is set, format is ignored.
     Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
-    if not ENABLE_HOT_RELOAD:
-        logger.info("admin.train.rejected", step="auto-tune", reason="disabled")
-        raise HTTPException(
-            status_code=403,
-            detail=_error_payload(
-                code="TRAIN_DISABLED",
-                message="Admin train is disabled",
-                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
-            ),
-        )
-    _verify_admin_api_key(request)
     model = (model or "all").strip().lower()
     if model not in _VALID_AUTO_TUNE_MODELS:
         raise HTTPException(
@@ -1626,7 +1556,7 @@ async def admin_train_auto_tune(
     cutoff = (cutoff or "").strip()
     if not cutoff:
         cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
-    go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+    go_app_url = _get_go_app_url()
     extra = [
         "--model",
         model,
@@ -1661,22 +1591,12 @@ async def admin_train_auto_tune(
         format=fmt or None,
         single_task=single_task,
     )
-    try:
-        async with _get_training_semaphore():
-            await asyncio.to_thread(
-                _run_training_subprocess,
-                "ml.auto_tune",
-                extra,
-                subprocess_env,
-            )
-        logger.info("admin.train.success", step="auto-tune")
-        return {"status": "ok", "step": "auto-tune"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=_error_payload(
-                code="TRAIN_FAILED",
-                message="Auto-tune failed",
-                hint=str(e),
-            ),
-        ) from e
+    async with _get_training_semaphore():
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.auto_tune",
+            extra,
+            subprocess_env,
+        )
+    logger.info("admin.train.success", step="auto-tune")
+    return {"status": "ok", "step": "auto-tune"}
