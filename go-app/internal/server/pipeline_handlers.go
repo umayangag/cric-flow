@@ -23,7 +23,7 @@ import (
 )
 
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
-// Triggers import, precompute, or export in-process; returns 202 started or 501 for train/auto_tune.
+// Triggers import, precompute, export, train_*, or auto_tune (train/auto_tune via ML service); returns 202 started or 501 for train_combination_meta.
 // Next step is only runnable after the previous completed successfully (enforced here and in /ops/status runnable).
 func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -98,11 +98,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case "auto_tune":
-		respondJSON(w, http.StatusNotImplemented, map[string]string{
-			"error":   "step must be run from project root",
-			"step":    step,
-			"command": stepToCommand(step),
-		})
+		a.autoTuneHandler(w, r)
 		return
 	default:
 		slog.Info("pipeline run: unknown step", slog.String("step", step))
@@ -222,6 +218,36 @@ func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 
 func defaultCutoff() string {
 	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// autoTuneHandler starts auto-tune (all models, all formats) via ML service /admin/train/auto-tune.
+func (a *App) autoTuneHandler(w http.ResponseWriter, r *http.Request) {
+	args := map[string]any{"step": "auto_tune"}
+	cutoff := r.URL.Query().Get("cutoff")
+	if cutoff == "" {
+		cutoff = defaultCutoff()
+	}
+	args["cutoff"] = cutoff
+	querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
+
+	go func() {
+		slog.Info("ml-auto-tune started", slog.Any("args", args))
+		runErr := pipeline.RunJob(
+			a.JobContext(),
+			"ml-auto-tune",
+			args,
+			trainStepTimeout(),
+			func(ctx context.Context) (any, error) {
+				return nil, callMLTrainEndpoint(ctx, "auto-tune", querySuffix)
+			},
+		)
+		if runErr != nil {
+			slog.Error("ml-auto-tune failed", slog.Any("err", runErr))
+		} else {
+			slog.Info("ml-auto-tune completed")
+		}
+	}()
+	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "auto_tune"})
 }
 
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.

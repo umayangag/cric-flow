@@ -123,7 +123,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description:
-        'Optional: tune all models per format and save params to DB. Set GO_APP_URL (and CUTOFF if needed). Run from project root.',
+        'Optional: tune the unified model and all per-format models (batting, bowling, fielding, extras, win). Best params are saved to DB when GO_APP_URL is set. You can run this from the UI or from project root.',
       runnable: true,
     },
   ];

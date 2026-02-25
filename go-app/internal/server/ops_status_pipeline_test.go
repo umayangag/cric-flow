@@ -101,6 +101,8 @@ func TestCanRunPipelineStep(t *testing.T) {
 			name: "auto_tune_allowed_when_no_one_running",
 			setup: func(m *mocks.DBMock) {
 				setupPipelineDB(t, m)
+				m.On("QueryRow", mock.Anything, mock.Anything, "ml-auto-tune", tracking.StatusInProgress).
+					Return(scanBoolRow(false))
 				m.On("QueryRow", mock.Anything, mock.Anything, "train-fielding", tracking.StatusCompleted).
 					Return(scanBoolRow(true))
 				m.On("QueryRow", mock.Anything, mock.Anything, "train-extras", tracking.StatusCompleted).

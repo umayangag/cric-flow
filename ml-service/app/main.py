@@ -1557,3 +1557,55 @@ async def admin_train_win(request: Request, cutoff: str = ""):
                 hint=str(e),
             ),
         ) from e
+
+
+@app.post("/admin/train/auto-tune")
+async def admin_train_auto_tune(request: Request, cutoff: str = ""):
+    """Run auto-tune for all models (batting, bowling, fielding, extras, win) and all formats (unified + per-format).
+    Uses go-app training-data API (--from-api). Optional query param cutoff (RFC3339); default from env or recent date.
+    When GO_APP_URL is set, best params are saved to DB. Guarded by ENABLE_HOT_RELOAD.
+    """
+    if not ENABLE_HOT_RELOAD:
+        logger.info("admin.train.rejected", step="auto-tune", reason="disabled")
+        raise HTTPException(
+            status_code=403,
+            detail=_error_payload(
+                code="TRAIN_DISABLED",
+                message="Admin train is disabled",
+                hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
+            ),
+        )
+    _verify_admin_api_key(request)
+    cutoff = (cutoff or "").strip()
+    if not cutoff:
+        cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+    go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+    extra = [
+        "--model", "all",
+        "--all-formats",
+        "--from-api",
+        "--cutoff", cutoff,
+        "--go-app-url", go_app_url,
+    ]
+    api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
+    if api_key:
+        extra.extend(["--api-key", api_key])
+    logger.info("admin.train.start", step="auto-tune", cutoff=cutoff, go_app_url=go_app_url)
+    try:
+        async with _get_training_semaphore():
+            await asyncio.to_thread(
+                _run_training_subprocess,
+                "ml.auto_tune",
+                extra,
+            )
+        logger.info("admin.train.success", step="auto-tune")
+        return {"status": "ok", "step": "auto-tune"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=_error_payload(
+                code="TRAIN_FAILED",
+                message="Auto-tune failed",
+                hint=str(e),
+            ),
+        ) from e

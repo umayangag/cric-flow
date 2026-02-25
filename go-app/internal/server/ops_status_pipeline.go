@@ -18,7 +18,7 @@ var pipelineStepCommands = map[string]string{
 	"train_extras":           "train-extras",
 	"train_win":              "train-win",
 	"train_combination_meta": "train-combination-meta", // no tracking; optional step
-	// auto_tune has no tracking command; optional step
+	"auto_tune":              "ml-auto-tune",
 }
 
 // pipelineStepOrder defines the run order; step N is only runnable after step N-1 completed successfully.
@@ -80,7 +80,7 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 		}
 		steps[stepID] = map[string]any{"running": running, "runnable": runnable, "completed": completed}
 	}
-	// auto_tune: runnable when train-fielding, train-extras, train-win have all completed (may run in parallel with other steps)
+	// auto_tune: runnable when train-fielding, train-extras, train-win have all completed; running/completed from tracking
 	autoTuneRunnable := true
 	for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
 		done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, cmd)
@@ -89,7 +89,13 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			break
 		}
 	}
-	steps["auto_tune"] = map[string]any{"running": false, "runnable": autoTuneRunnable, "completed": false}
+	autoTuneRunning, _ := tracking.HasInProgressForCommand(ctx, "ml-auto-tune")
+	autoTuneCompleted, _ := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
+	steps["auto_tune"] = map[string]any{
+		"running":   autoTuneRunning,
+		"runnable":  autoTuneRunnable && !autoTuneRunning,
+		"completed": autoTuneCompleted,
+	}
 	return map[string]any{"steps": steps}
 }
 
@@ -112,12 +118,10 @@ func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg str
 	if !hasCommand && stepID != "auto_tune" {
 		return false, "unknown step"
 	}
-	if stepID != "auto_tune" {
-		command := pipelineStepCommands[stepID]
-		running, _ := tracking.HasInProgressForCommand(ctx, command)
-		if running {
-			return false, "this step is already running"
-		}
+	command := pipelineStepCommands[stepID]
+	running, _ := tracking.HasInProgressForCommand(ctx, command)
+	if running {
+		return false, "this step is already running"
 	}
 	if stepID == "auto_tune" {
 		for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
