@@ -1468,12 +1468,18 @@ def _require_admin_train(step: str, fail_message: str):
             try:
                 return await f(request, *args, **kwargs)
             except ValueError as e:
+                logger.error(
+                    "admin.train.failed",
+                    step=step,
+                    error=str(e),
+                    exc_info=True,
+                )
                 raise HTTPException(
                     status_code=500,
                     detail=_error_payload(
                         code="TRAIN_FAILED",
                         message=fail_message,
-                        hint=str(e),
+                        hint="Check server logs with the provided request_id for details.",
                     ),
                 ) from e
 
@@ -1703,6 +1709,7 @@ async def admin_train_auto_tune(
     request: Request,
     cutoff: str = "",
     model: str = "all",
+    format: str = "",
     all_formats: str = "",
     unified: str = "",
 ):
@@ -1724,7 +1731,7 @@ async def admin_train_auto_tune(
         )
     use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
     use_unified = (unified or "").strip().lower() in ("1", "true", "yes")
-    fmt = (request.query_params.get("format") or "").strip().upper()
+    fmt = (format or "").strip().upper()
     if not use_all_formats and not use_unified:
         if not fmt or fmt not in _VALID_AUTO_TUNE_FORMATS:
             raise HTTPException(
@@ -1760,9 +1767,8 @@ async def admin_train_auto_tune(
     subprocess_env: Optional[Dict[str, str]] = None
     if single_task:
         subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}
-    api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
-    if api_key:
-        extra.extend(["--api-key", api_key])
+    # ml.auto_tune reads GO_APP_API_KEY from the environment; do not pass --api-key
+    # on the command line, as that would expose it in process listings (ps).
     logger.info(
         "admin.train.start",
         step="auto-tune",
