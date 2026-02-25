@@ -212,7 +212,7 @@ const MLModelStatsTab: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {data.models.map((model, idx) => (
-                    <ModelRow key={`${model.model_name}-${model.match_format}-${idx}`} model={model} />
+                    <ModelRow key={`${model.model_name}-${model.match_format}`} model={model} />
                   ))}
                 </TableBody>
               </Table>
