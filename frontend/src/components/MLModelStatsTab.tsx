@@ -78,7 +78,7 @@ function ModelRow({ model }: { model: MLModelStat }) {
           <Chip label={model.match_format} size="small" variant="outlined" />
         </TableCell>
         <TableCell>{model.algorithm ?? '—'}</TableCell>
-        <TableCell>{model.accuracy_display ?? (model.best_cv_score != null ? String(model.best_cv_score) : '—')}</TableCell>
+        <TableCell>{getAccuracyDisplay(model)}</TableCell>
         <TableCell>{formatBytes(model.size_bytes)}</TableCell>
         <TableCell sx={{ fontSize: '0.85rem' }}>{formatModified(model.modified)}</TableCell>
         <TableCell>{model.tuned ? 'Yes' : 'No'}</TableCell>
