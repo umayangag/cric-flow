@@ -33,6 +33,9 @@ func NewRouter(a *App) http.Handler {
 	// ML model metadata (features, outputs, artifacts pattern for Workbench UI)
 	admin.HandleFunc("/api/ml/model-metadata", a.mlModelMetadataProxyHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	// ML model stats (name, format, params, accuracy, size for ML Model Stats tab)
+	admin.HandleFunc("/api/ml/model-stats", a.mlModelStatsProxyHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
 

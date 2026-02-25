@@ -42,6 +42,29 @@ export type ModelMetadataEntry = {
 };
 export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
 
+/** ML model stats from ml-service GET /model-stats (via go-app proxy). Used by ML Model Stats tab. */
+export type MLModelStat = {
+  model_name: string;
+  match_format: string;
+  size_bytes?: number;
+  modified?: string;
+  tuned?: boolean;
+  best_cv_score?: number;
+  scoring?: string;
+  algorithm?: string;
+  tuned_parameters?: Record<string, unknown>;
+  cv_splits?: number;
+  validation_method?: string;
+  n_samples?: number;
+  n_features?: number;
+  metrics?: Record<string, unknown>;
+  accuracy_display?: string;
+};
+export type ModelStatsResponse = {
+  models_dir: string;
+  models: MLModelStat[];
+};
+
 // --- Backtest API DTOs ---
 export type BacktestCandidate = {
   match_id: number;
