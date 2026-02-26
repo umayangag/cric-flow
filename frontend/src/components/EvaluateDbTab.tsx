@@ -647,7 +647,7 @@ const EvaluateDbTab: React.FC = () => {
             scorecard={evaluationResult.predicted_scorecard}
             title="Predicted scorecard"
             subtitle={
-              (evaluationResult.filters as Record<string, string>)?.model_mode === 'latest'
+              (evaluationResult.filters as { model_mode?: 'latest' | 'strict_temporal' })?.model_mode === 'latest'
                 ? 'ML prediction using the latest model. Features computed at match date (no future data).'
                 : 'ML prediction using model trained only on data before the match date.'
             }
