@@ -19,6 +19,25 @@ import type { OpsStatusDTO } from './types';
 
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
 
+/** Build URL for backtest evaluate endpoints (evaluate-stream, evaluate-start). */
+function buildBacktestEvaluateUrl(
+  path: string,
+  format: string,
+  team1: string,
+  team2: string,
+  matchId: number | string,
+  options?: { use_unified_model?: boolean; use_latest_model?: boolean },
+): string {
+  const u = new URL(path, BASE_API_URL);
+  u.searchParams.set('format', format);
+  u.searchParams.set('team1', team1);
+  u.searchParams.set('team2', team2);
+  u.searchParams.set('match_id', String(matchId));
+  if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
+  if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
+  return u.toString();
+}
+
 /** Build headers for go-app API requests. Optionally omit Content-Type for GET/stream requests. */
 function apiHeaders(includeJsonContentType = true): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -307,14 +326,15 @@ export const api = {
     },
     options?: { use_unified_model?: boolean; use_latest_model?: boolean },
   ): Promise<void> {
-    const u = new URL('/api/backtest/evaluate-stream', BASE_API_URL);
-    u.searchParams.set('format', format);
-    u.searchParams.set('team1', team1);
-    u.searchParams.set('team2', team2);
-    u.searchParams.set('match_id', String(matchId));
-    if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
-    if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
-    const res = await fetch(u.toString(), { headers: apiHeaders(false) });
+    const url = buildBacktestEvaluateUrl(
+      '/api/backtest/evaluate-stream',
+      format,
+      team1,
+      team2,
+      matchId,
+      options,
+    );
+    const res = await fetch(url, { headers: apiHeaders(false) });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       callbacks.onError(new Error(`HTTP ${res.status}: ${text}`));
@@ -362,18 +382,19 @@ export const api = {
     matchId: number | string,
     options?: { use_unified_model?: boolean; use_latest_model?: boolean },
   ): Promise<{ job_id: string }> {
-    const u = new URL('/api/backtest/evaluate-start', BASE_API_URL);
-    u.searchParams.set('format', format);
-    u.searchParams.set('team1', team1);
-    u.searchParams.set('team2', team2);
-    u.searchParams.set('match_id', String(matchId));
-    if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
-    if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
+    const url = buildBacktestEvaluateUrl(
+      '/api/backtest/evaluate-start',
+      format,
+      team1,
+      team2,
+      matchId,
+      options,
+    );
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-    return fetch(u.toString(), {
+    return fetch(url, {
       method: 'POST',
       headers: apiHeaders(false),
       signal: controller.signal,

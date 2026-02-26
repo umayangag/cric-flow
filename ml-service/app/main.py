@@ -174,6 +174,9 @@ MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
 CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
+# When use_latest_model=True, round the cutoff to this granularity for cache key. Prevents DoS from unique
+# timestamps per request. Values: "none" (exact now, no cache), "second", "minute", "hour", "day". Default: "hour"
+TRAIN_LATEST_CACHE_GRANULARITY = (os.environ.get("TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY") or "hour").strip().lower()
 
 # -------------------- Simple in-memory cache for model-stats endpoint --------------------
 MODEL_STATS_CACHE_TTL = int(os.environ.get("MODEL_STATS_CACHE_TTL", "60") or "60")
@@ -276,6 +279,22 @@ async def request_context_middleware(request: Request, call_next):
 # Models are imported from app.models (see imports above)
 
 
+def _round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
+    """Round datetime down to the given boundary. Used for cache-key stability when use_latest_model=True."""
+    gran = (granularity or "").strip().lower()
+    if gran in ("none", ""):
+        return dt
+    if gran == "second":
+        return dt.replace(microsecond=0)
+    if gran == "minute":
+        return dt.replace(second=0, microsecond=0)
+    if gran == "hour":
+        return dt.replace(minute=0, second=0, microsecond=0)
+    if gran == "day":
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return dt  # fallback: no rounding
+
+
 def _predict_players_with_features(
     cutoff: datetime,
     player_ids: List[int],
@@ -304,13 +323,16 @@ def _predict_players_with_features(
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         # When use_latest_model: train with "now" as cutoff so we use all available data (one model per format).
         # Otherwise: strict temporal - train only on data before the match date.
+        # Use TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY to round the cutoff for cache-key stability and DoS mitigation.
         if use_latest_model:
             now_utc = datetime.now(timezone.utc)
-            cutoff_iso = now_utc.isoformat().replace("+00:00", "Z")
+            rounded = _round_datetime_to_granularity(now_utc, TRAIN_LATEST_CACHE_GRANULARITY)
+            cutoff_iso = rounded.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
             logger.info(
                 "backtest_predict.train_on_the_fly.use_latest",
                 format=fmt_upper,
                 training_cutoff_iso=cutoff_iso,
+                cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
             )
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
         logger.info(
