@@ -55,9 +55,12 @@ from sklearn.ensemble import (
 from sklearn.linear_model import Ridge
 from sklearn.metrics import (
     accuracy_score,
+    explained_variance_score,
     f1_score,
+    max_error,
     mean_absolute_error,
     mean_squared_error,
+    median_absolute_error,
     precision_score,
     r2_score,
     recall_score,
@@ -243,7 +246,15 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
 
 
 def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
-    """Compute regression metrics from cross-validated predictions. Returns dict with mae, rmse, r2, r2_pct."""
+    """Compute regression metrics from cross-validated predictions.
+
+    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance.
+    - mae: mean absolute error (interpretable units)
+    - rmse: root mean squared error (penalizes large errors more)
+    - median_ae: median absolute error (robust to outliers)
+    - max_error: worst single prediction error
+    - explained_variance: 0–1, fraction of variance explained; negative if worse than predicting mean
+    """
     try:
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
         mae = float(mean_absolute_error(y, y_pred))
@@ -251,11 +262,17 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
         r2 = float(r2_score(y, y_pred))
         # r2 can be negative; clamp for display
         r2_pct = max(0.0, min(100.0, r2 * 100))
+        median_ae = float(median_absolute_error(y, y_pred))
+        worst_err = float(max_error(y, y_pred))
+        expl_var = float(explained_variance_score(y, y_pred))
         return {
             "mae": round(mae, 4),
             "rmse": round(rmse, 4),
             "r2": round(r2, 4),
             "r2_pct": round(r2_pct, 2),
+            "median_ae": round(median_ae, 4),
+            "max_error": round(worst_err, 4),
+            "explained_variance": round(expl_var, 4),
         }
     except Exception as e:
         logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)

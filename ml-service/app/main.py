@@ -1030,7 +1030,13 @@ def _enrich_with_tuning_report(
             if "accuracy_pct" in metrics:
                 rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
             elif "mae" in metrics:
-                rec["accuracy_display"] = f"MAE={metrics['mae']}"
+                # Regression: show MAE, RMSE, R² for clearer accuracy assessment
+                parts = [f"MAE={metrics['mae']}"]
+                if "rmse" in metrics:
+                    parts.append(f"RMSE={metrics['rmse']}")
+                if "r2_pct" in metrics:
+                    parts.append(f"R²={metrics['r2_pct']}%")
+                rec["accuracy_display"] = ", ".join(parts)
             elif "r2_pct" in metrics:
                 rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
     except Exception as e:
