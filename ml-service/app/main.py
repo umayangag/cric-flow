@@ -281,6 +281,7 @@ def _predict_players_with_features(
     player_ids: List[int],
     fmt: str,
     features_map: Dict[str, Dict[str, float]],
+    use_latest_model: bool = False,
 ) -> List[BacktestPlayerPred]:
     """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
     When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
@@ -301,6 +302,16 @@ def _predict_players_with_features(
             )
         _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        # When use_latest_model: train with "now" as cutoff so we use all available data (one model per format).
+        # Otherwise: strict temporal - train only on data before the match date.
+        if use_latest_model:
+            now_utc = datetime.now(timezone.utc)
+            cutoff_iso = now_utc.isoformat().replace("+00:00", "Z")
+            logger.info(
+                "backtest_predict.train_on_the_fly.use_latest",
+                format=fmt_upper,
+                training_cutoff_iso=cutoff_iso,
+            )
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
         logger.info(
             "backtest_predict.train_on_the_fly.triggered",
@@ -478,7 +489,9 @@ def backtest_predict(req: BacktestPredictRequest):
         global BACKTEST_PLAYERS_COMPUTE_COUNT
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
         try:
-            preds = _predict_players_with_features(cutoff, req.player_ids, req.format or "", req.features)
+            preds = _predict_players_with_features(
+                cutoff, req.player_ids, req.format or "", req.features, req.use_latest_model
+            )
         except ValueError as e:
             logger.exception(
                 "backtest_predict.player.train_on_the_fly_failed",

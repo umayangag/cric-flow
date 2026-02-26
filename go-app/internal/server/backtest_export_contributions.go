@@ -125,7 +125,7 @@ func runExportContributionsWork(
 		mid := mid
 		g.Go(func() error {
 			matchIDStr := strconv.FormatInt(mid, 10)
-			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, nil)
+			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, false, nil)
 			if err != nil {
 				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
 				return nil // continue: don't fail the whole job for one match

@@ -35,8 +35,9 @@ var (
 		}
 		return exq.ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, format, playerIDs)
 	}
-	// ML seam for backtest: given cutoff, format, player ids, and optional features, return predicted targets per player
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64) (map[int64]playerPredictions, error) {
+	// ML seam for backtest: given cutoff, format, player ids, optional features, and useLatestModel flag.
+	// useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
 		return nil, sql.ErrNoRows
 	}
 	// Match-level aggregates: actuals from DB for given match

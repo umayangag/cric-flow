@@ -154,6 +154,8 @@ const EvaluateDbTab: React.FC = () => {
 
   // Prediction model for evaluate: format-specific or unified (legacy)
   const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
+  // Model temporal mode: strict (trained only on data before match) or latest (current model; may include match)
+  const [modelTemporalMode, setModelTemporalMode] = useState<'strict' | 'latest'>('latest');
 
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
@@ -392,7 +394,10 @@ const EvaluateDbTab: React.FC = () => {
         team1.trim(),
         team2.trim(),
         selectedMatchId,
-        { use_unified_model: predictionModel === 'unified' },
+        {
+          use_unified_model: predictionModel === 'unified',
+          use_latest_model: modelTemporalMode === 'latest',
+        },
       );
       const stored: StoredEvalJob = {
         job_id,
@@ -422,8 +427,9 @@ const EvaluateDbTab: React.FC = () => {
   return (
     <Stack spacing={3} sx={{ mt: 2 }}>
       <Typography variant="body1">
-        Evaluate historical matches by training strictly up to the match date, predicting for actual
-        players, and comparing predictions vs actuals.
+        Evaluate historical matches by predicting for actual players and comparing predictions vs
+        actuals. Choose whether to use a strict temporal cutoff (model trained only on data before
+        the match) or the latest model (may include the match in training; faster, good for QA).
       </Typography>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
@@ -530,7 +536,28 @@ const EvaluateDbTab: React.FC = () => {
         {selectedMatchId != null && (
           <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
         )}
-        <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 260 }}>
+            <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
+            <Select
+              labelId="eval-db-temporal-label"
+              value={modelTemporalMode}
+              onChange={(e) => setModelTemporalMode(e.target.value as 'strict' | 'latest')}
+              label="Model temporal mode"
+            >
+              <MenuItem value="latest">Latest model (recommended)</MenuItem>
+              <MenuItem value="strict">Strict cutoff (temporal validation)</MenuItem>
+            </Select>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.5, maxWidth: 340 }}
+            >
+              {modelTemporalMode === 'latest'
+                ? 'Uses the current model. Fast; good for QA. May include this match in training.'
+                : 'Model trained only on data before match date. Unbiased; may train per match if no artifacts.'}
+            </Typography>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 260 }}>
             <InputLabel id="eval-db-model-label">Prediction model</InputLabel>
             <Select
@@ -614,12 +641,16 @@ const EvaluateDbTab: React.FC = () => {
           </Paper>
         )}
 
-        {/* Predicted scorecard (ML, data before match date) — shown after evaluate */}
+        {/* Predicted scorecard (ML) — shown after evaluate */}
         {evaluationResult?.predicted_scorecard && (
           <MatchScorecard
             scorecard={evaluationResult.predicted_scorecard}
             title="Predicted scorecard"
-            subtitle="ML prediction using only data before the match date (no actual match data used)."
+            subtitle={
+              (evaluationResult.filters as Record<string, string>)?.model_mode === 'latest'
+                ? 'ML prediction using the latest model. Features computed at match date (no future data).'
+                : 'ML prediction using model trained only on data before the match date.'
+            }
           />
         )}
       </Box>

@@ -28,6 +28,7 @@ type evalJobStatusResponse struct {
 	Team1           string                    `json:"team1"`
 	Team2           string                    `json:"team2"`
 	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
+	UseLatestModel  bool                      `json:"use_latest_model,omitempty"`
 	Status          string                    `json:"status"` // "running" | "done" | "error"
 	Steps           []evalJobStep             `json:"steps,omitempty"`
 	Result          *backtestEvaluateResponse `json:"result,omitempty"`
@@ -45,6 +46,7 @@ type evalJobState struct {
 	Team1           string                    `json:"team1"`
 	Team2           string                    `json:"team2"`
 	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
+	UseLatestModel  bool                      `json:"use_latest_model,omitempty"`
 	Status          string                    `json:"status"` // "running" | "done" | "error"
 	Steps           []evalJobStep             `json:"steps,omitempty"`
 	Result          *backtestEvaluateResponse `json:"result,omitempty"`
@@ -88,6 +90,7 @@ func (s *evalJobState) snapshot() evalJobStatusResponse {
 		Team1:           s.Team1,
 		Team2:           s.Team2,
 		UseUnifiedModel: s.UseUnifiedModel,
+		UseLatestModel:  s.UseLatestModel,
 		Status:          s.Status,
 		Steps:           stepsCopy,
 		Result:          s.Result,
@@ -187,7 +190,11 @@ func evalJobCleanup() {
 // The job state is updated with progress and final result or error.
 // Uses a long-lived context (not the request context) so the job is not cancelled when the HTTP
 // request ends, and has a generous deadline so it can run for hours without exceeding it.
-func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, useUnifiedModel bool) (string, error) {
+func startEvaluateJob(
+	_ context.Context,
+	format, team1, team2, matchID string,
+	useUnifiedModel, useLatestModel bool,
+) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
 		slog.Error("startEvaluateJob: generate job ID failed", slog.Any("err", err))
@@ -201,6 +208,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, u
 		Team1:           team1,
 		Team2:           team2,
 		UseUnifiedModel: useUnifiedModel,
+		UseLatestModel:  useLatestModel,
 		Status:          "running",
 		Steps:           nil,
 		CreatedAt:       now,
@@ -222,6 +230,7 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, u
 			slog.String("team2", team2),
 			slog.String("match_id", matchID),
 			slog.Bool("use_unified_model", useUnifiedModel),
+			slog.Bool("use_latest_model", useLatestModel),
 		)
 		// Not the request context (cancelled when we return 202). Use a long deadline so the job
 		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
@@ -230,7 +239,16 @@ func startEvaluateJob(_ context.Context, format, team1, team2, matchID string, u
 		progress := func(step, message string) {
 			job.appendStep(step, message)
 		}
-		resp, err := doEvaluateWork(jobCtx, format, team1, team2, matchID, job.UseUnifiedModel, progress)
+		resp, err := doEvaluateWork(
+			jobCtx,
+			format,
+			team1,
+			team2,
+			matchID,
+			job.UseUnifiedModel,
+			job.UseLatestModel,
+			progress,
+		)
 		if err != nil {
 			slog.Error(
 				"evaluate job failed",

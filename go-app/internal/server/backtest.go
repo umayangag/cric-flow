@@ -244,11 +244,11 @@ func init() {
 	// Wire default ML and aggregates seams to concrete clients/repos where available.
 	// These can be overridden in tests.
 	mlClient := NewBacktestMLClient()
-	mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, format string, playerIDs []int64, features map[int64]map[string]float64) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(ctx context.Context, cutoff time.Time, format string, playerIDs []int64, features map[int64]map[string]float64, useLatestModel bool) (map[int64]playerPredictions, error) {
 		if mlClient == nil {
 			return nil, errors.New("ml client not initialized")
 		}
-		return mlClient.predictPlayers(ctx, cutoff, format, playerIDs, features)
+		return mlClient.predictPlayers(ctx, cutoff, format, playerIDs, features, useLatestModel)
 	}
 	mlBacktestPredictMatchAggregatesFunc = func(ctx context.Context, cutoff time.Time, teams [2]string) (matchAggregates, string, error) {
 		if mlClient == nil {

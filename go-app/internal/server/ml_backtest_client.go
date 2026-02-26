@@ -34,10 +34,11 @@ func NewBacktestMLClient() *BacktestMLClient {
 
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
-	Cutoff    string                        `json:"cutoff_date"`
-	PlayerIDs []int64                       `json:"player_ids,omitempty"`
-	Format    string                        `json:"format,omitempty"`
-	Features  map[string]map[string]float64 `json:"features,omitempty"`
+	Cutoff         string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids,omitempty"`
+	Format         string                        `json:"format,omitempty"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
 }
 
 type mlBacktestPlayerPred struct {
@@ -186,20 +187,23 @@ type HistoricalBacktestResult struct {
 
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
 // When format is non-empty and features is non-nil, they are sent so the ML service can run the full pipeline (real models).
+// useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
 	cutoff time.Time,
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
+	useLatestModel bool,
 ) (map[int64]playerPredictions, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]playerPredictions{}, nil
 	}
 	body := mlBacktestPredictRequest{
-		Cutoff:    cutoff.Format(time.RFC3339),
-		PlayerIDs: playerIDs,
-		Format:    strings.TrimSpace(format),
+		Cutoff:         cutoff.Format(time.RFC3339),
+		PlayerIDs:      playerIDs,
+		Format:         strings.TrimSpace(format),
+		UseLatestModel: useLatestModel,
 	}
 	if len(features) > 0 {
 		body.Features = make(map[string]map[string]float64, len(features))

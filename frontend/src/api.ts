@@ -305,12 +305,15 @@ export const api = {
       onResult: (result: BacktestEvaluateResponse) => void;
       onError: (err: Error) => void;
     },
+    options?: { use_unified_model?: boolean; use_latest_model?: boolean },
   ): Promise<void> {
     const u = new URL('/api/backtest/evaluate-stream', BASE_API_URL);
     u.searchParams.set('format', format);
     u.searchParams.set('team1', team1);
     u.searchParams.set('team2', team2);
     u.searchParams.set('match_id', String(matchId));
+    if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
+    if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
     const res = await fetch(u.toString(), { headers: apiHeaders(false) });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -357,7 +360,7 @@ export const api = {
     team1: string,
     team2: string,
     matchId: number | string,
-    options?: { use_unified_model?: boolean },
+    options?: { use_unified_model?: boolean; use_latest_model?: boolean },
   ): Promise<{ job_id: string }> {
     const u = new URL('/api/backtest/evaluate-start', BASE_API_URL);
     u.searchParams.set('format', format);
@@ -365,6 +368,7 @@ export const api = {
     u.searchParams.set('team2', team2);
     u.searchParams.set('match_id', String(matchId));
     if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
+    if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
