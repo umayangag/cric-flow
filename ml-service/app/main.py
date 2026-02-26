@@ -1822,11 +1822,10 @@ async def admin_train_auto_tune(
         extra.append("--all-formats")
     elif not use_unified:
         extra.extend(["--format", fmt])
-    # Use parallel when multiple (model, format) tasks will run; each parallel subprocess uses 1 job.
-    # When single task (one model + one format or unified), allow multi-CPU via AUTO_TUNE_N_JOBS=-1 (resource-aware).
+    # Always use parallel when running from the frontend/API; each parallel subprocess uses 1 job.
+    # When single task (one model + one format or unified), auto_tune falls through to sequential.
     single_task = model != "all" and (not use_all_formats or use_unified)
-    if model == "all" or use_all_formats:
-        extra.append("--parallel")
+    extra.append("--parallel")
     subprocess_env: Optional[Dict[str, str]] = None
     if single_task:
         subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}

@@ -1934,38 +1934,38 @@ def main() -> None:
     try:
         if args.parallel:
             parallel_tasks = _build_parallel_tasks()
-        cpu_count = os.cpu_count() or 1
-        max_workers = min(len(parallel_tasks), max(1, int(cpu_count * 0.8)))
-        if len(parallel_tasks) <= 1:
-            logger.info("auto_tune.parallel only one task, running sequentially")
-        else:
-            logger.info(
-                "auto_tune.parallel running %s tasks with max_workers=%s (80%% of %s CPUs)",
-                len(parallel_tasks),
-                max_workers,
-                cpu_count,
-            )
-            env = os.environ.copy()
-            env["AUTO_TUNE_N_JOBS"] = "1"
-            failed = 0
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {
-                    executor.submit(subprocess.run, argv, env=env, cwd=_ML_ROOT, capture_output=False): argv
-                    for argv in parallel_tasks
-                }
-                for future in as_completed(futures):
-                    argv = futures[future]
-                    try:
-                        result = future.result()
-                        if result.returncode != 0:
+            cpu_count = os.cpu_count() or 1
+            max_workers = min(len(parallel_tasks), max(1, int(cpu_count * 0.8)))
+            if len(parallel_tasks) <= 1:
+                logger.info("auto_tune.parallel only one task, running sequentially")
+            else:
+                logger.info(
+                    "auto_tune.parallel running %s tasks with max_workers=%s (80%% of %s CPUs)",
+                    len(parallel_tasks),
+                    max_workers,
+                    cpu_count,
+                )
+                env = os.environ.copy()
+                env["AUTO_TUNE_N_JOBS"] = "1"
+                failed = 0
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {
+                        executor.submit(subprocess.run, argv, env=env, cwd=_ML_ROOT, capture_output=False): argv
+                        for argv in parallel_tasks
+                    }
+                    for future in as_completed(futures):
+                        argv = futures[future]
+                        try:
+                            result = future.result()
+                            if result.returncode != 0:
+                                failed += 1
+                                logger.warning("auto_tune.parallel task failed: %s", " ".join(argv[:10]))
+                        except Exception as e:
                             failed += 1
-                            logger.warning("auto_tune.parallel task failed: %s", " ".join(argv[:10]))
-                    except Exception as e:
-                        failed += 1
-                        logger.warning("auto_tune.parallel task error: %s", e)
-            if failed:
-                sys.exit(1)
-            return
+                            logger.warning("auto_tune.parallel task error: %s", e)
+                if failed:
+                    sys.exit(1)
+                return
 
         for model_kind in models:
             for fmt in formats_to_run:
