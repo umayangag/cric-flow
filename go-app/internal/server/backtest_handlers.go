@@ -904,7 +904,7 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 	useLatest := parseUseLatestModel(r, false)
 	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useUnified, useLatest, progress)
 	if err != nil {
-		payload := map[string]string{"message": "Evaluation failed"}
+payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)
 		if !writeSSE("error", string(data)) {
 			return
