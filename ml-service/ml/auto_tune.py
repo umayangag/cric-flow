@@ -73,12 +73,12 @@ _ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
-from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
-
 from ml import auto_tune_progress as _progress
+from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
 
 try:
     import optuna
+
     _HAS_OPTUNA = True
 except ImportError:
     _HAS_OPTUNA = False
@@ -443,9 +443,7 @@ def _search_space_regression_single(model_kind: str) -> List[Tuple[str, str, Any
     ]
 
 
-def _phase1_candidates_regression(
-    model_kind: str, allow: frozenset
-) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
+def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
     """Phase 1 coarse candidates for multi-output regression (batting/bowling/fielding)."""
     rs = get_tuning_config().get("random_state", 42)
     candidates: List[Tuple[str, str, Any, Dict[str, Any]]] = []
@@ -477,9 +475,7 @@ def _phase1_candidates_regression(
                 loss="quantile",
                 alpha=tp.get("quantile_level", 0.5),
             )
-            candidates.append(
-                ("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 12, 20]})
-            )
+            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 12, 20]}))
         except (ValueError, KeyError):
             pass
     if "stacked" in allow:
@@ -589,33 +585,61 @@ def _run_search_two_phase_single_regression(
     candidates = _phase1_candidates_regression_single(allow)
     if not candidates:
         return _run_search_single_regression(
-            X, y, model_kind, cv_splits, n_iter, scoring, random_state,
-            algorithms, validation_method, n_jobs_override,
+            X,
+            y,
+            model_kind,
+            cv_splits,
+            n_iter,
+            scoring,
+            random_state,
+            algorithms,
+            validation_method,
+            n_jobs_override,
         )
     _progress.write_progress(
-        phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-        task_index=task_index, task_total=task_total,
-        message="Screening algorithms (extras)", algorithms_screened=[c[0] for c in candidates],
+        phase="screening",
+        model_kind=model_kind,
+        format_suffix=format_suffix,
+        task_index=task_index,
+        task_total=task_total,
+        message="Screening algorithms (extras)",
+        algorithms_screened=[c[0] for c in candidates],
     )
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
     for key, name, base_est, param_dist in candidates:
         _progress.write_progress(
-            phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=key, message=f"Testing {name}",
+            phase="screening",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=key,
+            message=f"Testing {name}",
         )
         pipe = _build_pipeline_single_regression(base_est)
         n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
         search = RandomizedSearchCV(
-            pipe, param_distributions=param_dist, n_iter=n_phase1,
-            cv=cv, scoring=scoring, random_state=random_state, n_jobs=n_jobs, error_score="raise",
+            pipe,
+            param_distributions=param_dist,
+            n_iter=n_phase1,
+            cv=cv,
+            scoring=scoring,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            error_score="raise",
         )
         search.fit(X, y)
         best_params = dict(search.best_params_)
         params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
         _progress.write_progress(
-            phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=key,
-            hyperparams=params_display, best_score=float(search.best_score_),
+            phase="screening",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=key,
+            hyperparams=params_display,
+            best_score=float(search.best_score_),
         )
         results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
     results.sort(key=lambda r: r[2], reverse=True)
@@ -624,12 +648,20 @@ def _run_search_two_phase_single_regression(
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
-            "model_kind": model_kind, "best_cv_score": best_score, "best_params": best_params,
-            "config_snippet": config_snippet, "scoring": scoring, "cv_splits": cv_splits,
-            "validation_method": validation_method, "algorithms": [r[0] for r in results],
-            "n_samples": int(X.shape[0]), "n_features": int(X.shape[1]), "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
+            "model_kind": model_kind,
+            "best_cv_score": best_score,
+            "best_params": best_params,
+            "config_snippet": config_snippet,
+            "scoring": scoring,
+            "cv_splits": cv_splits,
+            "validation_method": validation_method,
+            "algorithms": [r[0] for r in results],
+            "n_samples": int(X.shape[0]),
+            "n_features": int(X.shape[1]),
+            "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
         }
-        if best_pipe: report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        if best_pipe:
+            report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -672,36 +704,77 @@ def _run_search_two_phase_single_regression(
 
     def _cb(study: Any, trial: Any) -> None:
         _progress.write_progress(
-            phase="fine_tuning", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=str(trial.params.get("algorithm", best_key)),
-            hyperparams=trial.params, trial=trial.number + 1, trials_total=n_phase2,
+            phase="fine_tuning",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=str(trial.params.get("algorithm", best_key)),
+            hyperparams=trial.params,
+            trial=trial.number + 1,
+            trials_total=n_phase2,
             best_score=float(study.best_value) if study.best_trial else best_score,
-            best_algorithm=best_key, message=f"Fine-tuning {best_name}",
+            best_algorithm=best_key,
+            message=f"Fine-tuning {best_name}",
         )
 
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5))
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    )
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
         alg = p.get("algorithm", best_key)
         if alg == "rf":
-            est = RandomForestRegressor(n_estimators=p["n_estimators"], max_depth=p["max_depth"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = RandomForestRegressor(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         elif alg == "gb":
-            est = GradientBoostingRegressor(n_estimators=p["n_estimators"], max_depth=p["max_depth"], learning_rate=p["learning_rate"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = GradientBoostingRegressor(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                learning_rate=p["learning_rate"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         elif alg == "et":
-            est = ExtraTreesRegressor(n_estimators=p["n_estimators"], max_depth=p["max_depth"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = ExtraTreesRegressor(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         else:
-            est = HistGradientBoostingRegressor(max_iter=p["max_iter"], max_depth=p["max_depth"], learning_rate=p["learning_rate"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = HistGradientBoostingRegressor(
+                max_iter=p["max_iter"],
+                max_depth=p["max_depth"],
+                learning_rate=p["learning_rate"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         best_pipe = _build_pipeline_single_regression(est)
         best_pipe.fit(X, y)
         best_score = float(study.best_value)
         best_params = {"est__" + k: v for k, v in p.items()}
     config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
-    report = {"model_kind": model_kind, "best_cv_score": best_score, "best_params": best_params, "config_snippet": config_snippet,
-        "scoring": scoring, "cv_splits": cv_splits, "validation_method": validation_method, "algorithms": winners,
-        "n_samples": int(X.shape[0]), "n_features": int(X.shape[1]), "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
+    report = {
+        "model_kind": model_kind,
+        "best_cv_score": best_score,
+        "best_params": best_params,
+        "config_snippet": config_snippet,
+        "scoring": scoring,
+        "cv_splits": cv_splits,
+        "validation_method": validation_method,
+        "algorithms": winners,
+        "n_samples": int(X.shape[0]),
+        "n_features": int(X.shape[1]),
+        "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
     }
-    if best_pipe: report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+    if best_pipe:
+        report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
     return best_pipe, best_params, report
 
 
@@ -905,8 +978,16 @@ def _run_search_two_phase(
     candidates = _phase1_candidates_regression(model_kind, allow)
     if not candidates:
         return _run_search(
-            X, Y, model_kind, cv_splits, n_iter, scoring, random_state,
-            algorithms, validation_method, n_jobs_override,
+            X,
+            Y,
+            model_kind,
+            cv_splits,
+            n_iter,
+            scoring,
+            random_state,
+            algorithms,
+            validation_method,
+            n_jobs_override,
         )
 
     # Phase 1: coarse screening
@@ -934,8 +1015,14 @@ def _run_search_two_phase(
         pipe = _build_pipeline(base_est)
         n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
         search = RandomizedSearchCV(
-            pipe, param_distributions=param_dist, n_iter=n_phase1,
-            cv=cv, scoring=scoring, random_state=random_state, n_jobs=n_jobs, error_score="raise",
+            pipe,
+            param_distributions=param_dist,
+            n_iter=n_phase1,
+            cv=cv,
+            scoring=scoring,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            error_score="raise",
         )
         search.fit(X, Y)
         best_params = dict(search.best_params_)
@@ -1004,24 +1091,32 @@ def _run_search_two_phase(
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
-            est = RandomForestRegressor(n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state)
+            est = RandomForestRegressor(
+                n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
+            )
         elif alg == "gb":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
             depth = trial.suggest_int("max_depth", 3, 14, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
-            est = GradientBoostingRegressor(n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state)
+            est = GradientBoostingRegressor(
+                n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
+            )
         elif alg == "et":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
-            est = ExtraTreesRegressor(n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state)
+            est = ExtraTreesRegressor(
+                n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
+            )
         elif alg == "hgb":
             n_est = trial.suggest_int("max_iter", 50, 400, step=50)
             depth = trial.suggest_int("max_depth", 3, 14, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
-            est = HistGradientBoostingRegressor(max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state)
+            est = HistGradientBoostingRegressor(
+                max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
+            )
         else:
             n_est = trial.suggest_int("n_estimators", 100, 300, step=50)
             depth = trial.suggest_int("max_depth", 8, 16, step=2)
@@ -1030,36 +1125,52 @@ def _run_search_two_phase(
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         return float(scores.mean())
 
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5))
-    study.optimize(_optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback])
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    )
+    study.optimize(
+        _optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback]
+    )
 
     if study.best_trial:
         params = study.best_params
         alg = params.get("algorithm", best_key)
         if alg == "rf":
             est = RandomForestRegressor(
-                n_estimators=params["n_estimators"], max_depth=params["max_depth"],
-                min_samples_leaf=params["min_samples_leaf"], random_state=random_state,
+                n_estimators=params["n_estimators"],
+                max_depth=params["max_depth"],
+                min_samples_leaf=params["min_samples_leaf"],
+                random_state=random_state,
             )
         elif alg == "gb":
             est = GradientBoostingRegressor(
-                n_estimators=params["n_estimators"], max_depth=params["max_depth"],
-                learning_rate=params["learning_rate"], min_samples_leaf=params["min_samples_leaf"],
+                n_estimators=params["n_estimators"],
+                max_depth=params["max_depth"],
+                learning_rate=params["learning_rate"],
+                min_samples_leaf=params["min_samples_leaf"],
                 random_state=random_state,
             )
         elif alg == "et":
             est = ExtraTreesRegressor(
-                n_estimators=params["n_estimators"], max_depth=params["max_depth"],
-                min_samples_leaf=params["min_samples_leaf"], random_state=random_state,
+                n_estimators=params["n_estimators"],
+                max_depth=params["max_depth"],
+                min_samples_leaf=params["min_samples_leaf"],
+                random_state=random_state,
             )
         elif alg == "hgb":
             est = HistGradientBoostingRegressor(
-                max_iter=params["max_iter"], max_depth=params["max_depth"],
-                learning_rate=params["learning_rate"], min_samples_leaf=params["min_samples_leaf"],
+                max_iter=params["max_iter"],
+                max_depth=params["max_depth"],
+                learning_rate=params["learning_rate"],
+                min_samples_leaf=params["min_samples_leaf"],
                 random_state=random_state,
             )
         else:
-            est = RandomForestRegressor(n_estimators=params.get("n_estimators", 200), max_depth=params.get("max_depth", 12), random_state=random_state)
+            est = RandomForestRegressor(
+                n_estimators=params.get("n_estimators", 200),
+                max_depth=params.get("max_depth", 12),
+                random_state=random_state,
+            )
         best_pipe = _build_pipeline(est)
         best_pipe.fit(X, Y)
         best_score = float(study.best_value)
@@ -1067,7 +1178,9 @@ def _run_search_two_phase(
     else:
         best_params = results[0][3]
 
-    config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items() if k.startswith("est__estimator__")}
+    config_snippet = {
+        k.replace("est__estimator__", ""): v for k, v in best_params.items() if k.startswith("est__estimator__")
+    }
     if not config_snippet:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
     report = {
@@ -1385,8 +1498,19 @@ def run_auto_tune(
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
     best_pipe, best_params, report = _run_search_two_phase(
-        X, Y, model_kind, format_suffix, cv_splits, n_iter, scoring, random_state,
-        algorithms, validation_method, n_jobs_override, task_index, task_total,
+        X,
+        Y,
+        model_kind,
+        format_suffix,
+        cv_splits,
+        n_iter,
+        scoring,
+        random_state,
+        algorithms,
+        validation_method,
+        n_jobs_override,
+        task_index,
+        task_total,
     )
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
@@ -1415,8 +1539,19 @@ def run_auto_tune_extras(
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_single_regression(
-        X, y, "extras", format_suffix, cv_splits, n_iter, scoring, random_state,
-        algorithms, validation_method, n_jobs_override, task_index, task_total,
+        X,
+        y,
+        "extras",
+        format_suffix,
+        cv_splits,
+        n_iter,
+        scoring,
+        random_state,
+        algorithms,
+        validation_method,
+        n_jobs_override,
+        task_index,
+        task_total,
     )
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
@@ -1448,33 +1583,61 @@ def _run_search_two_phase_classification(
     candidates = _phase1_candidates_classification(allow)
     if not candidates:
         return _run_search_classification(
-            X, y, model_kind, cv_splits, n_iter, scoring, random_state,
-            algorithms, validation_method, n_jobs_override,
+            X,
+            y,
+            model_kind,
+            cv_splits,
+            n_iter,
+            scoring,
+            random_state,
+            algorithms,
+            validation_method,
+            n_jobs_override,
         )
     _progress.write_progress(
-        phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-        task_index=task_index, task_total=task_total, message="Screening algorithms (win)",
+        phase="screening",
+        model_kind=model_kind,
+        format_suffix=format_suffix,
+        task_index=task_index,
+        task_total=task_total,
+        message="Screening algorithms (win)",
         algorithms_screened=[c[0] for c in candidates],
     )
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
     for key, name, base_est, param_dist in candidates:
         _progress.write_progress(
-            phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=key, message=f"Testing {name}",
+            phase="screening",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=key,
+            message=f"Testing {name}",
         )
         pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
         n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
         search = RandomizedSearchCV(
-            pipe, param_distributions=param_dist, n_iter=n_phase1,
-            cv=cv, scoring=scoring, random_state=random_state, n_jobs=n_jobs, error_score="raise",
+            pipe,
+            param_distributions=param_dist,
+            n_iter=n_phase1,
+            cv=cv,
+            scoring=scoring,
+            random_state=random_state,
+            n_jobs=n_jobs,
+            error_score="raise",
         )
         search.fit(X, y)
         best_params = dict(search.best_params_)
         params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
         _progress.write_progress(
-            phase="screening", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=key,
-            hyperparams=params_display, best_score=float(search.best_score_),
+            phase="screening",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=key,
+            hyperparams=params_display,
+            best_score=float(search.best_score_),
         )
         results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
     results.sort(key=lambda r: r[2], reverse=True)
@@ -1483,12 +1646,20 @@ def _run_search_two_phase_classification(
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
-            "model_kind": model_kind, "best_cv_score": best_score, "best_params": best_params,
-            "config_snippet": config_snippet, "scoring": scoring, "cv_splits": cv_splits,
-            "validation_method": validation_method, "algorithms": [r[0] for r in results],
-            "n_samples": int(X.shape[0]), "n_features": int(X.shape[1]), "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
+            "model_kind": model_kind,
+            "best_cv_score": best_score,
+            "best_params": best_params,
+            "config_snippet": config_snippet,
+            "scoring": scoring,
+            "cv_splits": cv_splits,
+            "validation_method": validation_method,
+            "algorithms": [r[0] for r in results],
+            "n_samples": int(X.shape[0]),
+            "n_features": int(X.shape[1]),
+            "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
         }
-        if best_pipe: report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+        if best_pipe:
+            report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -1529,36 +1700,78 @@ def _run_search_two_phase_classification(
 
     def _cb(study: Any, trial: Any) -> None:
         _progress.write_progress(
-            phase="fine_tuning", model_kind=model_kind, format_suffix=format_suffix,
-            task_index=task_index, task_total=task_total, algorithm=str(trial.params.get("algorithm", best_key)),
-            hyperparams=trial.params, trial=trial.number + 1, trials_total=min(n_iter, PHASE2_TRIALS),
+            phase="fine_tuning",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            algorithm=str(trial.params.get("algorithm", best_key)),
+            hyperparams=trial.params,
+            trial=trial.number + 1,
+            trials_total=min(n_iter, PHASE2_TRIALS),
             best_score=float(study.best_value) if study.best_trial else best_score,
-            best_algorithm=best_key, message=f"Fine-tuning {best_name}",
+            best_algorithm=best_key,
+            message=f"Fine-tuning {best_name}",
         )
+
     n_phase2 = min(n_iter, PHASE2_TRIALS)
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5))
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    )
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
         alg = p.get("algorithm", best_key)
         if alg == "rf":
-            est = RandomForestClassifier(n_estimators=p["n_estimators"], max_depth=p["max_depth"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = RandomForestClassifier(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         elif alg == "gb":
-            est = GradientBoostingClassifier(n_estimators=p["n_estimators"], max_depth=p["max_depth"], learning_rate=p["learning_rate"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = GradientBoostingClassifier(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                learning_rate=p["learning_rate"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         elif alg == "et":
-            est = ExtraTreesClassifier(n_estimators=p["n_estimators"], max_depth=p["max_depth"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = ExtraTreesClassifier(
+                n_estimators=p["n_estimators"],
+                max_depth=p["max_depth"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         else:
-            est = HistGradientBoostingClassifier(max_iter=p["max_iter"], max_depth=p["max_depth"], learning_rate=p["learning_rate"], min_samples_leaf=p["min_samples_leaf"], random_state=random_state)
+            est = HistGradientBoostingClassifier(
+                max_iter=p["max_iter"],
+                max_depth=p["max_depth"],
+                learning_rate=p["learning_rate"],
+                min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
         best_pipe = Pipeline([("scaler", StandardScaler()), ("est", est)])
         best_pipe.fit(X, y)
         best_score = float(study.best_value)
         best_params = {"est__" + k: v for k, v in p.items()}
     config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
-    report = {"model_kind": model_kind, "best_cv_score": best_score, "best_params": best_params, "config_snippet": config_snippet,
-        "scoring": scoring, "cv_splits": cv_splits, "validation_method": validation_method, "algorithms": winners,
-        "n_samples": int(X.shape[0]), "n_features": int(X.shape[1]), "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
+    report = {
+        "model_kind": model_kind,
+        "best_cv_score": best_score,
+        "best_params": best_params,
+        "config_snippet": config_snippet,
+        "scoring": scoring,
+        "cv_splits": cv_splits,
+        "validation_method": validation_method,
+        "algorithms": winners,
+        "n_samples": int(X.shape[0]),
+        "n_features": int(X.shape[1]),
+        "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
     }
-    if best_pipe: report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+    if best_pipe:
+        report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
     return best_pipe, best_params, report
 
 
@@ -1585,8 +1798,19 @@ def run_auto_tune_win(
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_classification(
-        X, y, "win", format_suffix, cv_splits, n_iter, scoring, random_state,
-        algorithms, validation_method, n_jobs_override, task_index, task_total,
+        X,
+        y,
+        "win",
+        format_suffix,
+        cv_splits,
+        n_iter,
+        scoring,
+        random_state,
+        algorithms,
+        validation_method,
+        n_jobs_override,
+        task_index,
+        task_total,
     )
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report
@@ -1790,9 +2014,13 @@ def main() -> None:
                                 )
                             continue
                         if model_kind == "batting":
-                            X, Y = load_batting_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
+                            X, Y = load_batting_from_api(
+                                args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                            )
                         elif model_kind == "bowling":
-                            X, Y = load_bowling_from_api(args.go_app_url, fmt or "all", args.cutoff, args.api_key or None)
+                            X, Y = load_bowling_from_api(
+                                args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                            )
                         else:
                             by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
@@ -1805,7 +2033,9 @@ def main() -> None:
                                 report = run_auto_tune(
                                     model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override
                                 )
-                                _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                )
                                 logger.info(
                                     "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                                     model_kind,
@@ -1840,7 +2070,9 @@ def main() -> None:
                         )
                         continue
                     if model_kind == "fielding":
-                        default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app"))
+                        default_dir = os.environ.get(
+                            "GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app")
+                        )
                         csv_path = args.csv or os.path.join(default_dir, f"fielding_encoded_{fmt or 'ALL'}.csv")
                         if not os.path.isfile(csv_path) and not args.csv:
                             csv_path = args.csv or ""
@@ -1870,7 +2102,9 @@ def main() -> None:
                     if not os.path.isfile(csv_path):
                         csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded.csv")
                     if not os.path.isfile(csv_path):
-                        logger.warning("auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path)
+                        logger.warning(
+                            "auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path
+                        )
                         continue
                     try:
                         if model_kind == "batting":

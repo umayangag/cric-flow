@@ -228,7 +228,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
               )}
               {p.auto_tune.hyperparams && Object.keys(p.auto_tune.hyperparams).length > 0 && (
                 <Typography variant="caption" color="text.secondary" component="div">
-                  Hyperparams: {Object.entries(p.auto_tune.hyperparams)
+                  Hyperparams:{' '}
+                  {Object.entries(p.auto_tune.hyperparams)
                     .map(([k, v]) => `${k}=${String(v)}`)
                     .join(', ')}
                 </Typography>
@@ -252,7 +253,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           )}
           {p.step_id === 'auto_tune' && !p.auto_tune?.phase && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms (e.g. rf, gb, et, hgb, stacked) are screened first; best algorithm is then fine-tuned.
+              Algorithms (e.g. rf, gb, et, hgb, stacked) are screened first; best algorithm is then
+              fine-tuned.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
