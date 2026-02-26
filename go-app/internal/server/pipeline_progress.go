@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -12,6 +14,37 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
+
+func mlServiceBaseURLForProgress() string {
+	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
+	if s != "" {
+		return strings.TrimSuffix(s, "/")
+	}
+	return config.ServerMLBaseURLFallback(config.Load())
+}
+
+func fetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
+	base := mlServiceBaseURLForProgress()
+	url := base + "/admin/train/auto-tune/progress"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil
+	}
+	defer resp.Body.Close()
+	var m map[string]interface{}
+	if json.NewDecoder(resp.Body).Decode(&m) != nil {
+		return nil
+	}
+	return m
+}
 
 // commandToStepID maps data_migrations command to pipeline step ID for the UI.
 var commandToStepID = map[string]string{
@@ -61,6 +94,7 @@ type pipelineProgressPayload struct {
 	ElapsedSec   int64                  `json:"elapsed_sec,omitempty"`
 	Precompute   *precomputeProgress    `json:"precompute,omitempty"`
 	EstimatedSec *int64                 `json:"estimated_remaining_sec,omitempty"`
+	AutoTune     map[string]interface{} `json:"auto_tune,omitempty"` // Live auto-tune progress (phase, algorithm, hyperparams, trial, etc.)
 }
 
 type precomputeProgress struct {
@@ -252,6 +286,9 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 					payload.EstimatedSec = ptrInt64(totalRemainingSec)
 				}
 			}
+		}
+		if m.Command == "ml-auto-tune" {
+			payload.AutoTune = fetchAutoTuneProgress(r.Context())
 		}
 		data, _ := json.Marshal(payload)
 		return writeSSE("progress", string(data))

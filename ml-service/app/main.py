@@ -1738,6 +1738,33 @@ _VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "a
 _VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
 
 
+def _get_auto_tune_progress_path() -> str:
+    """Return path to auto-tune progress JSON file."""
+    path = os.environ.get("AUTO_TUNE_PROGRESS_FILE")
+    if path:
+        return path
+    try:
+        from ml.config import default_artifacts_dir
+
+        return os.path.join(default_artifacts_dir(), "auto_tune_progress.json")
+    except Exception:
+        return os.path.join("..", "..", "output", "ml-service", "auto_tune_progress.json")
+
+
+@app.get("/admin/train/auto-tune/progress")
+async def admin_train_auto_tune_progress(request: Request) -> Dict[str, Any]:
+    """Return live auto-tune progress (phase, algorithm, hyperparams, trial, etc.) for frontend display.
+    No auth required so go-app can fetch when building pipeline SSE payload."""
+    path = _get_auto_tune_progress_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 @app.post("/admin/train/auto-tune")
 @_require_admin_train("auto-tune", "Auto-tune failed")
 async def admin_train_auto_tune(

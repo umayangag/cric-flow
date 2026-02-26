@@ -215,10 +215,44 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
                 .join(' · ')}
             </Typography>
           )}
-          {p.step_id === 'auto_tune' && (
+          {p.step_id === 'auto_tune' && p.auto_tune && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
+              <Typography variant="caption" fontWeight={600} color="primary.main">
+                Phase: {p.auto_tune.phase === 'fine_tuning' ? 'Fine-tuning' : 'Algorithm screening'}
+              </Typography>
+              {p.auto_tune.algorithm && (
+                <Typography variant="caption" color="text.secondary">
+                  Algorithm: <strong>{p.auto_tune.algorithm}</strong>
+                  {p.auto_tune.format_suffix && ` · Format: ${p.auto_tune.format_suffix}`}
+                </Typography>
+              )}
+              {p.auto_tune.hyperparams && Object.keys(p.auto_tune.hyperparams).length > 0 && (
+                <Typography variant="caption" color="text.secondary" component="div">
+                  Hyperparams: {Object.entries(p.auto_tune.hyperparams)
+                    .map(([k, v]) => `${k}=${String(v)}`)
+                    .join(', ')}
+                </Typography>
+              )}
+              {(p.auto_tune.trial != null || p.auto_tune.trials_total != null) && (
+                <Typography variant="caption" color="text.secondary">
+                  Trial {p.auto_tune.trial ?? '?'} / {p.auto_tune.trials_total ?? '?'}
+                </Typography>
+              )}
+              {p.auto_tune.best_score != null && (
+                <Typography variant="caption" color="text.secondary">
+                  Best score so far: {p.auto_tune.best_score.toFixed(4)}
+                </Typography>
+              )}
+              {p.auto_tune.message && !p.auto_tune.algorithm && (
+                <Typography variant="caption" color="text.secondary">
+                  {p.auto_tune.message}
+                </Typography>
+              )}
+            </Box>
+          )}
+          {p.step_id === 'auto_tune' && !p.auto_tune?.phase && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms (e.g. rf, gb, stacked) are chosen during search; best params are saved to
-              DB.
+              Algorithms (e.g. rf, gb, et, hgb, stacked) are screened first; best algorithm is then fine-tuned.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
