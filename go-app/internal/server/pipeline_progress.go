@@ -30,6 +30,11 @@ func fetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
 	if err != nil {
 		return nil
 	}
+	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
+	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
+		req.Header.Set("X-API-Key", key)
+	}
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {

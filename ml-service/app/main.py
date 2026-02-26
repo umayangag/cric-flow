@@ -1754,7 +1754,8 @@ def _get_auto_tune_progress_path() -> str:
 @app.get("/admin/train/auto-tune/progress")
 async def admin_train_auto_tune_progress(request: Request) -> Dict[str, Any]:
     """Return live auto-tune progress (phase, algorithm, hyperparams, trial, etc.) for frontend display.
-    No auth required so go-app can fetch when building pipeline SSE payload."""
+    Protected by admin API key when ADMIN_API_KEY is set; go-app should pass X-API-Key."""
+    _verify_admin_api_key(request)
     path = _get_auto_tune_progress_path()
     if not os.path.isfile(path):
         return {}
