@@ -11,7 +11,7 @@ import (
 )
 
 func TestTracker_CaptureExit(t *testing.T) {
-	t.Run("nil_receiver_no_op", func(t *testing.T) {
+	t.Run("nil_receiver_no_op", func(_ *testing.T) {
 		var tracker *Tracker
 		tracker.CaptureExit(context.Background(), nil, nil)
 	})
@@ -130,7 +130,7 @@ func TestTracker_Complete_Fail_Cancel(t *testing.T) {
 	})
 }
 
-func TestTracker_TryComplete_TryFail_NilSafe(t *testing.T) {
+func TestTracker_TryComplete_TryFail_NilSafe(_ *testing.T) {
 	var tracker *Tracker
 	tracker.TryComplete(context.Background(), nil)
 	tracker.TryFail(context.Background(), "ignored")

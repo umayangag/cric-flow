@@ -114,4 +114,3 @@ func TestSelectTopK_InvalidK(t *testing.T) {
 		t.Fatalf("expected error for k=0")
 	}
 }
-

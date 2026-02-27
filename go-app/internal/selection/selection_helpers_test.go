@@ -125,10 +125,16 @@ func TestParseSeasonInt(t *testing.T) {
 }
 
 func TestNz64(t *testing.T) {
-	if got := nz64(struct{ Int64 int64; Valid bool }{10, true}); got != 10 {
+	if got := nz64(struct {
+		Int64 int64
+		Valid bool
+	}{10, true}); got != 10 {
 		t.Errorf("nz64(valid) = %d, want 10", got)
 	}
-	if got := nz64(struct{ Int64 int64; Valid bool }{10, false}); got != 0 {
+	if got := nz64(struct {
+		Int64 int64
+		Valid bool
+	}{10, false}); got != 0 {
 		t.Errorf("nz64(invalid) = %d, want 0", got)
 	}
 }

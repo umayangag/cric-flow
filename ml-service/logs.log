@@ -1,0 +1,88 @@
+2026-02-27 20:43:53,008:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,008:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,008:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,008:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,008:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 20:43:53,009:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 20:43:53,330:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_mathtext.py:30: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+
+2026-02-27 20:43:53,433:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_mathtext.py:30: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:53,700:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 20:43:58,329:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/scikitplot/plotters.py:33: DeprecationWarning: This module was deprecated in version 0.3.0 and its functions are spread throughout different modules. Please check the documentation and update your function calls as soon as possible. This module will be removed in 0.4.0
+  warnings.warn("This module was deprecated in version 0.3.0 and its functions "
+
+2026-02-27 20:43:58,370:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/scikitplot/plotters.py:33: DeprecationWarning: This module was deprecated in version 0.3.0 and its functions are spread throughout different modules. Please check the documentation and update your function calls as soon as possible. This module will be removed in 0.4.0
+  warnings.warn("This module was deprecated in version 0.3.0 and its functions "
+

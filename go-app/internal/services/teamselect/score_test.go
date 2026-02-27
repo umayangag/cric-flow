@@ -70,7 +70,13 @@ func TestDefaultWeights(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
 	if w.Bat != 0.45 || w.Bowl != 0.40 || w.Field != 0.10 || w.KeeperBonus != 0.02 {
-		t.Fatalf("DefaultWeights: got Bat=%.2f Bowl=%.2f Field=%.2f KeeperBonus=%.2f", w.Bat, w.Bowl, w.Field, w.KeeperBonus)
+		t.Fatalf(
+			"DefaultWeights: got Bat=%.2f Bowl=%.2f Field=%.2f KeeperBonus=%.2f",
+			w.Bat,
+			w.Bowl,
+			w.Field,
+			w.KeeperBonus,
+		)
 	}
 }
 

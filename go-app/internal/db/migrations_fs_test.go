@@ -43,7 +43,7 @@ func (r *migrationsStringRows) Scan(dest ...any) error {
 	return nil
 }
 
-func (r *migrationsStringRows) Close() {}
+func (r *migrationsStringRows) Close()     {}
 func (r *migrationsStringRows) Err() error { return nil }
 
 // Helper to setup a DB mock for migrations tests
