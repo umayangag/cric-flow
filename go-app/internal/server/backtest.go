@@ -151,38 +151,10 @@ func init() {
 		}
 		return *d, nil
 	}
-	// Squad = distinct player_ids who batted or bowled in this match (from batting_data and bowling_data).
+	// Squad = full XI per team (batters ∪ bowlers per team) so we predict for all 11 regardless of wickets fallen.
+	// This balances predicted runs and win prediction across teams (e.g. 5 batters vs 11 batters).
 	getBacktestSquadPlayerIDsFunc = func(ctx context.Context, matchID int64, _ time.Time, _ string) ([]int64, error) {
-		if db.Pool == nil {
-			return nil, errors.New("db pool not initialized")
-		}
-		rows, err := db.Pool.Query(
-			ctx,
-			`SELECT DISTINCT player_id FROM (
-				SELECT player_id FROM batting_data WHERE match_id = $1
-				UNION
-				SELECT player_id FROM bowling_data WHERE match_id = $1
-				UNION
-				SELECT player_id FROM fielding_data WHERE match_id = $1
-			) t ORDER BY player_id ASC`,
-			matchID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		ids := make([]int64, 0, 22)
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				return nil, err
-			}
-			ids = append(ids, id)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		return ids, nil
+		return db.GetMatchFullSquadPlayerIDs(ctx, matchID)
 	}
 	// Actuals for match: squad from batting_data UNION bowling_data, then LEFT JOIN batting/bowling/fielding stats.
 	getBacktestPlayerActualsForMatchFunc = func(ctx context.Context, matchID int64) (map[int64]playerActuals, error) {

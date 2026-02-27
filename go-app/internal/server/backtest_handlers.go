@@ -67,7 +67,8 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 
 // buildPredictedScorecard builds a scorecard from the actual layout with ML-predicted stats per player.
 // Predictions use only data before the match date. Batting rows get predicted runs; bowling rows get predicted wickets, economy, and derived runs.
-func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions) *db.MatchScorecard {
+// playerTeams maps player_id -> team name so we sum predicted runs for all 11 of the batting team (not just those who batted).
+func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions, playerTeams map[int64]string) *db.MatchScorecard {
 	if actual == nil {
 		return nil
 	}
@@ -84,14 +85,26 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			BowlingTeamName: in.BowlingTeamName,
 			Extras:          in.Extras,
 			TargetRuns:      in.TargetRuns,
-			Batting:         make([]db.ScorecardBatting, 0, len(in.Batting)),
+			Batting:         make([]db.ScorecardBatting, 0, 11),
 			Bowling:         make([]db.ScorecardBowling, 0, len(in.Bowling)),
 		}
+		// Sum predicted runs for ALL players in the batting team (full XI), not just those who batted.
 		var predRunsSum int
+		battedSet := make(map[int64]struct{})
+		for _, b := range in.Batting {
+			battedSet[b.PlayerID] = struct{}{}
+		}
+		for pid, team := range playerTeams {
+			if team != in.BattingTeamName {
+				continue
+			}
+			p := preds[pid]
+			predRunsSum += int(math.Round(p.Runs))
+		}
+		// Build batting rows: those who batted first (with predicted runs), then those who didn't bat.
 		for _, b := range in.Batting {
 			p := preds[b.PlayerID]
 			r := int(math.Round(p.Runs))
-			predRunsSum += r
 			var ballsP, foursP, sixesP *int
 			var strikeRate *float32
 			bl := int(math.Round(p.Balls))
@@ -114,6 +127,30 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				StrikeRate: strikeRate,
 				HowOut:     nil,
 			})
+		}
+		// Add rows for batting team players who didn't bat (from bowling in other innings).
+		for _, oth := range actual.Innings {
+			if oth.BowlingTeamName != in.BattingTeamName {
+				continue
+			}
+			for _, w := range oth.Bowling {
+				if _, batted := battedSet[w.PlayerID]; batted {
+					continue
+				}
+				battedSet[w.PlayerID] = struct{}{}
+				p := preds[w.PlayerID]
+				r := int(math.Round(p.Runs))
+				inn.Batting = append(inn.Batting, db.ScorecardBatting{
+					PlayerID:   w.PlayerID,
+					PlayerName: w.PlayerName,
+					Runs:       intPtr(r),
+					Balls:      nil,
+					Fours:      nil,
+					Sixes:      nil,
+					StrikeRate: nil,
+					HowOut:     nil,
+				})
+			}
 		}
 		inn.RunsScored = predRunsSum
 		// First pass: collect raw wicket predictions
@@ -543,7 +580,11 @@ func doEvaluateWork(
 		progress("scorecard", "Building predicted scorecard...")
 	}
 	if actualCard, err := db.GetMatchScorecard(ctx, mid); err == nil && actualCard != nil {
-		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds)
+		playerTeams, _ := db.GetMatchPlayerTeams(ctx, mid)
+		if playerTeams == nil {
+			playerTeams = map[int64]string{}
+		}
+		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds, playerTeams)
 	}
 
 	if progress != nil {
