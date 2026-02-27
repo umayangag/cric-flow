@@ -7,6 +7,11 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
+func TestCanonicalCodes(t *testing.T) {
+	codes := formats.CanonicalCodes()
+	require.Equal(t, []string{formats.CodeTest, formats.CodeODI, formats.CodeT20, formats.CodeT20I}, codes)
+}
+
 func TestNormalizeCode(t *testing.T) {
 	tests := []struct {
 		in   string

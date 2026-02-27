@@ -84,6 +84,13 @@ func TestDiscoverFormatCodes(t *testing.T) {
 			want:     []string{"T20I"},
 			wantErr:  false,
 		},
+		{
+			name:     "empty_no_db_returns_err",
+			setup:    func(m *mocks.MockDB) { db.SetDB(nil); t.Cleanup(func() {}) },
+			provided: nil,
+			want:     nil,
+			wantErr:  true,
+		},
 	}
 
 	for _, tc := range cases {
