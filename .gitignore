@@ -66,3 +66,4 @@ build/
 
 pr_reviews.json
 **/test_output.txt
+ml-service/logs.log

@@ -23,6 +23,10 @@ Usage:
   python -m ml.auto_tune --model all --all-formats --from-api --cutoff 2024-12-01T00:00:00Z
 
   # Fine-tune one model for one format then apply best params to config (see docs/ml-and-training.md)
+
+When prior tuned params exist (go-app or tuning_report_*.json), auto_tune skips algorithm
+screening and only fine-tunes hyperparameters of the existing algorithm (incremental training).
+Use --rescreen to force full algorithm re-evaluation.
 """
 
 from __future__ import annotations
@@ -78,7 +82,13 @@ if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
 from ml import auto_tune_progress as _progress
-from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
+from ml.config import (
+    get_training_params,
+    get_tuning_config,
+    get_tuning_search_space,
+    get_tuned_params_from_go_app,
+    save_tuned_params_to_go_app,
+)
 
 try:
     from ml import auto_tune_pycaret as _pycaret
@@ -620,6 +630,78 @@ def _compute_mlqa_audit(
         }
 
 
+def _get_prior_tuned_algorithm(
+    model_kind: str,
+    format_suffix: Optional[str],
+    out_dir: str,
+) -> Optional[Tuple[str, Optional[Dict[str, Any]]]]:
+    """Fetch prior tuned algorithm and params from go-app or tuning report file.
+
+    When re-tuning a model, we stick to the same algorithm and only fine-tune hyperparams.
+    Returns (algorithm_key, prior_params) or None if no prior tuning exists.
+    """
+    go_app_url = os.environ.get("GO_APP_URL", "").strip()
+    if go_app_url:
+        format_key = format_suffix if format_suffix else ""
+        params = get_tuned_params_from_go_app(
+            go_app_url, model_kind, format_key, os.environ.get("GO_APP_API_KEY")
+        )
+        if params:
+            alg_list = params.get("algorithms")
+            if isinstance(alg_list, list) and len(alg_list) > 0:
+                algo = str(alg_list[0]).lower().strip()
+                if algo in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked"):
+                    return (algo, params)
+            estimator = (params.get("estimator") or "").strip().lower()
+            if estimator in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked", "gbm"):
+                algo = "gb" if estimator in ("gb", "gbm") else estimator
+                return (algo, params)
+
+    if out_dir and os.path.isdir(out_dir):
+        suffix = f"_{format_suffix}" if format_suffix else ""
+        report_name = f"tuning_report_{model_kind}{suffix}.json"
+        report_path = os.path.join(out_dir, report_name)
+        if os.path.isfile(report_path):
+            try:
+                with open(report_path, "r", encoding="utf-8") as f:
+                    report = json.load(f)
+                alg_list = report.get("algorithms")
+                if isinstance(alg_list, list) and len(alg_list) > 0:
+                    algo = str(alg_list[0]).lower().strip()
+                    if algo in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked"):
+                        prior = report.get("config_snippet") or report.get("best_params") or {}
+                        return (algo, prior)
+            except Exception as e:
+                logger.debug("auto_tune.read_prior_report_failed path=%s error=%s", report_path, e)
+    return None
+
+
+def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert stored config_snippet to Optuna trial params for regression."""
+    out: Dict[str, Any] = {"algorithm": algo}
+    p = {}
+    for k, v in params.items():
+        key = k
+        for prefix in ("est__estimator__", "est__"):
+            if key.startswith(prefix):
+                key = key[len(prefix) :]
+                break
+        p[key] = v
+    for key in (
+        "n_estimators",
+        "max_depth",
+        "min_samples_leaf",
+        "learning_rate",
+        "max_iter",
+        "hidden_layer_sizes",
+        "alpha",
+        "learning_rate_init",
+    ):
+        if key in p and p[key] is not None:
+            out[key] = p[key]
+    return out
+
+
 def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
     """Convert config search_space dict to Pipeline param format (est__estimator__*)."""
     out = {"est__estimator__random_state": [random_state]}
@@ -910,8 +992,9 @@ def _run_search_two_phase_single_regression(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search for single-output regression (extras)."""
+    """Two-phase search for single-output regression (extras). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
@@ -937,55 +1020,81 @@ def _run_search_two_phase_single_regression(
             validation_method,
             n_jobs_override,
         )
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms (extras)",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for key, name, base_est, param_dist in candidates:
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
+            message=f"Fine-tune only ({name}), skipping screening",
         )
         pipe = _build_pipeline_single_regression(base_est)
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, y)
+        initial_score = float(cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
+            message="Screening algorithms (extras)",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for key, name, base_est, param_dist in candidates:
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+            )
+            pipe = _build_pipeline_single_regression(base_est)
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
@@ -1077,6 +1186,11 @@ def _run_search_two_phase_single_regression(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
@@ -1340,8 +1454,12 @@ def _run_search_two_phase(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s)."""
+    """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s).
+    When algorithms has a single element (from prior tuning), Phase 1 is skipped and we go
+    straight to Optuna fine-tuning. prior_params can seed the first Optuna trial (warm start).
+    """
     tuning_cfg = get_tuning_config()
     algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
@@ -1368,58 +1486,85 @@ def _run_search_two_phase(
             n_jobs_override,
         )
 
-    # Phase 1: coarse screening
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms with coarse hyperparameters",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+    # Skip Phase 1 when single algorithm (prior fine-tune): go straight to Optuna
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for i, (key, name, base_est, param_dist) in enumerate(candidates):
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
-            algorithms_screened=[c[0] for c in candidates],
+            message=f"Fine-tune only ({name}), skipping algorithm screening",
+            algorithms_screened=[key],
         )
         pipe = _build_pipeline(base_est)
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, Y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, Y)
+        initial_score = float(cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
+        # Phase 1: coarse screening
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
-            message=f"{name} best score: {search.best_score_:.4f}",
+            message="Screening algorithms with coarse hyperparameters",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for i, (key, name, base_est, param_dist) in enumerate(candidates):
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+                algorithms_screened=[c[0] for c in candidates],
+            )
+            pipe = _build_pipeline(base_est)
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, Y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+                message=f"{name} best score: {search.best_score_:.4f}",
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
 
     if not _HAS_OPTUNA or len(winners) == 0:
         config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
@@ -1523,6 +1668,11 @@ def _run_search_two_phase(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(
         _optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback]
     )
@@ -1894,6 +2044,7 @@ def run_auto_tune(
     task_total: int = 1,
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -1906,11 +2057,25 @@ def run_auto_tune(
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params: Optional[Dict[str, Any]] = None
+    prior = None if rescreen else _get_prior_tuned_algorithm(model_kind, format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=%s format=%s algorithm=%s (skipping screening, fine-tune only)",
+            model_kind,
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
     best_pipe, best_params, report = _run_search_two_phase(
@@ -1927,6 +2092,7 @@ def run_auto_tune(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
@@ -1945,6 +2111,7 @@ def run_auto_tune_extras(
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -1957,11 +2124,24 @@ def run_auto_tune_extras(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params = None
+    prior = None if rescreen else _get_prior_tuned_algorithm("extras", format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=extras format=%s algorithm=%s (fine-tune only)",
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_single_regression(
@@ -1978,6 +2158,7 @@ def run_auto_tune_extras(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
@@ -2016,8 +2197,9 @@ def _run_search_two_phase_classification(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search for classification (win)."""
+    """Two-phase search for classification (win). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
@@ -2043,55 +2225,81 @@ def _run_search_two_phase_classification(
             validation_method,
             n_jobs_override,
         )
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms (win)",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for key, name, base_est, param_dist in candidates:
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
+            message=f"Fine-tune only ({name}), skipping screening",
         )
         pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, y)
+        initial_score = float(cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
+            message="Screening algorithms (win)",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for key, name, base_est, param_dist in candidates:
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+            )
+            pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
@@ -2182,6 +2390,11 @@ def _run_search_two_phase_classification(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
@@ -2264,6 +2477,7 @@ def run_auto_tune_win(
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase classification search for win; save model only + report."""
     tuning = _get_tuning_config()
@@ -2276,11 +2490,24 @@ def run_auto_tune_win(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params = None
+    prior = None if rescreen else _get_prior_tuned_algorithm("win", format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=win format=%s algorithm=%s (fine-tune only)",
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_classification(
@@ -2297,6 +2524,7 @@ def run_auto_tune_win(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
@@ -2370,6 +2598,11 @@ def main() -> None:
         "--no-autogluon",
         action="store_true",
         help="Skip AutoGluon accuracy boost stage.",
+    )
+    parser.add_argument(
+        "--rescreen",
+        action="store_true",
+        help="Force full algorithm screening even when prior tuned params exist (ignore fine-tune-only mode).",
     )
     args = parser.parse_args()
 
@@ -2474,6 +2707,8 @@ def main() -> None:
                     argv.append("--fast")
                 if args.no_autogluon:
                     argv.append("--no-autogluon")
+                if args.rescreen:
+                    argv.append("--rescreen")
                 cmds.append(argv)
         return cmds
 
@@ -2539,6 +2774,7 @@ def main() -> None:
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
+                                    rescreen=args.rescreen,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2566,6 +2802,7 @@ def main() -> None:
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
+                                    rescreen=args.rescreen,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2602,6 +2839,7 @@ def main() -> None:
                                     validation_method_override,
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
+                                    rescreen=args.rescreen,
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -2630,6 +2868,7 @@ def main() -> None:
                         validation_method_override,
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
+                        rescreen=args.rescreen,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -2675,6 +2914,7 @@ def main() -> None:
                                 validation_method_override,
                                 use_pycaret=use_pycaret,
                                 fast_mode=fast_mode,
+                                rescreen=args.rescreen,
                             )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
@@ -2715,6 +2955,7 @@ def main() -> None:
                         validation_method_override,
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
+                        rescreen=args.rescreen,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

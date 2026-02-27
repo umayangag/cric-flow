@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   FormControl,
+  Grid,
   InputLabel,
   LinearProgress,
   List,
@@ -536,8 +537,38 @@ const EvaluateDbTab: React.FC = () => {
           selectedMatchId={selectedMatchId}
           onSelectMatch={setSelectedMatchId}
         />
-        {selectedMatchId != null && (
-          <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
+        {selectedMatchId != null && (scorecard || scorecardLoading || scorecardError || evaluationResult?.predicted_scorecard) && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+              Scorecard: Actual vs Predicted
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <MatchScorecard
+                  scorecard={scorecard}
+                  loading={scorecardLoading}
+                  error={scorecardError}
+                  title="Actual"
+                  subtitle="Actual match result from database"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <MatchScorecard
+                  scorecard={evaluationResult?.predicted_scorecard ?? null}
+                  loading={evaluating}
+                  error={null}
+                  title="Predicted"
+                  subtitle={
+                    evaluationResult
+                      ? String(evaluationResult.filters.model_mode) === 'latest'
+                        ? 'ML prediction using the latest model'
+                        : 'ML prediction (model trained before match date)'
+                      : 'Run evaluation to see predicted scorecard'
+                  }
+                />
+              </Grid>
+            </Grid>
+          </Box>
         )}
         <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
           <FormControl size="small" sx={{ minWidth: 260 }}>
@@ -640,19 +671,6 @@ const EvaluateDbTab: React.FC = () => {
               ))}
             </List>
           </Paper>
-        )}
-
-        {/* Predicted scorecard (ML) — shown after evaluate */}
-        {evaluationResult?.predicted_scorecard && (
-          <MatchScorecard
-            scorecard={evaluationResult.predicted_scorecard}
-            title="Predicted scorecard"
-            subtitle={
-              String(evaluationResult.filters.model_mode) === 'latest'
-                ? 'ML prediction using the latest model. Features computed at match date (no future data).'
-                : 'ML prediction using model trained only on data before the match date.'
-            }
-          />
         )}
       </Box>
 

@@ -138,3 +138,162 @@
 2026-02-27 20:58:40,104:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/scikitplot/plotters.py:33: DeprecationWarning: This module was deprecated in version 0.3.0 and its functions are spread throughout different modules. Please check the documentation and update your function calls as soon as possible. This module will be removed in 0.4.0
   warnings.warn("This module was deprecated in version 0.3.0 and its functions "
 
+2026-02-27 22:10:55,629:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:10:55,629:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:10:55,630:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:10:55,630:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:11:02,972:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:11:02,973:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:11:03,042:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_mathtext.py:30: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+
+2026-02-27 22:11:03,175:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:11:03,175:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:11:03,175:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:11:03,175:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:11:03,352:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/scikitplot/plotters.py:33: DeprecationWarning: This module was deprecated in version 0.3.0 and its functions are spread throughout different modules. Please check the documentation and update your function calls as soon as possible. This module will be removed in 0.4.0
+  warnings.warn("This module was deprecated in version 0.3.0 and its functions "
+
+2026-02-27 22:11:03,583:INFO:PyCaret RegressionExperiment
+2026-02-27 22:11:03,583:INFO:Logging name: reg-default-name
+2026-02-27 22:11:03,583:INFO:ML Usecase: MLUsecase.REGRESSION
+2026-02-27 22:11:03,583:INFO:version 3.3.2
+2026-02-27 22:11:03,583:INFO:Initializing setup()
+2026-02-27 22:11:03,583:INFO:self.USI: 7201
+2026-02-27 22:11:03,583:INFO:self._variable_keys: {'_ml_usecase', 'data', 'X_test', 'target_param', 'fold_generator', 'y_test', 'transform_target_param', 'y_train', 'gpu_param', 'exp_id', 'fold_shuffle_param', 'exp_name_log', 'pipeline', 'fold_groups_param', '_available_plots', 'idx', 'logging_param', 'gpu_n_jobs_param', 'n_jobs_param', 'USI', 'memory', 'X', 'html_param', 'seed', 'y', 'log_plots_param', 'X_train'}
+2026-02-27 22:11:03,583:INFO:Checking environment
+2026-02-27 22:11:03,583:INFO:python_version: 3.9.6
+2026-02-27 22:11:03,583:INFO:python_build: ('default', 'Dec  2 2025 07:27:58')
+2026-02-27 22:11:03,583:INFO:machine: arm64
+2026-02-27 22:11:03,606:INFO:platform: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:03,607:INFO:Memory: svmem(total=51539607552, available=17882349568, percent=65.3, used=20167016448, free=173899776, active=17711808512, inactive=17632083968, wired=2455207936)
+2026-02-27 22:11:03,607:INFO:Physical Core: 12
+2026-02-27 22:11:03,607:INFO:Logical Core: 12
+2026-02-27 22:11:03,607:INFO:Checking libraries
+2026-02-27 22:11:03,607:INFO:System:
+2026-02-27 22:11:03,607:INFO:    python: 3.9.6 (default, Dec  2 2025, 07:27:58)  [Clang 17.0.0 (clang-1700.6.3.2)]
+2026-02-27 22:11:03,607:INFO:executable: /Users/umayanga/go/src/cric-flow/ml-service/.venv/bin/python
+2026-02-27 22:11:03,607:INFO:   machine: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:03,607:INFO:PyCaret required dependencies:
+2026-02-27 22:11:34,977:INFO:PyCaret RegressionExperiment
+2026-02-27 22:11:34,977:INFO:Logging name: reg-default-name
+2026-02-27 22:11:34,977:INFO:ML Usecase: MLUsecase.REGRESSION
+2026-02-27 22:11:34,977:INFO:version 3.3.2
+2026-02-27 22:11:34,977:INFO:Initializing setup()
+2026-02-27 22:11:34,977:INFO:self.USI: fe70
+2026-02-27 22:11:34,977:INFO:self._variable_keys: {'_ml_usecase', 'data', 'X_test', 'target_param', 'fold_generator', 'y_test', 'transform_target_param', 'y_train', 'gpu_param', 'exp_id', 'fold_shuffle_param', 'exp_name_log', 'pipeline', 'fold_groups_param', '_available_plots', 'idx', 'logging_param', 'gpu_n_jobs_param', 'n_jobs_param', 'USI', 'memory', 'X', 'html_param', 'seed', 'y', 'log_plots_param', 'X_train'}
+2026-02-27 22:11:34,977:INFO:Checking environment
+2026-02-27 22:11:34,977:INFO:python_version: 3.9.6
+2026-02-27 22:11:34,977:INFO:python_build: ('default', 'Dec  2 2025 07:27:58')
+2026-02-27 22:11:34,977:INFO:machine: arm64
+2026-02-27 22:11:34,977:INFO:platform: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:34,977:INFO:Memory: svmem(total=51539607552, available=17841504256, percent=65.4, used=20205174784, free=174358528, active=17591287808, inactive=17585029120, wired=2613886976)
+2026-02-27 22:11:34,977:INFO:Physical Core: 12
+2026-02-27 22:11:34,977:INFO:Logical Core: 12
+2026-02-27 22:11:34,977:INFO:Checking libraries
+2026-02-27 22:11:34,977:INFO:System:
+2026-02-27 22:11:34,977:INFO:    python: 3.9.6 (default, Dec  2 2025, 07:27:58)  [Clang 17.0.0 (clang-1700.6.3.2)]
+2026-02-27 22:11:34,977:INFO:executable: /Users/umayanga/go/src/cric-flow/ml-service/.venv/bin/python
+2026-02-27 22:11:34,977:INFO:   machine: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:34,977:INFO:PyCaret required dependencies:
+2026-02-27 22:11:42,332:INFO:PyCaret ClassificationExperiment
+2026-02-27 22:11:42,332:INFO:Logging name: clf-default-name
+2026-02-27 22:11:42,332:INFO:ML Usecase: MLUsecase.CLASSIFICATION
+2026-02-27 22:11:42,332:INFO:version 3.3.2
+2026-02-27 22:11:42,332:INFO:Initializing setup()
+2026-02-27 22:11:42,332:INFO:self.USI: 68f3
+2026-02-27 22:11:42,332:INFO:self._variable_keys: {'_ml_usecase', 'data', 'X_test', 'target_param', 'fold_generator', 'y_test', 'y_train', 'gpu_param', 'exp_id', 'fold_shuffle_param', 'exp_name_log', 'pipeline', 'fold_groups_param', '_available_plots', 'idx', 'logging_param', 'gpu_n_jobs_param', 'n_jobs_param', 'USI', 'fix_imbalance', 'memory', 'X', 'html_param', 'is_multiclass', 'seed', 'y', 'log_plots_param', 'X_train'}
+2026-02-27 22:11:42,332:INFO:Checking environment
+2026-02-27 22:11:42,332:INFO:python_version: 3.9.6
+2026-02-27 22:11:42,332:INFO:python_build: ('default', 'Dec  2 2025 07:27:58')
+2026-02-27 22:11:42,332:INFO:machine: arm64
+2026-02-27 22:11:42,332:INFO:platform: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:42,332:INFO:Memory: svmem(total=51539607552, available=17458921472, percent=66.1, used=20577959936, free=60751872, active=17411653632, inactive=17343332352, wired=3166306304)
+2026-02-27 22:11:42,332:INFO:Physical Core: 12
+2026-02-27 22:11:42,332:INFO:Logical Core: 12
+2026-02-27 22:11:42,332:INFO:Checking libraries
+2026-02-27 22:11:42,332:INFO:System:
+2026-02-27 22:11:42,332:INFO:    python: 3.9.6 (default, Dec  2 2025, 07:27:58)  [Clang 17.0.0 (clang-1700.6.3.2)]
+2026-02-27 22:11:42,332:INFO:executable: /Users/umayanga/go/src/cric-flow/ml-service/.venv/bin/python
+2026-02-27 22:11:42,332:INFO:   machine: macOS-26.3-arm64-arm-64bit
+2026-02-27 22:11:42,332:INFO:PyCaret required dependencies:
+2026-02-27 22:12:44,536:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:88: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+
+2026-02-27 22:12:44,537:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_fontconfig_pattern.py:92: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+
+2026-02-27 22:12:44,610:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/matplotlib/_mathtext.py:30: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+
+2026-02-27 22:12:44,787:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:12:44,787:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:12:44,787:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:12:44,787:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2026-02-27 22:12:45,028:WARNING:/Users/umayanga/go/src/cric-flow/ml-service/.venv/lib/python3.9/site-packages/scikitplot/plotters.py:33: DeprecationWarning: This module was deprecated in version 0.3.0 and its functions are spread throughout different modules. Please check the documentation and update your function calls as soon as possible. This module will be removed in 0.4.0
+  warnings.warn("This module was deprecated in version 0.3.0 and its functions "
+
