@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -671,8 +672,8 @@ func missingPrecomputedKeys(precomp map[int64]map[string]float64, playerIDs []in
 
 // ComputeFeaturesAtCutoffNoMatch returns a feature map per player using only precomputed overall form and
 // consistency from snapshot tables (per format). Used when there is no match context (matchID 0). Venue and
-// opposition are set to 0 (no context). Weather is 0 until weather data is available. Returns error if any
-// required precomputed value (batting_form, batting_consistency, bowling_form, bowling_consistency) is missing.
+// opposition are set to 0 (no context). Weather is 0 until weather data is available. Missing precomputed
+// values (e.g. new/debut players) are filled with 0 and a warning is logged; run precompute for complete data.
 func ComputeFeaturesAtCutoffNoMatch(
 	ctx context.Context,
 	cutoff time.Time,
@@ -695,11 +696,23 @@ func ComputeFeaturesAtCutoffNoMatch(
 		precomp = make(map[int64]map[string]float64)
 	}
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysNoMatch); len(m) > 0 {
-		return nil, fmt.Errorf(
-			"precomputed features required (run precompute for format %s): %s",
-			format,
-			strings.Join(m, "; "),
+		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
+			slog.String("format", format),
+			slog.String("missing", strings.Join(m, "; ")),
 		)
+		// Ensure keys exist so pc[key] returns 0 when building feats
+		for _, pid := range playerIDs {
+			pc := precomp[pid]
+			if pc == nil {
+				precomp[pid] = make(map[string]float64)
+				continue
+			}
+			for _, k := range requiredPrecomputedKeysNoMatch {
+				if _, ok := pc[k]; !ok {
+					pc[k] = 0
+				}
+			}
+		}
 	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {
@@ -736,9 +749,9 @@ func ComputeFeaturesAtCutoffNoMatch(
 }
 
 // ComputeFeaturesAtCutoffForMatch returns a feature map per player using only precomputed form, consistency,
-// venue, and opposition from the snapshot tables (populated by the precompute cmd per format). No averages or
-// on-the-fly computation: if any required value is missing, returns error. Weather is set to 0 until weather
-// data is available. Season comes from match context.
+// venue, and opposition from the snapshot tables (populated by the precompute cmd per format). Missing
+// precomputed values (e.g. new/debut players with no prior history) are filled with 0 and a warning is logged;
+// run precompute for complete data. Weather is set to 0 until weather data is available. Season comes from match context.
 func ComputeFeaturesAtCutoffForMatch(
 	ctx context.Context,
 	matchID int64,
@@ -778,10 +791,23 @@ func ComputeFeaturesAtCutoffForMatch(
 		requiredMatch = append(requiredMatch, "batting_opposition", "bowling_opposition", "opposition")
 	}
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredMatch); len(m) > 0 {
-		return nil, fmt.Errorf(
-			"precomputed features required (run precompute for this format): %s",
-			strings.Join(m, "; "),
+		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
+			slog.Int64("match_id", matchID),
+			slog.String("missing", strings.Join(m, "; ")),
 		)
+		// Ensure keys exist so pc[key] returns 0 when building feats
+		for _, pid := range playerIDs {
+			pc := precomp[pid]
+			if pc == nil {
+				precomp[pid] = make(map[string]float64)
+				continue
+			}
+			for _, k := range requiredMatch {
+				if _, ok := pc[k]; !ok {
+					pc[k] = 0
+				}
+			}
+		}
 	}
 	out := make(map[int64]map[string]float64)
 	for _, pid := range playerIDs {

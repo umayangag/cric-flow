@@ -335,9 +335,10 @@ def _predict_players_with_features(
                 cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
             )
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
-        logger.info(
+        logger.warning(
             "backtest_predict.train_on_the_fly.triggered",
-            format=fmt_upper,
+            msg="TRAIN_ON_THE_FLY: starting (CPU/RAM intensive) - fetches data from go-app and trains models in memory",
+            fmt=fmt_upper,
             cutoff_iso=cutoff_iso,
             go_app_url=go_app_url,
             player_count=len(player_ids),

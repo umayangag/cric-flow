@@ -71,6 +71,17 @@ func TestValidateTeamSettings(t *testing.T) {
 			}(),
 			err: "default bowlers",
 		},
+		{
+			name: "default batters negative",
+			cfg: func() *Config {
+				c := &Config{}
+				c.Team.MinBowlers = 5
+				c.Team.DefaultBatters = -1
+				c.Predictor.TeamSize = 11
+				return c
+			}(),
+			err: "default batters",
+		},
 	}
 
 	for _, tc := range cases {
@@ -293,4 +304,33 @@ func TestEffectiveSimulationCVs(t *testing.T) {
 	require.Equal(t, 0.3, r)
 	require.Equal(t, DefaultSimulationWicketsCV, w)
 	require.Equal(t, DefaultSimulationEconomyCV, e)
+}
+
+func TestConfigServerHelpers(t *testing.T) {
+	// Server helpers return config value or default when nil/zero
+	require.Equal(t, DefaultServerMLHealthTimeoutSec, ServerMLHealthTimeoutSec(nil))
+	require.Equal(t, "http://localhost:8000", ServerMLBaseURLFallback(nil))
+	require.Equal(t, DefaultServerListenAddress, ServerListenAddress(nil))
+
+	cfg := &Config{}
+	cfg.Server.MLHealthTimeoutSec = 15
+	cfg.Server.MLBaseURLFallback = "http://ml:8000"
+	cfg.Server.ListenAddress = ":9000"
+	require.Equal(t, 15, ServerMLHealthTimeoutSec(cfg))
+	require.Equal(t, "http://ml:8000", ServerMLBaseURLFallback(cfg))
+	require.Equal(t, ":9000", ServerListenAddress(cfg))
+}
+
+func TestConfigBacktestAndOpsHelpers(t *testing.T) {
+	require.Equal(t, DefaultBacktestListDefaultLimit, BacktestListDefaultLimit(nil))
+	require.Equal(t, DefaultBacktestListMaxLimit, BacktestListMaxLimit(nil))
+	require.Equal(t, DefaultOpsMigrationsPageDefault, OpsMigrationsPageDefault(nil))
+
+	cfg := &Config{}
+	cfg.Backtest.ListDefaultLimit = 25
+	cfg.Backtest.ListMaxLimit = 100
+	cfg.Ops.MigrationsPageDefault = 20
+	require.Equal(t, 25, BacktestListDefaultLimit(cfg))
+	require.Equal(t, 100, BacktestListMaxLimit(cfg))
+	require.Equal(t, 20, OpsMigrationsPageDefault(cfg))
 }
