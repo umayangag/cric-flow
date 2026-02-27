@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
-	"github.com/umayangag/cric-flow/go-app/internal/resources"
 )
 
 func TestToFeatureInnings(t *testing.T) {
@@ -39,9 +38,9 @@ func TestToFeatureInnings_Empty(t *testing.T) {
 func TestResolveConcurrencyLimit_PositiveValue(t *testing.T) {
 	t.Parallel()
 	// When requestedLimit > 0, it should be returned as-is (capped by resources ceiling elsewhere).
-	got := resolveConcurrencyLimit(5, resources.KindPrecompute)
+	got := resolveConcurrencyLimit(5)
 	if got != 5 {
-		t.Errorf("resolveConcurrencyLimit(5, KindPrecompute) = %d, want 5", got)
+		t.Errorf("resolveConcurrencyLimit(5) = %d, want 5", got)
 	}
 }
 
@@ -49,8 +48,8 @@ func TestResolveConcurrencyLimit_UsesResourcesWhenZero(t *testing.T) {
 	t.Parallel()
 	// When requestedLimit is 0, resolveConcurrencyLimit delegates to resources.GetLimit.
 	// GetLimit returns at least 1, so we verify we get a positive number.
-	got := resolveConcurrencyLimit(0, resources.KindPrecompute)
+	got := resolveConcurrencyLimit(0)
 	if got < 1 {
-		t.Errorf("resolveConcurrencyLimit(0, KindPrecompute) = %d, want >= 1", got)
+		t.Errorf("resolveConcurrencyLimit(0) = %d, want >= 1", got)
 	}
 }
