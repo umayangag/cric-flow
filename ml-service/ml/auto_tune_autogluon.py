@@ -9,9 +9,8 @@ Saves predictor to a directory + wrapper joblib for go-app compatibility.
 from __future__ import annotations
 
 import logging
-import os
 import tempfile
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd

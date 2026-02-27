@@ -863,9 +863,7 @@ def _run_search_two_phase_single_regression(
                 random_state=random_state,
             )
         elif alg == "mlp":
-            sizes = trial.suggest_categorical(
-                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)]
-            )
+            sizes = trial.suggest_categorical("hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)])
             alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
             lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
             est = MLPRegressor(
@@ -1953,9 +1951,7 @@ def _run_search_two_phase_classification(
                 random_state=random_state,
             )
         elif alg == "mlp":
-            sizes = trial.suggest_categorical(
-                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)]
-            )
+            sizes = trial.suggest_categorical("hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)])
             alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
             lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
             est = MLPClassifier(
@@ -2326,8 +2322,15 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_extras(
-                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override,
-                                    use_pycaret=use_pycaret, fast_mode=fast_mode, use_autogluon=use_autogluon,
+                                    X,
+                                    Y,
+                                    fcode,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
+                                    use_autogluon=use_autogluon,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2346,8 +2349,15 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_win(
-                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override,
-                                    use_pycaret=use_pycaret, fast_mode=fast_mode, use_autogluon=use_autogluon,
+                                    X,
+                                    Y,
+                                    fcode,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
+                                    use_autogluon=use_autogluon,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2375,8 +2385,15 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune(
-                                    model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override,
-                                    use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                    model_kind,
+                                    X,
+                                    Y,
+                                    fcode,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -2396,8 +2413,15 @@ def main() -> None:
                         logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                         continue
                     report = run_auto_tune(
-                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override,
-                        use_pycaret=use_pycaret, fast_mode=fast_mode,
+                        model_kind,
+                        X,
+                        Y,
+                        format_suffix,
+                        out_dir,
+                        algorithms_override,
+                        validation_method_override,
+                        use_pycaret=use_pycaret,
+                        fast_mode=fast_mode,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -2434,8 +2458,15 @@ def main() -> None:
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune(
-                                model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override,
-                                use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                model_kind,
+                                X,
+                                Y,
+                                fcode,
+                                out_dir,
+                                algorithms_override,
+                                validation_method_override,
+                                use_pycaret=use_pycaret,
+                                fast_mode=fast_mode,
                             )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
@@ -2467,8 +2498,15 @@ def main() -> None:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue
                     report = run_auto_tune(
-                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override,
-                        use_pycaret=use_pycaret, fast_mode=fast_mode,
+                        model_kind,
+                        X,
+                        Y,
+                        format_suffix,
+                        out_dir,
+                        algorithms_override,
+                        validation_method_override,
+                        use_pycaret=use_pycaret,
+                        fast_mode=fast_mode,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

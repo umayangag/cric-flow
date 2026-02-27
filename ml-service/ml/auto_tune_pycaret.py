@@ -20,8 +20,10 @@ logger = logging.getLogger(__name__)
 
 _HAS_PYCARET = False
 try:
-    from pycaret.regression import compare_models, setup as setup_regression
-    from pycaret.classification import compare_models as compare_models_clf, setup as setup_classification
+    from pycaret.classification import compare_models as compare_models_clf
+    from pycaret.classification import setup as setup_classification
+    from pycaret.regression import compare_models
+    from pycaret.regression import setup as setup_regression
 
     _HAS_PYCARET = True
 except ImportError:
@@ -117,8 +119,6 @@ def run_pycaret_ranking_regression(
         y_flat = y.ravel() if y.ndim > 1 and y.shape[1] > 1 else (y.ravel() if y.ndim > 1 else y)
         df = pd.DataFrame(X)
         df["_target"] = y_flat
-        n_cols = X.shape[1]
-        feature_cols = [str(i) for i in range(n_cols)]
 
         setup_kwargs: Dict[str, Any] = {
             "data": df,
@@ -187,8 +187,6 @@ def run_pycaret_ranking_classification(
         y_flat = np.asarray(y).ravel().astype(int)
         df = pd.DataFrame(X)
         df["_target"] = y_flat
-        n_cols = X.shape[1]
-        feature_cols = [str(i) for i in range(n_cols)]
 
         setup_kwargs = {
             "data": df,
