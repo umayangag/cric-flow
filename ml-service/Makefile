@@ -7,7 +7,7 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Raise as untested CLI/training modules get tests.
-COV_MIN?=50
+COV_MIN?=60
 
 .PHONY: all venv install compile-requirements run train-batting train-bowling train-fielding train-extras train-win train-models
 .PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
