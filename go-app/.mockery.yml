@@ -27,6 +27,9 @@ packages:
       dir: internal/db/mocks
       pkgname: mocks
     interfaces:
+      DB: {}
+      Row: {}
+      Rows: {}
       DatasetRepo: {}
       MatchRepo: {}
   github.com/umayangag/cric-flow/go-app/internal/cricsheet:

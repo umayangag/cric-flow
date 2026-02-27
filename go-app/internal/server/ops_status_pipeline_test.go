@@ -26,7 +26,7 @@ func (r scanBoolRow) Scan(dest ...any) error {
 	return nil
 }
 
-func setupPipelineDB(t *testing.T, mockDB *mocks.DBMock) {
+func setupPipelineDB(t *testing.T, mockDB *mocks.MockDB) {
 	t.Helper()
 	db.SetDB(mockDB)
 	t.Cleanup(func() { db.SetDB(nil) })
@@ -37,23 +37,23 @@ func TestCanRunPipelineStep(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		setup   func(*mocks.DBMock)
+		setup   func(*mocks.MockDB)
 		stepID  string
 		wantOk  bool
 		wantMsg string
 	}{
 		{
 			name:    "unknown_step_returns_false",
-			setup:   func(*mocks.DBMock) { db.SetDB(nil) },
+			setup:   func(*mocks.MockDB) { db.SetDB(nil) },
 			stepID:  "unknown_step",
 			wantOk:  false,
 			wantMsg: "unknown step",
 		},
 		{
 			name: "another_running_returns_false",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusInProgress).
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 					Return(scanBoolRow(true))
 			},
 			stepID:  "import",
@@ -62,9 +62,9 @@ func TestCanRunPipelineStep(t *testing.T) {
 		},
 		{
 			name: "import_no_previous_runnable",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusInProgress).
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 					Return(scanBoolRow(false))
 			},
 			stepID:  "import",
@@ -73,12 +73,16 @@ func TestCanRunPipelineStep(t *testing.T) {
 		},
 		{
 			name: "precompute_prev_done_runnable",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, "precompute-features", tracking.StatusInProgress).
-					Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).
-					Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+				})).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "cricsheet-import" && arr[1] == tracking.StatusCompleted
+				})).Return(scanBoolRow(true))
 			},
 			stepID:  "precompute",
 			wantOk:  true,
@@ -86,12 +90,16 @@ func TestCanRunPipelineStep(t *testing.T) {
 		},
 		{
 			name: "precompute_prev_not_done_not_runnable",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, "precompute-features", tracking.StatusInProgress).
-					Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "cricsheet-import", tracking.StatusCompleted).
-					Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+				})).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "cricsheet-import" && arr[1] == tracking.StatusCompleted
+				})).Return(scanBoolRow(false))
 			},
 			stepID:  "precompute",
 			wantOk:  false,
@@ -99,16 +107,24 @@ func TestCanRunPipelineStep(t *testing.T) {
 		},
 		{
 			name: "auto_tune_allowed_when_no_one_running",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, "ml-auto-tune", tracking.StatusInProgress).
-					Return(scanBoolRow(false))
-				m.On("QueryRow", mock.Anything, mock.Anything, "train-fielding", tracking.StatusCompleted).
-					Return(scanBoolRow(true))
-				m.On("QueryRow", mock.Anything, mock.Anything, "train-extras", tracking.StatusCompleted).
-					Return(scanBoolRow(true))
-				m.On("QueryRow", mock.Anything, mock.Anything, "train-win", tracking.StatusCompleted).
-					Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "ml-auto-tune" && arr[1] == tracking.StatusInProgress
+				})).Return(scanBoolRow(false))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "train-fielding" && arr[1] == tracking.StatusCompleted
+				})).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "train-extras" && arr[1] == tracking.StatusCompleted
+				})).Return(scanBoolRow(true))
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "train-win" && arr[1] == tracking.StatusCompleted
+				})).Return(scanBoolRow(true))
 			},
 			stepID:  "auto_tune",
 			wantOk:  true,
@@ -118,7 +134,7 @@ func TestCanRunPipelineStep(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockDB := &mocks.DBMock{}
+			mockDB := &mocks.MockDB{}
 			if tc.setup != nil {
 				tc.setup(mockDB)
 			}

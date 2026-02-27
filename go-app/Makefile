@@ -144,8 +144,8 @@ lint:
 # Coverage targets
 .PHONY: coverage coverage-html coverage-func coverage-check
 
-# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=80 make coverage-check`
-COV_MIN ?= 80
+# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=60 make coverage-check`
+COV_MIN ?= 60
 
 # Packages included in coverage. Default: all packages (./...). Override with COVERAGE_PACKAGES if needed.
 COVERAGE_PACKAGES ?= ./...

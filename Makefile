@@ -331,7 +331,17 @@ e2e-backtest-smoke: seed-fixtures
 	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.actual' >/dev/null; \
-	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null
+	# Options endpoints
+	@echo "[SMOKE] Checking options/formats"; \
+	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/options/formats" | jq -e 'type == "array"' >/dev/null
+	# Accuracy trend (may return empty; must return 200)
+	@echo "[SMOKE] Checking backtest/accuracy-trend"; \
+	STATUS=$$(curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS"); \
+	if [ "$$STATUS" != "200" ]; then echo "accuracy-trend HTTP $$STATUS"; exit 2; fi
+	# Model stats (proxy to ML service)
+	@echo "[SMOKE] Checking ml/model-stats"; \
+	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/ml/model-stats" | jq -e '.models_dir and (.models | type) == "array"' >/dev/null
 	echo "[SMOKE] OK"
 
 # Run ML-service E2E pytest tests (requires ML service and optionally go-api to be up; set RUN_E2E=1)

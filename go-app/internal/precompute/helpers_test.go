@@ -40,7 +40,7 @@ func (r *stringRows) Close() {}
 
 func (r *stringRows) Err() error { return nil }
 
-func setupPrecomputeDB(t *testing.T, mockDB *mocks.DBMock) {
+func setupPrecomputeDB(t *testing.T, mockDB *mocks.MockDB) {
 	t.Helper()
 	db.SetDB(mockDB)
 	t.Cleanup(func() { db.SetDB(nil) })
@@ -51,7 +51,7 @@ func TestDiscoverFormatCodes(t *testing.T) {
 
 	cases := []struct {
 		name     string
-		setup    func(*mocks.DBMock)
+		setup    func(*mocks.MockDB)
 		provided []string
 		want     []string
 		wantErr  bool
@@ -65,7 +65,7 @@ func TestDiscoverFormatCodes(t *testing.T) {
 		},
 		{
 			name: "empty_uses_db_returns_codes",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPrecomputeDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything).
 					Return(&stringRows{vals: []string{"TEST", "ODI", "T20"}}, nil)
@@ -76,7 +76,7 @@ func TestDiscoverFormatCodes(t *testing.T) {
 		},
 		{
 			name: "empty_single_code",
-			setup: func(m *mocks.DBMock) {
+			setup: func(m *mocks.MockDB) {
 				setupPrecomputeDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything).Return(&stringRows{vals: []string{"T20I"}}, nil)
 			},
@@ -89,7 +89,7 @@ func TestDiscoverFormatCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setup != nil {
-				mockDB := &mocks.DBMock{}
+				mockDB := &mocks.MockDB{}
 				tc.setup(mockDB)
 			}
 			got, err := discoverFormatCodes(context.Background(), tc.provided)
