@@ -93,9 +93,6 @@ def suggested_n_jobs(kind: str = "training") -> int:
             pass
 
     limit_mb = _memory_limit_mb()
-    # When limit is unknown (e.g. subprocess in container without env/cgroup), training uses 1 job to avoid OOM
-    if kind == "training" and limit_mb <= 0:
-        cap = min(cap, 1)
     if limit_mb > 0:
         res = _get_resources_config()
         if kind == "training":
