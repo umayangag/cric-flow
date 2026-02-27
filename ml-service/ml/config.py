@@ -337,6 +337,7 @@ def get_tuning_config() -> Dict[str, Any]:
     if validation_method not in ("kfold", "walk_forward"):
         validation_method = "walk_forward"
 
+    stages = tuning.get("stages") or {}
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -346,6 +347,7 @@ def get_tuning_config() -> Dict[str, Any]:
         "search_space": tuning.get("search_space"),
         "algorithms": algorithms,
         "validation_method": validation_method,
+        "stages": stages if isinstance(stages, dict) else {},
     }
 
 

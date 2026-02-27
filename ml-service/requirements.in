@@ -11,3 +11,7 @@ structlog
 httpx
 psycopg2-binary
 python-dotenv
+
+# Auto-tune enhancements (optional: auto_tune works without these via fallback)
+pycaret
+autogluon

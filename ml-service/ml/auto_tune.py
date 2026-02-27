@@ -68,6 +68,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit, cross_val_predict, cross_val_score
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -78,6 +79,17 @@ if _ML_ROOT not in sys.path:
 
 from ml import auto_tune_progress as _progress
 from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
+
+try:
+    from ml import auto_tune_pycaret as _pycaret
+except ImportError:
+    _pycaret = None
+try:
+    from ml import auto_tune_autogluon as _autogluon
+    from ml.autogluon_wrapper import AutogluonPredictorWrapper
+except ImportError:
+    _autogluon = None
+    AutogluonPredictorWrapper = None
 
 try:
     import optuna
@@ -182,6 +194,123 @@ def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
 
 
+def _maybe_run_pycaret_ranking(
+    X: np.ndarray,
+    Y: np.ndarray,
+    task_type: str,
+    use_pycaret: Optional[bool],
+    model_kind: str,
+    format_suffix: Optional[str],
+    task_index: int,
+    task_total: int,
+) -> Optional[List[str]]:
+    """Run PyCaret algorithm ranking when enabled. Returns algorithms override or None."""
+    if use_pycaret is False:
+        return None
+    tuning = _get_tuning_config()
+    stages = tuning.get("stages") or {}
+    pycaret_cfg = stages.get("pycaret") or {}
+    if not pycaret_cfg.get("enabled", False):
+        return None
+    if _pycaret is None or not _pycaret.is_available():
+        return None
+    n_select = int(pycaret_cfg.get("n_select", 3))
+    cv_splits = tuning.get("cv_splits", 5)
+    random_state = tuning.get("random_state", 42)
+    _progress.write_progress(
+        phase="pycaret",
+        model_kind=model_kind,
+        format_suffix=format_suffix,
+        task_index=task_index,
+        task_total=task_total,
+        message="PyCaret algorithm ranking",
+    )
+    if task_type == "regression":
+        y_use = Y[:, 0] if Y.ndim > 1 and Y.shape[1] > 1 else (Y.ravel() if Y.ndim > 1 else Y)
+        algorithms, ranking, ok = _pycaret.run_pycaret_ranking_regression(
+            X, y_use, cv_splits=cv_splits, n_select=n_select, random_state=random_state
+        )
+    else:
+        y_use = np.asarray(Y).ravel().astype(int)
+        algorithms, ranking, ok = _pycaret.run_pycaret_ranking_classification(
+            X, y_use, cv_splits=cv_splits, n_select=n_select, random_state=random_state
+        )
+    if ok and algorithms:
+        _progress.write_progress(
+            phase="pycaret",
+            model_kind=model_kind,
+            format_suffix=format_suffix,
+            task_index=task_index,
+            task_total=task_total,
+            message=f"PyCaret top algorithms: {algorithms}",
+            algorithms_screened=algorithms,
+        )
+        return algorithms
+    return None
+
+
+def _maybe_run_autogluon_and_compare(
+    X: np.ndarray,
+    y: np.ndarray,
+    task_type: str,
+    use_autogluon: Optional[bool],
+    model_kind: str,
+    format_suffix: Optional[str],
+    out_dir: str,
+    optuna_best_score: float,
+) -> Tuple[bool, Optional[Any], Dict[str, Any]]:
+    """Run AutoGluon when enabled; compare to Optuna score. Returns (autogluon_wins, wrapper_or_none, report_updates)."""
+    import shutil
+
+    if use_autogluon is False or AutogluonPredictorWrapper is None:
+        return False, None, {}
+    tuning = _get_tuning_config()
+    stages = tuning.get("stages") or {}
+    ag_cfg = stages.get("autogluon") or {}
+    if not ag_cfg.get("enabled", False):
+        return False, None, {}
+    models_list = ag_cfg.get("models") or []
+    if model_kind not in models_list:
+        return False, None, {}
+    if _autogluon is None or not _autogluon.is_available():
+        return False, None, {}
+
+    time_limit = int(ag_cfg.get("time_limit_seconds", 300))
+    presets = str(ag_cfg.get("presets", "medium_quality"))
+
+    _progress.write_progress(
+        phase="autogluon",
+        model_kind=model_kind,
+        format_suffix=format_suffix,
+        task_index=0,
+        task_total=1,
+        message="Fitting AutoGluon",
+    )
+
+    if task_type == "regression":
+        _, ag_score, persist_path, ok = _autogluon.run_autogluon_regression(
+            X, y, time_limit_seconds=time_limit, presets=presets
+        )
+    else:
+        _, ag_score, persist_path, ok = _autogluon.run_autogluon_classification(
+            X, y, time_limit_seconds=time_limit, presets=presets
+        )
+
+    ag_better = ok and ag_score is not None and ag_score > optuna_best_score
+    if not ok or not ag_better or not persist_path:
+        return False, None, {"autogluon_tried": True, "autogluon_score": ag_score, "autogluon_wins": False}
+
+    fmt = (format_suffix or "LEGACY").replace(" ", "_")
+    ag_dir = os.path.join(out_dir, f"autogluon_{model_kind}_{fmt}")
+    os.makedirs(out_dir, exist_ok=True)
+    if os.path.isdir(ag_dir):
+        shutil.rmtree(ag_dir)
+    shutil.copytree(persist_path, ag_dir)
+
+    wrapper = AutogluonPredictorWrapper(ag_dir, is_regression=(task_type == "regression"))
+    return True, wrapper, {"autogluon_tried": True, "autogluon_score": ag_score, "autogluon_wins": True}
+
+
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
     """Resolve n_jobs: override if set, else config, else env AUTO_TUNE_N_JOBS. When result is -1, use resource-aware suggested_n_jobs('tuning') for multi-CPU."""
     if n_jobs_override is not None and n_jobs_override >= 1:
@@ -199,8 +328,8 @@ def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int]
     return max(1, int(n_jobs))
 
 
-# Algorithm keys for filtering: rf, gb, et, hgb, quantile, stacked
-AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "et", "hgb", "quantile", "stacked"})
+# Algorithm keys for filtering: rf, gb, et, hgb, quantile, stacked, mlp
+AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "et", "hgb", "quantile", "stacked", "mlp"})
 
 
 # Phase 1: coarse param grids for algorithm screening (few trials, large steps)
@@ -225,6 +354,18 @@ _PHASE1_COARSE_HGB = {
     "est__estimator__max_depth": [4, 8, 12],
     "est__estimator__learning_rate": [0.05, 0.15],
     "est__estimator__min_samples_leaf": [2, 8],
+}
+_PHASE1_COARSE_MLP_REG = {
+    "est__estimator__hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
+    "est__estimator__activation": ["relu"],
+    "est__estimator__alpha": [0.0001, 0.001],
+    "est__estimator__max_iter": [500, 1000],
+}
+_PHASE1_COARSE_MLP_CLF = {
+    "est__hidden_layer_sizes": [(64, 64), (128, 64)],
+    "est__activation": ["relu"],
+    "est__alpha": [0.0001, 0.001],
+    "est__max_iter": [500, 1000],
 }
 
 
@@ -510,6 +651,10 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
             )
         except (ValueError, KeyError):
             pass
+    if "mlp" in allow:
+        p = dict(_PHASE1_COARSE_MLP_REG)
+        p["est__estimator__random_state"] = [rs]
+        candidates.append(("mlp", "MLPRegressor", MLPRegressor(early_stopping=True, random_state=rs), p))
     return candidates
 
 
@@ -532,6 +677,10 @@ def _phase1_candidates_regression_single(allow: frozenset) -> List[Tuple[str, st
             p = _coarse_to_single_prefix(dict(coarse))
             p["est__random_state"] = [rs]
             candidates.append((key, name, est_factory(), p))
+    if "mlp" in allow:
+        p = _coarse_to_single_prefix(dict(_PHASE1_COARSE_MLP_REG))
+        p["est__random_state"] = [rs]
+        candidates.append(("mlp", "MLPRegressor", MLPRegressor(early_stopping=True, random_state=rs), p))
     return candidates
 
 
@@ -549,6 +698,10 @@ def _phase1_candidates_classification(allow: frozenset) -> List[Tuple[str, str, 
             p = _coarse_to_single_prefix(dict(coarse))
             p["est__random_state"] = [rs]
             candidates.append((key, name, est_factory(), p))
+    if "mlp" in allow:
+        p = dict(_PHASE1_COARSE_MLP_CLF)
+        p["est__random_state"] = [rs]
+        candidates.append(("mlp", "MLPClassifier", MLPClassifier(early_stopping=True, random_state=rs), p))
     return candidates
 
 
@@ -596,6 +749,10 @@ def _run_search_two_phase_single_regression(
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
         algs = ["rf", "gb", "et", "hgb"]
+        stages = tuning_cfg.get("stages") or {}
+        neural = stages.get("neural") or {}
+        if neural.get("mlp", True):
+            algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
@@ -705,6 +862,20 @@ def _run_search_two_phase_single_regression(
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
             )
+        elif alg == "mlp":
+            sizes = trial.suggest_categorical(
+                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)]
+            )
+            alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
+            lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
+            est = MLPRegressor(
+                hidden_layer_sizes=sizes,
+                alpha=alpha,
+                learning_rate_init=lr_init,
+                max_iter=1000,
+                early_stopping=True,
+                random_state=random_state,
+            )
         else:
             est = HistGradientBoostingRegressor(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
@@ -762,6 +933,15 @@ def _run_search_two_phase_single_regression(
                 n_estimators=p["n_estimators"],
                 max_depth=p["max_depth"],
                 min_samples_leaf=p["min_samples_leaf"],
+                random_state=random_state,
+            )
+        elif alg == "mlp":
+            est = MLPRegressor(
+                hidden_layer_sizes=p.get("hidden_layer_sizes", (128, 64)),
+                alpha=p.get("alpha", 0.001),
+                learning_rate_init=p.get("learning_rate_init", 0.001),
+                max_iter=1000,
+                early_stopping=True,
                 random_state=random_state,
             )
         else:
@@ -989,6 +1169,10 @@ def _run_search_two_phase(
     algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
         algs = ["rf", "gb", "et", "hgb", "quantile", "stacked"]
+        stages = tuning_cfg.get("stages") or {}
+        neural = stages.get("neural") or {}
+        if neural.get("mlp", True):
+            algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
@@ -1134,6 +1318,20 @@ def _run_search_two_phase(
             est = HistGradientBoostingRegressor(
                 max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
+        elif alg == "mlp":
+            sizes = trial.suggest_categorical(
+                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)]
+            )
+            alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
+            lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
+            est = MLPRegressor(
+                hidden_layer_sizes=sizes,
+                alpha=alpha,
+                learning_rate_init=lr_init,
+                max_iter=1000,
+                early_stopping=True,
+                random_state=random_state,
+            )
         else:
             n_est = trial.suggest_int("n_estimators", 100, 300, step=50)
             depth = trial.suggest_int("max_depth", 8, 16, step=2)
@@ -1180,6 +1378,15 @@ def _run_search_two_phase(
                 max_depth=params["max_depth"],
                 learning_rate=params["learning_rate"],
                 min_samples_leaf=params["min_samples_leaf"],
+                random_state=random_state,
+            )
+        elif alg == "mlp":
+            est = MLPRegressor(
+                hidden_layer_sizes=params.get("hidden_layer_sizes", (128, 64)),
+                alpha=params.get("alpha", 0.001),
+                learning_rate_init=params.get("learning_rate_init", 0.001),
+                max_iter=1000,
+                early_stopping=True,
                 random_state=random_state,
             )
         else:
@@ -1502,16 +1709,25 @@ def run_auto_tune(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    use_pycaret: Optional[bool] = None,
+    fast_mode: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
     cv_splits = tuning["cv_splits"]
-    n_iter = tuning["n_iter"]
+    n_iter = int(tuning["n_iter"])
+    if fast_mode:
+        n_iter = min(n_iter, 15)
     scoring = tuning["scoring"]
     random_state = tuning.get("random_state") or get_training_params(model_kind).get("random_state", 42)
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    pycaret_algos = _maybe_run_pycaret_ranking(
+        X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
+    )
+    if pycaret_algos is not None:
+        algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
     best_pipe, best_params, report = _run_search_two_phase(
@@ -1543,16 +1759,26 @@ def run_auto_tune_extras(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    use_pycaret: Optional[bool] = None,
+    fast_mode: bool = False,
+    use_autogluon: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Run two-phase single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
     cv_splits = tuning["cv_splits"]
-    n_iter = tuning["n_iter"]
+    n_iter = int(tuning["n_iter"])
+    if fast_mode:
+        n_iter = min(n_iter, 15)
     scoring = tuning.get("scoring", "neg_mean_absolute_error")
     params = get_training_params("extras")
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    pycaret_algos = _maybe_run_pycaret_ranking(
+        X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
+    )
+    if pycaret_algos is not None:
+        algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_single_regression(
@@ -1570,6 +1796,25 @@ def run_auto_tune_extras(
         task_index,
         task_total,
     )
+    optuna_score = report.get("best_cv_score")
+    if optuna_score is not None:
+        ag_wins, ag_wrapper, ag_updates = _maybe_run_autogluon_and_compare(
+            X, y, "regression", use_autogluon, "extras", format_suffix, out_dir, float(optuna_score)
+        )
+        report.update(ag_updates)
+        if ag_wins and ag_wrapper is not None:
+            os.makedirs(out_dir, exist_ok=True)
+            model_path = os.path.join(
+                out_dir,
+                f"extras_model_{format_suffix.replace(' ', '_')}.joblib" if format_suffix else "extras_model.joblib",
+            )
+            joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
+            report_path = os.path.join(
+                out_dir, f"tuning_report_extras_{format_suffix}.json" if format_suffix else "tuning_report_extras.json"
+            )
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+            return report
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -1594,6 +1839,10 @@ def _run_search_two_phase_classification(
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
         algs = ["rf", "gb", "et", "hgb"]
+        stages = tuning_cfg.get("stages") or {}
+        neural = stages.get("neural") or {}
+        if neural.get("mlp", True):
+            algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
@@ -1703,6 +1952,20 @@ def _run_search_two_phase_classification(
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
             )
+        elif alg == "mlp":
+            sizes = trial.suggest_categorical(
+                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)]
+            )
+            alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
+            lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
+            est = MLPClassifier(
+                hidden_layer_sizes=sizes,
+                alpha=alpha,
+                learning_rate_init=lr_init,
+                max_iter=1000,
+                early_stopping=True,
+                random_state=random_state,
+            )
         else:
             est = HistGradientBoostingClassifier(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
@@ -1761,6 +2024,15 @@ def _run_search_two_phase_classification(
                 min_samples_leaf=p["min_samples_leaf"],
                 random_state=random_state,
             )
+        elif alg == "mlp":
+            est = MLPClassifier(
+                hidden_layer_sizes=p.get("hidden_layer_sizes", (128, 64)),
+                alpha=p.get("alpha", 0.001),
+                learning_rate_init=p.get("learning_rate_init", 0.001),
+                max_iter=1000,
+                early_stopping=True,
+                random_state=random_state,
+            )
         else:
             est = HistGradientBoostingClassifier(
                 max_iter=p["max_iter"],
@@ -1802,16 +2074,26 @@ def run_auto_tune_win(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    use_pycaret: Optional[bool] = None,
+    fast_mode: bool = False,
+    use_autogluon: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Run two-phase classification search for win; save model only + report."""
     tuning = _get_tuning_config()
     cv_splits = tuning["cv_splits"]
-    n_iter = tuning["n_iter"]
+    n_iter = int(tuning["n_iter"])
+    if fast_mode:
+        n_iter = min(n_iter, 15)
     scoring = "accuracy"
     params = get_training_params("win")
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    pycaret_algos = _maybe_run_pycaret_ranking(
+        X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
+    )
+    if pycaret_algos is not None:
+        algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_classification(
@@ -1829,6 +2111,25 @@ def run_auto_tune_win(
         task_index,
         task_total,
     )
+    optuna_score = report.get("best_cv_score")
+    if optuna_score is not None:
+        ag_wins, ag_wrapper, ag_updates = _maybe_run_autogluon_and_compare(
+            X, y, "classification", use_autogluon, "win", format_suffix, out_dir, float(optuna_score)
+        )
+        report.update(ag_updates)
+        if ag_wins and ag_wrapper is not None:
+            os.makedirs(out_dir, exist_ok=True)
+            model_path = os.path.join(
+                out_dir,
+                f"win_model_{format_suffix.replace(' ', '_')}.joblib" if format_suffix else "win_model.joblib",
+            )
+            joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
+            report_path = os.path.join(
+                out_dir, f"tuning_report_win_{format_suffix}.json" if format_suffix else "tuning_report_win.json"
+            )
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2)
+            return report
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report
 
@@ -1866,12 +2167,30 @@ def main() -> None:
         action="store_true",
         help="Run multiple (model, format) tasks in parallel, using up to 80%% of available CPUs (each task uses 1 job).",
     )
+    parser.add_argument(
+        "--no-pycaret",
+        action="store_true",
+        help="Skip PyCaret algorithm ranking (use config algorithms only).",
+    )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fast mode: reduce Optuna trials to 15, skip PyCaret and AutoGluon.",
+    )
+    parser.add_argument(
+        "--no-autogluon",
+        action="store_true",
+        help="Skip AutoGluon accuracy boost stage.",
+    )
     args = parser.parse_args()
 
     algorithms_override: Optional[List[str]] = None
     if args.algorithms:
         algorithms_override = [a.strip().lower() for a in args.algorithms.split(",") if a.strip()]
     validation_method_override: Optional[str] = args.validation_method or None
+    use_pycaret: Optional[bool] = False if (args.no_pycaret or args.fast) else None
+    fast_mode: bool = bool(args.fast)
+    use_autogluon: Optional[bool] = False if (args.no_autogluon or args.fast) else None
 
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR")
     if not out_dir:
@@ -1945,6 +2264,12 @@ def main() -> None:
                     argv.extend(["--algorithms", ",".join(algorithms_override)])
                 if validation_method_override:
                     argv.extend(["--validation-method", validation_method_override])
+                if args.no_pycaret:
+                    argv.append("--no-pycaret")
+                if args.fast:
+                    argv.append("--fast")
+                if args.no_autogluon:
+                    argv.append("--no-autogluon")
                 cmds.append(argv)
         return cmds
 
@@ -2001,7 +2326,8 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_extras(
-                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override,
+                                    use_pycaret=use_pycaret, fast_mode=fast_mode, use_autogluon=use_autogluon,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2020,7 +2346,8 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_win(
-                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                                    X, Y, fcode, out_dir, algorithms_override, validation_method_override,
+                                    use_pycaret=use_pycaret, fast_mode=fast_mode, use_autogluon=use_autogluon,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                                 logger.info(
@@ -2048,7 +2375,8 @@ def main() -> None:
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune(
-                                    model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override
+                                    model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override,
+                                    use_pycaret=use_pycaret, fast_mode=fast_mode,
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -2068,7 +2396,8 @@ def main() -> None:
                         logger.warning("auto_tune.no_data model=%s format=%s", model_kind, fmt)
                         continue
                     report = run_auto_tune(
-                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override
+                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override,
+                        use_pycaret=use_pycaret, fast_mode=fast_mode,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -2104,7 +2433,10 @@ def main() -> None:
                         for fcode, (X, Y) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
-                            report = run_auto_tune(model_kind, X, Y, fcode, out_dir)
+                            report = run_auto_tune(
+                                model_kind, X, Y, fcode, out_dir, algorithms_override, validation_method_override,
+                                use_pycaret=use_pycaret, fast_mode=fast_mode,
+                            )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
@@ -2135,7 +2467,8 @@ def main() -> None:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue
                     report = run_auto_tune(
-                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override
+                        model_kind, X, Y, format_suffix, out_dir, algorithms_override, validation_method_override,
+                        use_pycaret=use_pycaret, fast_mode=fast_mode,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

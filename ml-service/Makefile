@@ -69,6 +69,8 @@ ALL_FORMATS ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
+FAST ?=
+NO_PYCARET ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -87,6 +89,15 @@ AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
 endif
 ifeq ($(PARALLEL),1)
 AUTO_TUNE_ARGS += --parallel
+endif
+ifeq ($(FAST),1)
+AUTO_TUNE_ARGS += --fast
+endif
+ifeq ($(NO_PYCARET),1)
+AUTO_TUNE_ARGS += --no-pycaret
+endif
+ifeq ($(NO_AUTOGLUON),1)
+AUTO_TUNE_ARGS += --no-autogluon
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
