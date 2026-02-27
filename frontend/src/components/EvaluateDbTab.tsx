@@ -155,7 +155,7 @@ const EvaluateDbTab: React.FC = () => {
   // Prediction model for evaluate: format-specific or unified (legacy)
   const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   // Model temporal mode: strict (trained only on data before match) or latest (current model; may include match)
-  const [modelTemporalMode, setModelTemporalMode] = useState<'strict' | 'latest'>('latest');
+  // Strict cutoff and train-on-the-fly disabled; always use latest model
 
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
@@ -396,7 +396,7 @@ const EvaluateDbTab: React.FC = () => {
         selectedMatchId,
         {
           use_unified_model: predictionModel === 'unified',
-          use_latest_model: modelTemporalMode === 'latest',
+          use_latest_model: true,
         },
       );
       const stored: StoredEvalJob = {
@@ -428,9 +428,12 @@ const EvaluateDbTab: React.FC = () => {
     <Stack spacing={3} sx={{ mt: 2 }}>
       <Typography variant="body1">
         Evaluate historical matches by predicting for actual players and comparing predictions vs
-        actuals. Choose whether to use a strict temporal cutoff (model trained only on data before
-        the match) or the latest model (may include the match in training; faster, good for QA).
+        actuals. Uses the latest loaded model (fast, good for QA).
       </Typography>
+      <Alert severity="info" sx={{ maxWidth: 560 }}>
+        Strict cutoff and train-on-the-fly are disabled to avoid high CPU/RAM usage. Pre-trained
+        artifacts must be loaded for your format (e.g. T20I). Use Latest model only.
+      </Alert>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
         <FormControl fullWidth size="small">
@@ -537,27 +540,6 @@ const EvaluateDbTab: React.FC = () => {
           <MatchScorecard scorecard={scorecard} loading={scorecardLoading} error={scorecardError} />
         )}
         <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
-          <FormControl size="small" sx={{ minWidth: 260 }}>
-            <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
-            <Select
-              labelId="eval-db-temporal-label"
-              value={modelTemporalMode}
-              onChange={(e) => setModelTemporalMode(e.target.value as 'strict' | 'latest')}
-              label="Model temporal mode"
-            >
-              <MenuItem value="latest">Latest model (recommended)</MenuItem>
-              <MenuItem value="strict">Strict cutoff (temporal validation)</MenuItem>
-            </Select>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', mt: 0.5, maxWidth: 340 }}
-            >
-              {modelTemporalMode === 'latest'
-                ? 'Uses the current model. Fast; good for QA. May include this match in training.'
-                : 'Model trained only on data before match date. Unbiased; may train per match if no artifacts.'}
-            </Typography>
-          </FormControl>
           <FormControl size="small" sx={{ minWidth: 260 }}>
             <InputLabel id="eval-db-model-label">Prediction model</InputLabel>
             <Select

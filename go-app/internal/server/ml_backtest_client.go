@@ -42,12 +42,15 @@ type mlBacktestPredictRequest struct {
 }
 
 type mlBacktestPlayerPred struct {
-	PlayerID int64   `json:"player_id"`
-	Runs     float64 `json:"runs,omitempty"`
-	Wickets  float64 `json:"wickets,omitempty"`
-	Economy  float64 `json:"economy,omitempty"`
-	Catches  float64 `json:"catches,omitempty"`
-	RunOuts  float64 `json:"run_outs,omitempty"`
+	PlayerID int64    `json:"player_id"`
+	Runs     float64  `json:"runs,omitempty"`
+	Balls    *float64 `json:"balls,omitempty"`
+	Fours    *float64 `json:"fours,omitempty"`
+	Sixes    *float64 `json:"sixes,omitempty"`
+	Wickets  float64  `json:"wickets,omitempty"`
+	Economy  float64  `json:"economy,omitempty"`
+	Catches  float64  `json:"catches,omitempty"`
+	RunOuts  float64  `json:"run_outs,omitempty"`
 }
 
 type mlBacktestPlayersResponse struct {
@@ -236,13 +239,23 @@ func (c *BacktestMLClient) predictPlayers(
 	}
 	res := make(map[int64]playerPredictions, len(out.Players))
 	for _, p := range out.Players {
-		res[p.PlayerID] = playerPredictions{
+		pp := playerPredictions{
 			Runs:    p.Runs,
 			Wickets: p.Wickets,
 			Economy: p.Economy,
 			Catches: p.Catches,
 			RunOuts: p.RunOuts,
 		}
+		if p.Balls != nil {
+			pp.Balls = *p.Balls
+		}
+		if p.Fours != nil {
+			pp.Fours = *p.Fours
+		}
+		if p.Sixes != nil {
+			pp.Sixes = *p.Sixes
+		}
+		res[p.PlayerID] = pp
 	}
 	return res, nil
 }

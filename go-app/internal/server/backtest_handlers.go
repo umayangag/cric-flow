@@ -92,22 +92,40 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			p := preds[b.PlayerID]
 			r := int(math.Round(p.Runs))
 			predRunsSum += r
+			var ballsP, foursP, sixesP *int
+			var strikeRate *float32
+			bl := int(math.Round(p.Balls))
+			ballsP = &bl
+			f := int(math.Round(p.Fours))
+			foursP = &f
+			s := int(math.Round(p.Sixes))
+			sixesP = &s
+			if p.Balls > 0 {
+				sr := float32(100.0 * p.Runs / p.Balls)
+				strikeRate = &sr
+			}
 			inn.Batting = append(inn.Batting, db.ScorecardBatting{
 				PlayerID:   b.PlayerID,
 				PlayerName: b.PlayerName,
 				Runs:       intPtr(r),
-				Balls:      nil,
-				Fours:      nil,
-				Sixes:      nil,
-				StrikeRate: nil,
+				Balls:      ballsP,
+				Fours:      foursP,
+				Sixes:      sixesP,
+				StrikeRate: strikeRate,
 				HowOut:     nil,
 			})
 		}
 		inn.RunsScored = predRunsSum
-		var predWicketsSum int
+		// First pass: collect raw wicket predictions
+		type bowlerPred struct {
+			w    db.ScorecardBowling
+			wkts float64
+		}
+		var bowlerPreds []bowlerPred
+		var predWicketsSum float64
 		for _, w := range in.Bowling {
 			p := preds[w.PlayerID]
-			wkts := int(math.Round(p.Wickets))
+			wkts := math.Max(0, p.Wickets)
 			predWicketsSum += wkts
 			ec := float32Ptr(float32(p.Economy))
 			var predRuns *int
@@ -126,20 +144,36 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				totalBalls := whole*6 + ballsInOver
 				predRuns = intPtr(int(math.Round(float64(totalBalls) * p.Economy / 6)))
 			}
-			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{
-				PlayerID:   w.PlayerID,
-				PlayerName: w.PlayerName,
-				Overs:      w.Overs,
-				Maidens:    nil,
-				Runs:       predRuns,
-				Wickets:    intPtr(wkts),
-				Economy:    ec,
-				Wides:      nil,
-				NoBalls:    nil,
-				Balls:      w.Balls,
+			bowlerPreds = append(bowlerPreds, bowlerPred{
+				w: db.ScorecardBowling{
+					PlayerID:   w.PlayerID,
+					PlayerName: w.PlayerName,
+					Overs:      w.Overs,
+					Maidens:    nil,
+					Runs:       predRuns,
+					Wickets:    nil, // set after scaling
+					Economy:    ec,
+					Wides:      nil,
+					NoBalls:    nil,
+					Balls:      w.Balls,
+				},
+				wkts: wkts,
 			})
 		}
-		inn.WicketsLost = predWicketsSum
+		// Scale wickets so total per inning does not exceed 10 (cricket max)
+		const maxWicketsPerInning = 10
+		scale := 1.0
+		if predWicketsSum > maxWicketsPerInning && predWicketsSum > 0 {
+			scale = maxWicketsPerInning / predWicketsSum
+		}
+		var scaledSum int
+		for _, bp := range bowlerPreds {
+			scaled := int(math.Round(bp.wkts * scale))
+			scaledSum += scaled
+			bp.w.Wickets = intPtr(scaled)
+			inn.Bowling = append(inn.Bowling, bp.w)
+		}
+		inn.WicketsLost = scaledSum
 		out.Innings = append(out.Innings, inn)
 	}
 	return out

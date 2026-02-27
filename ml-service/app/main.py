@@ -309,6 +309,18 @@ def _predict_players_with_features(
     bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
     bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
     if not bat_pair or not bowl_pair:
+        # Train-on-the-fly is disabled by default (resource intensive). Set ENABLE_TRAIN_ON_THE_FLY=1 to allow.
+        if (os.environ.get("ENABLE_TRAIN_ON_THE_FLY") or "").strip().lower() not in ("1", "true", "yes"):
+            logger.error(
+                "backtest_predict.train_on_the_fly.disabled",
+                format=fmt_upper,
+                hint="Train-on-the-fly is disabled. Pre-train and load artifacts for this format, or set ENABLE_TRAIN_ON_THE_FLY=1.",
+            )
+            raise ValueError(
+                "No artifacts loaded for format=%s. Train-on-the-fly is disabled (resource consuming). "
+                "Pre-train models for this format, or set ENABLE_TRAIN_ON_THE_FLY=1 to allow on-the-fly training."
+                % fmt_upper
+            )
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip()
         if not go_app_url:
             logger.error(
@@ -417,6 +429,9 @@ def _predict_players_with_features(
         vals_bat = list(row_bat) + [0.0] * max(0, 6 - len(row_bat))
         vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
         runs = float(max(0.0, vals_bat[0]))
+        balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
+        fours = float(max(0.0, vals_bat[2])) if len(vals_bat) > 2 else None
+        sixes = float(max(0.0, vals_bat[3])) if len(vals_bat) > 3 else None
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
         default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
         economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else default_econ
@@ -425,6 +440,9 @@ def _predict_players_with_features(
             BacktestPlayerPred(
                 player_id=int(pid),
                 runs=runs,
+                balls=balls,
+                fours=fours,
+                sixes=sixes,
                 wickets=wickets,
                 economy=economy,
                 catches=catches,
@@ -456,6 +474,9 @@ def _predict_players_with_features(
                 BacktestPlayerPred(
                     player_id=pred.player_id,
                     runs=pred.runs,
+                    balls=pred.balls,
+                    fours=pred.fours,
+                    sixes=pred.sixes,
                     wickets=pred.wickets,
                     economy=pred.economy,
                     catches=catches,

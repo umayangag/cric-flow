@@ -742,7 +742,9 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"season":              0,
 			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 		}
+		ensureContractKeys(feats)
 		out[pid] = feats
 	}
 	return out, nil
@@ -868,7 +870,9 @@ func ComputeFeaturesAtCutoffForMatch(
 			"season":              season,
 			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
+			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 		}
+		ensureContractKeys(feats)
 		out[pid] = feats
 	}
 	return out, nil

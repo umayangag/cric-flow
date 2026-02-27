@@ -128,6 +128,9 @@ class BacktestPredictRequest(BaseModel):
 class BacktestPlayerPred(BaseModel):
     player_id: int
     runs: float
+    balls: Optional[float] = None
+    fours: Optional[float] = None
+    sixes: Optional[float] = None
     wickets: Optional[float] = None
     economy: Optional[float] = None
     catches: Optional[float] = None
