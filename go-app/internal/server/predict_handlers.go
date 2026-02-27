@@ -23,7 +23,7 @@ func (mlPredictorAdapter) PredictPlayers(
 	playerIDs []int64,
 	features map[int64]map[string]float64,
 ) (map[int64]predictteam.PlayerPred, error) {
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features, true)
 	if err != nil {
 		return nil, err
 	}

@@ -152,6 +152,8 @@ def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
 
 
 def main() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(description="Train win model from go-app training-data API or CSV")
     ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required if not using --csv)")
     ap.add_argument("--csv", default="", help="Path to win CSV (optional; else fetch from API)")
@@ -160,6 +162,8 @@ def main() -> None:
     ap.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""), help="Optional API key")
     args = ap.parse_args()
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
+
+    logger.info("pipeline: train_win starting out_dir=%s source=%s", out_dir, "csv" if args.csv else "api")
 
     if args.csv:
         if not os.path.isfile(args.csv):
@@ -188,6 +192,7 @@ def main() -> None:
         logger.error("train_win.no_data hint=empty or insufficient rows")
         sys.exit(1)
     for fmt, (X, Y) in by_format.items():
+        logger.info("pipeline: train_win processing format=%s n=%s", fmt, X.shape[0])
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_win.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 

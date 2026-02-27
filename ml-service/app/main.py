@@ -174,6 +174,10 @@ MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
 CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
+# When use_latest_model=True, round the cutoff to this granularity for cache key. Prevents DoS from unique
+# timestamps per request. Configurable via TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY env var.
+# Values: "none" (exact now, no cache), "second", "minute", "hour", "day". Default: "hour"
+TRAIN_LATEST_CACHE_GRANULARITY = (os.environ.get("TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY") or "hour").strip().lower()
 
 # -------------------- Simple in-memory cache for model-stats endpoint --------------------
 MODEL_STATS_CACHE_TTL = int(os.environ.get("MODEL_STATS_CACHE_TTL", "60") or "60")
@@ -276,11 +280,28 @@ async def request_context_middleware(request: Request, call_next):
 # Models are imported from app.models (see imports above)
 
 
+def _round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
+    """Round datetime down to the given boundary. Used for cache-key stability when use_latest_model=True."""
+    gran = (granularity or "").strip().lower()
+    if gran in ("none", ""):
+        return dt
+    if gran == "second":
+        return dt.replace(microsecond=0)
+    if gran == "minute":
+        return dt.replace(second=0, microsecond=0)
+    if gran == "hour":
+        return dt.replace(minute=0, second=0, microsecond=0)
+    if gran == "day":
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return dt  # fallback: no rounding
+
+
 def _predict_players_with_features(
     cutoff: datetime,
     player_ids: List[int],
     fmt: str,
     features_map: Dict[str, Dict[str, float]],
+    use_latest_model: bool = False,
 ) -> List[BacktestPlayerPred]:
     """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
     When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
@@ -289,6 +310,18 @@ def _predict_players_with_features(
     bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
     bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
     if not bat_pair or not bowl_pair:
+        # Train-on-the-fly is disabled by default (resource intensive). Set ENABLE_TRAIN_ON_THE_FLY=1 to allow.
+        if (os.environ.get("ENABLE_TRAIN_ON_THE_FLY") or "").strip().lower() not in ("1", "true", "yes"):
+            logger.error(
+                "backtest_predict.train_on_the_fly.disabled",
+                format=fmt_upper,
+                hint="Train-on-the-fly is disabled. Pre-train and load artifacts for this format, or set ENABLE_TRAIN_ON_THE_FLY=1.",
+            )
+            raise ValueError(
+                "No artifacts loaded for format=%s. Train-on-the-fly is disabled (resource consuming). "
+                "Pre-train models for this format, or set ENABLE_TRAIN_ON_THE_FLY=1 to allow on-the-fly training."
+                % fmt_upper
+            )
         go_app_url = (os.environ.get("GO_APP_URL") or "").strip()
         if not go_app_url:
             logger.error(
@@ -301,10 +334,27 @@ def _predict_players_with_features(
             )
         _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        # When use_latest_model: train with "now" as cutoff so we use all available data (one model per format).
+        # Otherwise: strict temporal - train only on data before the match date. Both modes avoid data leakage:
+        # use_latest_model uses "now" (no future data); strict uses cutoff (match date) so training data
+        # is strictly before prediction.
+        # TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY (env) rounds cutoff for cache-key stability and DoS mitigation.
+        if use_latest_model:
+            now_utc = datetime.now(timezone.utc)
+            rounded = _round_datetime_to_granularity(now_utc, TRAIN_LATEST_CACHE_GRANULARITY)
+            cutoff_iso = rounded.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            logger.info(
+                "backtest_predict.train_on_the_fly.use_latest",
+                format=fmt_upper,
+                training_cutoff_iso=cutoff_iso,
+                cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
+            )
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
-        logger.info(
+        # Train-on-the-fly is CPU/RAM intensive; the cache key (cutoff_iso + format) avoids redundant retraining.
+        logger.warning(
             "backtest_predict.train_on_the_fly.triggered",
-            format=fmt_upper,
+            msg="TRAIN_ON_THE_FLY: starting (CPU/RAM intensive) - fetches data from go-app and trains models in memory",
+            fmt=fmt_upper,
             cutoff_iso=cutoff_iso,
             go_app_url=go_app_url,
             player_count=len(player_ids),
@@ -383,6 +433,9 @@ def _predict_players_with_features(
         vals_bat = list(row_bat) + [0.0] * max(0, 6 - len(row_bat))
         vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
         runs = float(max(0.0, vals_bat[0]))
+        balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
+        fours = float(max(0.0, vals_bat[2])) if len(vals_bat) > 2 else None
+        sixes = float(max(0.0, vals_bat[3])) if len(vals_bat) > 3 else None
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
         default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
         economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else default_econ
@@ -391,6 +444,9 @@ def _predict_players_with_features(
             BacktestPlayerPred(
                 player_id=int(pid),
                 runs=runs,
+                balls=balls,
+                fours=fours,
+                sixes=sixes,
                 wickets=wickets,
                 economy=economy,
                 catches=catches,
@@ -422,6 +478,9 @@ def _predict_players_with_features(
                 BacktestPlayerPred(
                     player_id=pred.player_id,
                     runs=pred.runs,
+                    balls=pred.balls,
+                    fours=pred.fours,
+                    sixes=pred.sixes,
                     wickets=pred.wickets,
                     economy=pred.economy,
                     catches=catches,
@@ -478,7 +537,9 @@ def backtest_predict(req: BacktestPredictRequest):
         global BACKTEST_PLAYERS_COMPUTE_COUNT
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
         try:
-            preds = _predict_players_with_features(cutoff, req.player_ids, req.format or "", req.features)
+            preds = _predict_players_with_features(
+                cutoff, req.player_ids, req.format or "", req.features, req.use_latest_model
+            )
         except ValueError as e:
             logger.exception(
                 "backtest_predict.player.train_on_the_fly_failed",
@@ -995,7 +1056,13 @@ def _enrich_with_tuning_report(
             if "accuracy_pct" in metrics:
                 rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
             elif "mae" in metrics:
-                rec["accuracy_display"] = f"MAE={metrics['mae']}"
+                # Regression: show MAE, RMSE, R² for clearer accuracy assessment
+                parts = [f"MAE={metrics['mae']}"]
+                if "rmse" in metrics:
+                    parts.append(f"RMSE={metrics['rmse']}")
+                if "r2_pct" in metrics:
+                    parts.append(f"R²={metrics['r2_pct']}%")
+                rec["accuracy_display"] = ", ".join(parts)
             elif "r2_pct" in metrics:
                 rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
     except Exception as e:
@@ -1412,6 +1479,7 @@ def _run_training_subprocess(
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
+    Output is streamed to stdout/stderr so container logs show detailed training progress.
     """
     import subprocess
 
@@ -1421,6 +1489,12 @@ def _run_training_subprocess(
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
+    logger.info(
+        "pipeline: starting training subprocess",
+        module=module,
+        extra_args=extra_args or [],
+        cwd=root,
+    )
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
     if extra_env:
         env.update(extra_env)
@@ -1430,22 +1504,23 @@ def _run_training_subprocess(
             cmd,
             cwd=root,
             env=env,
-            capture_output=True,
-            text=True,
+            capture_output=False,
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
-        logger.error("admin.train.timeout", module=module, timeout_sec=timeout_sec)
+        logger.error(
+            "pipeline: training subprocess timed out",
+            module=module,
+            timeout_sec=timeout_sec,
+        )
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
     if proc.returncode != 0:
-        stderr = (proc.stderr or "")[:500]
         logger.error(
-            "admin.train.failed",
+            "pipeline: training subprocess failed",
             module=module,
             returncode=proc.returncode,
-            stderr=stderr,
         )
-        raise ValueError(f"Training failed (exit {proc.returncode}): {stderr}")
+        raise ValueError(f"Training failed (exit {proc.returncode})")
 
 
 def _require_admin_train(step: str, fail_message: str):
@@ -1703,6 +1778,34 @@ _VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "a
 _VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
 
 
+def _get_auto_tune_progress_path() -> str:
+    """Return path to auto-tune progress JSON file."""
+    path = os.environ.get("AUTO_TUNE_PROGRESS_FILE")
+    if path:
+        return path
+    try:
+        from ml.config import default_artifacts_dir
+
+        return os.path.join(default_artifacts_dir(), "auto_tune_progress.json")
+    except Exception:
+        return os.path.join("..", "..", "output", "ml-service", "auto_tune_progress.json")
+
+
+@app.get("/admin/train/auto-tune/progress")
+async def admin_train_auto_tune_progress(request: Request) -> Dict[str, Any]:
+    """Return live auto-tune progress (phase, algorithm, hyperparams, trial, etc.) for frontend display.
+    Protected by admin API key when ADMIN_API_KEY is set; go-app should pass X-API-Key."""
+    _verify_admin_api_key(request)
+    path = _get_auto_tune_progress_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 @app.post("/admin/train/auto-tune")
 @_require_admin_train("auto-tune", "Auto-tune failed")
 async def admin_train_auto_tune(
@@ -1759,11 +1862,10 @@ async def admin_train_auto_tune(
         extra.append("--all-formats")
     elif not use_unified:
         extra.extend(["--format", fmt])
-    # Use parallel when multiple (model, format) tasks will run; each parallel subprocess uses 1 job.
-    # When single task (one model + one format or unified), allow multi-CPU via AUTO_TUNE_N_JOBS=-1 (resource-aware).
+    # Always use parallel when running from the frontend/API; each parallel subprocess uses 1 job.
+    # When single task (one model + one format or unified), auto_tune falls through to sequential.
     single_task = model != "all" and (not use_all_formats or use_unified)
-    if model == "all" or use_all_formats:
-        extra.append("--parallel")
+    extra.append("--parallel")
     subprocess_env: Optional[Dict[str, str]] = None
     if single_task:
         subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}

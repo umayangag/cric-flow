@@ -65,3 +65,83 @@ func TestScorePlayer_Table(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultWeights(t *testing.T) {
+	t.Parallel()
+	w := ts.DefaultWeights()
+	if w.Bat != 0.45 || w.Bowl != 0.40 || w.Field != 0.10 || w.KeeperBonus != 0.02 {
+		t.Fatalf("DefaultWeights: got Bat=%.2f Bowl=%.2f Field=%.2f KeeperBonus=%.2f", w.Bat, w.Bowl, w.Field, w.KeeperBonus)
+	}
+}
+
+func TestNormalizeBatScore(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		runs       float64
+		batDivisor float64
+		want       float64
+	}{
+		{"under cap", 50, 100, 0.5},
+		{"over cap", 120, 100, 1.0},
+		{"zero runs", 0, 100, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ts.NormalizeBatScore(tt.runs, tt.batDivisor)
+			if math.Abs(got-tt.want) > 1e-9 {
+				t.Fatalf("NormalizeBatScore(%v,%v)=%v want %v", tt.runs, tt.batDivisor, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeBowlScore(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		wickets         float64
+		economy         float64
+		wicketDivisor   float64
+		econBase        float64
+		wantWickPart    float64
+		wantEconPartMin float64
+	}{
+		{"wickets capped", 8, 7, 6, 10, 1.0, 0.3},
+		{"economy at base", 3, 10, 6, 10, 0.5, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ts.NormalizeBowlScore(tt.wickets, tt.economy, tt.wicketDivisor, tt.econBase)
+			wickPart := math.Min(1, tt.wickets/tt.wicketDivisor)
+			econPart := math.Max(0, 1-(tt.economy/tt.econBase))
+			want := (wickPart + econPart) / 2
+			if math.Abs(got-want) > 1e-9 {
+				t.Fatalf("NormalizeBowlScore=%v want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestNormalizeFieldScore(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		catches      float64
+		runOuts      float64
+		fieldDivisor float64
+	}{
+		{"under cap", 2, 1, 10},
+		{"over cap", 5, 3, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ts.NormalizeFieldScore(tt.catches, tt.runOuts, tt.fieldDivisor)
+			raw := (tt.catches + tt.runOuts*1.5) / tt.fieldDivisor
+			want := math.Min(1, raw)
+			if math.Abs(got-want) > 1e-9 {
+				t.Fatalf("NormalizeFieldScore=%v want %v", got, want)
+			}
+		})
+	}
+}

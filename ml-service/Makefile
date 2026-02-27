@@ -7,7 +7,7 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Raise as untested CLI/training modules get tests.
-COV_MIN?=33
+COV_MIN?=60
 
 .PHONY: all venv install compile-requirements run train-batting train-bowling train-fielding train-extras train-win train-models
 .PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
@@ -69,6 +69,8 @@ ALL_FORMATS ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
+FAST ?=
+NO_PYCARET ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -87,6 +89,15 @@ AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
 endif
 ifeq ($(PARALLEL),1)
 AUTO_TUNE_ARGS += --parallel
+endif
+ifeq ($(FAST),1)
+AUTO_TUNE_ARGS += --fast
+endif
+ifeq ($(NO_PYCARET),1)
+AUTO_TUNE_ARGS += --no-pycaret
+endif
+ifeq ($(NO_AUTOGLUON),1)
+AUTO_TUNE_ARGS += --no-autogluon
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

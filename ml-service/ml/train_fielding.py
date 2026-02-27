@@ -189,6 +189,8 @@ def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
 
 
 def main() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(
         description="Train fielding model from go-app export CSV or training-data API (same pipeline as batting/bowling)"
     )
@@ -206,6 +208,12 @@ def main() -> None:
     args = ap.parse_args()
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
     default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR") or default_go_app_export_dir()
+
+    logger.info(
+        "pipeline: train_fielding starting out_dir=%s source=%s",
+        out_dir,
+        "csv" if args.csv else ("api" if args.go_app_url and args.cutoff else "export_dir"),
+    )
 
     if args.csv:
         if not os.path.isfile(args.csv):
@@ -253,6 +261,7 @@ def main() -> None:
 
     def _train_one_format(item):
         fmt, (X, Y) = item
+        logger.info("pipeline: train_fielding processing format=%s n=%s", fmt, X.shape[0])
         train_and_save(X, Y, out_dir, fmt)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 

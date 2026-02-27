@@ -1,6 +1,6 @@
 ---
 name: run-check-all-incremental
-description: Runs the same quality checks as 'make check-all' one component at a time (and within each component, fast checks before tests), fixing failures and re-running only the failed part until all pass. Use when fixing lint, format, or test failures, or when the user wants all checks to pass without rerunning the full check-all repeatedly.
+description: Runs the same quality checks as 'make check-all' one component at a time (and within each component, fast checks before tests), fixing failures and re-running only the failed part until all pass. Coverage failures are handled by adding unit tests rather than lowering thresholds. Use when fixing lint, format, or test failures, or when the user wants all checks to pass without rerunning the full check-all repeatedly.
 ---
 
 # Run check-all incrementally until all pass
@@ -63,6 +63,14 @@ From repo root. Use `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service
 2. When all frontend steps pass, switch to **go-app**. Run vet → fmt-check → lint → coverage. On failure: fix, re-run only the failed step (or the whole go-app sequence once if unsure), then continue.
 3. Then **ml-service**: lint-check → fmt-check → coverage → coverage-check. Same rule: fix, re-run only what failed.
 4. When all three components have passed all their steps, all checks are done. You can optionally run `make check-all` once to confirm.
+
+## Coverage failure handling
+
+When coverage or coverage-check fails because code coverage is below the specified threshold:
+
+- **Do NOT** decrease or lower the coverage threshold in config files.
+- **Do** add unit tests to improve coverage until the threshold is met. Inspect the coverage report to identify uncovered code paths (files, functions, branches), then write tests that exercise them.
+- Re-run the coverage step (and coverage-check for ml-service) after adding tests to verify the threshold is satisfied.
 
 ## Efficiency rules
 

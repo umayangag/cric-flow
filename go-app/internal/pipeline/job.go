@@ -48,6 +48,11 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	var runErr error
 	var exitMeta any
 
+	slog.Info("pipeline: job starting",
+		slog.String("job", jobName),
+		slog.Duration("timeout", timeout),
+		slog.Any("start_meta", startMeta))
+
 	ctx := parent
 	if timeout > 0 {
 		var cancel context.CancelFunc

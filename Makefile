@@ -215,7 +215,7 @@ ALGORITHMS ?=
 VALIDATION_METHOD ?=
 # CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",)
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",) $(if $(FAST),FAST="$(FAST)",) $(if $(NO_PYCARET),NO_PYCARET="$(NO_PYCARET)",)
 
 # Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
@@ -331,7 +331,17 @@ e2e-backtest-smoke: seed-fixtures
 	echo $$EVAL | jq -e '(.metrics.player_runs_mae | type) == "number"' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.predicted' >/dev/null; \
 	echo $$EVAL | jq -e '.match_aggregates.actual' >/dev/null; \
-	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null; \
+	echo $$EVAL | jq -e '.match_aggregates.errors' >/dev/null
+	# Options endpoints
+	@echo "[SMOKE] Checking options/formats"; \
+	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/options/formats" | jq -e 'type == "array"' >/dev/null
+	# Accuracy trend (may return empty; must return 200)
+	@echo "[SMOKE] Checking backtest/accuracy-trend"; \
+	STATUS=$$(curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS"); \
+	if [ "$$STATUS" != "200" ]; then echo "accuracy-trend HTTP $$STATUS"; exit 2; fi
+	# Model stats (proxy to ML service)
+	@echo "[SMOKE] Checking ml/model-stats"; \
+	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/ml/model-stats" | jq -e '.models_dir and (.models | type) == "array"' >/dev/null
 	echo "[SMOKE] OK"
 
 # Run ML-service E2E pytest tests (requires ML service and optionally go-api to be up; set RUN_E2E=1)
@@ -458,8 +468,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 30 to match CI)..."
-	COV_MIN=$${COV_MIN_GO:-30} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 50)..."
+	COV_MIN=$${COV_MIN_GO:-50} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."

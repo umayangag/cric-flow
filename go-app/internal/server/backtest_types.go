@@ -24,6 +24,9 @@ type backtestCandidate struct {
 // Evaluate-mode DTOs
 type playerPredictions struct {
 	Runs    float64
+	Balls   float64 // 0 when not predicted
+	Fours   float64 // 0 when not predicted
+	Sixes   float64 // 0 when not predicted
 	Wickets float64
 	Economy float64
 	Catches float64

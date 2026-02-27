@@ -74,3 +74,67 @@ func TestComputeAverageWinProbability(t *testing.T) {
 		t.Fatalf("avg got %v want ~%v", got, want)
 	}
 }
+
+func TestParseF64(t *testing.T) {
+	tests := []struct {
+		in   string
+		want float64
+	}{
+		{"", 0},
+		{"3.14", 3.14},
+		{"0", 0},
+		{"invalid", 0},
+	}
+	for _, tt := range tests {
+		if got := parseF64(tt.in); got != tt.want {
+			t.Errorf("parseF64(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestPrevSeasonName(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"2024", "2023"},
+		{"2019", "2018"},
+		{"invalid", "invalid"},
+	}
+	for _, tt := range tests {
+		if got := prevSeasonName(tt.in); got != tt.want {
+			t.Errorf("prevSeasonName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestParseSeasonInt(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int
+	}{
+		{"2024", 2024},
+		{" 2019 ", 2019},
+		{"x", 0},
+	}
+	for _, tt := range tests {
+		if got := parseSeasonInt(tt.in); got != tt.want {
+			t.Errorf("parseSeasonInt(%q) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestNz64(t *testing.T) {
+	if got := nz64(struct{ Int64 int64; Valid bool }{10, true}); got != 10 {
+		t.Errorf("nz64(valid) = %d, want 10", got)
+	}
+	if got := nz64(struct{ Int64 int64; Valid bool }{10, false}); got != 0 {
+		t.Errorf("nz64(invalid) = %d, want 0", got)
+	}
+}
+
+func TestF32(t *testing.T) {
+	if got := f32(3.14); got != 3.14 {
+		t.Errorf("f32(3.14) = %v, want 3.14", got)
+	}
+}

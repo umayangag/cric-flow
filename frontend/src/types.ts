@@ -273,6 +273,20 @@ export type PipelineProgressPayload = {
     formats_total?: number;
   };
   estimated_remaining_sec?: number;
+  /** Live auto-tune progress: phase, algorithm, hyperparams, trial, trials_total, best_score, etc. */
+  auto_tune?: {
+    phase?: string;
+    model_kind?: string;
+    format_suffix?: string;
+    algorithm?: string;
+    hyperparams?: Record<string, unknown>;
+    trial?: number;
+    trials_total?: number;
+    best_score?: number;
+    best_algorithm?: string;
+    message?: string;
+    algorithms_screened?: string[];
+  };
 };
 
 export type Migration = {

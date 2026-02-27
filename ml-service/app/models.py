@@ -100,6 +100,13 @@ class BacktestPredictRequest(BaseModel):
         default=None,
         description="Per-player features from go-app; when present with format, use loaded models",
     )
+    # When True: use latest model (artifacts or train-on-the-fly with "now" cutoff).
+    # When False (default): strict temporal - train-on-the-fly uses cutoff for training data.
+    # Default False preserves reproducibility for backtests; True is for QA/eval with current models.
+    use_latest_model: bool = Field(
+        default=False,
+        description="Use latest model; when False, train strictly before cutoff_date",
+    )
 
     @field_validator("teams")
     def _teams_len_two(cls, v: Optional[List[str]]):
@@ -122,6 +129,9 @@ class BacktestPredictRequest(BaseModel):
 class BacktestPlayerPred(BaseModel):
     player_id: int
     runs: float
+    balls: Optional[float] = None
+    fours: Optional[float] = None
+    sixes: Optional[float] = None
     wickets: Optional[float] = None
     economy: Optional[float] = None
     catches: Optional[float] = None

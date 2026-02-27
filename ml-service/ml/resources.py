@@ -35,7 +35,7 @@ def _cpu_count() -> int:
 
 
 def _memory_limit_mb() -> int:
-    """Detect process memory limit in MB (cgroup v2/v1 or env). Returns 0 if unknown."""
+    """Detect process memory limit in MB (cgroup v2/v1 or env). Falls back to system total RAM if unknown."""
     # Explicit env (e.g. set by orchestrator)
     env_mb = os.environ.get("ML_MEMORY_LIMIT_MB")
     if env_mb:
@@ -59,6 +59,13 @@ def _memory_limit_mb() -> int:
             return limit_bytes // (1024 * 1024)
         except (OSError, ValueError):
             continue
+    # Fallback: use system total RAM (macOS, non-container Linux, etc.) for optimal use
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total // (1024 * 1024)
+    except Exception:
+        pass
     return 0
 
 
@@ -93,10 +100,10 @@ def suggested_n_jobs(kind: str = "training") -> int:
             pass
 
     limit_mb = _memory_limit_mb()
-    # When limit is unknown (e.g. subprocess in container without env/cgroup), training uses 1 job to avoid OOM
-    if kind == "training" and limit_mb <= 0:
+    if limit_mb == 0 and kind in ("training", "tuning"):
+        # All detection failed (cgroup, env, psutil): cap to 1 job to avoid OOM.
         cap = min(cap, 1)
-    if limit_mb > 0:
+    elif limit_mb > 0:
         res = _get_resources_config()
         if kind == "training":
             per_job = res.get("training_mb_per_job", _DEFAULT_TRAINING_MB_PER_JOB)

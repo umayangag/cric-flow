@@ -34,19 +34,23 @@ func NewBacktestMLClient() *BacktestMLClient {
 
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
-	Cutoff    string                        `json:"cutoff_date"`
-	PlayerIDs []int64                       `json:"player_ids,omitempty"`
-	Format    string                        `json:"format,omitempty"`
-	Features  map[string]map[string]float64 `json:"features,omitempty"`
+	Cutoff         string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids,omitempty"`
+	Format         string                        `json:"format,omitempty"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
 }
 
 type mlBacktestPlayerPred struct {
-	PlayerID int64   `json:"player_id"`
-	Runs     float64 `json:"runs,omitempty"`
-	Wickets  float64 `json:"wickets,omitempty"`
-	Economy  float64 `json:"economy,omitempty"`
-	Catches  float64 `json:"catches,omitempty"`
-	RunOuts  float64 `json:"run_outs,omitempty"`
+	PlayerID int64    `json:"player_id"`
+	Runs     float64  `json:"runs,omitempty"`
+	Balls    *float64 `json:"balls,omitempty"`
+	Fours    *float64 `json:"fours,omitempty"`
+	Sixes    *float64 `json:"sixes,omitempty"`
+	Wickets  float64  `json:"wickets,omitempty"`
+	Economy  float64  `json:"economy,omitempty"`
+	Catches  float64  `json:"catches,omitempty"`
+	RunOuts  float64  `json:"run_outs,omitempty"`
 }
 
 type mlBacktestPlayersResponse struct {
@@ -186,20 +190,23 @@ type HistoricalBacktestResult struct {
 
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
 // When format is non-empty and features is non-nil, they are sent so the ML service can run the full pipeline (real models).
+// useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
 	cutoff time.Time,
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
+	useLatestModel bool,
 ) (map[int64]playerPredictions, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]playerPredictions{}, nil
 	}
 	body := mlBacktestPredictRequest{
-		Cutoff:    cutoff.Format(time.RFC3339),
-		PlayerIDs: playerIDs,
-		Format:    strings.TrimSpace(format),
+		Cutoff:         cutoff.Format(time.RFC3339),
+		PlayerIDs:      playerIDs,
+		Format:         strings.TrimSpace(format),
+		UseLatestModel: useLatestModel,
 	}
 	if len(features) > 0 {
 		body.Features = make(map[string]map[string]float64, len(features))
@@ -232,13 +239,23 @@ func (c *BacktestMLClient) predictPlayers(
 	}
 	res := make(map[int64]playerPredictions, len(out.Players))
 	for _, p := range out.Players {
-		res[p.PlayerID] = playerPredictions{
+		pp := playerPredictions{
 			Runs:    p.Runs,
 			Wickets: p.Wickets,
 			Economy: p.Economy,
 			Catches: p.Catches,
 			RunOuts: p.RunOuts,
 		}
+		if p.Balls != nil {
+			pp.Balls = *p.Balls
+		}
+		if p.Fours != nil {
+			pp.Fours = *p.Fours
+		}
+		if p.Sixes != nil {
+			pp.Sixes = *p.Sixes
+		}
+		res[p.PlayerID] = pp
 	}
 	return res, nil
 }

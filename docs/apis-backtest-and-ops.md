@@ -43,19 +43,24 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
    `GET /api/backtest/match?format=T20&team1=IND&team2=AUS`  
    Response: `filters`, `candidates[]` (match_id, stable_id, date, venue, season, format, team1, team2, winner_team_code).
 
-2. **Evaluate a specific played match (strict cutoff)**  
+2. **Evaluate a specific played match**  
    `GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=111`  
-   Or SSE: `GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...` — streams `progress` events then `result` or `error`.  
+   Or SSE: `GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...`  
+   Or job: `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id).  
    Match scorecard (actual): `GET /api/backtest/scorecard?match_id=...`
 
-   Response includes: `filters`, `match`, `players[]` (player_id, predicted, actual, errors), `match_aggregates` (predicted, actual, errors), `metrics` (player_runs_mae, player_runs_rmse, player_runs_r2, player_wickets_mae, player_economy_mae, player_catches_mae, player_run_outs_mae, match_*_mae, winner_accuracy), `predicted_scorecard`.
+   Response includes: `filters` (with `model_mode`: `"latest"` or `"strict_temporal"`), `match`, `players[]` (player_id, predicted, actual, errors), `match_aggregates` (predicted, actual, errors), `metrics` (player_runs_mae, player_runs_rmse, player_runs_r2, player_wickets_mae, player_economy_mae, player_catches_mae, player_run_outs_mae, match_*_mae, winner_accuracy), `predicted_scorecard`.
 
-**Notes:** Training data for ML is strictly before match date. Players list = those who actually played. Match aggregates: predicted runs/wickets = sum of player preds; predicted extras from historical average per format/venue (`db.GetAverageExtrasForFormat`); actuals from DB. Fielding metrics (player_catches_mae, player_run_outs_mae) when fielding artifacts are loaded.
+   **Model temporal mode** (query or body: `use_latest_model=1`):
+   - **Latest model** (default for UI): Uses the current model (artifacts or train-on-the-fly with "now" cutoff). Fast; good for QA and sanity checks. May include the match being evaluated in training.
+   - **Strict cutoff**: Model trained only on data before match date. Unbiased temporal validation; may require per-match training when artifacts unavailable.
+
+**Notes:** Features are always computed at match-date cutoff (no future leakage). Players list = those who actually played. Match aggregates: predicted runs/wickets = sum of player preds; predicted extras from historical average per format/venue (`db.GetAverageExtrasForFormat`); actuals from DB. Fielding metrics (player_catches_mae, player_run_outs_mae) when fielding artifacts are loaded.
 
 ### ML backtest endpoint (used by Go backend)
 
 - **URL:** `POST $ML_SERVICE_URL/ml/backtest/predict`
-- **Player mode:** Request: `cutoff_date`, `player_ids`, `format`, `features` (required). Response: `players[]` with player_id, runs, wickets, economy (and catches/run_outs when fielding loaded). When artifacts are loaded, ML uses them; otherwise **train-on-the-fly** (fetch training data from go-app `GET /api/backtest/training-data?cutoff=...&format=all`, train in memory, predict). Requires **GO_APP_URL** for train-on-the-fly.
+- **Player mode:** Request: `cutoff_date`, `player_ids`, `format`, `features` (required), optional `use_latest_model` (default false). Response: `players[]` with player_id, runs, wickets, economy (and catches/run_outs when fielding loaded). When artifacts are loaded, ML uses them; otherwise **train-on-the-fly** (fetch training data from go-app `GET /api/backtest/training-data?cutoff=...&format=all`, train in memory, predict). `use_latest_model=true`: train with "now" as cutoff (one model per format). `use_latest_model=false`: train strictly before `cutoff_date`. Requires **GO_APP_URL** for train-on-the-fly.
 - **Match aggregates mode:** Request: `cutoff_date`, `teams`. Response: `match` (runs, wickets, extras, winner_team_code).
 
 ### Curl examples
@@ -72,7 +77,7 @@ curl "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mo
 
 ### Frontend
 
-Evaluate DB tab: load candidates by filters, select match, run evaluation (SSE), show actual scorecard, progress, result (player errors, summary metrics, predicted scorecard). MAE shown to 3 decimal places; missing as '-'.
+Evaluate DB tab: load candidates by filters, select match, choose **model temporal mode** (Latest model recommended vs Strict cutoff), run evaluation (job-based, polls status), show actual scorecard, progress, result (player errors, summary metrics, predicted scorecard). MAE shown to 3 decimal places; missing as '-'.
 
 ### Troubleshooting
 
@@ -84,17 +89,19 @@ Evaluate DB tab: load candidates by filters, select match, run evaluation (SSE),
 
 ## Evaluate DB pipeline (flow and reference)
 
-**Flow:** Frontend (Evaluate DB tab) → `GET /api/backtest/match` (select) → user selects match → optional `GET /api/backtest/scorecard?match_id=N` → `GET /api/backtest/evaluate-stream?format&team1&team2&match_id=N` (SSE) → go-app runs `doEvaluateWork` → SSE progress then result/error → UI shows actual scorecard, progress, evaluation result, predicted scorecard. **Training data is strictly before match date (cutoff).**
+**Flow:** Frontend (Evaluate DB tab) → `GET /api/backtest/match` (select) → user selects match → optional `GET /api/backtest/scorecard?match_id=N` → `POST /api/backtest/evaluate-start` or `GET /api/backtest/evaluate-stream` (with optional `use_latest_model=1`) → go-app runs `doEvaluateWork` → progress/result → UI shows actual scorecard, evaluation result, predicted scorecard. **Features** are always computed at match-date cutoff. **Model temporal mode:** `use_latest_model=true` uses the latest model (may include match in training); `use_latest_model=false` (strict) trains only on data before match date.
 
-**Go-app evaluate steps (`doEvaluateWork`):** match_date (cutoff) → squad (playing XI from batting_data ∪ bowling_data) → features (at cutoff via `ComputeFeaturesAtCutoffForMatch` or legacy provider) → ml_predict (format + features to ML) → actuals (from DB) → metrics → aggregates (predicted = sum of player preds; actual from DB) → scorecard (build predicted scorecard from actual layout + ML preds) → done. All external deps behind seams in `backtest_seams.go` for testing.
+**Go-app evaluate steps (`doEvaluateWork`):** match_date (cutoff) → squad (playing XI from batting_data ∪ bowling_data) → features (at cutoff via `ComputeFeaturesAtCutoffForMatch` or legacy provider) → ml_predict (format + features + use_latest_model to ML) → actuals (from DB) → metrics → aggregates (predicted = sum of player preds; actual from DB) → scorecard (build predicted scorecard from actual layout + ML preds) → done. Response includes `filters.model_mode` (`"latest"` or `"strict_temporal"`). All external deps behind seams in `backtest_seams.go` for testing.
 
 **Feature computation at cutoff:** For matchID > 0: `GetMatchFeatureContext` (format_id, venue_id, season_id, opposition IDs) then per-player batting/bowling snapshots at cutoff (EWM, consistency, venue, opposition; only data with match_date < cutoff). Missing history → 0; weather 0 when not available. Same semantics as training export.
 
-**ML service:** `POST /ml/backtest/predict` with format + features. Uses loaded artifacts for that format or train-on-the-fly (fetch `GET /api/backtest/training-data?cutoff=...&format=all`). No deterministic baseline. Fielding: when fielding artifacts loaded, returns catches/run_outs; else 0.
+**ML service:** `POST /ml/backtest/predict` with format, features, and `use_latest_model`. Uses loaded artifacts for that format or train-on-the-fly (fetch `GET /api/backtest/training-data?cutoff=...&format=all`). When `use_latest_model=true`, train-on-the-fly uses "now" as cutoff. No deterministic baseline. Fielding: when fielding artifacts loaded, returns catches/run_outs; else 0.
 
 **Go-app training-data API:** `GET /api/backtest/training-data?cutoff=...&format=...` (cutoff required; format=all or specific). Response: batting, bowling (headers + rows); only matches with match_date < cutoff. Used by ML train-on-the-fly.
 
-**SSE stream:** `GET /api/backtest/evaluate-stream?format&team1&team2&match_id`. Events: `progress` (step, message), then `result` (BacktestEvaluateResponse) or `error` (message). Frontend: `backtestEvaluateStream()` in api.ts; EvaluateDbTab shows steps and progress.
+**SSE stream:** `GET /api/backtest/evaluate-stream?format&team1&team2&match_id` (optional `use_latest_model=1`, `use_unified_model=1`). Events: `progress` (step, message), then `result` (BacktestEvaluateResponse) or `error` (message). Frontend: `backtestEvaluateStream()` in api.ts.
+
+**Evaluate job:** `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id, optional use_latest_model, use_unified_model). Returns 202 `{ "job_id": "..." }`. Poll `GET /api/backtest/evaluate-status?job_id=...` for status, steps, and result. EvaluateDbTab uses this flow.
 
 **Scorecards:** Actual: `GET /api/backtest/scorecard?match_id=N` (repo_scorecard.GetMatchScorecard). Predicted: built in go-app from actual layout + ML predictions, returned in evaluate response.
 

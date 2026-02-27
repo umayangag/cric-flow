@@ -31,8 +31,8 @@ def test_health_live():
 @pytest.mark.e2e
 @pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
 def test_health_artifacts_live():
-    """GET /health/artifacts on live ML service returns 200 and artifact keys."""
-    resp = httpx.get(f"{_base_url()}/health/artifacts", timeout=5.0)
+    """GET /health on live ML service returns 200 and artifact keys."""
+    resp = httpx.get(f"{_base_url()}/health", timeout=5.0)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "loaded_batting_formats" in body
@@ -89,3 +89,37 @@ def test_backtest_predict_match_baseline_live():
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "runs" in body or "winner_team_code" in body or "match" in body
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
+def test_artifacts_status_live():
+    """GET /artifacts/status returns 200 with formats and legacy structure."""
+    resp = httpx.get(f"{_base_url()}/artifacts/status", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "formats" in body
+    assert "legacy" in body
+    assert "timestamp" in body
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
+def test_model_metadata_live():
+    """GET /model-metadata returns 200 with batting/bowling metadata."""
+    resp = httpx.get(f"{_base_url()}/model-metadata", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert isinstance(body, dict)
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
+def test_model_stats_live():
+    """GET /model-stats returns 200 with models_dir and models list."""
+    resp = httpx.get(f"{_base_url()}/model-stats", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "models_dir" in body
+    assert "models" in body
+    assert isinstance(body["models"], list)

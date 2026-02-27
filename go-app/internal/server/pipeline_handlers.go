@@ -211,6 +211,9 @@ func mlServiceBaseURL() string {
 func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
 	base := mlServiceBaseURL()
 	url := base + "/admin/train/" + step + querySuffix
+	slog.Info("pipeline: calling ML service train endpoint",
+		slog.String("step", step),
+		slog.String("url", url))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err

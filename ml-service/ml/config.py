@@ -195,7 +195,7 @@ def save_tuned_params_to_go_app(
     base = go_app_url.rstrip("/")
     url = f"{base}/api/ml/tuned-params"
     payload_dict: Dict[str, Any] = {"model": model, "format": format_code, "params": params}
-    if metrics:
+    if metrics is not None:
         payload_dict["metrics"] = metrics
     payload = json.dumps(payload_dict).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST")
@@ -337,6 +337,7 @@ def get_tuning_config() -> Dict[str, Any]:
     if validation_method not in ("kfold", "walk_forward"):
         validation_method = "walk_forward"
 
+    stages = tuning.get("stages") or {}
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -346,6 +347,7 @@ def get_tuning_config() -> Dict[str, Any]:
         "search_space": tuning.get("search_space"),
         "algorithms": algorithms,
         "validation_method": validation_method,
+        "stages": stages if isinstance(stages, dict) else {},
     }
 
 

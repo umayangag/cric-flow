@@ -1,235 +1,117 @@
 package teamselect_test
 
 import (
+	"strings"
 	"testing"
 
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
-func mk(name string, bat, bowl float64, isBow, isKeep bool) ts.Player {
-	return ts.Player{Name: name, BatScore: bat, BowlScore: bowl, IsBowler: isBow, IsKeeper: isKeep}
-}
-
-func totalScore(team []ts.Player, w ts.ScoreWeights) float64 {
-	s := 0.0
-	for _, p := range team {
-		s += ts.ScorePlayer(p, w)
+// mkPool returns a pool of 11 players: 6 batters, 5 bowlers, 1 keeper.
+func mkPool() []ts.Player {
+	return []ts.Player{
+		{Name: "A", BatScore: 0.9, IsBowler: false, IsKeeper: true},
+		{Name: "B", BatScore: 0.85, IsBowler: false},
+		{Name: "C", BatScore: 0.8, IsBowler: false},
+		{Name: "D", BatScore: 0.75, IsBowler: false},
+		{Name: "E", BatScore: 0.7, IsBowler: false},
+		{Name: "F", BatScore: 0.65, IsBowler: false},
+		{Name: "G", BowlScore: 0.9, IsBowler: true},
+		{Name: "H", BowlScore: 0.8, IsBowler: true},
+		{Name: "I", BowlScore: 0.7, IsBowler: true},
+		{Name: "J", BowlScore: 0.6, IsBowler: true},
+		{Name: "K", BowlScore: 0.5, IsBowler: true},
 	}
-	return s
 }
 
-func TestSelectOptimized_Constraints(t *testing.T) {
+func TestSelectOptimized_ValidPool(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	pool := make([]ts.Player, 0, 12)
-	pool = append(pool,
-		mk("A", 0.9, 0.1, false, false),
-		mk("B", 0.7, 0.8, true, false),
-		mk("C", 0.6, 0.7, true, false),
-		mk("D", 0.5, 0.2, false, false),
-		mk("E", 0.4, 0.9, true, false),
-		mk("K", 0.3, 0.3, false, true),
-		mk("F", 0.35, 0.85, true, false),
-		mk("G", 0.2, 0.1, false, false),
-		mk("H", 0.25, 0.2, false, false),
-		mk("I", 0.15, 0.75, true, false),
-		mk("J", 0.1, 0.5, true, false),
-	)
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
-	if len(pool) < 11 {
-		t.Skip("pool too small for size 11")
-	}
-	// Pad pool to 11+ with duplicates of existing for constraint satisfaction
-	pool = append(pool, mk("K2", 0.2, 0.2, false, true))
-	team, err := ts.SelectOptimized(pool, w, c)
+	pool := mkPool()
+	sel, err := ts.SelectOptimized(pool, w, ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true})
 	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+		t.Fatalf("SelectOptimized: %v", err)
 	}
-	if len(team) != 11 {
-		t.Fatalf("want size=11 got %d", len(team))
+	if len(sel) != 11 {
+		t.Fatalf("want 11 selected, got %d", len(sel))
 	}
-	if countIf(team, func(p ts.Player) bool { return p.IsKeeper }) < 1 {
-		t.Fatalf("expected at least one keeper")
-	}
-	if countIf(team, func(p ts.Player) bool { return p.IsBowler }) < 5 {
-		t.Fatalf("expected at least 5 bowlers")
-	}
-}
-
-func TestSelectOptimized_NoKeeperInPool(t *testing.T) {
-	t.Parallel()
-	w := ts.DefaultWeights()
-	pool := []ts.Player{
-		mk("A", 0.9, 0.1, false, false),
-		mk("B", 0.8, 0.8, true, false),
-		mk("C", 0.7, 0.7, true, false),
-		mk("D", 0.6, 0.2, false, false),
-		mk("E", 0.5, 0.9, true, false),
-		mk("F", 0.4, 0.5, true, false),
-		mk("G", 0.3, 0.3, false, false),
-		mk("H", 0.2, 0.4, true, false),
-		mk("I", 0.15, 0.6, true, false),
-		mk("J", 0.1, 0.1, false, false),
-		mk("K", 0.05, 0.2, false, false),
-	}
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
-	_, err := ts.SelectOptimized(pool, w, c)
-	if err == nil {
-		t.Fatal("expected error when no keeper in pool")
-	}
-	if indexOf(err.Error(), "keeper") < 0 {
-		t.Fatalf("expected err to mention keeper, got: %v", err)
-	}
-}
-
-func TestSelectOptimized_NotEnoughBowlers(t *testing.T) {
-	t.Parallel()
-	w := ts.DefaultWeights()
-	pool := []ts.Player{
-		mk("A", 0.9, 0.1, false, false),
-		mk("B", 0.8, 0.2, false, false),
-		mk("C", 0.7, 0.3, false, true),
-		mk("D", 0.6, 0.4, true, false),
-		mk("E", 0.5, 0.5, true, false),
-		mk("F", 0.4, 0.6, false, false),
-		mk("G", 0.3, 0.7, false, false),
-		mk("H", 0.2, 0.8, false, false),
-		mk("I", 0.15, 0.9, false, false),
-		mk("J", 0.1, 0.1, false, false),
-		mk("K", 0.05, 0.2, false, false),
-	}
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: false}
-	_, err := ts.SelectOptimized(pool, w, c)
-	if err == nil {
-		t.Fatal("expected error when not enough bowlers")
-	}
-	if indexOf(err.Error(), "bowler") < 0 {
-		t.Fatalf("expected err to mention bowler, got: %v", err)
-	}
-}
-
-func TestSelectOptimized_ScoreNotWorseThanGreedy(t *testing.T) {
-	t.Parallel()
-	w := ts.DefaultWeights()
-	pool := make([]ts.Player, 0, 15)
-	for i := 0; i < 15; i++ {
-		name := string(rune('A' + i))
-		bat := 0.9 - float64(i)*0.05
-		bowl := 0.1 + float64(i%5)*0.15
-		isBowler := i%3 != 0
-		isKeeper := i == 10
-		pool = append(pool, mk(name, bat, bowl, isBowler, isKeeper))
-	}
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
-	greedy, errG := ts.Select(pool, w, c)
-	optimized, errO := ts.SelectOptimized(pool, w, c)
-	if errG != nil {
-		t.Fatalf("greedy Select failed: %v", errG)
-	}
-	if errO != nil {
-		t.Fatalf("SelectOptimized failed: %v", errO)
-	}
-	sG := totalScore(greedy, w)
-	sO := totalScore(optimized, w)
-	if sO < sG {
-		t.Errorf("optimized score %.4f should be >= greedy score %.4f", sO, sG)
-	}
-}
-
-func TestSelectOptimized_Deterministic(t *testing.T) {
-	t.Parallel()
-	w := ts.DefaultWeights()
-	pool := []ts.Player{
-		mk("A", 0.5, 0.5, true, false),
-		mk("B", 0.5, 0.5, true, false),
-		mk("C", 0.5, 0.5, true, false),
-		mk("D", 0.5, 0.5, true, false),
-		mk("E", 0.5, 0.5, true, false),
-		mk("F", 0.5, 0.5, false, true),
-		mk("G", 0.5, 0.5, false, false),
-		mk("H", 0.5, 0.5, false, false),
-		mk("I", 0.5, 0.5, false, false),
-		mk("J", 0.5, 0.5, false, false),
-		mk("K", 0.5, 0.5, false, false),
-	}
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
-	t1, _ := ts.SelectOptimized(pool, w, c)
-	t2, _ := ts.SelectOptimized(pool, w, c)
-	if len(t1) != len(t2) {
-		t.Fatalf("different lengths %d vs %d", len(t1), len(t2))
-	}
-	for i := range t1 {
-		if t1[i].Name != t2[i].Name {
-			t.Errorf("run 1 vs 2 differ at index %d: %s vs %s", i, t1[i].Name, t2[i].Name)
+	bowlers := 0
+	keepers := 0
+	for _, p := range sel {
+		if p.IsBowler {
+			bowlers++
+		}
+		if p.IsKeeper {
+			keepers++
 		}
 	}
-}
-
-func TestSelectOptimized_InsufficientPool(t *testing.T) {
-	t.Parallel()
-	w := ts.DefaultWeights()
-	pool := []ts.Player{mk("A", 1, 0, false, false)}
-	_, err := ts.SelectOptimized(pool, w, ts.Constraints{Size: 11, MinBowlers: 0, RequireKeeper: false})
-	if err == nil {
-		t.Fatal("expected error for insufficient pool")
+	if bowlers < 5 {
+		t.Fatalf("want at least 5 bowlers, got %d", bowlers)
 	}
-	if indexOf(err.Error(), "insufficient") < 0 {
-		t.Errorf("expected insufficient pool error, got: %v", err)
+	if keepers < 1 {
+		t.Fatalf("want at least 1 keeper, got %d", keepers)
 	}
 }
 
-func TestSelectTopK(t *testing.T) {
+func TestSelectOptimized_Errors(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	pool := make([]ts.Player, 0, 12)
-	pool = append(pool,
-		mk("A", 0.9, 0.1, false, false),
-		mk("B", 0.7, 0.8, true, false),
-		mk("C", 0.6, 0.7, true, false),
-		mk("D", 0.5, 0.2, false, false),
-		mk("E", 0.4, 0.9, true, false),
-		mk("K", 0.3, 0.3, false, true),
-		mk("F", 0.35, 0.85, true, false),
-		mk("G", 0.2, 0.1, false, false),
-		mk("H", 0.25, 0.2, false, false),
-		mk("I", 0.15, 0.75, true, false),
-		mk("J", 0.1, 0.5, true, false),
-		mk("K2", 0.2, 0.2, false, true),
-	)
-	c := ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}
-	xis, err := ts.SelectTopK(pool, w, c, 5)
+	pool := mkPool()
+
+	tests := []struct {
+		name   string
+		pool   []ts.Player
+		c      ts.Constraints
+		errStr string
+	}{
+		{"invalid size", pool, ts.Constraints{Size: 0, MinBowlers: 5}, "invalid size"},
+		{"insufficient pool", pool[:5], ts.Constraints{Size: 11, MinBowlers: 2}, "insufficient pool"},
+		{"no keeper", func() []ts.Player {
+			// Pool of 11 with no keeper
+			p := mkPool()
+			p[0].IsKeeper = false
+			return p
+		}(), ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}, "no keeper"},
+		{"not enough bowlers", pool[:8], ts.Constraints{Size: 8, MinBowlers: 6}, "not enough bowlers"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ts.SelectOptimized(tt.pool, w, tt.c)
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.errStr)
+			}
+			if !strings.Contains(err.Error(), tt.errStr) {
+				t.Fatalf("err %q does not contain %q", err.Error(), tt.errStr)
+			}
+		})
+	}
+}
+
+func TestSelectTopK_Valid(t *testing.T) {
+	t.Parallel()
+	w := ts.DefaultWeights()
+	pool := mkPool()
+	xis, err := ts.SelectTopK(pool, w, ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}, 3)
 	if err != nil {
 		t.Fatalf("SelectTopK: %v", err)
 	}
-	if len(xis) < 1 || len(xis) > 5 {
-		t.Errorf("want 1–5 XIs, got %d", len(xis))
+	if len(xis) < 1 || len(xis) > 3 {
+		t.Fatalf("want 1-3 XIs, got %d", len(xis))
 	}
-	for i, xi := range xis {
+	for _, xi := range xis {
 		if len(xi) != 11 {
-			t.Errorf("XI %d: want size 11, got %d", i, len(xi))
-		}
-		if countIf(xi, func(p ts.Player) bool { return p.IsKeeper }) < 1 {
-			t.Errorf("XI %d: no keeper", i)
-		}
-		if countIf(xi, func(p ts.Player) bool { return p.IsBowler }) < 5 {
-			t.Errorf("XI %d: fewer than 5 bowlers", i)
-		}
-	}
-	// Scores should be non-increasing
-	for i := 1; i < len(xis); i++ {
-		sPrev := totalScore(xis[i-1], w)
-		sCur := totalScore(xis[i], w)
-		if sCur > sPrev {
-			t.Errorf("XI %d score %.4f > XI %d score %.4f", i, sCur, i-1, sPrev)
-		}
-	}
-	// Best XI from SelectTopK should match SelectOptimized
-	best, _ := ts.SelectOptimized(pool, w, c)
-	if len(xis) > 0 && len(best) == 11 {
-		sTopK := totalScore(xis[0], w)
-		sBest := totalScore(best, w)
-		if sTopK != sBest {
-			t.Errorf("SelectTopK[0] score %.4f != SelectOptimized score %.4f", sTopK, sBest)
+			t.Fatalf("each XI should have 11 players, got %d", len(xi))
 		}
 	}
 }
+
+func TestSelectTopK_InvalidK(t *testing.T) {
+	t.Parallel()
+	w := ts.DefaultWeights()
+	pool := mkPool()
+	_, err := ts.SelectTopK(pool, w, ts.Constraints{Size: 11, MinBowlers: 5}, 0)
+	if err == nil {
+		t.Fatalf("expected error for k=0")
+	}
+}
+

@@ -41,7 +41,7 @@ func (Runner) RunReplay(
 	windowN int,
 	concurrencyLimit int,
 ) error {
-	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit)
 	pageSize := replayMatchPageSize()
 	slog.Info("precompute-features(replay)",
 		slog.String("format", formatCode),
@@ -71,6 +71,11 @@ func (Runner) RunReplay(
 			break
 		}
 		totalMatches += int64(len(matches))
+		if totalMatches == int64(len(matches)) {
+			slog.Info("pipeline: precompute-features replay processing first page",
+				slog.String("format", formatCode),
+				slog.Int("matches_in_page", len(matches)))
+		}
 		for _, m := range matches {
 			asOf := m.MatchDate
 			players, err := db.ListPlayersInMatch(ctx, m.MatchID)
@@ -342,7 +347,7 @@ func (Runner) RunPointInTime(
 		)
 		return fmt.Errorf("list players with history: %w", err)
 	}
-	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit, resources.KindPrecompute)
+	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit)
 	slog.Info(
 		"precompute-features(as-of)",
 		slog.Int("players", len(players)),
@@ -513,11 +518,11 @@ func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) erro
 }
 
 // resolveConcurrencyLimit returns the effective concurrency limit: uses requestedLimit when > 0,
-// otherwise resources.GetLimit(kind), and ensures at least 1.
-func resolveConcurrencyLimit(requestedLimit int, kind resources.Kind) int {
+// otherwise resources.GetLimit(KindPrecompute), and ensures at least 1.
+func resolveConcurrencyLimit(requestedLimit int) int {
 	limit := requestedLimit
 	if limit <= 0 {
-		limit = resources.GetLimit(kind)
+		limit = resources.GetLimit(resources.KindPrecompute)
 	}
 	if limit < 1 {
 		limit = 1

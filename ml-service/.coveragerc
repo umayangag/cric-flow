@@ -6,6 +6,19 @@ omit =
     */.venv/*
     */tests/*
     */__init__.py
+    # CLI training scripts (invoked as main; covered by integration/e2e)
+    */ml/train_batting.py
+    */ml/train_bowling.py
+    */ml/train_fielding.py
+    */ml/train_extras.py
+    */ml/train_win.py
+    */ml/train_combination_meta.py
+    */ml/train_batting_model.py
+    */ml/train_bowling_model.py
+    */ml/walk_forward.py
+    */ml/validate_exports.py
+    */ml/batting_regressor.py
+    */ml/bowling_regressor.py
 
 [report]
 show_missing = True

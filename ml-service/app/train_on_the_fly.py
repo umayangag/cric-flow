@@ -379,10 +379,15 @@ def train_on_the_fly(
         )
         raise ValueError(msg)
 
-    logger.info(
+    n_bat = int(X_bat.shape[0]) if X_bat.size else 0
+    n_bowl = int(X_bowl.shape[0]) if X_bowl.size else 0
+    logger.warning(
         "train_on_the_fly.training.start",
+        msg="TRAIN_ON_THE_FLY: training models (CPU/RAM intensive) - trains batting and bowling models in memory",
         format_code=format_code,
         cutoff_iso=cutoff_iso,
+        batting_samples=n_bat,
+        bowling_samples=n_bowl,
     )
     scaler_bat, model_bat = _train_batting_in_memory(X_bat, Y_bat)
     scaler_bowl, model_bowl = _train_bowling_in_memory(X_bowl, Y_bowl)

@@ -92,22 +92,40 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			p := preds[b.PlayerID]
 			r := int(math.Round(p.Runs))
 			predRunsSum += r
+			var ballsP, foursP, sixesP *int
+			var strikeRate *float32
+			bl := int(math.Round(p.Balls))
+			ballsP = &bl
+			f := int(math.Round(p.Fours))
+			foursP = &f
+			s := int(math.Round(p.Sixes))
+			sixesP = &s
+			if p.Balls > 0 {
+				sr := float32(100.0 * p.Runs / p.Balls)
+				strikeRate = &sr
+			}
 			inn.Batting = append(inn.Batting, db.ScorecardBatting{
 				PlayerID:   b.PlayerID,
 				PlayerName: b.PlayerName,
 				Runs:       intPtr(r),
-				Balls:      nil,
-				Fours:      nil,
-				Sixes:      nil,
-				StrikeRate: nil,
+				Balls:      ballsP,
+				Fours:      foursP,
+				Sixes:      sixesP,
+				StrikeRate: strikeRate,
 				HowOut:     nil,
 			})
 		}
 		inn.RunsScored = predRunsSum
-		var predWicketsSum int
+		// First pass: collect raw wicket predictions
+		type bowlerPred struct {
+			w    db.ScorecardBowling
+			wkts float64
+		}
+		var bowlerPreds []bowlerPred
+		var predWicketsSum float64
 		for _, w := range in.Bowling {
 			p := preds[w.PlayerID]
-			wkts := int(math.Round(p.Wickets))
+			wkts := math.Max(0, p.Wickets)
 			predWicketsSum += wkts
 			ec := float32Ptr(float32(p.Economy))
 			var predRuns *int
@@ -126,20 +144,36 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				totalBalls := whole*6 + ballsInOver
 				predRuns = intPtr(int(math.Round(float64(totalBalls) * p.Economy / 6)))
 			}
-			inn.Bowling = append(inn.Bowling, db.ScorecardBowling{
-				PlayerID:   w.PlayerID,
-				PlayerName: w.PlayerName,
-				Overs:      w.Overs,
-				Maidens:    nil,
-				Runs:       predRuns,
-				Wickets:    intPtr(wkts),
-				Economy:    ec,
-				Wides:      nil,
-				NoBalls:    nil,
-				Balls:      w.Balls,
+			bowlerPreds = append(bowlerPreds, bowlerPred{
+				w: db.ScorecardBowling{
+					PlayerID:   w.PlayerID,
+					PlayerName: w.PlayerName,
+					Overs:      w.Overs,
+					Maidens:    nil,
+					Runs:       predRuns,
+					Wickets:    nil, // set after scaling
+					Economy:    ec,
+					Wides:      nil,
+					NoBalls:    nil,
+					Balls:      w.Balls,
+				},
+				wkts: wkts,
 			})
 		}
-		inn.WicketsLost = predWicketsSum
+		// Scale wickets so total per inning does not exceed 10 (cricket max)
+		const maxWicketsPerInning = 10
+		scale := 1.0
+		if predWicketsSum > maxWicketsPerInning && predWicketsSum > 0 {
+			scale = maxWicketsPerInning / predWicketsSum
+		}
+		var scaledSum int
+		for _, bp := range bowlerPreds {
+			scaled := int(math.Round(bp.wkts * scale))
+			scaledSum += scaled
+			bp.w.Wickets = intPtr(scaled)
+			inn.Bowling = append(inn.Bowling, bp.w)
+		}
+		inn.WicketsLost = scaledSum
 		out.Innings = append(out.Innings, inn)
 	}
 	return out
@@ -422,10 +456,11 @@ type BacktestProgressFunc func(step, message string)
 
 // doEvaluateWork runs the default evaluate pipeline (no use_ml=1). Progress is called after each step when non-nil.
 // When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
+// When useLatestModel is true, ML uses the latest available model (may include post-cutoff training data); otherwise strict temporal cutoff.
 func doEvaluateWork(
 	ctx context.Context,
 	format, team1, team2, matchID string,
-	useUnifiedModel bool,
+	useUnifiedModel, useLatestModel bool,
 	progress BacktestProgressFunc,
 ) (*backtestEvaluateResponse, error) {
 	mid, err := strconv.ParseInt(matchID, 10, 64)
@@ -464,7 +499,7 @@ func doEvaluateWork(
 	if useUnifiedModel {
 		formatForPrediction = ""
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features, useLatestModel)
 	if err != nil {
 		return nil, err
 	}
@@ -480,12 +515,17 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("metrics", "Computing player metrics and errors...")
 	}
+	modelMode := "strict_temporal"
+	if useLatestModel {
+		modelMode = "latest"
+	}
 	resp := backtestEvaluateResponse{
 		Filters: map[string]any{
-			"format":   format,
-			"team1":    team1,
-			"team2":    team2,
-			"match_id": mid,
+			"format":     format,
+			"team1":      team1,
+			"team2":      team2,
+			"match_id":   mid,
+			"model_mode": modelMode,
 		},
 	}
 	resp.Match.MatchID = mid
@@ -519,6 +559,17 @@ func parseUseUnifiedModel(r *http.Request, defaultVal bool) bool {
 		return true
 	}
 	if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
+		return true
+	}
+	return defaultVal
+}
+
+// parseUseLatestModel reads use_latest_model from the request (query or JSON body when applicable).
+// When true, ML uses the latest available model (may include post-cutoff training data).
+// Default is false (strict temporal: model trained only on data before match date).
+func parseUseLatestModel(r *http.Request, defaultVal bool) bool {
+	q := r.URL.Query()
+	if v := strings.TrimSpace(q.Get("use_latest_model")); v == "1" || strings.EqualFold(v, "true") {
 		return true
 	}
 	return defaultVal
@@ -574,7 +625,8 @@ func (a *App) handleBacktestEvaluate(
 	}
 
 	useUnified := parseUseUnifiedModel(r, false)
-	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useUnified, nil)
+	useLatest := parseUseLatestModel(r, false)
+	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useUnified, useLatest, nil)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -736,8 +788,8 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var format, team1, team2, matchID string
-	var useUnifiedModel bool
-	useUnifiedFromBody := false
+	var useUnifiedModel, useLatestModel bool
+	useUnifiedFromBody, useLatestFromBody := false, false
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		var body struct {
 			Format          string `json:"format"`
@@ -745,6 +797,7 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 			Team2           string `json:"team2"`
 			MatchID         int64  `json:"match_id"`
 			UseUnifiedModel *bool  `json:"use_unified_model,omitempty"`
+			UseLatestModel  *bool  `json:"use_latest_model,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(
@@ -764,9 +817,16 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 			useUnifiedModel = *body.UseUnifiedModel
 			useUnifiedFromBody = true
 		}
+		if body.UseLatestModel != nil {
+			useLatestModel = *body.UseLatestModel
+			useLatestFromBody = true
+		}
 	}
 	if !useUnifiedFromBody {
 		useUnifiedModel = parseUseUnifiedModel(r, false)
+	}
+	if !useLatestFromBody {
+		useLatestModel = parseUseLatestModel(r, false)
 	}
 	if format == "" || team1 == "" || team2 == "" || matchID == "" {
 		q := r.URL.Query()
@@ -800,7 +860,7 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useUnifiedModel)
+	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useUnifiedModel, useLatestModel)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -875,7 +935,8 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	useUnified := parseUseUnifiedModel(r, false)
-	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useUnified, progress)
+	useLatest := parseUseLatestModel(r, false)
+	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useUnified, useLatest, progress)
 	if err != nil {
 		payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)

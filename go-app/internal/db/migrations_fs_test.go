@@ -14,6 +14,38 @@ import (
 	dmocks "github.com/umayangag/cric-flow/go-app/internal/db/mocks"
 )
 
+// stringRowsForMigrations returns db.Rows that yields the given strings. Used by migration tests.
+func stringRowsForMigrations(vals []string) dbpkg.Rows {
+	return &migrationsStringRows{vals: vals}
+}
+
+type migrationsStringRows struct {
+	vals []string
+	idx  int
+}
+
+func (r *migrationsStringRows) Next() bool {
+	if r.idx < len(r.vals) {
+		r.idx++
+		return true
+	}
+	return false
+}
+
+func (r *migrationsStringRows) Scan(dest ...any) error {
+	if r.idx == 0 || r.idx > len(r.vals) || len(dest) == 0 {
+		return nil
+	}
+	if p, ok := dest[0].(*string); ok {
+		*p = r.vals[r.idx-1]
+		return nil
+	}
+	return nil
+}
+
+func (r *migrationsStringRows) Close() {}
+func (r *migrationsStringRows) Err() error { return nil }
+
 // Helper to setup a DB mock for migrations tests
 //
 //nolint:unparam
@@ -21,7 +53,7 @@ func setupMigrationsDBMock(
 	t *testing.T,
 	initiallyApplied []string,
 	failOnSubstr string,
-) (*dmocks.DBMock, *dmocks.RowsMock, *map[string]bool) {
+) (*dmocks.MockDB, dbpkg.Rows, *map[string]bool) {
 	t.Helper()
 	applied := map[string]bool{}
 	for _, v := range initiallyApplied {
@@ -33,11 +65,9 @@ func setupMigrationsDBMock(
 		list = append(list, v)
 	}
 	sort.Strings(list)
-	rows := dmocks.NewRowsMock(list)
-	rows.On("Scan", mock.Anything).Return(nil)
-	rows.On("Close").Return()
+	rows := stringRowsForMigrations(list)
 
-	dbm := &dmocks.DBMock{}
+	dbm := &dmocks.MockDB{}
 	// CREATE TABLE IF NOT EXISTS ... always ok
 	dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
 		return strings.Contains(strings.ToLower(sql), "create table if not exists schema_migrations")
@@ -61,9 +91,12 @@ func setupMigrationsDBMock(
 	dbm.On("Exec", mock.Anything, mock.MatchedBy(func(sql string) bool {
 		return strings.HasPrefix(strings.TrimSpace(strings.ToUpper(sql)), "INSERT INTO SCHEMA_MIGRATIONS")
 	}), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		// args: ctx, sql, version
-		v, _ := args.Get(2).(string)
-		applied[v] = true
+		// args: ctx, sql, argsSlice; version is argsSlice[0]
+		if arr, ok := args.Get(2).([]any); ok && len(arr) > 0 {
+			if v, ok := arr[0].(string); ok {
+				applied[v] = true
+			}
+		}
 	})
 
 	dbpkg.SetDB(dbm)
