@@ -2237,7 +2237,13 @@ def main() -> None:
         params_to_save = dict(report["config_snippet"])
         params_to_save["algorithms"] = report.get("algorithms", [])
         params_to_save["validation_method"] = report.get("validation_method", "walk_forward")
-        metrics_to_save = report.get("metrics")
+        # Build metrics for DB: always include best_cv_score and tuning context for debugging
+        metrics_to_save: Dict[str, Any] = dict(report.get("metrics") or {})
+        if report.get("best_cv_score") is not None:
+            metrics_to_save["best_cv_score"] = report["best_cv_score"]
+        for key in ("scoring", "cv_splits", "validation_method", "n_samples", "n_features", "n_targets"):
+            if report.get(key) is not None:
+                metrics_to_save[key] = report[key]
         try:
             save_tuned_params_to_go_app(
                 go_app_url, model, format_suffix or "", params_to_save, api_key, metrics=metrics_to_save

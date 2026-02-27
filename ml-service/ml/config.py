@@ -195,7 +195,7 @@ def save_tuned_params_to_go_app(
     base = go_app_url.rstrip("/")
     url = f"{base}/api/ml/tuned-params"
     payload_dict: Dict[str, Any] = {"model": model, "format": format_code, "params": params}
-    if metrics:
+    if metrics is not None:
         payload_dict["metrics"] = metrics
     payload = json.dumps(payload_dict).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST")
