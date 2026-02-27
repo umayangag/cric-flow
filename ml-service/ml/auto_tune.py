@@ -453,6 +453,173 @@ def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray
         return {}
 
 
+# Simpler algorithms for complexity check: prefer these if within 1% of best
+_MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
+_MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
+
+
+def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
+    """Return feature names for MLQA sensitivity analysis when available."""
+    if model_kind == "batting":
+        return BATTING_FEATURE_COLS
+    if model_kind == "bowling":
+        return BOWLING_FEATURE_COLS
+    return None
+
+
+def _compute_mlqa_audit(
+    report: Dict[str, Any],
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    scoring: str,
+    task_type: str,
+    feature_names: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Run MLQA audit: overfitting, stability, bias, sensitivity, complexity.
+
+    Returns dict with: audit_status (PASS/FAIL/WARNING), key_findings, bias_report,
+    final_verdict, and structured checks for frontend display.
+    """
+    findings: List[str] = []
+    status_flags: List[str] = []
+    bias_report = "No protected groups defined; fairness audit skipped."
+
+    val_score = report.get("best_cv_score")
+    if val_score is None:
+        return {
+            "audit_status": "WARNING",
+            "key_findings": ["Missing validation score; audit incomplete."],
+            "bias_report": bias_report,
+            "final_verdict": "Insufficient data for deployment recommendation.",
+        }
+
+    try:
+        from sklearn.base import clone
+        from sklearn.metrics import get_scorer
+
+        # 1. Overfitting: train vs val delta
+        pipe_fit = clone(pipe)
+        pipe_fit.fit(X, y)
+        scorer = get_scorer(scoring)
+        train_score_val = scorer(pipe_fit, X, y)
+        delta = abs(float(train_score_val) - float(val_score))
+        overfitting_risk = delta > 0.08
+        if overfitting_risk:
+            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta:.4f} (> 8%).")
+            status_flags.append("overfitting")
+        else:
+            findings.append(f"Overfitting check OK: Δ = {delta:.4f} ≤ 8%.")
+
+        # 2. Stability: CV fold std
+        fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
+        fold_std = float(np.std(fold_scores))
+        unstable = fold_std > 0.05
+        if unstable:
+            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (> 0.05).")
+            status_flags.append("unstable")
+        else:
+            findings.append(f"Stability OK: CV fold σ = {fold_std:.4f}.")
+
+        # 3. Bias & Fairness
+        fairness = report.get("fairness_metrics") or {}
+        dip = fairness.get("disparate_impact_ratio")
+        if dip is not None:
+            biased = dip < 0.8 or dip > 1.25
+            if biased:
+                findings.append(f"Biased Model: disparate_impact_ratio = {dip:.4f} outside [0.8, 1.25].")
+                status_flags.append("biased")
+                bias_report = "Model shows disparate impact; review protected group treatment before deployment."
+            else:
+                findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [0.8, 1.25].")
+                bias_report = "Model treats subgroups equitably within defined fairness bounds."
+
+        # 4. Sensitivity: top 3 features
+        est = pipe.named_steps.get("est")
+        imps = None
+        if est is not None:
+            if hasattr(est, "estimators_") and len(est.estimators_) > 0:
+                imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
+                if imp_list:
+                    imps = np.mean(imp_list, axis=0)
+            elif hasattr(est, "feature_importances_"):
+                imps = est.feature_importances_
+        if imps is not None:
+            if imps.ndim > 1:
+                imps = np.mean(imps, axis=0)
+            total = float(np.sum(imps))
+            if total > 0:
+                sorted_idx = np.argsort(-imps)[:3]
+                top_weight = float(imps[sorted_idx[0]] / total)
+                names = feature_names if feature_names and len(feature_names) == len(imps) else None
+                top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
+                if top_weight > 0.70:
+                    findings.append(
+                        f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}%."
+                    )
+                    status_flags.append("sensitivity")
+                else:
+                    findings.append(f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ 70%.")
+        else:
+            findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
+
+        # 5. Complexity
+        candidates = report.get("candidates") or []
+        best_algo = None
+        best_score = val_score
+        if candidates and isinstance(candidates[0], dict):
+            best_algo = (candidates[0].get("algorithm") or "").lower()
+        simpler_recommendation = None
+        if best_algo and best_algo in _MLQA_COMPLEX_ALGS:
+            for c in candidates[1:]:
+                if not isinstance(c, dict):
+                    continue
+                s = c.get("best_score")
+                if s is None:
+                    continue
+                alg = (c.get("algorithm") or "").lower()
+                if alg in _MLQA_SIMPLER_ALGS:
+                    gap = abs(float(s) - float(best_score))
+                    if gap / max(abs(float(best_score)), 1e-9) <= 0.01:
+                        simpler_recommendation = alg
+                        break
+        if simpler_recommendation:
+            findings.append(
+                f"Complexity: simpler model ({simpler_recommendation}) within 1% of best; recommend for production."
+            )
+            status_flags.append("complexity")
+
+        # Aggregate status and verdict
+        if status_flags:
+            audit_status = "FAIL" if any(f in ("overfitting", "unstable", "biased") for f in status_flags) else "WARNING"
+        else:
+            audit_status = "PASS"
+        if audit_status == "FAIL":
+            final_verdict = "Rollback & Re-tune"
+        else:
+            final_verdict = "Proceed to Deployment"
+
+        return {
+            "audit_status": audit_status,
+            "key_findings": findings,
+            "bias_report": bias_report,
+            "final_verdict": final_verdict,
+            "checks": {
+                "overfitting": {"delta": round(delta, 4), "flagged": overfitting_risk},
+                "stability": {"cv_std": round(fold_std, 4), "flagged": unstable},
+            },
+        }
+    except Exception as e:
+        logger.warning("auto_tune.mlqa_audit_failed error=%s", e)
+        return {
+            "audit_status": "WARNING",
+            "key_findings": [f"Audit failed: {e!s}"],
+            "bias_report": bias_report,
+            "final_verdict": "Insufficient data for deployment recommendation.",
+        }
+
+
 def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
     """Convert config search_space dict to Pipeline param format (est__estimator__*)."""
     out = {"est__estimator__random_state": [random_state]}
@@ -836,6 +1003,9 @@ def _run_search_two_phase_single_regression(
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -970,6 +1140,9 @@ def _run_search_two_phase_single_regression(
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1046,6 +1219,9 @@ def _run_search_single_regression(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1122,6 +1298,9 @@ def _run_search_classification(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1261,6 +1440,9 @@ def _run_search_two_phase(
         }
         if best_pipe is not None:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     # Phase 2: Optuna fine-tuning on winner(s)
@@ -1506,6 +1688,9 @@ def _run_search(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1924,6 +2109,9 @@ def _run_search_two_phase_classification(
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -2057,6 +2245,9 @@ def _run_search_two_phase_classification(
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 

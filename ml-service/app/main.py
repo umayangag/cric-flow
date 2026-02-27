@@ -1053,6 +1053,9 @@ def _enrich_with_tuning_report(
         metrics = report.get("metrics") or {}
         if metrics:
             rec["metrics"] = metrics
+        mlqa = report.get("mlqa_audit")
+        if mlqa and isinstance(mlqa, dict):
+            rec["mlqa_audit"] = mlqa
             if "accuracy_pct" in metrics:
                 rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
             elif "mae" in metrics:

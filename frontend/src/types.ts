@@ -42,6 +42,18 @@ export type ModelMetadataEntry = {
 };
 export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
 
+/** MLQA audit from auto_tune MLQA Agent. */
+export type MLQAAudit = {
+  audit_status: 'PASS' | 'FAIL' | 'WARNING';
+  key_findings: string[];
+  bias_report: string;
+  final_verdict: string;
+  checks?: {
+    overfitting?: { delta: number; flagged: boolean };
+    stability?: { cv_std: number; flagged: boolean };
+  };
+};
+
 /** ML model stats from ml-service GET /model-stats (via go-app proxy). Used by ML Model Stats tab. */
 export type MLModelStat = {
   model_name: string;
@@ -59,6 +71,8 @@ export type MLModelStat = {
   n_features?: number;
   metrics?: Record<string, unknown>;
   accuracy_display?: string;
+  /** MLQA audit (overfitting, stability, bias, sensitivity, complexity). */
+  mlqa_audit?: MLQAAudit;
   /** Training start time (from linked data_migration) — when auto_tune run started. */
   trained_at?: string;
   /** Training completion time (from linked data_migration). */

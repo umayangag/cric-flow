@@ -60,12 +60,21 @@ function getAccuracyDisplay(model: MLModelStat): string {
   return '—';
 }
 
+function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' | 'warning' {
+  if (status === 'PASS') return 'success';
+  if (status === 'FAIL') return 'error';
+  return 'warning';
+}
+
 function ModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
   const params = model.tuned_parameters;
   const metrics = model.metrics;
+  const mlqa = model.mlqa_audit;
   const hasDetails =
-    (params && Object.keys(params).length > 0) || (metrics && Object.keys(metrics).length > 0);
+    (params && Object.keys(params).length > 0) ||
+    (metrics && Object.keys(metrics).length > 0) ||
+    (mlqa && (mlqa.key_findings?.length > 0 || mlqa.final_verdict));
 
   return (
     <>
@@ -89,6 +98,17 @@ function ModelRow({ model }: { model: MLModelStat }) {
         </TableCell>
         <TableCell>{model.algorithm ?? '—'}</TableCell>
         <TableCell>{getAccuracyDisplay(model)}</TableCell>
+        <TableCell>
+          {model.mlqa_audit ? (
+            <Chip
+              label={model.mlqa_audit.audit_status}
+              size="small"
+              color={statusColor(model.mlqa_audit.audit_status)}
+            />
+          ) : (
+            '—'
+          )}
+        </TableCell>
         <TableCell>{formatBytes(model.size_bytes)}</TableCell>
         <TableCell sx={{ fontSize: '0.85rem' }}>{formatModified(model.modified)}</TableCell>
         <TableCell>{model.tuned ? 'Yes' : 'No'}</TableCell>
@@ -97,7 +117,7 @@ function ModelRow({ model }: { model: MLModelStat }) {
       </TableRow>
       {hasDetails && (
         <TableRow>
-          <TableCell sx={{ py: 0 }} colSpan={10}>
+          <TableCell sx={{ py: 0 }} colSpan={11}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box sx={{ py: 2, px: 1 }}>
                 {params && Object.keys(params).length > 0 && (
@@ -143,6 +163,59 @@ function ModelRow({ model }: { model: MLModelStat }) {
                     {model.cv_splits != null && ` · cv_splits: ${model.cv_splits}`}
                     {model.validation_method && ` · validation: ${model.validation_method}`}
                   </Typography>
+                )}
+                {mlqa && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      MLQA Audit
+                    </Typography>
+                    <Stack spacing={0.5}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Chip
+                          label={mlqa.audit_status}
+                          size="small"
+                          color={statusColor(mlqa.audit_status)}
+                          sx={{ fontWeight: 600 }}
+                        />
+                        <Chip
+                          label={mlqa.final_verdict}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontFamily: 'monospace' }}
+                        />
+                      </Stack>
+                      {mlqa.key_findings && mlqa.key_findings.length > 0 && (
+                        <Box component="ul" sx={{ m: 0, pl: 2, fontSize: '0.85rem' }}>
+                          {mlqa.key_findings.map((f, i) => (
+                            <li key={i}>{f}</li>
+                          ))}
+                        </Box>
+                      )}
+                      {mlqa.bias_report && (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          {mlqa.bias_report}
+                        </Typography>
+                      )}
+                      {mlqa.checks && (
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                          {mlqa.checks.overfitting && (
+                            <Chip
+                              label={`Δ=${mlqa.checks.overfitting.delta} ${mlqa.checks.overfitting.flagged ? '⚠' : '✓'}`}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                          {mlqa.checks.stability && (
+                            <Chip
+                              label={`σ=${mlqa.checks.stability.cv_std} ${mlqa.checks.stability.flagged ? '⚠' : '✓'}`}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Box>
                 )}
               </Box>
             </Collapse>
@@ -203,7 +276,7 @@ const MLModelStatsTab: React.FC = () => {
       {data && (
         <SectionCard
           title="ML model stats"
-          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, size. Trained at and duration come from the linked data migration (auto_tune runs)."
+          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, size. MLQA Audit shows overfitting, stability, bias, and deployment readiness. Expand a row for full audit details."
         >
           {data.models.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
@@ -220,6 +293,7 @@ const MLModelStatsTab: React.FC = () => {
                     <TableCell>Match format</TableCell>
                     <TableCell>Algorithm</TableCell>
                     <TableCell>Accuracy / score</TableCell>
+                    <TableCell>Audit</TableCell>
                     <TableCell>Size</TableCell>
                     <TableCell>Modified</TableCell>
                     <TableCell>Tuned</TableCell>
