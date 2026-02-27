@@ -155,7 +155,7 @@ const EvaluateDbTab: React.FC = () => {
   // Prediction model for evaluate: format-specific or unified (legacy)
   const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   // Model temporal mode: strict (trained only on data before match) or latest (current model; may include match)
-  // Strict cutoff and train-on-the-fly disabled; always use latest model
+  const [useLatestModel, setUseLatestModel] = useState<boolean>(true);
 
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
@@ -396,7 +396,7 @@ const EvaluateDbTab: React.FC = () => {
         selectedMatchId,
         {
           use_unified_model: predictionModel === 'unified',
-          use_latest_model: true,
+          use_latest_model: useLatestModel,
         },
       );
       const stored: StoredEvalJob = {
@@ -544,22 +544,19 @@ const EvaluateDbTab: React.FC = () => {
             <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
             <Select
               labelId="eval-db-temporal-label"
-              value="latest"
+              value={useLatestModel ? 'latest' : 'strict'}
               label="Model temporal mode"
-              disabled
-              displayEmpty
+              onChange={(e) => setUseLatestModel(e.target.value === 'latest')}
             >
               <MenuItem value="latest">Latest model only</MenuItem>
-              <MenuItem value="strict" disabled>
-                Strict cutoff (requires train-on-the-fly)
-              </MenuItem>
+              <MenuItem value="strict">Strict cutoff (requires train-on-the-fly)</MenuItem>
             </Select>
             <Typography
               variant="caption"
               color="text.secondary"
               sx={{ display: 'block', mt: 0.5, maxWidth: 340 }}
             >
-              Strict cutoff and train-on-the-fly disabled. Uses pre-loaded artifacts only.
+              Latest: pre-loaded artifacts. Strict: train-on-the-fly with data before match.
             </Typography>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 260 }}>

@@ -26,7 +26,12 @@ function buildBacktestEvaluateUrl(
   team1: string,
   team2: string,
   matchId: number | string,
-  options?: { use_unified_model?: boolean; use_latest_model?: boolean },
+  options?: {
+    /** Use unified (all-formats) model instead of per-format. Default false. */
+    use_unified_model?: boolean;
+    /** Use latest model (artifacts or train-on-the-fly with "now" cutoff). When false, strict temporal - train only on data before match. Default false. */
+    use_latest_model?: boolean;
+  },
 ): string {
   const u = new URL(path, BASE_API_URL);
   u.searchParams.set('format', format);

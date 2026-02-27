@@ -175,7 +175,8 @@ MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
 DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
 CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
 # When use_latest_model=True, round the cutoff to this granularity for cache key. Prevents DoS from unique
-# timestamps per request. Values: "none" (exact now, no cache), "second", "minute", "hour", "day". Default: "hour"
+# timestamps per request. Configurable via TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY env var.
+# Values: "none" (exact now, no cache), "second", "minute", "hour", "day". Default: "hour"
 TRAIN_LATEST_CACHE_GRANULARITY = (os.environ.get("TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY") or "hour").strip().lower()
 
 # -------------------- Simple in-memory cache for model-stats endpoint --------------------
@@ -334,8 +335,10 @@ def _predict_players_with_features(
         _cutoff_tz = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=timezone.utc)
         cutoff_iso = _cutoff_tz.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         # When use_latest_model: train with "now" as cutoff so we use all available data (one model per format).
-        # Otherwise: strict temporal - train only on data before the match date.
-        # Use TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY to round the cutoff for cache-key stability and DoS mitigation.
+        # Otherwise: strict temporal - train only on data before the match date. Both modes avoid data leakage:
+        # use_latest_model uses "now" (no future data); strict uses cutoff (match date) so training data
+        # is strictly before prediction.
+        # TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY (env) rounds cutoff for cache-key stability and DoS mitigation.
         if use_latest_model:
             now_utc = datetime.now(timezone.utc)
             rounded = _round_datetime_to_granularity(now_utc, TRAIN_LATEST_CACHE_GRANULARITY)
@@ -347,6 +350,7 @@ def _predict_players_with_features(
                 cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
             )
         api_key = (os.environ.get("GO_APP_API_KEY") or "").strip() or None
+        # Train-on-the-fly is CPU/RAM intensive; the cache key (cutoff_iso + format) avoids redundant retraining.
         logger.warning(
             "backtest_predict.train_on_the_fly.triggered",
             msg="TRAIN_ON_THE_FLY: starting (CPU/RAM intensive) - fetches data from go-app and trains models in memory",
