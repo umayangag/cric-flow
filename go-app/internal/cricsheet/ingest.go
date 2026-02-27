@@ -56,6 +56,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	}
 	sort.Strings(files)
 
+	slog.Info("pipeline: cricsheet import scanning complete",
+		slog.String("dir", dir),
+		slog.Int("files_found", len(files)),
+		slog.Int("concurrency", concurrency))
+
 	var count int64
 	var failedMu sync.Mutex
 	var failedFiles []string

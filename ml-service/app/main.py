@@ -1475,6 +1475,7 @@ def _run_training_subprocess(
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
+    Output is streamed to stdout/stderr so container logs show detailed training progress.
     """
     import subprocess
 
@@ -1484,6 +1485,12 @@ def _run_training_subprocess(
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
+    logger.info(
+        "pipeline: starting training subprocess",
+        module=module,
+        extra_args=extra_args or [],
+        cwd=root,
+    )
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
     if extra_env:
         env.update(extra_env)
@@ -1493,22 +1500,23 @@ def _run_training_subprocess(
             cmd,
             cwd=root,
             env=env,
-            capture_output=True,
-            text=True,
+            capture_output=False,
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
-        logger.error("admin.train.timeout", module=module, timeout_sec=timeout_sec)
+        logger.error(
+            "pipeline: training subprocess timed out",
+            module=module,
+            timeout_sec=timeout_sec,
+        )
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
     if proc.returncode != 0:
-        stderr = (proc.stderr or "")[:500]
         logger.error(
-            "admin.train.failed",
+            "pipeline: training subprocess failed",
             module=module,
             returncode=proc.returncode,
-            stderr=stderr,
         )
-        raise ValueError(f"Training failed (exit {proc.returncode}): {stderr}")
+        raise ValueError(f"Training failed (exit {proc.returncode})")
 
 
 def _require_admin_train(step: str, fail_message: str):

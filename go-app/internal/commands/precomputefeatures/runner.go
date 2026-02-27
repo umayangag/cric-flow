@@ -71,6 +71,11 @@ func (Runner) RunReplay(
 			break
 		}
 		totalMatches += int64(len(matches))
+		if totalMatches == int64(len(matches)) {
+			slog.Info("pipeline: precompute-features replay processing first page",
+				slog.String("format", formatCode),
+				slog.Int("matches_in_page", len(matches)))
+		}
 		for _, m := range matches {
 			asOf := m.MatchDate
 			players, err := db.ListPlayersInMatch(ctx, m.MatchID)

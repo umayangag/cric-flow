@@ -2131,6 +2131,8 @@ def run_auto_tune_win(
 
 
 def main() -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description="Auto-tune ML models (batting, bowling, fielding, extras, win)")
     parser.add_argument(
         "--model",
@@ -2179,6 +2181,15 @@ def main() -> None:
         help="Skip AutoGluon accuracy boost stage.",
     )
     args = parser.parse_args()
+
+    logger.info(
+        "pipeline: auto_tune starting model=%s from_api=%s format=%s all_formats=%s out_dir=%s",
+        args.model,
+        args.from_api,
+        args.format or "(detected)",
+        args.all_formats,
+        args.out or "(default)",
+    )
 
     algorithms_override: Optional[List[str]] = None
     if args.algorithms:

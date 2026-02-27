@@ -102,7 +102,9 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 		var g errgroup.Group
 
 		if opts.Unified {
+			slog.Info("pipeline: export-dataset exporting unified CSVs", slog.String("out_dir", opts.OutDir))
 			g.Go(func() error {
+				slog.Info("pipeline: export-dataset exporting batting_encoded_all.csv")
 				return r.writeUsing(
 					opts.OutDir,
 					"batting_encoded_all.csv",
@@ -110,6 +112,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 				)
 			})
 			g.Go(func() error {
+				slog.Info("pipeline: export-dataset exporting bowling_encoded_all.csv")
 				return r.writeUsing(
 					opts.OutDir,
 					"bowling_encoded_all.csv",
@@ -118,6 +121,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 			})
 			if r.Field != nil {
 				g.Go(func() error {
+					slog.Info("pipeline: export-dataset exporting fielding_encoded_all.csv")
 					return r.writeUsing(
 						opts.OutDir,
 						"fielding_encoded_all.csv",
@@ -131,6 +135,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 			}
 			// When formats are requested (e.g. SplitByFormat), also write per-format CSVs
 			// so per-format training (train_batting --all-formats, train_bowling --all-formats) has inputs.
+			slog.Info("pipeline: export-dataset exporting per-format CSVs", slog.Any("formats", formats))
 			for _, f := range formats {
 				if f == "" || !safeFormatForFilename(f) {
 					continue
@@ -167,6 +172,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 			return nil
 		}
 
+		slog.Info("pipeline: export-dataset exporting legacy/per-format CSVs", slog.Any("formats", formats))
 		for _, f := range formats {
 			f := f // capture
 			if f == "" {
@@ -236,6 +242,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 }
 
 func (r *Runner) writeUsing(outDir, name string, fn func(w io.Writer) error) error {
+	slog.Info("pipeline: export-dataset writing", slog.String("file", name))
 	var buf bytes.Buffer
 	if err := fn(&buf); err != nil {
 		slog.Error("exportdataset.writeUsing export failed", slog.String("name", name), slog.Any("err", err))

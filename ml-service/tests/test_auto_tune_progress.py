@@ -132,6 +132,7 @@ def test_clear_progress_ignores_missing_file():
 
 def test_callback_exception_logged_not_raised():
     """When callback raises, exception is logged and not propagated."""
+
     def failing_cb(_):
         raise ValueError("callback error")
 

@@ -277,6 +277,8 @@ def _config_formats() -> list[str]:
 
 
 def main():
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser()
     # Default input CSV from GO_APP_OUTPUT_DIR or ../../output/go-app
     default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
@@ -329,6 +331,13 @@ def main():
     )
     args = parser.parse_args()
 
+    logger.info(
+        "pipeline: train_batting starting out_dir=%s from_api=%s all_formats=%s",
+        args.out,
+        args.from_api,
+        args.all_formats,
+    )
+
     targets: list[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -351,8 +360,10 @@ def main():
         if not targets:
             targets = _config_formats()
         api_key = (args.api_key or os.environ.get("GO_APP_API_KEY", "")).strip() or None
+        logger.info("pipeline: train_batting fetching data from API formats=%s cutoff=%s", targets, cutoff)
 
         def _train_one_api(fmt: str) -> int:
+            logger.info("pipeline: train_batting processing format=%s", fmt)
             bat = fetch_batting_from_api(go_app_url, fmt, cutoff, api_key)
             headers = bat.get("headers") or []
             rows = bat.get("rows") or []
@@ -449,7 +460,10 @@ def main():
         return
 
     # Per-format training loop (concurrent where possible)
+    logger.info("pipeline: train_batting loading from CSV formats=%s csv_dir=%s", targets, default_csv_dir)
+
     def _train_one_csv(fmt: str) -> int:
+        logger.info("pipeline: train_batting processing format=%s (CSV)", fmt)
         training_params = get_training_params("batting", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"batting_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):

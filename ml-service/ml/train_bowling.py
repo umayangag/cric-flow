@@ -265,6 +265,8 @@ def _config_formats() -> list[str]:
 
 
 def main():
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser()
     # Default input CSV from GO_APP_OUTPUT_DIR or config.json
     default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
@@ -318,6 +320,13 @@ def main():
     )
     args = parser.parse_args()
 
+    logger.info(
+        "pipeline: train_bowling starting out_dir=%s from_api=%s all_formats=%s",
+        args.out,
+        args.from_api,
+        args.all_formats,
+    )
+
     targets: list[str] = []
     if args.all_formats:
         targets = _config_formats()
@@ -340,8 +349,10 @@ def main():
         if not targets:
             targets = _config_formats()
         api_key = (args.api_key or os.environ.get("GO_APP_API_KEY", "")).strip() or None
+        logger.info("pipeline: train_bowling fetching data from API formats=%s cutoff=%s", targets, cutoff)
 
         def _train_one_api(fmt: str) -> int:
+            logger.info("pipeline: train_bowling processing format=%s", fmt)
             bowl = fetch_bowling_from_api(go_app_url, fmt, cutoff, api_key)
             headers = bowl.get("headers") or []
             rows = bowl.get("rows") or []
@@ -435,7 +446,10 @@ def main():
         logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
         return
 
+    logger.info("pipeline: train_bowling loading from CSV formats=%s csv_dir=%s", targets, default_csv_dir)
+
     def _train_one_csv(fmt: str) -> int:
+        logger.info("pipeline: train_bowling processing format=%s (CSV)", fmt)
         training_params = get_training_params("bowling", fmt)
         csv_path = args.csv or os.path.join(default_csv_dir, f"bowling_encoded_{fmt}.csv")
         if not os.path.exists(csv_path):

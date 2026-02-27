@@ -31,6 +31,13 @@ def test_parse_go_duration_whitespace():
     assert _parse_go_duration("1h 30m") == 3600 + 30 * 60  # space removed
 
 
+def test_parse_go_duration_subsecond():
+    """_parse_go_duration parses ms, us, ns."""
+    assert _parse_go_duration("1000ms") == 1
+    assert _parse_go_duration("2000ms") == 2
+    assert _parse_go_duration("1s") == 1
+
+
 def test_parse_go_duration_invalid():
     """Invalid input returns None."""
     assert _parse_go_duration("") is None
@@ -56,7 +63,23 @@ def test_parse_stale_cancel_age_legacy_minutes():
 
 def test_parse_stale_cancel_age_empty_returns_none():
     """When neither env is set, returns None (use default)."""
-    with patch.dict(os.environ, {"TRACKING_STALE_CANCEL_AGE": "", "TRACKING_STALE_CANCEL_AGE_MINUTES": ""}, clear=False):
+    with patch.dict(
+        os.environ, {"TRACKING_STALE_CANCEL_AGE": "", "TRACKING_STALE_CANCEL_AGE_MINUTES": ""}, clear=False
+    ):
+        assert parse_stale_cancel_age_seconds() is None
+
+
+def test_parse_stale_cancel_age_invalid_returns_none():
+    """parse_stale_cancel_age_seconds returns None when TRACKING_STALE_CANCEL_AGE is invalid."""
+    with patch.dict(os.environ, {"TRACKING_STALE_CANCEL_AGE": "invalid", "TRACKING_STALE_CANCEL_AGE_MINUTES": ""}):
+        assert parse_stale_cancel_age_seconds() is None
+
+
+def test_parse_stale_cancel_age_legacy_invalid_returns_none():
+    """parse_stale_cancel_age_seconds returns None when TRACKING_STALE_CANCEL_AGE_MINUTES is invalid."""
+    with patch.dict(
+        os.environ, {"TRACKING_STALE_CANCEL_AGE": "", "TRACKING_STALE_CANCEL_AGE_MINUTES": "abc"}, clear=False
+    ):
         assert parse_stale_cancel_age_seconds() is None
 
 
