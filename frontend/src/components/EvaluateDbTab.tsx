@@ -541,6 +541,28 @@ const EvaluateDbTab: React.FC = () => {
         )}
         <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
           <FormControl size="small" sx={{ minWidth: 260 }}>
+            <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
+            <Select
+              labelId="eval-db-temporal-label"
+              value="latest"
+              label="Model temporal mode"
+              disabled
+              displayEmpty
+            >
+              <MenuItem value="latest">Latest model only</MenuItem>
+              <MenuItem value="strict" disabled>
+                Strict cutoff (requires train-on-the-fly)
+              </MenuItem>
+            </Select>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.5, maxWidth: 340 }}
+            >
+              Strict cutoff and train-on-the-fly disabled. Uses pre-loaded artifacts only.
+            </Typography>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 260 }}>
             <InputLabel id="eval-db-model-label">Prediction model</InputLabel>
             <Select
               labelId="eval-db-model-label"
