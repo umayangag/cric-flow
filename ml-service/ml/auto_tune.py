@@ -70,7 +70,14 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit, cross_val_predict, cross_val_score
+from sklearn.model_selection import (
+    KFold,
+    RandomizedSearchCV,
+    TimeSeriesSplit,
+    cross_val_predict,
+    cross_val_score,
+    learning_curve,
+)
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
@@ -406,24 +413,43 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
 def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
     """Compute regression metrics from cross-validated predictions.
 
-    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance.
+    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance,
+    target_context (mean, std, min, max for MAE interpretation), baseline comparison
+    (naive MAE, improvement %), and learning_curve summary.
     - mae: mean absolute error (interpretable units)
-    - rmse: root mean squared error (penalizes large errors more)
-    - median_ae: median absolute error (robust to outliers)
-    - max_error: worst single prediction error
-    - explained_variance: 0–1, fraction of variance explained; negative if worse than predicting mean
+    - target_mean, target_std: provide context for MAE (e.g. MAE=6 vs mean=10 = ~60% relative error)
+    - baseline_mae: MAE of naive predictor (always predict target mean)
+    - baseline_improvement_pct: how much better than naive (positive = model adds value)
+    - learning_curve: val_still_improving, overfitting_gap
     """
     try:
+        y_flat = np.asarray(y).ravel()
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
-        mae = float(mean_absolute_error(y, y_pred))
-        rmse = float(np.sqrt(mean_squared_error(y, y_pred)))
-        r2 = float(r2_score(y, y_pred))
+        y_pred_flat = np.asarray(y_pred).ravel()
+        mae = float(mean_absolute_error(y_flat, y_pred_flat))
+        rmse = float(np.sqrt(mean_squared_error(y_flat, y_pred_flat)))
+        r2 = float(r2_score(y_flat, y_pred_flat))
         # r2 can be negative; clamp for display
         r2_pct = max(0.0, min(100.0, r2 * 100))
-        median_ae = float(median_absolute_error(y, y_pred))
-        worst_err = float(max_error(y, y_pred))
-        expl_var = float(explained_variance_score(y, y_pred))
-        return {
+        median_ae = float(median_absolute_error(y_flat, y_pred_flat))
+        worst_err = float(max_error(y_flat, y_pred_flat))
+        expl_var = float(explained_variance_score(y_flat, y_pred_flat))
+
+        # Target context: MAE vs target scale (e.g. extras mean 10–12, MAE 6 = ~50% error)
+        target_mean = float(np.mean(y_flat))
+        target_std = float(np.std(y_flat)) if len(y_flat) > 1 else 0.0
+        target_min = float(np.min(y_flat))
+        target_max = float(np.max(y_flat))
+        mae_pct_of_mean = round((mae / target_mean * 100), 2) if target_mean != 0 else None
+
+        # Baseline comparison: naive model predicts mean every time
+        naive_pred = np.full_like(y_flat, target_mean)
+        baseline_mae = float(mean_absolute_error(y_flat, naive_pred))
+        baseline_improvement_pct = (
+            round((baseline_mae - mae) / baseline_mae * 100, 2) if baseline_mae > 0 else 0.0
+        )
+
+        out: Dict[str, Any] = {
             "mae": round(mae, 4),
             "rmse": round(rmse, 4),
             "r2": round(r2, 4),
@@ -431,10 +457,71 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
             "median_ae": round(median_ae, 4),
             "max_error": round(worst_err, 4),
             "explained_variance": round(expl_var, 4),
+            "target_context": {
+                "target_mean": round(target_mean, 4),
+                "target_std": round(target_std, 4),
+                "target_min": round(target_min, 4),
+                "target_max": round(target_max, 4),
+                "mae_pct_of_mean": mae_pct_of_mean,
+            },
+            "baseline_comparison": {
+                "baseline_mae": round(baseline_mae, 4),
+                "baseline_improvement_pct": baseline_improvement_pct,
+            },
         }
+
+        # Learning curve: does validation still improve with more data? overfitting?
+        lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
+        if lc:
+            out["learning_curve"] = lc
+
+        return out
     except Exception as e:
         logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)
         return {}
+
+
+def _compute_learning_curve_regression(
+    pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any, scoring: str = "neg_mean_absolute_error"
+) -> Optional[Dict[str, Any]]:
+    """Compute learning curve summary for regression models.
+
+    Shows whether validation is still improving with more data (needing more data) or
+    if train-val gap is large (overfitting, needing higher regularization).
+
+    Returns dict with:
+    - val_still_improving: True if val score at 100% train size > val at ~50%
+    - overfitting_gap: train_score - val_score at max size (large = overfitting)
+    - train_sizes: fractions of data used
+    - train_scores_mean, val_scores_mean: mean scores per train size
+    """
+    try:
+        n_samples = X.shape[0]
+        if n_samples < 20:
+            return None
+        # Use 5 fractions: 0.2, 0.4, 0.6, 0.8, 1.0
+        train_sizes_frac = np.linspace(0.2, 1.0, 5)
+        train_sizes_abs, train_scores, val_scores = learning_curve(
+            pipe, X, y, cv=cv, scoring=scoring, train_sizes=train_sizes_frac, n_jobs=1
+        )
+        train_mean = np.mean(train_scores, axis=1)
+        val_mean = np.mean(val_scores, axis=1)
+        n_pts = len(train_sizes_frac)
+        mid_idx = max(0, n_pts // 2 - 1)
+        val_at_mid = val_mean[mid_idx]
+        val_at_full = val_mean[-1]
+        val_still_improving = val_at_full > val_at_mid
+        overfitting_gap = float(train_mean[-1] - val_mean[-1])
+        return {
+            "val_still_improving": bool(val_still_improving),
+            "overfitting_gap": round(overfitting_gap, 4),
+            "train_sizes_frac": [round(float(x), 2) for x in train_sizes_frac],
+            "train_scores_mean": [round(float(x), 4) for x in train_mean],
+            "val_scores_mean": [round(float(x), 4) for x in val_mean],
+        }
+    except Exception as e:
+        logger.warning("auto_tune.learning_curve_failed error=%s", e)
+        return None
 
 
 def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:

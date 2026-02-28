@@ -179,7 +179,7 @@ def test_count_combinations():
 
 
 def test_compute_metrics_regression():
-    """_compute_metrics_regression returns dict with mae, rmse, r2, etc."""
+    """_compute_metrics_regression returns dict with mae, rmse, r2, target_context, baseline, learning_curve."""
     m = _get_module()
     est = RandomForestRegressor(n_estimators=10, random_state=42)
     pipe = m._build_pipeline_single_regression(est)
@@ -194,6 +194,19 @@ def test_compute_metrics_regression():
     assert "median_ae" in metrics
     assert "max_error" in metrics
     assert "explained_variance" in metrics
+    assert "target_context" in metrics
+    ctx = metrics["target_context"]
+    assert "target_mean" in ctx
+    assert "target_std" in ctx
+    assert "mae_pct_of_mean" in ctx
+    assert "baseline_comparison" in metrics
+    bc = metrics["baseline_comparison"]
+    assert "baseline_mae" in bc
+    assert "baseline_improvement_pct" in bc
+    assert "learning_curve" in metrics
+    lc = metrics["learning_curve"]
+    assert "val_still_improving" in lc
+    assert "overfitting_gap" in lc
 
 
 def test_compute_metrics_regression_single_output():
