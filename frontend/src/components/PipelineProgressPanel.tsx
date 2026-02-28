@@ -33,6 +33,13 @@ function formatActivity(activity: string): string {
   return labels[activity] ?? activity.replace(/_/g, ' ');
 }
 
+const PHASE_LABELS: Record<string, string> = {
+  fine_tuning: 'Fine-tuning',
+  loading: 'Loading',
+  pycaret: 'PyCaret ranking',
+  autogluon: 'AutoGluon',
+};
+
 type PipelineProgressPanelProps = {
   pipelineRunning: boolean;
   onRefresh?: () => void;
@@ -231,15 +238,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
               <Typography variant="caption" fontWeight={600} color="primary.main">
                 Phase:{' '}
-                {p.auto_tune.phase === 'fine_tuning'
-                  ? 'Fine-tuning'
-                  : p.auto_tune.phase === 'loading'
-                    ? 'Loading'
-                    : p.auto_tune.phase === 'pycaret'
-                      ? 'PyCaret ranking'
-                      : p.auto_tune.phase === 'autogluon'
-                        ? 'AutoGluon'
-                        : 'Algorithm screening'}
+                {(p.auto_tune.phase && PHASE_LABELS[p.auto_tune.phase]) ?? 'Algorithm screening'}
                 {p.auto_tune.activity && <> · Activity: {formatActivity(p.auto_tune.activity)}</>}
               </Typography>
               {p.auto_tune.algorithms_requested && p.auto_tune.algorithms_requested.length > 0 && (

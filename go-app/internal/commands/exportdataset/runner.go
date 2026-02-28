@@ -123,49 +123,32 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 
 		if opts.Unified {
 			slog.Info("pipeline: export-dataset exporting unified CSVs", slog.String("out_dir", opts.OutDir))
-			g.Go(func() error {
-				slog.Info("pipeline: export-dataset exporting batting_encoded_all.csv")
-				return r.writeUsing(
-					opts.OutDir,
-					"batting_encoded_all.csv",
-					func(w io.Writer) error { return r.Bat.ExportUnified(parentCtx, w) },
-				)
-			})
-			g.Go(func() error {
-				slog.Info("pipeline: export-dataset exporting bowling_encoded_all.csv")
-				return r.writeUsing(
-					opts.OutDir,
-					"bowling_encoded_all.csv",
-					func(w io.Writer) error { return r.Bow.ExportUnified(parentCtx, w) },
-				)
-			})
-			if r.Field != nil {
-				g.Go(func() error {
-					slog.Info("pipeline: export-dataset exporting fielding_encoded_all.csv")
-					return r.writeUsing(
-						opts.OutDir,
-						"fielding_encoded_all.csv",
-						func(w io.Writer) error { return r.Field.ExportUnified(parentCtx, w) },
-					)
-				})
+			type unifiedExporter struct {
+				name     string
+				exporter interface {
+					ExportUnified(context.Context, io.Writer) error
+				}
+				enabled bool
 			}
-			if r.Extras != nil {
-				g.Go(func() error {
-					slog.Info("pipeline: export-dataset exporting extras_encoded_all.csv")
-					return r.writeUsing(
-						opts.OutDir,
-						"extras_encoded_all.csv",
-						func(w io.Writer) error { return r.Extras.ExportUnified(parentCtx, w) },
-					)
-				})
+			exporters := []unifiedExporter{
+				{"batting", r.Bat, r.Bat != nil},
+				{"bowling", r.Bow, r.Bow != nil},
+				{"fielding", r.Field, r.Field != nil},
+				{"extras", r.Extras, r.Extras != nil},
+				{"win", r.Win, r.Win != nil},
 			}
-			if r.Win != nil {
+			for _, exp := range exporters {
+				if !exp.enabled {
+					continue
+				}
+				e := exp
 				g.Go(func() error {
-					slog.Info("pipeline: export-dataset exporting win_encoded_all.csv")
+					filename := fmt.Sprintf("%s_encoded_all.csv", e.name)
+					slog.Info("pipeline: export-dataset exporting " + filename)
 					return r.writeUsing(
 						opts.OutDir,
-						"win_encoded_all.csv",
-						func(w io.Writer) error { return r.Win.ExportUnified(parentCtx, w) },
+						filename,
+						func(w io.Writer) error { return e.exporter.ExportUnified(parentCtx, w) },
 					)
 				})
 			}

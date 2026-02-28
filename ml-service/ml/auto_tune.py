@@ -770,6 +770,25 @@ def _compute_mlqa_audit(
         }
 
 
+def _add_final_report_details(
+    report: Dict[str, Any],
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    scoring: str,
+    task_type: str,
+    model_kind: str,
+) -> None:
+    """Computes and adds MLQA audit and feature importance to the report."""
+    report["mlqa_audit"] = _compute_mlqa_audit(
+        report, pipe, X, y, cv, scoring, task_type, _mlqa_feature_names(model_kind)
+    )
+    fi = _extract_feature_importance(pipe, _mlqa_feature_names(model_kind), X.shape[1])
+    if fi:
+        report["feature_importance"] = fi
+
+
 def _get_prior_tuned_algorithm(
     model_kind: str,
     format_suffix: Optional[str],
@@ -1281,12 +1300,7 @@ def _run_search_two_phase_single_regression(
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
-            report["mlqa_audit"] = _compute_mlqa_audit(
-                report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
-            )
-            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-            if fi:
-                report["feature_importance"] = fi
+            _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -1427,12 +1441,7 @@ def _run_search_two_phase_single_regression(
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
-        report["mlqa_audit"] = _compute_mlqa_audit(
-            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
-        )
-        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-        if fi:
-            report["feature_importance"] = fi
+        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
 
@@ -1510,12 +1519,7 @@ def _run_search_single_regression(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
-        report["mlqa_audit"] = _compute_mlqa_audit(
-            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
-        )
-        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-        if fi:
-            report["feature_importance"] = fi
+        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
 
@@ -1594,12 +1598,7 @@ def _run_search_classification(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-        report["mlqa_audit"] = _compute_mlqa_audit(
-            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
-        )
-        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-        if fi:
-            report["feature_importance"] = fi
+        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
     return best_pipe, best_params, report
 
 
@@ -1782,12 +1781,7 @@ def _run_search_two_phase(
         }
         if best_pipe is not None:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
-            report["mlqa_audit"] = _compute_mlqa_audit(
-                report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
-            )
-            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-            if fi:
-                report["feature_importance"] = fi
+            _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
         return best_pipe, best_params, report
 
     # Phase 2: Optuna fine-tuning on winner(s)
@@ -2083,12 +2077,7 @@ def _run_search(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
-        report["mlqa_audit"] = _compute_mlqa_audit(
-            report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
-        )
-        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-        if fi:
-            report["feature_importance"] = fi
+        _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
 
@@ -2642,12 +2631,7 @@ def _run_search_two_phase_classification(
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-            report["mlqa_audit"] = _compute_mlqa_audit(
-                report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
-            )
-            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-            if fi:
-                report["feature_importance"] = fi
+            _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -2787,12 +2771,7 @@ def _run_search_two_phase_classification(
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-        report["mlqa_audit"] = _compute_mlqa_audit(
-            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
-        )
-        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
-        if fi:
-            report["feature_importance"] = fi
+        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
     return best_pipe, best_params, report
 
 

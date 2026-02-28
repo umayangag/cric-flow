@@ -716,39 +716,29 @@ async def health():
             logger.warning("health.metadata_info.listdir_failed", models_dir=MODELS_DIR, error=str(e))
         return sorted(names)
 
-    return {
-        "status": "ok",
-        "loaded_batting_formats": sorted([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_bowling_formats": sorted([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_fielding_formats": sorted([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_extras_formats": sorted([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_win_formats": sorted([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
-        "legacy_batting_available": "_LEGACY_" in BAT_MODELS,
-        "legacy_bowling_available": "_LEGACY_" in BOWL_MODELS,
-        "legacy_fielding_available": "_LEGACY_" in FIELD_MODELS,
-        "legacy_extras_available": "_LEGACY_" in EXTRAS_MODELS,
-        "legacy_win_available": "_LEGACY_" in WIN_MODELS,
-        "models_dir": MODELS_DIR,
-        "artifacts": {
-            "batting": _artifacts_info("batting_"),
-            "bowling": _artifacts_info("bowling_"),
-            "fielding": _artifacts_info("fielding_"),
-            "extras": _artifacts_info("extras_"),
-            "win": _artifacts_info("win_"),
-        },
-        "metadata": {
-            "batting": _metadata_info("batting_metadata_"),
-            "bowling": _metadata_info("bowling_metadata_"),
-            "fielding": _metadata_info("fielding_metadata_"),
-        },
-        "counters": {
-            "batting_formats": len([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
-            "bowling_formats": len([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
-            "fielding_formats": len([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
-            "extras_formats": len([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
-            "win_formats": len([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
-        },
+    model_registries = {
+        "batting": BAT_MODELS,
+        "bowling": BOWL_MODELS,
+        "fielding": FIELD_MODELS,
+        "extras": EXTRAS_MODELS,
+        "win": WIN_MODELS,
     }
+    response: dict = {
+        "status": "ok",
+        "models_dir": MODELS_DIR,
+        "artifacts": {},
+        "metadata": {},
+        "counters": {},
+    }
+    for name, registry in model_registries.items():
+        loaded = sorted([k for k in registry.keys() if k != "_LEGACY_"])
+        response[f"loaded_{name}_formats"] = loaded
+        response[f"legacy_{name}_available"] = "_LEGACY_" in registry
+        response["artifacts"][name] = _artifacts_info(f"{name}_")
+        if name in ("batting", "bowling", "fielding"):
+            response["metadata"][name] = _metadata_info(f"{name}_metadata_")
+        response["counters"][f"{name}_formats"] = len(loaded)
+    return response
 
 
 # -------------------- Ops: Artifacts Status Endpoint --------------------
