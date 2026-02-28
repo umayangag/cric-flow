@@ -654,6 +654,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
+		"match_date",
 	}
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
@@ -692,6 +693,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.formatCode,
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}
@@ -751,6 +753,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
+			"match_date",
 		}
 		return [][]string{headers}, nil
 	}
@@ -838,6 +841,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
+		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
@@ -874,6 +878,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.formatCode,
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}

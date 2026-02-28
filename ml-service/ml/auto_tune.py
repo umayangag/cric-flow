@@ -777,6 +777,31 @@ def _get_prior_tuned_algorithm(
     return None
 
 
+def _normalize_hidden_layer_sizes(v: Any) -> Optional[Tuple[int, ...]]:
+    """Convert JSON-serialized hidden_layer_sizes to tuple for Optuna suggest_categorical.
+
+    JSON/API/store may return [64, 64] (list) or '[64, 64]' (string); Optuna requires (64, 64) (tuple)
+    or suggest_categorical raises ValueError. Returns None if value cannot be normalized.
+    """
+    if v is None:
+        return None
+    if isinstance(v, tuple):
+        return v
+    if isinstance(v, list):
+        try:
+            return tuple(int(x) for x in v)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                return tuple(int(x) for x in parsed)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return None
+
+
 def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Convert stored config_snippet to Optuna trial params for regression."""
     out: Dict[str, Any] = {"algorithm": algo}
@@ -799,7 +824,12 @@ def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dic
         "learning_rate_init",
     ):
         if key in p and p[key] is not None:
-            out[key] = p[key]
+            if key == "hidden_layer_sizes":
+                normalized = _normalize_hidden_layer_sizes(p[key])
+                if normalized is not None:
+                    out[key] = normalized
+            else:
+                out[key] = p[key]
     return out
 
 
@@ -2960,7 +2990,7 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y) in by_f.items():
+                            for fcode, (X, Y, *_) in by_f.items():
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_extras(
@@ -2988,7 +3018,7 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y) in by_f.items():
+                            for fcode, (X, Y, *_) in by_f.items():
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_win(
@@ -3025,7 +3055,7 @@ def main() -> None:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
                             # Run once per format from API
-                            for fcode, (X, Y) in by_f.items():
+                            for fcode, (X, Y, *_) in by_f.items():
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune(
@@ -3100,7 +3130,7 @@ def main() -> None:
                         except (RuntimeError, FileNotFoundError) as e:
                             logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
                             continue
-                        for fcode, (X, Y) in by_f.items():
+                        for fcode, (X, Y, *_) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune(

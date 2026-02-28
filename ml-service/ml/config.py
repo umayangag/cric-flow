@@ -409,6 +409,18 @@ def get_feature_defaults() -> Dict[str, Any]:
     }
 
 
+def get_pipeline_common_config() -> Dict[str, Any]:
+    """Load shared pipeline settings from ml.generalized_pipeline. Used by all train_* scripts."""
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    gp = (ml.get("generalized_pipeline") if isinstance(ml, dict) else None) or {}
+    return {
+        "use_robust_scaler": bool(gp.get("use_robust_scaler", True)),
+        "time_decay_halflife_years": float(gp.get("time_decay_halflife_years", 2.0)),
+        "delta_threshold": float(gp.get("delta_threshold", 0.08)),
+    }
+
+
 def get_prediction_defaults() -> Dict[str, Any]:
     """Load prediction defaults (e.g. economy when missing) from ml.prediction_defaults."""
     cfg = _load()

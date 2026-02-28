@@ -12,12 +12,15 @@ Usage:
   python -m ml.train_fielding --csv path/to/fielding_export.csv
 """
 
+from __future__ import annotations
+
 import argparse
 import gc
 import json
 import logging
 import os
 import sys
+from typing import Optional
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,7 +30,6 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
-from sklearn.preprocessing import StandardScaler
 
 # Add parent so ml.config and app.train_on_the_fly are importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,9 +37,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ml.config import (
     default_artifacts_dir,
     default_go_app_export_dir,
+    get_pipeline_common_config,
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from ml.pipeline_common import compute_time_decay_weights, get_scaler
 from ml.utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
@@ -59,6 +63,13 @@ FIELDING_FEATURE_COLS = [
     "season_id",
 ]
 FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
+
+
+def _concat_weights(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
+    """Concatenate per-format weights for unified model. Returns None if any format lacks weights."""
+    if not weights_list or any(w is None for w in weights_list):
+        return None
+    return np.concatenate(weights_list)
 
 
 def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
@@ -93,8 +104,10 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
     return data.get("fielding") or {"headers": [], "rows": []}
 
 
-def rows_to_xy_by_format(headers: list[str], rows: list[list[str]]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Build X, Y per format_code. Returns dict format_code -> (X, Y)."""
+def rows_to_xy_by_format(
+    headers: list[str], rows: list[list[str]]
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+    """Build X, Y, weights per format_code. Returns dict format_code -> (X, Y, sample_weight)."""
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
@@ -105,6 +118,14 @@ def rows_to_xy_by_format(headers: list[str], rows: list[list[str]]) -> dict[str,
     for c in FIELDING_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
+    pipe_cfg = get_pipeline_common_config()
+    halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)
+
+    def _weights(g: pd.DataFrame) -> Optional[np.ndarray]:
+        if "match_date" not in g.columns:
+            return None
+        return compute_time_decay_weights(g["match_date"], halflife_years=halflife)
+
     if "format_code" not in df.columns:
         # Single format: use "_ALL_" as key
         df = df.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in df.columns])
@@ -112,7 +133,8 @@ def rows_to_xy_by_format(headers: list[str], rows: list[list[str]]) -> dict[str,
             return {}
         X = df[[c for c in FIELDING_FEATURE_COLS if c in df.columns]].astype(float).values
         Y = df[[c for c in FIELDING_TARGET_COLS if c in df.columns]].astype(float).values
-        return {"_ALL_": (X, Y)}
+        w = _weights(df)
+        return {"_ALL_": (X, Y, w)}
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
@@ -123,7 +145,8 @@ def rows_to_xy_by_format(headers: list[str], rows: list[list[str]]) -> dict[str,
         Y = g[[c for c in FIELDING_TARGET_COLS if c in g.columns]].astype(float).values
         if X.shape[0] < 10:
             continue
-        out[fmt] = (X, Y)
+        w = _weights(g)
+        out[fmt] = (X, Y, w)
     return out
 
 
@@ -132,18 +155,23 @@ def train_and_save(
     Y: np.ndarray,
     out_dir: str,
     format_code: str,
+    sample_weight: Optional[np.ndarray] = None,
 ) -> None:
     """Train fielding model and save scaler + model for format_code.
 
-    Input normalization (StandardScaler) on X only; targets Y in raw units.
-    See docs/ml-and-training.md.
+    Input normalization (RobustScaler by default) on X only; targets Y in raw units.
+    Time-decay sample weights when match_date available. See docs/ml-and-training.md.
     """
     params = get_training_params("fielding", format_code)
-    scaler = StandardScaler()
+    pipe_cfg = get_pipeline_common_config()
+    scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))
     Xs = scaler.fit_transform(X)
     base = make_base_estimator(params)
     model = MultiOutputRegressor(base)
-    model.fit(Xs, Y)
+    if sample_weight is not None:
+        model.fit(Xs, Y, sample_weight=sample_weight)
+    else:
+        model.fit(Xs, Y)
 
     # Extract and store feature importance (average across MultiOutputRegressor estimators)
     feature_importance = None
@@ -173,14 +201,20 @@ def train_and_save(
             logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
 
 
-def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
+def train_and_save_legacy(
+    X: np.ndarray, Y: np.ndarray, out_dir: str, sample_weight: Optional[np.ndarray] = None
+) -> None:
     """Train one unified fielding model on all data and save as legacy (fielding_scaler.joblib, fielding_model.joblib)."""
     params = get_training_params("fielding", None)
-    scaler = StandardScaler()
+    pipe_cfg = get_pipeline_common_config()
+    scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))
     Xs = scaler.fit_transform(X)
     base = make_base_estimator(params)
     model = MultiOutputRegressor(base)
-    model.fit(Xs, Y)
+    if sample_weight is not None:
+        model.fit(Xs, Y, sample_weight=sample_weight)
+    else:
+        model.fit(Xs, Y)
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     joblib.dump(scaler, os.path.join(out_dir, "fielding_scaler.joblib"), compress=compress)
@@ -260,21 +294,22 @@ def main() -> None:
     )
 
     def _train_one_format(item):
-        fmt, (X, Y) = item
+        fmt, (X, Y, w) = item
         logger.info("pipeline: train_fielding processing format=%s n=%s", fmt, X.shape[0])
-        train_and_save(X, Y, out_dir, fmt)
+        train_and_save(X, Y, out_dir, fmt, sample_weight=w)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         list(executor.map(_train_one_format, formats_items))
 
     # Unified (overall) model: train on all data combined for legacy/fallback
-    all_X = np.vstack([X for _, (X, _) in by_format.items()])
-    all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    all_X = np.vstack([X for _, (X, _, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y, _) in by_format.items()])
+    all_weights = _concat_weights([w for _, (_, _, w) in by_format.items()])
     del by_format
     gc.collect()
     if all_X.shape[0] >= 10:
-        train_and_save_legacy(all_X, all_Y, out_dir)
+        train_and_save_legacy(all_X, all_Y, out_dir, sample_weight=all_weights)
 
 
 if __name__ == "__main__":

@@ -85,6 +85,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	bat_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_form GROUP BY match_id),
 	bowl_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id)
 	SELECT m.match_id, m.format_id, m.venue_id, m.season_id, m.total_extras, m.format_code,
+		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
 		COALESCE(bwc.s, 0) AS bowl_consistency_sum,
@@ -112,6 +113,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	defer rows.Close()
 	headers := []string{
 		"match_id", "format_id", "venue_id", "season_id", "total_extras", "format_code",
+		"match_date",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
@@ -121,9 +123,11 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		var matchID, formatID, venueID, seasonID int64
 		var totalExtras int
 		var formatCode string
+		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
 		if err := rows.Scan(&matchID, &formatID, &venueID, &seasonID, &totalExtras, &formatCode,
+			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
 			return nil, err
@@ -135,6 +139,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.FormatInt(seasonID, 10),
 			strconv.Itoa(totalExtras),
 			formatCode,
+			matchDate.Format("2006-01-02"),
 			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
