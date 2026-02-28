@@ -881,9 +881,7 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
                 loss="quantile",
                 alpha=tp.get("quantile_level", 0.5),
             )
-            candidates.append(
-                ("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 10, 14, 20]})
-            )
+            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 10, 14, 20]}))
         except (ValueError, KeyError):
             pass
     if "stacked" in allow:

@@ -1051,7 +1051,7 @@ def _enrich_with_tuning_report(
         else:
             algorithms = report.get("algorithms") or []
             best_key = algorithms[0] if algorithms else None
-            rec["algorithm"] = _ALGORITHM_NAMES.get(best_key, best_key) if best_key else None
+            rec["algorithm"] = _ALGORITHM_NAMES.get(str(best_key).lower(), str(best_key)) if best_key else None
         rec["cv_splits"] = report.get("cv_splits")
         rec["validation_method"] = report.get("validation_method")
         rec["n_samples"] = report.get("n_samples")

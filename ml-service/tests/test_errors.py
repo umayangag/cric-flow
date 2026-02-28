@@ -49,6 +49,23 @@ def test_error_payload_request_id_empty_no_crash():
         request_id_var.reset(token)
 
 
+def test_error_payload_request_id_structlog_get_raises():
+    """When get_contextvars() raises, error_payload still returns valid payload (lines 34-35)."""
+    from unittest.mock import patch
+
+    from app.logging import request_id_var
+
+    token = request_id_var.set("")
+    try:
+        with patch("structlog.contextvars.get_contextvars", side_effect=Exception("structlog nope")):
+            p = error_payload("ERR", "msg")
+            assert p["code"] == "ERR"
+            assert p["message"] == "msg"
+            assert "request_id" not in p
+    finally:
+        request_id_var.reset(token)
+
+
 def test_error_detail_model():
     """ErrorDetail Pydantic model accepts optional fields."""
     e = ErrorDetail(code="X", message="Y")

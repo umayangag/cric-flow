@@ -1,6 +1,7 @@
 """Unit tests for backtest_service build_*_features_from_map (coverage)."""
 
 from datetime import datetime
+from unittest.mock import patch
 
 from app.backtest_service import (
     build_batting_features_from_map,
@@ -91,3 +92,19 @@ def test_build_fielding_features_from_map():
     assert f.fielding_consistency == 0.6
     assert f.fielding_form == 0.2
     assert f.fielding_season == 2024
+
+
+def test_feature_defaults_raises_propagates():
+    """When get_feature_defaults raises, _feature_defaults propagates (lines 74-75)."""
+    import pytest
+
+    from app.backtest_service import build_fielding_features_from_map
+
+    def raiser():
+        raise ValueError("config error")
+
+    cutoff = datetime(2024, 6, 15)
+    m = {"fielding_consistency": 0.6, "fielding_form": 0.2, "season": 2024}
+    with patch("app.backtest_service.get_feature_defaults", side_effect=raiser):
+        with pytest.raises(ValueError, match="config error"):
+            build_fielding_features_from_map(1, cutoff, "T20", m)

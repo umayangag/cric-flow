@@ -263,7 +263,7 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
   const [autoTuneRescreen, setAutoTuneRescreen] = useState<boolean>(false);
   const [autoTuneCutoff, setAutoTuneCutoff] = useState<string>('');
   const [autoTuneAlgorithms, setAutoTuneAlgorithms] = useState<Set<string>>(
-    () => new Set(DEFAULT_ALGORITHMS)
+    () => new Set(DEFAULT_ALGORITHMS),
   );
 
   const steps = useMemo(() => derivePipelineSteps(data), [data]);
@@ -280,7 +280,7 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
       return;
     }
     try {
-      const res = await api.modelStats();
+      const res = await api.getModelStats();
       const payload = res as unknown as ModelStatsResponse;
       const models = payload?.models ?? [];
       const match = models.find((m: MLModelStat) => {
@@ -368,7 +368,8 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
     }
     if (autoTuneRescreen) parts.push('RESCREEN=1');
     if (autoTuneCutoff.trim()) parts.push(`CUTOFF="${autoTuneCutoff.trim()}"`);
-    if (autoTuneAlgorithms.size > 0) parts.push(`ALGORITHMS="${[...autoTuneAlgorithms].sort().join(',')}"`);
+    if (autoTuneAlgorithms.size > 0)
+      parts.push(`ALGORITHMS="${[...autoTuneAlgorithms].sort().join(',')}"`);
     return `make ml-auto-tune ${parts.join(' ')}`;
   };
 
@@ -572,8 +573,14 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                     helperText="Training data cutoff for API. Leave empty to use default."
                   />
                   <Box>
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                      Algorithms to consider (only selected will be used). Default: last used for this model+format.
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mb: 0.5 }}
+                    >
+                      Algorithms to consider (only selected will be used). Default: last used for
+                      this model+format.
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {AUTO_TUNE_ALGORITHMS.map(({ value, label }) => (
