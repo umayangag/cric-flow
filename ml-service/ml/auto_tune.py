@@ -1640,6 +1640,7 @@ def _run_search_two_phase(
     task_index: int = 0,
     task_total: int = 1,
     prior_params: Optional[Dict[str, Any]] = None,
+    algorithms_requested: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s).
     When algorithms has a single element (from prior tuning), Phase 1 is skipped and we go
@@ -1685,6 +1686,8 @@ def _run_search_two_phase(
             algorithm=key,
             message=f"Fine-tune only ({name}), skipping algorithm screening",
             algorithms_screened=[key],
+            algorithms_requested=algorithms_requested,
+            activity="initializing",
         )
         pipe = _build_pipeline(base_est)
         pipe.fit(X, Y)
@@ -1709,6 +1712,8 @@ def _run_search_two_phase(
             task_total=task_total,
             message="Screening algorithms with coarse hyperparameters",
             algorithms_screened=[c[0] for c in candidates],
+            algorithms_requested=algorithms_requested,
+            activity="screening",
         )
         for i, (key, name, base_est, param_dist) in enumerate(candidates):
             _progress.write_progress(
@@ -1720,6 +1725,8 @@ def _run_search_two_phase(
                 algorithm=key,
                 message=f"Testing {name}",
                 algorithms_screened=[c[0] for c in candidates],
+                algorithms_requested=algorithms_requested,
+                activity="cross_validating",
             )
             pipe = _build_pipeline(base_est)
             n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
@@ -1746,6 +1753,9 @@ def _run_search_two_phase(
                 hyperparams=params_display,
                 best_score=float(search.best_score_),
                 message=f"{name} best score: {search.best_score_:.4f}",
+                algorithms_screened=[c[0] for c in candidates],
+                algorithms_requested=algorithms_requested,
+                activity="screening_done",
             )
             results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
         results.sort(key=lambda r: r[2], reverse=True)
@@ -1799,6 +1809,8 @@ def _run_search_two_phase(
             best_score=float(study.best_value) if study.best_trial else best_score,
             best_algorithm=best_key,
             message=f"Fine-tuning {best_name} (trial {t}/{n_phase2})",
+            algorithms_requested=algorithms_requested,
+            activity="running_trial",
         )
 
     def _optuna_objective(trial: Any) -> float:
@@ -2338,6 +2350,7 @@ def run_auto_tune(
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
+    algorithms_requested = list(algorithms) if isinstance(algorithms, (list, tuple)) else ([str(algorithms)] if algorithms else [])
     prior_params: Optional[Dict[str, Any]] = None
     prior = None if rescreen else _get_prior_tuned_algorithm(model_kind, format_suffix, out_dir)
     if prior is not None:
@@ -2389,6 +2402,7 @@ def run_auto_tune(
         task_index,
         task_total,
         prior_params=prior_params,
+        algorithms_requested=algorithms_requested,
     )
     if clip_info:
         report["target_clip_info"] = clip_info
@@ -3072,9 +3086,22 @@ def main() -> None:
                     sys.exit(1)
                 return
 
+        task_idx = 0
+        total_tasks = len(models) * len(formats_to_run)
         for model_kind in models:
             for fmt in formats_to_run:
                 format_suffix = fmt if fmt else None
+                task_idx += 1
+                _progress.write_progress(
+                    phase="loading",
+                    model_kind=model_kind,
+                    format_suffix=format_suffix or "",
+                    task_index=task_idx,
+                    task_total=max(1, total_tasks),
+                    message="Loading training data",
+                    algorithms_requested=algorithms_override or [],
+                    activity="loading_data",
+                )
                 if args.from_api:
                     api_available = bool(args.go_app_url and args.cutoff)
                     if not api_available:

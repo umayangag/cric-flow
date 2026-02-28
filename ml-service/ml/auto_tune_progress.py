@@ -47,6 +47,8 @@ def write_progress(
     best_algorithm: Optional[str] = None,
     message: Optional[str] = None,
     algorithms_screened: Optional[list] = None,
+    algorithms_requested: Optional[list] = None,
+    activity: Optional[str] = None,
 ) -> None:
     """Write progress to file and optional callback."""
     payload: Dict[str, Any] = {
@@ -72,6 +74,10 @@ def write_progress(
         payload["message"] = message
     if algorithms_screened is not None:
         payload["algorithms_screened"] = algorithms_screened
+    if algorithms_requested is not None:
+        payload["algorithms_requested"] = algorithms_requested
+    if activity is not None:
+        payload["activity"] = activity
 
     if _PROGRESS_CALLBACK:
         try:

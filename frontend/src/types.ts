@@ -314,6 +314,8 @@ export type PipelineProgressPayload = {
     best_algorithm?: string;
     message?: string;
     algorithms_screened?: string[];
+    algorithms_requested?: string[];
+    activity?: string;
   };
 };
 

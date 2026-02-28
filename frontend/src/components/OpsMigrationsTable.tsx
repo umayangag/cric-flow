@@ -59,6 +59,34 @@ const getPillState = (status: Migration['status']): 'ok' | 'pending' | 'error' =
   }
 };
 
+/** Format command + params for display in the Command column (model, format, algorithms, cutoff, etc.) */
+function formatCommandWithParams(m: Migration): string {
+  const cmd = m.command || '';
+  const args = (m.args as Record<string, unknown>) || {};
+  const parts: string[] = [];
+
+  if (cmd === 'ml-auto-tune') {
+    if (args.model) parts.push(`model=${args.model}`);
+    if (args.format) parts.push(`format=${args.format}`);
+    if (args.all_formats && String(args.all_formats) !== '0') parts.push('all_formats');
+    if (args.unified && String(args.unified) !== '0') parts.push('unified');
+    if (args.algorithms) parts.push(`algorithms=${args.algorithms}`);
+    if (args.cutoff) parts.push(`cutoff=${String(args.cutoff).slice(0, 10)}`);
+    if (args.rescreen && String(args.rescreen) !== '0') parts.push('rescreen');
+  } else if (cmd.startsWith('train-')) {
+    if (args.cutoff) parts.push(`cutoff=${String(args.cutoff).slice(0, 10)}`);
+  } else if (cmd === 'export-dataset') {
+    if (args.out_dir) parts.push(`out=${String(args.out_dir)}`);
+  } else if (cmd === 'precompute-features') {
+    if (args.season) parts.push(`season=${args.season}`);
+  } else if (cmd === 'cricsheet-import') {
+    if (args.dir) parts.push(`dir=${String(args.dir)}`);
+  }
+
+  if (parts.length === 0) return cmd;
+  return `${cmd} ${parts.join(' ')}`;
+}
+
 const OpsMigrationsTable: React.FC = () => {
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [loading, setLoading] = useState(false);
@@ -117,7 +145,9 @@ const OpsMigrationsTable: React.FC = () => {
           {migrations.map((m) => (
             <TableRow key={m.id}>
               <TableCell>{m.id}</TableCell>
-              <CodeCell>{m.command}</CodeCell>
+              <CodeCell title={typeof m.args === 'object' ? JSON.stringify(m.args) : undefined}>
+                {formatCommandWithParams(m)}
+              </CodeCell>
               <TableCell>
                 <StatusPill state={getPillState(m.status)} label={m.status} />
               </TableCell>
