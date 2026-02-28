@@ -12,6 +12,7 @@ from ml.config import (
     default_artifacts_dir,
     default_go_app_export_dir,
     get_feature_defaults,
+    get_pipeline_common_config,
     get_prediction_defaults,
     get_training_data_fetch_timeout_sec,
     get_training_params,
@@ -331,11 +332,34 @@ def test_get_prediction_defaults(monkeypatch):
     assert isinstance(pd_def["economy"], float)
 
 
+def test_get_pipeline_common_config():
+    """get_pipeline_common_config returns generalized_pipeline defaults."""
+    config_mod._cached = None
+    cfg = get_pipeline_common_config()
+    assert "use_robust_scaler" in cfg
+    assert "time_decay_halflife_years" in cfg
+    assert "delta_threshold" in cfg
+    assert isinstance(cfg["use_robust_scaler"], bool)
+    assert cfg["time_decay_halflife_years"] == 2.0
+    assert cfg["delta_threshold"] == 0.08
+
+
 def test_training_required_keys_constant():
     """TRAINING_REQUIRED_KEYS and TRAINING_MODELS are defined."""
     assert "n_estimators" in TRAINING_REQUIRED_KEYS
     assert "batting" in TRAINING_MODELS
     assert "bowling" in TRAINING_MODELS
+
+
+def test_config_load_default_missing_returns_empty():
+    """When default config file does not exist, empty dict is used (line 59 else)."""
+    config_mod._cached = None
+    try:
+        with patch("os.path.isfile", return_value=False):
+            cfg = config_mod.get_config()
+        assert cfg == {}
+    finally:
+        config_mod._cached = None
 
 
 def test_config_load_default_fails_returns_empty(monkeypatch):

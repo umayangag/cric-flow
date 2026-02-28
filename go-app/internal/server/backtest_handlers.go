@@ -69,7 +69,11 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 // buildPredictedScorecard builds a scorecard from the actual layout with ML-predicted stats per player.
 // Predictions use only data before the match date. Batting rows get predicted runs; bowling rows get predicted wickets, economy, and derived runs.
 // playerTeams maps player_id -> team name so we sum predicted runs for all 11 of the batting team (not just those who batted).
-func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions, playerTeams map[int64]string) *db.MatchScorecard {
+func buildPredictedScorecard(
+	actual *db.MatchScorecard,
+	preds map[int64]playerPredictions,
+	playerTeams map[int64]string,
+) *db.MatchScorecard {
 	if actual == nil {
 		return nil
 	}

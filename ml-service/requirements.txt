@@ -115,8 +115,9 @@ charset-normalizer==3.4.4
     # via requests
 choreographer==1.2.1
     # via kaleido
-click==8.2.1
+click==8.1.8
     # via
+    #   -r requirements.in
     #   flask
     #   model-index
     #   nltk
@@ -211,7 +212,7 @@ fastprogress==1.0.5
     # via
     #   fastai
     #   fastdownload
-filelock==3.24.2
+filelock==3.19.1
     # via
     #   datasets
     #   gdown

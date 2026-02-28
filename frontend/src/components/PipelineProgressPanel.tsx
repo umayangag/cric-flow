@@ -230,10 +230,17 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           {p.step_id === 'auto_tune' && p.auto_tune && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
               <Typography variant="caption" fontWeight={600} color="primary.main">
-                Phase: {p.auto_tune.phase === 'fine_tuning' ? 'Fine-tuning' : p.auto_tune.phase === 'loading' ? 'Loading' : p.auto_tune.phase === 'pycaret' ? 'PyCaret ranking' : p.auto_tune.phase === 'autogluon' ? 'AutoGluon' : 'Algorithm screening'}
-                {p.auto_tune.activity && (
-                  <> · Activity: {formatActivity(p.auto_tune.activity)}</>
-                )}
+                Phase:{' '}
+                {p.auto_tune.phase === 'fine_tuning'
+                  ? 'Fine-tuning'
+                  : p.auto_tune.phase === 'loading'
+                    ? 'Loading'
+                    : p.auto_tune.phase === 'pycaret'
+                      ? 'PyCaret ranking'
+                      : p.auto_tune.phase === 'autogluon'
+                        ? 'AutoGluon'
+                        : 'Algorithm screening'}
+                {p.auto_tune.activity && <> · Activity: {formatActivity(p.auto_tune.activity)}</>}
               </Typography>
               {p.auto_tune.algorithms_requested && p.auto_tune.algorithms_requested.length > 0 && (
                 <Typography variant="caption" color="text.secondary">
@@ -279,7 +286,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           )}
           {p.step_id === 'auto_tune' && !p.auto_tune?.phase && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms are screened first; best algorithm is then fine-tuned. Progress updates as tuning runs.
+              Algorithms are screened first; best algorithm is then fine-tuned. Progress updates as
+              tuning runs.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>

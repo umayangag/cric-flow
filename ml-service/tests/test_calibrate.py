@@ -42,6 +42,15 @@ def test_evaluate_calibration_adds_ece():
     assert 0 <= data["ece"] <= 1 or np.isnan(data["ece"])
 
 
+def test_evaluate_calibration_single_sample():
+    """evaluate_calibration handles single sample edge case."""
+    y_true = np.array([1])
+    y_prob = np.array([0.5])
+    data = evaluate_calibration(y_true, y_prob, n_bins=10)
+    assert "ece" in data
+    assert 0 <= data["ece"] <= 1 or np.isnan(data["ece"])
+
+
 def test_calibrate_classifier_isotonic():
     """Calibrate classifier with isotonic method."""
     np.random.seed(42)

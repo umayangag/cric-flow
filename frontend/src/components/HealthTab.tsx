@@ -218,7 +218,8 @@ const HealthTab: React.FC = () => {
                   if (Array.isArray(bat) && bat.length) parts.push(`bat: ${bat.length}`);
                   if (Array.isArray(bowl) && bowl.length) parts.push(`bowl: ${bowl.length}`);
                   if (Array.isArray(field) && field.length) parts.push(`field: ${field.length}`);
-                  if (Array.isArray(extras) && extras.length) parts.push(`extras: ${extras.length}`);
+                  if (Array.isArray(extras) && extras.length)
+                    parts.push(`extras: ${extras.length}`);
                   if (Array.isArray(win) && win.length) parts.push(`win: ${win.length}`);
                   return {
                     label: 'Artifacts',

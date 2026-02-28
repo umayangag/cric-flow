@@ -195,9 +195,7 @@ def train_and_save_legacy(
 def main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(
-        description="Train win model from go-app export CSV (preferred) or training-data API"
-    )
+    ap = argparse.ArgumentParser(description="Train win model from go-app export CSV (preferred) or training-data API")
     ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required for API fallback)")
     ap.add_argument(
         "--csv",

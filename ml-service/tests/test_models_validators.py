@@ -44,8 +44,22 @@ def test_backtest_predict_request_teams_validator(tmp_path):
     cutoff = datetime(2024, 1, 1)
     with pytest.raises(ValueError, match="exactly two"):
         BacktestPredictRequest(cutoff_date=cutoff, teams=["A"], player_ids=[1, 2], format="T20")
+    with pytest.raises(ValueError, match="exactly two"):
+        BacktestPredictRequest(cutoff_date=cutoff, teams=["A", "B", "C"], player_ids=[1, 2], format="T20")
     r = BacktestPredictRequest(cutoff_date=cutoff, teams=["  india  ", "  aus  "], player_ids=[1, 2], format="T20")
     assert r.teams == ["INDIA", "AUS"]
+
+
+def test_backtest_predict_request_teams_none(tmp_path):
+    """BacktestPredictRequest allows teams=None."""
+    from datetime import datetime
+
+    from app.models import BacktestPredictRequest
+
+    cutoff = datetime(2024, 1, 1)
+    r = BacktestPredictRequest(cutoff_date=cutoff, teams=None, player_ids=None, format="T20")
+    assert r.teams is None
+    assert r.player_ids is None
 
 
 def test_backtest_predict_request_player_ids_validator(tmp_path):
@@ -69,12 +83,30 @@ def test_extras_features_format_upper(tmp_path):
     assert f.format == "T20"
 
 
+def test_extras_features_format_none_empty(tmp_path):
+    """ExtrasFeatures format validator passes through None and empty string."""
+    from app.models import ExtrasFeatures
+
+    f = ExtrasFeatures(format=None)
+    assert f.format is None
+    f2 = ExtrasFeatures(format="")
+    assert f2.format == ""
+
+
 def test_win_features_format_upper(tmp_path):
     """WinFeatures format validator uppercases non-empty format (lines 239-243)."""
     from app.models import WinFeatures
 
     f = WinFeatures(format="  odi  ")
     assert f.format == "ODI"
+
+
+def test_win_features_format_none_empty(tmp_path):
+    """WinFeatures format validator passes through None and empty string."""
+    from app.models import WinFeatures
+
+    f = WinFeatures(format=None)
+    assert f.format is None
 
 
 def test_historical_match_filter_validators(tmp_path):
@@ -87,6 +119,17 @@ def test_historical_match_filter_validators(tmp_path):
     assert f.format == "T20"
     assert f.team1 == "IND"
     assert f.team2 == "PAK"
+
+
+def test_historical_match_backtest_request_match_id_none(tmp_path):
+    """HistoricalMatchBacktestRequest with filters uses match_id=None (validator passes through)."""
+    from datetime import datetime
+
+    from app.models import HistoricalMatchBacktestRequest, HistoricalMatchFilter
+
+    filt = HistoricalMatchFilter(format="T20", team1="IND", team2="PAK", match_date=datetime(2024, 1, 1))
+    r = HistoricalMatchBacktestRequest(cutoff_date=datetime(2024, 1, 1), filters=filt)
+    assert r.match_id is None
 
 
 def test_historical_match_backtest_request_match_id_validator(tmp_path):

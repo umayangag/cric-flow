@@ -70,6 +70,21 @@ def test_compute_yearly_format_averages():
     assert "runs_per_ball" in avgs[("ODI", 2023)]
 
 
+def test_compute_yearly_format_averages_with_match_year():
+    """compute_yearly_format_averages uses match_year when match_date absent."""
+    df = pd.DataFrame(
+        {
+            "format_code": ["T20I", "T20I"],
+            "match_year": [2023, 2024],
+            "runs_total": [10, 20],
+            "wicket_kind": [None, None],
+        }
+    )
+    avgs = compute_yearly_format_averages(df, year_col="match_year")
+    assert ("T20I", 2023) in avgs
+    assert ("T20I", 2024) in avgs
+
+
 def test_pipeline_config_defaults():
     """PipelineConfig has expected defaults."""
     cfg = PipelineConfig()

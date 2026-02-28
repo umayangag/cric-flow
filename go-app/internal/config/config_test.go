@@ -382,16 +382,41 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		want int
 	}{
 		{"ServerMLClientTimeoutSec nil", nil, ServerMLClientTimeoutSec, DefaultServerMLClientTimeoutSec},
-		{"ServerMLClientTimeoutSec set", &Config{Server: ServerConfig{MLClientTimeoutSec: 25}}, ServerMLClientTimeoutSec, 25},
+		{
+			"ServerMLClientTimeoutSec set",
+			&Config{Server: ServerConfig{MLClientTimeoutSec: 25}},
+			ServerMLClientTimeoutSec,
+			25,
+		},
 		{"ServerDBProbeTimeoutSec nil", nil, ServerDBProbeTimeoutSec, DefaultServerDBProbeTimeoutSec},
-		{"BacktestAccuracyTrendDefaultLimit nil", nil, BacktestAccuracyTrendDefaultLimit, DefaultBacktestAccuracyTrendLimit},
+		{
+			"BacktestAccuracyTrendDefaultLimit nil",
+			nil,
+			BacktestAccuracyTrendDefaultLimit,
+			DefaultBacktestAccuracyTrendLimit,
+		},
 		{"BacktestEvalJobMaxDurationHr set", cfgEvalJob, BacktestEvalJobMaxDurationHr, 8},
 		{"OpsMigrationsPageMax nil", nil, OpsMigrationsPageMax, DefaultOpsMigrationsPageMax},
 		{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
 		{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
-		{"OpsRecentMigrationsCount set", &Config{Ops: OpsConfig{RecentMigrationsCount: 50}}, OpsRecentMigrationsCount, 50},
-		{"ResourcesImportMBPerWorker set", &Config{Resources: &ResourcesConfig{ImportMBPerWorker: 200}}, ResourcesImportMBPerWorker, 200},
-		{"BacktestExportContributionsJobMaxDurationHr set", cfgExportJob, BacktestExportContributionsJobMaxDurationHr, 4},
+		{
+			"OpsRecentMigrationsCount set",
+			&Config{Ops: OpsConfig{RecentMigrationsCount: 50}},
+			OpsRecentMigrationsCount,
+			50,
+		},
+		{
+			"ResourcesImportMBPerWorker set",
+			&Config{Resources: &ResourcesConfig{ImportMBPerWorker: 200}},
+			ResourcesImportMBPerWorker,
+			200,
+		},
+		{
+			"BacktestExportContributionsJobMaxDurationHr set",
+			cfgExportJob,
+			BacktestExportContributionsJobMaxDurationHr,
+			4,
+		},
 	}
 
 	for _, tt := range tests {

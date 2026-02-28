@@ -87,6 +87,29 @@ def test_train_generalized_from_db_success(mock_load_db, mock_run_pipeline):
 
 
 @patch("ml.train_generalized.run_generalized_pipeline")
+@patch("ml.train_generalized.load_ball_by_ball_from_db")
+def test_train_generalized_from_db_with_format_filter(mock_load_db, mock_run_pipeline):
+    """main with --from-db and --format passes format_codes to loader."""
+    mock_load_db.return_value = _make_fake_df(250)
+    mock_run_pipeline.return_value = {
+        "pipeline": _FakePipeline(),
+        "best_model": "logistic",
+        "best_metrics": {"val_metric": 0.10, "delta": 0.02},
+        "summary": "logistic best",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.dict(os.environ, {"ML_SERVICE_OUTPUT_DIR": tmp}, clear=False):
+            with patch(
+                "sys.argv",
+                ["train_generalized", "--from-db", "--cutoff", "2024-06-01", "--format", "ODI, T20I"],
+            ):
+                main()
+    assert mock_load_db.called
+    format_codes = mock_load_db.call_args[1].get("format_codes")
+    assert format_codes == ["ODI", "T20I"]
+
+
+@patch("ml.train_generalized.run_generalized_pipeline")
 @patch("ml.train_generalized.load_ball_by_ball_from_csv")
 def test_train_generalized_pipeline_error_exits(mock_load_csv, mock_run_pipeline):
     """main exits when pipeline returns error."""

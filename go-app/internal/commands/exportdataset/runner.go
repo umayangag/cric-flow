@@ -67,7 +67,13 @@ func NewRunner() *Runner { return &Runner{} }
 
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
 // Field, Extras, Win can be nil to skip their export (e.g. backward compatibility).
-func NewRunnerWithServices(bat BattingExporter, bow BowlingExporter, field FieldingExporter, extras ExtrasExporter, win WinExporter) *Runner {
+func NewRunnerWithServices(
+	bat BattingExporter,
+	bow BowlingExporter,
+	field FieldingExporter,
+	extras ExtrasExporter,
+	win WinExporter,
+) *Runner {
 	return &Runner{Bat: bat, Bow: bow, Field: field, Extras: extras, Win: win}
 }
 

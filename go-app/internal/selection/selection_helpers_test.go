@@ -2,8 +2,11 @@ package selection
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
@@ -143,4 +146,94 @@ func TestF32(t *testing.T) {
 	if got := f32(3.14); got != 3.14 {
 		t.Errorf("f32(3.14) = %v, want 3.14", got)
 	}
+}
+
+func TestParsePlayersFromCSV(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty rows", func(t *testing.T) {
+		header := []string{"player_name", "runs_scored"}
+		got := parsePlayersFromCSV(header, nil)
+		require.Empty(t, got)
+	})
+
+	t.Run("maps known columns", func(t *testing.T) {
+		header := []string{
+			"player_name",
+			"runs_scored",
+			"balls_faced",
+			"deliveries",
+			"wickets_taken",
+			"econ",
+			"winning_probability",
+		}
+		rows := [][]string{
+			{"Smith", "50", "30", "24", "2", "6.5", "0.72"},
+		}
+		got := parsePlayersFromCSV(header, rows)
+		require.Len(t, got, 1)
+		require.Equal(t, "Smith", got[0].PlayerName)
+		require.Equal(t, 50.0, got[0].RunsScored)
+		require.Equal(t, 30.0, got[0].BallsFaced)
+		require.Equal(t, 24.0, got[0].Deliveries)
+		require.Equal(t, 2.0, got[0].WicketsTaken)
+		require.Equal(t, 6.5, got[0].Econ)
+		require.Equal(t, 0.72, got[0].WinningProbability)
+	})
+
+	t.Run("ignores unknown columns", func(t *testing.T) {
+		header := []string{"player_name", "extra_col", "runs_scored"}
+		rows := [][]string{{"Kohli", "ignored", "45"}}
+		got := parsePlayersFromCSV(header, rows)
+		require.Len(t, got, 1)
+		require.Equal(t, "Kohli", got[0].PlayerName)
+		require.Equal(t, 45.0, got[0].RunsScored)
+	})
+
+	t.Run("handles short rows", func(t *testing.T) {
+		header := []string{"player_name", "runs_scored", "balls_faced"}
+		rows := [][]string{{"Short", "10"}} // missing balls_faced
+		got := parsePlayersFromCSV(header, rows)
+		require.Len(t, got, 1)
+		require.Equal(t, "Short", got[0].PlayerName)
+		require.Equal(t, 10.0, got[0].RunsScored)
+		require.Equal(t, 0.0, got[0].BallsFaced)
+	})
+
+	t.Run("multiple players", func(t *testing.T) {
+		header := []string{"player_name", "winning_probability"}
+		rows := [][]string{
+			{"A", "0.9"},
+			{"B", "0.8"},
+		}
+		got := parsePlayersFromCSV(header, rows)
+		require.Len(t, got, 2)
+		require.Equal(t, "A", got[0].PlayerName)
+		require.Equal(t, 0.9, got[0].WinningProbability)
+		require.Equal(t, "B", got[1].PlayerName)
+		require.Equal(t, 0.8, got[1].WinningProbability)
+	})
+}
+
+func TestReadAllCSV(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads valid CSV", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "pool.csv")
+		require.NoError(t, os.WriteFile(path, []byte("player_name,runs_scored\nSmith,50\nKohli,45"), 0o644))
+
+		recs, err := readAllCSV(path)
+		require.NoError(t, err)
+		require.Len(t, recs, 3) // header + 2 rows
+		require.Equal(t, []string{"player_name", "runs_scored"}, recs[0])
+		require.Equal(t, []string{"Smith", "50"}, recs[1])
+		require.Equal(t, []string{"Kohli", "45"}, recs[2])
+	})
+
+	t.Run("file not found", func(t *testing.T) {
+		_, err := readAllCSV("/nonexistent/path.csv")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "open pool csv")
+	})
 }
