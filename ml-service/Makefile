@@ -25,7 +25,7 @@ install: venv
 
 # Regenerate requirements.txt from requirements.in (pip-tools). Run after editing requirements.in or to upgrade pins.
 compile-requirements: venv
-	$(PIP) install pip-tools
+	$(PIP) install --upgrade pip pip-tools
 	$(VENV)/bin/pip-compile -U --strip-extras requirements.in -o requirements.txt
 
 # Initialize local Python development environment (venv + deps + dev tools)

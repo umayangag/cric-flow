@@ -43,7 +43,7 @@ jobs:
       - name: Set up Go (for migrate-local target)
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.x'
 
       - name: Install system tools (psql, curl, jq)
         run: |

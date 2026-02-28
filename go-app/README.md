@@ -4,7 +4,7 @@ Go services: Cricsheet import, dataset export, HTTP API. Integrates with Postgre
 
 **Components:** `cmd/cricsheet-importer`, `cmd/export-dataset`, `cmd/api`, `cmd/team-predictor`, `cmd/team-select`, `cmd/migrate`; `internal/*` (Cricsheet, contracts, repos, ML client).
 
-**Prerequisites:** Go 1.25+, Postgres (defaults: `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_DB=cricket_data`, etc.). Override via env.
+**Prerequisites:** Go 1.26+, Postgres (defaults: `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_DB=cricket_data`, etc.). Override via env.
 
 ## Setup and config
 - **One-time:** `make init` — installs gofumpt, golines, golangci-lint; ensure `$(go env GOPATH)/bin` on PATH.
@@ -149,7 +149,7 @@ make -C go-app team-predictor MATCH=1193505 SEASON=2025 FORMAT=T20 BAT=6 BOWL=5
 
 Troubleshooting:
 - Install tools once via `make -C go-app init` (adds gofumpt/golines; suggests golangci-lint).
-- Ensure Go 1.25+ and `$(go env GOPATH)/bin` on PATH.
+- Ensure Go 1.26+ and `$(go env GOPATH)/bin` on PATH.
 
 
 ---
