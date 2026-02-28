@@ -1505,7 +1505,7 @@ def _run_training_subprocess(
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
-    Output is streamed to stdout/stderr so container logs show detailed training progress.
+    Output is streamed to stdout/stderr. On failure, subprocess stdout/stderr are logged for debugging.
     """
     import subprocess
 
@@ -1530,7 +1530,8 @@ def _run_training_subprocess(
             cmd,
             cwd=root,
             env=env,
-            capture_output=False,
+            capture_output=True,
+            text=True,
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
@@ -1541,10 +1542,19 @@ def _run_training_subprocess(
         )
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
     if proc.returncode != 0:
+        # Log subprocess output for debugging (includes Python traceback on failure)
+        stdout_lines = (proc.stdout or "").strip().splitlines() if proc.stdout else []
+        stderr_lines = (proc.stderr or "").strip().splitlines() if proc.stderr else []
+        # Keep last N lines to avoid huge logs; tracebacks are usually at the end
+        max_lines = 100
+        stdout_tail = "\n".join(stdout_lines[-max_lines:]) if stdout_lines else "(empty)"
+        stderr_tail = "\n".join(stderr_lines[-max_lines:]) if stderr_lines else "(empty)"
         logger.error(
             "pipeline: training subprocess failed",
             module=module,
             returncode=proc.returncode,
+            subprocess_stdout=stdout_tail,
+            subprocess_stderr=stderr_tail,
         )
         raise ValueError(f"Training failed (exit {proc.returncode})")
 

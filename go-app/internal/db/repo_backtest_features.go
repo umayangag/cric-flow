@@ -143,30 +143,22 @@ func GetMatchPlayerTeams(ctx context.Context, matchID int64) (map[int64]string, 
 }
 
 // GetMatchFullSquadPlayerIDs returns player IDs for all 11 players per team (when available from the match).
-// Uses batters (from batting innings) union bowlers (from bowling innings) per team so we predict for the full XI
-// regardless of how many wickets fell. This balances predicted runs and win prediction across teams.
+// Unions batting_data, bowling_data, and fielding_data so we include every participating player, including
+// those who only fielded. This balances predicted runs and win prediction across teams.
 // For 2-innings matches this returns 22 players (11 per team). For single-innings, returns what we have.
 func GetMatchFullSquadPlayerIDs(ctx context.Context, matchID int64) ([]int64, error) {
 	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	// Per team: batters when they batted ∪ bowlers when they bowled = full XI for that team
 	rows, err := Query(ctx, `
-		WITH team_players AS (
-			SELECT bd.player_id, COALESCE(o.opposition_name, '') AS team_name
-			FROM batting_data bd
-			JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
-			JOIN opposition o ON o.id = mi.batting_team_opposition_id
-			WHERE bd.match_id = $1
+		SELECT DISTINCT player_id FROM (
+			SELECT player_id FROM batting_data WHERE match_id = $1
 			UNION
-			SELECT bw.player_id, COALESCE(o.opposition_name, '')
-			FROM bowling_data bw
-			JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
-			JOIN opposition o ON o.id = mi.bowling_team_opposition_id
-			WHERE bw.match_id = $2
-		)
-		SELECT DISTINCT player_id FROM team_players ORDER BY player_id
-	`, matchID, matchID)
+			SELECT player_id FROM bowling_data WHERE match_id = $1
+			UNION
+			SELECT player_id FROM fielding_data WHERE match_id = $1
+		) AS players ORDER BY player_id
+	`, matchID)
 	if err != nil {
 		return nil, err
 	}

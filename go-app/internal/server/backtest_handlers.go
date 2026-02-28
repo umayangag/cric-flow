@@ -128,29 +128,38 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				HowOut:     nil,
 			})
 		}
-		// Add rows for batting team players who didn't bat (from bowling in other innings).
+		// Build playerID->name map from all innings so we can look up names for DNB entries.
+		playerNames := make(map[int64]string)
 		for _, oth := range actual.Innings {
-			if oth.BowlingTeamName != in.BattingTeamName {
-				continue
+			for _, b := range oth.Batting {
+				playerNames[b.PlayerID] = b.PlayerName
 			}
 			for _, w := range oth.Bowling {
-				if _, batted := battedSet[w.PlayerID]; batted {
-					continue
-				}
-				battedSet[w.PlayerID] = struct{}{}
-				p := preds[w.PlayerID]
-				r := int(math.Round(p.Runs))
-				inn.Batting = append(inn.Batting, db.ScorecardBatting{
-					PlayerID:   w.PlayerID,
-					PlayerName: w.PlayerName,
-					Runs:       intPtr(r),
-					Balls:      nil,
-					Fours:      nil,
-					Sixes:      nil,
-					StrikeRate: nil,
-					HowOut:     nil,
-				})
+				playerNames[w.PlayerID] = w.PlayerName
 			}
+		}
+		// Add "Did Not Bat" rows for all batting team players who didn't bat (from playerTeams).
+		for pid, team := range playerTeams {
+			if team != in.BattingTeamName {
+				continue
+			}
+			if _, batted := battedSet[pid]; batted {
+				continue
+			}
+			battedSet[pid] = struct{}{}
+			p := preds[pid]
+			r := int(math.Round(p.Runs))
+			name := playerNames[pid]
+			inn.Batting = append(inn.Batting, db.ScorecardBatting{
+				PlayerID:   pid,
+				PlayerName: name,
+				Runs:       intPtr(r),
+				Balls:      nil,
+				Fours:      nil,
+				Sixes:      nil,
+				StrikeRate: nil,
+				HowOut:     nil,
+			})
 		}
 		inn.RunsScored = predRunsSum
 		// First pass: collect raw wicket predictions
