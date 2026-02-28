@@ -172,19 +172,15 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
 
-    def _batting_extra_y(df: pd.DataFrame) -> np.ndarray:
-        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-        balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
-        return np.where(balls > 0, (runs / balls) * 100.0, 0.0).reshape(-1, 1)
-
+    # Strike rate removed from training targets to avoid target leakage
+    # (SR = runs/balls * 100 is deterministic; derive post-prediction instead)
     return _rows_to_xy(
         headers,
         rows,
         _batting_feature_cols(),
         BATTING_TARGET_COLS,
-        n_y_final=6,
+        n_y_final=5,
         preprocess=_batting_preprocess,
-        extra_y_column=_batting_extra_y,
     )
 
 

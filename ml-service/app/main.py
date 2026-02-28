@@ -430,7 +430,7 @@ def _predict_players_with_features(
     for i, pid in enumerate(player_ids):
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
-        vals_bat = list(row_bat) + [0.0] * max(0, 6 - len(row_bat))
+        vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
         vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
         runs = float(max(0.0, vals_bat[0]))
         balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
@@ -1202,15 +1202,19 @@ async def predict_batting(features: List[BattingFeatures]):
         preds = []
         for row in Y:
             vals = row if np.ndim(row) == 1 else row.ravel()
-            vals = list(vals) + [0.0] * max(0, 6 - len(vals))
+            vals = list(vals) + [0.0] * max(0, 5 - len(vals))
+            runs = float(vals[0])
+            balls = float(vals[1])
+            # Derive strike_rate post-prediction (not a training target to avoid leakage)
+            sr = (runs / balls * 100.0) if balls > 0 else 0.0
             preds.append(
                 BattingPrediction(
-                    runs_scored=float(vals[0]),
-                    balls_faced=float(vals[1]),
+                    runs_scored=runs,
+                    balls_faced=balls,
                     fours_scored=float(vals[2]),
                     sixes_scored=float(vals[3]),
                     batting_position=float(vals[4]),
-                    strike_rate=float(vals[5]),
+                    strike_rate=sr,
                 )
             )
         logger.info("predict.batting.success", predictions=len(preds))
