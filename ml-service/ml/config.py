@@ -327,7 +327,7 @@ def get_tuning_config() -> Dict[str, Any]:
         n_jobs = suggested_n_jobs("tuning")
     algorithms = tuning.get("algorithms")
     if algorithms == "all" or algorithms is None:
-        algorithms = ["rf", "gb", "quantile", "stacked"]
+        algorithms = ["rf", "gb", "quantile"]
     elif isinstance(algorithms, (list, tuple)):
         algorithms = [str(a).lower().strip() for a in algorithms if a]
     else:

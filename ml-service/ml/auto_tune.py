@@ -870,7 +870,6 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
         p = dict(_PHASE1_COARSE_HGB)
         p["est__estimator__random_state"] = [rs]
         candidates.append(("hgb", "HistGradientBoostingRegressor", HistGradientBoostingRegressor(), p))
-    # quantile and stacked: use gb-style coarse
     if "quantile" in allow:
         try:
             tp = get_training_params(model_kind)
@@ -882,7 +881,9 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
                 loss="quantile",
                 alpha=tp.get("quantile_level", 0.5),
             )
-            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 12, 20]}))
+            candidates.append(
+                ("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 10, 14, 20]})
+            )
         except (ValueError, KeyError):
             pass
     if "stacked" in allow:
@@ -1106,6 +1107,7 @@ def _run_search_two_phase_single_regression(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [r[0] for r in results],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
@@ -1129,7 +1131,7 @@ def _run_search_two_phase_single_regression(
         elif alg == "gb":
             est = GradientBoostingRegressor(
                 n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -1156,7 +1158,7 @@ def _run_search_two_phase_single_regression(
         else:
             est = HistGradientBoostingRegressor(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -1248,6 +1250,7 @@ def _run_search_two_phase_single_regression(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [r[0] for r in results],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
@@ -1406,6 +1409,7 @@ def _run_search_classification(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": algorithms_used,
+        "algorithms_requested": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
@@ -1461,7 +1465,7 @@ def _run_search_two_phase(
     straight to Optuna fine-tuning. prior_params can seed the first Optuna trial (warm start).
     """
     tuning_cfg = get_tuning_config()
-    algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
+    algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile"])
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
         algs = ["rf", "gb", "et", "hgb", "quantile", "stacked"]
         stages = tuning_cfg.get("stages") or {}
@@ -1577,6 +1581,7 @@ def _run_search_two_phase(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [c[0] for c in candidates],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "n_targets": int(Y.shape[1]),
@@ -1622,12 +1627,32 @@ def _run_search_two_phase(
             )
         elif alg == "gb":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
-            depth = trial.suggest_int("max_depth", 3, 14, step=1)
+            depth = trial.suggest_int("max_depth", 3, 20, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
             est = GradientBoostingRegressor(
                 n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
+        elif alg == "quantile":
+            try:
+                tp = get_training_params(model_kind)
+                n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+                depth = trial.suggest_int("max_depth", 4, 20, step=2)
+                lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
+                leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+                est = GradientBoostingRegressor(
+                    n_estimators=n_est,
+                    max_depth=depth,
+                    learning_rate=lr,
+                    min_samples_leaf=leaf,
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=tp.get("quantile_level", 0.5),
+                )
+            except (ValueError, KeyError):
+                est = GradientBoostingRegressor(
+                    n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
+                )
         elif alg == "et":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
@@ -1695,6 +1720,26 @@ def _run_search_two_phase(
                 min_samples_leaf=params["min_samples_leaf"],
                 random_state=random_state,
             )
+        elif alg == "quantile":
+            try:
+                tp = get_training_params(model_kind)
+                est = GradientBoostingRegressor(
+                    n_estimators=params.get("n_estimators", 200),
+                    max_depth=params.get("max_depth", 12),
+                    learning_rate=params.get("learning_rate", 0.1),
+                    min_samples_leaf=params.get("min_samples_leaf", 2),
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=tp.get("quantile_level", 0.5),
+                )
+            except (ValueError, KeyError):
+                est = GradientBoostingRegressor(
+                    n_estimators=params.get("n_estimators", 200),
+                    max_depth=params.get("max_depth", 12),
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=0.5,
+                )
         elif alg == "et":
             est = ExtraTreesRegressor(
                 n_estimators=params["n_estimators"],
@@ -1746,6 +1791,7 @@ def _run_search_two_phase(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [c[0] for c in candidates],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "n_targets": int(Y.shape[1]),
@@ -1771,13 +1817,13 @@ def _run_search(
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
-    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
+    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile"])
     validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression(model_kind) if k in allow]
     if not candidates:
         raise ValueError(
-            f"No algorithms selected for {model_kind}; available: rf, gb, quantile, stacked. You requested: {list(algorithms)}"
+            f"No algorithms selected for {model_kind}; available: rf, gb, quantile, et, hgb, stacked, mlp. You requested: {list(algorithms)}"
         )
     cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
     best_score = None
@@ -1831,6 +1877,7 @@ def _run_search(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": algorithms_used,
+        "algorithms_requested": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "n_targets": int(Y.shape[1]),
@@ -2311,6 +2358,7 @@ def _run_search_two_phase_classification(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [r[0] for r in results],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
@@ -2334,7 +2382,7 @@ def _run_search_two_phase_classification(
         elif alg == "gb":
             est = GradientBoostingClassifier(
                 n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -2361,7 +2409,7 @@ def _run_search_two_phase_classification(
         else:
             est = HistGradientBoostingClassifier(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -2452,6 +2500,7 @@ def _run_search_two_phase_classification(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [r[0] for r in results],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],

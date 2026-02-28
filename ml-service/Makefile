@@ -71,6 +71,7 @@ ALGORITHMS ?=
 VALIDATION_METHOD ?=
 FAST ?=
 NO_PYCARET ?=
+RESCREEN ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -98,6 +99,9 @@ AUTO_TUNE_ARGS += --no-pycaret
 endif
 ifeq ($(NO_AUTOGLUON),1)
 AUTO_TUNE_ARGS += --no-autogluon
+endif
+ifeq ($(RESCREEN),1)
+AUTO_TUNE_ARGS += --rescreen
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

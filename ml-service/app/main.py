@@ -1033,9 +1033,6 @@ def _enrich_with_tuning_report(
         rec["tuned"] = True
         rec["best_cv_score"] = report.get("best_cv_score")
         rec["scoring"] = report.get("scoring", "neg_mean_absolute_error")
-        algorithms = report.get("algorithms") or []
-        algo_names = [_ALGORITHM_NAMES.get(a, a) for a in algorithms]
-        rec["algorithm"] = ", ".join(algo_names) if algo_names else None
         config = report.get("config_snippet") or report.get("best_params") or {}
         params: Dict[str, Any] = {}
         for k, v in config.items():
@@ -1046,6 +1043,15 @@ def _enrich_with_tuning_report(
                 k_clean = k[len("est__") :]
             params[k_clean] = v
         rec["tuned_parameters"] = params
+        rec["algorithms_requested"] = report.get("algorithms_requested")
+        # Show only the selected algorithm (used for final model), not Phase 2 finalists
+        selected_algo = params.get("algorithm")
+        if selected_algo is not None:
+            rec["algorithm"] = _ALGORITHM_NAMES.get(str(selected_algo).lower(), str(selected_algo))
+        else:
+            algorithms = report.get("algorithms") or []
+            best_key = algorithms[0] if algorithms else None
+            rec["algorithm"] = _ALGORITHM_NAMES.get(best_key, best_key) if best_key else None
         rec["cv_splits"] = report.get("cv_splits")
         rec["validation_method"] = report.get("validation_method")
         rec["n_samples"] = report.get("n_samples")
@@ -1056,18 +1062,23 @@ def _enrich_with_tuning_report(
         mlqa = report.get("mlqa_audit")
         if mlqa and isinstance(mlqa, dict):
             rec["mlqa_audit"] = mlqa
-            if "accuracy_pct" in metrics:
-                rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
-            elif "mae" in metrics:
-                # Regression: show MAE, RMSE, R² for clearer accuracy assessment
-                parts = [f"MAE={metrics['mae']}"]
-                if "rmse" in metrics:
-                    parts.append(f"RMSE={metrics['rmse']}")
-                if "r2_pct" in metrics:
-                    parts.append(f"R²={metrics['r2_pct']}%")
-                rec["accuracy_display"] = ", ".join(parts)
-            elif "r2_pct" in metrics:
-                rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+        # Set accuracy_display from metrics (preferred) or fallback for neg_mean_absolute_error
+        scoring = rec.get("scoring", "neg_mean_absolute_error")
+        if "accuracy_pct" in (metrics or {}):
+            rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
+        elif "mae" in (metrics or {}):
+            parts = [f"MAE={metrics['mae']}"]
+            if "rmse" in metrics:
+                parts.append(f"RMSE={metrics['rmse']}")
+            if "r2_pct" in metrics:
+                parts.append(f"R²={metrics['r2_pct']}%")
+            rec["accuracy_display"] = ", ".join(parts)
+        elif "r2_pct" in (metrics or {}):
+            rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+        elif scoring == "neg_mean_absolute_error" and rec.get("best_cv_score") is not None:
+            # neg_MAE is negative; show as MAE (interpretable) instead of percentage
+            mae_val = abs(float(rec["best_cv_score"]))
+            rec["accuracy_display"] = f"MAE={mae_val:.2f} (neg_MAE={rec['best_cv_score']:.4f})"
     except Exception as e:
         logger.debug("model_stats.read_report_failed", path=report_path, error=str(e))
         rec["tuned"] = False
@@ -1818,10 +1829,13 @@ async def admin_train_auto_tune(
     format: str = "",
     all_formats: str = "",
     unified: str = "",
+    rescreen: str = "",
+    algorithms: str = "",
 ):
     """Run auto-tune for selected model(s) and format(s).
     Query params: model (batting|bowling|fielding|extras|win|all), format (TEST|ODI|T20|T20I),
-    all_formats (1|true = tune each per-format), unified (1|true = tune unified model only, no format).
+    all_formats (1|true = tune each per-format), unified (1|true = tune unified model only, no format),
+    rescreen (1|true = full algorithm search, ignore prior), algorithms (comma-separated e.g. rf,gb,quantile).
     When all_formats is set, format is ignored. When unified is set, no --format or --all-formats is passed.
     Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
@@ -1865,6 +1879,10 @@ async def admin_train_auto_tune(
         extra.append("--all-formats")
     elif not use_unified:
         extra.extend(["--format", fmt])
+    if (rescreen or "").strip().lower() in ("1", "true", "yes"):
+        extra.append("--rescreen")
+    if (algorithms or "").strip():
+        extra.extend(["--algorithms", algorithms.strip()])
     # Always use parallel when running from the frontend/API; each parallel subprocess uses 1 job.
     # When single task (one model + one format or unified), auto_tune falls through to sequential.
     single_task = model != "all" and (not use_all_formats or use_unified)
@@ -1883,6 +1901,8 @@ async def admin_train_auto_tune(
         all_formats=use_all_formats,
         unified=use_unified,
         format=fmt or None,
+        rescreen=(rescreen or "").strip().lower() in ("1", "true", "yes"),
+        algorithms=algorithms.strip() or None,
         single_task=single_task,
     )
     async with _get_training_semaphore():

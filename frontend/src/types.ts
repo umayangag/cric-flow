@@ -73,6 +73,8 @@ export type MLModelStat = {
   accuracy_display?: string;
   /** MLQA audit (overfitting, stability, bias, sensitivity, complexity). */
   mlqa_audit?: MLQAAudit;
+  /** Algorithms used in last auto-tune run for this model+format (for default selection in UI). */
+  algorithms_requested?: string[];
   /** Training start time (from linked data_migration) — when auto_tune run started. */
   trained_at?: string;
   /** Training completion time (from linked data_migration). */

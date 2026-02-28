@@ -54,6 +54,12 @@ function formatDuration(seconds: number | undefined): string {
 function getAccuracyDisplay(model: MLModelStat): string {
   if (model.accuracy_display) return model.accuracy_display;
   if (model.best_cv_score != null && isFinite(model.best_cv_score)) {
+    const scoring = (model.scoring || '').toLowerCase();
+    if (scoring.includes('neg_mean_absolute_error') || scoring.includes('neg_mae')) {
+      // neg_MAE is not a percentage; show as MAE
+      const mae = Math.abs(model.best_cv_score).toFixed(2);
+      return model.scoring ? `MAE=${mae} (${model.scoring})` : `MAE=${mae}`;
+    }
     const pct = (model.best_cv_score * 100).toFixed(1);
     return model.scoring ? `${pct}% (${model.scoring})` : `${pct}%`;
   }
