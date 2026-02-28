@@ -754,7 +754,7 @@ def _get_prior_tuned_algorithm(
             alg_list = params.get("algorithms")
             if isinstance(alg_list, list) and len(alg_list) > 0:
                 algo = str(alg_list[0]).lower().strip()
-                if algo in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked"):
+                if algo in AVAILABLE_ALGORITHMS:
                     return (algo, params)
             estimator = (params.get("estimator") or "").strip().lower()
             if estimator in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked", "gbm"):
