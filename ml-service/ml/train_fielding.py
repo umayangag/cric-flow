@@ -20,11 +20,11 @@ import json
 import logging
 import os
 import sys
-from typing import Optional
 import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import joblib
 import numpy as np

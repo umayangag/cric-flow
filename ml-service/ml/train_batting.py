@@ -421,9 +421,7 @@ def main():
                 "feature_names": feature_names_used,
                 "imputation_medians": medians,
             }
-            train_and_save(
-                X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights
-            )
+            train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights)
             logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
             return 1
 
@@ -488,9 +486,7 @@ def main():
             "feature_names": feature_names_used,
             "imputation_medians": medians,
         }
-        train_and_save(
-            X, Y, args.out, training_params, None, meta, transform_config, sample_weight=weights
-        )
+        train_and_save(X, Y, args.out, training_params, None, meta, transform_config, sample_weight=weights)
         logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
 
@@ -524,9 +520,7 @@ def main():
             "feature_names": feature_names_used,
             "imputation_medians": medians,
         }
-        train_and_save(
-            X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights
-        )
+        train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights)
         logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
         return 1
 

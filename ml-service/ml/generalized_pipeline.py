@@ -10,12 +10,10 @@ Uses ball-by-ball cricket data with:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
-from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from datetime import date
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -28,10 +26,10 @@ logger = logging.getLogger(__name__)
 # Target encoding uses category_encoders if available
 try:
     from category_encoders import TargetEncoder
+
     HAS_TARGET_ENCODER = True
 except ImportError:
     HAS_TARGET_ENCODER = False
-
 
 
 @dataclass
@@ -116,9 +114,7 @@ def _add_state_space_features(df: pd.DataFrame) -> pd.DataFrame:
     # Cumulative runs and wickets per innings
     grp = ["match_id", "innings"]
     out["cumulative_runs"] = out.groupby(grp)["runs_total"].cumsum()
-    out["cumulative_wickets"] = out.groupby(grp)["wicket_kind"].transform(
-        lambda s: s.notna().astype(int).cumsum()
-    )
+    out["cumulative_wickets"] = out.groupby(grp)["wicket_kind"].transform(lambda s: s.notna().astype(int).cumsum())
     # Balls remaining (assuming total balls from match context)
     total_balls = out.groupby(grp)["ball_seq"].transform("max")
     out["balls_remaining"] = total_balls - out["ball_seq"]
@@ -160,9 +156,7 @@ def _add_ewm_form(
     # Simple: striker-level EWM of runs per ball
     grp = ["striker_id", "format_code"] if "format_code" in out.columns else ["striker_id"]
     out["bat_ewm_rpo"] = (
-        out.groupby(grp)["runs_total"]
-        .transform(lambda s: s.ewm(span=span, adjust=False).mean().shift(1))
-        .fillna(0)
+        out.groupby(grp)["runs_total"].transform(lambda s: s.ewm(span=span, adjust=False).mean().shift(1)).fillna(0)
     )
     out["bowl_ewm_rpo"] = (
         out.groupby(["bowler_id", "format_code"] if "format_code" in out.columns else ["bowler_id"])["runs_total"]
@@ -181,13 +175,11 @@ def _add_matchup_matrix(
     # Pre-compute batter SR and bowler econ by format
     if "format_code" in out.columns:
         bat_sr = (
-            out.groupby(["striker_id", "format_code"])["runs_total"]
-            .transform("sum")
+            out.groupby(["striker_id", "format_code"])["runs_total"].transform("sum")
             / out.groupby(["striker_id", "format_code"])["ball_seq"].transform("count").clip(1)
         ) * 6.0
         bowl_econ = (
-            out.groupby(["bowler_id", "format_code"])["runs_total"]
-            .transform("sum")
+            out.groupby(["bowler_id", "format_code"])["runs_total"].transform("sum")
             / out.groupby(["bowler_id", "format_code"])["ball_seq"].transform("count").clip(1)
         ) * 6.0
     else:
@@ -392,11 +384,13 @@ def compare_models(
     has_xgb, has_lgb = False, False
     try:
         import xgboost as _xgb
+
         has_xgb = True
     except Exception:
         pass
     try:
         import lightgbm as _lgb
+
         has_lgb = True
     except Exception:
         pass
@@ -409,9 +403,7 @@ def compare_models(
                 n_estimators=100, max_depth=6, random_state=42, use_label_encoder=False, eval_metric="logloss"
             )
         if has_lgb:
-            models["lightgbm"] = _lgb.LGBMClassifier(
-                n_estimators=100, max_depth=6, random_state=42, verbose=-1
-            )
+            models["lightgbm"] = _lgb.LGBMClassifier(n_estimators=100, max_depth=6, random_state=42, verbose=-1)
     else:
         from sklearn.ensemble import RandomForestRegressor
 
@@ -481,15 +473,20 @@ def build_match_level_df(df: pd.DataFrame) -> pd.DataFrame:
 
     Requires outcome_winner_opposition_id and batting_team_opposition_id from match_inning.
     """
-    inn1 = df[df["innings"] == 1].groupby("match_id").agg(
-        match_date=("match_date", "first"),
-        format_code=("format_code", "first"),
-        venue_id=("venue_id", "first"),
-        team1_id=("batting_team_opposition_id", "first"),
-        team2_id=("bowling_team_opposition_id", "first"),
-        team1_runs=("runs_total", "sum"),
-        outcome_winner_id=("outcome_winner_opposition_id", "first"),
-    ).reset_index()
+    inn1 = (
+        df[df["innings"] == 1]
+        .groupby("match_id")
+        .agg(
+            match_date=("match_date", "first"),
+            format_code=("format_code", "first"),
+            venue_id=("venue_id", "first"),
+            team1_id=("batting_team_opposition_id", "first"),
+            team2_id=("bowling_team_opposition_id", "first"),
+            team1_runs=("runs_total", "sum"),
+            outcome_winner_id=("outcome_winner_opposition_id", "first"),
+        )
+        .reset_index()
+    )
     inn1["team1_wins"] = (inn1["outcome_winner_id"] == inn1["team1_id"]).astype(int)
     return inn1
 
@@ -549,7 +546,9 @@ def run_generalized_pipeline(
         w = weights
 
     comparison = compare_models(
-        X_match, y, dates,
+        X_match,
+        y,
+        dates,
         task=task,
         n_splits=cfg.n_splits,
         delta_threshold=cfg.delta_threshold,

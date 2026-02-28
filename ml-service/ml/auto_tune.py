@@ -445,9 +445,7 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
         # Baseline comparison: naive model predicts mean every time
         naive_pred = np.full_like(y_flat, target_mean)
         baseline_mae = float(mean_absolute_error(y_flat, naive_pred))
-        baseline_improvement_pct = (
-            round((baseline_mae - mae) / baseline_mae * 100, 2) if baseline_mae > 0 else 0.0
-        )
+        baseline_improvement_pct = round((baseline_mae - mae) / baseline_mae * 100, 2) if baseline_mae > 0 else 0.0
 
         out: Dict[str, Any] = {
             "mae": round(mae, 4),
@@ -671,7 +669,9 @@ def _compute_mlqa_audit(
                     )
                     status_flags.append("sensitivity")
                 else:
-                    findings.append(f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%.")
+                    findings.append(
+                        f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%."
+                    )
         else:
             findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
 

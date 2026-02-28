@@ -9,9 +9,8 @@ Usage:
   GO_APP_URL=http://localhost:8080 python -m ml.train_extras --cutoff 2024-12-01T00:00:00Z
   python -m ml.train_extras --csv path/to/extras_export.csv
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 import argparse
 import json
@@ -21,6 +20,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Optional
 
 import joblib
 import numpy as np
