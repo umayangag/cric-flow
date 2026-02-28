@@ -118,6 +118,18 @@ func TestMomentum(t *testing.T) {
 	}
 }
 
+func TestSortAndClip_EmptyInput(t *testing.T) {
+	cut := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	out := SortAndClip(nil, cut)
+	if len(out) != 0 {
+		t.Fatalf("SortAndClip(nil) should return empty, got len=%d", len(out))
+	}
+	out = SortAndClip([]Innings{}, cut)
+	if len(out) != 0 {
+		t.Fatalf("SortAndClip(empty) should return empty, got len=%d", len(out))
+	}
+}
+
 func TestSortAndClip(t *testing.T) {
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	inn := []Innings{
