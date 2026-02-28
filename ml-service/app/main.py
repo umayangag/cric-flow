@@ -1505,7 +1505,7 @@ def _run_training_subprocess(
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
-    Output is streamed to stdout/stderr. On failure, subprocess stdout/stderr are logged for debugging.
+    Output is captured and logged on failure for debugging.
     """
     import subprocess
 
