@@ -3021,9 +3021,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(
-                                    args.go_app_url, "extras", None, report, args.api_key or None
-                                )
+                                _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
                                     "auto_tune.done model=extras format=unified n=%s best_cv_score=%s",
                                     all_X.shape[0],
@@ -3078,9 +3076,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(
-                                    args.go_app_url, "win", None, report, args.api_key or None
-                                )
+                                _maybe_save_tuned_params(args.go_app_url, "win", None, report, args.api_key or None)
                                 logger.info(
                                     "auto_tune.done model=win format=unified n=%s best_cv_score=%s",
                                     all_X.shape[0],

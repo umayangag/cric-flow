@@ -105,7 +105,11 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 }
 
 // GetMatchPlayerTeams returns a map of player_id -> team (opposition_name) for the match,
-// so predicted runs can be summed by team to derive winner. Uses batting_team for batters and bowling_team for bowlers-only.
+// so predicted runs can be summed by team to derive winner. Includes all squad players:
+// batting_team for batters, bowling_team for bowlers, and field-only players via fielding_data
+// (using fielding_event to infer inning, or first inning's bowling team as fallback).
+// This matches the full squad from GetMatchFullSquadPlayerIDs so buildPredictedScorecard
+// has correct team mappings for DNB entries and predicted run totals.
 func GetMatchPlayerTeams(ctx context.Context, matchID int64) (map[int64]string, error) {
 	if defaultDB == nil {
 		return nil, errors.New("db pool not initialized")
@@ -139,7 +143,45 @@ func GetMatchPlayerTeams(ctx context.Context, matchID int64) (map[int64]string, 
 			out[pid] = team
 		}
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Include field-only players (in fielding_data but not batting/bowling).
+	// Use fielding_event to get inning → bowling_team; fallback to first inning's bowling team.
+	rows2, err := Query(ctx, `
+		SELECT fd.player_id, COALESCE(
+			(SELECT o2.opposition_name FROM fielding_event fe
+			 JOIN match_inning mi2 ON mi2.match_id = fe.match_id AND mi2.inning_number = fe.innings
+			 JOIN opposition o2 ON o2.id = mi2.bowling_team_opposition_id
+			 WHERE fe.match_id = fd.match_id AND fe.fielder_id = fd.player_id
+			 LIMIT 1),
+			(SELECT o2.opposition_name FROM match_inning mi2
+			 JOIN opposition o2 ON o2.id = mi2.bowling_team_opposition_id
+			 WHERE mi2.match_id = fd.match_id
+			 ORDER BY mi2.inning_number LIMIT 1),
+			''
+		)
+		FROM fielding_data fd
+		WHERE fd.match_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM batting_data bd WHERE bd.match_id = fd.match_id AND bd.player_id = fd.player_id)
+		  AND NOT EXISTS (SELECT 1 FROM bowling_data bd WHERE bd.match_id = fd.match_id AND bd.player_id = fd.player_id)
+	`, matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var pid int64
+		var team string
+		if err := rows2.Scan(&pid, &team); err != nil {
+			return nil, err
+		}
+		if _, ok := out[pid]; !ok && team != "" {
+			out[pid] = team
+		}
+	}
+	return out, rows2.Err()
 }
 
 // GetMatchFullSquadPlayerIDs returns player IDs for all 11 players per team (when available from the match).
