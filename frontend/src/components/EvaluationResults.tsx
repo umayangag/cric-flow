@@ -127,10 +127,10 @@ const MatchAggregates: React.FC<{
 
 function diffSeverity(
   value: number | undefined,
-  thresholds?: { low: number; high: number },
+  thresholds: { low: number; high: number },
 ): 'good' | 'moderate' | 'high' | 'none' {
   if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return 'none';
-  const { low = 5, high = 15 } = thresholds ?? {};
+  const { low, high } = thresholds;
   if (value <= low) return 'good';
   if (value <= high) return 'moderate';
   return 'high';
