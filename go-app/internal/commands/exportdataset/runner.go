@@ -65,6 +65,24 @@ type Runner struct {
 // NewRunner constructs a Runner with only filesystem dependency (backward compatible during migration).
 func NewRunner() *Runner { return &Runner{} }
 
+// perFormatExporter represents a model type that supports per-format (non-legacy) export.
+type perFormatExporter struct {
+	name     string
+	exporter interface {
+		ExportFormat(context.Context, string, io.Writer) error
+	}
+	enabled bool
+}
+
+// perFormatExporters returns the fielding/extras/win exporters for per-format loops.
+func (r *Runner) perFormatExporters() []perFormatExporter {
+	return []perFormatExporter{
+		{"fielding", r.Field, r.Field != nil},
+		{"extras", r.Extras, r.Extras != nil},
+		{"win", r.Win, r.Win != nil},
+	}
+}
+
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
 // Field, Extras, Win can be nil to skip their export (e.g. backward compatibility).
 func NewRunnerWithServices(
@@ -178,30 +196,16 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 						func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 					)
 				})
-				if r.Field != nil {
+				for _, fe := range r.perFormatExporters() {
+					if !fe.enabled {
+						continue
+					}
+					fe := fe
 					g.Go(func() error {
 						return r.writeUsing(
 							opts.OutDir,
-							fmt.Sprintf("fielding_encoded_%s.csv", f),
-							func(w io.Writer) error { return r.Field.ExportFormat(parentCtx, f, w) },
-						)
-					})
-				}
-				if r.Extras != nil {
-					g.Go(func() error {
-						return r.writeUsing(
-							opts.OutDir,
-							fmt.Sprintf("extras_encoded_%s.csv", f),
-							func(w io.Writer) error { return r.Extras.ExportFormat(parentCtx, f, w) },
-						)
-					})
-				}
-				if r.Win != nil {
-					g.Go(func() error {
-						return r.writeUsing(
-							opts.OutDir,
-							fmt.Sprintf("win_encoded_%s.csv", f),
-							func(w io.Writer) error { return r.Win.ExportFormat(parentCtx, f, w) },
+							fmt.Sprintf("%s_encoded_%s.csv", fe.name, f),
+							func(w io.Writer) error { return fe.exporter.ExportFormat(parentCtx, f, w) },
 						)
 					})
 				}
@@ -272,30 +276,16 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 				)
 			})
-			if r.Field != nil {
+			for _, fe := range r.perFormatExporters() {
+				if !fe.enabled {
+					continue
+				}
+				fe := fe
 				g.Go(func() error {
 					return r.writeUsing(
 						opts.OutDir,
-						fmt.Sprintf("fielding_encoded_%s.csv", f),
-						func(w io.Writer) error { return r.Field.ExportFormat(parentCtx, f, w) },
-					)
-				})
-			}
-			if r.Extras != nil {
-				g.Go(func() error {
-					return r.writeUsing(
-						opts.OutDir,
-						fmt.Sprintf("extras_encoded_%s.csv", f),
-						func(w io.Writer) error { return r.Extras.ExportFormat(parentCtx, f, w) },
-					)
-				})
-			}
-			if r.Win != nil {
-				g.Go(func() error {
-					return r.writeUsing(
-						opts.OutDir,
-						fmt.Sprintf("win_encoded_%s.csv", f),
-						func(w io.Writer) error { return r.Win.ExportFormat(parentCtx, f, w) },
+						fmt.Sprintf("%s_encoded_%s.csv", fe.name, f),
+						func(w io.Writer) error { return fe.exporter.ExportFormat(parentCtx, f, w) },
 					)
 				})
 			}
