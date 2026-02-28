@@ -11,6 +11,16 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
 
+const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
+
+const ARTIFACT_LABELS: Record<(typeof MODEL_TYPES)[number], string> = {
+  batting: 'bat',
+  bowling: 'bowl',
+  fielding: 'field',
+  extras: 'extras',
+  win: 'win',
+};
+
 const HealthTab: React.FC = () => {
   const [mlData, setMlData] = useState<HealthResponse | null>(null);
   const [apiHealth, setApiHealth] = useState<string | null>(null);
@@ -81,6 +91,75 @@ const HealthTab: React.FC = () => {
     return isNaN(d.getTime()) ? '' : d.toLocaleString();
   }, [lastChecked]);
 
+  const loadedFormatsItems = useMemo(() => {
+    return MODEL_TYPES.map((t) => {
+      const value = !mlData
+        ? '—'
+        : ((mlData[`loaded_${t}_formats` as keyof HealthResponse] as string[] | undefined)
+              ?.length ?? 0) > 0
+          ? (mlData[`loaded_${t}_formats` as keyof HealthResponse] as string[]).join(', ')
+          : 'None';
+      return { label: `Loaded ${t === 'win' ? 'win prediction' : t}`, value };
+    });
+  }, [mlData]);
+
+  const artifactsCountValue = useMemo(() => {
+    if (!mlData) return '—';
+    const parts = MODEL_TYPES.map((t) => {
+      const arr = mlData.artifacts?.[t];
+      return Array.isArray(arr) && arr.length ? `${ARTIFACT_LABELS[t]}: ${arr.length}` : null;
+    }).filter(Boolean);
+    return parts.length ? (parts as string[]).join(', ') : 'None';
+  }, [mlData]);
+
+  const allArtifacts = useMemo(() => {
+    if (!mlData) return [];
+    return MODEL_TYPES.flatMap((t) => mlData.artifacts?.[t] || []) as unknown[];
+  }, [mlData]);
+
+  const totalSizeValue = useMemo(() => {
+    if (!mlData) return '—';
+    const total = allArtifacts.reduce<number>((acc, it) => {
+      if (it && typeof it === 'object') {
+        const val = (it as Record<string, unknown>).size_bytes;
+        return acc + (typeof val === 'number' ? val : 0);
+      }
+      return acc;
+    }, 0);
+    return total > 0 ? formatBytes(total) : '0 B';
+  }, [mlData, allArtifacts]);
+
+  const latestModifiedValue = useMemo(() => {
+    if (!mlData) return '—';
+    const timestamps = allArtifacts
+      .map((it) => {
+        if (it && typeof it === 'object') {
+          const val = (it as Record<string, unknown>).modified;
+          return typeof val === 'number' ? val : NaN;
+        }
+        return NaN;
+      })
+      .filter((n): n is number => typeof n === 'number' && isFinite(n));
+    const max = timestamps.length ? Math.max(...timestamps) : NaN;
+    if (!isFinite(max)) return 'N/A';
+    const d = new Date(max * 1000);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+  }, [mlData, allArtifacts]);
+
+  const legacyValue = useMemo(() => {
+    if (!mlData) return '—';
+    const legacy = [
+      mlData.legacy_batting_available && 'batting',
+      mlData.legacy_bowling_available && 'bowling',
+      mlData.legacy_fielding_available && 'fielding',
+      mlData.legacy_extras_available && 'extras',
+      mlData.legacy_win_available && 'win',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    return legacy || 'None';
+  }, [mlData]);
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -149,133 +228,11 @@ const HealthTab: React.FC = () => {
                 },
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
                 { label: 'Models dir', value: mlData?.models_dir || '—' },
-                {
-                  label: 'Loaded batting',
-                  value:
-                    (mlData?.loaded_batting_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_batting_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Loaded bowling',
-                  value:
-                    (mlData?.loaded_bowling_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_bowling_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Loaded fielding',
-                  value:
-                    (mlData?.loaded_fielding_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_fielding_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Loaded extras',
-                  value:
-                    (mlData?.loaded_extras_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_extras_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Loaded win prediction',
-                  value:
-                    (mlData?.loaded_win_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_win_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Legacy (unified)',
-                  value: mlData
-                    ? [
-                        mlData.legacy_batting_available && 'batting',
-                        mlData.legacy_bowling_available && 'bowling',
-                        mlData.legacy_fielding_available && 'fielding',
-                        mlData.legacy_extras_available && 'extras',
-                        mlData.legacy_win_available && 'win',
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || 'None'
-                    : '—',
-                },
-                (() => {
-                  const bat = mlData?.artifacts?.batting || [];
-                  const bowl = mlData?.artifacts?.bowling || [];
-                  const field = mlData?.artifacts?.fielding || [];
-                  const extras = mlData?.artifacts?.extras || [];
-                  const win = mlData?.artifacts?.win || [];
-                  const parts: string[] = [];
-                  if (Array.isArray(bat) && bat.length) parts.push(`bat: ${bat.length}`);
-                  if (Array.isArray(bowl) && bowl.length) parts.push(`bowl: ${bowl.length}`);
-                  if (Array.isArray(field) && field.length) parts.push(`field: ${field.length}`);
-                  if (Array.isArray(extras) && extras.length)
-                    parts.push(`extras: ${extras.length}`);
-                  if (Array.isArray(win) && win.length) parts.push(`win: ${win.length}`);
-                  return {
-                    label: 'Artifacts',
-                    value: mlData ? (parts.length ? parts.join(', ') : 'None') : '—',
-                  };
-                })(),
-                (() => {
-                  const all = [
-                    ...(mlData?.artifacts?.batting || []),
-                    ...(mlData?.artifacts?.bowling || []),
-                    ...(mlData?.artifacts?.fielding || []),
-                    ...(mlData?.artifacts?.extras || []),
-                    ...(mlData?.artifacts?.win || []),
-                  ] as unknown[];
-                  const total: number = all.reduce<number>((acc, it) => {
-                    if (it && typeof it === 'object') {
-                      const val = (it as Record<string, unknown>).size_bytes;
-                      const n = typeof val === 'number' ? val : 0;
-                      return acc + n;
-                    }
-                    return acc;
-                  }, 0);
-                  return {
-                    label: 'Total size',
-                    value: mlData ? (total > 0 ? formatBytes(total as number) : '0 B') : '—',
-                  };
-                })(),
-                (() => {
-                  const all = [
-                    ...(mlData?.artifacts?.batting || []),
-                    ...(mlData?.artifacts?.bowling || []),
-                    ...(mlData?.artifacts?.fielding || []),
-                    ...(mlData?.artifacts?.extras || []),
-                    ...(mlData?.artifacts?.win || []),
-                  ] as unknown[];
-                  const latest = all
-                    .map((it) => {
-                      if (it && typeof it === 'object') {
-                        const val = (it as Record<string, unknown>).modified;
-                        return typeof val === 'number' ? val : NaN;
-                      }
-                      return NaN;
-                    })
-                    .filter((n): n is number => typeof n === 'number' && isFinite(n));
-                  const max = latest.length ? Math.max(...latest) : NaN;
-                  if (!isFinite(max))
-                    return {
-                      label: 'Latest modified',
-                      value: mlData ? 'N/A' : '—',
-                    };
-                  const d = new Date(max * 1000);
-                  return {
-                    label: 'Latest modified',
-                    value: isNaN(d.getTime()) ? '—' : d.toLocaleString(),
-                  };
-                })(),
+                ...loadedFormatsItems,
+                { label: 'Legacy (unified)', value: legacyValue },
+                { label: 'Artifacts', value: artifactsCountValue },
+                { label: 'Total size', value: totalSizeValue },
+                { label: 'Latest modified', value: latestModifiedValue },
               ]}
             />
           </Paper>
