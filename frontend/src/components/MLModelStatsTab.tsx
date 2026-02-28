@@ -171,12 +171,12 @@ function ModelRow({ model }: { model: MLModelStat }) {
                     </Typography>
                     <Stack direction="row" flexWrap="wrap" spacing={0.5}>
                       {Object.entries(featureImportance)
-                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .sort(([, a], [, b]) => b - a)
                         .slice(0, 15)
                         .map(([name, imp]) => (
                           <Chip
                             key={name}
-                            label={`${name}: ${((imp as number) * 100).toFixed(1)}%`}
+                            label={`${name}: ${(imp * 100).toFixed(1)}%`}
                             size="small"
                             variant="outlined"
                             sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
