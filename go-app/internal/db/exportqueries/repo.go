@@ -47,3 +47,19 @@ func (r *Repo) FieldingUnifiedRows(ctx context.Context) ([][]string, error) {
 func (r *Repo) FieldingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	return FieldingTrainingRowsWithFormat(ctx, format, time.Now())
 }
+
+func (r *Repo) ExtrasUnifiedRows(ctx context.Context) ([][]string, error) {
+	return ExtrasTrainingRows(ctx, time.Now())
+}
+
+func (r *Repo) ExtrasFormatRows(ctx context.Context, format string) ([][]string, error) {
+	return ExtrasTrainingRowsWithFormat(ctx, format, time.Now())
+}
+
+func (r *Repo) WinUnifiedRows(ctx context.Context) ([][]string, error) {
+	return WinTrainingRows(ctx, time.Now())
+}
+
+func (r *Repo) WinFormatRows(ctx context.Context, format string) ([][]string, error) {
+	return WinTrainingRowsWithFormat(ctx, format, time.Now())
+}

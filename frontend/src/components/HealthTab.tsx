@@ -148,6 +148,7 @@ const HealthTab: React.FC = () => {
                   value: latencyMlMs != null ? `${latencyMlMs} ms` : '—',
                 },
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
+                { label: 'Models dir', value: mlData?.models_dir || '—' },
                 {
                   label: 'Loaded batting',
                   value:
@@ -166,29 +167,71 @@ const HealthTab: React.FC = () => {
                         ? 'None'
                         : '—',
                 },
-                { label: 'Models dir', value: mlData?.models_dir || '—' },
                 {
-                  label: 'Legacy batting',
-                  value: mlData ? (mlData.legacy_batting_available ? 'Yes' : 'No') : '—',
+                  label: 'Loaded fielding',
+                  value:
+                    (mlData?.loaded_fielding_formats?.length ?? 0) > 0
+                      ? mlData!.loaded_fielding_formats!.join(', ')
+                      : mlData
+                        ? 'None'
+                        : '—',
                 },
                 {
-                  label: 'Legacy bowling',
-                  value: mlData ? (mlData.legacy_bowling_available ? 'Yes' : 'No') : '—',
+                  label: 'Loaded extras',
+                  value:
+                    (mlData?.loaded_extras_formats?.length ?? 0) > 0
+                      ? mlData!.loaded_extras_formats!.join(', ')
+                      : mlData
+                        ? 'None'
+                        : '—',
+                },
+                {
+                  label: 'Loaded win prediction',
+                  value:
+                    (mlData?.loaded_win_formats?.length ?? 0) > 0
+                      ? mlData!.loaded_win_formats!.join(', ')
+                      : mlData
+                        ? 'None'
+                        : '—',
+                },
+                {
+                  label: 'Legacy (unified)',
+                  value: mlData
+                    ? [
+                        mlData.legacy_batting_available && 'batting',
+                        mlData.legacy_bowling_available && 'bowling',
+                        mlData.legacy_fielding_available && 'fielding',
+                        mlData.legacy_extras_available && 'extras',
+                        mlData.legacy_win_available && 'win',
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || 'None'
+                    : '—',
                 },
                 (() => {
                   const bat = mlData?.artifacts?.batting || [];
                   const bowl = mlData?.artifacts?.bowling || [];
-                  const batCount = Array.isArray(bat) ? bat.length : 0;
-                  const bowlCount = Array.isArray(bowl) ? bowl.length : 0;
+                  const field = mlData?.artifacts?.fielding || [];
+                  const extras = mlData?.artifacts?.extras || [];
+                  const win = mlData?.artifacts?.win || [];
+                  const parts: string[] = [];
+                  if (Array.isArray(bat) && bat.length) parts.push(`bat: ${bat.length}`);
+                  if (Array.isArray(bowl) && bowl.length) parts.push(`bowl: ${bowl.length}`);
+                  if (Array.isArray(field) && field.length) parts.push(`field: ${field.length}`);
+                  if (Array.isArray(extras) && extras.length) parts.push(`extras: ${extras.length}`);
+                  if (Array.isArray(win) && win.length) parts.push(`win: ${win.length}`);
                   return {
                     label: 'Artifacts',
-                    value: `batting: ${batCount}, bowling: ${bowlCount}`,
+                    value: mlData ? (parts.length ? parts.join(', ') : 'None') : '—',
                   };
                 })(),
                 (() => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
+                    ...(mlData?.artifacts?.fielding || []),
+                    ...(mlData?.artifacts?.extras || []),
+                    ...(mlData?.artifacts?.win || []),
                   ] as unknown[];
                   const total: number = all.reduce<number>((acc, it) => {
                     if (it && typeof it === 'object') {
@@ -207,6 +250,9 @@ const HealthTab: React.FC = () => {
                   const all = [
                     ...(mlData?.artifacts?.batting || []),
                     ...(mlData?.artifacts?.bowling || []),
+                    ...(mlData?.artifacts?.fielding || []),
+                    ...(mlData?.artifacts?.extras || []),
+                    ...(mlData?.artifacts?.win || []),
                   ] as unknown[];
                   const latest = all
                     .map((it) => {

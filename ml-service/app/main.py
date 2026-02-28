@@ -720,20 +720,33 @@ async def health():
         "status": "ok",
         "loaded_batting_formats": sorted([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
         "loaded_bowling_formats": sorted([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_fielding_formats": sorted([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_extras_formats": sorted([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_win_formats": sorted([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
         "legacy_batting_available": "_LEGACY_" in BAT_MODELS,
         "legacy_bowling_available": "_LEGACY_" in BOWL_MODELS,
+        "legacy_fielding_available": "_LEGACY_" in FIELD_MODELS,
+        "legacy_extras_available": "_LEGACY_" in EXTRAS_MODELS,
+        "legacy_win_available": "_LEGACY_" in WIN_MODELS,
         "models_dir": MODELS_DIR,
         "artifacts": {
             "batting": _artifacts_info("batting_"),
             "bowling": _artifacts_info("bowling_"),
+            "fielding": _artifacts_info("fielding_"),
+            "extras": _artifacts_info("extras_"),
+            "win": _artifacts_info("win_"),
         },
         "metadata": {
             "batting": _metadata_info("batting_metadata_"),
             "bowling": _metadata_info("bowling_metadata_"),
+            "fielding": _metadata_info("fielding_metadata_"),
         },
         "counters": {
             "batting_formats": len([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
             "bowling_formats": len([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
+            "fielding_formats": len([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
+            "extras_formats": len([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
+            "win_formats": len([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
         },
     }
 
@@ -1062,6 +1075,9 @@ def _enrich_with_tuning_report(
         metrics = report.get("metrics") or {}
         if metrics:
             rec["metrics"] = metrics
+        feature_importance = report.get("feature_importance")
+        if feature_importance and isinstance(feature_importance, dict):
+            rec["feature_importance"] = feature_importance
         mlqa = report.get("mlqa_audit")
         if mlqa and isinstance(mlqa, dict):
             rec["mlqa_audit"] = mlqa

@@ -60,7 +60,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				bow := mocks.NewMockBowlingExporter(t)
 				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
 				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
-				r := cmd.NewRunnerWithServices(bat, bow, nil)
+				r := cmd.NewRunnerWithServices(bat, bow, nil, nil, nil)
 				return r, cli.Options{OutDir: t.TempDir(), Unified: true}
 			},
 			assert: func(t *testing.T, err error) {
@@ -74,7 +74,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				bow := mocks.NewMockBowlingExporter(t)
 				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(errors.New("bat export failed"))
 				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
-				r := cmd.NewRunnerWithServices(bat, bow, nil)
+				r := cmd.NewRunnerWithServices(bat, bow, nil, nil, nil)
 				return r, cli.Options{OutDir: t.TempDir(), Unified: true}
 			},
 			assert: func(t *testing.T, err error) {
@@ -94,7 +94,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				bow := mocks.NewMockBowlingExporter(t)
 				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
 				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
-				r := cmd.NewRunnerWithServices(bat, bow, nil)
+				r := cmd.NewRunnerWithServices(bat, bow, nil, nil, nil)
 				return r, cli.Options{OutDir: readOnly, Unified: true}
 			},
 			assert: func(t *testing.T, err error) {

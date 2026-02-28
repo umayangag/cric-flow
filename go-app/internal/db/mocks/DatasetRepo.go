@@ -686,3 +686,55 @@ func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) RunAndReturn(run func(ctx co
 	_c.Call.Return(run)
 	return _c
 }
+
+// ExtrasFormatRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) ExtrasFormatRows(ctx context.Context, format string) ([][]string, error) {
+	ret := _mock.Called(ctx, format)
+	if len(ret) == 0 {
+		panic("no return value specified for ExtrasFormatRows")
+	}
+	var r0 [][]string
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).([][]string)
+	}
+	return r0, ret.Error(1)
+}
+
+// ExtrasUnifiedRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) ExtrasUnifiedRows(ctx context.Context) ([][]string, error) {
+	ret := _mock.Called(ctx)
+	if len(ret) == 0 {
+		panic("no return value specified for ExtrasUnifiedRows")
+	}
+	var r0 [][]string
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).([][]string)
+	}
+	return r0, ret.Error(1)
+}
+
+// WinFormatRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) WinFormatRows(ctx context.Context, format string) ([][]string, error) {
+	ret := _mock.Called(ctx, format)
+	if len(ret) == 0 {
+		panic("no return value specified for WinFormatRows")
+	}
+	var r0 [][]string
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).([][]string)
+	}
+	return r0, ret.Error(1)
+}
+
+// WinUnifiedRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) WinUnifiedRows(ctx context.Context) ([][]string, error) {
+	ret := _mock.Called(ctx)
+	if len(ret) == 0 {
+		panic("no return value specified for WinUnifiedRows")
+	}
+	var r0 [][]string
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).([][]string)
+	}
+	return r0, ret.Error(1)
+}

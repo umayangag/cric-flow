@@ -76,10 +76,12 @@ function ModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
   const params = model.tuned_parameters;
   const metrics = model.metrics;
+  const featureImportance = model.feature_importance;
   const mlqa = model.mlqa_audit;
   const hasDetails =
     (params && Object.keys(params).length > 0) ||
     (metrics && Object.keys(metrics).length > 0) ||
+    (featureImportance && Object.keys(featureImportance).length > 0) ||
     (mlqa && (mlqa.key_findings?.length > 0 || mlqa.final_verdict));
 
   return (
@@ -159,6 +161,27 @@ function ModelRow({ model }: { model: MLModelStat }) {
                           sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
                         />
                       ))}
+                    </Stack>
+                  </Box>
+                )}
+                {featureImportance && Object.keys(featureImportance).length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Feature importance (top)
+                    </Typography>
+                    <Stack direction="row" flexWrap="wrap" spacing={0.5}>
+                      {Object.entries(featureImportance)
+                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .slice(0, 15)
+                        .map(([name, imp]) => (
+                          <Chip
+                            key={name}
+                            label={`${name}: ${((imp as number) * 100).toFixed(1)}%`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                          />
+                        ))}
                     </Stack>
                   </Box>
                 )}

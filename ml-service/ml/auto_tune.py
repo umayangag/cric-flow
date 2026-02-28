@@ -564,12 +564,46 @@ _MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
 
 
 def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
-    """Return feature names for MLQA sensitivity analysis when available."""
+    """Return feature names for MLQA sensitivity analysis and feature importance when available."""
     if model_kind == "batting":
         return BATTING_FEATURE_COLS
     if model_kind == "bowling":
         return BOWLING_FEATURE_COLS
+    if model_kind == "fielding" and _train_fielding is not None:
+        return _train_fielding.FIELDING_FEATURE_COLS
+    if model_kind == "extras" and _train_extras is not None:
+        return _train_extras.EXTRAS_FEATURE_COLS
+    if model_kind == "win" and _train_win is not None:
+        return _train_win.WIN_FEATURE_COLS
     return None
+
+
+def _extract_feature_importance(
+    pipe: Pipeline,
+    feature_names: Optional[List[str]],
+    n_features: int,
+) -> Optional[Dict[str, float]]:
+    """Extract feature importance from the best pipeline (tree-based models only).
+
+    Returns dict {feature_name: importance} or None if not available (e.g. MLP, linear).
+    """
+    est = pipe.named_steps.get("est") if pipe else None
+    if est is None:
+        return None
+    imps = None
+    if hasattr(est, "estimators_") and len(est.estimators_) > 0:
+        imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
+        if imp_list:
+            imps = np.mean(imp_list, axis=0)
+    elif hasattr(est, "feature_importances_"):
+        imps = est.feature_importances_
+    if imps is None:
+        return None
+    if imps.ndim > 1:
+        imps = np.mean(imps, axis=0)
+    n = min(n_features, len(imps))
+    names = feature_names if feature_names and len(feature_names) >= n else [f"feature_{i}" for i in range(n)]
+    return {names[i]: float(imps[i]) for i in range(n)}
 
 
 def _compute_mlqa_audit(
@@ -1250,6 +1284,9 @@ def _run_search_two_phase_single_regression(
             report["mlqa_audit"] = _compute_mlqa_audit(
                 report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
             )
+            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+            if fi:
+                report["feature_importance"] = fi
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -1393,6 +1430,9 @@ def _run_search_two_phase_single_regression(
         report["mlqa_audit"] = _compute_mlqa_audit(
             report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
         )
+        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+        if fi:
+            report["feature_importance"] = fi
     return best_pipe, best_params, report
 
 
@@ -1473,6 +1513,9 @@ def _run_search_single_regression(
         report["mlqa_audit"] = _compute_mlqa_audit(
             report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
         )
+        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+        if fi:
+            report["feature_importance"] = fi
     return best_pipe, best_params, report
 
 
@@ -1554,6 +1597,9 @@ def _run_search_classification(
         report["mlqa_audit"] = _compute_mlqa_audit(
             report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
         )
+        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+        if fi:
+            report["feature_importance"] = fi
     return best_pipe, best_params, report
 
 
@@ -1729,6 +1775,9 @@ def _run_search_two_phase(
             report["mlqa_audit"] = _compute_mlqa_audit(
                 report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
             )
+            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+            if fi:
+                report["feature_importance"] = fi
         return best_pipe, best_params, report
 
     # Phase 2: Optuna fine-tuning on winner(s)
@@ -2025,6 +2074,9 @@ def _run_search(
         report["mlqa_audit"] = _compute_mlqa_audit(
             report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
         )
+        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+        if fi:
+            report["feature_importance"] = fi
     return best_pipe, best_params, report
 
 
@@ -2160,6 +2212,32 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
+    if format_code and format_code in by_format:
+        return {format_code: by_format[format_code]}
+    return by_format
+
+
+def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+    if _train_extras is None:
+        logger.error("auto_tune.load_extras_csv.train_extras_unavailable")
+        raise RuntimeError("ml.train_extras not available for extras CSV")
+    df = pd.read_csv(path)
+    headers = list(df.columns)
+    rows = df.values.astype(str).tolist()
+    by_format = _train_extras.rows_to_xy_by_format(headers, rows)
+    if format_code and format_code in by_format:
+        return {format_code: by_format[format_code]}
+    return by_format
+
+
+def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+    if _train_win is None:
+        logger.error("auto_tune.load_win_csv.train_win_unavailable")
+        raise RuntimeError("ml.train_win not available for win CSV")
+    df = pd.read_csv(path)
+    headers = list(df.columns)
+    rows = df.values.astype(str).tolist()
+    by_format = _train_win.rows_to_xy_by_format(headers, rows)
     if format_code and format_code in by_format:
         return {format_code: by_format[format_code]}
     return by_format
@@ -2551,6 +2629,9 @@ def _run_search_two_phase_classification(
             report["mlqa_audit"] = _compute_mlqa_audit(
                 report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
             )
+            fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+            if fi:
+                report["feature_importance"] = fi
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -2693,6 +2774,9 @@ def _run_search_two_phase_classification(
         report["mlqa_audit"] = _compute_mlqa_audit(
             report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
         )
+        fi = _extract_feature_importance(best_pipe, _mlqa_feature_names(model_kind), X.shape[1])
+        if fi:
+            report["feature_importance"] = fi
     return best_pipe, best_params, report
 
 
@@ -2925,8 +3009,6 @@ def main() -> None:
         """Build list of argv for each (model, format) to run as subprocess (AUTO_TUNE_N_JOBS=1)."""
         cmds: List[List[str]] = []
         for model_kind in models:
-            if model_kind in ("extras", "win") and not args.from_api:
-                continue
             for fmt in formats_to_run:
                 argv = [sys.executable, "-m", "ml.auto_tune", "--model", model_kind, "--out", out_dir]
                 if args.unified:
@@ -2994,12 +3076,25 @@ def main() -> None:
             for fmt in formats_to_run:
                 format_suffix = fmt if fmt else None
                 if args.from_api:
-                    if not args.go_app_url or not args.cutoff:
+                    api_available = bool(args.go_app_url and args.cutoff)
+                    if not api_available:
                         logger.error("auto_tune.from_api_requires_go_app_url_and_cutoff")
                         sys.exit(1)
+                    default_dir = os.environ.get(
+                        "GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app")
+                    )
                     try:
                         if model_kind == "extras":
-                            by_f = load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
+                            if os.path.isfile(csv_path):
+                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+                                by_f = load_extras_csv(csv_path, fmt)
+                            else:
+                                logger.warning(
+                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                    csv_path,
+                                )
+                                by_f = load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
@@ -3054,7 +3149,16 @@ def main() -> None:
                                     )
                             continue
                         if model_kind == "win":
-                            by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            csv_path = args.csv or os.path.join(default_dir, "win_encoded_all.csv")
+                            if os.path.isfile(csv_path):
+                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+                                by_f = load_win_csv(csv_path, fmt)
+                            else:
+                                logger.warning(
+                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                    csv_path,
+                                )
+                                by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
@@ -3109,15 +3213,54 @@ def main() -> None:
                                     )
                             continue
                         if model_kind == "batting":
-                            X, Y = load_batting_from_api(
-                                args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                            csv_path = args.csv or os.path.join(
+                                default_dir, f"batting_encoded_{fmt or 'all'}.csv"
                             )
+                            if not os.path.isfile(csv_path):
+                                csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
+                            if os.path.isfile(csv_path):
+                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+                                X, Y = load_batting_csv(csv_path)
+                            else:
+                                logger.warning(
+                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                    csv_path,
+                                )
+                                X, Y = load_batting_from_api(
+                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                )
                         elif model_kind == "bowling":
-                            X, Y = load_bowling_from_api(
-                                args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                            csv_path = args.csv or os.path.join(
+                                default_dir, f"bowling_encoded_{fmt or 'all'}.csv"
                             )
+                            if not os.path.isfile(csv_path):
+                                csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
+                            if os.path.isfile(csv_path):
+                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+                                X, Y = load_bowling_csv(csv_path)
+                            else:
+                                logger.warning(
+                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                    csv_path,
+                                )
+                                X, Y = load_bowling_from_api(
+                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                )
                         else:
-                            by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            csv_path = args.csv or os.path.join(
+                                default_dir, f"fielding_encoded_{fmt or 'all'}.csv"
+                            )
+                            if not os.path.isfile(csv_path):
+                                csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
+                            if os.path.isfile(csv_path):
+                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+                                by_f = load_fielding_csv(csv_path, fmt)
+                            else:
+                                logger.warning(
+                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                    csv_path,
+                                )
+                                by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
@@ -3202,27 +3345,146 @@ def main() -> None:
                         report["best_cv_score"],
                     )
                 else:
-                    # CSV (extras and win are API-only)
-                    if model_kind in ("extras", "win"):
-                        logger.warning(
-                            "auto_tune.skip_extras_win_require_from_api model=%s hint=Use --from-api and --cutoff",
-                            model_kind,
-                        )
+                    # Prefer CSV; fallback to API with warning when CSV not found
+                    default_dir = os.environ.get(
+                        "GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app")
+                    )
+                    if model_kind == "extras":
+                        csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
+                        if os.path.isfile(csv_path):
+                            try:
+                                by_f = load_extras_csv(csv_path, fmt)
+                            except (RuntimeError, FileNotFoundError) as e:
+                                logger.error("auto_tune.load_extras_csv_failed path=%s error=%s", csv_path, e)
+                                continue
+                        elif args.go_app_url and args.cutoff:
+                            logger.warning(
+                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                csv_path,
+                            )
+                            try:
+                                by_f = load_extras_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                )
+                            except (ValueError, RuntimeError) as e:
+                                logger.error("auto_tune.load_extras_failed error=%s", e)
+                                continue
+                        else:
+                            logger.warning(
+                                "auto_tune.skip_extras_csv_not_found path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
+                                csv_path,
+                            )
+                            continue
+                        if not by_f:
+                            logger.warning("auto_tune.no_extras_data format=%s", fmt)
+                            continue
+                        if args.unified:
+                            all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                            all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                            if all_X.size == 0 or all_Y.size == 0:
+                                logger.warning("auto_tune.no_extras_data unified empty")
+                                continue
+                            report = run_auto_tune_extras(
+                                all_X, all_Y, None, out_dir,
+                                algorithms_override, validation_method_override,
+                                use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                use_autogluon=use_autogluon, rescreen=args.rescreen,
+                            )
+                            _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
+                            logger.info("auto_tune.done model=extras format=unified n=%s best_cv_score=%s", all_X.shape[0], report["best_cv_score"])
+                        else:
+                            for fcode, (X, Y, *_) in by_f.items():
+                                if X.size == 0 or Y.size == 0:
+                                    continue
+                                report = run_auto_tune_extras(
+                                    X, Y, fcode, out_dir,
+                                    algorithms_override, validation_method_override,
+                                    use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                    use_autogluon=use_autogluon, rescreen=args.rescreen,
+                                )
+                                _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
+                                logger.info("auto_tune.done model=extras format=%s n=%s best_cv_score=%s", fcode, X.shape[0], report["best_cv_score"])
+                        continue
+                    if model_kind == "win":
+                        csv_path = args.csv or os.path.join(default_dir, "win_encoded_all.csv")
+                        if os.path.isfile(csv_path):
+                            try:
+                                by_f = load_win_csv(csv_path, fmt)
+                            except (RuntimeError, FileNotFoundError) as e:
+                                logger.error("auto_tune.load_win_csv_failed path=%s error=%s", csv_path, e)
+                                continue
+                        elif args.go_app_url and args.cutoff:
+                            logger.warning(
+                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                csv_path,
+                            )
+                            try:
+                                by_f = load_win_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                )
+                            except (ValueError, RuntimeError) as e:
+                                logger.error("auto_tune.load_win_failed error=%s", e)
+                                continue
+                        else:
+                            logger.warning(
+                                "auto_tune.skip_win_csv_not_found path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
+                                csv_path,
+                            )
+                            continue
+                        if not by_f:
+                            logger.warning("auto_tune.no_win_data format=%s", fmt)
+                            continue
+                        if args.unified:
+                            all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                            all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                            if all_X.size == 0 or all_Y.size == 0:
+                                logger.warning("auto_tune.no_win_data unified empty")
+                                continue
+                            report = run_auto_tune_win(
+                                all_X, all_Y, None, out_dir,
+                                algorithms_override, validation_method_override,
+                                use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                use_autogluon=use_autogluon, rescreen=args.rescreen,
+                            )
+                            _maybe_save_tuned_params(args.go_app_url, "win", None, report, args.api_key or None)
+                            logger.info("auto_tune.done model=win format=unified n=%s best_cv_score=%s", all_X.shape[0], report["best_cv_score"])
+                        else:
+                            for fcode, (X, Y, *_) in by_f.items():
+                                if X.size == 0 or Y.size == 0:
+                                    continue
+                                report = run_auto_tune_win(
+                                    X, Y, fcode, out_dir,
+                                    algorithms_override, validation_method_override,
+                                    use_pycaret=use_pycaret, fast_mode=fast_mode,
+                                    use_autogluon=use_autogluon, rescreen=args.rescreen,
+                                )
+                                _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
+                                logger.info("auto_tune.done model=win format=%s n=%s best_cv_score=%s", fcode, X.shape[0], report["best_cv_score"])
                         continue
                     if model_kind == "fielding":
-                        default_dir = os.environ.get(
-                            "GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app")
-                        )
                         csv_path = args.csv or os.path.join(default_dir, f"fielding_encoded_{fmt or 'ALL'}.csv")
                         if not os.path.isfile(csv_path) and not args.csv:
-                            csv_path = args.csv or ""
-                        if not csv_path or not os.path.isfile(csv_path):
-                            logger.warning("auto_tune.skip_csv_not_found model=%s format=%s", model_kind, fmt)
-                            continue
-                        try:
-                            by_f = load_fielding_csv(csv_path, fmt)
-                        except (RuntimeError, FileNotFoundError) as e:
-                            logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
+                            csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
+                        if os.path.isfile(csv_path):
+                            try:
+                                by_f = load_fielding_csv(csv_path, fmt)
+                            except (RuntimeError, FileNotFoundError) as e:
+                                logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
+                                continue
+                        elif args.go_app_url and args.cutoff:
+                            logger.warning(
+                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                                csv_path,
+                            )
+                            try:
+                                by_f = load_fielding_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                )
+                            except (ValueError, RuntimeError) as e:
+                                logger.error("auto_tune.load_fielding_failed error=%s", e)
+                                continue
+                        else:
+                            logger.warning("auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path)
                             continue
                         for fcode, (X, Y, *_) in by_f.items():
                             if X.size == 0 or Y.size == 0:
@@ -3248,22 +3510,42 @@ def main() -> None:
                                 report["best_cv_score"],
                             )
                         continue
-                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app"))
                     csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded_{fmt or 'LEGACY'}.csv")
                     if not os.path.isfile(csv_path):
                         csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded.csv")
-                    if not os.path.isfile(csv_path):
+                    if os.path.isfile(csv_path):
+                        try:
+                            if model_kind == "batting":
+                                X, Y = load_batting_csv(csv_path)
+                            else:
+                                X, Y = load_bowling_csv(csv_path)
+                        except Exception as e:
+                            logger.error("auto_tune.load_csv_failed model=%s path=%s error=%s", model_kind, csv_path, e)
+                            continue
+                    elif args.go_app_url and args.cutoff:
                         logger.warning(
-                            "auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path
+                            "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                            csv_path,
                         )
-                        continue
-                    try:
-                        if model_kind == "batting":
-                            X, Y = load_batting_csv(csv_path)
-                        else:
-                            X, Y = load_bowling_csv(csv_path)
-                    except Exception as e:
-                        logger.error("auto_tune.load_csv_failed model=%s path=%s error=%s", model_kind, csv_path, e)
+                        try:
+                            if model_kind == "batting":
+                                X, Y = load_batting_from_api(
+                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                )
+                            else:
+                                X, Y = load_bowling_from_api(
+                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                )
+                        except (ValueError, RuntimeError) as e:
+                            logger.error("auto_tune.load_from_api_failed model=%s error=%s", model_kind, e)
+                            continue
+                    else:
+                        logger.warning(
+                            "auto_tune.skip_csv_not_found model=%s format=%s path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
+                            model_kind,
+                            fmt,
+                            csv_path,
+                        )
                         continue
                     if X.size == 0 or Y.size == 0:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)

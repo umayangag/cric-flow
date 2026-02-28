@@ -243,22 +243,19 @@ def main() -> None:
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
     default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR") or default_go_app_export_dir()
 
-    logger.info(
-        "pipeline: train_fielding starting out_dir=%s source=%s",
-        out_dir,
-        "csv" if args.csv else ("api" if args.go_app_url and args.cutoff else "export_dir"),
-    )
+    csv_path = args.csv or os.path.join(default_csv_dir, "fielding_encoded_all.csv")
 
-    if args.csv:
-        if not os.path.isfile(args.csv):
-            logger.error("train_fielding.csv_not_found path=%s", args.csv)
-            sys.exit(1)
-        logger.info("train_fielding.loading_csv path=%s", args.csv)
-        df = pd.read_csv(args.csv)
+    if os.path.isfile(csv_path):
+        logger.info("train_fielding.loading_csv path=%s (prefer CSV over API)", csv_path)
+        df = pd.read_csv(csv_path)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
     elif args.go_app_url and args.cutoff:
+        logger.warning(
+            "train_fielding.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+            csv_path,
+        )
         logger.info("train_fielding.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
         try:
             field = fetch_fielding_data(args.go_app_url, args.cutoff, args.api_key or None)
@@ -269,19 +266,11 @@ def main() -> None:
         rows = field.get("rows") or []
         by_format = rows_to_xy_by_format(headers, rows)
     else:
-        # Same as batting/bowling: read from export dir (run export-dataset first)
-        csv_path = os.path.join(default_csv_dir, "fielding_encoded_all.csv")
-        if not os.path.isfile(csv_path):
-            logger.error(
-                "train_fielding.csv_not_found path=%s hint=Run export-dataset first (pipeline or make export-dataset)",
-                csv_path,
-            )
-            sys.exit(1)
-        logger.info("train_fielding.loading_csv path=%s", csv_path)
-        df = pd.read_csv(csv_path)
-        headers = list(df.columns)
-        rows = df.values.astype(str).tolist()
-        by_format = rows_to_xy_by_format(headers, rows)
+        logger.error(
+            "train_fielding.csv_not_found path=%s hint=Run export-dataset first (pipeline or make export-dataset), or provide --go-app-url and --cutoff for API fallback",
+            csv_path,
+        )
+        sys.exit(1)
 
     if not by_format:
         logger.error("train_fielding.no_data hint=empty or insufficient rows")

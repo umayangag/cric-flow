@@ -18,16 +18,26 @@ export type HealthResponse = {
   status: string;
   loaded_batting_formats: string[];
   loaded_bowling_formats: string[];
+  loaded_fielding_formats?: string[];
+  loaded_extras_formats?: string[];
+  loaded_win_formats?: string[];
   legacy_batting_available: boolean;
   legacy_bowling_available: boolean;
+  legacy_fielding_available?: boolean;
+  legacy_extras_available?: boolean;
+  legacy_win_available?: boolean;
   models_dir: string;
   artifacts: {
     batting: { file: string; size_bytes?: number; modified?: number }[];
     bowling: { file: string; size_bytes?: number; modified?: number }[];
+    fielding?: { file: string; size_bytes?: number; modified?: number }[];
+    extras?: { file: string; size_bytes?: number; modified?: number }[];
+    win?: { file: string; size_bytes?: number; modified?: number }[];
   };
   metadata: {
     batting: string[];
     bowling: string[];
+    fielding?: string[];
   };
 };
 
@@ -70,6 +80,8 @@ export type MLModelStat = {
   n_samples?: number;
   n_features?: number;
   metrics?: Record<string, unknown>;
+  /** Feature importance from auto-tuning (tree-based models only). */
+  feature_importance?: Record<string, number>;
   accuracy_display?: string;
   /** MLQA audit (overfitting, stability, bias, sensitivity, complexity). */
   mlqa_audit?: MLQAAudit;
