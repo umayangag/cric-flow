@@ -5,7 +5,6 @@ import pandas as pd
 
 from ml.data_quality import (
     CATEGORICAL_SENTINEL,
-    CATEGORICAL_SENTINEL_FEATURES,
     clip_target_outliers,
     impute_features,
 )
@@ -24,9 +23,7 @@ def test_impute_features_skips_missing_columns():
 
 def test_impute_features_categorical_sentinel():
     """impute_features uses -1 sentinel for categorical columns."""
-    df = pd.DataFrame(
-        {"venue": [1.0, 2.0, np.nan], "numeric": [10.0, 20.0, np.nan]}
-    )
+    df = pd.DataFrame({"venue": [1.0, 2.0, np.nan], "numeric": [10.0, 20.0, np.nan]})
     out, _ = impute_features(df, ["venue", "numeric"], categorical_features=frozenset({"venue"}))
     assert out["venue"].iloc[2] == CATEGORICAL_SENTINEL
     assert out["numeric"].iloc[2] == 15.0

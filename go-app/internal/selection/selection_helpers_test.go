@@ -221,7 +221,7 @@ func TestReadAllCSV(t *testing.T) {
 	t.Run("reads valid CSV", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "pool.csv")
-		require.NoError(t, os.WriteFile(path, []byte("player_name,runs_scored\nSmith,50\nKohli,45"), 0o644))
+		require.NoError(t, os.WriteFile(path, []byte("player_name,runs_scored\nSmith,50\nKohli,45"), 0o600))
 
 		recs, err := readAllCSV(path)
 		require.NoError(t, err)

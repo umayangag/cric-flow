@@ -30,7 +30,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "nil runner",
 			opts: cli.Options{InDir: "/tmp"},
-			custom: func(t *testing.T) error {
+			custom: func(_ *testing.T) error {
 				var rnil *cmd.Runner
 				return rnil.Run(context.Background(), cli.Options{InDir: "/tmp"})
 			},
@@ -84,7 +84,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "empty InDir",
 			opts: cli.Options{InDir: ""},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(_ *cricsheetmocks.MockLoader, _ *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				// No expectations - should fail before calling deps
 			},
 			assert: func(t *testing.T, err error) {
@@ -95,7 +95,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "List returns error",
 			opts: cli.Options{InDir: "/data"},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, _ *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return(nil, errors.New("list failed"))
 			},
 			assert: func(t *testing.T, err error) {
@@ -106,7 +106,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "Load returns error",
 			opts: cli.Options{InDir: "/data"},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, _ *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return([]string{"a.json"}, nil)
 				l.EXPECT().Load(mock.Anything, "/data", "a.json").Return(nil, errors.New("load failed"))
 			},
@@ -118,7 +118,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "Parse returns error",
 			opts: cli.Options{InDir: "/data"},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return([]string{"a.json"}, nil)
 				l.EXPECT().Load(mock.Anything, "/data", "a.json").Return([]byte("{}"), nil)
 				p.EXPECT().Parse(mock.Anything, []byte("{}")).Return(nil, errors.New("parse failed"))
@@ -131,7 +131,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "dry-run happy path",
 			opts: cli.Options{InDir: "/data", Apply: false},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return([]string{"m1.json"}, nil)
 				l.EXPECT().Load(mock.Anything, "/data", "m1.json").Return([]byte("raw"), nil)
 				p.EXPECT().Parse(mock.Anything, []byte("raw")).Return([]models.Match{{ID: 1}}, nil)
@@ -171,7 +171,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "empty file list dry-run",
 			opts: cli.Options{InDir: "/data", Apply: false},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, _ *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return([]string{}, nil)
 			},
 			assert: func(t *testing.T, err error) {
@@ -181,7 +181,7 @@ func TestRunner_Run_Table(t *testing.T) {
 		{
 			name: "parse returns empty matches skips batch",
 			opts: cli.Options{InDir: "/data", Apply: false},
-			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo) {
+			arrange: func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, _ *dbmocks.MockMatchRepo) {
 				l.EXPECT().List(mock.Anything, "/data").Return([]string{"empty.json"}, nil)
 				l.EXPECT().Load(mock.Anything, "/data", "empty.json").Return([]byte("{}"), nil)
 				p.EXPECT().Parse(mock.Anything, []byte("{}")).Return([]models.Match{}, nil)

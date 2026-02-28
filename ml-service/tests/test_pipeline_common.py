@@ -99,14 +99,13 @@ def test_compute_time_decay_weights_ref_date_conversion():
 
 def test_compute_time_decay_weights_ref_date_conversion_raises():
     """compute_time_decay_weights catches reference_date.date() TypeError and continues."""
+
     class BadRef:
         def date(self):
             raise TypeError("no date")
 
         def __sub__(self, other):
             # After inner except, ref stays as BadRef; subtraction must work for valid result
-            from datetime import date
-
             return type("Delta", (), {"days": 0})()
 
     dates = pd.Series(pd.date_range("2022-01-01", periods=3, freq="D"))
@@ -117,6 +116,7 @@ def test_compute_time_decay_weights_ref_date_conversion_raises():
 
 def test_compute_time_decay_weights_exception_path():
     """compute_time_decay_weights returns None on exception during computation."""
+
     class BadRef:
         def __sub__(self, other):
             raise ValueError("cannot subtract")

@@ -1,6 +1,6 @@
 """Unit tests for ml.config (config load, merge, training params, defaults)."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,6 +17,7 @@ from ml.config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
     get_training_subprocess_timeout_sec,
+    get_tuned_params_from_go_app,
     get_tuning_config,
     get_tuning_search_space,
 )
@@ -218,6 +219,31 @@ def test_get_training_params_learning_rate_float_parsing(monkeypatch):
         config_mod._cached = None
 
 
+def test_get_training_params_invalid_learning_rate_quantile_defaults(monkeypatch):
+    """Invalid learning_rate/quantile_level (non-float) fall back to 0.1 and 0.5."""
+    config_mod._cached = {
+        "ml": {
+            "training": {
+                "batting": {
+                    "n_estimators": 50,
+                    "max_depth": 5,
+                    "random_state": 42,
+                    "joblib_compress": 1,
+                    "estimator": "gb",
+                    "learning_rate": "bad",
+                    "quantile_level": "nope",
+                }
+            }
+        }
+    }
+    try:
+        params = get_training_params("batting")
+        assert params["learning_rate"] == 0.1
+        assert params["quantile_level"] == 0.5
+    finally:
+        config_mod._cached = None
+
+
 def test_default_go_app_export_dir_from_config(monkeypatch):
     """default_go_app_export_dir returns config value when set."""
     config_mod._cached = {"inputs": {"go_app_export_dir": "/custom/export"}}
@@ -265,6 +291,20 @@ def test_get_training_data_fetch_timeout_sec_invalid_returns_600(monkeypatch):
         config_mod._cached = None
 
 
+def test_get_training_data_fetch_timeout_sec_invalid_and_invalid_fallback_non_numeric(monkeypatch):
+    """When both val and invalid_fallback are non-numeric, returns DEFAULT fallback 600."""
+    config_mod._cached = {
+        "inputs": {
+            "training_data_fetch_timeout_sec": "bad",
+            "training_data_fetch_timeout_invalid_fallback_sec": "also_bad",
+        }
+    }
+    try:
+        assert get_training_data_fetch_timeout_sec() == 600
+    finally:
+        config_mod._cached = None
+
+
 def test_get_training_subprocess_timeout_sec_from_config():
     """training_subprocess_timeout_sec from config when set."""
     config_mod._cached = {"inputs": {"training_subprocess_timeout_sec": 120}}
@@ -280,6 +320,43 @@ def test_get_training_subprocess_timeout_sec_default_7_days(monkeypatch):
     monkeypatch.delenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", raising=False)
     try:
         assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_invalid_config_falls_back(monkeypatch):
+    """Invalid config value (str/non-int) falls back to env or default."""
+    config_mod._cached = {"inputs": {"training_subprocess_timeout_sec": "not_an_int"}}
+    monkeypatch.delenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", raising=False)
+    try:
+        assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_invalid_env_falls_back(monkeypatch):
+    """Invalid env value falls back to default."""
+    config_mod._cached = {"inputs": {}}
+    monkeypatch.setenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", "invalid")
+    try:
+        assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_tuned_params_from_go_app_invalid_timeout_config(monkeypatch):
+    """Invalid go_app_request_timeout_sec in config falls back to default (exercises _go_app_request_timeout_sec)."""
+    config_mod._cached = {"inputs": {"go_app_request_timeout_sec": "not_an_int"}}
+    try:
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b'{"params": {}}'
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_resp
+            result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+            assert result == {}
+            mock_urlopen.assert_called_once()
     finally:
         config_mod._cached = None
 

@@ -11,6 +11,7 @@ func TestWithSeqEnabled_IsSeqEnabled(t *testing.T) {
 	t.Parallel()
 
 	t.Run("nil context stores value", func(t *testing.T) {
+		//nolint:staticcheck // SA1012: intentionally testing nil context handling
 		ctx := WithSeqEnabled(nil, true)
 		require.True(t, IsSeqEnabled(ctx))
 	})
@@ -30,6 +31,7 @@ func TestWithSeqEnabled_IsSeqEnabled(t *testing.T) {
 	})
 
 	t.Run("nil context without WithSeqEnabled returns false", func(t *testing.T) {
+		//nolint:staticcheck // SA1012: intentionally testing nil context handling
 		require.False(t, IsSeqEnabled(nil))
 	})
 }

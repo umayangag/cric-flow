@@ -153,6 +153,29 @@ def test_cpu_count_normal():
         assert _cpu_count() == 8
 
 
+def test_memory_limit_mb_cgroup_valid(tmp_path):
+    """_memory_limit_mb reads valid limit from cgroup file when env not set."""
+    import builtins
+
+    from ml.resources import _memory_limit_mb
+
+    cgroup_file = tmp_path / "memory.max"
+    # 2048 MB in bytes
+    cgroup_file.write_text("2147483648")
+
+    real_open = builtins.open
+
+    def fake_open(path, *args, **kwargs):
+        if "memory.max" in str(path) or "memory.limit_in_bytes" in str(path):
+            return real_open(cgroup_file, *args, **kwargs)
+        raise FileNotFoundError(path)
+
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("builtins.open", side_effect=fake_open):
+            result = _memory_limit_mb()
+            assert result == 2048
+
+
 def test_suggested_n_jobs_invalid_per_job_falls_back():
     """When config per_job or frac is invalid, defaults are used (lines 116, 124, 127)."""
     with patch.dict(os.environ, {"ML_MEMORY_LIMIT_MB": "4096", "ML_N_JOBS": ""}, clear=False):
