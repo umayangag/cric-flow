@@ -46,7 +46,7 @@ func setupPrecomputeDB(t *testing.T, mockDB *mocks.MockDB) {
 	t.Cleanup(func() { db.SetDB(nil) })
 }
 
-func TestGetStatus_ReturnsSnapshot(t *testing.T) {
+func TestGetStatus_ReturnsSnapshot(_ *testing.T) {
 	// GetStatus returns a copy of current status; no panic.
 	st := GetStatus()
 	_ = st.Running
