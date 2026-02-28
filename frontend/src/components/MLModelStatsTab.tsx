@@ -192,7 +192,11 @@ function ModelRow({ model }: { model: MLModelStat }) {
                         </Box>
                       )}
                       {mlqa.bias_report && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontStyle: 'italic' }}
+                        >
                           {mlqa.bias_report}
                         </Typography>
                       )}

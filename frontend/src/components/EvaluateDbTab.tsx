@@ -537,39 +537,43 @@ const EvaluateDbTab: React.FC = () => {
           selectedMatchId={selectedMatchId}
           onSelectMatch={setSelectedMatchId}
         />
-        {selectedMatchId != null && (scorecard || scorecardLoading || scorecardError || evaluationResult?.predicted_scorecard) && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-              Scorecard: Actual vs Predicted
-            </Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <MatchScorecard
-                  scorecard={scorecard}
-                  loading={scorecardLoading}
-                  error={scorecardError}
-                  title="Actual"
-                  subtitle="Actual match result from database"
-                />
+        {selectedMatchId != null &&
+          (scorecard ||
+            scorecardLoading ||
+            scorecardError ||
+            evaluationResult?.predicted_scorecard) && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Scorecard: Actual vs Predicted
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <MatchScorecard
+                    scorecard={scorecard}
+                    loading={scorecardLoading}
+                    error={scorecardError}
+                    title="Actual"
+                    subtitle="Actual match result from database"
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <MatchScorecard
+                    scorecard={evaluationResult?.predicted_scorecard ?? null}
+                    loading={evaluating}
+                    error={null}
+                    title="Predicted"
+                    subtitle={
+                      evaluationResult
+                        ? String(evaluationResult.filters.model_mode) === 'latest'
+                          ? 'ML prediction using the latest model'
+                          : 'ML prediction (model trained before match date)'
+                        : 'Run evaluation to see predicted scorecard'
+                    }
+                  />
+                </Grid>
               </Grid>
-              <Grid item xs={12} md={6}>
-                <MatchScorecard
-                  scorecard={evaluationResult?.predicted_scorecard ?? null}
-                  loading={evaluating}
-                  error={null}
-                  title="Predicted"
-                  subtitle={
-                    evaluationResult
-                      ? String(evaluationResult.filters.model_mode) === 'latest'
-                        ? 'ML prediction using the latest model'
-                        : 'ML prediction (model trained before match date)'
-                      : 'Run evaluation to see predicted scorecard'
-                  }
-                />
-              </Grid>
-            </Grid>
-          </Box>
-        )}
+            </Box>
+          )}
         <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
           <FormControl size="small" sx={{ minWidth: 260 }}>
             <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>

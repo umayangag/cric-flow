@@ -125,7 +125,10 @@ const MatchAggregates: React.FC<{
   );
 };
 
-function diffSeverity(value: number | undefined, thresholds?: { low: number; high: number }): 'good' | 'moderate' | 'high' | 'none' {
+function diffSeverity(
+  value: number | undefined,
+  thresholds?: { low: number; high: number },
+): 'good' | 'moderate' | 'high' | 'none' {
   if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return 'none';
   const { low = 5, high = 15 } = thresholds ?? {};
   if (value <= low) return 'good';
@@ -148,10 +151,34 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
   );
 
   const optionalMetrics = [
-    { key: 'wickets', label: 'Wkts', maeKey: 'wickets_mae', enabled: anyWickets, thresholds: { low: 0.5, high: 1.5 } },
-    { key: 'economy', label: 'Econ', maeKey: 'economy_mae', enabled: anyEconomy, thresholds: { low: 0.5, high: 1.5 } },
-    { key: 'catches', label: 'Catches', maeKey: 'catches_mae', enabled: anyCatches, thresholds: { low: 0.5, high: 1 } },
-    { key: 'run_outs', label: 'Run Outs', maeKey: 'run_outs_mae', enabled: anyRunOuts, thresholds: { low: 0.5, high: 1 } },
+    {
+      key: 'wickets',
+      label: 'Wkts',
+      maeKey: 'wickets_mae',
+      enabled: anyWickets,
+      thresholds: { low: 0.5, high: 1.5 },
+    },
+    {
+      key: 'economy',
+      label: 'Econ',
+      maeKey: 'economy_mae',
+      enabled: anyEconomy,
+      thresholds: { low: 0.5, high: 1.5 },
+    },
+    {
+      key: 'catches',
+      label: 'Catches',
+      maeKey: 'catches_mae',
+      enabled: anyCatches,
+      thresholds: { low: 0.5, high: 1 },
+    },
+    {
+      key: 'run_outs',
+      label: 'Run Outs',
+      maeKey: 'run_outs_mae',
+      enabled: anyRunOuts,
+      thresholds: { low: 0.5, high: 1 },
+    },
   ].filter((m) => m.enabled);
 
   const allMetrics = [
@@ -167,13 +194,28 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
             <TableCell sx={{ fontWeight: 600 }}>Player</TableCell>
             {allMetrics.map((m) => (
               <React.Fragment key={m.key}>
-                <TableCell align="right" sx={{ bgcolor: 'action.hover', fontWeight: 600, minWidth: 56 }}>
+                <TableCell
+                  align="right"
+                  sx={{ bgcolor: 'action.hover', fontWeight: 600, minWidth: 56 }}
+                >
                   {m.label} Actual
                 </TableCell>
-                <TableCell align="right" sx={{ bgcolor: 'primary.light', color: 'primary.dark', fontWeight: 600, minWidth: 56 }}>
+                <TableCell
+                  align="right"
+                  sx={{
+                    bgcolor: 'primary.light',
+                    color: 'primary.dark',
+                    fontWeight: 600,
+                    minWidth: 56,
+                  }}
+                >
                   {m.label} Pred
                 </TableCell>
-                <TableCell align="center" sx={{ fontWeight: 600, minWidth: 44 }} title="Difference (|Pred - Actual|)">
+                <TableCell
+                  align="center"
+                  sx={{ fontWeight: 600, minWidth: 44 }}
+                  title="Difference (|Pred - Actual|)"
+                >
                   Δ
                 </TableCell>
               </React.Fragment>
@@ -190,22 +232,40 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
                 const actualVal = p.actual[m.key];
                 const predVal = p.predicted[m.key];
                 const err = p.errors[m.maeKey];
-                const severity = diffSeverity(typeof err === 'number' ? err : undefined, m.thresholds);
+                const severity = diffSeverity(
+                  typeof err === 'number' ? err : undefined,
+                  m.thresholds,
+                );
                 return (
                   <React.Fragment key={m.key}>
                     <TableCell align="right" sx={{ bgcolor: 'action.hover' }}>
                       {formatCell(actualVal)}
                     </TableCell>
-                    <TableCell align="right" sx={{ bgcolor: 'primary.light', color: 'primary.dark' }}>
+                    <TableCell
+                      align="right"
+                      sx={{ bgcolor: 'primary.light', color: 'primary.dark' }}
+                    >
                       {formatCell(predVal)}
                     </TableCell>
                     <TableCell
                       align="center"
                       sx={{
                         fontWeight: 600,
-                        ...(severity === 'good' && { color: 'success.main', bgcolor: 'success.light', opacity: 0.9 }),
-                        ...(severity === 'moderate' && { color: 'warning.dark', bgcolor: 'warning.light', opacity: 0.9 }),
-                        ...(severity === 'high' && { color: 'error.contrastText', bgcolor: 'error.main', opacity: 0.9 }),
+                        ...(severity === 'good' && {
+                          color: 'success.main',
+                          bgcolor: 'success.light',
+                          opacity: 0.9,
+                        }),
+                        ...(severity === 'moderate' && {
+                          color: 'warning.dark',
+                          bgcolor: 'warning.light',
+                          opacity: 0.9,
+                        }),
+                        ...(severity === 'high' && {
+                          color: 'error.contrastText',
+                          bgcolor: 'error.main',
+                          opacity: 0.9,
+                        }),
                       }}
                     >
                       {formatCell(err)}
@@ -234,7 +294,8 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
         Player performance: Actual vs Predicted
       </Typography>
       <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
-        Each metric shows Actual | Predicted | Δ (absolute error). Δ is color-coded: green = small, amber = moderate, red = large.
+        Each metric shows Actual | Predicted | Δ (absolute error). Δ is color-coded: green = small,
+        amber = moderate, red = large.
       </Typography>
       <PlayersTable result={result} />
     </Box>

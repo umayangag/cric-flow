@@ -84,9 +84,9 @@ if _ML_ROOT not in sys.path:
 from ml import auto_tune_progress as _progress
 from ml.config import (
     get_training_params,
+    get_tuned_params_from_go_app,
     get_tuning_config,
     get_tuning_search_space,
-    get_tuned_params_from_go_app,
     save_tuned_params_to_go_app,
 )
 
@@ -602,7 +602,9 @@ def _compute_mlqa_audit(
 
         # Aggregate status and verdict
         if status_flags:
-            audit_status = "FAIL" if any(f in ("overfitting", "unstable", "biased") for f in status_flags) else "WARNING"
+            audit_status = (
+                "FAIL" if any(f in ("overfitting", "unstable", "biased") for f in status_flags) else "WARNING"
+            )
         else:
             audit_status = "PASS"
         if audit_status == "FAIL":
@@ -643,9 +645,7 @@ def _get_prior_tuned_algorithm(
     go_app_url = os.environ.get("GO_APP_URL", "").strip()
     if go_app_url:
         format_key = format_suffix if format_suffix else ""
-        params = get_tuned_params_from_go_app(
-            go_app_url, model_kind, format_key, os.environ.get("GO_APP_API_KEY")
-        )
+        params = get_tuned_params_from_go_app(go_app_url, model_kind, format_key, os.environ.get("GO_APP_API_KEY"))
         if params:
             alg_list = params.get("algorithms")
             if isinstance(alg_list, list) and len(alg_list) > 0:
