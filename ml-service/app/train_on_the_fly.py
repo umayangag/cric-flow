@@ -25,6 +25,7 @@ from sklearn.preprocessing import StandardScaler
 from app.feature_config import get_feature_names
 from app.logging import get_struct_logger
 from ml.config import get_training_data_fetch_timeout_sec, get_training_params
+from ml.data_quality import impute_features
 from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
@@ -130,15 +131,21 @@ def _rows_to_xy(
         df = df.assign(toss=df["toss"].apply(_normalize_toss))
     if preprocess is not None:
         df = preprocess(df)
-    df = df.dropna(subset=[c for c in feature_cols if c in df.columns])
+    # Drop rows missing essential targets (aligned with train_batting/train_bowling)
+    target_subset = [c for c in target_cols if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
     if df.empty:
         return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
     for c in feature_cols:
         if c in df.columns:
             df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
-    df = df.dropna(subset=feature_cols)
-    if df.empty:
-        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+    # Impute missing feature values (median for numeric, -1 for categorical) — aligned with train_*
+    feature_cols_in_df = [c for c in feature_cols if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in feature_cols:
+        if c not in df.columns:
+            df[c] = 0.0
     X = df[feature_cols].astype(float).values
     y_cols = [c for c in target_cols if c in df.columns]
     Y = df[y_cols].astype(float).values
@@ -207,20 +214,15 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
 
-    def _bowling_extra_y(df: pd.DataFrame) -> np.ndarray:
-        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-        balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-        overs = np.where(balls > 0, balls / 6.0, 1.0)
-        return np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-
+    # Economy rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return _rows_to_xy(
         headers,
         rows,
         _bowling_feature_cols(),
         BOWLING_TARGET_COLS,
-        n_y_final=4,
+        n_y_final=3,
         preprocess=_bowling_preprocess,
-        extra_y_column=_bowling_extra_y,
     )
 
 

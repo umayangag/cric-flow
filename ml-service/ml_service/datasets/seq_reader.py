@@ -1,8 +1,11 @@
+import logging
 import os
 from typing import Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Default T20 sequence columns as documented in README (Plan 1.11)
 BOWLING_SEQ_COLUMNS: List[str] = [
@@ -64,17 +67,31 @@ def build_feature_matrix(
     """
     names = list(feature_names)
     cols: List[np.ndarray] = []
+    missing_cols: List[str] = []
+    non_numeric_cols: List[str] = []
     for name in names:
         if name in df.columns:
             col = df[name].to_numpy()
-            # Coerce to float
             try:
                 col = col.astype(float, copy=False)
-            except Exception:
-                # Non-numeric columns become zeros; keep deterministic behavior
+            except (TypeError, ValueError) as e:
+                non_numeric_cols.append(name)
+                logger.warning(
+                    "seq_reader.build_feature_matrix non_numeric name=%s error=%s; filling with zeros",
+                    name,
+                    e,
+                )
                 col = np.zeros(shape=(len(df),), dtype=np.float64)
         else:
+            missing_cols.append(name)
             col = np.full(shape=(len(df),), fill_value=float(fill_value), dtype=np.float64)
+    if missing_cols:
+        logger.info(
+            "seq_reader.build_feature_matrix missing_columns count=%d names=%s (filled with %.2f)",
+            len(missing_cols),
+            missing_cols[:10] + (["..."] if len(missing_cols) > 10 else []),
+            fill_value,
+        )
         cols.append(col.reshape(-1, 1))
     if len(cols) == 0:
         # No requested columns; return empty matrix with correct n_rows

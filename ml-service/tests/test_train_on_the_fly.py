@@ -104,13 +104,13 @@ def _one_bowling_row():
 def test_batting_rows_to_xy_empty():
     X, Y = _batting_rows_to_xy([], [])
     assert X.shape == (0, len(BATTING_FEATURE_COLS))
-    assert Y.shape == (0, 6)
+    assert Y.shape == (0, 5)  # runs, balls, fours, sixes, batting_position (no strike_rate)
 
 
 def test_batting_rows_to_xy_empty_headers_no_rows():
     X, Y = _batting_rows_to_xy(_batting_headers(), [])
     assert X.shape == (0, len(BATTING_FEATURE_COLS))
-    assert Y.shape == (0, 6)
+    assert Y.shape == (0, 5)
 
 
 def test_batting_rows_to_xy_one_valid_row():
@@ -118,10 +118,8 @@ def test_batting_rows_to_xy_one_valid_row():
     rows = [_one_batting_row()]
     X, Y = _batting_rows_to_xy(headers, rows)
     assert X.shape == (1, len(BATTING_FEATURE_COLS))
-    assert Y.shape == (1, 6)
+    assert Y.shape == (1, 5)  # strike_rate is NOT a target (derived post-prediction)
     assert Y[0, 0] == 10.0  # runs
-    # strike_rate derived: runs/balls*100
-    assert abs(Y[0, 5] - (10.0 / 12.0 * 100.0)) < 1e-5
 
 
 def test_batting_rows_to_xy_toss_string_normalized():
@@ -148,16 +146,15 @@ def test_batting_rows_to_xy_multiple_rows():
     rows[1][1] = "20"  # different balls
     X, Y = _batting_rows_to_xy(headers, rows)
     assert X.shape == (2, len(BATTING_FEATURE_COLS))
-    assert Y.shape == (2, 6)
+    assert Y.shape == (2, 5)
     assert Y[1, 0] == 25.0
-    assert Y[1, 5] == 125.0  # 25/20*100
 
 
 # --- _bowling_rows_to_xy ---
 def test_bowling_rows_to_xy_empty():
     X, Y = _bowling_rows_to_xy([], [])
     assert X.shape == (0, len(BOWLING_FEATURE_COLS))
-    assert Y.shape == (0, 4)
+    assert Y.shape == (0, 3)  # runs, balls, wickets (economy derived post-prediction)
 
 
 def test_bowling_rows_to_xy_one_valid_row():
@@ -165,11 +162,9 @@ def test_bowling_rows_to_xy_one_valid_row():
     rows = [_one_bowling_row()]
     X, Y = _bowling_rows_to_xy(headers, rows)
     assert X.shape == (1, len(BOWLING_FEATURE_COLS))
-    assert Y.shape == (1, 4)
+    assert Y.shape == (1, 3)  # economy is NOT a target (derived post-prediction)
     assert Y[0, 0] == 24.0
     assert Y[0, 2] == 2.0
-    # econ = runs/(balls/6) = 24/4 = 6.0
-    assert abs(Y[0, 3] - 6.0) < 1e-5
 
 
 def test_bowling_rows_to_xy_toss_and_session_normalized():
@@ -190,24 +185,24 @@ def test_bowling_rows_to_xy_toss_and_session_normalized():
 # --- _train_batting_in_memory / _train_bowling_in_memory ---
 def test_train_batting_in_memory_returns_scaler_and_model():
     X = np.random.RandomState(42).rand(20, len(BATTING_FEATURE_COLS))
-    Y = np.random.RandomState(43).rand(20, 6)
+    Y = np.random.RandomState(43).rand(20, 5)  # runs, balls, fours, sixes, batting_position
     scaler, model = _train_batting_in_memory(X, Y)
     assert scaler is not None
     assert model is not None
     Xs = scaler.transform(X[:2])
     pred = model.predict(Xs)
-    assert pred.shape == (2, 6)
+    assert pred.shape == (2, 5)
 
 
 def test_train_bowling_in_memory_returns_scaler_and_model():
     X = np.random.RandomState(44).rand(20, len(BOWLING_FEATURE_COLS))
-    Y = np.random.RandomState(45).rand(20, 4)
+    Y = np.random.RandomState(45).rand(20, 3)  # runs, balls, wickets
     scaler, model = _train_bowling_in_memory(X, Y)
     assert scaler is not None
     assert model is not None
     Xs = scaler.transform(X[:2])
     pred = model.predict(Xs)
-    assert pred.shape == (2, 4)
+    assert pred.shape == (2, 3)
 
 
 # --- fetch_training_data (mocked) ---

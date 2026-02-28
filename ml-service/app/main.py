@@ -431,14 +431,17 @@ def _predict_players_with_features(
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
         vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
-        vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
+        vals_bowl = list(row_bowl) + [0.0] * max(0, 3 - len(row_bowl))  # runs, balls, wickets (economy derived)
         runs = float(max(0.0, vals_bat[0]))
         balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
         fours = float(max(0.0, vals_bat[2])) if len(vals_bat) > 2 else None
         sixes = float(max(0.0, vals_bat[3])) if len(vals_bat) > 3 else None
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
+        # Economy is derived from runs and balls (not a model target)
         default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
-        economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else default_econ
+        r_conceded = float(max(0.0, vals_bowl[0])) if len(vals_bowl) > 0 else 0.0
+        balls_bowled = float(max(0.0, vals_bowl[1])) if len(vals_bowl) > 1 else 6.0
+        economy = (r_conceded / (balls_bowled / 6.0)) if balls_bowled > 0 else default_econ
         catches, run_outs = 0.0, 0.0
         out.append(
             BacktestPlayerPred(
@@ -1294,13 +1297,18 @@ async def predict_bowling(features: List[BowlingFeatures]):
         preds = []
         for row in Y:
             vals = row if np.ndim(row) == 1 else row.ravel()
-            vals = list(vals) + [0.0] * max(0, 4 - len(vals))
+            vals = list(vals) + [0.0] * max(0, 3 - len(vals))  # runs, balls, wickets
+            runs_conceded = float(vals[0])
+            deliveries = float(vals[1])
+            wickets_taken = float(vals[2])
+            # Economy derived from runs and balls (not a training target)
+            econ = (runs_conceded / (deliveries / 6.0)) if deliveries > 0 else 0.0
             preds.append(
                 BowlingPrediction(
-                    runs_conceded=float(vals[0]),
-                    deliveries=float(vals[1]),
-                    wickets_taken=float(vals[2]),
-                    econ=float(vals[3]),
+                    runs_conceded=runs_conceded,
+                    deliveries=deliveries,
+                    wickets_taken=wickets_taken,
+                    econ=econ,
                 )
             )
         logger.info("predict.bowling.success", predictions=len(preds))

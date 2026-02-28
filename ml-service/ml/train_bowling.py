@@ -206,11 +206,13 @@ def train_and_save(
     training_params: dict,
     suffix: Optional[str] = None,
     metadata: Optional[dict] = None,
+    transform_config: Optional[dict] = None,
 ):
     """Train and save artifacts. training_params must come from get_training_params("bowling") (config only).
 
     Normalizes X with StandardScaler (fit on provided data); Y kept in raw units.
     Applies percentile-based outlier clipping on targets before training.
+    Saves imputation_medians and feature_transforms in metadata for prediction-time consistency.
     See docs/ml-and-training.md.
     """
     os.makedirs(out_dir, exist_ok=True)
@@ -249,12 +251,14 @@ def train_and_save(
     else:
         joblib.dump(scaler, os.path.join(out_dir, "bowling_scaler.joblib"), compress=compress)
         joblib.dump(model, os.path.join(out_dir, "bowling_model.joblib"), compress=compress)
-    # Save training metadata if provided (include feature importance)
+    # Save training metadata if provided (include feature importance, imputation, transforms)
     if metadata is not None:
         if feature_importance is not None:
             metadata["feature_importance"] = feature_importance
         if clip_info:
             metadata["target_clip_info"] = clip_info
+        if transform_config:
+            metadata["feature_transforms"] = transform_config
         meta_path = os.path.join(out_dir, f"bowling_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
@@ -370,7 +374,7 @@ def main():
                 logger.warning("train_bowling.skip_format_no_data_from_api format=%s", fmt)
                 return 0
             try:
-                X, Y, feature_names_used = load_dataset_from_memory(headers, rows)
+                X, Y, feature_names_used, medians = load_dataset_from_memory(headers, rows)
             except Exception as e:
                 logger.error("train_bowling.load_from_api_failed format=%s error=%s", fmt, e)
                 return 0
@@ -378,6 +382,7 @@ def main():
                 logger.warning("train_bowling.skip_format_no_data format=%s", fmt)
                 return 0
             training_params = get_training_params("bowling", fmt)
+            transform_config = get_transform_config("bowling")
             meta = {
                 "source": "api",
                 "format": fmt,
@@ -388,8 +393,9 @@ def main():
                 "model": "RandomForestRegressor",
                 "hyperparams": training_params,
                 "feature_names": feature_names_used,
+                "imputation_medians": medians,
             }
-            train_and_save(X, Y, args.out, training_params, fmt, meta)
+            train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config)
             logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
             return 1
 
@@ -435,13 +441,14 @@ def main():
         training_params = get_training_params("bowling", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
         try:
-            X, Y, feature_names_used = load_dataset(csv_path)
+            X, Y, feature_names_used, medians = load_dataset(csv_path)
         except FileNotFoundError as e:
             logger.error("train_bowling.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
         if X.size == 0 or Y.size == 0:
             logger.error("train_bowling.no_data path=%s", csv_path)
             return
+        transform_config = get_transform_config("bowling")
         meta = {
             "csv_path": csv_path,
             "rows": int(X.shape[0]),
@@ -451,8 +458,9 @@ def main():
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
             "feature_names": feature_names_used,
+            "imputation_medians": medians,
         }
-        train_and_save(X, Y, args.out, training_params, None, meta)
+        train_and_save(X, Y, args.out, training_params, None, meta, transform_config)
         logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
         return
 
@@ -466,13 +474,14 @@ def main():
             logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             return 0
         try:
-            X, Y, feature_names_used = load_dataset(csv_path)
+            X, Y, feature_names_used, medians = load_dataset(csv_path)
         except Exception as e:
             logger.error("train_bowling.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             return 0
         if X.size == 0 or Y.size == 0:
             logger.warning("train_bowling.skip_format_no_data format=%s path=%s", fmt, csv_path)
             return 0
+        transform_config = get_transform_config("bowling")
         meta = {
             "csv_path": csv_path,
             "rows": int(X.shape[0]),
@@ -482,8 +491,9 @@ def main():
             "model": "RandomForestRegressor",
             "hyperparams": training_params,
             "feature_names": feature_names_used,
+            "imputation_medians": medians,
         }
-        train_and_save(X, Y, args.out, training_params, fmt, meta)
+        train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config)
         logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
         return 1
 

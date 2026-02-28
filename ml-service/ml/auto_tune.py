@@ -89,6 +89,7 @@ from ml.config import (
     get_tuning_search_space,
     save_tuned_params_to_go_app,
 )
+from ml.data_quality import clip_target_outliers, impute_features
 
 try:
     from ml import auto_tune_pycaret as _pycaret
@@ -379,8 +380,12 @@ _PHASE1_COARSE_MLP_CLF = {
 }
 
 
-def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42):
-    """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward."""
+def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42, gap: int = 0):
+    """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward.
+
+    When walk_forward, uses TimeSeriesSplit with optional gap (samples between train/test) to
+    reduce temporal leakage. Config: ml.tuning.timeseries_split_gap.
+    """
     if n_samples < 2:
         raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
     # KFold requires n_splits <= n_samples and n_splits >= 2
@@ -392,7 +397,8 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
             return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
         if n_samples < n_splits + 1:
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
-        return TimeSeriesSplit(n_splits=n_splits)
+        # gap: samples excluded between train and test (reduces temporal leakage)
+        return TimeSeriesSplit(n_splits=n_splits, gap=max(0, int(gap)))
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
@@ -1003,7 +1009,8 @@ def _run_search_two_phase_single_regression(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression_single(allow)
     if not candidates:
@@ -1281,7 +1288,8 @@ def _run_search_single_regression(
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
     if not candidates:
         raise ValueError(f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}")
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1360,7 +1368,8 @@ def _run_search_classification(
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
     if not candidates:
         raise ValueError(f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}")
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1471,7 +1480,8 @@ def _run_search_two_phase(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression(model_kind, allow)
     if not candidates:
@@ -1823,7 +1833,8 @@ def _run_search(
         raise ValueError(
             f"No algorithms selected for {model_kind}; available: rf, gb, quantile, et, hgb, stacked, mlp. You requested: {list(algorithms)}"
         )
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1942,8 +1953,16 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
-    required = [c for c in BATTING_FEATURE_COLS if c not in BAT_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
+    # Drop rows missing essential targets (aligned with train_batting)
+    target_subset = [c for c in BATTING_TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
+    # Impute missing feature values (median for numeric, -1 for categorical)
+    feature_cols_in_df = [c for c in BATTING_FEATURE_COLS if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in BATTING_FEATURE_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
     X_raw = df[BATTING_FEATURE_COLS].astype(float).values
     from .feature_transforms import apply_transforms, get_transform_config
 
@@ -1957,12 +1976,8 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     if Y.shape[1] < len(BATTING_TARGET_COLS):
         pad = np.zeros((Y.shape[0], len(BATTING_TARGET_COLS) - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
-    sr = np.zeros((len(runs), 1))
-    ok = balls > 0
-    sr[ok] = (runs[ok] / balls[ok]) * 100.0
-    Y = np.concatenate([Y, sr], axis=1)
+    # Strike rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return X, Y
 
 
@@ -1978,19 +1993,34 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
-    required = [c for c in BOWLING_FEATURE_COLS if c not in BOWL_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
-    X = df[BOWLING_FEATURE_COLS].astype(float).values
+    # Normalize toss: CSV may have "bat"/"field" strings
+    if "toss" in df.columns and df["toss"].dtype == object:
+        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(lambda x: 1.0 if x == "bat" else 0.0)
+    # Drop rows missing essential targets (aligned with train_bowling)
+    target_subset = [c for c in BOWLING_TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
+    # Impute missing feature values (median for numeric, -1 for categorical)
+    feature_cols_in_df = [c for c in BOWLING_FEATURE_COLS if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in BOWLING_FEATURE_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
+    X_raw = df[BOWLING_FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("bowling")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(BOWLING_FEATURE_COLS), transform_config, "bowling")
+    else:
+        X = X_raw
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BOWLING_TARGET_COLS):
         pad = np.zeros((Y.shape[0], len(BOWLING_TARGET_COLS) - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-    overs = np.where(balls > 0, balls / 6.0, 1.0)
-    econ = np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-    Y = np.concatenate([Y, econ], axis=1)
+    # Economy rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return X, Y
 
 
@@ -2123,6 +2153,19 @@ def run_auto_tune(
             algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
 
+    # Apply percentile-based outlier clipping on targets (aligned with train_batting/train_bowling)
+    clip_percentile = params.get("target_clip_percentile", 99.0)
+    target_names = {
+        "batting": ["runs", "balls", "fours", "sixes", "batting_position"],
+        "bowling": ["runs", "balls", "wickets"],
+        "fielding": ["catches", "run_outs", "stumpings"],
+    }.get(model_kind, [f"target_{i}" for i in range(Y.shape[1] if Y.ndim > 1 else 1)])
+    Y, clip_info = clip_target_outliers(
+        Y, percentile=clip_percentile, target_names=target_names[: (Y.shape[1] if Y.ndim > 1 else 1)]
+    )
+    if clip_info:
+        logger.info("auto_tune.clip_target_outliers model=%s percentile=%.1f info=%s", model_kind, clip_percentile, clip_info)
+
     best_pipe, best_params, report = _run_search_two_phase(
         X,
         Y,
@@ -2139,6 +2182,8 @@ def run_auto_tune(
         task_total,
         prior_params=prior_params,
     )
+    if clip_info:
+        report["target_clip_info"] = clip_info
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
 
@@ -2189,6 +2234,13 @@ def run_auto_tune_extras(
             algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
+    # Apply outlier clipping on targets (aligned with train_extras)
+    clip_percentile = params.get("target_clip_percentile", 99.0)
+    y, clip_info = clip_target_outliers(y.reshape(-1, 1), percentile=clip_percentile, target_names=["extras"])
+    y = y.ravel()
+    if clip_info:
+        logger.info("auto_tune.clip_target_outliers model=extras percentile=%.1f info=%s", clip_percentile, clip_info)
+
     best_pipe, _, report = _run_search_two_phase_single_regression(
         X,
         y,
@@ -2224,6 +2276,8 @@ def run_auto_tune_extras(
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report
+    if clip_info:
+        report["target_clip_info"] = clip_info
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -2254,7 +2308,8 @@ def _run_search_two_phase_classification(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_classification(allow)
     if not candidates:
