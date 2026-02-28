@@ -38,12 +38,14 @@ class PipelineConfig:
 
     task: Literal["match_outcome", "player_performance"] = "match_outcome"
     time_decay_halflife_years: float = 2.0  # Recent 2y weighted more
-    ewm_span: int = 10  # EWM for player hot streaks
+    ewm_span: int = 10  # EWM for short-term momentum
+    player_form_span: int = 200  # EWMA span for player form (last N balls faced)
     matchup_min_samples: int = 5  # Min samples for batter vs bowler SR
     n_splits: int = 5  # Time-series CV splits
     delta_threshold: float = 0.08  # Max train-val gap
     use_target_encoding: bool = True
     use_robust_scaler: bool = True
+    use_era_normalization: bool = True  # Normalize by yearly scoring rate
     random_state: int = 42
 
 
@@ -74,32 +76,64 @@ def compute_yearly_format_averages(
     format_col: str = "format_code",
     year_col: str = "match_year",
 ) -> Dict[Tuple[str, int], Dict[str, float]]:
-    """Compute yearly format averages for normalization.
+    """Compute yearly format averages for era normalization.
 
-    Returns {(format_code, year): {metric: value}}.
+    Returns {(format_code, year): {rpo, runs_per_ball, wicket_rate}}.
+    runs_per_ball = average scoring rate (rpo/6) used to normalize era-biased features.
     """
     if "match_date" in df.columns:
         df = df.copy()
         df["match_year"] = pd.to_datetime(df["match_date"]).dt.year
     out: Dict[Tuple[str, int], Dict[str, float]] = {}
     for (fmt, yr), g in df.groupby([format_col, year_col]):
+        total_runs = g["runs_total"].sum()
+        total_balls = max(1, len(g))  # ball_seq count or row count
+        rpo = (total_runs / total_balls) * 6.0
+        runs_per_ball = total_runs / total_balls
         out[(str(fmt), int(yr))] = {
-            "rpo": (g["runs_total"].sum() / max(1, g["ball_seq"].nunique())) * 6.0,
+            "rpo": rpo,
+            "runs_per_ball": runs_per_ball,
             "wicket_rate": g["wicket_kind"].notna().sum() / max(1, len(g) / 6),
         }
     return out
 
 
-def normalize_by_yearly_format(
+def _normalize_features_by_yearly_format(
     df: pd.DataFrame,
     yearly_avgs: Dict[Tuple[str, int], Dict[str, float]],
     format_col: str = "format_code",
     year_col: str = "match_year",
 ) -> pd.DataFrame:
-    """Normalize batting/bowling metrics by yearly format averages."""
+    """Normalize run-rate and pressure features by yearly scoring rate to prevent era-bias."""
     df = df.copy()
     if year_col not in df.columns and "match_date" in df.columns:
         df[year_col] = pd.to_datetime(df["match_date"]).dt.year
+
+    default_rpb = 1.0
+    default_rpo = 6.0
+
+    keys = list(zip(df[format_col].astype(str), df[year_col].astype(int)))
+    rpb = np.array(
+        [
+            yearly_avgs.get(k, {}).get("runs_per_ball")
+            or yearly_avgs.get(k, {}).get("rpo", default_rpo) / 6.0
+            or default_rpb
+            for k in keys
+        ]
+    )
+    rpo = rpb * 6.0
+
+    for col in ["match_pressure", "player_form", "bat_ewm_rpo", "bowl_ewm_rpo"]:
+        if col in df.columns:
+            df[col] = df[col] / np.where(rpb > 0, rpb, default_rpb)
+
+    for col in ["current_rr", "required_rr", "batter_sr_6", "bowler_econ_6"]:
+        if col in df.columns:
+            df[col] = df[col] / np.where(rpo > 0, rpo, default_rpo)
+
+    if "rrr_vs_crr" in df.columns:
+        df["rrr_vs_crr"] = df["rrr_vs_crr"] / np.where(rpo > 0, rpo, default_rpo)
+
     return df
 
 
@@ -138,31 +172,62 @@ def _add_state_space_features(df: pd.DataFrame) -> pd.DataFrame:
         0.0,
     )
     out["rrr_vs_crr"] = out["required_rr"] - out["current_rr"]
+    # Match Pressure: runs required per ball remaining (chase innings only).
+    # Higher = more pressure. Zero when not chasing or no balls remaining.
+    target_valid = out["target_runs"].notna() & (out["target_runs"] > 0)
+    balls_ok = out["balls_remaining"] > 0
+    out["match_pressure"] = np.where(
+        target_valid & balls_ok,
+        out["runs_remaining"] / out["balls_remaining"],
+        0.0,
+    )
     return out
 
 
 def _add_ewm_form(
     df: pd.DataFrame,
     span: int = 10,
+    player_form_span: int = 200,
     group_cols: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    """Exponentially weighted moving average for player hot streaks."""
+    """Exponentially weighted moving average for player hot streaks.
+
+    - bat_ewm_rpo / bowl_ewm_rpo: short-span EWM (default 10) for recent momentum.
+    - player_form: EWMA of striker's runs per ball over last 200 balls faced, to capture
+      form over a longer horizon. Uses shift(1) so current ball is not included.
+    """
     out = df.copy()
-    group_cols = group_cols or ["striker_id", "format_code"]
-    # Per-striker, per-format rolling SR
-    for gcol in group_cols:
-        if gcol not in out.columns:
-            continue
-    # Simple: striker-level EWM of runs per ball
-    grp = ["striker_id", "format_code"] if "format_code" in out.columns else ["striker_id"]
-    out["bat_ewm_rpo"] = (
-        out.groupby(grp)["runs_total"].transform(lambda s: s.ewm(span=span, adjust=False).mean().shift(1)).fillna(0)
-    )
-    out["bowl_ewm_rpo"] = (
-        out.groupby(["bowler_id", "format_code"] if "format_code" in out.columns else ["bowler_id"])["runs_total"]
+    # Preserve original row order for alignment with targets; use _orig_idx to restore
+    out["_orig_idx"] = np.arange(len(out))
+    if "match_date" in out.columns:
+        sorted_df = out.sort_values(
+            ["match_date", "match_id", "innings", "ball_seq"],
+            kind="mergesort",
+        )
+    else:
+        sorted_df = out
+
+    grp = ["striker_id", "format_code"] if "format_code" in sorted_df.columns else ["striker_id"]
+    sorted_df = sorted_df.copy()
+    sorted_df["bat_ewm_rpo"] = (
+        sorted_df.groupby(grp)["runs_total"]
         .transform(lambda s: s.ewm(span=span, adjust=False).mean().shift(1))
         .fillna(0)
     )
+    sorted_df["bowl_ewm_rpo"] = (
+        sorted_df.groupby(["bowler_id", "format_code"] if "format_code" in sorted_df.columns else ["bowler_id"])[
+            "runs_total"
+        ]
+        .transform(lambda s: s.ewm(span=span, adjust=False).mean().shift(1))
+        .fillna(0)
+    )
+    sorted_df["player_form"] = (
+        sorted_df.groupby(grp)["runs_total"]
+        .transform(lambda s: s.ewm(span=player_form_span, adjust=False).mean().shift(1))
+        .fillna(0)
+    )
+    # Restore original row order so output aligns with input
+    out = sorted_df.sort_values("_orig_idx").drop(columns=["_orig_idx"]).reset_index(drop=True)
     return out
 
 
@@ -256,10 +321,17 @@ class CricketGeneralizedPipeline:
         """Fit preprocessing: yearly averages, target encoder, scaler."""
         df = self._add_derived_columns(df)
         df = _add_state_space_features(df)
-        df = _add_ewm_form(df, span=self.config.ewm_span)
+        df = _add_ewm_form(
+            df,
+            span=self.config.ewm_span,
+            player_form_span=self.config.player_form_span,
+        )
         df = _add_matchup_matrix(df, min_samples=self.config.matchup_min_samples)
 
         self.yearly_format_avgs_ = compute_yearly_format_averages(df)
+
+        if self.config.use_era_normalization and self.yearly_format_avgs_:
+            df = _normalize_features_by_yearly_format(df, self.yearly_format_avgs_)
 
         # Identify categorical columns for target encoding
         cat_candidates = ["striker_id", "bowler_id", "venue_id", "format_code"]
@@ -269,9 +341,11 @@ class CricketGeneralizedPipeline:
             "balls_remaining",
             "runs_remaining",
             "wickets_in_hand",
+            "match_pressure",
             "current_rr",
             "required_rr",
             "rrr_vs_crr",
+            "player_form",
             "bat_ewm_rpo",
             "bowl_ewm_rpo",
             "batter_sr_6",
@@ -310,8 +384,15 @@ class CricketGeneralizedPipeline:
 
         df = self._add_derived_columns(df)
         df = _add_state_space_features(df)
-        df = _add_ewm_form(df, span=self.config.ewm_span)
+        df = _add_ewm_form(
+            df,
+            span=self.config.ewm_span,
+            player_form_span=self.config.player_form_span,
+        )
         df = _add_matchup_matrix(df, min_samples=self.config.matchup_min_samples)
+
+        if self.config.use_era_normalization and self.yearly_format_avgs_:
+            df = _normalize_features_by_yearly_format(df, self.yearly_format_avgs_)
 
         X = df[self.feature_names_].copy()
         X = X.fillna(0)
