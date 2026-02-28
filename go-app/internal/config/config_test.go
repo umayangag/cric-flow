@@ -372,83 +372,27 @@ func TestValidateTeamSettings_NilConfig(t *testing.T) {
 func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 	cfgEvalJob := &Config{}
 	cfgEvalJob.Backtest.Job = &BacktestJobConfig{EvalJobMaxDurationHr: 8}
-
-	tests := make([]struct {
-		name string
-		cfg  *Config
-		fn   func(*Config) int
-		want int
-	}, 0, 11)
-	tests = append(tests,
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"ServerMLClientTimeoutSec nil", nil, ServerMLClientTimeoutSec, DefaultServerMLClientTimeoutSec},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"ServerMLClientTimeoutSec set", &Config{Server: ServerConfig{MLClientTimeoutSec: 25}}, ServerMLClientTimeoutSec, 25},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"ServerDBProbeTimeoutSec nil", nil, ServerDBProbeTimeoutSec, DefaultServerDBProbeTimeoutSec},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"BacktestAccuracyTrendDefaultLimit nil", nil, BacktestAccuracyTrendDefaultLimit, DefaultBacktestAccuracyTrendLimit},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"BacktestEvalJobMaxDurationHr set", cfgEvalJob, BacktestEvalJobMaxDurationHr, 8},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"OpsMigrationsPageMax nil", nil, OpsMigrationsPageMax, DefaultOpsMigrationsPageMax},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"OpsRecentMigrationsCount set", &Config{Ops: OpsConfig{RecentMigrationsCount: 50}}, OpsRecentMigrationsCount, 50},
-		struct {
-			name string
-			cfg  *Config
-			fn   func(*Config) int
-			want int
-		}{"ResourcesImportMBPerWorker set", &Config{Resources: &ResourcesConfig{ImportMBPerWorker: 200}}, ResourcesImportMBPerWorker, 200},
-	)
 	cfgExportJob := &Config{}
 	cfgExportJob.Backtest.Job = &BacktestJobConfig{ExportContributionsMaxDurHr: 4}
-	tests = append(tests, struct {
+
+	tests := []struct {
 		name string
 		cfg  *Config
 		fn   func(*Config) int
 		want int
-	}{"BacktestExportContributionsJobMaxDurationHr set", cfgExportJob, BacktestExportContributionsJobMaxDurationHr, 4})
+	}{
+		{"ServerMLClientTimeoutSec nil", nil, ServerMLClientTimeoutSec, DefaultServerMLClientTimeoutSec},
+		{"ServerMLClientTimeoutSec set", &Config{Server: ServerConfig{MLClientTimeoutSec: 25}}, ServerMLClientTimeoutSec, 25},
+		{"ServerDBProbeTimeoutSec nil", nil, ServerDBProbeTimeoutSec, DefaultServerDBProbeTimeoutSec},
+		{"BacktestAccuracyTrendDefaultLimit nil", nil, BacktestAccuracyTrendDefaultLimit, DefaultBacktestAccuracyTrendLimit},
+		{"BacktestEvalJobMaxDurationHr set", cfgEvalJob, BacktestEvalJobMaxDurationHr, 8},
+		{"OpsMigrationsPageMax nil", nil, OpsMigrationsPageMax, DefaultOpsMigrationsPageMax},
+		{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
+		{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
+		{"OpsRecentMigrationsCount set", &Config{Ops: OpsConfig{RecentMigrationsCount: 50}}, OpsRecentMigrationsCount, 50},
+		{"ResourcesImportMBPerWorker set", &Config{Resources: &ResourcesConfig{ImportMBPerWorker: 200}}, ResourcesImportMBPerWorker, 200},
+		{"BacktestExportContributionsJobMaxDurationHr set", cfgExportJob, BacktestExportContributionsJobMaxDurationHr, 4},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -351,6 +351,23 @@ def get_tuning_config() -> Dict[str, Any]:
     }
 
 
+def get_mlqa_config() -> Dict[str, Any]:
+    """
+    Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.
+    Fallbacks match the previous hardcoded values.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
+    return {
+        "overfitting_delta_threshold": float(mlqa.get("overfitting_delta_threshold", 0.08)),
+        "stability_fold_std_threshold": float(mlqa.get("stability_fold_std_threshold", 0.05)),
+        "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
+        "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
+        "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),
+    }
+
+
 def get_tuning_search_space(estimator_key: str) -> Optional[Dict[str, Any]]:
     """Return search space for auto_tune from ml.tuning.search_space.<rf|gb>. None if not configured.
     estimator_key: 'rf' for RandomForest, 'gb' for GradientBoosting.

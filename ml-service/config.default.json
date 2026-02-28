@@ -1,1 +1,197 @@
-{"inputs":{"go_app_export_dir":"../output/go-app","training_data_fetch_timeout_sec":14400,"training_data_fetch_timeout_invalid_fallback_sec":600,"training_subprocess_timeout_sec":14400,"go_app_request_timeout_sec":30},"outputs":{"artifacts_dir":"../output/ml-service"},"ml":{"formats":["TEST","ODI","T20","T20I"],"artifact_template":"{kind}_{name}_{format}.joblib","training":{"batting":{"n_estimators":200,"max_depth":12,"random_state":42,"joblib_compress":3,"n_jobs":-1},"bowling":{"n_estimators":200,"max_depth":12,"random_state":42,"joblib_compress":3,"n_jobs":-1},"fielding":{"n_estimators":150,"max_depth":10,"random_state":42,"joblib_compress":3,"n_jobs":-1},"extras":{"n_estimators":100,"max_depth":8,"random_state":42,"joblib_compress":3,"n_jobs":-1},"win":{"n_estimators":100,"max_depth":8,"random_state":42,"joblib_compress":3,"n_jobs":-1}},"resources":{"training_mb_per_job":400,"tuning_mb_per_job":500,"prediction_mb_per_job":100,"memory_usage_fraction_percent":80,"training_low_memory_threshold_mb":2560},"tuning":{"cv_splits":5,"n_iter":25,"n_jobs":-1,"random_state":42,"scoring":"neg_mean_absolute_error","algorithms":["rf","gb","quantile"],"validation_method":"walk_forward","timeseries_split_gap":0,"search_space":{"rf":{"n_estimators":[50,100,150,200,300],"max_depth":[6,8,10,12,16,20,null],"min_samples_split":[2,5,10],"min_samples_leaf":[1,2,4]},"gb":{"n_estimators":[50,100,150,200],"max_depth":[3,4,5,6,8,10,12],"learning_rate":[0.01,0.05,0.1],"min_samples_split":[2,5],"min_samples_leaf":[1,2]}},"stages":{"pycaret":{"enabled":true,"n_select":3},"optuna":{"enabled":true,"n_trials":50,"pruner":"median"},"autogluon":{"enabled":false,"time_limit_seconds":300,"models":["win","extras"]},"neural":{"enabled":true,"mlp":true,"tabnet":false}}},"feature_defaults":{"common":{"temp":25,"humidity":50,"wind":0,"rain":0,"cloud":0,"pressure":0,"viscosity":0,"inning":1,"session":1,"toss":0},"fielding":{"consistency":0.5,"form":0,"venue":0.5,"opposition":0.5}},"prediction_defaults":{"economy":6.0}},"team_prediction":{"team_size":11,"max_wickets_per_innings":10}}
+{
+  "inputs": {
+    "go_app_export_dir": "../output/go-app",
+    "training_data_fetch_timeout_sec": 14400,
+    "training_data_fetch_timeout_invalid_fallback_sec": 600,
+    "training_subprocess_timeout_sec": 14400,
+    "go_app_request_timeout_sec": 30
+  },
+  "outputs": {
+    "artifacts_dir": "../output/ml-service"
+  },
+  "ml": {
+    "formats": [
+      "TEST",
+      "ODI",
+      "T20",
+      "T20I"
+    ],
+    "artifact_template": "{kind}_{name}_{format}.joblib",
+    "training": {
+      "batting": {
+        "n_estimators": 200,
+        "max_depth": 12,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "bowling": {
+        "n_estimators": 200,
+        "max_depth": 12,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "fielding": {
+        "n_estimators": 150,
+        "max_depth": 10,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "extras": {
+        "n_estimators": 100,
+        "max_depth": 8,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      },
+      "win": {
+        "n_estimators": 100,
+        "max_depth": 8,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
+      }
+    },
+    "resources": {
+      "training_mb_per_job": 400,
+      "tuning_mb_per_job": 500,
+      "prediction_mb_per_job": 100,
+      "memory_usage_fraction_percent": 80,
+      "training_low_memory_threshold_mb": 2560
+    },
+    "tuning": {
+      "cv_splits": 5,
+      "n_iter": 25,
+      "n_jobs": -1,
+      "random_state": 42,
+      "scoring": "neg_mean_absolute_error",
+      "algorithms": [
+        "rf",
+        "gb",
+        "quantile"
+      ],
+      "validation_method": "walk_forward",
+      "timeseries_split_gap": 0,
+      "search_space": {
+        "rf": {
+          "n_estimators": [
+            50,
+            100,
+            150,
+            200,
+            300
+          ],
+          "max_depth": [
+            6,
+            8,
+            10,
+            12,
+            16,
+            20,
+            null
+          ],
+          "min_samples_split": [
+            2,
+            5,
+            10
+          ],
+          "min_samples_leaf": [
+            1,
+            2,
+            4
+          ]
+        },
+        "gb": {
+          "n_estimators": [
+            50,
+            100,
+            150,
+            200
+          ],
+          "max_depth": [
+            3,
+            4,
+            5,
+            6,
+            8,
+            10,
+            12
+          ],
+          "learning_rate": [
+            0.01,
+            0.05,
+            0.1
+          ],
+          "min_samples_split": [
+            2,
+            5
+          ],
+          "min_samples_leaf": [
+            1,
+            2
+          ]
+        }
+      },
+      "stages": {
+        "pycaret": {
+          "enabled": true,
+          "n_select": 3
+        },
+        "optuna": {
+          "enabled": true,
+          "n_trials": 50,
+          "pruner": "median"
+        },
+        "autogluon": {
+          "enabled": false,
+          "time_limit_seconds": 300,
+          "models": [
+            "win",
+            "extras"
+          ]
+        },
+        "neural": {
+          "enabled": true,
+          "mlp": true,
+          "tabnet": false
+        }
+      }
+    },
+    "mlqa": {
+      "overfitting_delta_threshold": 0.08,
+      "stability_fold_std_threshold": 0.05,
+      "bias_dip_low": 0.8,
+      "bias_dip_high": 1.25,
+      "sensitivity_top_weight_threshold": 0.70
+    },
+    "feature_defaults": {
+      "common": {
+        "temp": 25,
+        "humidity": 50,
+        "wind": 0,
+        "rain": 0,
+        "cloud": 0,
+        "pressure": 0,
+        "viscosity": 0,
+        "inning": 1,
+        "session": 1,
+        "toss": 0
+      },
+      "fielding": {
+        "consistency": 0.5,
+        "form": 0,
+        "venue": 0.5,
+        "opposition": 0.5
+      }
+    },
+    "prediction_defaults": {
+      "economy": 6
+    }
+  },
+  "team_prediction": {
+    "team_size": 11,
+    "max_wickets_per_innings": 10
+  }
+}

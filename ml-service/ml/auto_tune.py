@@ -83,6 +83,7 @@ if _ML_ROOT not in sys.path:
 
 from ml import auto_tune_progress as _progress
 from ml.config import (
+    get_mlqa_config,
     get_training_params,
     get_tuned_params_from_go_app,
     get_tuning_config,
@@ -515,25 +516,32 @@ def _compute_mlqa_audit(
         from sklearn.base import clone
         from sklearn.metrics import get_scorer
 
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+        dip_low = mlqa["bias_dip_low"]
+        dip_high = mlqa["bias_dip_high"]
+        top_weight_thresh = mlqa["sensitivity_top_weight_threshold"]
+
         # 1. Overfitting: train vs val delta
         pipe_fit = clone(pipe)
         pipe_fit.fit(X, y)
         scorer = get_scorer(scoring)
         train_score_val = scorer(pipe_fit, X, y)
         delta = abs(float(train_score_val) - float(val_score))
-        overfitting_risk = delta > 0.08
+        overfitting_risk = delta > delta_thresh
         if overfitting_risk:
-            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta:.4f} (> 8%).")
+            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta:.4f} (>{delta_thresh}).")
             status_flags.append("overfitting")
         else:
-            findings.append(f"Overfitting check OK: Δ = {delta:.4f} ≤ 8%.")
+            findings.append(f"Overfitting check OK: Δ = {delta:.4f} ≤ {delta_thresh}.")
 
         # 2. Stability: CV fold std
         fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
         fold_std = float(np.std(fold_scores))
-        unstable = fold_std > 0.05
+        unstable = fold_std > std_thresh
         if unstable:
-            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (> 0.05).")
+            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (>{std_thresh}).")
             status_flags.append("unstable")
         else:
             findings.append(f"Stability OK: CV fold σ = {fold_std:.4f}.")
@@ -542,13 +550,13 @@ def _compute_mlqa_audit(
         fairness = report.get("fairness_metrics") or {}
         dip = fairness.get("disparate_impact_ratio")
         if dip is not None:
-            biased = dip < 0.8 or dip > 1.25
+            biased = dip < dip_low or dip > dip_high
             if biased:
-                findings.append(f"Biased Model: disparate_impact_ratio = {dip:.4f} outside [0.8, 1.25].")
+                findings.append(f"Biased Model: disparate_impact_ratio = {dip:.4f} outside [{dip_low}, {dip_high}].")
                 status_flags.append("biased")
                 bias_report = "Model shows disparate impact; review protected group treatment before deployment."
             else:
-                findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [0.8, 1.25].")
+                findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [{dip_low}, {dip_high}].")
                 bias_report = "Model treats subgroups equitably within defined fairness bounds."
 
         # 4. Sensitivity: top 3 features
@@ -570,13 +578,13 @@ def _compute_mlqa_audit(
                 top_weight = float(imps[sorted_idx[0]] / total)
                 names = feature_names if feature_names and len(feature_names) == len(imps) else None
                 top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
-                if top_weight > 0.70:
+                if top_weight > top_weight_thresh:
                     findings.append(
                         f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}%."
                     )
                     status_flags.append("sensitivity")
                 else:
-                    findings.append(f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ 70%.")
+                    findings.append(f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%.")
         else:
             findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
 
