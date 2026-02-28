@@ -1,11 +1,12 @@
-"""Unit tests for ml.tracking duration parsing (pure functions, no DB)."""
+"""Unit tests for ml.tracking duration parsing and db_connection (pure functions, no DB)."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from ml.tracking import (
     PIPELINE_COMMANDS,
     _parse_go_duration,
+    db_connection,
     parse_stale_cancel_age_seconds,
 )
 
@@ -88,3 +89,14 @@ def test_pipeline_commands_non_empty():
     assert len(PIPELINE_COMMANDS) > 0
     assert "train-batting" in PIPELINE_COMMANDS
     assert "train-bowling" in PIPELINE_COMMANDS
+
+
+def test_db_connection_close_raises_logs_and_swallows():
+    """When conn.close() raises, db_connection logs and swallows (lines 46-48)."""
+    mock_conn = MagicMock()
+    mock_conn.close.side_effect = OSError("connection reset")
+
+    with patch("ml.tracking.get_connection", return_value=mock_conn):
+        with db_connection():
+            pass
+    mock_conn.close.assert_called_once()

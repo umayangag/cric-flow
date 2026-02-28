@@ -1,5 +1,7 @@
 """Unit tests for ml.auto_tune_autogluon."""
 
+from unittest.mock import patch
+
 import numpy as np
 
 from ml.auto_tune_autogluon import (
@@ -42,6 +44,7 @@ def test_numpy_to_df_1d_y():
     assert list(df["_target"]) == [10, 20, 30]
 
 
+@patch("ml.auto_tune_autogluon._HAS_AUTOGLUON", False)
 def test_run_autogluon_regression_no_autogluon():
     """When AutoGluon is not installed, regression returns None, None, None, False."""
     X = np.random.RandomState(42).rand(20, 5)
@@ -53,6 +56,7 @@ def test_run_autogluon_regression_no_autogluon():
     assert success is False
 
 
+@patch("ml.auto_tune_autogluon._HAS_AUTOGLUON", False)
 def test_run_autogluon_classification_no_autogluon():
     """When AutoGluon is not installed, classification returns None, None, None, False."""
     X = np.random.RandomState(42).rand(20, 5)

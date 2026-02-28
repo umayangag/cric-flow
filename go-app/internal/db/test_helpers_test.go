@@ -104,5 +104,5 @@ func (r *optionsStringRows) Scan(dest ...any) error {
 	return nil
 }
 
-func (r *optionsStringRows) Close() {}
+func (r *optionsStringRows) Close()     {}
 func (r *optionsStringRows) Err() error { return r.err }

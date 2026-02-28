@@ -214,8 +214,9 @@ ALL_FORMATS ?=
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
 # CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
+RESCREEN ?=
 ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",) $(if $(FAST),FAST="$(FAST)",) $(if $(NO_PYCARET),NO_PYCARET="$(NO_PYCARET)",)
+	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",) $(if $(FAST),FAST="$(FAST)",) $(if $(NO_PYCARET),NO_PYCARET="$(NO_PYCARET)",) $(if $(RESCREEN),RESCREEN="$(RESCREEN)",)
 
 # Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
 INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z

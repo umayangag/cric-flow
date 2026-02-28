@@ -22,7 +22,14 @@ Usage:
   # All models, all formats (extras/win from API only)
   python -m ml.auto_tune --model all --all-formats --from-api --cutoff 2024-12-01T00:00:00Z
 
+  # Unified model (one model on all formats combined; saves to legacy artifact names)
+  GO_APP_URL=... python -m ml.auto_tune --model win --unified --from-api --cutoff 2024-12-01T00:00:00Z --algorithms mlp
+
   # Fine-tune one model for one format then apply best params to config (see docs/ml-and-training.md)
+
+When prior tuned params exist (go-app or tuning_report_*.json), auto_tune skips algorithm
+screening and only fine-tunes hyperparameters of the existing algorithm (incremental training).
+Use --rescreen to force full algorithm re-evaluation.
 """
 
 from __future__ import annotations
@@ -66,7 +73,14 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import KFold, RandomizedSearchCV, TimeSeriesSplit, cross_val_predict, cross_val_score
+from sklearn.model_selection import (
+    KFold,
+    RandomizedSearchCV,
+    TimeSeriesSplit,
+    cross_val_predict,
+    cross_val_score,
+    learning_curve,
+)
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
@@ -78,7 +92,15 @@ if _ML_ROOT not in sys.path:
     sys.path.insert(0, _ML_ROOT)
 
 from ml import auto_tune_progress as _progress
-from ml.config import get_training_params, get_tuning_config, get_tuning_search_space, save_tuned_params_to_go_app
+from ml.config import (
+    get_mlqa_config,
+    get_training_params,
+    get_tuned_params_from_go_app,
+    get_tuning_config,
+    get_tuning_search_space,
+    save_tuned_params_to_go_app,
+)
+from ml.data_quality import clip_target_outliers, impute_features
 
 try:
     from ml import auto_tune_pycaret as _pycaret
@@ -369,8 +391,12 @@ _PHASE1_COARSE_MLP_CLF = {
 }
 
 
-def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42):
-    """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward."""
+def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42, gap: int = 0):
+    """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward.
+
+    When walk_forward, uses TimeSeriesSplit with optional gap (samples between train/test) to
+    reduce temporal leakage. Config: ml.tuning.timeseries_split_gap.
+    """
     if n_samples < 2:
         raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
     # KFold requires n_splits <= n_samples and n_splits >= 2
@@ -382,31 +408,49 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
             return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
         if n_samples < n_splits + 1:
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
-        return TimeSeriesSplit(n_splits=n_splits)
+        # gap: samples excluded between train and test (reduces temporal leakage)
+        return TimeSeriesSplit(n_splits=n_splits, gap=max(0, int(gap)))
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
 def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
     """Compute regression metrics from cross-validated predictions.
 
-    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance.
+    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance,
+    target_context (mean, std, min, max for MAE interpretation), baseline comparison
+    (naive MAE, improvement %), and learning_curve summary.
     - mae: mean absolute error (interpretable units)
-    - rmse: root mean squared error (penalizes large errors more)
-    - median_ae: median absolute error (robust to outliers)
-    - max_error: worst single prediction error
-    - explained_variance: 0–1, fraction of variance explained; negative if worse than predicting mean
+    - target_mean, target_std: provide context for MAE (e.g. MAE=6 vs mean=10 = ~60% relative error)
+    - baseline_mae: MAE of naive predictor (always predict target mean)
+    - baseline_improvement_pct: how much better than naive (positive = model adds value)
+    - learning_curve: val_still_improving, overfitting_gap
     """
     try:
+        y_flat = np.asarray(y).ravel()
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
-        mae = float(mean_absolute_error(y, y_pred))
-        rmse = float(np.sqrt(mean_squared_error(y, y_pred)))
-        r2 = float(r2_score(y, y_pred))
+        y_pred_flat = np.asarray(y_pred).ravel()
+        mae = float(mean_absolute_error(y_flat, y_pred_flat))
+        rmse = float(np.sqrt(mean_squared_error(y_flat, y_pred_flat)))
+        r2 = float(r2_score(y_flat, y_pred_flat))
         # r2 can be negative; clamp for display
         r2_pct = max(0.0, min(100.0, r2 * 100))
-        median_ae = float(median_absolute_error(y, y_pred))
-        worst_err = float(max_error(y, y_pred))
-        expl_var = float(explained_variance_score(y, y_pred))
-        return {
+        median_ae = float(median_absolute_error(y_flat, y_pred_flat))
+        worst_err = float(max_error(y_flat, y_pred_flat))
+        expl_var = float(explained_variance_score(y_flat, y_pred_flat))
+
+        # Target context: MAE vs target scale (e.g. extras mean 10–12, MAE 6 = ~50% error)
+        target_mean = float(np.mean(y_flat))
+        target_std = float(np.std(y_flat)) if len(y_flat) > 1 else 0.0
+        target_min = float(np.min(y_flat))
+        target_max = float(np.max(y_flat))
+        mae_pct_of_mean = round((mae / target_mean * 100), 2) if target_mean != 0 else None
+
+        # Baseline comparison: naive model predicts mean every time
+        naive_pred = np.full_like(y_flat, target_mean)
+        baseline_mae = float(mean_absolute_error(y_flat, naive_pred))
+        baseline_improvement_pct = round((baseline_mae - mae) / baseline_mae * 100, 2) if baseline_mae > 0 else 0.0
+
+        out: Dict[str, Any] = {
             "mae": round(mae, 4),
             "rmse": round(rmse, 4),
             "r2": round(r2, 4),
@@ -414,10 +458,71 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
             "median_ae": round(median_ae, 4),
             "max_error": round(worst_err, 4),
             "explained_variance": round(expl_var, 4),
+            "target_context": {
+                "target_mean": round(target_mean, 4),
+                "target_std": round(target_std, 4),
+                "target_min": round(target_min, 4),
+                "target_max": round(target_max, 4),
+                "mae_pct_of_mean": mae_pct_of_mean,
+            },
+            "baseline_comparison": {
+                "baseline_mae": round(baseline_mae, 4),
+                "baseline_improvement_pct": baseline_improvement_pct,
+            },
         }
+
+        # Learning curve: does validation still improve with more data? overfitting?
+        lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
+        if lc:
+            out["learning_curve"] = lc
+
+        return out
     except Exception as e:
         logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)
         return {}
+
+
+def _compute_learning_curve_regression(
+    pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any, scoring: str = "neg_mean_absolute_error"
+) -> Optional[Dict[str, Any]]:
+    """Compute learning curve summary for regression models.
+
+    Shows whether validation is still improving with more data (needing more data) or
+    if train-val gap is large (overfitting, needing higher regularization).
+
+    Returns dict with:
+    - val_still_improving: True if val score at 100% train size > val at ~50%
+    - overfitting_gap: train_score - val_score at max size (large = overfitting)
+    - train_sizes: fractions of data used
+    - train_scores_mean, val_scores_mean: mean scores per train size
+    """
+    try:
+        n_samples = X.shape[0]
+        if n_samples < 20:
+            return None
+        # Use 5 fractions: 0.2, 0.4, 0.6, 0.8, 1.0
+        train_sizes_frac = np.linspace(0.2, 1.0, 5)
+        train_sizes_abs, train_scores, val_scores = learning_curve(
+            pipe, X, y, cv=cv, scoring=scoring, train_sizes=train_sizes_frac, n_jobs=1
+        )
+        train_mean = np.mean(train_scores, axis=1)
+        val_mean = np.mean(val_scores, axis=1)
+        n_pts = len(train_sizes_frac)
+        mid_idx = max(0, n_pts // 2 - 1)
+        val_at_mid = val_mean[mid_idx]
+        val_at_full = val_mean[-1]
+        val_still_improving = val_at_full > val_at_mid
+        overfitting_gap = float(train_mean[-1] - val_mean[-1])
+        return {
+            "val_still_improving": bool(val_still_improving),
+            "overfitting_gap": round(overfitting_gap, 4),
+            "train_sizes_frac": [round(float(x), 2) for x in train_sizes_frac],
+            "train_scores_mean": [round(float(x), 4) for x in train_mean],
+            "val_scores_mean": [round(float(x), 4) for x in val_mean],
+        }
+    except Exception as e:
+        logger.warning("auto_tune.learning_curve_failed error=%s", e)
+        return None
 
 
 def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
@@ -451,6 +556,284 @@ def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray
     except Exception as e:
         logger.warning("auto_tune.compute_metrics_classification_failed error=%s", e)
         return {}
+
+
+# Simpler algorithms for complexity check: prefer these if within 1% of best
+_MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
+_MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
+
+
+def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
+    """Return feature names for MLQA sensitivity analysis when available."""
+    if model_kind == "batting":
+        return BATTING_FEATURE_COLS
+    if model_kind == "bowling":
+        return BOWLING_FEATURE_COLS
+    return None
+
+
+def _compute_mlqa_audit(
+    report: Dict[str, Any],
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    scoring: str,
+    task_type: str,
+    feature_names: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Run MLQA audit: overfitting, stability, bias, sensitivity, complexity.
+
+    Returns dict with: audit_status (PASS/FAIL/WARNING), key_findings, bias_report,
+    final_verdict, and structured checks for frontend display.
+    """
+    findings: List[str] = []
+    status_flags: List[str] = []
+    bias_report = "No protected groups defined; fairness audit skipped."
+
+    val_score = report.get("best_cv_score")
+    if val_score is None:
+        return {
+            "audit_status": "WARNING",
+            "key_findings": ["Missing validation score; audit incomplete."],
+            "bias_report": bias_report,
+            "final_verdict": "Insufficient data for deployment recommendation.",
+        }
+
+    try:
+        from sklearn.base import clone
+        from sklearn.metrics import get_scorer
+
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+        dip_low = mlqa["bias_dip_low"]
+        dip_high = mlqa["bias_dip_high"]
+        top_weight_thresh = mlqa["sensitivity_top_weight_threshold"]
+
+        # 1. Overfitting: train vs val delta
+        pipe_fit = clone(pipe)
+        pipe_fit.fit(X, y)
+        scorer = get_scorer(scoring)
+        train_score_val = scorer(pipe_fit, X, y)
+        delta = abs(float(train_score_val) - float(val_score))
+        overfitting_risk = delta > delta_thresh
+        if overfitting_risk:
+            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta:.4f} (>{delta_thresh}).")
+            status_flags.append("overfitting")
+        else:
+            findings.append(f"Overfitting check OK: Δ = {delta:.4f} ≤ {delta_thresh}.")
+
+        # 2. Stability: CV fold std
+        fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
+        fold_std = float(np.std(fold_scores))
+        unstable = fold_std > std_thresh
+        if unstable:
+            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (>{std_thresh}).")
+            status_flags.append("unstable")
+        else:
+            findings.append(f"Stability OK: CV fold σ = {fold_std:.4f}.")
+
+        # 3. Bias & Fairness
+        fairness = report.get("fairness_metrics") or {}
+        dip = fairness.get("disparate_impact_ratio")
+        if dip is not None:
+            biased = dip < dip_low or dip > dip_high
+            if biased:
+                findings.append(f"Biased Model: disparate_impact_ratio = {dip:.4f} outside [{dip_low}, {dip_high}].")
+                status_flags.append("biased")
+                bias_report = "Model shows disparate impact; review protected group treatment before deployment."
+            else:
+                findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [{dip_low}, {dip_high}].")
+                bias_report = "Model treats subgroups equitably within defined fairness bounds."
+
+        # 4. Sensitivity: top 3 features
+        est = pipe.named_steps.get("est")
+        imps = None
+        if est is not None:
+            if hasattr(est, "estimators_") and len(est.estimators_) > 0:
+                imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
+                if imp_list:
+                    imps = np.mean(imp_list, axis=0)
+            elif hasattr(est, "feature_importances_"):
+                imps = est.feature_importances_
+        if imps is not None:
+            if imps.ndim > 1:
+                imps = np.mean(imps, axis=0)
+            total = float(np.sum(imps))
+            if total > 0:
+                sorted_idx = np.argsort(-imps)[:3]
+                top_weight = float(imps[sorted_idx[0]] / total)
+                names = feature_names if feature_names and len(feature_names) == len(imps) else None
+                top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
+                if top_weight > top_weight_thresh:
+                    findings.append(
+                        f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}%."
+                    )
+                    status_flags.append("sensitivity")
+                else:
+                    findings.append(
+                        f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%."
+                    )
+        else:
+            findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
+
+        # 5. Complexity
+        candidates = report.get("candidates") or []
+        best_algo = None
+        best_score = val_score
+        if candidates and isinstance(candidates[0], dict):
+            best_algo = (candidates[0].get("algorithm") or "").lower()
+        simpler_recommendation = None
+        if best_algo and best_algo in _MLQA_COMPLEX_ALGS:
+            for c in candidates[1:]:
+                if not isinstance(c, dict):
+                    continue
+                s = c.get("best_score")
+                if s is None:
+                    continue
+                alg = (c.get("algorithm") or "").lower()
+                if alg in _MLQA_SIMPLER_ALGS:
+                    gap = abs(float(s) - float(best_score))
+                    if gap / max(abs(float(best_score)), 1e-9) <= 0.01:
+                        simpler_recommendation = alg
+                        break
+        if simpler_recommendation:
+            findings.append(
+                f"Complexity: simpler model ({simpler_recommendation}) within 1% of best; recommend for production."
+            )
+            status_flags.append("complexity")
+
+        # Aggregate status and verdict
+        if status_flags:
+            audit_status = (
+                "FAIL" if any(f in ("overfitting", "unstable", "biased") for f in status_flags) else "WARNING"
+            )
+        else:
+            audit_status = "PASS"
+        if audit_status == "FAIL":
+            final_verdict = "Rollback & Re-tune"
+        else:
+            final_verdict = "Proceed to Deployment"
+
+        return {
+            "audit_status": audit_status,
+            "key_findings": findings,
+            "bias_report": bias_report,
+            "final_verdict": final_verdict,
+            "checks": {
+                "overfitting": {"delta": round(delta, 4), "flagged": overfitting_risk},
+                "stability": {"cv_std": round(fold_std, 4), "flagged": unstable},
+            },
+        }
+    except Exception as e:
+        logger.warning("auto_tune.mlqa_audit_failed error=%s", e)
+        return {
+            "audit_status": "WARNING",
+            "key_findings": [f"Audit failed: {e!s}"],
+            "bias_report": bias_report,
+            "final_verdict": "Insufficient data for deployment recommendation.",
+        }
+
+
+def _get_prior_tuned_algorithm(
+    model_kind: str,
+    format_suffix: Optional[str],
+    out_dir: str,
+) -> Optional[Tuple[str, Optional[Dict[str, Any]]]]:
+    """Fetch prior tuned algorithm and params from go-app or tuning report file.
+
+    When re-tuning a model, we stick to the same algorithm and only fine-tune hyperparams.
+    Returns (algorithm_key, prior_params) or None if no prior tuning exists.
+    """
+    go_app_url = os.environ.get("GO_APP_URL", "").strip()
+    if go_app_url:
+        format_key = format_suffix if format_suffix else ""
+        params = get_tuned_params_from_go_app(go_app_url, model_kind, format_key, os.environ.get("GO_APP_API_KEY"))
+        if params:
+            alg_list = params.get("algorithms")
+            if isinstance(alg_list, list) and len(alg_list) > 0:
+                algo = str(alg_list[0]).lower().strip()
+                if algo in AVAILABLE_ALGORITHMS:
+                    return (algo, params)
+            estimator = (params.get("estimator") or "").strip().lower()
+            if estimator in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked", "gbm"):
+                algo = "gb" if estimator in ("gb", "gbm") else estimator
+                return (algo, params)
+
+    if out_dir and os.path.isdir(out_dir):
+        suffix = f"_{format_suffix}" if format_suffix else ""
+        report_name = f"tuning_report_{model_kind}{suffix}.json"
+        report_path = os.path.join(out_dir, report_name)
+        if os.path.isfile(report_path):
+            try:
+                with open(report_path, "r", encoding="utf-8") as f:
+                    report = json.load(f)
+                alg_list = report.get("algorithms")
+                if isinstance(alg_list, list) and len(alg_list) > 0:
+                    algo = str(alg_list[0]).lower().strip()
+                    if algo in ("rf", "gb", "et", "hgb", "mlp", "quantile", "stacked"):
+                        prior = report.get("config_snippet") or report.get("best_params") or {}
+                        return (algo, prior)
+            except Exception as e:
+                logger.debug("auto_tune.read_prior_report_failed path=%s error=%s", report_path, e)
+    return None
+
+
+def _normalize_hidden_layer_sizes(v: Any) -> Optional[Tuple[int, ...]]:
+    """Convert JSON-serialized hidden_layer_sizes to tuple for Optuna suggest_categorical.
+
+    JSON/API/store may return [64, 64] (list) or '[64, 64]' (string); Optuna requires (64, 64) (tuple)
+    or suggest_categorical raises ValueError. Returns None if value cannot be normalized.
+    """
+    if v is None:
+        return None
+    if isinstance(v, tuple):
+        return v
+    if isinstance(v, list):
+        try:
+            return tuple(int(x) for x in v)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                return tuple(int(x) for x in parsed)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return None
+
+
+def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert stored config_snippet to Optuna trial params for regression."""
+    out: Dict[str, Any] = {"algorithm": algo}
+    p = {}
+    for k, v in params.items():
+        key = k
+        for prefix in ("est__estimator__", "est__"):
+            if key.startswith(prefix):
+                key = key[len(prefix) :]
+                break
+        p[key] = v
+    for key in (
+        "n_estimators",
+        "max_depth",
+        "min_samples_leaf",
+        "learning_rate",
+        "max_iter",
+        "hidden_layer_sizes",
+        "alpha",
+        "learning_rate_init",
+    ):
+        if key in p and p[key] is not None:
+            if key == "hidden_layer_sizes":
+                normalized = _normalize_hidden_layer_sizes(p[key])
+                if normalized is not None:
+                    out[key] = normalized
+            else:
+                out[key] = p[key]
+    return out
 
 
 def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
@@ -621,7 +1004,6 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
         p = dict(_PHASE1_COARSE_HGB)
         p["est__estimator__random_state"] = [rs]
         candidates.append(("hgb", "HistGradientBoostingRegressor", HistGradientBoostingRegressor(), p))
-    # quantile and stacked: use gb-style coarse
     if "quantile" in allow:
         try:
             tp = get_training_params(model_kind)
@@ -633,7 +1015,7 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
                 loss="quantile",
                 alpha=tp.get("quantile_level", 0.5),
             )
-            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 12, 20]}))
+            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 10, 14, 20]}))
         except (ValueError, KeyError):
             pass
     if "stacked" in allow:
@@ -743,8 +1125,9 @@ def _run_search_two_phase_single_regression(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search for single-output regression (extras)."""
+    """Two-phase search for single-output regression (extras). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
@@ -754,7 +1137,8 @@ def _run_search_two_phase_single_regression(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression_single(allow)
     if not candidates:
@@ -770,55 +1154,81 @@ def _run_search_two_phase_single_regression(
             validation_method,
             n_jobs_override,
         )
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms (extras)",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for key, name, base_est, param_dist in candidates:
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
+            message=f"Fine-tune only ({name}), skipping screening",
         )
         pipe = _build_pipeline_single_regression(base_est)
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, y)
+        initial_score = float(cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
+            message="Screening algorithms (extras)",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for key, name, base_est, param_dist in candidates:
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+            )
+            pipe = _build_pipeline_single_regression(base_est)
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
@@ -830,12 +1240,16 @@ def _run_search_two_phase_single_regression(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [r[0] for r in results],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -850,7 +1264,7 @@ def _run_search_two_phase_single_regression(
         elif alg == "gb":
             est = GradientBoostingRegressor(
                 n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -877,7 +1291,7 @@ def _run_search_two_phase_single_regression(
         else:
             est = HistGradientBoostingRegressor(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -907,6 +1321,11 @@ def _run_search_two_phase_single_regression(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
@@ -964,12 +1383,16 @@ def _run_search_two_phase_single_regression(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [r[0] for r in results],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -993,7 +1416,8 @@ def _run_search_single_regression(
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression_single(model_kind) if k in allow]
     if not candidates:
         raise ValueError(f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}")
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1046,6 +1470,9 @@ def _run_search_single_regression(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1069,7 +1496,8 @@ def _run_search_classification(
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_classification(model_kind) if k in allow]
     if not candidates:
         raise ValueError(f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}")
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1116,12 +1544,16 @@ def _run_search_classification(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": algorithms_used,
+        "algorithms_requested": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": all_cv_results,
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1161,10 +1593,14 @@ def _run_search_two_phase(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s)."""
+    """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s).
+    When algorithms has a single element (from prior tuning), Phase 1 is skipped and we go
+    straight to Optuna fine-tuning. prior_params can seed the first Optuna trial (warm start).
+    """
     tuning_cfg = get_tuning_config()
-    algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
+    algs = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile"])
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
         algs = ["rf", "gb", "et", "hgb", "quantile", "stacked"]
         stages = tuning_cfg.get("stages") or {}
@@ -1172,7 +1608,8 @@ def _run_search_two_phase(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression(model_kind, allow)
     if not candidates:
@@ -1189,58 +1626,85 @@ def _run_search_two_phase(
             n_jobs_override,
         )
 
-    # Phase 1: coarse screening
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms with coarse hyperparameters",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+    # Skip Phase 1 when single algorithm (prior fine-tune): go straight to Optuna
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for i, (key, name, base_est, param_dist) in enumerate(candidates):
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
-            algorithms_screened=[c[0] for c in candidates],
+            message=f"Fine-tune only ({name}), skipping algorithm screening",
+            algorithms_screened=[key],
         )
         pipe = _build_pipeline(base_est)
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, Y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, Y)
+        initial_score = float(cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
+        # Phase 1: coarse screening
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
-            message=f"{name} best score: {search.best_score_:.4f}",
+            message="Screening algorithms with coarse hyperparameters",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for i, (key, name, base_est, param_dist) in enumerate(candidates):
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+                algorithms_screened=[c[0] for c in candidates],
+            )
+            pipe = _build_pipeline(base_est)
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, Y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+                message=f"{name} best score: {search.best_score_:.4f}",
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
 
     if not _HAS_OPTUNA or len(winners) == 0:
         config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
@@ -1253,6 +1717,7 @@ def _run_search_two_phase(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [c[0] for c in candidates],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "n_targets": int(Y.shape[1]),
@@ -1261,6 +1726,9 @@ def _run_search_two_phase(
         }
         if best_pipe is not None:
             report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     # Phase 2: Optuna fine-tuning on winner(s)
@@ -1295,12 +1763,32 @@ def _run_search_two_phase(
             )
         elif alg == "gb":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
-            depth = trial.suggest_int("max_depth", 3, 14, step=1)
+            depth = trial.suggest_int("max_depth", 3, 20, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
             leaf = trial.suggest_int("min_samples_leaf", 1, 8)
             est = GradientBoostingRegressor(
                 n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
+        elif alg == "quantile":
+            try:
+                tp = get_training_params(model_kind)
+                n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+                depth = trial.suggest_int("max_depth", 4, 20, step=2)
+                lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
+                leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+                est = GradientBoostingRegressor(
+                    n_estimators=n_est,
+                    max_depth=depth,
+                    learning_rate=lr,
+                    min_samples_leaf=leaf,
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=tp.get("quantile_level", 0.5),
+                )
+            except (ValueError, KeyError):
+                est = GradientBoostingRegressor(
+                    n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
+                )
         elif alg == "et":
             n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
@@ -1341,6 +1829,11 @@ def _run_search_two_phase(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(
         _optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback]
     )
@@ -1363,6 +1856,26 @@ def _run_search_two_phase(
                 min_samples_leaf=params["min_samples_leaf"],
                 random_state=random_state,
             )
+        elif alg == "quantile":
+            try:
+                tp = get_training_params(model_kind)
+                est = GradientBoostingRegressor(
+                    n_estimators=params.get("n_estimators", 200),
+                    max_depth=params.get("max_depth", 12),
+                    learning_rate=params.get("learning_rate", 0.1),
+                    min_samples_leaf=params.get("min_samples_leaf", 2),
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=tp.get("quantile_level", 0.5),
+                )
+            except (ValueError, KeyError):
+                est = GradientBoostingRegressor(
+                    n_estimators=params.get("n_estimators", 200),
+                    max_depth=params.get("max_depth", 12),
+                    random_state=random_state,
+                    loss="quantile",
+                    alpha=0.5,
+                )
         elif alg == "et":
             est = ExtraTreesRegressor(
                 n_estimators=params["n_estimators"],
@@ -1414,6 +1927,7 @@ def _run_search_two_phase(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [c[0] for c in candidates],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "n_targets": int(Y.shape[1]),
@@ -1439,15 +1953,16 @@ def _run_search(
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
-    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile", "stacked"])
+    algorithms = algorithms or tuning_cfg.get("algorithms", ["rf", "gb", "quantile"])
     validation_method = validation_method or tuning_cfg.get("validation_method", "walk_forward")
     allow = frozenset(a.lower() for a in algorithms)
     candidates = [(k, n, e, p) for k, n, e, p in _search_space_regression(model_kind) if k in allow]
     if not candidates:
         raise ValueError(
-            f"No algorithms selected for {model_kind}; available: rf, gb, quantile, stacked. You requested: {list(algorithms)}"
+            f"No algorithms selected for {model_kind}; available: rf, gb, quantile, et, hgb, stacked, mlp. You requested: {list(algorithms)}"
         )
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     best_score = None
     best_pipe = None
     best_params = None
@@ -1499,6 +2014,7 @@ def _run_search(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": algorithms_used,
+        "algorithms_requested": algorithms_used,
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "n_targets": int(Y.shape[1]),
@@ -1506,6 +2022,9 @@ def _run_search(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, Y, cv, scoring, "regression", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -1562,8 +2081,16 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
-    required = [c for c in BATTING_FEATURE_COLS if c not in BAT_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
+    # Drop rows missing essential targets (aligned with train_batting)
+    target_subset = [c for c in BATTING_TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
+    # Impute missing feature values (median for numeric, -1 for categorical)
+    feature_cols_in_df = [c for c in BATTING_FEATURE_COLS if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in BATTING_FEATURE_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
     X_raw = df[BATTING_FEATURE_COLS].astype(float).values
     from .feature_transforms import apply_transforms, get_transform_config
 
@@ -1577,12 +2104,8 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     if Y.shape[1] < len(BATTING_TARGET_COLS):
         pad = np.zeros((Y.shape[0], len(BATTING_TARGET_COLS) - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
-    sr = np.zeros((len(runs), 1))
-    ok = balls > 0
-    sr[ok] = (runs[ok] / balls[ok]) * 100.0
-    Y = np.concatenate([Y, sr], axis=1)
+    # Strike rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return X, Y
 
 
@@ -1598,19 +2121,34 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
             df[col] = 0.0
         else:
             df[col] = df[col].fillna(0.0)
-    required = [c for c in BOWLING_FEATURE_COLS if c not in BOWL_SEQ_COLS]
-    df = df.dropna(subset=[c for c in required if c in df.columns])
-    X = df[BOWLING_FEATURE_COLS].astype(float).values
+    # Normalize toss: CSV may have "bat"/"field" strings
+    if "toss" in df.columns and df["toss"].dtype == object:
+        df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(lambda x: 1.0 if x == "bat" else 0.0)
+    # Drop rows missing essential targets (aligned with train_bowling)
+    target_subset = [c for c in BOWLING_TARGET_COLS if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
+    # Impute missing feature values (median for numeric, -1 for categorical)
+    feature_cols_in_df = [c for c in BOWLING_FEATURE_COLS if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in BOWLING_FEATURE_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
+    X_raw = df[BOWLING_FEATURE_COLS].astype(float).values
+    from .feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config("bowling")
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        X, _ = apply_transforms(X_raw, list(BOWLING_FEATURE_COLS), transform_config, "bowling")
+    else:
+        X = X_raw
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BOWLING_TARGET_COLS):
         pad = np.zeros((Y.shape[0], len(BOWLING_TARGET_COLS) - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
-    runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-    balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-    overs = np.where(balls > 0, balls / 6.0, 1.0)
-    econ = np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-    Y = np.concatenate([Y, econ], axis=1)
+    # Economy rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return X, Y
 
 
@@ -1709,6 +2247,7 @@ def run_auto_tune(
     task_total: int = 1,
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -1721,12 +2260,41 @@ def run_auto_tune(
     params = get_training_params(model_kind)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params: Optional[Dict[str, Any]] = None
+    prior = None if rescreen else _get_prior_tuned_algorithm(model_kind, format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=%s format=%s algorithm=%s (skipping screening, fine-tune only)",
+            model_kind,
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
+
+    # Apply percentile-based outlier clipping on targets (aligned with train_batting/train_bowling)
+    clip_percentile = params.get("target_clip_percentile", 99.0)
+    target_names = {
+        "batting": ["runs", "balls", "fours", "sixes", "batting_position"],
+        "bowling": ["runs", "balls", "wickets"],
+        "fielding": ["catches", "run_outs", "stumpings"],
+    }.get(model_kind, [f"target_{i}" for i in range(Y.shape[1] if Y.ndim > 1 else 1)])
+    Y, clip_info = clip_target_outliers(
+        Y, percentile=clip_percentile, target_names=target_names[: (Y.shape[1] if Y.ndim > 1 else 1)]
+    )
+    if clip_info:
+        logger.info(
+            "auto_tune.clip_target_outliers model=%s percentile=%.1f info=%s", model_kind, clip_percentile, clip_info
+        )
 
     best_pipe, best_params, report = _run_search_two_phase(
         X,
@@ -1742,7 +2310,10 @@ def run_auto_tune(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
+    if clip_info:
+        report["target_clip_info"] = clip_info
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
 
@@ -1760,6 +2331,7 @@ def run_auto_tune_extras(
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -1772,13 +2344,33 @@ def run_auto_tune_extras(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params = None
+    prior = None if rescreen else _get_prior_tuned_algorithm("extras", format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=extras format=%s algorithm=%s (fine-tune only)",
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
+    # Apply outlier clipping on targets (aligned with train_extras)
+    clip_percentile = params.get("target_clip_percentile", 99.0)
+    y, clip_info = clip_target_outliers(y.reshape(-1, 1), percentile=clip_percentile, target_names=["extras"])
+    y = y.ravel()
+    if clip_info:
+        logger.info("auto_tune.clip_target_outliers model=extras percentile=%.1f info=%s", clip_percentile, clip_info)
+
     best_pipe, _, report = _run_search_two_phase_single_regression(
         X,
         y,
@@ -1793,6 +2385,7 @@ def run_auto_tune_extras(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
@@ -1813,6 +2406,8 @@ def run_auto_tune_extras(
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report
+    if clip_info:
+        report["target_clip_info"] = clip_info
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -1831,8 +2426,9 @@ def _run_search_two_phase_classification(
     n_jobs_override: Optional[int] = None,
     task_index: int = 0,
     task_total: int = 1,
+    prior_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
-    """Two-phase search for classification (win)."""
+    """Two-phase search for classification (win). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
     algs = algorithms or ["rf", "gb"]
     if algs == "all" or (isinstance(algs, list) and "all" in [str(a).lower() for a in algs]):
@@ -1842,7 +2438,8 @@ def _run_search_two_phase_classification(
         if neural.get("mlp", True):
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state)
+    gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
+    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_classification(allow)
     if not candidates:
@@ -1858,55 +2455,81 @@ def _run_search_two_phase_classification(
             validation_method,
             n_jobs_override,
         )
-    _progress.write_progress(
-        phase="screening",
-        model_kind=model_kind,
-        format_suffix=format_suffix,
-        task_index=task_index,
-        task_total=task_total,
-        message="Screening algorithms (win)",
-        algorithms_screened=[c[0] for c in candidates],
-    )
+
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
-    for key, name, base_est, param_dist in candidates:
+    if len(candidates) == 1 and _HAS_OPTUNA:
+        key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
-            phase="screening",
+            phase="fine_tuning",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
             algorithm=key,
-            message=f"Testing {name}",
+            message=f"Fine-tune only ({name}), skipping screening",
         )
         pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
-        n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
-        search = RandomizedSearchCV(
-            pipe,
-            param_distributions=param_dist,
-            n_iter=n_phase1,
-            cv=cv,
-            scoring=scoring,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            error_score="raise",
-        )
-        search.fit(X, y)
-        best_params = dict(search.best_params_)
-        params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+        pipe.fit(X, y)
+        initial_score = float(cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+        best_params = {}
+        if param_dist:
+            for k, vs in param_dist.items():
+                if isinstance(vs, (list, tuple)) and len(vs) > 0:
+                    best_params[k] = vs[0]
+                elif vs is not None:
+                    best_params[k] = vs
+        results = [(key, name, initial_score, best_params, pipe)]
+        best_key, best_name, best_score, best_params, best_pipe = key, name, initial_score, best_params, pipe
+        winners = [key]
+    else:
         _progress.write_progress(
             phase="screening",
             model_kind=model_kind,
             format_suffix=format_suffix,
             task_index=task_index,
             task_total=task_total,
-            algorithm=key,
-            hyperparams=params_display,
-            best_score=float(search.best_score_),
+            message="Screening algorithms (win)",
+            algorithms_screened=[c[0] for c in candidates],
         )
-        results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-    results.sort(key=lambda r: r[2], reverse=True)
-    best_key, best_name, best_score, best_params, best_pipe = results[0]
-    winners = [r[0] for r in results[:2]]
+        for key, name, base_est, param_dist in candidates:
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                message=f"Testing {name}",
+            )
+            pipe = Pipeline([("scaler", StandardScaler()), ("est", base_est)])
+            n_phase1 = min(PHASE1_TRIALS_PER_ALGORITHM, max(1, _count_combinations(param_dist) // 2))
+            search = RandomizedSearchCV(
+                pipe,
+                param_distributions=param_dist,
+                n_iter=n_phase1,
+                cv=cv,
+                scoring=scoring,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                error_score="raise",
+            )
+            search.fit(X, y)
+            best_params = dict(search.best_params_)
+            params_display = {k.replace("est__", ""): v for k, v in best_params.items()}
+            _progress.write_progress(
+                phase="screening",
+                model_kind=model_kind,
+                format_suffix=format_suffix,
+                task_index=task_index,
+                task_total=task_total,
+                algorithm=key,
+                hyperparams=params_display,
+                best_score=float(search.best_score_),
+            )
+            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+        results.sort(key=lambda r: r[2], reverse=True)
+        best_key, best_name, best_score, best_params, best_pipe = results[0]
+        winners = [r[0] for r in results[:2]]
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
@@ -1918,12 +2541,16 @@ def _run_search_two_phase_classification(
             "cv_splits": cv_splits,
             "validation_method": validation_method,
             "algorithms": [r[0] for r in results],
+            "algorithms_requested": [r[0] for r in results],
             "n_samples": int(X.shape[0]),
             "n_features": int(X.shape[1]),
             "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+            report["mlqa_audit"] = _compute_mlqa_audit(
+                report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+            )
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -1938,7 +2565,7 @@ def _run_search_two_phase_classification(
         elif alg == "gb":
             est = GradientBoostingClassifier(
                 n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -1965,7 +2592,7 @@ def _run_search_two_phase_classification(
         else:
             est = HistGradientBoostingClassifier(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 14, step=1),
+                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
                 random_state=random_state,
@@ -1994,6 +2621,11 @@ def _run_search_two_phase_classification(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
     )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
@@ -2051,12 +2683,16 @@ def _run_search_two_phase_classification(
         "cv_splits": cv_splits,
         "validation_method": validation_method,
         "algorithms": winners,
+        "algorithms_requested": [r[0] for r in results],
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
+        report["mlqa_audit"] = _compute_mlqa_audit(
+            report, best_pipe, X, y, cv, scoring, "classification", _mlqa_feature_names(model_kind)
+        )
     return best_pipe, best_params, report
 
 
@@ -2073,6 +2709,7 @@ def run_auto_tune_win(
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
+    rescreen: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase classification search for win; save model only + report."""
     tuning = _get_tuning_config()
@@ -2085,11 +2722,24 @@ def run_auto_tune_win(
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
     algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    pycaret_algos = _maybe_run_pycaret_ranking(
-        X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
-    )
-    if pycaret_algos is not None:
-        algorithms = pycaret_algos
+    prior_params = None
+    prior = None if rescreen else _get_prior_tuned_algorithm("win", format_suffix, out_dir)
+    if prior is not None:
+        prior_algo, prior_cfg = prior
+        algorithms = [prior_algo]
+        if prior_cfg:
+            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+        logger.info(
+            "auto_tune.using_prior_algorithm model=win format=%s algorithm=%s (fine-tune only)",
+            format_suffix or "(unified)",
+            prior_algo,
+        )
+    if use_pycaret is not False and prior is None:
+        pycaret_algos = _maybe_run_pycaret_ranking(
+            X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
+        )
+        if pycaret_algos is not None:
+            algorithms = pycaret_algos
     validation_method = validation_method or tuning.get("validation_method", "walk_forward")
     y = Y.ravel() if Y.ndim > 1 else Y
     best_pipe, _, report = _run_search_two_phase_classification(
@@ -2106,6 +2756,7 @@ def run_auto_tune_win(
         n_jobs_override,
         task_index,
         task_total,
+        prior_params=prior_params,
     )
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
@@ -2146,6 +2797,11 @@ def main() -> None:
         "--format", default="", help="Format code (e.g. T20, ODI); used for artifact suffix and API filter"
     )
     parser.add_argument("--all-formats", action="store_true", help="Loop over ml.formats and tune each (CSV only)")
+    parser.add_argument(
+        "--unified",
+        action="store_true",
+        help="Tune one unified model on all formats combined (saves to legacy artifact names, no format suffix).",
+    )
     parser.add_argument("--out", default="", help="Output dir (default: ML_SERVICE_OUTPUT_DIR or config)")
     parser.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""))
     parser.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""))
@@ -2180,14 +2836,20 @@ def main() -> None:
         action="store_true",
         help="Skip AutoGluon accuracy boost stage.",
     )
+    parser.add_argument(
+        "--rescreen",
+        action="store_true",
+        help="Force full algorithm screening even when prior tuned params exist (ignore fine-tune-only mode).",
+    )
     args = parser.parse_args()
 
     logger.info(
-        "pipeline: auto_tune starting model=%s from_api=%s format=%s all_formats=%s out_dir=%s",
+        "pipeline: auto_tune starting model=%s from_api=%s format=%s all_formats=%s unified=%s out_dir=%s",
         args.model,
         args.from_api,
         args.format or "(detected)",
         args.all_formats,
+        args.unified,
         args.out or "(default)",
     )
 
@@ -2219,7 +2881,9 @@ def main() -> None:
 
     models = ["batting", "bowling", "fielding", "extras", "win"] if args.model == "all" else [args.model]
     formats_to_run: List[Optional[str]] = [None]
-    if args.all_formats:
+    if args.unified:
+        formats_to_run = [None]
+    elif args.all_formats:
         formats_to_run = _config_formats()
     elif args.format:
         formats_to_run = [args.format.strip().upper()]
@@ -2265,7 +2929,9 @@ def main() -> None:
                 continue
             for fmt in formats_to_run:
                 argv = [sys.executable, "-m", "ml.auto_tune", "--model", model_kind, "--out", out_dir]
-                if fmt:
+                if args.unified:
+                    argv.append("--unified")
+                elif fmt:
                     argv.extend(["--format", fmt])
                 if args.from_api:
                     argv.extend(["--from-api", "--cutoff", args.cutoff or "", "--go-app-url", args.go_app_url or ""])
@@ -2283,6 +2949,8 @@ def main() -> None:
                     argv.append("--fast")
                 if args.no_autogluon:
                     argv.append("--no-autogluon")
+                if args.rescreen:
+                    argv.append("--rescreen")
                 cmds.append(argv)
         return cmds
 
@@ -2335,54 +3003,110 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
                                 report = run_auto_tune_extras(
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
+                                    rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
+                                _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
-                                    "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
-                                    fcode,
-                                    X.shape[0],
+                                    "auto_tune.done model=extras format=unified n=%s best_cv_score=%s",
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune_extras(
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        use_autogluon=use_autogluon,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, "extras", fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                         if model_kind == "win":
                             by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_win_data unified empty")
                                     continue
                                 report = run_auto_tune_win(
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
+                                    rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
+                                _maybe_save_tuned_params(args.go_app_url, "win", None, report, args.api_key or None)
                                 logger.info(
-                                    "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
-                                    fcode,
-                                    X.shape[0],
+                                    "auto_tune.done model=win format=unified n=%s best_cv_score=%s",
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune_win(
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        use_autogluon=use_autogluon,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, "win", fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                         if model_kind == "batting":
                             X, Y = load_batting_from_api(
@@ -2397,31 +3121,59 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
-                            # Run once per format from API
-                            for fcode, (X, Y) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_fielding_data unified empty")
                                     continue
                                 report = run_auto_tune(
                                     model_kind,
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
+                                    rescreen=args.rescreen,
                                 )
                                 _maybe_save_tuned_params(
-                                    args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                    args.go_app_url, model_kind, None, report, args.api_key or None
                                 )
                                 logger.info(
-                                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                    "auto_tune.done model=%s format=unified n=%s best_cv_score=%s",
                                     model_kind,
-                                    fcode,
-                                    X.shape[0],
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune(
+                                        model_kind,
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                        model_kind,
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                     except (ValueError, RuntimeError) as e:
                         logger.error("auto_tune.from_api_load_failed model=%s format=%s error=%s", model_kind, fmt, e)
@@ -2439,6 +3191,7 @@ def main() -> None:
                         validation_method_override,
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
+                        rescreen=args.rescreen,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -2471,7 +3224,7 @@ def main() -> None:
                         except (RuntimeError, FileNotFoundError) as e:
                             logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
                             continue
-                        for fcode, (X, Y) in by_f.items():
+                        for fcode, (X, Y, *_) in by_f.items():
                             if X.size == 0 or Y.size == 0:
                                 continue
                             report = run_auto_tune(
@@ -2484,6 +3237,7 @@ def main() -> None:
                                 validation_method_override,
                                 use_pycaret=use_pycaret,
                                 fast_mode=fast_mode,
+                                rescreen=args.rescreen,
                             )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
@@ -2524,6 +3278,7 @@ def main() -> None:
                         validation_method_override,
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
+                        rescreen=args.rescreen,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

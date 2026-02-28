@@ -142,9 +142,9 @@ def _compute_metrics_batting(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str
 
 
 def _compute_metrics_bowling(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """y_true/y_pred: (n, 4) runs, balls, wickets, economy."""
+    """y_true/y_pred: (n, 3) runs, balls, wickets. Economy is derived post-prediction."""
     metrics = {}
-    names = ["runs", "balls", "wickets", "economy"]
+    names = ["runs", "balls", "wickets"]
     for i, name in enumerate(names):
         if i < y_true.shape[1] and i < y_pred.shape[1]:
             metrics[f"mae_{name}"] = _mae(y_true[:, i], y_pred[:, i])

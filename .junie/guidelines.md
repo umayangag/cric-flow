@@ -56,7 +56,7 @@
   - Use interfaces + mockery for mocks (no fakes).
   - For unit tests, use table-driven tests following the AAA pattern (arrange, act, assert). Also prefer using *_test package for unit tests. avoid using if conditions inside t.Run. Instead move conditional checks inside assert function.
   - error handling and error logging is a must. do not suppress errors.
-  - Go: 1.25+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name the file `{pkg}_test.go` and append `_test` to the package name`.
+  - Go: 1.26+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name the file `{pkg}_test.go` and append `_test` to the package name`.
   - Python: 3.10+, `pytest` under `tests/` with `test_*.py`, deps via `requirements.txt`, `make test` or `pytest -q`, no ifs in tests; table‑driven.
   - Use explicit relative imports in Python.
 - Execution: Prefer Makefile targets and docker-compose. Default to unit tests; run integration via `docker compose up` only when planned.

@@ -430,15 +430,18 @@ def _predict_players_with_features(
     for i, pid in enumerate(player_ids):
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
-        vals_bat = list(row_bat) + [0.0] * max(0, 6 - len(row_bat))
-        vals_bowl = list(row_bowl) + [0.0] * max(0, 4 - len(row_bowl))
+        vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
+        vals_bowl = list(row_bowl) + [0.0] * max(0, 3 - len(row_bowl))  # runs, balls, wickets (economy derived)
         runs = float(max(0.0, vals_bat[0]))
         balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
         fours = float(max(0.0, vals_bat[2])) if len(vals_bat) > 2 else None
         sixes = float(max(0.0, vals_bat[3])) if len(vals_bat) > 3 else None
         wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
+        # Economy is derived from runs and balls (not a model target)
         default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
-        economy = float(max(0.0, vals_bowl[3])) if len(vals_bowl) > 3 else default_econ
+        r_conceded = float(max(0.0, vals_bowl[0])) if len(vals_bowl) > 0 else 0.0
+        balls_bowled = float(max(0.0, vals_bowl[1])) if len(vals_bowl) > 1 else 6.0
+        economy = (r_conceded / (balls_bowled / 6.0)) if balls_bowled > 0 else default_econ
         catches, run_outs = 0.0, 0.0
         out.append(
             BacktestPlayerPred(
@@ -1033,9 +1036,6 @@ def _enrich_with_tuning_report(
         rec["tuned"] = True
         rec["best_cv_score"] = report.get("best_cv_score")
         rec["scoring"] = report.get("scoring", "neg_mean_absolute_error")
-        algorithms = report.get("algorithms") or []
-        algo_names = [_ALGORITHM_NAMES.get(a, a) for a in algorithms]
-        rec["algorithm"] = ", ".join(algo_names) if algo_names else None
         config = report.get("config_snippet") or report.get("best_params") or {}
         params: Dict[str, Any] = {}
         for k, v in config.items():
@@ -1046,6 +1046,15 @@ def _enrich_with_tuning_report(
                 k_clean = k[len("est__") :]
             params[k_clean] = v
         rec["tuned_parameters"] = params
+        rec["algorithms_requested"] = report.get("algorithms_requested")
+        # Show only the selected algorithm (used for final model), not Phase 2 finalists
+        selected_algo = params.get("algorithm")
+        if selected_algo is not None:
+            rec["algorithm"] = _ALGORITHM_NAMES.get(str(selected_algo).lower(), str(selected_algo))
+        else:
+            algorithms = report.get("algorithms") or []
+            best_key = algorithms[0] if algorithms else None
+            rec["algorithm"] = _ALGORITHM_NAMES.get(str(best_key).lower(), str(best_key)) if best_key else None
         rec["cv_splits"] = report.get("cv_splits")
         rec["validation_method"] = report.get("validation_method")
         rec["n_samples"] = report.get("n_samples")
@@ -1053,18 +1062,26 @@ def _enrich_with_tuning_report(
         metrics = report.get("metrics") or {}
         if metrics:
             rec["metrics"] = metrics
-            if "accuracy_pct" in metrics:
-                rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
-            elif "mae" in metrics:
-                # Regression: show MAE, RMSE, R² for clearer accuracy assessment
-                parts = [f"MAE={metrics['mae']}"]
-                if "rmse" in metrics:
-                    parts.append(f"RMSE={metrics['rmse']}")
-                if "r2_pct" in metrics:
-                    parts.append(f"R²={metrics['r2_pct']}%")
-                rec["accuracy_display"] = ", ".join(parts)
-            elif "r2_pct" in metrics:
-                rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+        mlqa = report.get("mlqa_audit")
+        if mlqa and isinstance(mlqa, dict):
+            rec["mlqa_audit"] = mlqa
+        # Set accuracy_display from metrics (preferred) or fallback for neg_mean_absolute_error
+        scoring = rec.get("scoring", "neg_mean_absolute_error")
+        if "accuracy_pct" in (metrics or {}):
+            rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
+        elif "mae" in (metrics or {}):
+            parts = [f"MAE={metrics['mae']}"]
+            if "rmse" in metrics:
+                parts.append(f"RMSE={metrics['rmse']}")
+            if "r2_pct" in metrics:
+                parts.append(f"R²={metrics['r2_pct']}%")
+            rec["accuracy_display"] = ", ".join(parts)
+        elif "r2_pct" in (metrics or {}):
+            rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+        elif scoring == "neg_mean_absolute_error" and rec.get("best_cv_score") is not None:
+            # neg_MAE is negative; show as MAE (interpretable) instead of percentage
+            mae_val = abs(float(rec["best_cv_score"]))
+            rec["accuracy_display"] = f"MAE={mae_val:.2f} (neg_MAE={rec['best_cv_score']:.4f})"
     except Exception as e:
         logger.debug("model_stats.read_report_failed", path=report_path, error=str(e))
         rec["tuned"] = False
@@ -1188,15 +1205,19 @@ async def predict_batting(features: List[BattingFeatures]):
         preds = []
         for row in Y:
             vals = row if np.ndim(row) == 1 else row.ravel()
-            vals = list(vals) + [0.0] * max(0, 6 - len(vals))
+            vals = list(vals) + [0.0] * max(0, 5 - len(vals))
+            runs = float(vals[0])
+            balls = float(vals[1])
+            # Derive strike_rate post-prediction (not a training target to avoid leakage)
+            sr = (runs / balls * 100.0) if balls > 0 else 0.0
             preds.append(
                 BattingPrediction(
-                    runs_scored=float(vals[0]),
-                    balls_faced=float(vals[1]),
+                    runs_scored=runs,
+                    balls_faced=balls,
                     fours_scored=float(vals[2]),
                     sixes_scored=float(vals[3]),
                     batting_position=float(vals[4]),
-                    strike_rate=float(vals[5]),
+                    strike_rate=sr,
                 )
             )
         logger.info("predict.batting.success", predictions=len(preds))
@@ -1276,13 +1297,18 @@ async def predict_bowling(features: List[BowlingFeatures]):
         preds = []
         for row in Y:
             vals = row if np.ndim(row) == 1 else row.ravel()
-            vals = list(vals) + [0.0] * max(0, 4 - len(vals))
+            vals = list(vals) + [0.0] * max(0, 3 - len(vals))  # runs, balls, wickets
+            runs_conceded = float(vals[0])
+            deliveries = float(vals[1])
+            wickets_taken = float(vals[2])
+            # Economy derived from runs and balls (not a training target)
+            econ = (runs_conceded / (deliveries / 6.0)) if deliveries > 0 else 0.0
             preds.append(
                 BowlingPrediction(
-                    runs_conceded=float(vals[0]),
-                    deliveries=float(vals[1]),
-                    wickets_taken=float(vals[2]),
-                    econ=float(vals[3]),
+                    runs_conceded=runs_conceded,
+                    deliveries=deliveries,
+                    wickets_taken=wickets_taken,
+                    econ=econ,
                 )
             )
         logger.info("predict.bowling.success", predictions=len(preds))
@@ -1479,7 +1505,7 @@ def _run_training_subprocess(
     Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
     Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
     extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
-    Output is streamed to stdout/stderr so container logs show detailed training progress.
+    Output is captured and logged on failure for debugging.
     """
     import subprocess
 
@@ -1504,7 +1530,8 @@ def _run_training_subprocess(
             cmd,
             cwd=root,
             env=env,
-            capture_output=False,
+            capture_output=True,
+            text=True,
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as e:
@@ -1515,10 +1542,19 @@ def _run_training_subprocess(
         )
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
     if proc.returncode != 0:
+        # Log subprocess output for debugging (includes Python traceback on failure)
+        stdout_lines = (proc.stdout or "").strip().splitlines() if proc.stdout else []
+        stderr_lines = (proc.stderr or "").strip().splitlines() if proc.stderr else []
+        # Keep last N lines to avoid huge logs; tracebacks are usually at the end
+        max_lines = 100
+        stdout_tail = "\n".join(stdout_lines[-max_lines:]) if stdout_lines else "(empty)"
+        stderr_tail = "\n".join(stderr_lines[-max_lines:]) if stderr_lines else "(empty)"
         logger.error(
             "pipeline: training subprocess failed",
             module=module,
             returncode=proc.returncode,
+            subprocess_stdout=stdout_tail,
+            subprocess_stderr=stderr_tail,
         )
         raise ValueError(f"Training failed (exit {proc.returncode})")
 
@@ -1815,10 +1851,13 @@ async def admin_train_auto_tune(
     format: str = "",
     all_formats: str = "",
     unified: str = "",
+    rescreen: str = "",
+    algorithms: str = "",
 ):
     """Run auto-tune for selected model(s) and format(s).
     Query params: model (batting|bowling|fielding|extras|win|all), format (TEST|ODI|T20|T20I),
-    all_formats (1|true = tune each per-format), unified (1|true = tune unified model only, no format).
+    all_formats (1|true = tune each per-format), unified (1|true = tune unified model only, no format),
+    rescreen (1|true = full algorithm search, ignore prior), algorithms (comma-separated e.g. rf,gb,quantile).
     When all_formats is set, format is ignored. When unified is set, no --format or --all-formats is passed.
     Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
@@ -1860,8 +1899,14 @@ async def admin_train_auto_tune(
     ]
     if use_all_formats:
         extra.append("--all-formats")
+    elif use_unified:
+        extra.append("--unified")
     elif not use_unified:
         extra.extend(["--format", fmt])
+    if (rescreen or "").strip().lower() in ("1", "true", "yes"):
+        extra.append("--rescreen")
+    if (algorithms or "").strip():
+        extra.extend(["--algorithms", algorithms.strip()])
     # Always use parallel when running from the frontend/API; each parallel subprocess uses 1 job.
     # When single task (one model + one format or unified), auto_tune falls through to sequential.
     single_task = model != "all" and (not use_all_formats or use_unified)
@@ -1880,6 +1925,8 @@ async def admin_train_auto_tune(
         all_formats=use_all_formats,
         unified=use_unified,
         format=fmt or None,
+        rescreen=(rescreen or "").strip().lower() in ("1", "true", "yes"),
+        algorithms=algorithms.strip() or None,
         single_task=single_task,
     )
     async with _get_training_semaphore():

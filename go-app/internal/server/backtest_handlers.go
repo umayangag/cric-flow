@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -67,7 +68,8 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 
 // buildPredictedScorecard builds a scorecard from the actual layout with ML-predicted stats per player.
 // Predictions use only data before the match date. Batting rows get predicted runs; bowling rows get predicted wickets, economy, and derived runs.
-func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions) *db.MatchScorecard {
+// playerTeams maps player_id -> team name so we sum predicted runs for all 11 of the batting team (not just those who batted).
+func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPredictions, playerTeams map[int64]string) *db.MatchScorecard {
 	if actual == nil {
 		return nil
 	}
@@ -84,14 +86,26 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 			BowlingTeamName: in.BowlingTeamName,
 			Extras:          in.Extras,
 			TargetRuns:      in.TargetRuns,
-			Batting:         make([]db.ScorecardBatting, 0, len(in.Batting)),
+			Batting:         make([]db.ScorecardBatting, 0, 11),
 			Bowling:         make([]db.ScorecardBowling, 0, len(in.Bowling)),
 		}
+		// Sum predicted runs for ALL players in the batting team (full XI), not just those who batted.
 		var predRunsSum int
+		battedSet := make(map[int64]struct{})
+		for _, b := range in.Batting {
+			battedSet[b.PlayerID] = struct{}{}
+		}
+		for pid, team := range playerTeams {
+			if team != in.BattingTeamName {
+				continue
+			}
+			p := preds[pid]
+			predRunsSum += int(math.Round(p.Runs))
+		}
+		// Build batting rows: those who batted first (with predicted runs), then those who didn't bat.
 		for _, b := range in.Batting {
 			p := preds[b.PlayerID]
 			r := int(math.Round(p.Runs))
-			predRunsSum += r
 			var ballsP, foursP, sixesP *int
 			var strikeRate *float32
 			bl := int(math.Round(p.Balls))
@@ -112,6 +126,39 @@ func buildPredictedScorecard(actual *db.MatchScorecard, preds map[int64]playerPr
 				Fours:      foursP,
 				Sixes:      sixesP,
 				StrikeRate: strikeRate,
+				HowOut:     nil,
+			})
+		}
+		// Build playerID->name map from all innings so we can look up names for DNB entries.
+		playerNames := make(map[int64]string)
+		for _, oth := range actual.Innings {
+			for _, b := range oth.Batting {
+				playerNames[b.PlayerID] = b.PlayerName
+			}
+			for _, w := range oth.Bowling {
+				playerNames[w.PlayerID] = w.PlayerName
+			}
+		}
+		// Add "Did Not Bat" rows for all batting team players who didn't bat (from playerTeams).
+		for pid, team := range playerTeams {
+			if team != in.BattingTeamName {
+				continue
+			}
+			if _, batted := battedSet[pid]; batted {
+				continue
+			}
+			battedSet[pid] = struct{}{}
+			p := preds[pid]
+			r := int(math.Round(p.Runs))
+			name := playerNames[pid]
+			inn.Batting = append(inn.Batting, db.ScorecardBatting{
+				PlayerID:   pid,
+				PlayerName: name,
+				Runs:       intPtr(r),
+				Balls:      nil,
+				Fours:      nil,
+				Sixes:      nil,
+				StrikeRate: nil,
 				HowOut:     nil,
 			})
 		}
@@ -543,7 +590,11 @@ func doEvaluateWork(
 		progress("scorecard", "Building predicted scorecard...")
 	}
 	if actualCard, err := db.GetMatchScorecard(ctx, mid); err == nil && actualCard != nil {
-		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds)
+		playerTeams, _ := db.GetMatchPlayerTeams(ctx, mid)
+		if playerTeams == nil {
+			playerTeams = map[int64]string{}
+		}
+		resp.PredictedScorecard = buildPredictedScorecard(actualCard, preds, playerTeams)
 	}
 
 	if progress != nil {
@@ -1043,6 +1094,17 @@ var allowedTrainingDataSections = map[string]bool{
 // cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
 // sections: optional comma-separated list (batting,bowling,fielding,extras,win). If omitted, all sections are returned (legacy). If set, only those sections are queried to reduce go-app and DB CPU during auto-tune.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("training-data: panic recovered",
+				slog.Any("panic", rec),
+				slog.String("stack", string(debug.Stack())),
+			)
+			// Connection may already be broken; try to write 500
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+
 	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
 	if cutoffStr == "" {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
@@ -1072,6 +1134,14 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	runAllSections := len(wantSection) == 0
 
+	slog.Info("training-data: request start",
+		slog.String("cutoff", cutoffStr),
+		slog.String("format", format),
+		slog.String("sections", sectionsParam),
+		slog.Bool("use_all", useAll),
+		slog.Bool("run_all_sections", runAllSections),
+	)
+
 	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
 	type sectionLoader struct {
 		name       string
@@ -1088,16 +1158,29 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	for _, loader := range loaders {
 		if runAllSections || wantSection[loader.name] {
+			t0 := time.Now()
 			var loadErr error
 			if useAll {
 				*loader.rows, loadErr = loader.loadAll(r.Context(), cutoff)
 			} else {
 				*loader.rows, loadErr = loader.loadFormat(r.Context(), format, cutoff)
 			}
+			elapsed := time.Since(t0)
+			rowCount := len(*loader.rows)
 			if loadErr != nil {
+				slog.Error("training-data: section load failed",
+					slog.String("section", loader.name),
+					slog.Duration("elapsed", elapsed),
+					slog.Any("err", loadErr),
+				)
 				respondTrainingDataErr(w, loadErr, formatForErr)
 				return
 			}
+			slog.Info("training-data: section loaded",
+				slog.String("section", loader.name),
+				slog.Int("rows", rowCount),
+				slog.Duration("elapsed_ms", elapsed),
+			)
 		}
 	}
 	part := func(rows [][]string) (headers []string, data [][]string) {
@@ -1111,6 +1194,14 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	fieldH, fieldD := part(fieldRows)
 	extrasH, extrasD := part(extrasRows)
 	winH, winD := part(winRows)
+
+	slog.Info("training-data: all sections ready, writing response",
+		slog.Int("batting_rows", len(batD)),
+		slog.Int("bowling_rows", len(bowlD)),
+		slog.Int("fielding_rows", len(fieldD)),
+		slog.Int("extras_rows", len(extrasD)),
+		slog.Int("win_rows", len(winD)),
+	)
 	writeJSON(w, http.StatusOK, trainingDataResponse{
 		Batting:  trainingDataPart{Headers: batH, Rows: batD},
 		Bowling:  trainingDataPart{Headers: bowlH, Rows: bowlD},
@@ -1118,6 +1209,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		Extras:   trainingDataPart{Headers: extrasH, Rows: extrasD},
 		Win:      trainingDataPart{Headers: winH, Rows: winD},
 	})
+	slog.Info("training-data: response written successfully")
 }
 
 // matchesAfterResponse is the JSON shape for GET /api/backtest/matches (walk-forward).

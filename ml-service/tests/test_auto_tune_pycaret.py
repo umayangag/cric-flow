@@ -1,5 +1,7 @@
 """Unit tests for ml.auto_tune_pycaret."""
 
+from unittest.mock import patch
+
 import numpy as np
 
 from ml.auto_tune_pycaret import (
@@ -65,6 +67,7 @@ def test_our_key_for_optuna_unsupported_maps_to_gb():
     assert _our_key_for_optuna("xgboost") == "gb"
 
 
+@patch("ml.auto_tune_pycaret._HAS_PYCARET", False)
 def test_run_pycaret_ranking_regression_no_pycaret():
     """When PyCaret is not installed, regression returns [], [], False."""
     X = np.random.RandomState(42).rand(20, 5)
@@ -75,6 +78,7 @@ def test_run_pycaret_ranking_regression_no_pycaret():
     assert success is False
 
 
+@patch("ml.auto_tune_pycaret._HAS_PYCARET", False)
 def test_run_pycaret_ranking_classification_no_pycaret():
     """When PyCaret is not installed, classification returns [], [], False."""
     X = np.random.RandomState(42).rand(20, 5)

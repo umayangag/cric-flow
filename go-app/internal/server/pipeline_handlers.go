@@ -320,6 +320,14 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 				querySuffix += "&unified=" + url.QueryEscape(v)
 				args["unified"] = v
 			}
+			if v := strings.TrimSpace(q.Get("rescreen")); v != "" {
+				querySuffix += "&rescreen=" + url.QueryEscape(v)
+				args["rescreen"] = v
+			}
+			if v := strings.TrimSpace(q.Get("algorithms")); v != "" {
+				querySuffix += "&algorithms=" + url.QueryEscape(v)
+				args["algorithms"] = v
+			}
 		}
 
 		jobCtx, cancel := context.WithCancel(a.JobContext())

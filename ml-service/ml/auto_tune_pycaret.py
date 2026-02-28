@@ -26,7 +26,8 @@ try:
     from pycaret.regression import setup as setup_regression
 
     _HAS_PYCARET = True
-except ImportError:
+except (ImportError, RuntimeError):
+    # RuntimeError: PyCaret raises when Python version unsupported (e.g. 3.12)
     pass
 
 # Map PyCaret model IDs to our algorithm keys (rf, gb, et, hgb, mlp, etc.)

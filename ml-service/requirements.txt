@@ -86,12 +86,12 @@ blinker==1.9.0
     # via flask
 blis==1.3.3
     # via thinc
-boto3==1.42.58
+boto3==1.42.59
     # via
     #   autogluon-common
     #   autogluon-core
     #   autogluon-multimodal
-botocore==1.42.58
+botocore==1.42.59
     # via
     #   boto3
     #   s3transfer
@@ -115,7 +115,7 @@ charset-normalizer==3.4.4
     # via requests
 choreographer==1.2.1
     # via kaleido
-click==8.1.8
+click==8.2.1
     # via
     #   flask
     #   model-index
@@ -211,7 +211,7 @@ fastprogress==1.0.5
     # via
     #   fastai
     #   fastdownload
-filelock==3.19.1
+filelock==3.24.2
     # via
     #   datasets
     #   gdown
@@ -270,7 +270,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.3.1
+hf-xet==1.3.2
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
@@ -328,7 +328,7 @@ jmespath==1.1.0
     # via
     #   boto3
     #   botocore
-joblib==1.3.2
+joblib==1.5.3
     # via
     #   -r requirements.in
     #   autogluon-common
@@ -340,6 +340,7 @@ joblib==1.3.2
     #   pyod
     #   scikit-learn
     #   scikit-plot
+    #   sktime
 jsonschema==4.23.0
     # via
     #   autogluon-multimodal
@@ -689,7 +690,7 @@ pyasn1==0.6.2
     #   rsa
 pyasn1-modules==0.4.2
     # via google-auth
-pycaret==3.3.2
+pycaret==3.3.0
     # via -r requirements.in
 pycparser==2.23
     # via cffi
@@ -808,11 +809,11 @@ safetensors==0.7.0
     #   transformers
 schemdraw==0.15
     # via pycaret
-scikit-base==0.7.8
+scikit-base==0.12.6
     # via sktime
 scikit-image==0.24.0
     # via autogluon-multimodal
-scikit-learn==1.4.2
+scikit-learn==1.5.2
     # via
     #   -r requirements.in
     #   autogluon-core
@@ -873,7 +874,7 @@ six==1.17.0
     #   opencensus
     #   python-dateutil
     #   triad
-sktime==0.26.0
+sktime==0.38.5
     # via pycaret
 smart-open==7.5.0
     # via

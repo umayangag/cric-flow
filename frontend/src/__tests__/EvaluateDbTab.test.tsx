@@ -222,20 +222,19 @@ describe('EvaluateDbTab (Backtest flow)', () => {
 
     // Assert match aggregates block present
     expect(within(results).getByText(/Match aggregates/i)).toBeInTheDocument();
-    expect(within(results).getByText(/Predicted/i)).toBeInTheDocument();
+    expect(within(results).getAllByText(/Predicted/i).length).toBeGreaterThan(0);
     // Multiple elements may contain the word "Actual" (header and table column names)
     const actualLabels = within(results).getAllByText(/Actual\b/i);
     expect(actualLabels.length).toBeGreaterThan(0);
     expect(within(results).getByText(/Errors/i)).toBeInTheDocument();
 
-    // Assert bowling columns appear in table
+    // Assert bowling columns appear in table (format: "{label} Actual" / "{label} Pred" / Δ)
     const table = within(results).getByRole('table');
-    expect(within(table).getByText(/Pred Wkts/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Actual Wkts/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Wkts Abs Err/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Pred Econ/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Actual Econ/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Econ Abs Err/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Wkts Pred/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Wkts Actual/i)).toBeInTheDocument();
+    expect(within(table).getAllByTitle(/Difference/i).length).toBeGreaterThan(0);
+    expect(within(table).getByText(/Econ Pred/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Econ Actual/i)).toBeInTheDocument();
   }, 10000);
 
   it('renders fielding metrics (catches, run_outs) and summary metrics when present', async () => {
@@ -302,14 +301,13 @@ describe('EvaluateDbTab (Backtest flow)', () => {
     expect(within(results).getByText(/player_catches_mae/i)).toBeInTheDocument();
     expect(within(results).getByText(/player_run_outs_mae/i)).toBeInTheDocument();
 
-    // Assert fielding columns appear in table
+    // Assert fielding columns appear in table (format: "{label} Actual" / "{label} Pred" / Δ)
     const table = within(results).getByRole('table');
-    expect(within(table).getByText(/Pred Catches/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Actual Catches/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Catches Abs Err/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Pred Run Outs/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Actual Run Outs/i)).toBeInTheDocument();
-    expect(within(table).getByText(/Run Outs Abs Err/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Catches Pred/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Catches Actual/i)).toBeInTheDocument();
+    expect(within(table).getAllByTitle(/Difference/i).length).toBeGreaterThan(0);
+    expect(within(table).getByText(/Run Outs Pred/i)).toBeInTheDocument();
+    expect(within(table).getByText(/Run Outs Actual/i)).toBeInTheDocument();
   });
 
   it('disable evaluate until a candidate match is selected', async () => {

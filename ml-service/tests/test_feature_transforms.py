@@ -25,6 +25,55 @@ def test_get_transform_config_returns_structure():
     assert isinstance(cfg["add_log1p"], list)
 
 
+def test_get_transform_config_exception_returns_empty():
+    """When config is malformed (e.g. add_interactions not iterable), returns empty lists (lines 81-82)."""
+    import ml.config as config_mod
+
+    def bad_load():
+        return {
+            "ml": {
+                "feature_transforms": {
+                    "batting": {"add_interactions": 123, "add_log1p": []},
+                }
+            }
+        }
+
+    saved = config_mod._cached
+    config_mod._cached = None
+    try:
+        with patch("ml.config._load", side_effect=bad_load):
+            cfg = get_transform_config("batting")
+        assert cfg == {"add_interactions": [], "add_log1p": []}
+    finally:
+        config_mod._cached = saved
+
+
+def test_get_transform_config_skips_empty_interaction_pairs():
+    """add_interactions entries with empty a or b are skipped (line 77)."""
+    import ml.config as config_mod
+
+    def custom_load():
+        return {
+            "ml": {
+                "feature_transforms": {
+                    "batting": {
+                        "add_interactions": [["a", "b"], ["", "x"], ["y", ""], ["  ", "z"]],
+                        "add_log1p": [],
+                    }
+                }
+            }
+        }
+
+    saved = config_mod._cached
+    config_mod._cached = None
+    try:
+        with patch("ml.config._load", side_effect=custom_load):
+            cfg = get_transform_config("batting")
+        assert cfg["add_interactions"] == [("a", "b")]
+    finally:
+        config_mod._cached = saved
+
+
 def test_get_transform_config_parses_interactions():
     """add_interactions list of pairs is parsed from config."""
     cfg = get_transform_config("batting")
@@ -49,6 +98,17 @@ def test_apply_transforms_log1p():
     np.testing.assert_allclose(X_out[:, 0], X[:, 0])
     np.testing.assert_allclose(X_out[:, 1], np.log1p(X[:, 1]))
     np.testing.assert_allclose(X_out[:, 2], X[:, 2])
+
+
+def test_apply_transforms_log1p_canonical_fallback():
+    """When resolved col not in names but canon is, use canon (lines 120-122)."""
+    X = np.array([[1.0, 2.0]], dtype=np.float64)
+    names = ["venue", "opposition"]  # canonical names
+    config = {"add_interactions": [], "add_log1p": ["venue"]}
+    X_out, names_out = apply_transforms(X, names, config, "batting")
+    # venue maps to batting_venue in CSV_COLUMN_MAP; names use canonical "venue"
+    assert names_out == ["venue", "opposition"]
+    np.testing.assert_allclose(X_out[:, 0], np.log1p(1.0))
 
 
 def test_apply_transforms_log1p_negative_clamped():
@@ -166,6 +226,17 @@ def test_build_extended_vector_from_features_with_interactions():
     out = build_extended_vector_from_features(base, names, feat_map, config)
     assert len(out) == 3
     assert out[2] == 2.0
+
+
+def test_build_extended_vector_from_features_invalid_interaction_skipped():
+    """When interaction value cannot be converted to float, that interaction skipped (lines 203-204)."""
+    base = [1.0, 2.0]
+    names = ["a", "b"]
+    feat_map = {"a": 1.0, "b": "not-a-number"}
+    config = {"add_interactions": [("a", "b")], "add_log1p": []}
+    out = build_extended_vector_from_features(base, names, feat_map, config)
+    assert len(out) == 2
+    assert out == [1.0, 2.0]
 
 
 def test_load_transform_config_from_metadata_missing_file(tmp_path):

@@ -106,6 +106,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	agg_t2_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bat_form GROUP BY match_id),
 	agg_t2_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bowl_form GROUP BY match_id)
 	SELECT m.match_id, m.format_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
+		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		COALESCE(a1.s, 0) AS team1_bat_consistency_sum,
 		COALESCE(a2.s, 0) AS team1_bowl_consistency_sum,
@@ -141,6 +142,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	defer rows.Close()
 	headers := []string{
 		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
+		"match_date",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"team1_bat_consistency_sum", "team1_bowl_consistency_sum", "team2_bat_consistency_sum", "team2_bowl_consistency_sum",
 		"team1_bat_form_sum", "team1_bowl_form_sum", "team2_bat_form_sum", "team2_bowl_form_sum",
@@ -151,10 +153,12 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		var matchID, formatID, venueID, team1, team2, tossWinner int64
 		var team1Wins int
 		var formatCode string
+		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var t1BatCons, t1BowlCons, t2BatCons, t2BowlCons float64
 		var t1BatForm, t1BowlForm, t2BatForm, t2BowlForm float64
 		if err := rows.Scan(&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
+			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&t1BatCons, &t1BowlCons, &t2BatCons, &t2BowlCons,
 			&t1BatForm, &t1BowlForm, &t2BatForm, &t2BowlForm); err != nil {
@@ -169,6 +173,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.FormatInt(tossWinner, 10),
 			strconv.Itoa(team1Wins),
 			formatCode,
+			matchDate.Format("2006-01-02"),
 			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),

@@ -79,3 +79,28 @@ def test_get_model_metadata_handles_feature_config_exception():
         meta = get_model_metadata()
     for kind in ("batting", "bowling", "fielding"):
         assert meta[kind]["features"] == []
+
+
+def test_get_model_metadata_extras_win_import_error():
+    """When ml.train_extras or ml.train_win import fails, features list is empty (lines 91-92, 100-101)."""
+    import builtins
+    import sys
+
+    real_import = builtins.__import__
+    saved = {}
+    for mod in ("ml.train_extras", "ml.train_win"):
+        if mod in sys.modules:
+            saved[mod] = sys.modules.pop(mod)
+
+    def fake_import(name, *args, **kwargs):
+        if name in ("ml.train_extras", "ml.train_win"):
+            raise ImportError("fake")
+        return real_import(name, *args, **kwargs)
+
+    try:
+        with patch.object(builtins, "__import__", fake_import):
+            meta = get_model_metadata()
+        assert meta["extras"]["features"] == []
+        assert meta["win"]["features"] == []
+    finally:
+        sys.modules.update(saved)

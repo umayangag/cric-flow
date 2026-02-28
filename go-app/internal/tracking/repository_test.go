@@ -355,7 +355,3 @@ func TestHasInProgressForAnyCommand(t *testing.T) {
 		})
 	}
 }
-
-// mockAnyContext and mockAnyString for On() matchers.
-func mockAnyContext() interface{} { return mock.MatchedBy(func(context.Context) bool { return true }) }
-func mockAnyString() interface{}  { return mock.MatchedBy(func(string) bool { return true }) }

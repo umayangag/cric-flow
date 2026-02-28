@@ -14,7 +14,8 @@ RUN apt-get update \
        libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY ml-service/requirements.txt .
-RUN pip install --no-cache-dir -r ./requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r ./requirements.txt
 COPY ml-service/config.default.json .
 COPY ml-service/config.json .
 COPY ml-service/app ./app

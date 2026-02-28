@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OpsStatus } from './OpsStatusTab';
+import type { MLModelStat, ModelStatsResponse } from '../types';
 import { api } from '../api';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -10,10 +11,13 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Checkbox from '@mui/material/Checkbox';
 import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
+import TextField from '@mui/material/TextField';
 
 export type PipelineStepId =
   | 'import'
@@ -234,6 +238,18 @@ const AUTO_TUNE_FORMATS = [
   { value: 'T20I', label: 'T20I' },
 ] as const;
 
+const AUTO_TUNE_ALGORITHMS = [
+  { value: 'rf', label: 'Random Forest' },
+  { value: 'gb', label: 'Gradient Boosting' },
+  { value: 'quantile', label: 'Quantile Regressor' },
+  { value: 'et', label: 'Extra Trees' },
+  { value: 'hgb', label: 'Hist Gradient Boosting' },
+  { value: 'stacked', label: 'Stacking Regressor' },
+  { value: 'mlp', label: 'MLP (Neural Network)' },
+] as const;
+
+const DEFAULT_ALGORITHMS = ['rf', 'gb', 'quantile'];
+
 const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) => {
   const [dialogStep, setDialogStep] = useState<PipelineStep | null>(null);
   const [copied, setCopied] = useState(false);
@@ -244,8 +260,49 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
   const [runCommand, setRunCommand] = useState<string>('');
   const [autoTuneModel, setAutoTuneModel] = useState<string>('all');
   const [autoTuneFormat, setAutoTuneFormat] = useState<string>('unified');
+  const [autoTuneRescreen, setAutoTuneRescreen] = useState<boolean>(false);
+  const [autoTuneCutoff, setAutoTuneCutoff] = useState<string>('');
+  const [autoTuneAlgorithms, setAutoTuneAlgorithms] = useState<Set<string>>(
+    () => new Set(DEFAULT_ALGORITHMS),
+  );
 
   const steps = useMemo(() => derivePipelineSteps(data), [data]);
+
+  const modelNameForLookup = (m: string) =>
+    m === 'all' ? '' : m.charAt(0).toUpperCase() + m.slice(1);
+  const formatForLookup = (f: string) => (f === 'unified' ? 'Unified' : f || '');
+
+  const loadDefaultAlgorithms = useCallback(async () => {
+    const modelName = modelNameForLookup(autoTuneModel);
+    const fmt = formatForLookup(autoTuneFormat);
+    if (!modelName) {
+      setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
+      return;
+    }
+    try {
+      const res = await api.getModelStats();
+      const payload = res as unknown as ModelStatsResponse;
+      const models = payload?.models ?? [];
+      const match = models.find((m: MLModelStat) => {
+        if (m.model_name !== modelName) return false;
+        if (fmt) return m.match_format === fmt;
+        return true;
+      });
+      if (match?.algorithms_requested?.length) {
+        setAutoTuneAlgorithms(new Set(match.algorithms_requested));
+      } else {
+        setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
+      }
+    } catch {
+      setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
+    }
+  }, [autoTuneModel, autoTuneFormat]);
+
+  useEffect(() => {
+    if (dialogStep?.id === 'auto_tune') {
+      loadDefaultAlgorithms();
+    }
+  }, [dialogStep?.id, autoTuneModel, autoTuneFormat, loadDefaultAlgorithms]);
 
   const buildRunParams = (step: PipelineStep, extra?: Record<string, string>) =>
     step.id === 'auto_tune'
@@ -256,6 +313,11 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
             : autoTuneFormat === ''
               ? { all_formats: '1' }
               : { format: autoTuneFormat }),
+          ...(autoTuneRescreen ? { rescreen: '1' } : {}),
+          ...(autoTuneCutoff.trim() ? { cutoff: autoTuneCutoff.trim() } : {}),
+          ...(autoTuneAlgorithms.size > 0
+            ? { algorithms: [...autoTuneAlgorithms].sort().join(',') }
+            : {}),
           ...extra,
         }
       : { ...extra };
@@ -296,14 +358,19 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
   };
 
   const getAutoTuneCommand = () => {
-    const modelPart = `MODEL=${autoTuneModel}`;
-    const formatPart =
-      autoTuneFormat === 'unified'
-        ? ''
-        : autoTuneFormat === ''
-          ? 'ALL_FORMATS=1'
-          : `FORMAT=${autoTuneFormat}`;
-    return `make ml-auto-tune ${modelPart}${formatPart ? ` ${formatPart}` : ''}`;
+    const parts = [`MODEL=${autoTuneModel}`];
+    if (autoTuneFormat === 'unified') {
+      // no format flag
+    } else if (autoTuneFormat === '') {
+      parts.push('ALL_FORMATS=1');
+    } else {
+      parts.push(`FORMAT=${autoTuneFormat}`);
+    }
+    if (autoTuneRescreen) parts.push('RESCREEN=1');
+    if (autoTuneCutoff.trim()) parts.push(`CUTOFF="${autoTuneCutoff.trim()}"`);
+    if (autoTuneAlgorithms.size > 0)
+      parts.push(`ALGORITHMS="${[...autoTuneAlgorithms].sort().join(',')}"`);
+    return `make ml-auto-tune ${parts.join(' ')}`;
   };
 
   const handleCopy = async (step: PipelineStep) => {
@@ -453,37 +520,89 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                 {dialogStep.description}
               </Typography>
               {dialogStep.id === 'auto_tune' && (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1.5 }}>
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel id="autotune-model-label">Model</InputLabel>
-                    <Select
-                      labelId="autotune-model-label"
-                      value={autoTuneModel}
-                      label="Model"
-                      onChange={(e) => setAutoTuneModel(e.target.value)}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <InputLabel id="autotune-model-label">Model</InputLabel>
+                      <Select
+                        labelId="autotune-model-label"
+                        value={autoTuneModel}
+                        label="Model"
+                        onChange={(e) => setAutoTuneModel(e.target.value)}
+                      >
+                        {AUTO_TUNE_MODELS.map((o) => (
+                          <MenuItem key={o.value} value={o.value}>
+                            {o.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <InputLabel id="autotune-format-label">Format</InputLabel>
+                      <Select
+                        labelId="autotune-format-label"
+                        value={autoTuneFormat}
+                        label="Format"
+                        onChange={(e) => setAutoTuneFormat(e.target.value)}
+                      >
+                        {AUTO_TUNE_FORMATS.map((o) => (
+                          <MenuItem key={o.value || 'all'} value={o.value}>
+                            {o.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={autoTuneRescreen}
+                        onChange={(e) => setAutoTuneRescreen(e.target.checked)}
+                        size="small"
+                      />
+                    }
+                    label="Rescreen: start from scratch (full algorithm search, ignore prior tuning)"
+                  />
+                  <TextField
+                    size="small"
+                    label="Cutoff (optional, RFC3339)"
+                    placeholder="2024-01-01T00:00:00Z"
+                    value={autoTuneCutoff}
+                    onChange={(e) => setAutoTuneCutoff(e.target.value)}
+                    sx={{ maxWidth: 320 }}
+                    helperText="Training data cutoff for API. Leave empty to use default."
+                  />
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mb: 0.5 }}
                     >
-                      {AUTO_TUNE_MODELS.map((o) => (
-                        <MenuItem key={o.value} value={o.value}>
-                          {o.label}
-                        </MenuItem>
+                      Algorithms to consider (only selected will be used). Default: last used for
+                      this model+format.
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {AUTO_TUNE_ALGORITHMS.map(({ value, label }) => (
+                        <FormControlLabel
+                          key={value}
+                          control={
+                            <Checkbox
+                              checked={autoTuneAlgorithms.has(value)}
+                              onChange={(e) => {
+                                const next = new Set(autoTuneAlgorithms);
+                                if (e.target.checked) next.add(value);
+                                else next.delete(value);
+                                setAutoTuneAlgorithms(next);
+                              }}
+                              size="small"
+                            />
+                          }
+                          label={label}
+                        />
                       ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel id="autotune-format-label">Format</InputLabel>
-                    <Select
-                      labelId="autotune-format-label"
-                      value={autoTuneFormat}
-                      label="Format"
-                      onChange={(e) => setAutoTuneFormat(e.target.value)}
-                    >
-                      {AUTO_TUNE_FORMATS.map((o) => (
-                        <MenuItem key={o.value || 'all'} value={o.value}>
-                          {o.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                    </Box>
+                  </Box>
                 </Box>
               )}
               {!dialogStep.runnable && dialogStep.status !== 'running' && (
@@ -543,6 +662,9 @@ const OpsPipelineGraph: React.FC<OpsPipelineGraphProps> = ({ data, onRefresh }) 
                   setRunState('idle');
                   setRunMessage('');
                   setRunCommand('');
+                  setAutoTuneRescreen(false);
+                  setAutoTuneCutoff('');
+                  setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
                 }}
               >
                 Close

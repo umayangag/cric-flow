@@ -151,3 +151,19 @@ def test_cpu_count_normal():
 
     with patch("os.cpu_count", return_value=8):
         assert _cpu_count() == 8
+
+
+def test_suggested_n_jobs_invalid_per_job_falls_back():
+    """When config per_job or frac is invalid, defaults are used (lines 116, 124, 127)."""
+    with patch.dict(os.environ, {"ML_MEMORY_LIMIT_MB": "4096", "ML_N_JOBS": ""}, clear=False):
+        with patch("ml.resources._cpu_count", return_value=4):
+            with patch(
+                "ml.resources._get_resources_config",
+                return_value={
+                    "training_mb_per_job": "invalid",
+                    "memory_usage_fraction_percent": -1,
+                    "training_low_memory_threshold_mb": "bad",
+                },
+            ):
+                n = suggested_n_jobs("training")
+                assert n >= 1

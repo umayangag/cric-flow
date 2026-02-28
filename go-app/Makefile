@@ -100,7 +100,7 @@ test-db:
 # Initialize local Go development environment (tools + modules)
 init:
 	@echo "Setting up Go dev environment..."
-	@command -v go >/dev/null 2>&1 || (echo "Go toolchain not found. Please install Go 1.25+ first: https://go.dev/dl/" && exit 1)
+	@command -v go >/dev/null 2>&1 || (echo "Go toolchain not found. Please install Go 1.26+ first: https://go.dev/dl/" && exit 1)
 	@echo "- Downloading Go module deps"
 	go mod download
 	@echo "- Installing gofumpt and golines to GOPATH/bin"

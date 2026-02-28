@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from app.feature_config import get_feature_names
 from app.logging import get_struct_logger
 from ml.config import get_training_data_fetch_timeout_sec, get_training_params
+from ml.data_quality import impute_features
 from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
@@ -130,15 +132,21 @@ def _rows_to_xy(
         df = df.assign(toss=df["toss"].apply(_normalize_toss))
     if preprocess is not None:
         df = preprocess(df)
-    df = df.dropna(subset=[c for c in feature_cols if c in df.columns])
+    # Drop rows missing essential targets (aligned with train_batting/train_bowling)
+    target_subset = [c for c in target_cols if c in df.columns]
+    if target_subset:
+        df = df.dropna(subset=target_subset)
     if df.empty:
         return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
     for c in feature_cols:
         if c in df.columns:
             df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
-    df = df.dropna(subset=feature_cols)
-    if df.empty:
-        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+    # Impute missing feature values (median for numeric, -1 for categorical) — aligned with train_*
+    feature_cols_in_df = [c for c in feature_cols if c in df.columns]
+    df, _ = impute_features(df, feature_cols_in_df)
+    for c in feature_cols:
+        if c not in df.columns:
+            df[c] = 0.0
     X = df[feature_cols].astype(float).values
     y_cols = [c for c in target_cols if c in df.columns]
     Y = df[y_cols].astype(float).values
@@ -172,19 +180,15 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
 
-    def _batting_extra_y(df: pd.DataFrame) -> np.ndarray:
-        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-        balls = df.get("balls", pd.Series(np.ones(len(df)))).astype(float).values
-        return np.where(balls > 0, (runs / balls) * 100.0, 0.0).reshape(-1, 1)
-
+    # Strike rate removed from training targets to avoid target leakage
+    # (SR = runs/balls * 100 is deterministic; derive post-prediction instead)
     return _rows_to_xy(
         headers,
         rows,
         _batting_feature_cols(),
         BATTING_TARGET_COLS,
-        n_y_final=6,
+        n_y_final=5,
         preprocess=_batting_preprocess,
-        extra_y_column=_batting_extra_y,
     )
 
 
@@ -211,20 +215,15 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
                 df = df.assign(**{col: pd.to_numeric(df[col], errors="coerce").fillna(0.0)})
         return df
 
-    def _bowling_extra_y(df: pd.DataFrame) -> np.ndarray:
-        runs = df.get("runs", pd.Series(np.zeros(len(df)))).astype(float).values
-        balls = df.get("balls", pd.Series(np.ones(len(df)) * 6)).astype(float).values
-        overs = np.where(balls > 0, balls / 6.0, 1.0)
-        return np.where(overs > 0, runs / overs, 0.0).reshape(-1, 1)
-
+    # Economy rate is NOT a training target — it is derived from runs/balls and would cause
+    # target leakage. It is computed post-prediction at inference time.
     return _rows_to_xy(
         headers,
         rows,
         _bowling_feature_cols(),
         BOWLING_TARGET_COLS,
-        n_y_final=4,
+        n_y_final=3,
         preprocess=_bowling_preprocess,
-        extra_y_column=_bowling_extra_y,
     )
 
 
@@ -287,8 +286,16 @@ def fetch_training_data(
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
+    t0 = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            t_connected = time.monotonic()
+            logger.info(
+                "train_on_the_fly.fetch.connected",
+                url=url,
+                elapsed_sec=round(t_connected - t0, 2),
+                status=resp.status,
+            )
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
@@ -302,11 +309,18 @@ def fetch_training_data(
         )
         raise ValueError(err_msg) from e
     except OSError as e:
-        logger.error(
-            "train_on_the_fly.fetch.os_error",
-            url=url,
-            error=str(e),
-        )
+        elapsed = time.monotonic() - t0
+        err_details = {
+            "url": url,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "elapsed_sec": round(elapsed, 2),
+        }
+        if hasattr(e, "errno") and e.errno is not None:
+            err_details["errno"] = e.errno
+        if hasattr(e, "filename") and e.filename:
+            err_details["filename"] = e.filename
+        logger.error("train_on_the_fly.fetch.os_error", **err_details)
         raise ValueError("Go-app training-data request failed: %s" % e) from e
     data = json.loads(body)
     logger.info(

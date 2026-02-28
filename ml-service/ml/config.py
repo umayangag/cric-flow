@@ -327,7 +327,7 @@ def get_tuning_config() -> Dict[str, Any]:
         n_jobs = suggested_n_jobs("tuning")
     algorithms = tuning.get("algorithms")
     if algorithms == "all" or algorithms is None:
-        algorithms = ["rf", "gb", "quantile", "stacked"]
+        algorithms = ["rf", "gb", "quantile"]
     elif isinstance(algorithms, (list, tuple)):
         algorithms = [str(a).lower().strip() for a in algorithms if a]
     else:
@@ -348,6 +348,23 @@ def get_tuning_config() -> Dict[str, Any]:
         "algorithms": algorithms,
         "validation_method": validation_method,
         "stages": stages if isinstance(stages, dict) else {},
+    }
+
+
+def get_mlqa_config() -> Dict[str, Any]:
+    """
+    Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.
+    Fallbacks match the previous hardcoded values.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
+    return {
+        "overfitting_delta_threshold": float(mlqa.get("overfitting_delta_threshold", 0.08)),
+        "stability_fold_std_threshold": float(mlqa.get("stability_fold_std_threshold", 0.05)),
+        "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
+        "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
+        "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),
     }
 
 
@@ -389,6 +406,18 @@ def get_feature_defaults() -> Dict[str, Any]:
     return {
         "common": {k: common.get(k, v) for k, v in defaults_common.items()},
         "fielding": {k: fielding.get(k, v) for k, v in defaults_fielding.items()},
+    }
+
+
+def get_pipeline_common_config() -> Dict[str, Any]:
+    """Load shared pipeline settings from ml.generalized_pipeline. Used by all train_* scripts."""
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    gp = (ml.get("generalized_pipeline") if isinstance(ml, dict) else None) or {}
+    return {
+        "use_robust_scaler": bool(gp.get("use_robust_scaler", True)),
+        "time_decay_halflife_years": float(gp.get("time_decay_halflife_years", 2.0)),
+        "delta_threshold": float(gp.get("delta_threshold", 0.08)),
     }
 
 

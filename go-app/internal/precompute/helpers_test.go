@@ -86,7 +86,7 @@ func TestDiscoverFormatCodes(t *testing.T) {
 		},
 		{
 			name:     "empty_no_db_returns_err",
-			setup:    func(m *mocks.MockDB) { db.SetDB(nil); t.Cleanup(func() {}) },
+			setup:    func(_ *mocks.MockDB) { db.SetDB(nil); t.Cleanup(func() {}) },
 			provided: nil,
 			want:     nil,
 			wantErr:  true,

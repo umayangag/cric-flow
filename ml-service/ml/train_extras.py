@@ -10,6 +10,8 @@ Usage:
   python -m ml.train_extras --csv path/to/extras_export.csv
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -18,6 +20,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Optional
 
 import joblib
 import numpy as np
@@ -26,7 +29,13 @@ from sklearn.ensemble import RandomForestRegressor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ml.config import default_artifacts_dir, get_training_data_fetch_timeout_sec, get_training_params
+from ml.config import (
+    default_artifacts_dir,
+    get_pipeline_common_config,
+    get_training_data_fetch_timeout_sec,
+    get_training_params,
+)
+from ml.pipeline_common import compute_time_decay_weights
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +61,13 @@ EXTRAS_FEATURE_COLS = [
     "bowl_form_sum",
 ]
 EXTRAS_TARGET_COL = "total_extras"
+
+
+def _concat_weights_extras(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
+    """Concatenate per-format weights for unified model. Returns None if any format lacks weights."""
+    if not weights_list or any(w is None for w in weights_list):
+        return None
+    return np.concatenate(weights_list)
 
 
 def fetch_extras_data(go_app_url: str, cutoff_iso: str, api_key=None):
@@ -86,8 +102,10 @@ def fetch_extras_data(go_app_url: str, cutoff_iso: str, api_key=None):
     return data.get("extras") or {"headers": [], "rows": []}
 
 
-def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Build X, Y per format_code. Returns dict format_code -> (X, Y)."""
+def rows_to_xy_by_format(
+    headers: list, rows: list[list]
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+    """Build X, Y, weights per format_code. Returns dict format_code -> (X, Y, sample_weight)."""
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
@@ -97,13 +115,22 @@ def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.
     for c in EXTRAS_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
+    pipe_cfg = get_pipeline_common_config()
+    halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)
+
+    def _weights(g: pd.DataFrame) -> Optional[np.ndarray]:
+        if "match_date" not in g.columns:
+            return None
+        return compute_time_decay_weights(g["match_date"], halflife_years=halflife)
+
     if "format_code" not in df.columns:
         df = df.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in df.columns] + [EXTRAS_TARGET_COL])
         if df.empty:
             return {}
         X = df[[c for c in EXTRAS_FEATURE_COLS if c in df.columns]].astype(float).values
         Y = df[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
-        return {"_ALL_": (X, Y)}
+        w = _weights(df)
+        return {"_ALL_": (X, Y, w)}
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
@@ -112,12 +139,16 @@ def rows_to_xy_by_format(headers: list, rows: list[list]) -> dict[str, tuple[np.
             continue
         X = g[[c for c in EXTRAS_FEATURE_COLS if c in g.columns]].astype(float).values
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
-        out[fmt] = (X, Y)
+        w = _weights(g)
+        out[fmt] = (X, Y, w)
     return out
 
 
-def train_and_save(X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str) -> None:
-    """Train extras regressor and save model for format_code (no scaler; artifacts loader expects model only)."""
+def train_and_save(
+    X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str, sample_weight: Optional[np.ndarray] = None
+) -> None:
+    """Train extras regressor and save model for format_code (no scaler; artifacts loader expects model only).
+    Time-decay sample weights when match_date available."""
     params = get_training_params("extras", format_code)
     model = RandomForestRegressor(
         n_estimators=params["n_estimators"],
@@ -125,15 +156,21 @@ def train_and_save(X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str)
         random_state=params["random_state"],
         n_jobs=params.get("n_jobs", -1),
     )
-    model.fit(X, Y.ravel())
+    if sample_weight is not None:
+        model.fit(X, Y.ravel(), sample_weight=sample_weight)
+    else:
+        model.fit(X, Y.ravel())
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     code = format_code.replace(" ", "_")
     joblib.dump(model, os.path.join(out_dir, f"extras_model_{code}.joblib"), compress=compress)
 
 
-def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
-    """Train one unified extras model on all data and save as legacy (extras_model.joblib)."""
+def train_and_save_legacy(
+    X: np.ndarray, Y: np.ndarray, out_dir: str, sample_weight: Optional[np.ndarray] = None
+) -> None:
+    """Train one unified extras model on all data and save as legacy (extras_model.joblib).
+    Time-decay sample weights when match_date available."""
     params = get_training_params("extras", None)
     model = RandomForestRegressor(
         n_estimators=params["n_estimators"],
@@ -141,7 +178,10 @@ def train_and_save_legacy(X: np.ndarray, Y: np.ndarray, out_dir: str) -> None:
         random_state=params["random_state"],
         n_jobs=params.get("n_jobs", -1),
     )
-    model.fit(X, Y.ravel())
+    if sample_weight is not None:
+        model.fit(X, Y.ravel(), sample_weight=sample_weight)
+    else:
+        model.fit(X, Y.ravel())
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     joblib.dump(model, os.path.join(out_dir, "extras_model.joblib"), compress=compress)
@@ -188,16 +228,17 @@ def main() -> None:
     if not by_format:
         logger.error("train_extras.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y) in by_format.items():
+    for fmt, (X, Y, w) in by_format.items():
         logger.info("pipeline: train_extras processing format=%s n=%s", fmt, X.shape[0])
-        train_and_save(X, Y, out_dir, fmt)
+        train_and_save(X, Y, out_dir, fmt, sample_weight=w)
         logger.info("train_extras.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
     # Unified (overall) model: train on all data combined for legacy/fallback
-    all_X = np.vstack([X for _, (X, _) in by_format.items()])
-    all_Y = np.vstack([Y for _, (_, Y) in by_format.items()])
+    all_X = np.vstack([X for _, (X, _, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y, _) in by_format.items()])
+    all_weights = _concat_weights_extras([w for _, (_, _, w) in by_format.items()])
     if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
-        train_and_save_legacy(all_X, all_Y, out_dir)
+        train_and_save_legacy(all_X, all_Y, out_dir, sample_weight=all_weights)
 
 
 if __name__ == "__main__":

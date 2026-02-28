@@ -129,6 +129,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
@@ -151,6 +152,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.toss, venueStr, oppStr, r.seasonID, r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}
@@ -192,6 +194,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			"fielding_consistency", "fielding_form",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+			"match_date",
 		}
 		return [][]string{headers}, nil
 	}
@@ -238,6 +241,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
@@ -259,6 +263,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.toss, venueStr, oppStr, r.seasonID, r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}

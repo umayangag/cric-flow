@@ -685,6 +685,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+		"match_date",
 	}
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
@@ -722,6 +723,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			floatToExport(snap.venue), floatToExport(snap.opposition),
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}
@@ -785,6 +787,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+			"match_date",
 		}
 		return [][]string{headers}, nil
 	}
@@ -872,6 +875,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
@@ -907,6 +911,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			floatToExport(snap.venue), floatToExport(snap.opposition),
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
+			r.matchDate.Format("2006-01-02"),
 		}
 		out = append(out, row)
 	}

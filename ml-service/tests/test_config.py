@@ -1,5 +1,7 @@
 """Unit tests for ml.config (config load, merge, training params, defaults)."""
 
+from unittest.mock import patch
+
 import pytest
 
 import ml.config as config_mod
@@ -334,3 +336,67 @@ def test_training_required_keys_constant():
     assert "n_estimators" in TRAINING_REQUIRED_KEYS
     assert "batting" in TRAINING_MODELS
     assert "bowling" in TRAINING_MODELS
+
+
+def test_config_load_default_fails_returns_empty(monkeypatch):
+    """When default config load raises, empty dict is used (lines 61-63)."""
+    config_mod._cached = None
+    try:
+
+        def fake_load(path):
+            raise ValueError("broken default")
+
+        with patch("ml.config._load_json", side_effect=fake_load):
+            cfg = config_mod.get_config()
+        assert cfg == {}
+    finally:
+        config_mod._cached = None
+
+
+def test_find_user_config_path_env(tmp_path, monkeypatch):
+    """_find_user_config_path returns ML_SERVICE_CONFIG when set and file exists (line 29)."""
+    config_path = tmp_path / "custom_config.json"
+    config_path.write_text("{}")
+    monkeypatch.setenv("ML_SERVICE_CONFIG", str(config_path))
+    config_mod._cached = None
+    try:
+        from ml.config import _find_user_config_path
+
+        assert _find_user_config_path() == str(config_path)
+    finally:
+        config_mod._cached = None
+
+
+def test_find_user_config_path_config_json_in_dir(tmp_path, monkeypatch):
+    """_find_user_config_path finds config.json in ml-service dir (lines 30-34)."""
+    monkeypatch.delenv("ML_SERVICE_CONFIG", raising=False)
+    config_json = tmp_path / "config.json"
+    config_json.write_text("{}")
+    monkeypatch.chdir(tmp_path)
+    config_mod._cached = None
+    try:
+        from ml.config import _find_user_config_path
+
+        # Should find config.json in cwd
+        result = _find_user_config_path()
+        assert result == str(config_json)
+    finally:
+        config_mod._cached = None
+
+
+def test_config_load_user_fails_keeps_default(monkeypatch):
+    """When user config load raises, default config is kept (lines 71-72)."""
+    config_mod._cached = None
+    try:
+
+        def fake_load(path):
+            if "config.default" in path or path.endswith("config.default.json"):
+                return {"inputs": {}}
+            raise ValueError("broken user")
+
+        with patch("ml.config._load_json", side_effect=fake_load):
+            with patch("ml.config._find_user_config_path", return_value="/tmp/config.json"):
+                cfg = config_mod.get_config()
+        assert cfg == {"inputs": {}}
+    finally:
+        config_mod._cached = None

@@ -25,7 +25,7 @@ install: venv
 
 # Regenerate requirements.txt from requirements.in (pip-tools). Run after editing requirements.in or to upgrade pins.
 compile-requirements: venv
-	$(PIP) install pip-tools
+	$(PIP) install --upgrade pip pip-tools
 	$(VENV)/bin/pip-compile -U --strip-extras requirements.in -o requirements.txt
 
 # Initialize local Python development environment (venv + deps + dev tools)
@@ -66,11 +66,13 @@ train-models: train-batting train-bowling train-fielding train-extras train-win
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
+UNIFIED ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
 FAST ?=
 NO_PYCARET ?=
+RESCREEN ?=
 AUTO_TUNE_ARGS := --model $(MODEL)
 ifneq ($(FORMAT),)
 AUTO_TUNE_ARGS += --format $(FORMAT)
@@ -78,6 +80,13 @@ endif
 ifeq ($(ALL_FORMATS),1)
 AUTO_TUNE_ARGS += --all-formats
 ifeq ($(MODEL),all)
+AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
+endif
+endif
+ifeq ($(UNIFIED),1)
+AUTO_TUNE_ARGS += --unified
+# extras and win require API; model=all includes them
+ifneq ($(filter extras win all,$(MODEL)),)
 AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
 endif
 endif
@@ -98,6 +107,9 @@ AUTO_TUNE_ARGS += --no-pycaret
 endif
 ifeq ($(NO_AUTOGLUON),1)
 AUTO_TUNE_ARGS += --no-autogluon
+endif
+ifeq ($(RESCREEN),1)
+AUTO_TUNE_ARGS += --rescreen
 endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)

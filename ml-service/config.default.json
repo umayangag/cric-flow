@@ -67,8 +67,13 @@
       "n_jobs": -1,
       "random_state": 42,
       "scoring": "neg_mean_absolute_error",
-      "algorithms": "all",
+      "algorithms": [
+        "rf",
+        "gb",
+        "quantile"
+      ],
       "validation_method": "walk_forward",
+      "timeseries_split_gap": 0,
       "search_space": {
         "rf": {
           "n_estimators": [
@@ -110,7 +115,9 @@
             4,
             5,
             6,
-            8
+            8,
+            10,
+            12
           ],
           "learning_rate": [
             0.01,
@@ -152,6 +159,13 @@
         }
       }
     },
+    "mlqa": {
+      "overfitting_delta_threshold": 0.08,
+      "stability_fold_std_threshold": 0.05,
+      "bias_dip_low": 0.8,
+      "bias_dip_high": 1.25,
+      "sensitivity_top_weight_threshold": 0.70
+    },
     "feature_defaults": {
       "common": {
         "temp": 25,
@@ -173,7 +187,7 @@
       }
     },
     "prediction_defaults": {
-      "economy": 6.0
+      "economy": 6
     }
   },
   "team_prediction": {

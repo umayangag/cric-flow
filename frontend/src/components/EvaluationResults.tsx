@@ -125,6 +125,17 @@ const MatchAggregates: React.FC<{
   );
 };
 
+function diffSeverity(
+  value: number | undefined,
+  thresholds: { low: number; high: number },
+): 'good' | 'moderate' | 'high' | 'none' {
+  if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return 'none';
+  const { low, high } = thresholds;
+  if (value <= low) return 'good';
+  if (value <= high) return 'moderate';
+  return 'high';
+}
+
 const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }) => {
   const anyWickets = result.players?.some(
     (p) => typeof p.predicted['wickets'] === 'number' || typeof p.actual['wickets'] === 'number',
@@ -140,26 +151,73 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
   );
 
   const optionalMetrics = [
-    { key: 'wickets', label: 'Wkts', maeKey: 'wickets_mae', enabled: anyWickets },
-    { key: 'economy', label: 'Econ', maeKey: 'economy_mae', enabled: anyEconomy },
-    { key: 'catches', label: 'Catches', maeKey: 'catches_mae', enabled: anyCatches },
-    { key: 'run_outs', label: 'Run Outs', maeKey: 'run_outs_mae', enabled: anyRunOuts },
+    {
+      key: 'wickets',
+      label: 'Wkts',
+      maeKey: 'wickets_mae',
+      enabled: anyWickets,
+      thresholds: { low: 0.5, high: 1.5 },
+    },
+    {
+      key: 'economy',
+      label: 'Econ',
+      maeKey: 'economy_mae',
+      enabled: anyEconomy,
+      thresholds: { low: 0.5, high: 1.5 },
+    },
+    {
+      key: 'catches',
+      label: 'Catches',
+      maeKey: 'catches_mae',
+      enabled: anyCatches,
+      thresholds: { low: 0.5, high: 1 },
+    },
+    {
+      key: 'run_outs',
+      label: 'Run Outs',
+      maeKey: 'run_outs_mae',
+      enabled: anyRunOuts,
+      thresholds: { low: 0.5, high: 1 },
+    },
   ].filter((m) => m.enabled);
 
+  const allMetrics = [
+    { key: 'runs', label: 'Runs', maeKey: 'runs_mae', thresholds: { low: 5, high: 15 } },
+    ...optionalMetrics,
+  ];
+
   return (
-    <TableContainer component={Paper} sx={{ maxHeight: 320 }}>
-      <Table stickyHeader size="small" aria-label="players results table">
+    <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
+      <Table stickyHeader size="small" aria-label="players actual vs predicted comparison">
         <TableHead>
           <TableRow>
-            <TableCell>Player ID</TableCell>
-            <TableCell align="right">Pred Runs</TableCell>
-            <TableCell align="right">Actual Runs</TableCell>
-            <TableCell align="right">Abs Error</TableCell>
-            {optionalMetrics.map((m) => (
+            <TableCell sx={{ fontWeight: 600 }}>Player</TableCell>
+            {allMetrics.map((m) => (
               <React.Fragment key={m.key}>
-                <TableCell align="right">Pred {m.label}</TableCell>
-                <TableCell align="right">Actual {m.label}</TableCell>
-                <TableCell align="right">{m.label} Abs Err</TableCell>
+                <TableCell
+                  align="right"
+                  sx={{ bgcolor: 'action.hover', fontWeight: 600, minWidth: 56 }}
+                >
+                  {m.label} Actual
+                </TableCell>
+                <TableCell
+                  align="right"
+                  sx={{
+                    bgcolor: 'primary.light',
+                    color: 'primary.dark',
+                    fontWeight: 600,
+                    minWidth: 56,
+                  }}
+                >
+                  {m.label} Pred
+                </TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ fontWeight: 600, minWidth: 44 }}
+                  title="Difference (|Pred - Actual|)"
+                >
+                  Δ
+                </TableCell>
               </React.Fragment>
             ))}
           </TableRow>
@@ -167,17 +225,54 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
         <TableBody>
           {result.players.map((p) => (
             <TableRow key={p.player_id} hover>
-              <TableCell>{p.player_id}</TableCell>
-              <TableCell align="right">{formatCell(p.predicted['runs'])}</TableCell>
-              <TableCell align="right">{formatCell(p.actual['runs'])}</TableCell>
-              <TableCell align="right">{formatCell(p.errors['runs_mae'])}</TableCell>
-              {optionalMetrics.map((m) => (
-                <React.Fragment key={m.key}>
-                  <TableCell align="right">{formatCell(p.predicted[m.key])}</TableCell>
-                  <TableCell align="right">{formatCell(p.actual[m.key])}</TableCell>
-                  <TableCell align="right">{formatCell(p.errors[m.maeKey])}</TableCell>
-                </React.Fragment>
-              ))}
+              <TableCell component="th" scope="row" sx={{ fontWeight: 500 }}>
+                {p.player_id}
+              </TableCell>
+              {allMetrics.map((m) => {
+                const actualVal = p.actual[m.key];
+                const predVal = p.predicted[m.key];
+                const err = p.errors[m.maeKey];
+                const severity = diffSeverity(
+                  typeof err === 'number' ? err : undefined,
+                  m.thresholds,
+                );
+                return (
+                  <React.Fragment key={m.key}>
+                    <TableCell align="right" sx={{ bgcolor: 'action.hover' }}>
+                      {formatCell(actualVal)}
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{ bgcolor: 'primary.light', color: 'primary.dark' }}
+                    >
+                      {formatCell(predVal)}
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{
+                        fontWeight: 600,
+                        ...(severity === 'good' && {
+                          color: 'success.main',
+                          bgcolor: 'success.light',
+                          opacity: 0.9,
+                        }),
+                        ...(severity === 'moderate' && {
+                          color: 'warning.dark',
+                          bgcolor: 'warning.light',
+                          opacity: 0.9,
+                        }),
+                        ...(severity === 'high' && {
+                          color: 'error.contrastText',
+                          bgcolor: 'error.main',
+                          opacity: 0.9,
+                        }),
+                      }}
+                    >
+                      {formatCell(err)}
+                    </TableCell>
+                  </React.Fragment>
+                );
+              })}
             </TableRow>
           ))}
         </TableBody>
@@ -195,6 +290,13 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ result }) => {
       </Typography>
       <MetricsLine metrics={result.metrics} />
       <MatchAggregates aggregates={result.match_aggregates} />
+      <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+        Player performance: Actual vs Predicted
+      </Typography>
+      <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
+        Each metric shows Actual | Predicted | Δ (absolute error). Δ is color-coded: green = small,
+        amber = moderate, red = large.
+      </Typography>
       <PlayersTable result={result} />
     </Box>
   );

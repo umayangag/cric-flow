@@ -179,7 +179,7 @@ def test_count_combinations():
 
 
 def test_compute_metrics_regression():
-    """_compute_metrics_regression returns dict with mae, rmse, r2, etc."""
+    """_compute_metrics_regression returns dict with mae, rmse, r2, target_context, baseline, learning_curve."""
     m = _get_module()
     est = RandomForestRegressor(n_estimators=10, random_state=42)
     pipe = m._build_pipeline_single_regression(est)
@@ -194,6 +194,19 @@ def test_compute_metrics_regression():
     assert "median_ae" in metrics
     assert "max_error" in metrics
     assert "explained_variance" in metrics
+    assert "target_context" in metrics
+    ctx = metrics["target_context"]
+    assert "target_mean" in ctx
+    assert "target_std" in ctx
+    assert "mae_pct_of_mean" in ctx
+    assert "baseline_comparison" in metrics
+    bc = metrics["baseline_comparison"]
+    assert "baseline_mae" in bc
+    assert "baseline_improvement_pct" in bc
+    assert "learning_curve" in metrics
+    lc = metrics["learning_curve"]
+    assert "val_still_improving" in lc
+    assert "overfitting_gap" in lc
 
 
 def test_compute_metrics_regression_single_output():
@@ -207,6 +220,31 @@ def test_compute_metrics_regression_single_output():
     metrics = m._compute_metrics_regression(pipe, X, y, cv)
     assert "mae" in metrics
     assert "r2" in metrics
+
+
+def test_compute_mlqa_audit():
+    """_compute_mlqa_audit returns audit_status, key_findings, bias_report, final_verdict."""
+    m = _get_module()
+    est = RandomForestRegressor(n_estimators=10, random_state=42)
+    pipe = m._build_pipeline_single_regression(est)
+    X = np.random.RandomState(42).rand(80, 5)
+    y = np.random.RandomState(43).rand(80)
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    report = {
+        "best_cv_score": -0.4,
+        "candidates": [{"algorithm": "rf", "best_score": -0.4}],
+        "algorithms": ["rf"],
+    }
+    audit = m._compute_mlqa_audit(
+        report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", ["f0", "f1", "f2", "f3", "f4"]
+    )
+    assert audit["audit_status"] in ("PASS", "FAIL", "WARNING")
+    assert "key_findings" in audit
+    assert isinstance(audit["key_findings"], list)
+    assert "bias_report" in audit
+    assert audit["final_verdict"] in ("Proceed to Deployment", "Rollback & Re-tune")
+    if "checks" in audit:
+        assert "overfitting" in audit["checks"] or "stability" in audit["checks"]
 
 
 def test_load_bowling_csv_minimal(tmp_path):
