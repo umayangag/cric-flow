@@ -22,6 +22,9 @@ Usage:
   # All models, all formats (extras/win from API only)
   python -m ml.auto_tune --model all --all-formats --from-api --cutoff 2024-12-01T00:00:00Z
 
+  # Unified model (one model on all formats combined; saves to legacy artifact names)
+  GO_APP_URL=... python -m ml.auto_tune --model win --unified --from-api --cutoff 2024-12-01T00:00:00Z --algorithms mlp
+
   # Fine-tune one model for one format then apply best params to config (see docs/ml-and-training.md)
 
 When prior tuned params exist (go-app or tuning_report_*.json), auto_tune skips algorithm
@@ -2794,6 +2797,11 @@ def main() -> None:
         "--format", default="", help="Format code (e.g. T20, ODI); used for artifact suffix and API filter"
     )
     parser.add_argument("--all-formats", action="store_true", help="Loop over ml.formats and tune each (CSV only)")
+    parser.add_argument(
+        "--unified",
+        action="store_true",
+        help="Tune one unified model on all formats combined (saves to legacy artifact names, no format suffix).",
+    )
     parser.add_argument("--out", default="", help="Output dir (default: ML_SERVICE_OUTPUT_DIR or config)")
     parser.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""))
     parser.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""))
@@ -2836,11 +2844,12 @@ def main() -> None:
     args = parser.parse_args()
 
     logger.info(
-        "pipeline: auto_tune starting model=%s from_api=%s format=%s all_formats=%s out_dir=%s",
+        "pipeline: auto_tune starting model=%s from_api=%s format=%s all_formats=%s unified=%s out_dir=%s",
         args.model,
         args.from_api,
         args.format or "(detected)",
         args.all_formats,
+        args.unified,
         args.out or "(default)",
     )
 
@@ -2872,7 +2881,9 @@ def main() -> None:
 
     models = ["batting", "bowling", "fielding", "extras", "win"] if args.model == "all" else [args.model]
     formats_to_run: List[Optional[str]] = [None]
-    if args.all_formats:
+    if args.unified:
+        formats_to_run = [None]
+    elif args.all_formats:
         formats_to_run = _config_formats()
     elif args.format:
         formats_to_run = [args.format.strip().upper()]
@@ -2918,7 +2929,9 @@ def main() -> None:
                 continue
             for fmt in formats_to_run:
                 argv = [sys.executable, "-m", "ml.auto_tune", "--model", model_kind, "--out", out_dir]
-                if fmt:
+                if args.unified:
+                    argv.append("--unified")
+                elif fmt:
                     argv.extend(["--format", fmt])
                 if args.from_api:
                     argv.extend(["--from-api", "--cutoff", args.cutoff or "", "--go-app-url", args.go_app_url or ""])
@@ -2990,13 +3003,16 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y, *_) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
                                 report = run_auto_tune_extras(
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
@@ -3005,26 +3021,55 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, "extras", None, report, args.api_key or None
+                                )
                                 logger.info(
-                                    "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
-                                    fcode,
-                                    X.shape[0],
+                                    "auto_tune.done model=extras format=unified n=%s best_cv_score=%s",
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune_extras(
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        use_autogluon=use_autogluon,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, "extras", fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                         if model_kind == "win":
                             by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
-                            for fcode, (X, Y, *_) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_win_data unified empty")
                                     continue
                                 report = run_auto_tune_win(
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
@@ -3033,13 +3078,39 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                 )
-                                _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, "win", None, report, args.api_key or None
+                                )
                                 logger.info(
-                                    "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
-                                    fcode,
-                                    X.shape[0],
+                                    "auto_tune.done model=win format=unified n=%s best_cv_score=%s",
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune_win(
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        use_autogluon=use_autogluon,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, "win", fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                         if model_kind == "batting":
                             X, Y = load_batting_from_api(
@@ -3054,15 +3125,17 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
-                            # Run once per format from API
-                            for fcode, (X, Y, *_) in by_f.items():
-                                if X.size == 0 or Y.size == 0:
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_fielding_data unified empty")
                                     continue
                                 report = run_auto_tune(
                                     model_kind,
-                                    X,
-                                    Y,
-                                    fcode,
+                                    all_X,
+                                    all_Y,
+                                    None,
                                     out_dir,
                                     algorithms_override,
                                     validation_method_override,
@@ -3071,15 +3144,40 @@ def main() -> None:
                                     rescreen=args.rescreen,
                                 )
                                 _maybe_save_tuned_params(
-                                    args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                    args.go_app_url, model_kind, None, report, args.api_key or None
                                 )
                                 logger.info(
-                                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                    "auto_tune.done model=%s format=unified n=%s best_cv_score=%s",
                                     model_kind,
-                                    fcode,
-                                    X.shape[0],
+                                    all_X.shape[0],
                                     report["best_cv_score"],
                                 )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune(
+                                        model_kind,
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        rescreen=args.rescreen,
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                        model_kind,
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
                             continue
                     except (ValueError, RuntimeError) as e:
                         logger.error("auto_tune.from_api_load_failed model=%s format=%s error=%s", model_kind, fmt, e)

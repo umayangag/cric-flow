@@ -1899,6 +1899,8 @@ async def admin_train_auto_tune(
     ]
     if use_all_formats:
         extra.append("--all-formats")
+    elif use_unified:
+        extra.append("--unified")
     elif not use_unified:
         extra.extend(["--format", fmt])
     if (rescreen or "").strip().lower() in ("1", "true", "yes"):
