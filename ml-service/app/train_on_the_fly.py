@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -285,8 +286,16 @@ def fetch_training_data(
     req = urllib.request.Request(url)
     if api_key:
         req.add_header("X-API-Key", api_key)
+    t0 = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            t_connected = time.monotonic()
+            logger.info(
+                "train_on_the_fly.fetch.connected",
+                url=url,
+                elapsed_sec=round(t_connected - t0, 2),
+                status=resp.status,
+            )
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
@@ -300,11 +309,18 @@ def fetch_training_data(
         )
         raise ValueError(err_msg) from e
     except OSError as e:
-        logger.error(
-            "train_on_the_fly.fetch.os_error",
-            url=url,
-            error=str(e),
-        )
+        elapsed = time.monotonic() - t0
+        err_details = {
+            "url": url,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "elapsed_sec": round(elapsed, 2),
+        }
+        if hasattr(e, "errno") and e.errno is not None:
+            err_details["errno"] = e.errno
+        if hasattr(e, "filename") and e.filename:
+            err_details["filename"] = e.filename
+        logger.error("train_on_the_fly.fetch.os_error", **err_details)
         raise ValueError("Go-app training-data request failed: %s" % e) from e
     data = json.loads(body)
     logger.info(

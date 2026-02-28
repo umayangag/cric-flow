@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -1093,6 +1094,17 @@ var allowedTrainingDataSections = map[string]bool{
 // cutoff (RFC3339) is required. format: use "all" (or omit) for all matches before cutoff; use a specific code (T20, ODI, etc.) to filter by that format.
 // sections: optional comma-separated list (batting,bowling,fielding,extras,win). If omitted, all sections are returned (legacy). If set, only those sections are queried to reduce go-app and DB CPU during auto-tune.
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("training-data: panic recovered",
+				slog.Any("panic", rec),
+				slog.String("stack", string(debug.Stack())),
+			)
+			// Connection may already be broken; try to write 500
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+
 	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
 	if cutoffStr == "" {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
@@ -1122,6 +1134,14 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	runAllSections := len(wantSection) == 0
 
+	slog.Info("training-data: request start",
+		slog.String("cutoff", cutoffStr),
+		slog.String("format", format),
+		slog.String("sections", sectionsParam),
+		slog.Bool("use_all", useAll),
+		slog.Bool("run_all_sections", runAllSections),
+	)
+
 	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
 	type sectionLoader struct {
 		name       string
@@ -1138,16 +1158,29 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	for _, loader := range loaders {
 		if runAllSections || wantSection[loader.name] {
+			t0 := time.Now()
 			var loadErr error
 			if useAll {
 				*loader.rows, loadErr = loader.loadAll(r.Context(), cutoff)
 			} else {
 				*loader.rows, loadErr = loader.loadFormat(r.Context(), format, cutoff)
 			}
+			elapsed := time.Since(t0)
+			rowCount := len(*loader.rows)
 			if loadErr != nil {
+				slog.Error("training-data: section load failed",
+					slog.String("section", loader.name),
+					slog.Duration("elapsed", elapsed),
+					slog.Any("err", loadErr),
+				)
 				respondTrainingDataErr(w, loadErr, formatForErr)
 				return
 			}
+			slog.Info("training-data: section loaded",
+				slog.String("section", loader.name),
+				slog.Int("rows", rowCount),
+				slog.Duration("elapsed_ms", elapsed),
+			)
 		}
 	}
 	part := func(rows [][]string) (headers []string, data [][]string) {
@@ -1161,6 +1194,14 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	fieldH, fieldD := part(fieldRows)
 	extrasH, extrasD := part(extrasRows)
 	winH, winD := part(winRows)
+
+	slog.Info("training-data: all sections ready, writing response",
+		slog.Int("batting_rows", len(batD)),
+		slog.Int("bowling_rows", len(bowlD)),
+		slog.Int("fielding_rows", len(fieldD)),
+		slog.Int("extras_rows", len(extrasD)),
+		slog.Int("win_rows", len(winD)),
+	)
 	writeJSON(w, http.StatusOK, trainingDataResponse{
 		Batting:  trainingDataPart{Headers: batH, Rows: batD},
 		Bowling:  trainingDataPart{Headers: bowlH, Rows: bowlD},
@@ -1168,6 +1209,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		Extras:   trainingDataPart{Headers: extrasH, Rows: extrasD},
 		Win:      trainingDataPart{Headers: winH, Rows: winD},
 	})
+	slog.Info("training-data: response written successfully")
 }
 
 // matchesAfterResponse is the JSON shape for GET /api/backtest/matches (walk-forward).
