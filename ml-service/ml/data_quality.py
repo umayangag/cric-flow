@@ -17,7 +17,7 @@ Outlier clipping:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -25,15 +25,17 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # Features that represent encoded categorical IDs — use -1 sentinel for missing.
-CATEGORICAL_SENTINEL_FEATURES = frozenset({
-    "batting_venue",
-    "batting_opposition",
-    "bowling_venue",
-    "bowling_opposition",
-    "season_id",
-    "venue",
-    "opposition",
-})
+CATEGORICAL_SENTINEL_FEATURES = frozenset(
+    {
+        "batting_venue",
+        "batting_opposition",
+        "bowling_venue",
+        "bowling_opposition",
+        "season_id",
+        "venue",
+        "opposition",
+    }
+)
 
 # Default sentinel value for missing categorical features.
 CATEGORICAL_SENTINEL = -1.0

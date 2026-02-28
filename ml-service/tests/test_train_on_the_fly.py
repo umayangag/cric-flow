@@ -284,8 +284,8 @@ def test_train_on_the_fly_success():
     X_bowl = np.random.RandomState(2).rand(1, len(BOWLING_FEATURE_COLS))
     out_bat = model_bat.predict(scaler_bat.transform(X_bat))
     out_bowl = model_bowl.predict(scaler_bowl.transform(X_bowl))
-    assert out_bat.shape == (1, 6)
-    assert out_bowl.shape == (1, 4)
+    assert out_bat.shape == (1, len(BATTING_TARGET_COLS))
+    assert out_bowl.shape == (1, len(BOWLING_TARGET_COLS))
 
 
 def test_train_on_the_fly_insufficient_batting_raises():

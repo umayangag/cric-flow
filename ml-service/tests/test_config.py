@@ -342,6 +342,7 @@ def test_config_load_default_fails_returns_empty(monkeypatch):
     """When default config load raises, empty dict is used (lines 61-63)."""
     config_mod._cached = None
     try:
+
         def fake_load(path):
             raise ValueError("broken default")
 
@@ -387,6 +388,7 @@ def test_config_load_user_fails_keeps_default(monkeypatch):
     """When user config load raises, default config is kept (lines 71-72)."""
     config_mod._cached = None
     try:
+
         def fake_load(path):
             if "config.default" in path or path.endswith("config.default.json"):
                 return {"inputs": {}}

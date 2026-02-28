@@ -85,6 +85,7 @@ def build_feature_matrix(
         else:
             missing_cols.append(name)
             col = np.full(shape=(len(df),), fill_value=float(fill_value), dtype=np.float64)
+        cols.append(col.reshape(-1, 1))
     if missing_cols:
         logger.info(
             "seq_reader.build_feature_matrix missing_columns count=%d names=%s (filled with %.2f)",
@@ -92,7 +93,6 @@ def build_feature_matrix(
             missing_cols[:10] + (["..."] if len(missing_cols) > 10 else []),
             fill_value,
         )
-        cols.append(col.reshape(-1, 1))
     if len(cols) == 0:
         # No requested columns; return empty matrix with correct n_rows
         return np.zeros((len(df), 0), dtype=np.float64), []

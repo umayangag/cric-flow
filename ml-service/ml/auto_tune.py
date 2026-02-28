@@ -2164,7 +2164,9 @@ def run_auto_tune(
         Y, percentile=clip_percentile, target_names=target_names[: (Y.shape[1] if Y.ndim > 1 else 1)]
     )
     if clip_info:
-        logger.info("auto_tune.clip_target_outliers model=%s percentile=%.1f info=%s", model_kind, clip_percentile, clip_info)
+        logger.info(
+            "auto_tune.clip_target_outliers model=%s percentile=%.1f info=%s", model_kind, clip_percentile, clip_info
+        )
 
     best_pipe, best_params, report = _run_search_two_phase(
         X,

@@ -166,7 +166,9 @@ def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str
     return X, Y, feature_names, medians
 
 
-def load_dataset_from_memory(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float]]:
+def load_dataset_from_memory(
+    headers: List[str], rows: List[List[str]]
+) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float]]:
     """Build X, Y from API-style (headers, rows). Same contract as load_dataset."""
     if not headers or not rows:
         return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 5)), list(FEATURE_COLS), {}
@@ -230,7 +232,7 @@ def train_and_save(
     # Outlier clipping on targets (configurable via training_params)
     clip_percentile = training_params.get("target_clip_percentile", 99.0)
     target_names = ["runs", "balls", "fours", "sixes", "batting_position"]
-    Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=target_names[:Y.shape[1]])
+    Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=target_names[: Y.shape[1]])
     compress = training_params["joblib_compress"]
     base_est = make_base_estimator(training_params)
     model = MultiOutputRegressor(base_est)

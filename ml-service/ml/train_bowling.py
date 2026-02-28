@@ -157,7 +157,9 @@ def load_dataset(path: str) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str
     return _df_to_xy(df)
 
 
-def load_dataset_from_memory(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float]]:
+def load_dataset_from_memory(
+    headers: List[str], rows: List[List[str]]
+) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float]]:
     if not headers or not rows:
         return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 3)), list(FEATURE_COLS), {}
     df = pd.DataFrame(rows, columns=headers)
@@ -221,7 +223,7 @@ def train_and_save(
     # Outlier clipping on targets (configurable via training_params)
     clip_percentile = training_params.get("target_clip_percentile", 99.0)
     target_names = ["runs", "balls", "wickets"]
-    Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=target_names[:Y.shape[1]])
+    Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=target_names[: Y.shape[1]])
     compress = training_params["joblib_compress"]
     base_est = make_base_estimator(training_params)
     model = MultiOutputRegressor(base_est)

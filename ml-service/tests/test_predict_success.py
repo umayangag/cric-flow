@@ -3,6 +3,7 @@ import os
 from typing import List
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -13,19 +14,21 @@ class DummyScaler:
 
 class DummyBatModel:
     def predict(self, X: np.ndarray) -> List[List[float]]:
-        # Return 6 columns per row
+        # Return 5 columns per row: runs, balls, fours, sixes, batting_position
+        # strike_rate is derived as runs/balls*100
         out = []
         for _ in X:
-            out.append([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+            out.append([1.0, 2.0, 3.0, 4.0, 5.0])
         return np.array(out)
 
 
 class DummyBowlModel:
     def predict(self, X: np.ndarray) -> List[List[float]]:
-        # Return 4 columns per row
+        # Return 3 columns per row: runs, balls, wickets
+        # econ is derived as runs/(balls/6)
         out = []
         for _ in X:
-            out.append([10.0, 11.0, 12.0, 13.0])
+            out.append([10.0, 11.0, 12.0])
         return np.array(out)
 
 
@@ -102,7 +105,8 @@ def test_predict_batting_success_with_mock_model(tmp_path):
             "strike_rate",
         }
         assert item["runs_scored"] == 1.0
-        assert item["strike_rate"] == 6.0
+        # strike_rate = runs/balls*100 = 1/2*100 = 50.0
+        assert item["strike_rate"] == 50.0
 
 
 def test_predict_bowling_success_with_mock_model(tmp_path):
@@ -114,4 +118,5 @@ def test_predict_bowling_success_with_mock_model(tmp_path):
     obj = data[0]
     assert set(obj.keys()) == {"runs_conceded", "deliveries", "wickets_taken", "econ"}
     assert obj["runs_conceded"] == 10.0
-    assert obj["econ"] == 13.0
+    # econ = runs/(balls/6) = 10/(11/6) = 60/11
+    assert obj["econ"] == pytest.approx(60.0 / 11.0)

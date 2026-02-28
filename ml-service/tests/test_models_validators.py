@@ -35,24 +35,24 @@ def test_batting_features_format_normalization(tmp_path):
 
 def test_backtest_predict_request_teams_validator(tmp_path):
     """BacktestPredictRequest teams validator normalizes and enforces len==2."""
-    import pytest
     from datetime import datetime
+
+    import pytest
 
     from app.models import BacktestPredictRequest
 
     cutoff = datetime(2024, 1, 1)
     with pytest.raises(ValueError, match="exactly two"):
         BacktestPredictRequest(cutoff_date=cutoff, teams=["A"], player_ids=[1, 2], format="T20")
-    r = BacktestPredictRequest(
-        cutoff_date=cutoff, teams=["  india  ", "  aus  "], player_ids=[1, 2], format="T20"
-    )
+    r = BacktestPredictRequest(cutoff_date=cutoff, teams=["  india  ", "  aus  "], player_ids=[1, 2], format="T20")
     assert r.teams == ["INDIA", "AUS"]
 
 
 def test_backtest_predict_request_player_ids_validator(tmp_path):
     """BacktestPredictRequest player_ids validator rejects non-positive."""
-    import pytest
     from datetime import datetime
+
+    import pytest
 
     from app.models import BacktestPredictRequest
 
@@ -91,8 +91,9 @@ def test_historical_match_filter_validators(tmp_path):
 
 def test_historical_match_backtest_request_match_id_validator(tmp_path):
     """HistoricalMatchBacktestRequest match_id must be positive (lines 280-286)."""
-    import pytest
     from datetime import datetime
+
+    import pytest
 
     from app.models import HistoricalMatchBacktestRequest
 
@@ -107,8 +108,9 @@ def test_historical_match_backtest_request_match_id_validator(tmp_path):
 
 def test_historical_match_backtest_request_exactly_one_selector(tmp_path):
     """HistoricalMatchBacktestRequest requires exactly one of match_id or filters (lines 288-295)."""
-    import pytest
     from datetime import datetime
+
+    import pytest
 
     from app.models import HistoricalMatchBacktestRequest, HistoricalMatchFilter
 
