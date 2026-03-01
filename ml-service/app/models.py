@@ -89,6 +89,25 @@ class BowlingFeatures(BaseModel):
 # -------------------- Backtest endpoint models --------------------
 
 
+class MatchContext(BaseModel):
+    """Match context for hybrid reconciliation. When provided with innings model, player predictions are rescaled."""
+
+    team1_player_ids: List[int] = Field(..., description="Player IDs for team 1 (bats in innings 1)")
+    team2_player_ids: List[int] = Field(..., description="Player IDs for team 2 (bats in innings 2)")
+    venue_id: float = Field(default=0, description="Venue ID for innings model")
+    season_id: float = Field(default=0, description="Season ID for innings model")
+    format_id: float = Field(default=0, description="Format ID for innings model")
+    team1_opposition_id: float = Field(default=0, description="Opposition ID when team1 bats (team2)")
+    team2_opposition_id: float = Field(default=0, description="Opposition ID when team2 bats (team1)")
+    temp: int = Field(default=0, description="Weather temp")
+    wind: int = Field(default=0, description="Weather wind")
+    rain: int = Field(default=0, description="Weather rain")
+    humidity: int = Field(default=0, description="Weather humidity")
+    cloud: int = Field(default=0, description="Weather cloud")
+    pressure: int = Field(default=0, description="Weather pressure")
+    viscosity: int = Field(default=0, description="Weather viscosity")
+
+
 class BacktestPredictRequest(BaseModel):
     cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
     # one of the following should be present
@@ -107,6 +126,10 @@ class BacktestPredictRequest(BaseModel):
     use_latest_model: bool = Field(
         default=False,
         description="Use latest model; when False, train strictly before cutoff_date",
+    )
+    match_context: Optional[MatchContext] = Field(
+        default=None,
+        description="Match context (team assignment, venue, etc.) for hybrid reconciliation",
     )
 
     @field_validator("teams")

@@ -72,7 +72,21 @@ type Result struct {
 	ScorecardSummary *ScorecardSummary `json:"scorecard_summary,omitempty"`
 }
 
+// MatchContext is optional context for hybrid reconciliation (innings model rescaling).
+// When provided with both teams, ML service rescales predictions so runs and wickets tally.
+type MatchContext struct {
+	Team1PlayerIDs                                         []int64
+	Team2PlayerIDs                                         []int64
+	VenueID                                                int64
+	SeasonID                                               int64
+	FormatID                                               int64
+	Team1OppositionID                                      int64 // team2's ID when team1 bats (innings 1)
+	Team2OppositionID                                      int64 // team1's ID when team2 bats (innings 2)
+	Temp, Wind, Rain, Humidity, Cloud, Pressure, Viscosity int
+}
+
 // MLPredictor provides player predictions from features (e.g. via ML backtest endpoint).
+// When matchCtx is non-nil, ML may rescale predictions for consistency (requires innings model).
 type MLPredictor interface {
 	PredictPlayers(
 		ctx context.Context,
@@ -80,6 +94,7 @@ type MLPredictor interface {
 		format string,
 		playerIDs []int64,
 		features map[int64]map[string]float64,
+		matchCtx *MatchContext,
 	) (map[int64]PlayerPred, error)
 }
 
@@ -155,6 +170,8 @@ func predictTeamsWithIntermediates(
 	// Opposition IDs for feature context (when team1 bats, they face team2)
 	opp1ID, _ := db.GetGlobalCache().GetOppositionID(ctx, team1)
 	opp2ID, _ := db.GetGlobalCache().GetOppositionID(ctx, team2)
+	opp1IDVal := opp1ID
+	opp2IDVal := opp2ID
 
 	// Player pools
 	pool1, err := db.ListPlayerPoolByTeam(ctx, format, team1, cutoff, input.ExtraTeam1)
@@ -206,7 +223,7 @@ func predictTeamsWithIntermediates(
 		oppositionIDsTeam1 = input.OppositionPlayerIDs
 		oppositionIDsTeam2 = input.OppositionPlayerIDs
 	}
-	// Features and predictions for team1 (opposition = team2)
+	// Features for both teams (each with correct opposition context)
 	feats1, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
 		ctx,
 		cutoff,
@@ -222,17 +239,6 @@ func predictTeamsWithIntermediates(
 		slog.Error("predictteam.PredictTeams team1 features failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, nil, fmt.Errorf("team1 features: %w", err)
 	}
-	preds1, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids1, feats1)
-	if err != nil {
-		slog.Error("predictteam.PredictTeams team1 predict failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, nil, fmt.Errorf("team1 predict: %w", err)
-	}
-	// Use ML fielding when the service returned predictions; otherwise fall back to historical EWM.
-	if !hasFieldingPredictions(preds1) {
-		enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
-	}
-
-	// Features and predictions for team2 (opposition = team1)
 	feats2, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
 		ctx,
 		cutoff,
@@ -248,10 +254,54 @@ func predictTeamsWithIntermediates(
 		slog.Error("predictteam.PredictTeams team2 features failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, nil, fmt.Errorf("team2 features: %w", err)
 	}
-	preds2, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, ids2, feats2)
+
+	// Combined prediction with match context for hybrid reconciliation (innings model rescaling)
+	allIDs := make([]int64, 0, len(ids1)+len(ids2))
+	allIDs = append(allIDs, ids1...)
+	allIDs = append(allIDs, ids2...)
+	allFeats := make(map[int64]map[string]float64, len(feats1)+len(feats2))
+	for pid, m := range feats1 {
+		allFeats[pid] = m
+	}
+	for pid, m := range feats2 {
+		allFeats[pid] = m
+	}
+	venueIDVal := int64(0)
+	if venueID != nil {
+		venueIDVal = *venueID
+	}
+	seasonIDVal := int64(0)
+	if input.SeasonID != nil {
+		seasonIDVal = *input.SeasonID
+	}
+	matchCtx := &MatchContext{
+		Team1PlayerIDs:    ids1,
+		Team2PlayerIDs:    ids2,
+		VenueID:           venueIDVal,
+		SeasonID:          seasonIDVal,
+		FormatID:          formatID,
+		Team1OppositionID: opp2IDVal,
+		Team2OppositionID: opp1IDVal,
+	}
+	allPreds, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, allIDs, allFeats, matchCtx)
 	if err != nil {
-		slog.Error("predictteam.PredictTeams team2 predict failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, nil, fmt.Errorf("team2 predict: %w", err)
+		slog.Error("predictteam.PredictTeams predict failed", slog.Any("err", err))
+		return nil, nil, fmt.Errorf("predict: %w", err)
+	}
+	preds1 := make(map[int64]PlayerPred)
+	preds2 := make(map[int64]PlayerPred)
+	for _, pid := range ids1 {
+		if p, ok := allPreds[pid]; ok {
+			preds1[pid] = p
+		}
+	}
+	for _, pid := range ids2 {
+		if p, ok := allPreds[pid]; ok {
+			preds2[pid] = p
+		}
+	}
+	if !hasFieldingPredictions(preds1) {
+		enrichFieldingFromHistory(ctx, preds1, ids1, cutoff, formatID)
 	}
 	if !hasFieldingPredictions(preds2) {
 		enrichFieldingFromHistory(ctx, preds2, ids2, cutoff, formatID)

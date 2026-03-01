@@ -148,6 +148,12 @@ try:
     _train_win = _train_win_mod
 except ImportError:
     pass
+try:
+    from ml import train_innings as _train_innings_mod
+
+    _train_innings = _train_innings_mod
+except ImportError:
+    _train_innings = None
 
 BAT_SEQ_COLS = [
     "bat_prev_sr",
@@ -575,6 +581,8 @@ def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
         return _train_extras.EXTRAS_FEATURE_COLS
     if model_kind == "win" and _train_win is not None:
         return _train_win.WIN_FEATURE_COLS
+    if model_kind == "innings" and _train_innings is not None:
+        return _train_innings.INNINGS_FEATURE_COLS
     return None
 
 
@@ -2300,6 +2308,52 @@ def load_extras_from_api(
     return by_format
 
 
+def load_innings_from_api(
+    go_app_url: str, cutoff: str, api_key: Optional[str], format_code: Optional[str]
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+    """Load innings training data (raw X, Y) from go-app API for auto_tune."""
+    if _train_innings is None:
+        logger.error("auto_tune.load_innings_from_api.train_innings_unavailable")
+        raise RuntimeError("ml.train_innings not available for innings API")
+    innings = _train_innings.fetch_innings_data(go_app_url, cutoff, api_key)
+    headers = innings.get("headers") or []
+    rows = innings.get("rows") or []
+    if not headers or not rows:
+        return {}
+    df = pd.DataFrame(rows, columns=headers)
+    for c in _train_innings.INNINGS_FEATURE_COLS + _train_innings.INNINGS_TARGET_COLS:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in _train_innings.INNINGS_FEATURE_COLS:
+        if c in df.columns:
+            df[c] = df[c].fillna(0.0)
+    feat_cols = [c for c in _train_innings.INNINGS_FEATURE_COLS if c in df.columns]
+    out: Dict[str, Tuple[np.ndarray, np.ndarray, Any]] = {}
+    if "format_code" not in df.columns:
+        df = df.dropna(subset=feat_cols + _train_innings.INNINGS_TARGET_COLS)
+        if df.empty or len(df) < _train_innings.MIN_SAMPLES_FOR_FORMAT:
+            return {}
+        X_raw = df[feat_cols].astype(float).values
+        Y = df[_train_innings.INNINGS_TARGET_COLS].astype(float).values
+        out["_ALL_"] = (X_raw, Y, None)
+    else:
+        for fmt, g in df.groupby("format_code"):
+            fmt = str(fmt).strip().upper() or "_ALL_"
+            g = g.dropna(
+                subset=[c for c in _train_innings.INNINGS_FEATURE_COLS if c in g.columns]
+                + _train_innings.INNINGS_TARGET_COLS
+            )
+            if g.empty or len(g) < _train_innings.MIN_SAMPLES_FOR_FORMAT:
+                continue
+            feat_cols_fmt = [c for c in _train_innings.INNINGS_FEATURE_COLS if c in g.columns]
+            X_raw = g[feat_cols_fmt].astype(float).values
+            Y = g[_train_innings.INNINGS_TARGET_COLS].astype(float).values
+            out[fmt] = (X_raw, Y, None)
+    if format_code and format_code in out:
+        return {format_code: out[format_code]}
+    return out
+
+
 def load_win_from_api(
     go_app_url: str, cutoff: str, api_key: Optional[str], format_filter: Optional[str] = None
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
@@ -2396,6 +2450,7 @@ def run_auto_tune(
         "batting": ["runs", "balls", "fours", "sixes", "batting_position"],
         "bowling": ["runs", "balls", "wickets"],
         "fielding": ["catches", "run_outs", "stumpings"],
+        "innings": ["innings_runs", "innings_wickets"],
     }.get(model_kind, [f"target_{i}" for i in range(Y.shape[1] if Y.ndim > 1 else 1)])
     Y, clip_info = clip_target_outliers(
         Y, percentile=clip_percentile, target_names=target_names[: (Y.shape[1] if Y.ndim > 1 else 1)]
@@ -2895,7 +2950,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Auto-tune ML models (batting, bowling, fielding, extras, win)")
     parser.add_argument(
         "--model",
-        choices=["batting", "bowling", "fielding", "extras", "win", "all"],
+        choices=["batting", "bowling", "fielding", "extras", "win", "innings", "all"],
         default="batting",
     )
     parser.add_argument("--csv", default="", help="Path to CSV (for batting/bowling/fielding)")
@@ -2987,7 +3042,11 @@ def main() -> None:
         except Exception:
             return ["T20", "ODI", "T20I"]
 
-    models = ["batting", "bowling", "fielding", "extras", "win"] if args.model == "all" else [args.model]
+    models = (
+        ["batting", "bowling", "fielding", "extras", "win", "innings"]
+        if args.model == "all"
+        else [args.model]
+    )
     formats_to_run: List[Optional[str]] = [None]
     if args.unified:
         formats_to_run = [None]
@@ -3245,6 +3304,67 @@ def main() -> None:
                                     )
                                     logger.info(
                                         "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
+                                        fcode,
+                                        X.shape[0],
+                                        report["best_cv_score"],
+                                    )
+                            continue
+                        if model_kind == "innings":
+                            by_f = load_innings_from_api(
+                                args.go_app_url, args.cutoff, args.api_key or None, fmt
+                            )
+                            if not by_f:
+                                logger.warning("auto_tune.no_innings_data format=%s", fmt)
+                                continue
+                            if args.unified:
+                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
+                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if all_X.size == 0 or all_Y.size == 0:
+                                    logger.warning("auto_tune.no_innings_data unified empty")
+                                    continue
+                                report = run_auto_tune(
+                                    "innings",
+                                    all_X,
+                                    all_Y,
+                                    None,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
+                                    rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
+                                )
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, "innings", None, report, args.api_key or None
+                                )
+                                logger.info(
+                                    "auto_tune.done model=innings format=unified n=%s best_cv_score=%s",
+                                    all_X.shape[0],
+                                    report["best_cv_score"],
+                                )
+                            else:
+                                for fcode, (X, Y, *_) in by_f.items():
+                                    if X.size == 0 or Y.size == 0:
+                                        continue
+                                    report = run_auto_tune(
+                                        "innings",
+                                        X,
+                                        Y,
+                                        fcode,
+                                        out_dir,
+                                        algorithms_override,
+                                        validation_method_override,
+                                        use_pycaret=use_pycaret,
+                                        fast_mode=fast_mode,
+                                        rescreen=args.rescreen,
+                                        algorithms_explicitly_passed=bool(algorithms_override),
+                                    )
+                                    _maybe_save_tuned_params(
+                                        args.go_app_url, "innings", fcode, report, args.api_key or None
+                                    )
+                                    logger.info(
+                                        "auto_tune.done model=innings format=%s n=%s best_cv_score=%s",
                                         fcode,
                                         X.shape[0],
                                         report["best_cv_score"],

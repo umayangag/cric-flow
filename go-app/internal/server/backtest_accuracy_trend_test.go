@@ -90,7 +90,7 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 		}
 
 		// Player predictions: small errors to produce known MAE
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{
 				1: {Runs: 25},
 				2: {Runs: 15},
@@ -198,7 +198,7 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 			return map[int64]playerActuals{1: {Runs: 30}, 2: {Runs: 10}, 3: {Runs: 0}}, nil
 		}
 		// Predictions produce constant MAE and team metrics
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 25}, 2: {Runs: 15}, 3: {Runs: 1}}, nil
 		}
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, matchID int64) (matchAggregates, error) {
@@ -299,7 +299,7 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 30}, 2: {Runs: 10}, 3: {Runs: 0}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 25}, 2: {Runs: 15}, 3: {Runs: 1}}, nil
 		}
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, matchID int64) (matchAggregates, error) {
@@ -391,7 +391,7 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 10}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 12}}, nil
 		}
 		getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
@@ -453,7 +453,7 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 10}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 10}}, nil
 		}
 	})
@@ -500,7 +500,7 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 10}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 11}}, nil
 		}
 
@@ -574,7 +574,7 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 10}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 9}}, nil
 		}
 
@@ -646,7 +646,7 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 			return map[int64]playerActuals{1: {Runs: 10}}, nil
 		}
-		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool) (map[int64]playerPredictions, error) {
+		mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 			return map[int64]playerPredictions{1: {Runs: 10}}, nil
 		}
 

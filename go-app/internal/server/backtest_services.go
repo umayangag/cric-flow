@@ -94,7 +94,7 @@ func computePlayerRunsMAE(
 	if useUnifiedModel {
 		formatForPrediction = ""
 	}
-	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, nil, false)
+	preds, err1 := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, nil, false, nil)
 	acts, err2 := getBacktestPlayerActualsForMatchFunc(ctx, m.MatchID)
 	if err1 != nil || err2 != nil {
 		return 0, false

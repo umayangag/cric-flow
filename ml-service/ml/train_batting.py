@@ -70,6 +70,9 @@ TARGET_COLS = [
     # strike_rate may be absent; derive if missing
 ]
 
+# When --share-targets: replace runs with runs_share = runs / innings_runs (Phase 3)
+TARGET_COLS_SHARE = ["runs_share", "balls", "fours", "sixes", "batting_position"]
+
 
 def _batting_col_map() -> Dict[str, str]:
     m = {
@@ -97,6 +100,7 @@ def _batting_col_map() -> Dict[str, str]:
         "sixes": "sixes",
         "batting_position": "batting_position",
         "strike_rate": "strike_rate",
+        "innings_runs": "innings_runs",
     }
     for c in BAT_SEQ_COLS:
         m[c] = c
@@ -121,6 +125,7 @@ def _prepare_batting_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def _df_to_xy(
     df: pd.DataFrame,
+    share_targets: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float], Optional[np.ndarray]]:
     """Build X, Y, feature_names, and imputation medians from a prepared batting DataFrame.
 
@@ -130,9 +135,23 @@ def _df_to_xy(
     Strike rate is NOT included as a training target — it is a deterministic function
     of runs and balls (SR = runs/balls * 100) and would cause target leakage. It is
     derived post-prediction instead.
+
+    When share_targets=True (Phase 3): require innings_runs, compute runs_share = runs/innings_runs
+    (capped at 1.0), skip rows where innings_runs <= 0. Target becomes runs_share instead of runs.
     """
-    # Drop only rows missing essential targets (runs/balls) so we don't train on invalid labels
-    target_subset = [c for c in TARGET_COLS if c in df.columns]
+    if share_targets:
+        if "innings_runs" not in df.columns:
+            raise ValueError("share_targets requires innings_runs column (run export-dataset with updated schema)")
+        df = df.copy()
+        df["innings_runs"] = pd.to_numeric(df["innings_runs"], errors="coerce").fillna(0)
+        df = df[df["innings_runs"] > 0]
+        df["runs_share"] = (df["runs"].astype(float) / df["innings_runs"]).clip(upper=1.0)
+        target_cols = TARGET_COLS_SHARE
+    else:
+        target_cols = TARGET_COLS
+
+    # Drop only rows missing essential targets (runs/balls or runs_share/balls) so we don't train on invalid labels
+    target_subset = [c for c in target_cols if c in df.columns]
     if target_subset:
         df = df.dropna(subset=target_subset)
     # Smart imputation: median for numeric, -1 sentinel for categorical-like features
@@ -149,9 +168,9 @@ def _df_to_xy(
     else:
         X = X_raw
         feature_names_used = list(FEATURE_COLS)
-    y_cols = [c for c in TARGET_COLS if c in df.columns]
+    y_cols = [c for c in target_cols if c in df.columns]
     Y = df[y_cols].astype(float).values
-    needed = len(TARGET_COLS)
+    needed = len(target_cols)
     if Y.shape[1] < needed:
         pad = np.zeros((Y.shape[0], needed - Y.shape[1]))
         Y = np.concatenate([Y, pad], axis=1)
@@ -169,24 +188,26 @@ def _df_to_xy(
 
 def load_dataset(
     path: str,
+    share_targets: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float], Optional[np.ndarray]]:
     if not os.path.exists(path):
         logger.error("train_batting.load_dataset.file_not_found path=%s", path)
         raise FileNotFoundError(path)
     df = pd.read_csv(path)
     df = _prepare_batting_df(df)
-    return _df_to_xy(df)
+    return _df_to_xy(df, share_targets=share_targets)
 
 
 def load_dataset_from_memory(
-    headers: List[str], rows: List[List[str]]
+    headers: List[str], rows: List[List[str]], share_targets: bool = False
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, float], Optional[np.ndarray]]:
     """Build X, Y from API-style (headers, rows). Same contract as load_dataset."""
     if not headers or not rows:
-        return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, 5)), list(FEATURE_COLS), {}, None
+        tc = TARGET_COLS_SHARE if share_targets else TARGET_COLS
+        return np.zeros((0, len(FEATURE_COLS))), np.zeros((0, len(tc))), list(FEATURE_COLS), {}, None
     df = pd.DataFrame(rows, columns=headers)
     df = _prepare_batting_df(df)
-    return _df_to_xy(df)
+    return _df_to_xy(df, share_targets=share_targets)
 
 
 def fetch_batting_from_api(
@@ -232,6 +253,7 @@ def train_and_save(
     metadata: Optional[dict] = None,
     transform_config: Optional[dict] = None,
     sample_weight: Optional[np.ndarray] = None,
+    share_model: bool = False,
 ):
     """Train and save artifacts. training_params must come from get_training_params("batting") (config only).
 
@@ -271,21 +293,23 @@ def train_and_save(
             top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
             logger.info("train_batting.feature_importance_top5 %s", top)
 
+    prefix = "batting_share" if share_model else "batting"
     if suffix:
-        joblib.dump(scaler, os.path.join(out_dir, f"batting_scaler_{suffix}.joblib"), compress=compress)
-        joblib.dump(model, os.path.join(out_dir, f"batting_model_{suffix}.joblib"), compress=compress)
+        joblib.dump(scaler, os.path.join(out_dir, f"{prefix}_scaler_{suffix}.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, f"{prefix}_model_{suffix}.joblib"), compress=compress)
     else:
-        joblib.dump(scaler, os.path.join(out_dir, "batting_scaler.joblib"), compress=compress)
-        joblib.dump(model, os.path.join(out_dir, "batting_model.joblib"), compress=compress)
+        joblib.dump(scaler, os.path.join(out_dir, f"{prefix}_scaler.joblib"), compress=compress)
+        joblib.dump(model, os.path.join(out_dir, f"{prefix}_model.joblib"), compress=compress)
     # Save training metadata if provided (include feature importance and feature_transforms)
     if metadata is not None:
+        metadata["share_model"] = share_model
         if feature_importance is not None:
             metadata["feature_importance"] = feature_importance
         if transform_config:
             metadata["feature_transforms"] = transform_config
         if clip_info:
             metadata["target_clip_info"] = clip_info
-        meta_path = os.path.join(out_dir, f"batting_metadata_{suffix or 'LEGACY'}.json")
+        meta_path = os.path.join(out_dir, f"{prefix}_metadata_{suffix or 'LEGACY'}.json")
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
@@ -354,6 +378,11 @@ def main():
         help="Go-app base URL for --from-api (default: GO_APP_URL).",
     )
     parser.add_argument(
+        "--share-targets",
+        action="store_true",
+        help="Phase 3: train on runs_share = runs/innings_runs instead of runs. Requires innings_runs in data.",
+    )
+    parser.add_argument(
         "--api-key",
         default=os.environ.get("GO_APP_API_KEY", ""),
         help="Optional API key for go-app (default: GO_APP_API_KEY).",
@@ -400,7 +429,9 @@ def main():
                 logger.warning("train_batting.skip_format_no_data_from_api format=%s", fmt)
                 return 0
             try:
-                X, Y, feature_names_used, medians, weights = load_dataset_from_memory(headers, rows)
+                X, Y, feature_names_used, medians, weights = load_dataset_from_memory(
+                    headers, rows, share_targets=args.share_targets
+                )
             except Exception as e:
                 logger.error("train_batting.load_from_api_failed format=%s error=%s", fmt, e)
                 return 0
@@ -421,7 +452,10 @@ def main():
                 "feature_names": feature_names_used,
                 "imputation_medians": medians,
             }
-            train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights)
+            train_and_save(
+                X, Y, args.out, training_params, fmt, meta, transform_config,
+                sample_weight=weights, share_model=args.share_targets,
+            )
             logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
             return 1
 
@@ -467,7 +501,9 @@ def main():
         training_params = get_training_params("batting", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(csv_path)
+            X, Y, feature_names_used, medians, weights = load_dataset(
+                csv_path, share_targets=args.share_targets
+            )
         except FileNotFoundError as e:
             logger.error("train_batting.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
@@ -486,7 +522,10 @@ def main():
             "feature_names": feature_names_used,
             "imputation_medians": medians,
         }
-        train_and_save(X, Y, args.out, training_params, None, meta, transform_config, sample_weight=weights)
+        train_and_save(
+            X, Y, args.out, training_params, None, meta, transform_config,
+            sample_weight=weights, share_model=args.share_targets,
+        )
         logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
 
@@ -501,7 +540,9 @@ def main():
             logger.warning("train_batting.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             return 0
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(csv_path)
+            X, Y, feature_names_used, medians, weights = load_dataset(
+                csv_path, share_targets=args.share_targets
+            )
         except Exception as e:
             logger.error("train_batting.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             return 0
@@ -520,14 +561,17 @@ def main():
             "feature_names": feature_names_used,
             "imputation_medians": medians,
         }
-        train_and_save(X, Y, args.out, training_params, fmt, meta, transform_config, sample_weight=weights)
+        train_and_save(
+            X, Y, args.out, training_params, fmt, meta, transform_config,
+            sample_weight=weights, share_model=args.share_targets,
+        )
         logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
         return 1
 
     max_workers = min(
-        len(targets),
-        max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
-    )
+            len(targets),
+            max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+        )
     saved_count = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_train_one_csv, fmt): fmt for fmt in targets}

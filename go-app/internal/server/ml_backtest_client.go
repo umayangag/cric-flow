@@ -32,6 +32,24 @@ func NewBacktestMLClient() *BacktestMLClient {
 	return &BacktestMLClient{BaseURL: base, HTTP: &http.Client{Timeout: backtestMLClientTimeout}}
 }
 
+// mlBacktestMatchContext is optional match context for hybrid reconciliation.
+type mlBacktestMatchContext struct {
+	Team1PlayerIDs    []int64 `json:"team1_player_ids"`
+	Team2PlayerIDs    []int64 `json:"team2_player_ids"`
+	VenueID           float64 `json:"venue_id,omitempty"`
+	SeasonID          float64 `json:"season_id,omitempty"`
+	FormatID          float64 `json:"format_id,omitempty"`
+	Team1OppositionID float64 `json:"team1_opposition_id,omitempty"`
+	Team2OppositionID float64 `json:"team2_opposition_id,omitempty"`
+	Temp              int     `json:"temp,omitempty"`
+	Wind              int     `json:"wind,omitempty"`
+	Rain              int     `json:"rain,omitempty"`
+	Humidity          int     `json:"humidity,omitempty"`
+	Cloud             int     `json:"cloud,omitempty"`
+	Pressure          int     `json:"pressure,omitempty"`
+	Viscosity         int     `json:"viscosity,omitempty"`
+}
+
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
 	Cutoff         string                        `json:"cutoff_date"`
@@ -39,6 +57,7 @@ type mlBacktestPredictRequest struct {
 	Format         string                        `json:"format,omitempty"`
 	Features       map[string]map[string]float64 `json:"features,omitempty"`
 	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+	MatchContext   *mlBacktestMatchContext       `json:"match_context,omitempty"`
 }
 
 type mlBacktestPlayerPred struct {
@@ -188,9 +207,22 @@ type HistoricalBacktestResult struct {
 	ModelVersion string
 }
 
+// MatchContextForReconciliation holds data for hybrid innings reconciliation.
+type MatchContextForReconciliation struct {
+	Team1PlayerIDs                                         []int64
+	Team2PlayerIDs                                         []int64
+	VenueID                                                int64
+	SeasonID                                               int64
+	FormatID                                               int64
+	Team1OppositionID                                      int64 // team2's ID when team1 bats (innings 1)
+	Team2OppositionID                                      int64 // team1's ID when team2 bats (innings 2)
+	Temp, Wind, Rain, Humidity, Cloud, Pressure, Viscosity int
+}
+
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
 // When format is non-empty and features is non-nil, they are sent so the ML service can run the full pipeline (real models).
 // useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
+// matchCtx: when non-nil and innings model is loaded, ML rescales predictions for consistency.
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
 	cutoff time.Time,
@@ -198,6 +230,7 @@ func (c *BacktestMLClient) predictPlayers(
 	playerIDs []int64,
 	features map[int64]map[string]float64,
 	useLatestModel bool,
+	matchCtx *MatchContextForReconciliation,
 ) (map[int64]playerPredictions, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]playerPredictions{}, nil
@@ -212,6 +245,24 @@ func (c *BacktestMLClient) predictPlayers(
 		body.Features = make(map[string]map[string]float64, len(features))
 		for pid, m := range features {
 			body.Features[strconv.FormatInt(pid, 10)] = m
+		}
+	}
+	if matchCtx != nil {
+		body.MatchContext = &mlBacktestMatchContext{
+			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
+			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
+			VenueID:           float64(matchCtx.VenueID),
+			SeasonID:          float64(matchCtx.SeasonID),
+			FormatID:          float64(matchCtx.FormatID),
+			Team1OppositionID: float64(matchCtx.Team1OppositionID),
+			Team2OppositionID: float64(matchCtx.Team2OppositionID),
+			Temp:              matchCtx.Temp,
+			Wind:              matchCtx.Wind,
+			Rain:              matchCtx.Rain,
+			Humidity:          matchCtx.Humidity,
+			Cloud:             matchCtx.Cloud,
+			Pressure:          matchCtx.Pressure,
+			Viscosity:         matchCtx.Viscosity,
 		}
 	}
 	payload, _ := json.Marshal(body)

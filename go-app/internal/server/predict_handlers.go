@@ -22,8 +22,28 @@ func (mlPredictorAdapter) PredictPlayers(
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
+	matchCtx *predictteam.MatchContext,
 ) (map[int64]predictteam.PlayerPred, error) {
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features, true)
+	var mc *MatchContextForReconciliation
+	if matchCtx != nil {
+		mc = &MatchContextForReconciliation{
+			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
+			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
+			VenueID:           matchCtx.VenueID,
+			SeasonID:          matchCtx.SeasonID,
+			FormatID:          matchCtx.FormatID,
+			Team1OppositionID: matchCtx.Team1OppositionID,
+			Team2OppositionID: matchCtx.Team2OppositionID,
+			Temp:              matchCtx.Temp,
+			Wind:              matchCtx.Wind,
+			Rain:              matchCtx.Rain,
+			Humidity:          matchCtx.Humidity,
+			Cloud:             matchCtx.Cloud,
+			Pressure:          matchCtx.Pressure,
+			Viscosity:         matchCtx.Viscosity,
+		}
+	}
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features, true, mc)
 	if err != nil {
 		return nil, err
 	}
