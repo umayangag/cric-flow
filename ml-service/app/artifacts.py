@@ -27,7 +27,9 @@ BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 FIELD_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 EXTRAS_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level extras regressor)
 WIN_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level win classifier)
-INNINGS_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}  # format -> (scaler, model) for innings runs/wickets
+INNINGS_MODELS: Dict[
+    str, Tuple[Optional[object], Optional[object]]
+] = {}  # format -> (scaler, model) for innings runs/wickets
 # Phase 3 share models: predict runs_share, wickets_share; multiply by innings totals for consistency
 BAT_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}

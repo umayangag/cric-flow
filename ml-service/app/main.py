@@ -323,10 +323,7 @@ def _predict_players_with_features(
     use_share = (
         use_share_models_config()
         and match_context is not None
-        and (
-            (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
-        )
-        is not None
+        and ((INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")) is not None
     )
     if use_share:
         bat_pair = (BAT_SHARE_MODELS.get(fmt_upper) if fmt_upper else None) or BAT_SHARE_MODELS.get("_LEGACY_")
@@ -473,7 +470,8 @@ def _predict_players_with_features(
             t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
             t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
             inn1_runs, inn1_wkts = predict_innings(
-                scaler_inn, model_inn,
+                scaler_inn,
+                model_inn,
                 inning_number=1,
                 bat_consistency_sum=t1_bat_cons,
                 bowl_consistency_sum=t2_bowl_cons,
@@ -492,7 +490,8 @@ def _predict_players_with_features(
                 viscosity=match_context.viscosity,
             )
             inn2_runs, inn2_wkts = predict_innings(
-                scaler_inn, model_inn,
+                scaler_inn,
+                model_inn,
                 inning_number=2,
                 bat_consistency_sum=t2_bat_cons,
                 bowl_consistency_sum=t1_bowl_cons,
@@ -519,7 +518,9 @@ def _predict_players_with_features(
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
         vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
-        vals_bowl = list(row_bowl) + [0.0] * max(0, 3 - len(row_bowl))  # runs or runs_share, balls, wickets or wickets_share
+        vals_bowl = list(row_bowl) + [0.0] * max(
+            0, 3 - len(row_bowl)
+        )  # runs or runs_share, balls, wickets or wickets_share
         default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
 
         if use_share and team1_ids and team2_ids and (inn1_runs > 0 or inn2_runs > 0):
@@ -600,6 +601,7 @@ def _predict_players_with_features(
             scaler_inn, model_inn = innings_pair
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
             team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+
             # Sum bat/bowl consistency and form from features for each team
             def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
                 bat_sum, bowl_sum = 0.0, 0.0
@@ -608,12 +610,14 @@ def _predict_players_with_features(
                     bat_sum += float(fm.get(key_bat, 0) or 0)
                     bowl_sum += float(fm.get(key_bowl, 0) or 0)
                 return bat_sum, bowl_sum
+
             t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
             t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
             t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
             t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
             inn1_runs, inn1_wkts = predict_innings(
-                scaler_inn, model_inn,
+                scaler_inn,
+                model_inn,
                 inning_number=1,
                 bat_consistency_sum=t1_bat_cons,
                 bowl_consistency_sum=t2_bowl_cons,
@@ -632,7 +636,8 @@ def _predict_players_with_features(
                 viscosity=match_context.viscosity,
             )
             inn2_runs, inn2_wkts = predict_innings(
-                scaler_inn, model_inn,
+                scaler_inn,
+                model_inn,
                 inning_number=2,
                 bat_consistency_sum=t2_bat_cons,
                 bowl_consistency_sum=t1_bowl_cons,

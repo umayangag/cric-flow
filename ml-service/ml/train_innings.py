@@ -28,7 +28,6 @@ from typing import Optional
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -105,7 +104,12 @@ def fetch_innings_data(go_app_url: str, cutoff_iso: str, api_key=None):
 
 def rows_to_xy_by_format(
     headers: list, rows: list[list]
-) -> tuple[dict[str, tuple[np.ndarray, np.ndarray, StandardScaler, Optional[np.ndarray]]], Optional[np.ndarray], Optional[np.ndarray], Optional[StandardScaler]]:
+) -> tuple[
+    dict[str, tuple[np.ndarray, np.ndarray, StandardScaler, Optional[np.ndarray]]],
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+    Optional[StandardScaler],
+]:
     """Build X, Y, scaler, weights per format_code. Also returns (all_X_raw, all_Y, legacy_scaler) for legacy model."""
     if not headers or not rows:
         return {}, None, None, None
@@ -160,7 +164,6 @@ def rows_to_xy_by_format(
     all_Y = np.vstack(all_Y_list)
     legacy_scaler = StandardScaler()
     legacy_scaler.fit(all_X_raw)
-    all_weights = np.concatenate(all_weights_list) if all(w is not None for w in all_weights_list) else None
     return out, all_X_raw, all_Y, legacy_scaler
 
 
@@ -265,7 +268,12 @@ def main() -> None:
         train_and_save(X, Y, scaler, out_dir, fmt, sample_weight=w)
 
     # Unified (legacy) model: train on all data combined
-    if all_X_raw is not None and all_Y is not None and legacy_scaler is not None and all_X_raw.shape[0] >= MIN_SAMPLES_FOR_FORMAT:
+    if (
+        all_X_raw is not None
+        and all_Y is not None
+        and legacy_scaler is not None
+        and all_X_raw.shape[0] >= MIN_SAMPLES_FOR_FORMAT
+    ):
         all_X = legacy_scaler.transform(all_X_raw)
         all_weights_list = [w for _, (_, _, _, w) in by_format.items()]
         all_weights = np.concatenate(all_weights_list) if all(w is not None for w in all_weights_list) else None

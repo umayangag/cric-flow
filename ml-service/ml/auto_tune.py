@@ -2175,10 +2175,8 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
-    if "bowling_career_avg" not in df.columns and "bowling_form" in df.columns:
-        df["bowling_career_avg"] = df["bowling_form"]
-    elif "bowling_career_avg" not in df.columns:
-        df["bowling_career_avg"] = 0.0
+    if "bowling_career_avg" not in df.columns:
+        df["bowling_career_avg"] = df["bowling_form"] if "bowling_form" in df.columns else 0.0
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -3042,11 +3040,7 @@ def main() -> None:
         except Exception:
             return ["T20", "ODI", "T20I"]
 
-    models = (
-        ["batting", "bowling", "fielding", "extras", "win", "innings"]
-        if args.model == "all"
-        else [args.model]
-    )
+    models = ["batting", "bowling", "fielding", "extras", "win", "innings"] if args.model == "all" else [args.model]
     formats_to_run: List[Optional[str]] = [None]
     if args.unified:
         formats_to_run = [None]
@@ -3310,9 +3304,7 @@ def main() -> None:
                                     )
                             continue
                         if model_kind == "innings":
-                            by_f = load_innings_from_api(
-                                args.go_app_url, args.cutoff, args.api_key or None, fmt
-                            )
+                            by_f = load_innings_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
                             if not by_f:
                                 logger.warning("auto_tune.no_innings_data format=%s", fmt)
                                 continue
@@ -3335,9 +3327,7 @@ def main() -> None:
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
                                 )
-                                _maybe_save_tuned_params(
-                                    args.go_app_url, "innings", None, report, args.api_key or None
-                                )
+                                _maybe_save_tuned_params(args.go_app_url, "innings", None, report, args.api_key or None)
                                 logger.info(
                                     "auto_tune.done model=innings format=unified n=%s best_cv_score=%s",
                                     all_X.shape[0],

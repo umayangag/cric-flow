@@ -102,10 +102,8 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(columns=col_map)
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
-    if "bowling_career_avg" not in df.columns and "bowling_form" in df.columns:
-        df["bowling_career_avg"] = df["bowling_form"]
-    elif "bowling_career_avg" not in df.columns:
-        df["bowling_career_avg"] = 0.0
+    if "bowling_career_avg" not in df.columns:
+        df["bowling_career_avg"] = df["bowling_form"] if "bowling_form" in df.columns else 0.0
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -137,9 +135,7 @@ def _df_to_xy(
     if share_targets:
         for col in ("innings_runs", "innings_wickets"):
             if col not in df.columns:
-                raise ValueError(
-                    f"share_targets requires {col} column (run export-dataset with updated schema)"
-                )
+                raise ValueError(f"share_targets requires {col} column (run export-dataset with updated schema)")
         df = df.copy()
         df["innings_runs"] = pd.to_numeric(df["innings_runs"], errors="coerce").fillna(0)
         df["innings_wickets"] = pd.to_numeric(df["innings_wickets"], errors="coerce").fillna(0)
@@ -452,8 +448,15 @@ def main():
                 "imputation_medians": medians,
             }
             train_and_save(
-                X, Y, args.out, training_params, fmt, meta, transform_config,
-                sample_weight=weights, share_model=args.share_targets,
+                X,
+                Y,
+                args.out,
+                training_params,
+                fmt,
+                meta,
+                transform_config,
+                sample_weight=weights,
+                share_model=args.share_targets,
             )
             logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
             return 1
@@ -500,9 +503,7 @@ def main():
         training_params = get_training_params("bowling", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "bowling_encoded.csv")
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(
-                csv_path, share_targets=args.share_targets
-            )
+            X, Y, feature_names_used, medians, weights = load_dataset(csv_path, share_targets=args.share_targets)
         except FileNotFoundError as e:
             logger.error("train_bowling.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
@@ -522,8 +523,15 @@ def main():
             "imputation_medians": medians,
         }
         train_and_save(
-            X, Y, args.out, training_params, None, meta, transform_config,
-            sample_weight=weights, share_model=args.share_targets,
+            X,
+            Y,
+            args.out,
+            training_params,
+            None,
+            meta,
+            transform_config,
+            sample_weight=weights,
+            share_model=args.share_targets,
         )
         logger.info("train_bowling.saved_legacy out_dir=%s", args.out)
         return
@@ -538,9 +546,7 @@ def main():
             logger.warning("train_bowling.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             return 0
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(
-                csv_path, share_targets=args.share_targets
-            )
+            X, Y, feature_names_used, medians, weights = load_dataset(csv_path, share_targets=args.share_targets)
         except Exception as e:
             logger.error("train_bowling.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             return 0
@@ -560,8 +566,15 @@ def main():
             "imputation_medians": medians,
         }
         train_and_save(
-            X, Y, args.out, training_params, fmt, meta, transform_config,
-            sample_weight=weights, share_model=args.share_targets,
+            X,
+            Y,
+            args.out,
+            training_params,
+            fmt,
+            meta,
+            transform_config,
+            sample_weight=weights,
+            share_model=args.share_targets,
         )
         logger.info("train_bowling.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
         return 1

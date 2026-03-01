@@ -8,7 +8,7 @@ raw batting/bowling predictions are rescaled so that:
 This ensures consistency: runs conceded by bowlers = runs scored by batsmen.
 """
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Set, Tuple
 
 import numpy as np
 
@@ -190,7 +190,7 @@ def rescale_player_predictions(
             wickets = wickets * scale_wkts_1  # team2 bowls in inn1
             r_conc_scale = scale_runs_conc_1
 
-        if balls and balls > 0 and (p.wickets or 0) > 0:
+        if balls and balls > 0:
             r_conc = _runs_conceded(p) * r_conc_scale
             economy = r_conc / (balls / 6.0)
 

@@ -11,15 +11,26 @@ Phase 1 and 2 implement the Hybrid approach: an innings-level model predicts `(i
 
 ### Export Changes
 
-1. **Batting export** (`batting.go`): Add `innings_runs` column via join:
+1. **Batting export** (`batting.go`): Add `innings_runs` column via CTE and join:
    ```sql
-   (SELECT SUM(runs) FROM batting_data b2 WHERE b2.match_id = bd.match_id AND b2.inning_number = bd.inning_number) AS innings_runs
+   WITH innings_sums AS (
+     SELECT match_id, inning_number, SUM(runs) AS total_runs FROM batting_data GROUP BY match_id, inning_number
+   )
+   ...
+   (SELECT total_runs FROM innings_sums WHERE match_id = bd.match_id AND inning_number = bd.inning_number) AS innings_runs
    ```
 
-2. **Bowling export** (`bowling.go`): Add `innings_runs` and `innings_wickets`:
+2. **Bowling export** (`bowling.go`): Add `innings_runs` and `innings_wickets` via CTEs and join:
    ```sql
-   (SELECT SUM(runs) FROM batting_data b2 WHERE b2.match_id = b.match_id AND b2.inning_number = b.inning_number) AS innings_runs,
-   (SELECT SUM(wickets) FROM bowling_data bw2 WHERE bw2.match_id = b.match_id AND bw2.inning_number = b.inning_number) AS innings_wickets
+   WITH innings_runs_cte AS (
+     SELECT match_id, inning_number, SUM(runs) AS total_runs FROM batting_data GROUP BY match_id, inning_number
+   ),
+   innings_wickets_cte AS (
+     SELECT match_id, inning_number, SUM(wickets) AS total_wickets FROM bowling_data GROUP BY match_id, inning_number
+   )
+   ...
+   (SELECT total_runs FROM innings_runs_cte WHERE match_id = b.match_id AND inning_number = b.inning_number) AS innings_runs,
+   (SELECT total_wickets FROM innings_wickets_cte WHERE match_id = b.match_id AND inning_number = b.inning_number) AS innings_wickets
    ```
 
 ### Training Script Changes

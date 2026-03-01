@@ -521,14 +521,19 @@ func BattingTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, err
 // battingTrainingRowsRawQuery returns SQL and args for the raw batting training query (no snapshot joins).
 // If formatIDs is nil, no format filter; otherwise WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2.
 func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string, args []any) {
-	q = `SELECT
+	q = `WITH innings_sums AS (
+		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
+		FROM batting_data
+		GROUP BY match_id, inning_number
+	)
+	SELECT
 		m.match_date,
 		bd.player_id,
 		m.format_id,
 		COALESCE(m.venue_id, 0),
 		COALESCE(mi.bowling_team_opposition_id, 0),
 		bd.runs,
-		(COALESCE((SELECT SUM(b2.runs) FROM batting_data b2 WHERE b2.match_id = bd.match_id AND b2.inning_number = bd.inning_number), 0))::bigint AS innings_runs,
+		COALESCE(ins.total_runs, 0)::bigint AS innings_runs,
 		bd.balls,
 		bd.fours,
 		bd.sixes,
@@ -543,6 +548,7 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
 	FROM batting_data bd
+	LEFT JOIN innings_sums ins ON ins.match_id = bd.match_id AND ins.inning_number = bd.inning_number
 	LEFT JOIN player p ON bd.player_id = p.id
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON bd.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number

@@ -453,8 +453,15 @@ def main():
                 "imputation_medians": medians,
             }
             train_and_save(
-                X, Y, args.out, training_params, fmt, meta, transform_config,
-                sample_weight=weights, share_model=args.share_targets,
+                X,
+                Y,
+                args.out,
+                training_params,
+                fmt,
+                meta,
+                transform_config,
+                sample_weight=weights,
+                share_model=args.share_targets,
             )
             logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
             return 1
@@ -501,9 +508,7 @@ def main():
         training_params = get_training_params("batting", None)
         csv_path = args.csv or os.path.join(default_csv_dir, "batting_encoded.csv")
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(
-                csv_path, share_targets=args.share_targets
-            )
+            X, Y, feature_names_used, medians, weights = load_dataset(csv_path, share_targets=args.share_targets)
         except FileNotFoundError as e:
             logger.error("train_batting.legacy_csv_not_found path=%s error=%s", csv_path, e)
             raise SystemExit(1) from e
@@ -523,8 +528,15 @@ def main():
             "imputation_medians": medians,
         }
         train_and_save(
-            X, Y, args.out, training_params, None, meta, transform_config,
-            sample_weight=weights, share_model=args.share_targets,
+            X,
+            Y,
+            args.out,
+            training_params,
+            None,
+            meta,
+            transform_config,
+            sample_weight=weights,
+            share_model=args.share_targets,
         )
         logger.info("train_batting.saved_legacy out_dir=%s", args.out)
         return
@@ -540,9 +552,7 @@ def main():
             logger.warning("train_batting.skip_format_csv_not_found format=%s path=%s", fmt, csv_path)
             return 0
         try:
-            X, Y, feature_names_used, medians, weights = load_dataset(
-                csv_path, share_targets=args.share_targets
-            )
+            X, Y, feature_names_used, medians, weights = load_dataset(csv_path, share_targets=args.share_targets)
         except Exception as e:
             logger.error("train_batting.load_dataset_failed format=%s path=%s error=%s", fmt, csv_path, e)
             return 0
@@ -562,16 +572,23 @@ def main():
             "imputation_medians": medians,
         }
         train_and_save(
-            X, Y, args.out, training_params, fmt, meta, transform_config,
-            sample_weight=weights, share_model=args.share_targets,
+            X,
+            Y,
+            args.out,
+            training_params,
+            fmt,
+            meta,
+            transform_config,
+            sample_weight=weights,
+            share_model=args.share_targets,
         )
         logger.info("train_batting.saved_format format=%s out_dir=%s rows=%s", fmt, args.out, int(X.shape[0]))
         return 1
 
     max_workers = min(
-            len(targets),
-            max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
-        )
+        len(targets),
+        max(1, int(os.environ.get("ML_TRAIN_FORMAT_WORKERS", "4"))),
+    )
     saved_count = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_train_one_csv, fmt): fmt for fmt in targets}
