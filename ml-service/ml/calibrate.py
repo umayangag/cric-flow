@@ -75,6 +75,15 @@ def reliability_diagram_data(
     if y_prob.ndim > 1:
         y_prob = y_prob[:, 1]  # positive class
     y_prob = y_prob.ravel()
+    if len(y_true) == 0 or len(y_prob) == 0:
+        return {
+            "bin_edges": np.linspace(0, 1, n_bins + 1).tolist(),
+            "mean_predicted": [float("nan")] * n_bins,
+            "fraction_positives": [float("nan")] * n_bins,
+            "counts": [0] * n_bins,
+            "brier_score": float("nan"),
+            "n_samples": 0,
+        }
     bins = np.linspace(0, 1, n_bins + 1)
     indices = np.digitize(y_prob, bins) - 1
     indices = np.clip(indices, 0, n_bins - 1)

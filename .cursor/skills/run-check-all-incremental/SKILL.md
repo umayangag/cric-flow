@@ -64,6 +64,20 @@ From repo root. Use `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service
 3. Then **ml-service**: lint-check → fmt-check → coverage → coverage-check. Same rule: fix, re-run only what failed.
 4. When all three components have passed all their steps, all checks are done. You can optionally run `make check-all` once to confirm.
 
+## Warning handling
+
+**Warnings must not be ignored.** Treat any warning emitted during a step as a failure to fix:
+
+- **Frontend**
+  - **ESLint**: Already uses `--max-warnings 0`; fix all lint warnings.
+  - **React test warnings**: Fix `act(...)` warnings by wrapping state-triggering actions in `act()` or awaiting `waitFor`; fix "Each child in a list should have a unique key prop" by adding `key` to list children.
+  - **Vite build**: Fix chunk-size warnings (e.g. "Some chunks are larger than 500 kB") via code-splitting, `manualChunks`, or `chunkSizeWarningLimit` only if code-splitting is impractical.
+  - **Vitest/Node**: Fix `--localstorage-file` or similar Node/env warnings via config (e.g. `NODE_OPTIONS`, jsdom `environmentOptions`) rather than ignoring them.
+- **Go-app**: golangci-lint uses `max-issues-per-linter: 0`; all linter output is treated as failure.
+- **ML-service**: Ruff treats all findings as failures; fix them. **Pytest**: Fix RuntimeWarning/UserWarning (e.g. empty-slice, pd.to_datetime format) in tests or source; do not ignore via `-W ignore` unless unavoidable.
+
+If a step completes with exit code 0 but emits warnings, treat it as a failure and fix the underlying issues before continuing.
+
 ## Coverage failure handling
 
 When coverage or coverage-check fails because code coverage is below the specified threshold:
@@ -71,6 +85,22 @@ When coverage or coverage-check fails because code coverage is below the specifi
 - **Do NOT** decrease or lower the coverage threshold in config files.
 - **Do** add unit tests to improve coverage until the threshold is met. Inspect the coverage report to identify uncovered code paths (files, functions, branches), then write tests that exercise them.
 - Re-run the coverage step (and coverage-check for ml-service) after adding tests to verify the threshold is satisfied.
+
+## Raise coverage thresholds when passing
+
+When coverage **passes** (actual ≥ threshold), raise the threshold to match the actual coverage (rounded down to the nearest integer). Example: threshold 60%, actual 61.7% → set new threshold to 61%. This keeps the bar moving up over time.
+
+| Component   | Config location | Update |
+|-------------|-----------------|--------|
+| **go-app**  | `go-app/Makefile` | `COV_MIN ?= N` (line ~148) |
+|             | Root `Makefile` | `COV_MIN_GO ?= N` (line ~588) |
+|             | `.github/workflows/go-app-tests.yml` | `COV_MIN: "N"` in coverage-check step |
+| **frontend**| `frontend/vite.config.ts` | In `test.coverage`, set each of `lines`, `functions`, `statements`, `branches` to floor(that metric’s actual %). E.g. if lines=62.3% and threshold 50, set lines to 62. |
+| **ml-service** | `ml-service/Makefile` | `COV_MIN?=N` (line ~11) |
+|             | Root `Makefile` | `COV_MIN_ML ?= N` (line ~589) |
+|             | `.github/workflows/ml-service-tests.yml` | `COV_MIN: "N"` in coverage-check step |
+
+After raising, re-run the coverage-check step for that component to confirm it still passes.
 
 ## Efficiency rules
 
