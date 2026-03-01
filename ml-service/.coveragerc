@@ -19,6 +19,9 @@ omit =
     */ml/validate_exports.py
     */ml/batting_regressor.py
     */ml/bowling_regressor.py
+    */ml/auto_tune.py
+    */ml/auto_tune_autogluon.py
+    */ml/auto_tune_pycaret.py
 
 [report]
 show_missing = True

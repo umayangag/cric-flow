@@ -177,7 +177,9 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 				bat := exportsvc.NewBattingService(repo)
 				bow := exportsvc.NewBowlingService(repo)
 				field := exportsvc.NewFieldingService(repo)
-				runner := expcmd.NewRunnerWithServices(bat, bow, field)
+				extras := exportsvc.NewExtrasService(repo)
+				win := exportsvc.NewWinService(repo)
+				runner := expcmd.NewRunnerWithServices(bat, bow, field, extras, win)
 				err := runner.Run(ctx, opts)
 				return map[string]any{"out_dir": outDir}, err
 			},

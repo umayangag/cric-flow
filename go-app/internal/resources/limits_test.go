@@ -16,6 +16,10 @@ func TestParseGOMEMLIMIT(t *testing.T) {
 		{"1e9", 1000000000},
 		{" 100MIB ", 100 * 1024 * 1024},
 		{"100B", 100},
+		{"1GiB", 1024 * 1024 * 1024},
+		{"2MiB", 2 * 1024 * 1024},
+		{"invalid", 0},
+		{"0", 0},
 	}
 	for _, tt := range tests {
 		got := parseGOMEMLIMIT(tt.in)
@@ -64,6 +68,59 @@ func TestConcurrencyLimit_FloorAndCeiling(t *testing.T) {
 	}
 	if got >= highValue {
 		t.Errorf("got %d, want value to be clamped by ceiling (less than %d)", got, highValue)
+	}
+}
+
+func TestConcurrencyLimit_KindExport_KindFielding(t *testing.T) {
+	const envExport = "EXPORT_CONCURRENCY"
+	const envFielding = "FIELDING_CONCURRENCY"
+	oldExport := os.Getenv(envExport)
+	oldFielding := os.Getenv(envFielding)
+	defer func() {
+		_ = os.Setenv(envExport, oldExport)
+		_ = os.Setenv(envFielding, oldFielding)
+	}()
+
+	_ = os.Setenv(envExport, "3")
+	got := ConcurrencyLimit(KindExport, 0, nil)
+	if got != 3 {
+		t.Errorf("KindExport with EXPORT_CONCURRENCY=3 got %d, want 3", got)
+	}
+
+	_ = os.Setenv(envFielding, "4")
+	got = ConcurrencyLimit(KindFielding, 0, nil)
+	if got != 4 {
+		t.Errorf("KindFielding with FIELDING_CONCURRENCY=4 got %d, want 4", got)
+	}
+}
+
+func TestConcurrencyLimit_KindSeqCalc(t *testing.T) {
+	const envKey = "SEQCALC_CONCURRENCY"
+	old := os.Getenv(envKey)
+	defer func() { _ = os.Setenv(envKey, old) }()
+	_ = os.Setenv(envKey, "2")
+	got := ConcurrencyLimit(KindSeqCalc, 0, nil)
+	if got != 2 {
+		t.Errorf("KindSeqCalc with SEQCALC_CONCURRENCY=2 got %d, want 2", got)
+	}
+}
+
+func TestConcurrencyLimit_KindImport(t *testing.T) {
+	got := ConcurrencyLimit(KindImport, 6, nil)
+	if got != 6 {
+		t.Errorf("KindImport with configLimit=6 got %d, want 6", got)
+	}
+}
+
+func TestClampToCeiling(t *testing.T) {
+	if clampToCeiling(0, 10) != 1 {
+		t.Error("clampToCeiling(0,10) should floor to 1")
+	}
+	if clampToCeiling(5, 10) != 5 {
+		t.Error("clampToCeiling(5,10) should remain 5")
+	}
+	if clampToCeiling(15, 10) != 10 {
+		t.Error("clampToCeiling(15,10) should ceiling to 10")
 	}
 }
 

@@ -113,6 +113,19 @@ def test_load_ball_by_ball_from_db_mocked(mock_get_conn):
 
 
 @patch("ml.db.get_db_connection")
+def test_load_ball_by_ball_from_db_no_match_date_column(mock_get_conn):
+    """load_ball_by_ball_from_db handles DF without match_date column."""
+    mock_conn = MagicMock()
+    mock_get_conn.return_value = mock_conn
+    df_fake = pd.DataFrame({"match_id": [1], "innings": [1], "runs_total": [1]})
+    with patch("pandas.read_sql", return_value=df_fake):
+        df = load_ball_by_ball_from_db(cutoff_date=None, format_codes=None)
+    assert len(df) == 1
+    assert "match_id" in df.columns
+    mock_conn.close.assert_called_once()
+
+
+@patch("ml.db.get_db_connection")
 def test_load_ball_by_ball_from_db_with_filters(mock_get_conn):
     """load_ball_by_ball_from_db accepts cutoff_date and format_codes."""
     mock_conn = MagicMock()

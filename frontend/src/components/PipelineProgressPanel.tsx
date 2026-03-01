@@ -21,6 +21,25 @@ function formatElapsed(sec: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+function formatActivity(activity: string): string {
+  const labels: Record<string, string> = {
+    loading_data: 'Loading data',
+    screening: 'Screening algorithms',
+    cross_validating: 'Cross-validating',
+    screening_done: 'Screening complete',
+    running_trial: 'Running Optuna trial',
+    initializing: 'Initializing',
+  };
+  return labels[activity] ?? activity.replace(/_/g, ' ');
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  fine_tuning: 'Fine-tuning',
+  loading: 'Loading',
+  pycaret: 'PyCaret ranking',
+  autogluon: 'AutoGluon',
+};
+
 type PipelineProgressPanelProps = {
   pipelineRunning: boolean;
   onRefresh?: () => void;
@@ -218,11 +237,24 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           {p.step_id === 'auto_tune' && p.auto_tune && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
               <Typography variant="caption" fontWeight={600} color="primary.main">
-                Phase: {p.auto_tune.phase === 'fine_tuning' ? 'Fine-tuning' : 'Algorithm screening'}
+                Phase:{' '}
+                {(p.auto_tune.phase && PHASE_LABELS[p.auto_tune.phase]) ?? 'Algorithm screening'}
+                {p.auto_tune.activity && <> · Activity: {formatActivity(p.auto_tune.activity)}</>}
               </Typography>
-              {p.auto_tune.algorithm && (
+              {p.auto_tune.algorithms_requested && p.auto_tune.algorithms_requested.length > 0 && (
                 <Typography variant="caption" color="text.secondary">
-                  Algorithm: <strong>{p.auto_tune.algorithm}</strong>
+                  Selected: <strong>{p.auto_tune.algorithms_requested.join(', ')}</strong>
+                </Typography>
+              )}
+              {p.auto_tune.algorithms_screened && p.auto_tune.algorithms_screened.length > 0 && (
+                <Typography variant="caption" color="text.secondary">
+                  Considering: {p.auto_tune.algorithms_screened.join(', ')}
+                  {p.auto_tune.format_suffix && ` · Format: ${p.auto_tune.format_suffix}`}
+                </Typography>
+              )}
+              {p.auto_tune.algorithm && !p.auto_tune.algorithms_screened?.length && (
+                <Typography variant="caption" color="text.secondary">
+                  Current algorithm: <strong>{p.auto_tune.algorithm}</strong>
                   {p.auto_tune.format_suffix && ` · Format: ${p.auto_tune.format_suffix}`}
                 </Typography>
               )}
@@ -244,7 +276,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
                   Best score so far: {p.auto_tune.best_score.toFixed(4)}
                 </Typography>
               )}
-              {p.auto_tune.message && !p.auto_tune.algorithm && (
+              {p.auto_tune.message && (
                 <Typography variant="caption" color="text.secondary">
                   {p.auto_tune.message}
                 </Typography>
@@ -253,8 +285,8 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
           )}
           {p.step_id === 'auto_tune' && !p.auto_tune?.phase && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms (e.g. rf, gb, et, hgb, stacked) are screened first; best algorithm is then
-              fine-tuned.
+              Algorithms are screened first; best algorithm is then fine-tuned. Progress updates as
+              tuning runs.
             </Typography>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>

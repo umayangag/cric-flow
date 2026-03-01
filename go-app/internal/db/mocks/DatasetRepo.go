@@ -557,6 +557,136 @@ func (_c *MockDatasetRepo_BowlingUnifiedRows_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// ExtrasFormatRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) ExtrasFormatRows(ctx context.Context, format string) ([][]string, error) {
+	ret := _mock.Called(ctx, format)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ExtrasFormatRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([][]string, error)); ok {
+		return returnFunc(ctx, format)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) [][]string); ok {
+		r0 = returnFunc(ctx, format)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, format)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_ExtrasFormatRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ExtrasFormatRows'
+type MockDatasetRepo_ExtrasFormatRows_Call struct {
+	*mock.Call
+}
+
+// ExtrasFormatRows is a helper method to define mock.On call
+//   - ctx context.Context
+//   - format string
+func (_e *MockDatasetRepo_Expecter) ExtrasFormatRows(ctx interface{}, format interface{}) *MockDatasetRepo_ExtrasFormatRows_Call {
+	return &MockDatasetRepo_ExtrasFormatRows_Call{Call: _e.mock.On("ExtrasFormatRows", ctx, format)}
+}
+
+func (_c *MockDatasetRepo_ExtrasFormatRows_Call) Run(run func(ctx context.Context, format string)) *MockDatasetRepo_ExtrasFormatRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_ExtrasFormatRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_ExtrasFormatRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_ExtrasFormatRows_Call) RunAndReturn(run func(ctx context.Context, format string) ([][]string, error)) *MockDatasetRepo_ExtrasFormatRows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ExtrasUnifiedRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) ExtrasUnifiedRows(ctx context.Context) ([][]string, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ExtrasUnifiedRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([][]string, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) [][]string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_ExtrasUnifiedRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ExtrasUnifiedRows'
+type MockDatasetRepo_ExtrasUnifiedRows_Call struct {
+	*mock.Call
+}
+
+// ExtrasUnifiedRows is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockDatasetRepo_Expecter) ExtrasUnifiedRows(ctx interface{}) *MockDatasetRepo_ExtrasUnifiedRows_Call {
+	return &MockDatasetRepo_ExtrasUnifiedRows_Call{Call: _e.mock.On("ExtrasUnifiedRows", ctx)}
+}
+
+func (_c *MockDatasetRepo_ExtrasUnifiedRows_Call) Run(run func(ctx context.Context)) *MockDatasetRepo_ExtrasUnifiedRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_ExtrasUnifiedRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_ExtrasUnifiedRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_ExtrasUnifiedRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_ExtrasUnifiedRows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FieldingFormatRows provides a mock function for the type MockDatasetRepo
 func (_mock *MockDatasetRepo) FieldingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	ret := _mock.Called(ctx, format)
@@ -683,6 +813,136 @@ func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) Return(stringss [][]string, 
 }
 
 func (_c *MockDatasetRepo_FieldingUnifiedRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_FieldingUnifiedRows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// WinFormatRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) WinFormatRows(ctx context.Context, format string) ([][]string, error) {
+	ret := _mock.Called(ctx, format)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WinFormatRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([][]string, error)); ok {
+		return returnFunc(ctx, format)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) [][]string); ok {
+		r0 = returnFunc(ctx, format)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, format)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_WinFormatRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WinFormatRows'
+type MockDatasetRepo_WinFormatRows_Call struct {
+	*mock.Call
+}
+
+// WinFormatRows is a helper method to define mock.On call
+//   - ctx context.Context
+//   - format string
+func (_e *MockDatasetRepo_Expecter) WinFormatRows(ctx interface{}, format interface{}) *MockDatasetRepo_WinFormatRows_Call {
+	return &MockDatasetRepo_WinFormatRows_Call{Call: _e.mock.On("WinFormatRows", ctx, format)}
+}
+
+func (_c *MockDatasetRepo_WinFormatRows_Call) Run(run func(ctx context.Context, format string)) *MockDatasetRepo_WinFormatRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_WinFormatRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_WinFormatRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_WinFormatRows_Call) RunAndReturn(run func(ctx context.Context, format string) ([][]string, error)) *MockDatasetRepo_WinFormatRows_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// WinUnifiedRows provides a mock function for the type MockDatasetRepo
+func (_mock *MockDatasetRepo) WinUnifiedRows(ctx context.Context) ([][]string, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WinUnifiedRows")
+	}
+
+	var r0 [][]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([][]string, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) [][]string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDatasetRepo_WinUnifiedRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WinUnifiedRows'
+type MockDatasetRepo_WinUnifiedRows_Call struct {
+	*mock.Call
+}
+
+// WinUnifiedRows is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockDatasetRepo_Expecter) WinUnifiedRows(ctx interface{}) *MockDatasetRepo_WinUnifiedRows_Call {
+	return &MockDatasetRepo_WinUnifiedRows_Call{Call: _e.mock.On("WinUnifiedRows", ctx)}
+}
+
+func (_c *MockDatasetRepo_WinUnifiedRows_Call) Run(run func(ctx context.Context)) *MockDatasetRepo_WinUnifiedRows_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDatasetRepo_WinUnifiedRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_WinUnifiedRows_Call {
+	_c.Call.Return(stringss, err)
+	return _c
+}
+
+func (_c *MockDatasetRepo_WinUnifiedRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_WinUnifiedRows_Call {
 	_c.Call.Return(run)
 	return _c
 }

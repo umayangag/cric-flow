@@ -312,6 +312,41 @@ def test_train_on_the_fly_insufficient_bowling_raises():
     assert "ODI" in str(excinfo.value)
 
 
+def test_fetch_training_data_env_timeout_override():
+    """TRAINING_DATA_FETCH_TIMEOUT env overrides config timeout."""
+    import os
+
+    payload = {"batting": {"headers": [], "rows": []}, "bowling": {"headers": [], "rows": []}}
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(payload).encode()
+    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+    mock_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch.dict(os.environ, {"TRAINING_DATA_FETCH_TIMEOUT": "120"}, clear=False):
+        with patch("app.train_on_the_fly.urllib.request.urlopen", return_value=mock_resp) as m:
+            fetch_training_data("http://goapp", "T20", "2024-01-01T00:00:00Z")
+            # Verify urlopen was called with timeout=120
+            m.assert_called_once()
+            call_kwargs = m.call_args[1]
+            assert call_kwargs.get("timeout") == 120
+
+
+def test_train_on_the_fly_cached_memory_hit():
+    """train_on_the_fly_cached returns in-memory cached result on second call."""
+    bat_headers = _batting_headers()
+    bowl_headers = _bowling_headers()
+    data = {
+        "batting": {"headers": bat_headers, "rows": [_one_batting_row(), _one_batting_row()]},
+        "bowling": {"headers": bowl_headers, "rows": [_one_bowling_row(), _one_bowling_row()]},
+    }
+    with patch("app.train_on_the_fly.fetch_training_data", return_value=data):
+        from app.train_on_the_fly import train_on_the_fly_cached
+
+        pair1 = train_on_the_fly_cached("http://goapp", "T20", "2024-10-30T00:00:00Z")
+        pair2 = train_on_the_fly_cached("http://goapp", "T20", "2024-10-30T00:00:00Z")
+        assert pair1 is pair2
+
+
 def test_train_on_the_fly_all_nan_batting_raises():
     """Insufficient batting: zero batting rows after filtering raises ValueError."""
     # Use no batting rows so that X_bat is empty and we get "Insufficient batting"

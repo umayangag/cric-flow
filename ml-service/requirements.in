@@ -1,4 +1,6 @@
 # Direct dependencies only. Pinned output: pip-compile requirements.in -> requirements.txt
+# NOTE: compile-requirements uses Python 3.9 (local venv) but Docker uses Python 3.12. Use
+# make compile-requirements-docker to regenerate requirements.txt for the Docker/Python 3.12 env.
 fastapi
 uvicorn
 pydantic

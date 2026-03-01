@@ -59,6 +59,47 @@ const getPillState = (status: Migration['status']): 'ok' | 'pending' | 'error' =
   }
 };
 
+/** Format cutoff (ISO string or Unix timestamp) for display. */
+function formatCutoff(v: unknown): string {
+  if (v == null) return '';
+  const d = typeof v === 'number' ? new Date(v >= 1e10 ? v : v * 1000) : new Date(String(v));
+  return isNaN(d.getTime()) ? String(v).slice(0, 10) : d.toISOString().slice(0, 10);
+}
+
+type ArgFormatter = (args: Record<string, unknown>) => string[];
+
+const CMD_FORMATTERS: Record<string, ArgFormatter> = {
+  'ml-auto-tune': (args) => {
+    const parts: string[] = [];
+    if (args.model) parts.push(`model=${args.model}`);
+    if (args.format) parts.push(`format=${args.format}`);
+    if (args.all_formats && String(args.all_formats) !== '0') parts.push('all_formats');
+    if (args.unified && String(args.unified) !== '0') parts.push('unified');
+    if (args.algorithms) parts.push(`algorithms=${args.algorithms}`);
+    if (args.cutoff) parts.push(`cutoff=${formatCutoff(args.cutoff)}`);
+    if (args.rescreen && String(args.rescreen) !== '0') parts.push('rescreen');
+    return parts;
+  },
+  'export-dataset': (args) => (args.out_dir ? [`out=${String(args.out_dir)}`] : []),
+  'precompute-features': (args) => (args.season ? [`season=${args.season}`] : []),
+  'cricsheet-import': (args) => (args.dir ? [`dir=${String(args.dir)}`] : []),
+};
+
+/** Format command + params for display in the Command column (model, format, algorithms, cutoff, etc.) */
+function formatCommandWithParams(m: Migration): string {
+  const cmd = m.command || '';
+  const args = (m.args as Record<string, unknown>) || {};
+
+  let formatter = CMD_FORMATTERS[cmd];
+  if (!formatter && cmd.startsWith('train-')) {
+    formatter = (a) => (a.cutoff ? [`cutoff=${formatCutoff(a.cutoff)}`] : []);
+  }
+  const parts = formatter ? formatter(args) : [];
+
+  if (parts.length === 0) return cmd;
+  return `${cmd} ${parts.join(' ')}`;
+}
+
 const OpsMigrationsTable: React.FC = () => {
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [loading, setLoading] = useState(false);
@@ -117,7 +158,9 @@ const OpsMigrationsTable: React.FC = () => {
           {migrations.map((m) => (
             <TableRow key={m.id}>
               <TableCell>{m.id}</TableCell>
-              <CodeCell>{m.command}</CodeCell>
+              <CodeCell title={typeof m.args === 'object' ? JSON.stringify(m.args) : undefined}>
+                {formatCommandWithParams(m)}
+              </CodeCell>
               <TableCell>
                 <StatusPill state={getPillState(m.status)} label={m.status} />
               </TableCell>

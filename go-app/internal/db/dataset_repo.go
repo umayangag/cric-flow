@@ -30,4 +30,14 @@ type DatasetRepo interface {
 	FieldingUnifiedRows(ctx context.Context) ([][]string, error)
 	// FieldingFormatRows returns rows for per-format training fielding export.
 	FieldingFormatRows(ctx context.Context, format string) ([][]string, error)
+
+	// ExtrasUnifiedRows returns rows for the unified extras export (all formats, as of now).
+	ExtrasUnifiedRows(ctx context.Context) ([][]string, error)
+	// ExtrasFormatRows returns rows for per-format training extras export.
+	ExtrasFormatRows(ctx context.Context, format string) ([][]string, error)
+
+	// WinUnifiedRows returns rows for the unified win export (all formats, as of now).
+	WinUnifiedRows(ctx context.Context) ([][]string, error)
+	// WinFormatRows returns rows for per-format training win export.
+	WinFormatRows(ctx context.Context, format string) ([][]string, error)
 }

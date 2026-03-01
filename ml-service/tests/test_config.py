@@ -1,6 +1,6 @@
 """Unit tests for ml.config (config load, merge, training params, defaults)."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,10 +12,12 @@ from ml.config import (
     default_artifacts_dir,
     default_go_app_export_dir,
     get_feature_defaults,
+    get_pipeline_common_config,
     get_prediction_defaults,
     get_training_data_fetch_timeout_sec,
     get_training_params,
     get_training_subprocess_timeout_sec,
+    get_tuned_params_from_go_app,
     get_tuning_config,
     get_tuning_search_space,
 )
@@ -217,6 +219,31 @@ def test_get_training_params_learning_rate_float_parsing(monkeypatch):
         config_mod._cached = None
 
 
+def test_get_training_params_invalid_learning_rate_quantile_defaults(monkeypatch):
+    """Invalid learning_rate/quantile_level (non-float) fall back to 0.1 and 0.5."""
+    config_mod._cached = {
+        "ml": {
+            "training": {
+                "batting": {
+                    "n_estimators": 50,
+                    "max_depth": 5,
+                    "random_state": 42,
+                    "joblib_compress": 1,
+                    "estimator": "gb",
+                    "learning_rate": "bad",
+                    "quantile_level": "nope",
+                }
+            }
+        }
+    }
+    try:
+        params = get_training_params("batting")
+        assert params["learning_rate"] == 0.1
+        assert params["quantile_level"] == 0.5
+    finally:
+        config_mod._cached = None
+
+
 def test_default_go_app_export_dir_from_config(monkeypatch):
     """default_go_app_export_dir returns config value when set."""
     config_mod._cached = {"inputs": {"go_app_export_dir": "/custom/export"}}
@@ -264,6 +291,20 @@ def test_get_training_data_fetch_timeout_sec_invalid_returns_600(monkeypatch):
         config_mod._cached = None
 
 
+def test_get_training_data_fetch_timeout_sec_invalid_and_invalid_fallback_non_numeric(monkeypatch):
+    """When both val and invalid_fallback are non-numeric, returns DEFAULT fallback 600."""
+    config_mod._cached = {
+        "inputs": {
+            "training_data_fetch_timeout_sec": "bad",
+            "training_data_fetch_timeout_invalid_fallback_sec": "also_bad",
+        }
+    }
+    try:
+        assert get_training_data_fetch_timeout_sec() == 600
+    finally:
+        config_mod._cached = None
+
+
 def test_get_training_subprocess_timeout_sec_from_config():
     """training_subprocess_timeout_sec from config when set."""
     config_mod._cached = {"inputs": {"training_subprocess_timeout_sec": 120}}
@@ -279,6 +320,43 @@ def test_get_training_subprocess_timeout_sec_default_7_days(monkeypatch):
     monkeypatch.delenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", raising=False)
     try:
         assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_invalid_config_falls_back(monkeypatch):
+    """Invalid config value (str/non-int) falls back to env or default."""
+    config_mod._cached = {"inputs": {"training_subprocess_timeout_sec": "not_an_int"}}
+    monkeypatch.delenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", raising=False)
+    try:
+        assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_training_subprocess_timeout_sec_invalid_env_falls_back(monkeypatch):
+    """Invalid env value falls back to default."""
+    config_mod._cached = {"inputs": {}}
+    monkeypatch.setenv("TRAINING_SUBPROCESS_TIMEOUT_SEC", "invalid")
+    try:
+        assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
+    finally:
+        config_mod._cached = None
+
+
+def test_get_tuned_params_from_go_app_invalid_timeout_config(monkeypatch):
+    """Invalid go_app_request_timeout_sec in config falls back to default (exercises _go_app_request_timeout_sec)."""
+    config_mod._cached = {"inputs": {"go_app_request_timeout_sec": "not_an_int"}}
+    try:
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b'{"params": {}}'
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_urlopen.return_value = mock_resp
+            result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+            assert result == {}
+            mock_urlopen.assert_called_once()
     finally:
         config_mod._cached = None
 
@@ -331,11 +409,34 @@ def test_get_prediction_defaults(monkeypatch):
     assert isinstance(pd_def["economy"], float)
 
 
+def test_get_pipeline_common_config():
+    """get_pipeline_common_config returns generalized_pipeline defaults."""
+    config_mod._cached = None
+    cfg = get_pipeline_common_config()
+    assert "use_robust_scaler" in cfg
+    assert "time_decay_halflife_years" in cfg
+    assert "delta_threshold" in cfg
+    assert isinstance(cfg["use_robust_scaler"], bool)
+    assert cfg["time_decay_halflife_years"] == 2.0
+    assert cfg["delta_threshold"] == 0.08
+
+
 def test_training_required_keys_constant():
     """TRAINING_REQUIRED_KEYS and TRAINING_MODELS are defined."""
     assert "n_estimators" in TRAINING_REQUIRED_KEYS
     assert "batting" in TRAINING_MODELS
     assert "bowling" in TRAINING_MODELS
+
+
+def test_config_load_default_missing_returns_empty():
+    """When default config file does not exist, empty dict is used (line 59 else)."""
+    config_mod._cached = None
+    try:
+        with patch("os.path.isfile", return_value=False):
+            cfg = config_mod.get_config()
+        assert cfg == {}
+    finally:
+        config_mod._cached = None
 
 
 def test_config_load_default_fails_returns_empty(monkeypatch):
@@ -400,3 +501,59 @@ def test_config_load_user_fails_keeps_default(monkeypatch):
         assert cfg == {"inputs": {}}
     finally:
         config_mod._cached = None
+
+
+def test_get_tuned_params_from_go_app_404_returns_none():
+    """get_tuned_params_from_go_app returns None on 404."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 404, "Not Found", None, None)
+    with patch("urllib.request.urlopen", side_effect=err):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_http_error_non_404_returns_none():
+    """get_tuned_params_from_go_app returns None on non-404 HTTPError."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 500, "Internal Error", None, None)
+    with patch("urllib.request.urlopen", side_effect=err):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_os_error_returns_none():
+    """get_tuned_params_from_go_app returns None on OSError (connection refused)."""
+    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_params_string_json_decode_fails():
+    """get_tuned_params_from_go_app returns None when params is invalid JSON string."""
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"params": "not valid json {"}'
+    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_save_tuned_params_to_go_app_http_error_raises():
+    """save_tuned_params_to_go_app raises ValueError on HTTPError."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 500, "Error", None, None)
+    err.read = lambda: b"error body"
+    with patch("urllib.request.urlopen", side_effect=err):
+        with pytest.raises(ValueError, match="HTTP 500"):
+            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
+
+
+def test_save_tuned_params_to_go_app_os_error_raises():
+    """save_tuned_params_to_go_app raises ValueError on OSError."""
+    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        with pytest.raises(ValueError, match="request failed"):
+            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})

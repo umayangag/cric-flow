@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.config import (
     default_artifacts_dir,
+    default_go_app_export_dir,
     get_pipeline_common_config,
     get_training_data_fetch_timeout_sec,
     get_training_params,
@@ -194,30 +195,38 @@ def train_and_save_legacy(
 def main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(description="Train win model from go-app training-data API or CSV")
-    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required if not using --csv)")
-    ap.add_argument("--csv", default="", help="Path to win CSV (optional; else fetch from API)")
+    ap = argparse.ArgumentParser(description="Train win model from go-app export CSV (preferred) or training-data API")
+    ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required for API fallback)")
+    ap.add_argument(
+        "--csv",
+        default="",
+        help="Path to win CSV (optional; else use GO_APP_OUTPUT_DIR/win_encoded_all.csv or API)",
+    )
     ap.add_argument("--out", default="", help="Artifacts output dir (default from config)")
     ap.add_argument("--go-app-url", default=os.environ.get("GO_APP_URL", ""), help="Go-app base URL")
     ap.add_argument("--api-key", default=os.environ.get("GO_APP_API_KEY", ""), help="Optional API key")
     args = ap.parse_args()
     out_dir = args.out or os.environ.get("ML_SERVICE_OUTPUT_DIR") or default_artifacts_dir()
+    default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR") or default_go_app_export_dir()
+    csv_path = args.csv or os.path.join(default_csv_dir, "win_encoded_all.csv")
 
-    logger.info("pipeline: train_win starting out_dir=%s source=%s", out_dir, "csv" if args.csv else "api")
-
-    if args.csv:
-        if not os.path.isfile(args.csv):
-            logger.error("train_win.csv_not_found path=%s", args.csv)
-            sys.exit(1)
-        logger.info("train_win.loading_csv path=%s", args.csv)
-        df = pd.read_csv(args.csv)
+    if os.path.isfile(csv_path):
+        logger.info("train_win.loading_csv path=%s (prefer CSV over API)", csv_path)
+        df = pd.read_csv(csv_path)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
     else:
         if not args.go_app_url or not args.cutoff:
-            logger.error("train_win.missing_args hint=Provide --go-app-url and --cutoff, or --csv")
+            logger.error(
+                "train_win.csv_not_found path=%s hint=Run export-dataset first, or provide --go-app-url and --cutoff for API fallback",
+                csv_path,
+            )
             sys.exit(1)
+        logger.warning(
+            "train_win.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+            csv_path,
+        )
         logger.info("train_win.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
         try:
             win = fetch_win_data(args.go_app_url, args.cutoff, args.api_key or None)

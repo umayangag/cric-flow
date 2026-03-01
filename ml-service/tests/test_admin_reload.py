@@ -36,3 +36,37 @@ def test_admin_reload_enabled_returns_summary(tmp_path):
     assert "loaded_bowling_formats" in data
     assert "legacy_batting" in data
     assert "legacy_bowling" in data
+
+
+def test_admin_reload_with_api_key_wrong_returns_401(tmp_path):
+    """When ADMIN_API_KEY is set and X-API-Key is wrong, returns 401."""
+    os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
+    os.environ["ENABLE_HOT_RELOAD"] = "1"
+    os.environ["ADMIN_API_KEY"] = "secret123"
+    try:
+        app_module = importlib.import_module("app.main")
+        importlib.reload(app_module)
+        client = TestClient(app_module.app)
+        resp = client.post("/admin/reload", headers={"X-API-Key": "wrong"})
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["code"] == "UNAUTHORIZED"
+    finally:
+        os.environ.pop("ADMIN_API_KEY", None)
+        os.environ.pop("ENABLE_HOT_RELOAD", None)
+
+
+def test_admin_reload_with_api_key_correct_succeeds(tmp_path):
+    """When ADMIN_API_KEY is set and X-API-Key matches, reload succeeds."""
+    os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
+    os.environ["ENABLE_HOT_RELOAD"] = "1"
+    os.environ["ADMIN_API_KEY"] = "secret123"
+    try:
+        app_module = importlib.import_module("app.main")
+        importlib.reload(app_module)
+        client = TestClient(app_module.app)
+        resp = client.post("/admin/reload", headers={"X-API-Key": "secret123"})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "reloaded"
+    finally:
+        os.environ.pop("ADMIN_API_KEY", None)
+        os.environ.pop("ENABLE_HOT_RELOAD", None)

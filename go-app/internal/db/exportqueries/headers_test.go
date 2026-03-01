@@ -7,6 +7,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBowlingSeqHeaders(t *testing.T) {
+	t.Parallel()
+	got := BowlingSeqHeaders()
+	require.Len(t, got, 10)
+	require.Equal(t, "bowl_prev_bowler_id", got[0])
+	require.Equal(t, "bowl_over_ball6_wkt_rate", got[9])
+}
+
+func TestBattingSeqHeaders(t *testing.T) {
+	t.Parallel()
+	got := BattingSeqHeaders()
+	require.Len(t, got, 10)
+	require.Equal(t, "bat_prev_batter_id", got[0])
+	require.Equal(t, "bat_after_k_dots_boundary_p_k2", got[9])
+}
+
 // TestAppendSeqIfEnabled verifies OFF and ON scenarios as separate table cases
 // to keep Arrange-Act-Assert strictly separated per subtest.
 func TestAppendSeqIfEnabled(t *testing.T) {

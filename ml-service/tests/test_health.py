@@ -17,10 +17,21 @@ def test_health_endpoint_basic(monkeypatch, tmp_path):
     # Basic structure assertions
     assert data["status"] == "ok"
     assert "models_dir" in data
-    assert "artifacts" in data and set(data["artifacts"].keys()) == {"batting", "bowling"}
-    assert "metadata" in data and set(data["metadata"].keys()) == {"batting", "bowling"}
-    assert "counters" in data and {"batting_formats", "bowling_formats"}.issubset(set(data["counters"].keys()))
+    assert "artifacts" in data
+    assert {"batting", "bowling", "fielding", "extras", "win"} == set(data["artifacts"].keys())
+    assert "metadata" in data
+    assert {"batting", "bowling", "fielding"}.issubset(set(data["metadata"].keys()))
+    assert "counters" in data
+    assert {"batting_formats", "bowling_formats", "fielding_formats", "extras_formats", "win_formats"}.issubset(
+        set(data["counters"].keys())
+    )
     assert "loaded_batting_formats" in data
     assert "loaded_bowling_formats" in data
+    assert "loaded_fielding_formats" in data
+    assert "loaded_extras_formats" in data
+    assert "loaded_win_formats" in data
     assert "legacy_batting_available" in data
     assert "legacy_bowling_available" in data
+    assert "legacy_fielding_available" in data
+    assert "legacy_extras_available" in data
+    assert "legacy_win_available" in data

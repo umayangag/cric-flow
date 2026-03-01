@@ -42,6 +42,24 @@ def test_evaluate_calibration_adds_ece():
     assert 0 <= data["ece"] <= 1 or np.isnan(data["ece"])
 
 
+def test_evaluate_calibration_empty_returns_nan_ece():
+    """evaluate_calibration returns ece=nan when total is 0 (all bins empty)."""
+    y_true = np.array([], dtype=int)
+    y_prob = np.array([], dtype=float)
+    data = evaluate_calibration(y_true, y_prob, n_bins=5)
+    assert "ece" in data
+    assert np.isnan(data["ece"])
+
+
+def test_evaluate_calibration_single_sample():
+    """evaluate_calibration handles single sample edge case."""
+    y_true = np.array([1])
+    y_prob = np.array([0.5])
+    data = evaluate_calibration(y_true, y_prob, n_bins=10)
+    assert "ece" in data
+    assert 0 <= data["ece"] <= 1 or np.isnan(data["ece"])
+
+
 def test_calibrate_classifier_isotonic():
     """Calibrate classifier with isotonic method."""
     np.random.seed(42)

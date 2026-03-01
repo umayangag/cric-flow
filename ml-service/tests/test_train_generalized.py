@@ -10,6 +10,32 @@ import pytest
 from ml.train_generalized import main
 
 
+def test_train_generalized_logging_basic_config():
+    """main calls logging.basicConfig when root logger has no handlers (line 32-33)."""
+    import logging
+
+    root = logging.getLogger()
+    saved_handlers = root.handlers.copy()
+    root.handlers.clear()
+    try:
+        with patch("ml.train_generalized.run_generalized_pipeline") as mock_run:
+            with patch("ml.train_generalized.load_ball_by_ball_from_csv") as mock_load:
+                mock_load.return_value = _make_fake_df(200)
+                mock_run.return_value = {
+                    "pipeline": _FakePipeline(),
+                    "best_model": "logistic",
+                    "best_metrics": {"val_metric": 0.15, "delta": 0.02},
+                    "summary": "ok",
+                }
+                with tempfile.TemporaryDirectory() as tmp:
+                    with patch.dict(os.environ, {"ML_SERVICE_OUTPUT_DIR": tmp}, clear=False):
+                        with patch("sys.argv", ["train_generalized", "--csv", "/tmp/x"]):
+                            main()
+        assert len(root.handlers) >= 1
+    finally:
+        root.handlers[:] = saved_handlers
+
+
 @patch("ml.train_generalized.run_generalized_pipeline")
 @patch("ml.train_generalized.load_ball_by_ball_from_csv")
 def test_train_generalized_csv_success(mock_load_csv, mock_run_pipeline):
@@ -64,6 +90,26 @@ def test_train_generalized_no_csv_or_db_exits(mock_load_csv, mock_load_db):
 
 @patch("ml.train_generalized.run_generalized_pipeline")
 @patch("ml.train_generalized.load_ball_by_ball_from_db")
+def test_train_generalized_from_db_no_cutoff(mock_load_db, mock_run_pipeline):
+    """main with --from-db and no --cutoff passes cutoff_date=None to loader."""
+    mock_load_db.return_value = _make_fake_df(250)
+    mock_run_pipeline.return_value = {
+        "pipeline": _FakePipeline(),
+        "best_model": "logistic",
+        "best_metrics": {"val_metric": 0.11, "delta": 0.02},
+        "summary": "logistic best",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.dict(os.environ, {"ML_SERVICE_OUTPUT_DIR": tmp}, clear=False):
+            with patch("sys.argv", ["train_generalized", "--from-db"]):
+                main()
+    assert mock_load_db.called
+    cutoff = mock_load_db.call_args[1].get("cutoff_date")
+    assert cutoff is None
+
+
+@patch("ml.train_generalized.run_generalized_pipeline")
+@patch("ml.train_generalized.load_ball_by_ball_from_db")
 def test_train_generalized_from_db_success(mock_load_db, mock_run_pipeline):
     """main with --from-db loads from DB and runs pipeline."""
     mock_load_db.return_value = _make_fake_df(250)
@@ -84,6 +130,29 @@ def test_train_generalized_from_db_success(mock_load_db, mock_run_pipeline):
     cutoff = mock_load_db.call_args[1].get("cutoff_date")
     assert cutoff is not None
     assert cutoff.year == 2024 and cutoff.month == 12
+
+
+@patch("ml.train_generalized.run_generalized_pipeline")
+@patch("ml.train_generalized.load_ball_by_ball_from_db")
+def test_train_generalized_from_db_with_format_filter(mock_load_db, mock_run_pipeline):
+    """main with --from-db and --format passes format_codes to loader."""
+    mock_load_db.return_value = _make_fake_df(250)
+    mock_run_pipeline.return_value = {
+        "pipeline": _FakePipeline(),
+        "best_model": "logistic",
+        "best_metrics": {"val_metric": 0.10, "delta": 0.02},
+        "summary": "logistic best",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.dict(os.environ, {"ML_SERVICE_OUTPUT_DIR": tmp}, clear=False):
+            with patch(
+                "sys.argv",
+                ["train_generalized", "--from-db", "--cutoff", "2024-06-01", "--format", "ODI, T20I"],
+            ):
+                main()
+    assert mock_load_db.called
+    format_codes = mock_load_db.call_args[1].get("format_codes")
+    assert format_codes == ["ODI", "T20I"]
 
 
 @patch("ml.train_generalized.run_generalized_pipeline")

@@ -11,6 +11,18 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
 
+const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
+
+const ARTIFACT_LABELS: Record<(typeof MODEL_TYPES)[number], string> = {
+  batting: 'bat',
+  bowling: 'bowl',
+  fielding: 'field',
+  extras: 'extras',
+  win: 'win',
+};
+
+type ArtifactItem = { file: string; size_bytes?: number; modified?: number };
+
 const HealthTab: React.FC = () => {
   const [mlData, setMlData] = useState<HealthResponse | null>(null);
   const [apiHealth, setApiHealth] = useState<string | null>(null);
@@ -81,6 +93,57 @@ const HealthTab: React.FC = () => {
     return isNaN(d.getTime()) ? '' : d.toLocaleString();
   }, [lastChecked]);
 
+  const loadedFormatsItems = useMemo(() => {
+    return MODEL_TYPES.map((t) => {
+      const formats = mlData?.[`loaded_${t}_formats` as keyof HealthResponse] as
+        | string[]
+        | undefined;
+      const value = !mlData ? '—' : formats && formats.length > 0 ? formats.join(', ') : 'None';
+      return { label: `Loaded ${t === 'win' ? 'win prediction' : t}`, value };
+    });
+  }, [mlData]);
+
+  const artifactsCountValue = useMemo(() => {
+    if (!mlData) return '—';
+    const parts = MODEL_TYPES.map((t) => {
+      const arr = mlData.artifacts?.[t];
+      return Array.isArray(arr) && arr.length ? `${ARTIFACT_LABELS[t]}: ${arr.length}` : null;
+    }).filter(Boolean);
+    return parts.length ? (parts as string[]).join(', ') : 'None';
+  }, [mlData]);
+
+  const allArtifacts = useMemo(() => {
+    if (!mlData) return [];
+    return MODEL_TYPES.flatMap((t) => mlData.artifacts?.[t] || []) as ArtifactItem[];
+  }, [mlData]);
+
+  const totalSizeValue = useMemo(() => {
+    if (!mlData) return '—';
+    const total = allArtifacts.reduce((acc, it) => acc + (it.size_bytes ?? 0), 0);
+    return total > 0 ? formatBytes(total) : '0 B';
+  }, [mlData, allArtifacts]);
+
+  const latestModifiedValue = useMemo(() => {
+    if (!mlData) return '—';
+    const timestamps = allArtifacts
+      .map((it) => it.modified)
+      .filter((n): n is number => n != null && isFinite(n));
+    if (!timestamps.length) return 'N/A';
+    const max = Math.max(...timestamps);
+    const d = new Date(max * 1000);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+  }, [mlData, allArtifacts]);
+
+  const legacyValue = useMemo(() => {
+    if (!mlData) return '—';
+    const legacy = MODEL_TYPES.map(
+      (t) => mlData?.[`legacy_${t}_available` as keyof HealthResponse] && t,
+    )
+      .filter(Boolean)
+      .join(', ');
+    return legacy || 'None';
+  }, [mlData]);
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -148,87 +211,12 @@ const HealthTab: React.FC = () => {
                   value: latencyMlMs != null ? `${latencyMlMs} ms` : '—',
                 },
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
-                {
-                  label: 'Loaded batting',
-                  value:
-                    (mlData?.loaded_batting_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_batting_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
-                {
-                  label: 'Loaded bowling',
-                  value:
-                    (mlData?.loaded_bowling_formats?.length ?? 0) > 0
-                      ? mlData!.loaded_bowling_formats!.join(', ')
-                      : mlData
-                        ? 'None'
-                        : '—',
-                },
                 { label: 'Models dir', value: mlData?.models_dir || '—' },
-                {
-                  label: 'Legacy batting',
-                  value: mlData ? (mlData.legacy_batting_available ? 'Yes' : 'No') : '—',
-                },
-                {
-                  label: 'Legacy bowling',
-                  value: mlData ? (mlData.legacy_bowling_available ? 'Yes' : 'No') : '—',
-                },
-                (() => {
-                  const bat = mlData?.artifacts?.batting || [];
-                  const bowl = mlData?.artifacts?.bowling || [];
-                  const batCount = Array.isArray(bat) ? bat.length : 0;
-                  const bowlCount = Array.isArray(bowl) ? bowl.length : 0;
-                  return {
-                    label: 'Artifacts',
-                    value: `batting: ${batCount}, bowling: ${bowlCount}`,
-                  };
-                })(),
-                (() => {
-                  const all = [
-                    ...(mlData?.artifacts?.batting || []),
-                    ...(mlData?.artifacts?.bowling || []),
-                  ] as unknown[];
-                  const total: number = all.reduce<number>((acc, it) => {
-                    if (it && typeof it === 'object') {
-                      const val = (it as Record<string, unknown>).size_bytes;
-                      const n = typeof val === 'number' ? val : 0;
-                      return acc + n;
-                    }
-                    return acc;
-                  }, 0);
-                  return {
-                    label: 'Total size',
-                    value: mlData ? (total > 0 ? formatBytes(total as number) : '0 B') : '—',
-                  };
-                })(),
-                (() => {
-                  const all = [
-                    ...(mlData?.artifacts?.batting || []),
-                    ...(mlData?.artifacts?.bowling || []),
-                  ] as unknown[];
-                  const latest = all
-                    .map((it) => {
-                      if (it && typeof it === 'object') {
-                        const val = (it as Record<string, unknown>).modified;
-                        return typeof val === 'number' ? val : NaN;
-                      }
-                      return NaN;
-                    })
-                    .filter((n): n is number => typeof n === 'number' && isFinite(n));
-                  const max = latest.length ? Math.max(...latest) : NaN;
-                  if (!isFinite(max))
-                    return {
-                      label: 'Latest modified',
-                      value: mlData ? 'N/A' : '—',
-                    };
-                  const d = new Date(max * 1000);
-                  return {
-                    label: 'Latest modified',
-                    value: isNaN(d.getTime()) ? '—' : d.toLocaleString(),
-                  };
-                })(),
+                ...loadedFormatsItems,
+                { label: 'Legacy (unified)', value: legacyValue },
+                { label: 'Artifacts', value: artifactsCountValue },
+                { label: 'Total size', value: totalSizeValue },
+                { label: 'Latest modified', value: latestModifiedValue },
               ]}
             />
           </Paper>

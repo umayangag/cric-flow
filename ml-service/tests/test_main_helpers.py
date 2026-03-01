@@ -2,7 +2,11 @@
 
 from datetime import datetime, timezone
 
-from app.main import _round_datetime_to_granularity
+from app.main import (
+    _round_datetime_to_granularity,
+    get_backtest_compute_counts,
+    reset_backtest_cache,
+)
 
 
 def test_round_datetime_to_granularity_none_returns_unchanged():
@@ -45,3 +49,11 @@ def test_round_datetime_to_granularity_unknown_fallback():
     """Unknown granularity falls back to no rounding."""
     dt = datetime(2025, 2, 26, 14, 32, 11, 123456, tzinfo=timezone.utc)
     assert _round_datetime_to_granularity(dt, "invalid") == dt
+
+
+def test_reset_backtest_cache_and_get_compute_counts():
+    """reset_backtest_cache clears cache; get_backtest_compute_counts returns (players, match) counts."""
+    reset_backtest_cache()
+    players, match = get_backtest_compute_counts()
+    assert players == 0
+    assert match == 0

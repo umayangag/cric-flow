@@ -117,6 +117,40 @@ type MigrationInfoForModelStats struct {
 	DurationSecs float64 // completed_at - started_at in seconds
 }
 
+// ParamsMetricsForModelStats holds params and metrics for model-stats enrichment.
+type ParamsMetricsForModelStats struct {
+	Params  json.RawMessage
+	Metrics json.RawMessage
+}
+
+// ListLatestParamsMetricsForModelStats returns the latest params and metrics per (model, format).
+// Key format: "model|format" (model lowercased, format uppercased). Used to enrich model-stats with DB data.
+func ListLatestParamsMetricsForModelStats(ctx context.Context) (map[string]ParamsMetricsForModelStats, error) {
+	if !Available() {
+		return make(map[string]ParamsMetricsForModelStats), nil
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT ON (LOWER(model), UPPER(format)) LOWER(model), UPPER(format), params, metrics
+		FROM ml_tuned_params
+		ORDER BY LOWER(model), UPPER(format), created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]ParamsMetricsForModelStats)
+	for rows.Next() {
+		var model, format string
+		var params, metrics json.RawMessage
+		if err := rows.Scan(&model, &format, &params, &metrics); err != nil {
+			return nil, err
+		}
+		key := model + "|" + format
+		out[key] = ParamsMetricsForModelStats{Params: params, Metrics: metrics}
+	}
+	return out, rows.Err()
+}
+
 // GetMigrationInfoForTunedParams returns migration info (trained_at, duration) keyed by "model|format".
 // model and format are lower/upper-cased to match ml_tuned_params. Returns empty map when DB unavailable.
 func GetMigrationInfoForTunedParams(ctx context.Context) (map[string]MigrationInfoForModelStats, error) {

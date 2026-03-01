@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -96,7 +97,9 @@ func (a *App) mlServiceProxy(
 	}
 }
 
-// enrichModelStatsPayload adds migration info (trained_at, duration) to each model when available from DB.
+// enrichModelStatsPayload adds migration info (trained_at, duration) and params/metrics from ml_tuned_params
+// to each model when available. DB data takes precedence over disk-based model-stats so the latest auto-tune
+// results are shown even when tuning_report_*.json on disk is stale.
 func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 	modelsVal, ok := payload["models"]
 	if !ok {
@@ -106,14 +109,19 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 	if !ok || !db.Available() {
 		return
 	}
-	migrationInfo, err := db.GetMigrationInfoForTunedParams(r.Context())
+	ctx := r.Context()
+
+	// Migration info (trained_at, duration)
+	migrationInfo, err := db.GetMigrationInfoForTunedParams(ctx)
 	if err != nil {
 		slog.Warn("ml model-stats proxy: migration info fetch failed", slog.Any("err", err))
-		return
 	}
-	if len(migrationInfo) == 0 {
-		return
+	// Params and metrics from ml_tuned_params (source of truth for latest auto-tune)
+	paramsMetrics, err := db.ListLatestParamsMetricsForModelStats(ctx)
+	if err != nil {
+		slog.Warn("ml model-stats proxy: params/metrics fetch failed", slog.Any("err", err))
 	}
+
 	for _, m := range modelsList {
 		modelMap, ok := m.(map[string]any)
 		if !ok {
@@ -129,6 +137,7 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 			formatKey = ""
 		}
 		key := strings.ToLower(modelName) + "|" + formatKey
+
 		if info, has := migrationInfo[key]; has {
 			modelMap["trained_at"] = info.TrainedAt
 			if info.CompletedAt != "" {
@@ -138,7 +147,127 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 				modelMap["duration_seconds"] = info.DurationSecs
 			}
 		}
+
+		// Override with latest params/metrics from ml_tuned_params (DB is source of truth after auto-tune)
+		if paramsMetrics != nil {
+			if pm, has := paramsMetrics[key]; has {
+				enrichWithDBParams(modelMap, pm.Params)
+				enrichWithDBMetrics(modelMap, pm.Metrics)
+			}
+		}
 	}
+}
+
+// enrichWithDBParams enriches modelMap with tuned params from DB (tuned_parameters, algorithm).
+func enrichWithDBParams(modelMap map[string]any, params json.RawMessage) {
+	if len(params) == 0 {
+		return
+	}
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil || len(p) == 0 {
+		return
+	}
+	modelMap["tuned_parameters"] = p
+	modelMap["tuned"] = true
+	if algo := p["algorithm"]; algo != nil {
+		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
+	} else if algos, ok := p["algorithms"].([]any); ok && len(algos) > 0 {
+		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
+	}
+}
+
+// enrichWithDBMetrics enriches modelMap with metrics from DB (metrics, mlqa_audit, accuracy_display).
+func enrichWithDBMetrics(modelMap map[string]any, metrics json.RawMessage) {
+	if len(metrics) == 0 {
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(metrics, &m); err != nil || len(m) == 0 {
+		return
+	}
+	modelMap["metrics"] = m
+	modelMap["tuned"] = true
+	if mlqa, ok := m["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
+		modelMap["mlqa_audit"] = mlqa
+	}
+	if disp := formatAccuracyDisplayFromMetrics(m); disp != "" {
+		modelMap["accuracy_display"] = disp
+	}
+}
+
+// formatAccuracyDisplayFromMetrics builds the accuracy_display string from metrics.
+func formatAccuracyDisplayFromMetrics(metrics map[string]any) string {
+	if acc := metrics["accuracy_pct"]; acc != nil {
+		return formatAccuracyPct(acc)
+	}
+	if maeVal, ok := metrics["mae"]; ok {
+		if mae, ok := toFloat64(maeVal); ok {
+			parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
+			if rmseVal, ok := metrics["rmse"]; ok {
+				if rmse, ok := toFloat64(rmseVal); ok {
+					parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
+				}
+			}
+			if r2Val, ok := metrics["r2_pct"]; ok {
+				if r2, ok := toFloat64(r2Val); ok {
+					parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
+				}
+			}
+			return strings.Join(parts, ", ")
+		}
+	}
+	if r2Val, ok := metrics["r2_pct"]; ok {
+		if r2, ok := toFloat64(r2Val); ok {
+			return fmt.Sprintf("R²=%.1f%%", r2)
+		}
+	}
+	return ""
+}
+
+// toFloat64 safely converts an any value to float64 if it's a known numeric type.
+func toFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	default:
+		return 0, false
+	}
+}
+
+func formatAccuracyPct(v any) string {
+	switch x := v.(type) {
+	case float64:
+		return fmt.Sprintf("%.1f%%", x)
+	case int:
+		return fmt.Sprintf("%d%%", x)
+	case string:
+		return x + "%"
+	default:
+		return fmt.Sprintf("%v%%", v)
+	}
+}
+
+var algorithmDisplayNames = map[string]string{
+	"rf": "Random Forest", "gb": "Gradient Boosting", "quantile": "Quantile Regressor",
+	"stacked": "Stacking Regressor", "ridge": "Ridge", "mlp": "MLP Regressor",
+	"et": "Extra Trees", "hgb": "Hist Gradient Boosting",
+}
+
+func algorithmDisplayName(key string) string {
+	trimmedKey := strings.TrimSpace(key)
+	k := strings.ToLower(trimmedKey)
+	if name, ok := algorithmDisplayNames[k]; ok {
+		return name
+	}
+	return trimmedKey
 }
 
 // readinessHandler pings the DB to verify readiness.

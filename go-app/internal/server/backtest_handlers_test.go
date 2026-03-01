@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func almostEqual(a, b float64) bool {
@@ -185,6 +187,65 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseUseUnifiedModel(t *testing.T) {
+	tests := []struct {
+		name       string
+		rawURL     string
+		defaultVal bool
+		want       bool
+	}{
+		{"default false", "/api/backtest?match_id=1", false, false},
+		{"default true", "/api/backtest?match_id=1", true, true},
+		{"use_unified_model=1", "/api/backtest?match_id=1&use_unified_model=1", false, true},
+		{"use_unified_model=true", "/api/backtest?match_id=1&use_unified_model=true", false, true},
+		{"model=unified", "/api/backtest?match_id=1&model=unified", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tt.rawURL, nil)
+			got := parseUseUnifiedModel(r, tt.defaultVal)
+			if got != tt.want {
+				t.Fatalf("parseUseUnifiedModel(%q, %v)=%v want %v", tt.rawURL, tt.defaultVal, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseUseLatestModel(t *testing.T) {
+	tests := []struct {
+		name       string
+		rawURL     string
+		defaultVal bool
+		want       bool
+	}{
+		{"default false", "/api/backtest?match_id=1", false, false},
+		{"default true", "/api/backtest?match_id=1", true, true},
+		{"use_latest_model=1", "/api/backtest?match_id=1&use_latest_model=1", false, true},
+		{"use_latest_model=true", "/api/backtest?match_id=1&use_latest_model=true", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tt.rawURL, nil)
+			got := parseUseLatestModel(r, tt.defaultVal)
+			if got != tt.want {
+				t.Fatalf("parseUseLatestModel(%q, %v)=%v want %v", tt.rawURL, tt.defaultVal, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIntPtr(t *testing.T) {
+	got := intPtr(42)
+	require.NotNil(t, got)
+	require.Equal(t, 42, *got)
+}
+
+func TestFloat32Ptr(t *testing.T) {
+	got := float32Ptr(3.14)
+	require.NotNil(t, got)
+	require.Equal(t, float32(3.14), *got)
 }
 
 func TestComputeAccuracyTrendSummaryAndProgressive(t *testing.T) {
