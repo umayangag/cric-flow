@@ -101,6 +101,70 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				require.Error(t, err)
 			},
 		},
+		{
+			name: "unified_with_extras_win_mocks_succeeds",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				bat := mocks.NewMockBattingExporter(t)
+				bow := mocks.NewMockBowlingExporter(t)
+				extras := mocks.NewMockExtrasExporter(t)
+				win := mocks.NewMockWinExporter(t)
+				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				extras.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				win.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				bat.EXPECT().ExportFormat(mock.Anything, "TEST", mock.Anything).Return(nil)
+				bow.EXPECT().ExportFormat(mock.Anything, "TEST", mock.Anything).Return(nil)
+				extras.EXPECT().ExportFormat(mock.Anything, "TEST", mock.Anything).Return(nil)
+				win.EXPECT().ExportFormat(mock.Anything, "TEST", mock.Anything).Return(nil)
+				r := cmd.NewRunnerWithServices(bat, bow, nil, extras, win)
+				return r, cli.Options{OutDir: t.TempDir(), Unified: true, Formats: []string{"TEST"}}
+			},
+			assert: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "unified_extras_export_error_returns_error",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				bat := mocks.NewMockBattingExporter(t)
+				bow := mocks.NewMockBowlingExporter(t)
+				extras := mocks.NewMockExtrasExporter(t)
+				win := mocks.NewMockWinExporter(t)
+				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				extras.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(errors.New("extras export failed"))
+				win.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				r := cmd.NewRunnerWithServices(bat, bow, nil, extras, win)
+				return r, cli.Options{OutDir: t.TempDir(), Unified: true}
+			},
+			assert: func(t *testing.T, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "extras export failed")
+			},
+		},
+		{
+			name: "unified_win_performat_error_returns_error",
+			arrange: func(t *testing.T) (*cmd.Runner, cli.Options) {
+				bat := mocks.NewMockBattingExporter(t)
+				bow := mocks.NewMockBowlingExporter(t)
+				extras := mocks.NewMockExtrasExporter(t)
+				win := mocks.NewMockWinExporter(t)
+				bat.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				bow.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				extras.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				win.EXPECT().ExportUnified(mock.Anything, mock.Anything).Return(nil)
+				bat.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
+				bow.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
+				extras.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
+				win.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(errors.New("win format export failed"))
+				r := cmd.NewRunnerWithServices(bat, bow, nil, extras, win)
+				return r, cli.Options{OutDir: t.TempDir(), Unified: true, Formats: []string{"ODI"}}
+			},
+			assert: func(t *testing.T, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "win format export failed")
+			},
+		},
 	}
 
 	for _, tc := range cases {
