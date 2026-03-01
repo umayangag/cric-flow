@@ -55,9 +55,8 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     bowl = SimpleNamespace(
         bowling_consistency=1.1,
         bowling_form=2.2,
-        bowling_form_short=2.0,
-        bowling_form_long=1.8,
         bowling_momentum=0.5,
+        bowling_career_avg=1.5,
         bowling_temp=30,
         bowling_wind=5,
         bowling_rain=0,
@@ -73,13 +72,12 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         season=2024,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
-    # 18 base + 7 seq (0 when absent)
-    assert bowl_vec[:18] == [
+    # 17 base + 8 seq (0 when absent): consistency, form, momentum, career_avg, temp..viscosity, inning, session, toss, venue, opp, season
+    assert bowl_vec[:17] == [
         1.1,
         2.2,
-        2.0,
-        1.8,
         0.5,
+        1.5,  # bowling_career_avg
         30,
         5,
         0,
@@ -94,7 +92,7 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         8.5,
         2024,
     ]
-    assert bowl_vec[18:] == [0.0] * 8  # seq cols default to 0
+    assert bowl_vec[17:] == [0.0] * 8  # seq cols default to 0
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):

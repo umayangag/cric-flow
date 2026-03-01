@@ -199,9 +199,6 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
         feature_cols = _bowling_feature_cols()
         if "bowling_session" in df.columns:
             df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
-        for col in ("bowling_form_short", "bowling_form_long"):
-            if col not in df.columns and "bowling_form" in df.columns:
-                df = df.assign(**{col: df["bowling_form"]})
         if "bowling_momentum" not in df.columns:
             df = df.assign(bowling_momentum=0.0)
         for col in feature_cols:

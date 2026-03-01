@@ -123,7 +123,7 @@ except ImportError:
 
 # Phase 1 trials per algorithm; Phase 2 Optuna trials (when Optuna available)
 PHASE1_TRIALS_PER_ALGORITHM = 5
-PHASE2_TRIALS = 25
+PHASE2_TRIALS = 40
 
 # Batting/bowling CSV loading inlined (train_batting/train_bowling require top-level config).
 # Fielding / extras / win: optional imports for API data and rows_to_xy_by_format.
@@ -199,9 +199,8 @@ BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
-    "bowling_form_short",
-    "bowling_form_long",
     "bowling_momentum",
+    "bowling_career_avg",
     "temp",
     "wind",
     "rain",
@@ -363,26 +362,26 @@ AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "et", "hgb", "quantile", "stacked"
 
 # Phase 1: coarse param grids for algorithm screening (few trials, large steps)
 _PHASE1_COARSE_RF = {
-    "est__estimator__n_estimators": [50, 150, 300],
+    "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [6, 12, 20],
-    "est__estimator__min_samples_leaf": [2, 8],
+    "est__estimator__min_samples_leaf": [2, 8, 16],
 }
 _PHASE1_COARSE_GB = {
-    "est__estimator__n_estimators": [50, 150, 300],
+    "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [4, 8, 12],
     "est__estimator__learning_rate": [0.05, 0.15],
-    "est__estimator__min_samples_leaf": [2, 8],
+    "est__estimator__min_samples_leaf": [2, 8, 16],
 }
 _PHASE1_COARSE_ET = {
-    "est__estimator__n_estimators": [50, 150, 300],
+    "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [6, 12, 20],
-    "est__estimator__min_samples_leaf": [2, 8],
+    "est__estimator__min_samples_leaf": [2, 8, 16],
 }
 _PHASE1_COARSE_HGB = {
     "est__estimator__max_iter": [100, 200, 300],
     "est__estimator__max_depth": [4, 8, 12],
     "est__estimator__learning_rate": [0.05, 0.15],
-    "est__estimator__min_samples_leaf": [2, 8],
+    "est__estimator__min_samples_leaf": [2, 8, 16],
 }
 _PHASE1_COARSE_MLP_REG = {
     "est__estimator__hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
@@ -1316,24 +1315,24 @@ def _run_search_two_phase_single_regression(
         alg = trial.suggest_categorical("algorithm", winners)
         if alg == "rf":
             est = RandomForestRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "gb":
             est = GradientBoostingRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "et":
             est = ExtraTreesRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "mlp":
@@ -1353,7 +1352,7 @@ def _run_search_two_phase_single_regression(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         pipe = _build_pipeline_single_regression(est)
@@ -1819,27 +1818,27 @@ def _run_search_two_phase(
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
         if alg == "rf":
-            n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
             est = RandomForestRegressor(
                 n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
             )
         elif alg == "gb":
-            n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 3, 20, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
             est = GradientBoostingRegressor(
                 n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
         elif alg == "quantile":
             try:
                 tp = get_training_params(model_kind)
-                n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+                n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
                 depth = trial.suggest_int("max_depth", 4, 20, step=2)
                 lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-                leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+                leaf = trial.suggest_int("min_samples_leaf", 1, 24)
                 est = GradientBoostingRegressor(
                     n_estimators=n_est,
                     max_depth=depth,
@@ -1854,9 +1853,9 @@ def _run_search_two_phase(
                     n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
                 )
         elif alg == "et":
-            n_est = trial.suggest_int("n_estimators", 50, 350, step=50)
+            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
             est = ExtraTreesRegressor(
                 n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
             )
@@ -1864,7 +1863,7 @@ def _run_search_two_phase(
             n_est = trial.suggest_int("max_iter", 50, 400, step=50)
             depth = trial.suggest_int("max_depth", 3, 14, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 8)
+            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
             est = HistGradientBoostingRegressor(
                 max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
@@ -2174,11 +2173,12 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
-    for col in ("bowling_form_short", "bowling_form_long"):
-        if col not in df.columns and "bowling_form" in df.columns:
-            df[col] = df["bowling_form"]
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
+    if "bowling_career_avg" not in df.columns and "bowling_form" in df.columns:
+        df["bowling_career_avg"] = df["bowling_form"]
+    elif "bowling_career_avg" not in df.columns:
+        df["bowling_career_avg"] = 0.0
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -2721,24 +2721,24 @@ def _run_search_two_phase_classification(
         alg = trial.suggest_categorical("algorithm", winners)
         if alg == "rf":
             est = RandomForestClassifier(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "gb":
             est = GradientBoostingClassifier(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "et":
             est = ExtraTreesClassifier(
-                n_estimators=trial.suggest_int("n_estimators", 50, 350, step=50),
+                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         elif alg == "mlp":
@@ -2758,7 +2758,7 @@ def _run_search_two_phase_classification(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 8),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
                 random_state=random_state,
             )
         pipe = Pipeline([("scaler", StandardScaler()), ("est", est)])

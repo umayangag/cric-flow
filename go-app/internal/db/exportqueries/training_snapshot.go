@@ -45,6 +45,7 @@ type bowlingSnapshotAtCutoff struct {
 	consistency float64
 	venue       float64
 	opposition  float64
+	careerAvg   float64 // simple mean of all historical bowling values (wickets per innings)
 }
 
 type fieldingSnapshotAtCutoff struct {
@@ -272,8 +273,8 @@ func computeFieldingSnapshotFromHistories(
 	return out
 }
 
-// computeBowlingSnapshotFromHistories computes form, form_short, form_long, momentum, consistency, venue, opposition
-// from pre-fetched histories (avoids N+1 when batching).
+// computeBowlingSnapshotFromHistories computes form, form_short, form_long, momentum, consistency, venue, opposition,
+// and career_avg from pre-fetched histories (avoids N+1 when batching).
 func computeBowlingSnapshotFromHistories(
 	mainHist, venueHist, oppHist []db.InnVal,
 	asOf time.Time,
@@ -302,6 +303,13 @@ func computeBowlingSnapshotFromHistories(
 	out.formLong, _ = features.EWM(inn, alphaLong)
 	out.momentum, _ = features.Momentum(inn, momentumN)
 	out.consistency, _ = features.Consistency(inn, lastN)
+	if len(inn) > 0 {
+		var sum float64
+		for _, i := range inn {
+			sum += i.Value
+		}
+		out.careerAvg = sum / float64(len(inn))
+	}
 	if len(venueHist) > 0 {
 		venInn := toInnings(venueHist)
 		venInn = features.SortAndClip(venInn, asOf)
@@ -632,6 +640,7 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"bowling_form_short":  getOrDefault("bowling_form_short", bowlForm),
 			"bowling_form_long":   getOrDefault("bowling_form_long", bowlForm),
 			"bowling_momentum":    get("bowling_momentum"),
+			"bowling_career_avg":  getOrDefault("bowling_career_avg", bowlForm),
 			"bowling_consistency": get("bowling_consistency"),
 			"bowling_venue":       get("bowling_venue"),
 			"bowling_opposition":  get("bowling_opposition"),
@@ -734,6 +743,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"bowling_form_short":  bowlForm,
 			"bowling_form_long":   bowlForm,
 			"bowling_momentum":    0,
+			"bowling_career_avg":  bowlForm,
 			"bowling_consistency": pc["bowling_consistency"],
 			"batting_venue":       0,
 			"batting_opposition":  0,
@@ -864,6 +874,7 @@ func ComputeFeaturesAtCutoffForMatch(
 			"bowling_form_short":  bowlForm,
 			"bowling_form_long":   bowlForm,
 			"bowling_momentum":    0,
+			"bowling_career_avg":  bowlForm,
 			"bowling_consistency": pc["bowling_consistency"],
 			"bowling_venue":       bowlVenue,
 			"bowling_opposition":  bowlOpp,

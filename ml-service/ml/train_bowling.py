@@ -43,9 +43,8 @@ BOWL_SEQ_COLS = [
 FEATURE_COLS = [
     "bowling_consistency",
     "bowling_form",
-    "bowling_form_short",
-    "bowling_form_long",
     "bowling_momentum",
+    "bowling_career_avg",
     "temp",
     "wind",
     "rain",
@@ -89,9 +88,8 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
         "season_id": "season_id",
         "bowling_consistency": "bowling_consistency",
         "bowling_form": "bowling_form",
-        "bowling_form_short": "bowling_form_short",
-        "bowling_form_long": "bowling_form_long",
         "bowling_momentum": "bowling_momentum",
+        "bowling_career_avg": "bowling_career_avg",
         "runs": "runs",
         "balls": "balls",
         "wickets": "wickets",
@@ -102,11 +100,12 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
     for c in BOWL_SEQ_COLS:
         col_map[c] = c
     df = df.rename(columns=col_map)
-    for col in ("bowling_form_short", "bowling_form_long"):
-        if col not in df.columns and "bowling_form" in df.columns:
-            df[col] = df["bowling_form"]
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
+    if "bowling_career_avg" not in df.columns and "bowling_form" in df.columns:
+        df["bowling_career_avg"] = df["bowling_form"]
+    elif "bowling_career_avg" not in df.columns:
+        df["bowling_career_avg"] = 0.0
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
