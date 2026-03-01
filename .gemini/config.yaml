@@ -1,8 +1,6 @@
 # Gemini Code Assist - GitHub integration
 # Optimized for single-fetch automation: no inline comments, summary-only
 
-max_review_comments: 0
-
 # Use PR summary as primary communication channel for all PR events
 pull_request_opened:
   summary: true
