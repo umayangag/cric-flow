@@ -168,6 +168,10 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 				if err := json.Unmarshal(pm.Metrics, &metrics); err == nil && len(metrics) > 0 {
 					modelMap["metrics"] = metrics
 					modelMap["tuned"] = true
+					// Merge mlqa_audit from DB when present (same audit data as Win model)
+					if mlqa, ok := metrics["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
+						modelMap["mlqa_audit"] = mlqa
+					}
 					// Build accuracy_display from metrics when present
 					if acc := metrics["accuracy_pct"]; acc != nil {
 						modelMap["accuracy_display"] = formatAccuracyPct(acc)

@@ -119,7 +119,7 @@ type MigrationInfoForModelStats struct {
 
 // ParamsMetricsForModelStats holds params and metrics for model-stats enrichment.
 type ParamsMetricsForModelStats struct {
-	Params json.RawMessage
+	Params  json.RawMessage
 	Metrics json.RawMessage
 }
 
