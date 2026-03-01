@@ -30,6 +30,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          docker image prune --all --force 2>/dev/null || true
+          docker builder prune -a -f 2>/dev/null || true
+
       - name: Install dev tools
         run: make -C ml-service ci-setup
 

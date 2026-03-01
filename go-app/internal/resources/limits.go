@@ -114,7 +114,7 @@ func ceiling(kind Kind) int {
 	switch kind {
 	case KindImport:
 		return cpu * 4
-	case KindPrecompute, KindExport, KindSeqCalc:
+	case KindPrecompute, KindExport, KindSeqCalc, KindFielding:
 		return cpu * 2
 	default:
 		return cpu
