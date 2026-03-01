@@ -151,56 +151,77 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		// Override with latest params/metrics from ml_tuned_params (DB is source of truth after auto-tune)
 		if paramsMetrics != nil {
 			if pm, has := paramsMetrics[key]; has {
-				if len(pm.Params) > 0 {
-					var params map[string]any
-					if err := json.Unmarshal(pm.Params, &params); err == nil && len(params) > 0 {
-						modelMap["tuned_parameters"] = params
-						modelMap["tuned"] = true
-						// Set algorithm display from params when present
-						if algo := params["algorithm"]; algo != nil {
-							modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
-						} else if algos, ok := params["algorithms"].([]any); ok && len(algos) > 0 {
-							modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
-						}
-					}
-				}
-				if len(pm.Metrics) > 0 {
-					var metrics map[string]any
-					if err := json.Unmarshal(pm.Metrics, &metrics); err == nil && len(metrics) > 0 {
-						modelMap["metrics"] = metrics
-						modelMap["tuned"] = true
-						// Merge mlqa_audit from DB when present (same audit data as Win model)
-						if mlqa, ok := metrics["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
-							modelMap["mlqa_audit"] = mlqa
-						}
-						// Build accuracy_display from metrics when present
-						if acc := metrics["accuracy_pct"]; acc != nil {
-							modelMap["accuracy_display"] = formatAccuracyPct(acc)
-						} else if maeVal, ok := metrics["mae"]; ok {
-							if mae, ok := toFloat64(maeVal); ok {
-								parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
-								if rmseVal, ok := metrics["rmse"]; ok {
-									if rmse, ok := toFloat64(rmseVal); ok {
-										parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
-									}
-								}
-								if r2Val, ok := metrics["r2_pct"]; ok {
-									if r2, ok := toFloat64(r2Val); ok {
-										parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
-									}
-								}
-								modelMap["accuracy_display"] = strings.Join(parts, ", ")
-							}
-						} else if r2Val, ok := metrics["r2_pct"]; ok {
-							if r2, ok := toFloat64(r2Val); ok {
-								modelMap["accuracy_display"] = fmt.Sprintf("R²=%.1f%%", r2)
-							}
-						}
-					}
-				}
+				enrichWithDBParams(modelMap, pm.Params)
+				enrichWithDBMetrics(modelMap, pm.Metrics)
 			}
 		}
 	}
+}
+
+// enrichWithDBParams enriches modelMap with tuned params from DB (tuned_parameters, algorithm).
+func enrichWithDBParams(modelMap map[string]any, params json.RawMessage) {
+	if len(params) == 0 {
+		return
+	}
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil || len(p) == 0 {
+		return
+	}
+	modelMap["tuned_parameters"] = p
+	modelMap["tuned"] = true
+	if algo := p["algorithm"]; algo != nil {
+		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
+	} else if algos, ok := p["algorithms"].([]any); ok && len(algos) > 0 {
+		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
+	}
+}
+
+// enrichWithDBMetrics enriches modelMap with metrics from DB (metrics, mlqa_audit, accuracy_display).
+func enrichWithDBMetrics(modelMap map[string]any, metrics json.RawMessage) {
+	if len(metrics) == 0 {
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(metrics, &m); err != nil || len(m) == 0 {
+		return
+	}
+	modelMap["metrics"] = m
+	modelMap["tuned"] = true
+	if mlqa, ok := m["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
+		modelMap["mlqa_audit"] = mlqa
+	}
+	if disp := formatAccuracyDisplayFromMetrics(m); disp != "" {
+		modelMap["accuracy_display"] = disp
+	}
+}
+
+// formatAccuracyDisplayFromMetrics builds the accuracy_display string from metrics.
+func formatAccuracyDisplayFromMetrics(metrics map[string]any) string {
+	if acc := metrics["accuracy_pct"]; acc != nil {
+		return formatAccuracyPct(acc)
+	}
+	if maeVal, ok := metrics["mae"]; ok {
+		if mae, ok := toFloat64(maeVal); ok {
+			parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
+			if rmseVal, ok := metrics["rmse"]; ok {
+				if rmse, ok := toFloat64(rmseVal); ok {
+					parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
+				}
+			}
+			if r2Val, ok := metrics["r2_pct"]; ok {
+				if r2, ok := toFloat64(r2Val); ok {
+					parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
+				}
+			}
+			return strings.Join(parts, ", ")
+		}
+	}
+	if r2Val, ok := metrics["r2_pct"]; ok {
+		if r2, ok := toFloat64(r2Val); ok {
+			return fmt.Sprintf("R²=%.1f%%", r2)
+		}
+	}
+	return ""
 }
 
 // toFloat64 safely converts an any value to float64 if it's a known numeric type.
