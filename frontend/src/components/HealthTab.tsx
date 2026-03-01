@@ -95,12 +95,10 @@ const HealthTab: React.FC = () => {
 
   const loadedFormatsItems = useMemo(() => {
     return MODEL_TYPES.map((t) => {
-      const value = !mlData
-        ? '—'
-        : ((mlData[`loaded_${t}_formats` as keyof HealthResponse] as string[] | undefined)
-              ?.length ?? 0) > 0
-          ? (mlData[`loaded_${t}_formats` as keyof HealthResponse] as string[]).join(', ')
-          : 'None';
+      const formats = mlData?.[`loaded_${t}_formats` as keyof HealthResponse] as
+        | string[]
+        | undefined;
+      const value = !mlData ? '—' : formats && formats.length > 0 ? formats.join(', ') : 'None';
       return { label: `Loaded ${t === 'win' ? 'win prediction' : t}`, value };
     });
   }, [mlData]);

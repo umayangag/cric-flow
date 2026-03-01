@@ -149,43 +149,45 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		}
 
 		// Override with latest params/metrics from ml_tuned_params (DB is source of truth after auto-tune)
-		if pm, has := paramsMetrics[key]; has {
-			if len(pm.Params) > 0 {
-				var params map[string]any
-				if err := json.Unmarshal(pm.Params, &params); err == nil && len(params) > 0 {
-					modelMap["tuned_parameters"] = params
-					modelMap["tuned"] = true
-					// Set algorithm display from params when present
-					if algo := params["algorithm"]; algo != nil {
-						modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
-					} else if algos, ok := params["algorithms"].([]any); ok && len(algos) > 0 {
-						modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
+		if paramsMetrics != nil {
+			if pm, has := paramsMetrics[key]; has {
+				if len(pm.Params) > 0 {
+					var params map[string]any
+					if err := json.Unmarshal(pm.Params, &params); err == nil && len(params) > 0 {
+						modelMap["tuned_parameters"] = params
+						modelMap["tuned"] = true
+						// Set algorithm display from params when present
+						if algo := params["algorithm"]; algo != nil {
+							modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
+						} else if algos, ok := params["algorithms"].([]any); ok && len(algos) > 0 {
+							modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
+						}
 					}
 				}
-			}
-			if len(pm.Metrics) > 0 {
-				var metrics map[string]any
-				if err := json.Unmarshal(pm.Metrics, &metrics); err == nil && len(metrics) > 0 {
-					modelMap["metrics"] = metrics
-					modelMap["tuned"] = true
-					// Merge mlqa_audit from DB when present (same audit data as Win model)
-					if mlqa, ok := metrics["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
-						modelMap["mlqa_audit"] = mlqa
-					}
-					// Build accuracy_display from metrics when present
-					if acc := metrics["accuracy_pct"]; acc != nil {
-						modelMap["accuracy_display"] = formatAccuracyPct(acc)
-					} else if mae := metrics["mae"]; mae != nil {
-						parts := []string{fmt.Sprintf("MAE=%v", mae)}
-						if rmse := metrics["rmse"]; rmse != nil {
-							parts = append(parts, fmt.Sprintf("RMSE=%v", rmse))
+				if len(pm.Metrics) > 0 {
+					var metrics map[string]any
+					if err := json.Unmarshal(pm.Metrics, &metrics); err == nil && len(metrics) > 0 {
+						modelMap["metrics"] = metrics
+						modelMap["tuned"] = true
+						// Merge mlqa_audit from DB when present (same audit data as Win model)
+						if mlqa, ok := metrics["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
+							modelMap["mlqa_audit"] = mlqa
 						}
-						if r2 := metrics["r2_pct"]; r2 != nil {
-							parts = append(parts, fmt.Sprintf("R²=%v%%", r2))
+						// Build accuracy_display from metrics when present
+						if acc := metrics["accuracy_pct"]; acc != nil {
+							modelMap["accuracy_display"] = formatAccuracyPct(acc)
+						} else if mae := metrics["mae"]; mae != nil {
+							parts := []string{fmt.Sprintf("MAE=%v", mae)}
+							if rmse := metrics["rmse"]; rmse != nil {
+								parts = append(parts, fmt.Sprintf("RMSE=%v", rmse))
+							}
+							if r2 := metrics["r2_pct"]; r2 != nil {
+								parts = append(parts, fmt.Sprintf("R²=%v%%", r2))
+							}
+							modelMap["accuracy_display"] = strings.Join(parts, ", ")
+						} else if r2 := metrics["r2_pct"]; r2 != nil {
+							modelMap["accuracy_display"] = fmt.Sprintf("R²=%v%%", r2)
 						}
-						modelMap["accuracy_display"] = strings.Join(parts, ", ")
-					} else if r2 := metrics["r2_pct"]; r2 != nil {
-						modelMap["accuracy_display"] = fmt.Sprintf("R²=%v%%", r2)
 					}
 				}
 			}

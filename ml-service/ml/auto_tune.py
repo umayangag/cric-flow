@@ -41,7 +41,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -2314,6 +2314,20 @@ def load_win_from_api(
     return by_format
 
 
+def _load_via_csv_or_api(
+    csv_path: str, load_csv_fn: Callable[[], Any], load_api_fn: Callable[[], Any]
+) -> Any:
+    """Try loading from CSV; if not found, fall back to API. Reduces duplication in from_api loading."""
+    if os.path.isfile(csv_path):
+        logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
+        return load_csv_fn()
+    logger.warning(
+        "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+        csv_path,
+    )
+    return load_api_fn()
+
+
 def run_auto_tune(
     model_kind: str,
     X: np.ndarray,
@@ -3097,15 +3111,13 @@ def main() -> None:
                     try:
                         if model_kind == "extras":
                             csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
-                            if os.path.isfile(csv_path):
-                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
-                                by_f = load_extras_csv(csv_path, fmt)
-                            else:
-                                logger.warning(
-                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                                    csv_path,
-                                )
-                                by_f = load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            by_f = _load_via_csv_or_api(
+                                csv_path,
+                                lambda: load_extras_csv(csv_path, fmt),
+                                lambda: load_extras_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                ),
+                            )
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
@@ -3161,15 +3173,13 @@ def main() -> None:
                             continue
                         if model_kind == "win":
                             csv_path = args.csv or os.path.join(default_dir, "win_encoded_all.csv")
-                            if os.path.isfile(csv_path):
-                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
-                                by_f = load_win_csv(csv_path, fmt)
-                            else:
-                                logger.warning(
-                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                                    csv_path,
-                                )
-                                by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            by_f = _load_via_csv_or_api(
+                                csv_path,
+                                lambda: load_win_csv(csv_path, fmt),
+                                lambda: load_win_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                ),
+                            )
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
@@ -3227,45 +3237,35 @@ def main() -> None:
                             csv_path = args.csv or os.path.join(default_dir, f"batting_encoded_{fmt or 'all'}.csv")
                             if not os.path.isfile(csv_path):
                                 csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
-                            if os.path.isfile(csv_path):
-                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
-                                X, Y = load_batting_csv(csv_path)
-                            else:
-                                logger.warning(
-                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                                    csv_path,
-                                )
-                                X, Y = load_batting_from_api(
+                            X, Y = _load_via_csv_or_api(
+                                csv_path,
+                                lambda: load_batting_csv(csv_path),
+                                lambda: load_batting_from_api(
                                     args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                )
+                                ),
+                            )
                         elif model_kind == "bowling":
                             csv_path = args.csv or os.path.join(default_dir, f"bowling_encoded_{fmt or 'all'}.csv")
                             if not os.path.isfile(csv_path):
                                 csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
-                            if os.path.isfile(csv_path):
-                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
-                                X, Y = load_bowling_csv(csv_path)
-                            else:
-                                logger.warning(
-                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                                    csv_path,
-                                )
-                                X, Y = load_bowling_from_api(
+                            X, Y = _load_via_csv_or_api(
+                                csv_path,
+                                lambda: load_bowling_csv(csv_path),
+                                lambda: load_bowling_from_api(
                                     args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                )
+                                ),
+                            )
                         else:
                             csv_path = args.csv or os.path.join(default_dir, f"fielding_encoded_{fmt or 'all'}.csv")
                             if not os.path.isfile(csv_path):
                                 csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
-                            if os.path.isfile(csv_path):
-                                logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
-                                by_f = load_fielding_csv(csv_path, fmt)
-                            else:
-                                logger.warning(
-                                    "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                                    csv_path,
-                                )
-                                by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
+                            by_f = _load_via_csv_or_api(
+                                csv_path,
+                                lambda: load_fielding_csv(csv_path, fmt),
+                                lambda: load_fielding_from_api(
+                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
+                                ),
+                            )
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
