@@ -549,15 +549,11 @@ def test_save_tuned_params_to_go_app_http_error_raises():
     err.read = lambda: b"error body"
     with patch("urllib.request.urlopen", side_effect=err):
         with pytest.raises(ValueError, match="HTTP 500"):
-            config_mod.save_tuned_params_to_go_app(
-                "http://localhost:8080", "batting", "ODI", {"n_estimators": 100}
-            )
+            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
 
 
 def test_save_tuned_params_to_go_app_os_error_raises():
     """save_tuned_params_to_go_app raises ValueError on OSError."""
     with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
         with pytest.raises(ValueError, match="request failed"):
-            config_mod.save_tuned_params_to_go_app(
-                "http://localhost:8080", "batting", "ODI", {"n_estimators": 100}
-            )
+            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})

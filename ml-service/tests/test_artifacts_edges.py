@@ -80,9 +80,11 @@ def test_load_legacy_bowling_fail_skips():
 
 def test_load_legacy_fielding_extras_win_fail_skips(tmp_path):
     """When fielding/extras/win joblib.load fails, those legacy models are skipped."""
+
     def load_side_effect(path, *args, **kwargs):
         # Check filename only (path may contain "fielding" from test name)
         import os
+
         fname = os.path.basename(str(path)).lower()
         if "fielding" in fname or "extras" in fname or fname.startswith("win_"):
             raise Exception("bad")

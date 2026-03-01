@@ -315,6 +315,7 @@ def test_train_on_the_fly_insufficient_bowling_raises():
 def test_fetch_training_data_env_timeout_override():
     """TRAINING_DATA_FETCH_TIMEOUT env overrides config timeout."""
     import os
+
     payload = {"batting": {"headers": [], "rows": []}, "bowling": {"headers": [], "rows": []}}
     mock_resp = MagicMock()
     mock_resp.read.return_value = json.dumps(payload).encode()
