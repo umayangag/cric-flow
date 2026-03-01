@@ -72,6 +72,109 @@ function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' |
   return 'warning';
 }
 
+/** Flatten metrics for display; expand nested objects so chips show key=value instead of [object Object]. */
+function flattenMetricsForDisplay(metrics: Record<string, unknown>): Array<[string, string | number | boolean]> {
+  const out: Array<[string, string | number | boolean]> = [];
+  for (const [k, v] of Object.entries(metrics)) {
+    if (v == null) continue;
+    if (typeof v === 'object' && !Array.isArray(v) && k === 'per_target_mae') {
+      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
+        if (sv != null && typeof sv !== 'object') out.push([sk, String(sv)]);
+      }
+      continue;
+    }
+    if (typeof v === 'object' && !Array.isArray(v)) continue;
+    if (Array.isArray(v)) {
+      out.push([k, v.map(String).join(', ')]);
+      continue;
+    }
+    out.push([k, v as string | number | boolean]);
+  }
+  return out;
+}
+
+/** Highlight key tuning/eval metrics for quick assessment. */
+function TuningInsights({
+  metrics,
+  mlqa,
+}: {
+  metrics: Record<string, unknown>;
+  mlqa?: { checks?: { stability?: { cv_std?: number; cv_fold_scores?: number[] } } };
+}) {
+  const items: Array<{ label: string; value: string; hint?: string }> = [];
+  const b = metrics.baseline_improvement_pct;
+  if (b != null && typeof b === 'number') {
+    items.push({
+      label: 'Baseline improvement',
+      value: `${b}%`,
+      hint: 'vs naive (predict mean); higher = model adds more value',
+    });
+  }
+  const m = metrics.mae_pct_of_mean;
+  if (m != null && typeof m === 'number') {
+    items.push({
+      label: 'MAE % of mean',
+      value: `${m}%`,
+      hint: 'relative error; lower is better',
+    });
+  }
+  const og = metrics.overfitting_gap;
+  if (og != null && typeof og === 'number') {
+    items.push({
+      label: 'Overfitting gap',
+      value: String(og.toFixed(4)),
+      hint: 'train−val score diff; high = overfitting',
+    });
+  }
+  const vsi = metrics.val_still_improving;
+  if (typeof vsi === 'boolean') {
+    items.push({
+      label: 'Val still improving',
+      value: vsi ? 'Yes' : 'No',
+      hint: 'more data might help if Yes',
+    });
+  }
+  const cvStd = mlqa?.checks?.stability?.cv_std;
+  if (cvStd != null && typeof cvStd === 'number') {
+    items.push({
+      label: 'CV fold σ',
+      value: String(cvStd.toFixed(4)),
+      hint: 'stability; >0.05 = unstable',
+    });
+  }
+  const foldScores = mlqa?.checks?.stability?.cv_fold_scores;
+  if (foldScores && Array.isArray(foldScores) && foldScores.length > 0) {
+    items.push({
+      label: 'CV fold scores',
+      value: foldScores.map((s) => String(s)).join(', '),
+      hint: 'per-fold scores (neg_MAE)',
+    });
+  }
+  if (items.length === 0) return null;
+  return (
+    <Box sx={{ mt: 1.5, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+        Tuning insights
+      </Typography>
+      <Stack spacing={0.5}>
+        {items.map(({ label, value, hint }) => (
+          <Typography key={label} variant="caption" component="div" sx={{ fontFamily: 'monospace' }}>
+            <Box component="span" sx={{ fontWeight: 600, mr: 0.5 }}>
+              {label}:
+            </Box>
+            {value}
+            {hint && (
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5, fontStyle: 'italic' }}>
+                ({hint})
+              </Typography>
+            )}
+          </Typography>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
 function ModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
   const params = model.tuned_parameters;
@@ -152,7 +255,7 @@ function ModelRow({ model }: { model: MLModelStat }) {
                       Metrics
                     </Typography>
                     <Stack direction="row" flexWrap="wrap" spacing={0.5}>
-                      {Object.entries(metrics).map(([k, v]) => (
+                      {flattenMetricsForDisplay(metrics as Record<string, unknown>).map(([k, v]) => (
                         <Chip
                           key={k}
                           label={`${k}=${String(v)}`}
@@ -162,6 +265,7 @@ function ModelRow({ model }: { model: MLModelStat }) {
                         />
                       ))}
                     </Stack>
+                    <TuningInsights metrics={metrics} mlqa={mlqa} />
                   </Box>
                 )}
                 {featureImportance && Object.keys(featureImportance).length > 0 && (
@@ -309,7 +413,7 @@ const MLModelStatsTab: React.FC = () => {
       {data && (
         <SectionCard
           title="ML model stats"
-          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, size. MLQA Audit shows overfitting, stability, bias, and deployment readiness. Expand a row for full audit details."
+          subtitle="Trained models with format, tuned parameters, algorithm, accuracy, size. Metrics include per-target MAE, baseline improvement, overfitting gap. MLQA Audit shows overfitting, stability, bias, and deployment readiness. Expand a row for tuning insights and full details."
         >
           {data.models.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
