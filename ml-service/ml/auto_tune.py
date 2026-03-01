@@ -416,11 +416,25 @@ _PHASE1_COARSE_MLP_CLF = {
 }
 
 
+def _effective_timeseries_gap(gap: int, n_samples: int) -> int:
+    """Cap gap for small datasets; large gaps hurt small models (e.g. win with ~2k samples).
+
+    Use gap=0 when n_samples < 5000 so win/extras keep prior behavior. For larger datasets
+    (bowling, batting), cap gap at 5% of samples to avoid over-restrictive splits.
+    """
+    if gap <= 0:
+        return 0
+    if n_samples < 5000:
+        return 0  # Small datasets: no gap to avoid regressions (win, extras, etc.)
+    return min(gap, max(1, n_samples // 20))  # Cap at ~5% of data
+
+
 def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42, gap: int = 0):
     """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward.
 
     When walk_forward, uses TimeSeriesSplit with optional gap (samples between train/test) to
-    reduce temporal leakage. Config: ml.tuning.timeseries_split_gap.
+    reduce temporal leakage. Config: ml.tuning.timeseries_split_gap. Gap is capped for small
+    datasets via _effective_timeseries_gap.
     """
     if n_samples < 2:
         raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
@@ -433,8 +447,8 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
             return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
         if n_samples < n_splits + 1:
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
-        # gap: samples excluded between train and test (reduces temporal leakage)
-        return TimeSeriesSplit(n_splits=n_splits, gap=max(0, int(gap)))
+        effective_gap = _effective_timeseries_gap(max(0, int(gap)), n_samples)
+        return TimeSeriesSplit(n_splits=n_splits, gap=effective_gap)
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
