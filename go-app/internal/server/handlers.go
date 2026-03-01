@@ -241,11 +241,12 @@ var algorithmDisplayNames = map[string]string{
 }
 
 func algorithmDisplayName(key string) string {
-	k := strings.ToLower(strings.TrimSpace(key))
+	trimmedKey := strings.TrimSpace(key)
+	k := strings.ToLower(trimmedKey)
 	if name, ok := algorithmDisplayNames[k]; ok {
 		return name
 	}
-	return key
+	return trimmedKey
 }
 
 // readinessHandler pings the DB to verify readiness.
