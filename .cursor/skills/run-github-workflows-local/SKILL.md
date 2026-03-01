@@ -21,7 +21,7 @@ Verify that all runnable GitHub workflows pass locally before pushing, without r
 | Workflow | Local equivalent | Notes |
 |----------|------------------|-------|
 | go-app-lint | `make -C go-app init && make -C go-app fmt-check vet lint` | |
-| go-app-tests | Postgres + `make migrate-local` + `make -C go-app coverage` + `COV_MIN=50 make -C go-app coverage-check` | Needs Postgres |
+| go-app-tests | Postgres + `make migrate-local` + `make -C go-app coverage` + `COV_MIN=60 make -C go-app coverage-check` | Needs Postgres |
 | ml-service-lint | `make -C ml-service init` then `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service fmt-check` | Use venv |
 | ml-service-tests | `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service coverage` + `COV_MIN=76 make -C ml-service coverage-check` | |
 | frontend-lint | `cd frontend && npm ci && npm run typecheck && npm run lint` | |

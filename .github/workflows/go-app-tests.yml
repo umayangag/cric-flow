@@ -62,8 +62,8 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
-          # Minimum 50%; Makefile default is 80. Raise over time as coverage improves.
-          COV_MIN: "50"
+          # Minimum 60%; matches root Makefile COV_MIN_GO.
+          COV_MIN: "60"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact

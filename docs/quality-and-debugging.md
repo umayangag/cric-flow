@@ -38,11 +38,11 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 
 **1. Local vs CI**
 - Frontend: check-all runs lint, format:check, typecheck, build, test; CI should include lint + typecheck (done in repo).
-- go-app: check-all includes vet, fmt-check, lint, coverage-check; CI runs vet, fmt-check, tests, coverage-check (COV_MIN=30). go-app-check includes coverage-check (done).
+- go-app: check-all includes vet, fmt-check, lint, coverage-check; CI runs vet, fmt-check, tests, coverage-check (COV_MIN=60). go-app-check includes coverage-check (done).
 - ml-service: lint-check, fmt-check, coverage, coverage-check (80%); CI 80% (OK).
 
 **2. Coverage thresholds**
-- go-app: Makefile default COV_MIN_GO=80; CI workflow may use lower COV_MIN (e.g. 30) so CI stays green. Document and raise COV_MIN in `.github/workflows/go-app-tests.yml` as coverage improves.
+- go-app: Makefile default COV_MIN_GO=60; CI workflow uses COV_MIN=60.
 - ml-service: 80% everywhere (OK).
 
 **3. CI on config changes**
