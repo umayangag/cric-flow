@@ -93,6 +93,7 @@ if _ML_ROOT not in sys.path:
 
 from ml import auto_tune_progress as _progress
 from ml.config import (
+    default_go_app_export_dir,
     get_mlqa_config,
     get_training_params,
     get_tuned_params_from_go_app,
@@ -3092,7 +3093,7 @@ def main() -> None:
                     if not api_available:
                         logger.error("auto_tune.from_api_requires_go_app_url_and_cutoff")
                         sys.exit(1)
-                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app"))
+                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
                     try:
                         if model_kind == "extras":
                             csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
@@ -3350,7 +3351,7 @@ def main() -> None:
                     )
                 else:
                     # Prefer CSV; fallback to API with warning when CSV not found
-                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", os.path.join(_ML_ROOT, "..", "output", "go-app"))
+                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
                     if model_kind == "extras":
                         csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
                         if os.path.isfile(csv_path):
