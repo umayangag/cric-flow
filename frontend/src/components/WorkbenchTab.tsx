@@ -95,9 +95,8 @@ const DEFAULT_MODEL_FEATURES: ModelMetadataResponse = {
     features: [
       'bowling_consistency',
       'bowling_form',
-      'bowling_form_short',
-      'bowling_form_long',
       'bowling_momentum',
+      'bowling_career_avg',
       'bowling_temp',
       'bowling_wind',
       'bowling_rain',

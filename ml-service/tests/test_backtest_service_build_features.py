@@ -40,6 +40,7 @@ def _base_bowling_map():
         "bowling_form_short": 1.4,
         "bowling_form_long": 1.3,
         "bowling_momentum": 0.05,
+        "bowling_career_avg": 1.4,
         "bowling_temp": 28,
         "bowling_wind": 3,
         "bowling_rain": 0,

@@ -253,8 +253,7 @@ def test_load_bowling_csv_minimal(tmp_path):
     df = pd.DataFrame({c: [1.0] * 5 for c in base_cols})
     for c in BOWL_SEQ_COLS:
         df[c] = 0.0
-    df["bowling_form_short"] = df["bowling_form"]
-    df["bowling_form_long"] = df["bowling_form"]
+    df["bowling_career_avg"] = df["bowling_form"]
     df["runs"] = [20, 30, 40, 50, 60]
     df["balls"] = [24, 24, 24, 24, 24]
     df["wickets"] = [1, 2, 0, 1, 2]
