@@ -63,7 +63,10 @@ train-extras:
 train-win:
 	$(PY) -m ml.train_win
 
-train-models: train-batting train-bowling train-fielding train-extras train-win
+train-innings:
+	$(PY) -m ml.train_innings
+
+train-models: train-batting train-bowling train-fielding train-extras train-win train-innings
 
 # Auto-tune model(s): find best algorithm and hyperparameters (see docs/ml-and-training.md).
 # Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
@@ -90,8 +93,8 @@ endif
 endif
 ifeq ($(UNIFIED),1)
 AUTO_TUNE_ARGS += --unified
-# extras and win require API; model=all includes them
-ifneq ($(filter extras win all,$(MODEL)),)
+# extras, win, innings require API; model=all includes them
+ifneq ($(filter extras win innings all,$(MODEL)),)
 AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
 endif
 endif

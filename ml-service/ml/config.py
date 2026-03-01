@@ -139,7 +139,7 @@ def get_training_data_fetch_timeout_sec() -> int:
 TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_compress")
 
 # Models that have their own training block in config (ml.training.batting, ml.training.bowling, etc.).
-TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win")
+TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings")
 
 
 def _go_app_request_timeout_sec() -> int:

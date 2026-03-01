@@ -61,6 +61,7 @@ var commandToStepID = map[string]string{
 	"train-fielding":         "train_fielding",
 	"train-extras":           "train_extras",
 	"train-win":              "train_win",
+	"train-innings":          "train_innings",
 	"train-combination-meta": "train_combination_meta",
 	"ml-auto-tune":           "auto_tune",
 }
@@ -74,6 +75,7 @@ var commandToStepLabel = map[string]string{
 	"train-fielding":         "Train Fielding",
 	"train-extras":           "Train Extras",
 	"train-win":              "Train Win",
+	"train-innings":          "Train Innings",
 	"train-combination-meta": "Train Combination Meta",
 	"ml-auto-tune":           "Auto-tune",
 }
