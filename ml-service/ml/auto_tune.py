@@ -3102,6 +3102,12 @@ def main() -> None:
 
         task_idx = 0
         total_tasks = len(models) * len(formats_to_run)
+        default_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
+        api_available = bool(args.go_app_url and args.cutoff)
+        if args.from_api and not api_available:
+            logger.error("auto_tune.from_api_requires_go_app_url_and_cutoff")
+            sys.exit(1)
+
         for model_kind in models:
             for fmt in formats_to_run:
                 format_suffix = fmt if fmt else None
@@ -3117,11 +3123,6 @@ def main() -> None:
                     activity="loading_data",
                 )
                 if args.from_api:
-                    api_available = bool(args.go_app_url and args.cutoff)
-                    if not api_available:
-                        logger.error("auto_tune.from_api_requires_go_app_url_and_cutoff")
-                        sys.exit(1)
-                    default_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
                     try:
                         if model_kind == "extras":
                             csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
@@ -3129,6 +3130,7 @@ def main() -> None:
                                 csv_path,
                                 lambda: load_extras_csv(csv_path, fmt),
                                 lambda: load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
@@ -3191,6 +3193,7 @@ def main() -> None:
                                 csv_path,
                                 lambda: load_win_csv(csv_path, fmt),
                                 lambda: load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
@@ -3260,6 +3263,7 @@ def main() -> None:
                                 lambda: load_batting_from_api(
                                     args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                                 ),
+                                can_fallback_to_api=api_available,
                             )
                         elif model_kind == "bowling":
                             if args.csv:
@@ -3274,6 +3278,7 @@ def main() -> None:
                                 lambda: load_bowling_from_api(
                                     args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                                 ),
+                                can_fallback_to_api=api_available,
                             )
                         else:
                             if args.csv:
@@ -3286,6 +3291,7 @@ def main() -> None:
                                 csv_path,
                                 lambda: load_fielding_csv(csv_path, fmt),
                                 lambda: load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)

@@ -288,9 +288,10 @@ seed-fixtures:
 	$(DC) exec -T postgres sh -lc "psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f -" < tests/fixtures/backtest/seed.sql
 
 # End-to-end smoke: select → evaluate with jq assertions
+# Use API_KEY=test-api-key so docker compose and curl share the same key.
 e2e-backtest-smoke: seed-fixtures
 	# Start services (Postgres is ensured by seed-fixtures)
-	$(DC) up --build -d go-api ml-service
+	API_KEY=test-api-key $(DC) up --build -d go-api ml-service
 	# Wait for services to report healthy instead of using a fixed sleep
 	@echo "[SMOKE] Waiting for services (go-api:8080, ml-service:8000) to be healthy..."; \
 	for url in http://localhost:8080/health http://localhost:8000/health; do \
