@@ -2210,12 +2210,9 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
     if not headers or not rows:
         return rows
     date_cols = ("match_date", "match-date", "date")
-    idx = None
-    for dc in date_cols:
-        if dc in headers:
-            idx = headers.index(dc)
-            break
-    if idx is None:
+    try:
+        idx = next(i for i, h in enumerate(headers) if h in date_cols)
+    except StopIteration:
         return rows
     try:
         return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) else "")
