@@ -60,6 +60,22 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for small pool, got nil")
 	}
+
+	// Case: minBowlers 0 - no constraint, just top N
+	sel3, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 0)
+	require.NoError(t, err)
+	require.Len(t, sel3, 3)
+
+	// Case: all top N already bowlers - no swap needed
+	allBowlers := []predictor.PlayerPrediction{
+		{PlayerName: "B1", WinningProbability: 0.9, Deliveries: 24, Econ: 6},
+		{PlayerName: "B2", WinningProbability: 0.85, Deliveries: 30, Econ: 7},
+		{PlayerName: "B3", WinningProbability: 0.8, Deliveries: 24, Econ: 5},
+		{PlayerName: "B4", WinningProbability: 0.7, Deliveries: 18, Econ: 8},
+	}
+	sel4, err := selectTopWithMinBowlers(allBowlers, 3, 2)
+	require.NoError(t, err)
+	require.Len(t, sel4, 3)
 }
 
 func TestComputeAverageWinProbability(t *testing.T) {
@@ -212,6 +228,27 @@ func TestParsePlayersFromCSV(t *testing.T) {
 		require.Equal(t, 0.9, got[0].WinningProbability)
 		require.Equal(t, "B", got[1].PlayerName)
 		require.Equal(t, 0.8, got[1].WinningProbability)
+	})
+
+	t.Run("all batting/bowling columns", func(t *testing.T) {
+		header := []string{
+			"player_name", "runs_scored", "balls_faced", "fours_scored", "sixes_scored",
+			"batting_position", "strike_rate", "runs_conceded", "deliveries", "wickets_taken", "econ",
+		}
+		rows := [][]string{{"AllRounder", "40", "25", "4", "2", "3", "160", "30", "24", "1", "7.5"}}
+		got := parsePlayersFromCSV(header, rows)
+		require.Len(t, got, 1)
+		require.Equal(t, "AllRounder", got[0].PlayerName)
+		require.Equal(t, 40.0, got[0].RunsScored)
+		require.Equal(t, 25.0, got[0].BallsFaced)
+		require.Equal(t, 4.0, got[0].FoursScored)
+		require.Equal(t, 2.0, got[0].SixesScored)
+		require.Equal(t, 3.0, got[0].BattingPosition)
+		require.Equal(t, 160.0, got[0].StrikeRate)
+		require.Equal(t, 30.0, got[0].RunsConceded)
+		require.Equal(t, 24.0, got[0].Deliveries)
+		require.Equal(t, 1.0, got[0].WicketsTaken)
+		require.Equal(t, 7.5, got[0].Econ)
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -66,6 +67,27 @@ func TestRegistry_ResolveTargets_CommaList(t *testing.T) {
 	got, err := r.ResolveTargets("bat_transitions, bowl_sequences")
 	require.NoError(t, err)
 	require.Len(t, got, 2)
+}
+
+func TestRegistry_ResolveTargets_EmptyCommaElements(t *testing.T) {
+	r := NewRegistry(NewNoopCalculators()...)
+	got, err := r.ResolveTargets("bat_transitions,,bowl_sequences,")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+}
+
+func TestRun_NoopCalculatorsDryRun(t *testing.T) {
+	calcs := NewNoopCalculators()
+	ctx := context.Background()
+	params := Params{FormatCode: "T20", AsOf: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
+	err := Run(ctx, calcs[:2], params, true)
+	require.NoError(t, err)
+}
+
+func TestRun_EmptyCalcs(t *testing.T) {
+	ctx := context.Background()
+	err := Run(ctx, nil, Params{}, true)
+	require.NoError(t, err) // Run with empty calcs still completes (0 iterations)
 }
 
 func TestDryRun(t *testing.T) {

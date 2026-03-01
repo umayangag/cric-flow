@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -367,6 +368,73 @@ func TestConfigBacktestJobHelpers(t *testing.T) {
 
 func TestValidateTeamSettings_NilConfig(t *testing.T) {
 	require.NoError(t, ValidateTeamSettings(nil))
+}
+
+func TestConfigServerGetters_AllDefaults(t *testing.T) {
+	// Cover remaining Server getters that return defaults when nil or zero
+	require.Equal(t, DefaultServerMLHealthBodyLimitBytes, ServerMLHealthBodyLimitBytes(nil))
+	require.Equal(t, DefaultServerTrainStepTimeoutMin, ServerTrainStepTimeoutMin(nil))
+	require.Equal(t, DefaultServerPipelineProgressSec, ServerPipelineProgressSec(nil))
+
+	cfg := &Config{}
+	cfg.Server.MLHealthBodyLimitBytes = 2097152
+	cfg.Server.TrainStepTimeoutMin = 60
+	cfg.Server.PipelineProgressSec = 5
+	cfg.Server.DBProbeTimeoutSec = 3
+	require.Equal(t, 2097152, ServerMLHealthBodyLimitBytes(cfg))
+	require.Equal(t, 60, ServerTrainStepTimeoutMin(cfg))
+	require.Equal(t, 5, ServerPipelineProgressSec(cfg))
+	require.Equal(t, 3, ServerDBProbeTimeoutSec(cfg))
+}
+
+func TestEffectiveScoreWeightsForFormat_WithMetaModel(t *testing.T) {
+	cached = nil
+	tmp := t.TempDir()
+	metaPath := filepath.Join(tmp, "meta.json")
+	metaContent := `{"bat":0.4,"bowl":0.35,"field":0.2,"keeper_bonus":0.05}`
+	if err := os.WriteFile(metaPath, []byte(metaContent), 0o600); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("GO_APP_CONFIG", cfgPath)
+	cfg := Load()
+
+	bat, bowl, field, keeper := EffectiveScoreWeightsForFormat(cfg, "T20")
+	require.Equal(t, 0.4, bat)
+	require.Equal(t, 0.35, bowl)
+	require.Equal(t, 0.2, field)
+	require.Equal(t, 0.05, keeper)
+}
+
+func TestEffectiveScoreWeightsForFormat_WithMetaModelPerFormat(t *testing.T) {
+	cached = nil
+	tmp := t.TempDir()
+	metaPath := filepath.Join(tmp, "meta_per_fmt.json")
+	metaContent := `{"bat":0.5,"bowl":0.3,"field":0.15,"keeper_bonus":0.05,"per_format":{"ODI":{"bat":0.45,"bowl":0.35,"field":0.15,"keeper_bonus":0.05}}}`
+	if err := os.WriteFile(metaPath, []byte(metaContent), 0o600); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("GO_APP_CONFIG", cfgPath)
+	cfg := Load()
+
+	// ODI has per-format override
+	bat, bowl, _, _ := EffectiveScoreWeightsForFormat(cfg, "ODI")
+	require.Equal(t, 0.45, bat)
+	require.Equal(t, 0.35, bowl)
+
+	// T20 uses global meta-model (no per-format)
+	bat2, bowl2, _, _ := EffectiveScoreWeightsForFormat(cfg, "T20")
+	require.Equal(t, 0.5, bat2)
+	require.Equal(t, 0.3, bowl2)
 }
 
 func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
