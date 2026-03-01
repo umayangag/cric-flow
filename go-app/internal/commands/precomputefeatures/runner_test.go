@@ -62,3 +62,9 @@ func TestResolveConcurrencyLimit(t *testing.T) {
 		require.GreaterOrEqual(t, got, 1, "resolveConcurrencyLimit(0) should return >= 1")
 	})
 }
+
+func TestReplayMatchPageSize(t *testing.T) {
+	// replayMatchPageSize returns config value or default; ensure it returns a positive int
+	got := replayMatchPageSize()
+	require.Greater(t, got, 0, "replayMatchPageSize should return positive value")
+}

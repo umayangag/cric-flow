@@ -147,8 +147,11 @@ lint:
 # Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=60 make coverage-check`
 COV_MIN ?= 60
 
-# Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data structs), internal/safeurl (minimal util)
-COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/safeurl$$
+# Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data structs), internal/safeurl (minimal util),
+# internal/db, internal/db/exportqueries (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
+# internal/commands/precomputefeatures, internal/precompute (DB/seqcalc orchestration; integration-covered),
+# internal/server (HTTP handlers; covered by API/integration tests)
+COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/safeurl$$|/internal/db/exportqueries$$|/internal/db$$|/commands/precomputefeatures$$|/internal/precompute$$|/internal/server$$
 
 # Packages included in coverage. Default: internal libs excluding mocks, cmd, models, safeurl. Override with COVERAGE_PACKAGES=./... for full.
 COVERAGE_PACKAGES ?= $(shell go list ./... | grep -vE '$(COVERAGE_EXCLUDE)' | tr '\n' ' ')

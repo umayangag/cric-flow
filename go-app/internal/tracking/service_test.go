@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/mocks"
 )
@@ -134,4 +135,41 @@ func TestTracker_TryComplete_TryFail_NilSafe(_ *testing.T) {
 	var tracker *Tracker
 	tracker.TryComplete(context.Background(), nil)
 	tracker.TryFail(context.Background(), "ignored")
+}
+
+type scanIntRow int
+
+func (r scanIntRow) Scan(dest ...any) error {
+	if len(dest) < 1 {
+		return nil
+	}
+	if p, ok := dest[0].(*int); ok {
+		*p = int(r)
+		return nil
+	}
+	return nil
+}
+
+func TestStart(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		mockDB := &mocks.MockDB{}
+		db.SetDB(mockDB)
+		t.Cleanup(func() { db.SetDB(nil) })
+
+		mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(scanIntRow(42))
+
+		tr, err := Start(context.Background(), "precompute-features", map[string]string{"format": "T20"})
+		require.NoError(t, err)
+		require.NotNil(t, tr)
+		require.Equal(t, 42, tr.ID)
+	})
+
+	t.Run("db_unavailable", func(t *testing.T) {
+		db.SetDB(nil)
+		t.Cleanup(func() { db.SetDB(nil) })
+
+		_, err := Start(context.Background(), "export-dataset", nil)
+		require.Error(t, err)
+	})
 }

@@ -21,3 +21,17 @@ func TestComputeFeaturesAtCutoffForMatch_DBUninitialized(t *testing.T) {
 	require.Nil(t, got)
 	require.Contains(t, err.Error(), "db pool not initialized")
 }
+
+func TestComputeFeaturesAtCutoffNoMatch_EmptyPlayerIDs(t *testing.T) {
+	ctx := context.Background()
+	cutoff := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	got, err := ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "T20", nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Empty(t, got)
+
+	got, err = ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "ODI", []int64{})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Empty(t, got)
+}

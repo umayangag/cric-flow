@@ -49,7 +49,7 @@ func TestToWeatherOverride(t *testing.T) {
 
 	t.Run("with values", func(t *testing.T) {
 		w := &WeatherInput{
-			Temp:     28, Humidity: 65, Wind: 10,
+			Temp: 28, Humidity: 65, Wind: 10,
 			Rain: 0, Cloud: 40, Pressure: 1013,
 		}
 		got := toWeatherOverride(w)
