@@ -2133,12 +2133,11 @@ def _save_artifacts(
 # ---- Data loading (CSV) ----
 
 
-def _sort_xy_by_match_date(X: np.ndarray, Y: np.ndarray, dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """Sort X and Y by match_date (chronological) for temporal CV. Ensures no future leakage."""
-    if X.size == 0 or dates is None or len(dates) == 0:
-        return X, Y
-    order = np.argsort(pd.to_datetime(dates, errors="coerce"))
-    return X[order], Y[order]
+def _sort_df_by_match_date(df: pd.DataFrame) -> pd.DataFrame:
+    """Sorts a DataFrame by 'match_date' if the column exists."""
+    if "match_date" in df.columns:
+        return df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    return df
 
 
 def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[List[str]]:
@@ -2155,14 +2154,17 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
         return rows
     try:
         return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) else "")
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "_sort_rows_by_match_date failed to sort rows, returning original order. error=%s",
+            e,
+        )
         return rows
 
 
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
-    if "match_date" in df.columns:
-        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    df = _sort_df_by_match_date(df)
     for col in ("batting_form_short", "batting_form_long"):
         if col not in df.columns and "batting_form" in df.columns:
             df[col] = df["batting_form"]
@@ -2203,8 +2205,7 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
-    if "match_date" in df.columns:
-        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    df = _sort_df_by_match_date(df)
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
     if "bowling_career_avg" not in df.columns:
@@ -2250,8 +2251,7 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
         logger.error("auto_tune.load_fielding_csv.train_fielding_unavailable")
         raise RuntimeError("ml.train_fielding not available for fielding CSV")
     df = pd.read_csv(path)
-    if "match_date" in df.columns:
-        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
@@ -2265,8 +2265,7 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, T
         logger.error("auto_tune.load_extras_csv.train_extras_unavailable")
         raise RuntimeError("ml.train_extras not available for extras CSV")
     df = pd.read_csv(path)
-    if "match_date" in df.columns:
-        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_extras.rows_to_xy_by_format(headers, rows)
@@ -2280,8 +2279,7 @@ def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tupl
         logger.error("auto_tune.load_win_csv.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win CSV")
     df = pd.read_csv(path)
-    if "match_date" in df.columns:
-        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
+    df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_win.rows_to_xy_by_format(headers, rows)
