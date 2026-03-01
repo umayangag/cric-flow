@@ -24,9 +24,14 @@ install: venv
 	PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 $(PIP) install -r requirements.txt
 
 # Regenerate requirements.txt from requirements.in (pip-tools). Run after editing requirements.in or to upgrade pins.
+# Uses local venv (may be Python 3.9); for Docker/Python 3.12 use compile-requirements-docker.
 compile-requirements: venv
 	$(PIP) install --upgrade pip pip-tools
 	$(VENV)/bin/pip-compile -U --strip-extras requirements.in -o requirements.txt
+
+# Regenerate requirements.txt targeting Python 3.12 (matches Docker). Use when Docker build fails on click/typer conflicts.
+compile-requirements-docker:
+	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements.in -o requirements.txt"
 
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install

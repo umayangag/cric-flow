@@ -45,7 +45,7 @@ while true; do
     RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select((.isResolved==false) and (.comments.nodes[0]?.author.login=="gemini-code-assist"))
+        | select((.isResolved==false) and ((.comments.nodes[0]?.author.login // "") | startswith("gemini-code-assist")))
         | .id' >> "$UNRESOLVED_IDS"
   HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$HAS_NEXT" != "true" ] && break
@@ -53,35 +53,30 @@ while true; do
 done
 ```
 
-**Phase 2 — Fetch path, line, body only for those thread IDs (batched to reduce cost):**
+**Phase 2 — Fetch path, line, body for each thread ID:**
 
-GitHub’s `nodes(ids)` is most efficient with at most 100 IDs per request. Batch IDs into chunks of 100 to stay under limits and reduce per-request cost.
+The `gh api graphql -F ids="[...]"` form does not correctly pass JSON arrays to `nodes(ids)`, so fetch each thread individually via `node(id)`:
 
 ```bash
 PR_REVIEWS_JSON=$(mktemp)
-NODES_QUERY='query($ids: [ID!]!) {
-  nodes(ids: $ids) {
+NODE_QUERY='query($id: ID!) {
+  node(id: $id) {
     ... on PullRequestReviewThread {
       id
       comments(first: 1) { nodes { path line body } }
     }
   }
 }'
-if [ -s "$UNRESOLVED_IDS" ]; then
-  ID_LIST=$(jq -R -s 'split("\n") | map(select(length > 0))' "$UNRESOLVED_IDS")
-  TOTAL=$(echo "$ID_LIST" | jq 'length')
-  for start in $(seq 0 100 $((TOTAL - 1))); do
-    end=$((start + 100))
-    TIDS_JSON=$(echo "$ID_LIST" | jq ".[$start:$end]")
-    gh api graphql -f query="$NODES_QUERY" -F ids="$TIDS_JSON" | \
-      jq -c '.data.nodes[] | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
-  done
-fi
+while IFS= read -r TID || [ -n "$TID" ]; do
+  [ -z "$TID" ] && continue
+  gh api graphql -f query="$NODE_QUERY" -F id="$TID" | \
+    jq -c '.data.node | select(.!=null) | {id: .id, path: .comments.nodes[0]?.path, line: .comments.nodes[0]?.line, body: .comments.nodes[0]?.body}' >> "$PR_REVIEWS_JSON"
+done < "$UNRESOLVED_IDS"
 ```
 
-Sanity check: `jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | wc -l`
+Sanity check: `wc -l < "$PR_REVIEWS_JSON"` (or `jq -s length "$PR_REVIEWS_JSON"` if entries are one per line)
 
-**When GraphQL is rate-limited:** Use the REST API to fetch comments and implement fixes; resolving threads still requires GraphQL (run again after reset). Get owner/repo from `git remote get-url origin` (parse github.com/owner/repo). PR number: `gh api "/repos/${OWNER}/${REPO}/pulls?state=open&head=${OWNER}:${BRANCH}" -q '.[0].number'`. List comments: `gh api "/repos/${OWNER}/${REPO}/pulls/${PR}/comments?per_page=100" --paginate`. Filter: `jq -c '.[] | select(.user.login=="gemini-code-assist") | {path, line, body}'`. Use `line` or `original_line` and `path`, `body` to implement fixes. Report rate limit reset time (`gh api /rate_limit` → `resources.graphql.reset`) and that threads can be resolved after GraphQL is back.
+**When GraphQL is rate-limited:** Use the REST API to fetch comments and implement fixes; resolving threads still requires GraphQL (run again after reset). Get owner/repo from `git remote get-url origin` (parse github.com/owner/repo). PR number: `gh api "/repos/${OWNER}/${REPO}/pulls?state=open&head=${OWNER}:${BRANCH}" -q '.[0].number'`. List comments: `gh api "/repos/${OWNER}/${REPO}/pulls/${PR}/comments?per_page=100" --paginate`. Filter for Gemini (REST uses `gemini-code-assist[bot]`): `jq -c '.[] | select(.user.login | startswith("gemini-code-assist")) | {path, line: (.line // .original_line), body}'`. Use `line` or `original_line` (when `line` is null after file changes) and `path`, `body` to implement fixes. Report rate limit reset time (`gh api /rate_limit` → `resources.graphql.reset`) and that threads can be resolved after GraphQL is back.
 
 ## 2. Implement fixes
 
@@ -92,15 +87,16 @@ For each entry in `pr_reviews.json`:
 
 ## 3. Resolve fixed threads (GraphQL)
 
-Request only the minimal field to reduce mutation cost:
+Request only the minimal field to reduce mutation cost. Use `UNRESOLVED_IDS` (same thread IDs as `PR_REVIEWS_JSON`):
 
 ```bash
-jq -r 'select(.!=null) | .id' "$PR_REVIEWS_JSON" | while read -r TID; do
+while IFS= read -r TID || [ -n "$TID" ]; do
+  [ -z "$TID" ] && continue
   echo "Resolving $TID" >&2
   gh api graphql \
     -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }' \
     -f id="$TID"
-done
+done < "$UNRESOLVED_IDS"
 ```
 
 ## 4. Verify (optional — saves one full Phase 1 pagination if skipped)
@@ -127,7 +123,7 @@ while true; do
     RESULT=$(gh api graphql -F number=$PR -f owner="$OWNER" -f repo="$REPO" -f query="$QUERY" -f after="$CURSOR")
   fi
   echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select(.comments.nodes[0].author.login=="gemini-code-assist")
+        | select((.comments.nodes[0].author.login // "") | startswith("gemini-code-assist"))
         | .isResolved' >> /tmp/gemini_resolved.txt
   HAS_NEXT=$(echo "$RESULT" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$HAS_NEXT" != "true" ] && break

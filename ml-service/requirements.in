@@ -1,6 +1,6 @@
 # Direct dependencies only. Pinned output: pip-compile requirements.in -> requirements.txt
-# Constrain click to support Python 3.9 (click 8.2+ requires Python 3.10+)
-click<8.2
+# NOTE: compile-requirements uses Python 3.9 (local venv) but Docker uses Python 3.12. Use
+# make compile-requirements-docker to regenerate requirements.txt for the Docker/Python 3.12 env.
 fastapi
 uvicorn
 pydantic
