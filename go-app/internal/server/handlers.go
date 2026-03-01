@@ -176,22 +176,48 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 						// Build accuracy_display from metrics when present
 						if acc := metrics["accuracy_pct"]; acc != nil {
 							modelMap["accuracy_display"] = formatAccuracyPct(acc)
-						} else if mae, ok := metrics["mae"].(float64); ok {
-							parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
-							if rmse, ok := metrics["rmse"].(float64); ok {
-								parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
+						} else if maeVal, ok := metrics["mae"]; ok {
+							if mae, ok := toFloat64(maeVal); ok {
+								parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
+								if rmseVal, ok := metrics["rmse"]; ok {
+									if rmse, ok := toFloat64(rmseVal); ok {
+										parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
+									}
+								}
+								if r2Val, ok := metrics["r2_pct"]; ok {
+									if r2, ok := toFloat64(r2Val); ok {
+										parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
+									}
+								}
+								modelMap["accuracy_display"] = strings.Join(parts, ", ")
 							}
-							if r2, ok := metrics["r2_pct"].(float64); ok {
-								parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
+						} else if r2Val, ok := metrics["r2_pct"]; ok {
+							if r2, ok := toFloat64(r2Val); ok {
+								modelMap["accuracy_display"] = fmt.Sprintf("R²=%.1f%%", r2)
 							}
-							modelMap["accuracy_display"] = strings.Join(parts, ", ")
-						} else if r2, ok := metrics["r2_pct"].(float64); ok {
-							modelMap["accuracy_display"] = fmt.Sprintf("R²=%.1f%%", r2)
 						}
 					}
 				}
 			}
 		}
+	}
+}
+
+// toFloat64 safely converts an any value to float64 if it's a known numeric type.
+func toFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	default:
+		return 0, false
 	}
 }
 
