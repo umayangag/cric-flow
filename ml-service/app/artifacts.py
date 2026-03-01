@@ -27,6 +27,22 @@ BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 FIELD_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 EXTRAS_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level extras regressor)
 WIN_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level win classifier)
+INNINGS_MODELS: Dict[
+    str, Tuple[Optional[object], Optional[object]]
+] = {}  # format -> (scaler, model) for innings runs/wickets
+# Phase 3 share models: predict runs_share, wickets_share; multiply by innings totals for consistency
+BAT_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+BOWL_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+
+
+def _use_share_models() -> bool:
+    """True if ml.use_share_models is enabled in config."""
+    try:
+        from ml.config import get_config
+
+        return bool((get_config().get("ml") or {}).get("use_share_models"))
+    except Exception:
+        return False
 
 
 def _load_legacy(models_dir: str) -> None:
@@ -68,6 +84,27 @@ def _load_legacy(models_dir: str) -> None:
         logger.info("artifacts.load_legacy.win", models_dir=models_dir)
     except Exception as e:
         logger.debug("artifacts.load_legacy.win_skip", models_dir=models_dir, error=str(e))
+    try:
+        innings_scaler = joblib.load(os.path.join(models_dir, "innings_scaler.joblib"))
+        innings_model = joblib.load(os.path.join(models_dir, "innings_model.joblib"))
+        INNINGS_MODELS["_LEGACY_"] = (innings_scaler, innings_model)
+        logger.info("artifacts.load_legacy.innings", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.innings_skip", models_dir=models_dir, error=str(e))
+    try:
+        bat_scaler = joblib.load(os.path.join(models_dir, "batting_share_scaler.joblib"))
+        bat_model = joblib.load(os.path.join(models_dir, "batting_share_model.joblib"))
+        BAT_SHARE_MODELS["_LEGACY_"] = (bat_scaler, bat_model)
+        logger.info("artifacts.load_legacy.batting_share", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.batting_share_skip", models_dir=models_dir, error=str(e))
+    try:
+        bowl_scaler = joblib.load(os.path.join(models_dir, "bowling_share_scaler.joblib"))
+        bowl_model = joblib.load(os.path.join(models_dir, "bowling_share_model.joblib"))
+        BOWL_SHARE_MODELS["_LEGACY_"] = (bowl_scaler, bowl_model)
+        logger.info("artifacts.load_legacy.bowling_share", models_dir=models_dir)
+    except Exception as e:
+        logger.debug("artifacts.load_legacy.bowling_share_skip", models_dir=models_dir, error=str(e))
 
 
 def _load_per_format(models_dir: str) -> None:
@@ -95,7 +132,7 @@ def _load_per_format(models_dir: str) -> None:
                     logger.info("artifacts.load_per_format.batting", format=code, models_dir=models_dir)
                 else:
                     logger.warning("artifacts.load_per_format.batting_model_missing", format=code, path=mpath)
-            if lf.startswith("bowling_scaler_") and lf.endswith(".joblib"):
+            if lf.startswith("bowling_scaler_") and lf.endswith(".joblib") and not lf.startswith("bowling_share_"):
                 code = fname[len("bowling_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
                 mname = f"bowling_model_{code}.joblib"
@@ -106,6 +143,28 @@ def _load_per_format(models_dir: str) -> None:
                     logger.info("artifacts.load_per_format.bowling", format=code, models_dir=models_dir)
                 else:
                     logger.warning("artifacts.load_per_format.bowling_model_missing", format=code, path=mpath)
+            if lf.startswith("batting_share_scaler_") and lf.endswith(".joblib"):
+                code = fname[len("batting_share_scaler_") : -len(".joblib")].upper()
+                scaler = joblib.load(os.path.join(models_dir, fname))
+                mname = f"batting_share_model_{code}.joblib"
+                mpath = os.path.join(models_dir, mname)
+                if os.path.exists(mpath):
+                    model = joblib.load(mpath)
+                    BAT_SHARE_MODELS[code] = (scaler, model)
+                    logger.info("artifacts.load_per_format.batting_share", format=code, models_dir=models_dir)
+                else:
+                    logger.warning("artifacts.load_per_format.batting_share_model_missing", format=code, path=mpath)
+            if lf.startswith("bowling_share_scaler_") and lf.endswith(".joblib"):
+                code = fname[len("bowling_share_scaler_") : -len(".joblib")].upper()
+                scaler = joblib.load(os.path.join(models_dir, fname))
+                mname = f"bowling_share_model_{code}.joblib"
+                mpath = os.path.join(models_dir, mname)
+                if os.path.exists(mpath):
+                    model = joblib.load(mpath)
+                    BOWL_SHARE_MODELS[code] = (scaler, model)
+                    logger.info("artifacts.load_per_format.bowling_share", format=code, models_dir=models_dir)
+                else:
+                    logger.warning("artifacts.load_per_format.bowling_share_model_missing", format=code, path=mpath)
             if lf.startswith("fielding_scaler_") and lf.endswith(".joblib"):
                 code = fname[len("fielding_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -127,6 +186,17 @@ def _load_per_format(models_dir: str) -> None:
                 model = joblib.load(os.path.join(models_dir, fname))
                 WIN_MODELS[code] = model
                 logger.info("artifacts.load_per_format.win", format=code, models_dir=models_dir)
+            if lf.startswith("innings_scaler_") and lf.endswith(".joblib"):
+                code = fname[len("innings_scaler_") : -len(".joblib")].upper()
+                scaler = joblib.load(os.path.join(models_dir, fname))
+                mname = f"innings_model_{code}.joblib"
+                mpath = os.path.join(models_dir, mname)
+                if os.path.exists(mpath):
+                    model = joblib.load(mpath)
+                    INNINGS_MODELS[code] = (scaler, model)
+                    logger.info("artifacts.load_per_format.innings", format=code, models_dir=models_dir)
+                else:
+                    logger.warning("artifacts.load_per_format.innings_model_missing", format=code, path=mpath)
         except Exception as e:
             logger.error(
                 "artifacts.load_per_format.load_failed",
@@ -144,6 +214,9 @@ def reload(models_dir: str) -> dict:
     FIELD_MODELS.clear()
     EXTRAS_MODELS.clear()
     WIN_MODELS.clear()
+    INNINGS_MODELS.clear()
+    BAT_SHARE_MODELS.clear()
+    BOWL_SHARE_MODELS.clear()
     _load_legacy(models_dir)
     _load_per_format(models_dir)
     out = summary()
@@ -164,9 +237,13 @@ def summary() -> dict:
         "loaded_fielding_formats": sorted([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
         "loaded_extras_formats": sorted([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
         "loaded_win_formats": sorted([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_innings_formats": sorted([k for k in INNINGS_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_batting_share_formats": sorted([k for k in BAT_SHARE_MODELS.keys() if k != "_LEGACY_"]),
+        "loaded_bowling_share_formats": sorted([k for k in BOWL_SHARE_MODELS.keys() if k != "_LEGACY_"]),
         "legacy_batting": "_LEGACY_" in BAT_MODELS,
         "legacy_bowling": "_LEGACY_" in BOWL_MODELS,
         "legacy_fielding": "_LEGACY_" in FIELD_MODELS,
         "legacy_extras": "_LEGACY_" in EXTRAS_MODELS,
         "legacy_win": "_LEGACY_" in WIN_MODELS,
+        "legacy_innings": "_LEGACY_" in INNINGS_MODELS,
     }

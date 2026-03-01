@@ -66,7 +66,7 @@ def test_reload_artifacts_from_dir_and_predict_batting(tmp_path):
 @pytest.mark.integration
 def test_reload_artifacts_from_dir_and_predict_bowling(tmp_path):
     """After reload from a dir with bowling scaler+model, POST /predict/bowling returns 200."""
-    n_features = 26
+    n_features = 25  # bowling: 17 base + 8 seq (consistency, form, momentum, career_avg + 7 weather + 3 inning/session/toss + 3 venue/opp/season + 8 seq)
     scaler = StandardScaler()
     scaler.fit(np.random.RandomState(42).randn(10, n_features))
     model = RandomForestRegressor(n_estimators=2, max_depth=2, random_state=42)

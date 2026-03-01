@@ -550,7 +550,7 @@ func doEvaluateWork(
 	if useUnifiedModel {
 		formatForPrediction = ""
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features, useLatestModel)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features, useLatestModel, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,6 +1046,7 @@ type trainingDataResponse struct {
 	Fielding trainingDataPart `json:"fielding"`
 	Extras   trainingDataPart `json:"extras"`
 	Win      trainingDataPart `json:"win"`
+	Innings  trainingDataPart `json:"innings"`
 }
 
 type trainingDataPart struct {
@@ -1091,7 +1092,7 @@ func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
 
 // allowedTrainingDataSections is the set of valid section names for training-data ?sections= (reduces go-app/DB load when only one model is needed).
 var allowedTrainingDataSections = map[string]bool{
-	"batting": true, "bowling": true, "fielding": true, "extras": true, "win": true,
+	"batting": true, "bowling": true, "fielding": true, "extras": true, "win": true, "innings": true,
 }
 
 // backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...&sections=...
@@ -1146,7 +1147,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		slog.Bool("run_all_sections", runAllSections),
 	)
 
-	var batRows, bowlRows, fieldRows, extrasRows, winRows [][]string
+	var batRows, bowlRows, fieldRows, extrasRows, winRows, inningsRows [][]string
 	type sectionLoader struct {
 		name       string
 		rows       *[][]string
@@ -1159,6 +1160,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		{"fielding", &fieldRows, exq.FieldingTrainingRows, exq.FieldingTrainingRowsWithFormat},
 		{"extras", &extrasRows, exq.ExtrasTrainingRows, exq.ExtrasTrainingRowsWithFormat},
 		{"win", &winRows, exq.WinTrainingRows, exq.WinTrainingRowsWithFormat},
+		{"innings", &inningsRows, exq.InningsTrainingRows, exq.InningsTrainingRowsWithFormat},
 	}
 	for _, loader := range loaders {
 		if runAllSections || wantSection[loader.name] {
@@ -1198,6 +1200,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	fieldH, fieldD := part(fieldRows)
 	extrasH, extrasD := part(extrasRows)
 	winH, winD := part(winRows)
+	inningsH, inningsD := part(inningsRows)
 
 	slog.Info("training-data: all sections ready, writing response",
 		slog.Int("batting_rows", len(batD)),
@@ -1205,6 +1208,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		slog.Int("fielding_rows", len(fieldD)),
 		slog.Int("extras_rows", len(extrasD)),
 		slog.Int("win_rows", len(winD)),
+		slog.Int("innings_rows", len(inningsD)),
 	)
 	writeJSON(w, http.StatusOK, trainingDataResponse{
 		Batting:  trainingDataPart{Headers: batH, Rows: batD},
@@ -1212,6 +1216,7 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		Fielding: trainingDataPart{Headers: fieldH, Rows: fieldD},
 		Extras:   trainingDataPart{Headers: extrasH, Rows: extrasD},
 		Win:      trainingDataPart{Headers: winH, Rows: winD},
+		Innings:  trainingDataPart{Headers: inningsH, Rows: inningsD},
 	})
 	slog.Info("training-data: response written successfully")
 }

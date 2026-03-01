@@ -34,7 +34,7 @@ var defaultContract = contract{
 		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
 	},
 	Bowling: []string{
-		"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum",
+		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity",
 		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season",
 		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",

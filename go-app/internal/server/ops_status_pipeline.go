@@ -17,6 +17,7 @@ var pipelineStepCommands = map[string]string{
 	"train_fielding":         "train-fielding",
 	"train_extras":           "train-extras",
 	"train_win":              "train-win",
+	"train_innings":          "train-innings",
 	"train_combination_meta": "train-combination-meta", // no tracking; optional step
 	"auto_tune":              "ml-auto-tune",
 }
@@ -32,6 +33,7 @@ var pipelineStepPreviousCommand = map[string]string{
 	"train_fielding":         "export-dataset",
 	"train_extras":           "export-dataset",
 	"train_win":              "export-dataset",
+	"train_innings":          "export-dataset",
 	"train_combination_meta": "train-win",      // optional; run after train-win; requires contributions CSV
 	"auto_tune":              "train-fielding", // optional; runnable when train-fielding AND train-extras AND train-win all done (checked below)
 }
@@ -139,6 +141,7 @@ var stepLabelByCommand = map[string]string{
 	"train-fielding":      "Train Fielding",
 	"train-extras":        "Train Extras",
 	"train-win":           "Train Win",
+	"train-innings":       "Train Innings",
 }
 
 // CanRunPipelineStep returns whether the step can be started and an error message if not.

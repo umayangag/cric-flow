@@ -25,6 +25,7 @@ var PipelineCommands = []string{
 	"train-fielding",
 	"train-extras",
 	"train-win",
+	"train-innings",
 	"ml-auto-tune",
 }
 

@@ -63,6 +63,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		"train_fielding",
 		"train_extras",
 		"train_win",
+		"train_innings",
 		"train_combination_meta":
 		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
@@ -101,6 +102,9 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	case "train_win":
 		a.makeMLTrainHandler("train_win", "train-win", "win")(w, r)
 		return
+	case "train_innings":
+		a.makeMLTrainHandler("train_innings", "train-innings", "innings")(w, r)
+		return
 	case "train_combination_meta":
 		// Run from project root: make train-combination-meta CSV=<path> OUT=<path>
 		exportDir := config.DefaultExportDir()
@@ -137,6 +141,8 @@ func stepToCommand(step string) string {
 		return "make train-extras CUTOFF=2025-01-01T00:00:00Z"
 	case "train_win":
 		return "make train-win CUTOFF=2025-01-01T00:00:00Z"
+	case "train_innings":
+		return "make train-innings CUTOFF=2025-01-01T00:00:00Z"
 	case "train_combination_meta":
 		return "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json"
 	case "auto_tune":

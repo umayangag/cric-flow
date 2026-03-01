@@ -2,7 +2,8 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import EvaluateDbTab from '../components/EvaluateDbTab';
 
 // Mock the api module to use the new backtest endpoints
@@ -24,24 +25,26 @@ vi.mock('../api', async () => {
 
 const { api } = await import('../api');
 
-async function selectFilters(team1 = 'IND', team2 = 'AUS') {
+async function selectFilters(
+  user: ReturnType<typeof userEvent.setup>,
+  team1 = 'IND',
+  team2 = 'AUS',
+) {
   await waitFor(() => expect(api.getFormats).toHaveBeenCalled());
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: /Format/i }));
-  fireEvent.click(await screen.findByRole('option', { name: 'T20' }));
+  await user.click(screen.getByRole('combobox', { name: /Format/i }));
+  await user.click(await screen.findByRole('option', { name: 'T20' }));
 
   await waitFor(() => expect(api.getTeamsByFormat).toHaveBeenCalledWith('T20'));
   const team1Input = screen.getByRole('combobox', { name: /Team 1/i });
-  team1Input.focus();
-  fireEvent.change(team1Input, { target: { value: team1 } });
-  fireEvent.keyDown(team1Input, { key: 'ArrowDown' });
-  fireEvent.click(await screen.findByText(team1));
+  await user.click(team1Input);
+  await user.keyboard(team1);
+  await user.click(await screen.findByText(team1));
 
   await waitFor(() => expect(api.getOpponents).toHaveBeenCalledWith('T20', team1));
   const team2Input = screen.getByRole('combobox', { name: /Team 2/i });
-  team2Input.focus();
-  fireEvent.change(team2Input, { target: { value: team2 } });
-  fireEvent.keyDown(team2Input, { key: 'ArrowDown' });
-  fireEvent.click(await screen.findByText(team2));
+  await user.click(team2Input);
+  await user.keyboard(team2);
+  await user.click(await screen.findByText(team2));
 }
 
 describe('EvaluateDbTab (Backtest flow)', () => {
@@ -99,17 +102,18 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       result: resultPayload,
     });
 
+    const user = userEvent.setup();
     render(<EvaluateDbTab />);
-    await selectFilters();
+    await selectFilters(user);
 
     // Load candidates
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await user.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
     const radio = screen.getByRole('radio', { name: /Select/i });
-    fireEvent.click(radio);
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
+    await user.click(radio);
+    await user.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Wait for polling to run and job to complete (status returns 'done')
     await waitFor(() => expect(getEvaluateStatusMock).toHaveBeenCalled());
@@ -125,12 +129,13 @@ describe('EvaluateDbTab (Backtest flow)', () => {
   }, 15000);
 
   it('shows error when backtestSelect fails', async () => {
+    const user = userEvent.setup();
     const backtestSelectMock = api.backtestSelect as unknown as Mock;
     backtestSelectMock.mockRejectedValue(new Error('HTTP 500 Internal Server Error'));
 
     render(<EvaluateDbTab />);
-    await selectFilters();
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await selectFilters(user);
+    await user.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/HTTP 500/i);
   }, 10000);
 
@@ -202,14 +207,15 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       result: evaluatePayload,
     });
 
+    const user = userEvent.setup();
     render(<EvaluateDbTab />);
-    await selectFilters();
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await selectFilters(user);
+    await user.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
-    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
+    await user.click(screen.getByRole('radio', { name: /Select/i }));
+    await user.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Assert metrics header shows bowling and match-level metrics
     const results = await screen.findByLabelText('results-section');
@@ -287,14 +293,15 @@ describe('EvaluateDbTab (Backtest flow)', () => {
       result: fieldingResult,
     });
 
+    const user = userEvent.setup();
     render(<EvaluateDbTab />);
-    await selectFilters();
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await selectFilters(user);
+    await user.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 1 candidates/i, { exact: false });
 
     // Select and evaluate
-    fireEvent.click(screen.getByRole('radio', { name: /Select/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
+    await user.click(screen.getByRole('radio', { name: /Select/i }));
+    await user.click(screen.getByRole('button', { name: /Evaluate Selected Match/i }));
 
     // Assert metrics header shows fielding metrics
     const results = await screen.findByLabelText('results-section');
@@ -311,14 +318,15 @@ describe('EvaluateDbTab (Backtest flow)', () => {
   });
 
   it('disable evaluate until a candidate match is selected', async () => {
+    const user = userEvent.setup();
     const backtestSelectMock = api.backtestSelect as unknown as Mock;
     backtestSelectMock.mockResolvedValue({
       filters: {},
       candidates: [],
     });
     render(<EvaluateDbTab />);
-    await selectFilters();
-    fireEvent.click(screen.getByRole('button', { name: /Load Matches/i }));
+    await selectFilters(user);
+    await user.click(screen.getByRole('button', { name: /Load Matches/i }));
     await screen.findByText(/Loaded 0 candidates/i);
     const btn = screen.getByRole('button', {
       name: /Evaluate Selected Match/i,

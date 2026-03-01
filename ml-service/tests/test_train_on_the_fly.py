@@ -71,9 +71,8 @@ def _one_bowling_row():
     feats = [
         "0.4",
         "1.5",
-        "1.5",
-        "1.5",
-        "0",  # bowling_consistency, bowling_form, form_short, form_long, momentum
+        "0",  # bowling_consistency, bowling_form, bowling_momentum
+        "1.5",  # bowling_career_avg
         "25",
         "5",
         "0",

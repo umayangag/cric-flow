@@ -47,7 +47,7 @@ func TestBacktestMLClient_PredictPlayers(t *testing.T) {
 	t.Setenv("ML_SERVICE_URL", srv.URL)
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, false)
+	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, false, nil)
 	if err != nil {
 		t.Fatalf("PredictPlayers error: %v", err)
 	}

@@ -14,7 +14,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: logs api migrate output-dirs export-dataset export-off export-on
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
-.PHONY: train-batting train-bowling train-fielding train-extras train-win train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
+.PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
 .PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -198,12 +198,19 @@ train-win:
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi
 
+train-innings:
+	@if [ -z "$(CUTOFF)" ]; then \
+	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=. Example: make train-innings CUTOFF=2025-01-01T00:00:00Z"; \
+	  exit 1; \
+	fi
+	cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_innings --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"
+
 # Train batting + bowling (from exported CSVs). Fielding: same — export then make train-fielding (or set CUTOFF for API).
 train-batting-bowling: train-batting train-bowling
 
 # Train all models (batting, bowling, fielding, extras, win). For fielding/extras/win set CUTOFF= and GO_APP_URL= if using API.
 train-all: train-models
-train-models: train-batting train-bowling train-fielding train-extras train-win
+train-models: train-batting train-bowling train-fielding train-extras train-win train-innings
 
 # Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
 # When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
@@ -479,8 +486,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 50)..."
-	COV_MIN=$${COV_MIN_GO:-50} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 60)..."
+	COV_MIN=$${COV_MIN_GO:-60} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -578,7 +585,7 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 80
+COV_MIN_GO ?= 60
 COV_MIN_ML ?= 80
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)

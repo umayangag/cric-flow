@@ -1,4 +1,5 @@
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import React from 'react';
 import OpsStatusTab from '../../src/components/OpsStatusTab';
@@ -50,6 +51,7 @@ describe('OpsStatusTab', () => {
       suggestions: [],
     });
 
+    const user = userEvent.setup();
     render(<OpsStatusTab />);
 
     // First fetch
@@ -62,7 +64,7 @@ describe('OpsStatusTab', () => {
     const refreshBtn = screen.getByRole('button', {
       name: /Refresh Ops Status/i,
     });
-    refreshBtn.click();
+    await user.click(refreshBtn);
     await waitFor(() => expect(mockOpsStatus).toHaveBeenCalledTimes(2));
   }, 15000);
 

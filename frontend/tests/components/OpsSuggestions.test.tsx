@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import React from 'react';
 import OpsSuggestions from '../../src/components/OpsSuggestions';
@@ -12,17 +12,18 @@ vi.mock('../../src/api', () => ({
 }));
 
 describe('OpsSuggestions', () => {
-  const origClipboard = global.navigator.clipboard;
+  const mockWriteText = vi.fn().mockResolvedValue(undefined);
+  const mockClipboard = { writeText: mockWriteText };
+
   beforeEach(() => {
-    const mockClipboard = {
-      writeText: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Clipboard;
-    // @ts-expect-error override for test
-    global.navigator.clipboard = mockClipboard;
+    mockWriteText.mockClear();
+    Object.defineProperty(global.navigator, 'clipboard', {
+      value: mockClipboard,
+      writable: true,
+      configurable: true,
+    });
   });
   afterEach(() => {
-    // @ts-expect-error restore clipboard
-    global.navigator.clipboard = origClipboard as Clipboard;
     vi.clearAllMocks();
   });
 
@@ -50,10 +51,11 @@ describe('OpsSuggestions', () => {
     await waitFor(() => expect(screen.getByText('DB not ready')).toBeInTheDocument());
 
     const btn = screen.getByRole('button', { name: /copy/i });
-    fireEvent.click(btn);
-    expect(global.navigator.clipboard.writeText).toHaveBeenCalledWith(
-      'make migrate && make cricsheet-import',
-    );
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(mockWriteText).toHaveBeenCalledWith('make migrate && make cricsheet-import');
+    await waitFor(() => expect(screen.getByText('Copied!')).toBeInTheDocument());
   });
 
   it('renders error message on API failure', async () => {

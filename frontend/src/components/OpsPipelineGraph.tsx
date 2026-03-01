@@ -28,6 +28,7 @@ export type PipelineStepId =
   | 'train_fielding'
   | 'train_extras'
   | 'train_win'
+  | 'train_innings'
   | 'auto_tune';
 
 export type StepStatus = 'success' | 'stale' | 'pending' | 'error' | 'optional' | 'running';
@@ -126,12 +127,21 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       runnable: true,
     },
     {
+      id: 'train_innings',
+      label: 'Train Innings',
+      status: 'pending',
+      command: 'make train-innings CUTOFF=2025-01-01T00:00:00Z',
+      description:
+        'Train per-format innings models (innings_runs, innings_wickets) for reconciliation. Set CUTOFF and GO_APP_URL. Run from project root.',
+      runnable: true,
+    },
+    {
       id: 'auto_tune',
       label: 'Auto-tune',
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description:
-        'Optional: tune the unified model and all per-format models (batting, bowling, fielding, extras, win). Best params are saved to DB when GO_APP_URL is set. You can run this from the UI or from project root.',
+        'Optional: tune the unified model and all per-format models (batting, bowling, fielding, extras, win, innings). Best params are saved to DB when GO_APP_URL is set. You can run this from the UI or from project root.',
       runnable: true,
     },
   ];
@@ -227,6 +237,7 @@ const AUTO_TUNE_MODELS = [
   { value: 'fielding', label: 'Fielding' },
   { value: 'extras', label: 'Extras' },
   { value: 'win', label: 'Win' },
+  { value: 'innings', label: 'Innings' },
 ] as const;
 
 const AUTO_TUNE_FORMATS = [

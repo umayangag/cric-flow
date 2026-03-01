@@ -179,7 +179,7 @@ make -C go-app coverage-html
 
 Notes:
 - Scope: Coverage excludes `cmd/*`, `*/mocks`, `internal/models`, `internal/safeurl`. Override with `COVERAGE_PACKAGES=./...` for full scope.
-- Gate: The Makefile’s `COV_MIN` default is 60; CI uses 50 (see workflow).
+- Gate: The Makefile’s `COV_MIN` default is 60; CI uses 60 (see workflow).
 - Convenience: Run a CI-like local check in one go:
   ```
   make -C go-app coverage-ci

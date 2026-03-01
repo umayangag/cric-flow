@@ -261,9 +261,11 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     return (
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
         {renderUnifiedArtifactCell(artData)}
-        {FORMATS.map((f) =>
-          renderArtifactCellWithKinds(f, artData?.formats?.[f], `artifacts-${f}`),
-        )}
+        {FORMATS.map((f) => (
+          <React.Fragment key={f}>
+            {renderArtifactCellWithKinds(f, artData?.formats?.[f], `artifacts-${f}`)}
+          </React.Fragment>
+        ))}
       </Box>
     );
   };

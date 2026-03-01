@@ -18,7 +18,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
-from .artifacts import BAT_MODELS, BOWL_MODELS, EXTRAS_MODELS, FIELD_MODELS, WIN_MODELS
+from .artifacts import (
+    BAT_MODELS,
+    BAT_SHARE_MODELS,
+    BOWL_MODELS,
+    BOWL_SHARE_MODELS,
+    EXTRAS_MODELS,
+    FIELD_MODELS,
+    INNINGS_MODELS,
+    WIN_MODELS,
+)
+from .artifacts import _use_share_models as use_share_models_config
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_service import (
@@ -47,9 +57,11 @@ from .models import (
     ExtrasFeatures,
     ExtrasPrediction,
     HistoricalMatchBacktestRequest,
+    MatchContext,
     WinFeatures,
     WinPrediction,
 )
+from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
 
 try:
@@ -296,19 +308,97 @@ def _round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
     return dt  # fallback: no rounding
 
 
+def _predict_match_innings(
+    match_context: MatchContext,
+    features_map: Dict[str, Dict[str, float]],
+    fmt_upper: str,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
+    innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
+    if innings_pair is None:
+        return None
+    scaler_inn, model_inn = innings_pair
+    team1_ids = {int(pid) for pid in match_context.team1_player_ids}
+    team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+
+    def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
+        bat_sum, bowl_sum = 0.0, 0.0
+        for pid in ids:
+            fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            bat_sum += float(fm.get(key_bat, 0) or 0)
+            bowl_sum += float(fm.get(key_bowl, 0) or 0)
+        return bat_sum, bowl_sum
+
+    t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
+    t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
+    t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
+    t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
+    inn1_runs, inn1_wkts = predict_innings(
+        scaler_inn,
+        model_inn,
+        inning_number=1,
+        bat_consistency_sum=t1_bat_cons,
+        bowl_consistency_sum=t2_bowl_cons,
+        bat_form_sum=t1_bat_form,
+        bowl_form_sum=t2_bowl_form,
+        format_id=match_context.format_id,
+        venue_id=match_context.venue_id,
+        season_id=match_context.season_id,
+        opposition_id=match_context.team1_opposition_id,
+        temp=match_context.temp,
+        wind=match_context.wind,
+        rain=match_context.rain,
+        humidity=match_context.humidity,
+        cloud=match_context.cloud,
+        pressure=match_context.pressure,
+        viscosity=match_context.viscosity,
+    )
+    inn2_runs, inn2_wkts = predict_innings(
+        scaler_inn,
+        model_inn,
+        inning_number=2,
+        bat_consistency_sum=t2_bat_cons,
+        bowl_consistency_sum=t1_bowl_cons,
+        bat_form_sum=t2_bat_form,
+        bowl_form_sum=t1_bowl_form,
+        format_id=match_context.format_id,
+        venue_id=match_context.venue_id,
+        season_id=match_context.season_id,
+        opposition_id=match_context.team2_opposition_id,
+        temp=match_context.temp,
+        wind=match_context.wind,
+        rain=match_context.rain,
+        humidity=match_context.humidity,
+        cloud=match_context.cloud,
+        pressure=match_context.pressure,
+        viscosity=match_context.viscosity,
+    )
+    return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
+
+
 def _predict_players_with_features(
     cutoff: datetime,
     player_ids: List[int],
     fmt: str,
     features_map: Dict[str, Dict[str, float]],
     use_latest_model: bool = False,
+    match_context: Optional[MatchContext] = None,
 ) -> List[BacktestPlayerPred]:
     """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
     When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
     """
     fmt_upper = (fmt or "").strip().upper()
-    bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
-    bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
+    use_share = (
+        use_share_models_config()
+        and match_context is not None
+        and ((INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")) is not None
+    )
+    if use_share:
+        bat_pair = (BAT_SHARE_MODELS.get(fmt_upper) if fmt_upper else None) or BAT_SHARE_MODELS.get("_LEGACY_")
+        bowl_pair = (BOWL_SHARE_MODELS.get(fmt_upper) if fmt_upper else None) or BOWL_SHARE_MODELS.get("_LEGACY_")
+    else:
+        bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
+        bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
     if not bat_pair or not bowl_pair:
         # Train-on-the-fly is disabled by default (resource intensive). Set ENABLE_TRAIN_ON_THE_FLY=1 to allow.
         if (os.environ.get("ENABLE_TRAIN_ON_THE_FLY") or "").strip().lower() not in ("1", "true", "yes"):
@@ -426,22 +516,47 @@ def _predict_players_with_features(
         X_bowl = scaler_bowl.transform(X_bowl)
     Y_bowl = model_bowl.predict(X_bowl)
 
+    # Phase 3 share path: predict innings first when use_share so we can multiply shares
+    inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
+    if use_share and match_context is not None:
+        predicted = _predict_match_innings(match_context, features_map, fmt_upper)
+        if predicted is not None:
+            inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
+
+    team1_ids = {int(pid) for pid in (match_context.team1_player_ids or [])} if match_context else set()
+    team2_ids = {int(pid) for pid in (match_context.team2_player_ids or [])} if match_context else set()
+
     out: List[BacktestPlayerPred] = []
     for i, pid in enumerate(player_ids):
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
         vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
-        vals_bowl = list(row_bowl) + [0.0] * max(0, 3 - len(row_bowl))  # runs, balls, wickets (economy derived)
-        runs = float(max(0.0, vals_bat[0]))
-        balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
+        vals_bowl = list(row_bowl) + [0.0] * max(
+            0, 3 - len(row_bowl)
+        )  # runs or runs_share, balls, wickets or wickets_share
+        default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
+
+        if use_share and team1_ids and team2_ids and (inn1_runs > 0 or inn2_runs > 0):
+            runs_share_bat = float(max(0.0, min(1.0, vals_bat[0])))
+            runs_share_bowl = float(max(0.0, min(1.0, vals_bowl[0]))) if len(vals_bowl) > 0 else 0.0
+            wickets_share = float(max(0.0, min(1.0, vals_bowl[2]))) if len(vals_bowl) > 2 else 0.0
+            balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
+            balls_bowled = float(max(0.0, vals_bowl[1])) if len(vals_bowl) > 1 else 6.0
+            in_team1 = int(pid) in team1_ids
+            runs = runs_share_bat * (inn1_runs if in_team1 else inn2_runs)
+            wickets = wickets_share * (inn2_wkts if in_team1 else inn1_wkts)  # team1 bowls inn2, team2 bowls inn1
+            r_conceded = runs_share_bowl * (inn2_runs if in_team1 else inn1_runs)
+            economy = (r_conceded / (balls_bowled / 6.0)) if balls_bowled > 0 else default_econ
+        else:
+            runs = float(max(0.0, vals_bat[0]))
+            balls = float(max(0.0, vals_bat[1])) if len(vals_bat) > 1 else None
+            wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
+            r_conceded = float(max(0.0, vals_bowl[0])) if len(vals_bowl) > 0 else 0.0
+            balls_bowled = float(max(0.0, vals_bowl[1])) if len(vals_bowl) > 1 else 6.0
+            economy = (r_conceded / (balls_bowled / 6.0)) if balls_bowled > 0 else default_econ
+
         fours = float(max(0.0, vals_bat[2])) if len(vals_bat) > 2 else None
         sixes = float(max(0.0, vals_bat[3])) if len(vals_bat) > 3 else None
-        wickets = float(max(0.0, vals_bowl[2])) if len(vals_bowl) > 2 else 0.0
-        # Economy is derived from runs and balls (not a model target)
-        default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
-        r_conceded = float(max(0.0, vals_bowl[0])) if len(vals_bowl) > 0 else 0.0
-        balls_bowled = float(max(0.0, vals_bowl[1])) if len(vals_bowl) > 1 else 6.0
-        economy = (r_conceded / (balls_bowled / 6.0)) if balls_bowled > 0 else default_econ
         catches, run_outs = 0.0, 0.0
         out.append(
             BacktestPlayerPred(
@@ -492,6 +607,32 @@ def _predict_players_with_features(
             )
         out = out_new
 
+    # Hybrid reconciliation: when match_context and innings model are available, rescale predictions (skip if use_share - already multiplied)
+    if match_context is not None and not use_share:
+        predicted = _predict_match_innings(match_context, features_map, fmt_upper)
+        if predicted is not None:
+            inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
+            team1_ids = {int(pid) for pid in match_context.team1_player_ids}
+            team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+            default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
+            out = rescale_player_predictions(
+                out,
+                team1_ids,
+                team2_ids,
+                inn1_runs,
+                inn1_wkts,
+                inn2_runs,
+                inn2_wkts,
+                default_economy=default_econ,
+            )
+            logger.info(
+                "backtest_predict.reconciliation.applied",
+                innings1_runs=inn1_runs,
+                innings2_runs=inn2_runs,
+                innings1_wickets=inn1_wkts,
+                innings2_wickets=inn2_wkts,
+            )
+
     return out
 
 
@@ -533,7 +674,7 @@ def backtest_predict(req: BacktestPredictRequest):
             cutoff_iso=cutoff_iso,
             player_count=len(req.player_ids),
         )
-        cached = _cache_get("players", cutoff_iso, list(req.player_ids))
+        cached = None if req.match_context else _cache_get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
             logger.info("backtest_predict.player.cache_hit", cutoff_iso=cutoff_iso, player_count=len(req.player_ids))
             return JSONResponse(status_code=200, content=cached)
@@ -541,7 +682,12 @@ def backtest_predict(req: BacktestPredictRequest):
         BACKTEST_PLAYERS_COMPUTE_COUNT += 1
         try:
             preds = _predict_players_with_features(
-                cutoff, req.player_ids, req.format or "", req.features, req.use_latest_model
+                cutoff,
+                req.player_ids,
+                req.format or "",
+                req.features,
+                req.use_latest_model,
+                req.match_context,
             )
         except ValueError as e:
             logger.exception(
@@ -1816,7 +1962,37 @@ async def admin_train_win(request: Request, cutoff: str = ""):
     return {"status": "ok", "step": "win"}
 
 
-_VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "all")
+@app.post("/admin/train/innings")
+@_require_admin_train("innings", "Innings training failed")
+async def admin_train_innings(request: Request, cutoff: str = ""):
+    """Run innings model training (uses go-app training-data API). Requires query param cutoff (RFC3339).
+    Used for hybrid reconciliation: innings model predicts runs/wickets per innings.
+    """
+    cutoff = (cutoff or "").strip()
+    if not cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="CUTOFF_REQUIRED",
+                message="Innings training requires cutoff",
+                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
+            ),
+        )
+    go_app_url = _get_go_app_url()
+    logger.info("admin.train.start", step="innings", cutoff=cutoff, go_app_url=go_app_url)
+    _train_env = {"ML_N_JOBS": "-1"}
+    async with _get_training_semaphore():
+        await asyncio.to_thread(
+            _run_training_subprocess,
+            "ml.train_innings",
+            ["--cutoff", cutoff, "--go-app-url", go_app_url],
+            _train_env,
+        )
+    logger.info("admin.train.success", step="innings")
+    return {"status": "ok", "step": "innings"}
+
+
+_VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")
 _VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
 
 

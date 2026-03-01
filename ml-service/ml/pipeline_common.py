@@ -11,6 +11,7 @@ Provides:
 from __future__ import annotations
 
 import logging
+import warnings
 from datetime import date
 from typing import Optional
 
@@ -34,7 +35,9 @@ def compute_time_decay_weights(
     if dates is None or len(dates) == 0:
         return None
     try:
-        dt = pd.to_datetime(dates, errors="coerce")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*Could not infer format.*")
+            dt = pd.to_datetime(dates, errors="coerce")
         valid = dt.notna()
         if not valid.any():
             return None

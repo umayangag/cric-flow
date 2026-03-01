@@ -10,6 +10,7 @@
     "artifacts_dir": "../output/ml-service"
   },
   "ml": {
+    "use_share_models": false,
     "formats": [
       "TEST",
       "ODI",
@@ -30,7 +31,8 @@
         "max_depth": 12,
         "random_state": 42,
         "joblib_compress": 3,
-        "n_jobs": -1
+        "n_jobs": -1,
+        "target_clip_percentile": 97
       },
       "fielding": {
         "n_estimators": 150,
@@ -52,6 +54,13 @@
         "random_state": 42,
         "joblib_compress": 3,
         "n_jobs": -1
+      },
+      "innings": {
+        "n_estimators": 100,
+        "max_depth": 8,
+        "random_state": 42,
+        "joblib_compress": 3,
+        "n_jobs": -1
       }
     },
     "resources": {
@@ -63,7 +72,7 @@
     },
     "tuning": {
       "cv_splits": 5,
-      "n_iter": 25,
+      "n_iter": 40,
       "n_jobs": -1,
       "random_state": 42,
       "scoring": "neg_mean_absolute_error",

@@ -205,6 +205,7 @@ def build_bowling_features_from_map(
         bowling_form_short=max(0.0, _float(d, "bowling_form_short", bowl_form)),
         bowling_form_long=max(0.0, _float(d, "bowling_form_long", bowl_form)),
         bowling_momentum=_float(d, "bowling_momentum", 0.0),
+        bowling_career_avg=max(0.0, _float(d, "bowling_career_avg", bowl_form)),
         bowling_temp=_get_required_int(d, "bowling_temp"),
         bowling_wind=_get_required_int(d, "bowling_wind"),
         bowling_rain=_get_required_int(d, "bowling_rain"),

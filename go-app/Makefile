@@ -171,7 +171,7 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below COV_MIN (default 80)
+# Fail if total coverage is below COV_MIN (default 60)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
@@ -206,7 +206,7 @@ help:
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
-	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 80%%)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 60%%)"
 	@echo "  coverage-html      Render HTML coverage report"
 	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo

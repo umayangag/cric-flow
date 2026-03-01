@@ -494,7 +494,22 @@ func BowlingTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, err
 
 // bowlingTrainingRowsRawQuery returns SQL and args for the raw bowling training query (no snapshot joins).
 func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string, args []any) {
-	q = `SELECT
+	q = `WITH eligible_matches AS (
+		SELECT match_id FROM match m WHERE m.match_date < $1
+	),
+	innings_runs_cte AS (
+		SELECT bd.match_id, bd.inning_number, SUM(bd.runs)::bigint AS total_runs
+		FROM batting_data bd
+		WHERE bd.match_id IN (SELECT match_id FROM eligible_matches)
+		GROUP BY bd.match_id, bd.inning_number
+	),
+	innings_wickets_cte AS (
+		SELECT bd.match_id, bd.inning_number, SUM(bd.wickets)::bigint AS total_wickets
+		FROM bowling_data bd
+		WHERE bd.match_id IN (SELECT match_id FROM eligible_matches)
+		GROUP BY bd.match_id, bd.inning_number
+	)
+	SELECT
 		m.match_date,
 		b.player_id,
 		m.format_id,
@@ -503,6 +518,8 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		b.runs,
 		b.balls,
 		b.wickets,
+		COALESCE(ir.total_runs, 0)::bigint AS innings_runs,
+		COALESCE(iw.total_wickets, 0)::bigint AS innings_wickets,
 		COALESCE(w.temp, 0), COALESCE(w.wind, 0), COALESCE(w.rain, 0), COALESCE(w.humidity, 0), COALESCE(w.cloud, 0), COALESCE(w.pressure, 0),
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 		COALESCE(mi.inning_number, 1),
@@ -514,6 +531,8 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
+	LEFT JOIN innings_runs_cte ir ON ir.match_id = b.match_id AND ir.inning_number = b.inning_number
+	LEFT JOIN innings_wickets_cte iw ON iw.match_id = b.match_id AND iw.inning_number = b.inning_number
 	LEFT JOIN player p ON b.player_id = p.id
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
@@ -528,7 +547,7 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 			q,
 			"WHERE m.match_date < $1",
 			"WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2",
-			1,
+			2, // replace in eligible_matches and main WHERE
 		)
 		args = []any{formatIDs, cutoff}
 	}
@@ -536,32 +555,34 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 }
 
 type bowlingTrainingRowRaw struct {
-	matchDate    time.Time
-	playerID     int64
-	formatID     int64
-	venueID      int64
-	oppositionID int64
-	runs         string
-	balls        string
-	wickets      string
-	temp         string
-	wind         string
-	rain         string
-	humidity     string
-	cloud        string
-	pressure     string
-	viscosity    string
-	inning       string
-	sess         string
-	toss         string
-	seasonID     string
-	playerName   string
-	formatCode   string
-	catches      string
-	runOuts      string
-	stumpings    string
-	runoutsDH    string
-	fieldingInv  string
+	matchDate      time.Time
+	playerID       int64
+	formatID       int64
+	venueID        int64
+	oppositionID   int64
+	runs           string
+	balls          string
+	wickets        string
+	inningsRuns    string
+	inningsWickets string
+	temp           string
+	wind           string
+	rain           string
+	humidity       string
+	cloud          string
+	pressure       string
+	viscosity      string
+	inning         string
+	sess           string
+	toss           string
+	seasonID       string
+	playerName     string
+	formatCode     string
+	catches        string
+	runOuts        string
+	stumpings      string
+	runoutsDH      string
+	fieldingInv    string
 }
 
 func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
@@ -576,7 +597,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		var r bowlingTrainingRowRaw
 		err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
-			&r.runs, &r.balls, &r.wickets,
+			&r.runs, &r.balls, &r.wickets, &r.inningsRuns, &r.inningsWickets,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
 			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
@@ -649,8 +670,8 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
 	headers := []string{
-		"runs", "balls", "wickets",
-		"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum",
+		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
+		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -683,10 +704,10 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			momentumN,
 		)
 		row := []string{
-			r.runs, r.balls, r.wickets,
+			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
 			floatToExport(
 				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
@@ -713,7 +734,19 @@ func BowlingTrainingRowsWithFormat(ctx context.Context, format string, cutoff ti
 
 // bowlingHoldoutRawQuery returns SQL and args for raw bowling rows for the given match IDs (same columns as training).
 func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
-	q := `SELECT
+	q := `WITH innings_runs_cte AS (
+		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
+		FROM batting_data
+		WHERE match_id = ANY($1::bigint[])
+		GROUP BY match_id, inning_number
+	),
+	innings_wickets_cte AS (
+		SELECT match_id, inning_number, SUM(wickets)::bigint AS total_wickets
+		FROM bowling_data
+		WHERE match_id = ANY($1::bigint[])
+		GROUP BY match_id, inning_number
+	)
+	SELECT
 		m.match_date,
 		b.player_id,
 		m.format_id,
@@ -722,6 +755,8 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		b.runs,
 		b.balls,
 		b.wickets,
+		COALESCE(ir.total_runs, 0)::bigint AS innings_runs,
+		COALESCE(iw.total_wickets, 0)::bigint AS innings_wickets,
 		COALESCE(w.temp, 0), COALESCE(w.wind, 0), COALESCE(w.rain, 0), COALESCE(w.humidity, 0), COALESCE(w.cloud, 0), COALESCE(w.pressure, 0),
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 		COALESCE(mi.inning_number, 1),
@@ -733,6 +768,8 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
+	LEFT JOIN innings_runs_cte ir ON ir.match_id = b.match_id AND ir.inning_number = b.inning_number
+	LEFT JOIN innings_wickets_cte iw ON iw.match_id = b.match_id AND iw.inning_number = b.inning_number
 	LEFT JOIN player p ON b.player_id = p.id
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
@@ -748,8 +785,8 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
 		headers := []string{
-			"runs", "balls", "wickets",
-			"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum",
+			"runs", "balls", "wickets", "innings_runs", "innings_wickets",
+			"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -768,7 +805,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		var r bowlingTrainingRowRaw
 		if err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
-			&r.runs, &r.balls, &r.wickets,
+			&r.runs, &r.balls, &r.wickets, &r.inningsRuns, &r.inningsWickets,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
 			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
@@ -836,8 +873,8 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	}
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	headers := []string{
-		"runs", "balls", "wickets",
-		"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum",
+		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
+		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -868,10 +905,10 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			momentumN,
 		)
 		row := []string{
-			r.runs, r.balls, r.wickets,
+			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
 			floatToExport(
 				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
