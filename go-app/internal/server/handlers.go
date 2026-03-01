@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -96,7 +97,9 @@ func (a *App) mlServiceProxy(
 	}
 }
 
-// enrichModelStatsPayload adds migration info (trained_at, duration) to each model when available from DB.
+// enrichModelStatsPayload adds migration info (trained_at, duration) and params/metrics from ml_tuned_params
+// to each model when available. DB data takes precedence over disk-based model-stats so the latest auto-tune
+// results are shown even when tuning_report_*.json on disk is stale.
 func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 	modelsVal, ok := payload["models"]
 	if !ok {
@@ -106,14 +109,19 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 	if !ok || !db.Available() {
 		return
 	}
-	migrationInfo, err := db.GetMigrationInfoForTunedParams(r.Context())
+	ctx := r.Context()
+
+	// Migration info (trained_at, duration)
+	migrationInfo, err := db.GetMigrationInfoForTunedParams(ctx)
 	if err != nil {
 		slog.Warn("ml model-stats proxy: migration info fetch failed", slog.Any("err", err))
-		return
 	}
-	if len(migrationInfo) == 0 {
-		return
+	// Params and metrics from ml_tuned_params (source of truth for latest auto-tune)
+	paramsMetrics, err := db.ListLatestParamsMetricsForModelStats(ctx)
+	if err != nil {
+		slog.Warn("ml model-stats proxy: params/metrics fetch failed", slog.Any("err", err))
 	}
+
 	for _, m := range modelsList {
 		modelMap, ok := m.(map[string]any)
 		if !ok {
@@ -129,6 +137,7 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 			formatKey = ""
 		}
 		key := strings.ToLower(modelName) + "|" + formatKey
+
 		if info, has := migrationInfo[key]; has {
 			modelMap["trained_at"] = info.TrainedAt
 			if info.CompletedAt != "" {
@@ -138,7 +147,73 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 				modelMap["duration_seconds"] = info.DurationSecs
 			}
 		}
+
+		// Override with latest params/metrics from ml_tuned_params (DB is source of truth after auto-tune)
+		if pm, has := paramsMetrics[key]; has {
+			if len(pm.Params) > 0 {
+				var params map[string]any
+				if err := json.Unmarshal(pm.Params, &params); err == nil && len(params) > 0 {
+					modelMap["tuned_parameters"] = params
+					modelMap["tuned"] = true
+					// Set algorithm display from params when present
+					if algo := params["algorithm"]; algo != nil {
+						modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
+					} else if algos, ok := params["algorithms"].([]any); ok && len(algos) > 0 {
+						modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
+					}
+				}
+			}
+			if len(pm.Metrics) > 0 {
+				var metrics map[string]any
+				if err := json.Unmarshal(pm.Metrics, &metrics); err == nil && len(metrics) > 0 {
+					modelMap["metrics"] = metrics
+					modelMap["tuned"] = true
+					// Build accuracy_display from metrics when present
+					if acc := metrics["accuracy_pct"]; acc != nil {
+						modelMap["accuracy_display"] = formatAccuracyPct(acc)
+					} else if mae := metrics["mae"]; mae != nil {
+						parts := []string{fmt.Sprintf("MAE=%v", mae)}
+						if rmse := metrics["rmse"]; rmse != nil {
+							parts = append(parts, fmt.Sprintf("RMSE=%v", rmse))
+						}
+						if r2 := metrics["r2_pct"]; r2 != nil {
+							parts = append(parts, fmt.Sprintf("R²=%v%%", r2))
+						}
+						modelMap["accuracy_display"] = strings.Join(parts, ", ")
+					} else if r2 := metrics["r2_pct"]; r2 != nil {
+						modelMap["accuracy_display"] = fmt.Sprintf("R²=%v%%", r2)
+					}
+				}
+			}
+		}
 	}
+}
+
+func formatAccuracyPct(v any) string {
+	switch x := v.(type) {
+	case float64:
+		return fmt.Sprintf("%.1f%%", x)
+	case int:
+		return fmt.Sprintf("%d%%", x)
+	case string:
+		return x + "%"
+	default:
+		return fmt.Sprintf("%v%%", v)
+	}
+}
+
+var algorithmDisplayNames = map[string]string{
+	"rf": "Random Forest", "gb": "Gradient Boosting", "quantile": "Quantile Regressor",
+	"stacked": "Stacking Regressor", "ridge": "Ridge", "mlp": "MLP Regressor",
+	"et": "Extra Trees", "hgb": "Hist Gradient Boosting",
+}
+
+func algorithmDisplayName(key string) string {
+	k := strings.ToLower(strings.TrimSpace(key))
+	if name, ok := algorithmDisplayNames[k]; ok {
+		return name
+	}
+	return key
 }
 
 // readinessHandler pings the DB to verify readiness.
