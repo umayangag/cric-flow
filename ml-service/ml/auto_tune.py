@@ -3236,9 +3236,12 @@ def main() -> None:
                                     )
                             continue
                         if model_kind == "batting":
-                            csv_path = args.csv or os.path.join(default_dir, f"batting_encoded_{fmt or 'all'}.csv")
-                            if not os.path.isfile(csv_path):
-                                csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
+                            if args.csv:
+                                csv_path = args.csv
+                            else:
+                                csv_path = os.path.join(default_dir, f"batting_encoded_{fmt or 'all'}.csv")
+                                if not os.path.isfile(csv_path):
+                                    csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
                             X, Y = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_batting_csv(csv_path),
@@ -3247,9 +3250,12 @@ def main() -> None:
                                 ),
                             )
                         elif model_kind == "bowling":
-                            csv_path = args.csv or os.path.join(default_dir, f"bowling_encoded_{fmt or 'all'}.csv")
-                            if not os.path.isfile(csv_path):
-                                csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
+                            if args.csv:
+                                csv_path = args.csv
+                            else:
+                                csv_path = os.path.join(default_dir, f"bowling_encoded_{fmt or 'all'}.csv")
+                                if not os.path.isfile(csv_path):
+                                    csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
                             X, Y = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_bowling_csv(csv_path),
@@ -3258,9 +3264,12 @@ def main() -> None:
                                 ),
                             )
                         else:
-                            csv_path = args.csv or os.path.join(default_dir, f"fielding_encoded_{fmt or 'all'}.csv")
-                            if not os.path.isfile(csv_path):
-                                csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
+                            if args.csv:
+                                csv_path = args.csv
+                            else:
+                                csv_path = os.path.join(default_dir, f"fielding_encoded_{fmt or 'all'}.csv")
+                                if not os.path.isfile(csv_path):
+                                    csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
                             by_f = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_fielding_csv(csv_path, fmt),
