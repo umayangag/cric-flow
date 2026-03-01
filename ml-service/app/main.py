@@ -1169,7 +1169,8 @@ def _flatten_metrics_for_display(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """Flatten nested metric dicts so the UI can display key=value chips.
 
     Expands per_target_mae (e.g. mae_runs, mae_balls, mae_wickets) to top-level.
-    Skips nested dicts/lists that would render as [object Object].
+    Skips nested dicts that would render as [object Object].
+    Joins lists into comma-separated strings.
     """
     out: Dict[str, Any] = {}
     for k, v in metrics.items():
@@ -1177,7 +1178,10 @@ def _flatten_metrics_for_display(metrics: Dict[str, Any]) -> Dict[str, Any]:
             for sk, sv in v.items():
                 out[sk] = sv
             continue
-        if isinstance(v, (dict, list)) and not isinstance(v, (str, bytes)):
+        if isinstance(v, list):
+            out[k] = ", ".join(map(str, v))
+            continue
+        if isinstance(v, dict):
             continue
         out[k] = v
     return out
