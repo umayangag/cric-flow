@@ -308,6 +308,74 @@ def _round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
     return dt  # fallback: no rounding
 
 
+def _predict_match_innings(
+    match_context: MatchContext,
+    features_map: Dict[str, Dict[str, float]],
+    fmt_upper: str,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
+    innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
+    if innings_pair is None:
+        return None
+    scaler_inn, model_inn = innings_pair
+    team1_ids = {int(pid) for pid in match_context.team1_player_ids}
+    team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+
+    def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
+        bat_sum, bowl_sum = 0.0, 0.0
+        for pid in ids:
+            fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            bat_sum += float(fm.get(key_bat, 0) or 0)
+            bowl_sum += float(fm.get(key_bowl, 0) or 0)
+        return bat_sum, bowl_sum
+
+    t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
+    t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
+    t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
+    t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
+    inn1_runs, inn1_wkts = predict_innings(
+        scaler_inn,
+        model_inn,
+        inning_number=1,
+        bat_consistency_sum=t1_bat_cons,
+        bowl_consistency_sum=t2_bowl_cons,
+        bat_form_sum=t1_bat_form,
+        bowl_form_sum=t2_bowl_form,
+        format_id=match_context.format_id,
+        venue_id=match_context.venue_id,
+        season_id=match_context.season_id,
+        opposition_id=match_context.team1_opposition_id,
+        temp=match_context.temp,
+        wind=match_context.wind,
+        rain=match_context.rain,
+        humidity=match_context.humidity,
+        cloud=match_context.cloud,
+        pressure=match_context.pressure,
+        viscosity=match_context.viscosity,
+    )
+    inn2_runs, inn2_wkts = predict_innings(
+        scaler_inn,
+        model_inn,
+        inning_number=2,
+        bat_consistency_sum=t2_bat_cons,
+        bowl_consistency_sum=t1_bowl_cons,
+        bat_form_sum=t2_bat_form,
+        bowl_form_sum=t1_bowl_form,
+        format_id=match_context.format_id,
+        venue_id=match_context.venue_id,
+        season_id=match_context.season_id,
+        opposition_id=match_context.team2_opposition_id,
+        temp=match_context.temp,
+        wind=match_context.wind,
+        rain=match_context.rain,
+        humidity=match_context.humidity,
+        cloud=match_context.cloud,
+        pressure=match_context.pressure,
+        viscosity=match_context.viscosity,
+    )
+    return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
+
+
 def _predict_players_with_features(
     cutoff: datetime,
     player_ids: List[int],
@@ -451,64 +519,9 @@ def _predict_players_with_features(
     # Phase 3 share path: predict innings first when use_share so we can multiply shares
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
     if use_share and match_context is not None:
-        innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
-        if innings_pair is not None:
-            scaler_inn, model_inn = innings_pair
-            team1_ids = {int(pid) for pid in match_context.team1_player_ids}
-            team2_ids = {int(pid) for pid in match_context.team2_player_ids}
-
-            def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
-                bat_sum, bowl_sum = 0.0, 0.0
-                for pid in ids:
-                    fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-                    bat_sum += float(fm.get(key_bat, 0) or 0)
-                    bowl_sum += float(fm.get(key_bowl, 0) or 0)
-                return bat_sum, bowl_sum
-
-            t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
-            t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
-            t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
-            t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
-            inn1_runs, inn1_wkts = predict_innings(
-                scaler_inn,
-                model_inn,
-                inning_number=1,
-                bat_consistency_sum=t1_bat_cons,
-                bowl_consistency_sum=t2_bowl_cons,
-                bat_form_sum=t1_bat_form,
-                bowl_form_sum=t2_bowl_form,
-                format_id=match_context.format_id,
-                venue_id=match_context.venue_id,
-                season_id=match_context.season_id,
-                opposition_id=match_context.team1_opposition_id,
-                temp=match_context.temp,
-                wind=match_context.wind,
-                rain=match_context.rain,
-                humidity=match_context.humidity,
-                cloud=match_context.cloud,
-                pressure=match_context.pressure,
-                viscosity=match_context.viscosity,
-            )
-            inn2_runs, inn2_wkts = predict_innings(
-                scaler_inn,
-                model_inn,
-                inning_number=2,
-                bat_consistency_sum=t2_bat_cons,
-                bowl_consistency_sum=t1_bowl_cons,
-                bat_form_sum=t2_bat_form,
-                bowl_form_sum=t1_bowl_form,
-                format_id=match_context.format_id,
-                venue_id=match_context.venue_id,
-                season_id=match_context.season_id,
-                opposition_id=match_context.team2_opposition_id,
-                temp=match_context.temp,
-                wind=match_context.wind,
-                rain=match_context.rain,
-                humidity=match_context.humidity,
-                cloud=match_context.cloud,
-                pressure=match_context.pressure,
-                viscosity=match_context.viscosity,
-            )
+        predicted = _predict_match_innings(match_context, features_map, fmt_upper)
+        if predicted is not None:
+            inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
 
     team1_ids = {int(pid) for pid in (match_context.team1_player_ids or [])} if match_context else set()
     team2_ids = {int(pid) for pid in (match_context.team2_player_ids or [])} if match_context else set()
@@ -596,65 +609,11 @@ def _predict_players_with_features(
 
     # Hybrid reconciliation: when match_context and innings model are available, rescale predictions (skip if use_share - already multiplied)
     if match_context is not None and not use_share:
-        innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
-        if innings_pair is not None:
-            scaler_inn, model_inn = innings_pair
+        predicted = _predict_match_innings(match_context, features_map, fmt_upper)
+        if predicted is not None:
+            inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
             team2_ids = {int(pid) for pid in match_context.team2_player_ids}
-
-            # Sum bat/bowl consistency and form from features for each team
-            def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
-                bat_sum, bowl_sum = 0.0, 0.0
-                for pid in ids:
-                    fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-                    bat_sum += float(fm.get(key_bat, 0) or 0)
-                    bowl_sum += float(fm.get(key_bowl, 0) or 0)
-                return bat_sum, bowl_sum
-
-            t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
-            t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
-            t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
-            t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
-            inn1_runs, inn1_wkts = predict_innings(
-                scaler_inn,
-                model_inn,
-                inning_number=1,
-                bat_consistency_sum=t1_bat_cons,
-                bowl_consistency_sum=t2_bowl_cons,
-                bat_form_sum=t1_bat_form,
-                bowl_form_sum=t2_bowl_form,
-                format_id=match_context.format_id,
-                venue_id=match_context.venue_id,
-                season_id=match_context.season_id,
-                opposition_id=match_context.team1_opposition_id,
-                temp=match_context.temp,
-                wind=match_context.wind,
-                rain=match_context.rain,
-                humidity=match_context.humidity,
-                cloud=match_context.cloud,
-                pressure=match_context.pressure,
-                viscosity=match_context.viscosity,
-            )
-            inn2_runs, inn2_wkts = predict_innings(
-                scaler_inn,
-                model_inn,
-                inning_number=2,
-                bat_consistency_sum=t2_bat_cons,
-                bowl_consistency_sum=t1_bowl_cons,
-                bat_form_sum=t2_bat_form,
-                bowl_form_sum=t1_bowl_form,
-                format_id=match_context.format_id,
-                venue_id=match_context.venue_id,
-                season_id=match_context.season_id,
-                opposition_id=match_context.team2_opposition_id,
-                temp=match_context.temp,
-                wind=match_context.wind,
-                rain=match_context.rain,
-                humidity=match_context.humidity,
-                cloud=match_context.cloud,
-                pressure=match_context.pressure,
-                viscosity=match_context.viscosity,
-            )
             default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
             out = rescale_player_predictions(
                 out,

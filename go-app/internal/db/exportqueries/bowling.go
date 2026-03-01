@@ -729,7 +729,19 @@ func BowlingTrainingRowsWithFormat(ctx context.Context, format string, cutoff ti
 
 // bowlingHoldoutRawQuery returns SQL and args for raw bowling rows for the given match IDs (same columns as training).
 func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
-	q := `SELECT
+	q := `WITH innings_runs_cte AS (
+		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
+		FROM batting_data
+		WHERE match_id = ANY($1::bigint[])
+		GROUP BY match_id, inning_number
+	),
+	innings_wickets_cte AS (
+		SELECT match_id, inning_number, SUM(wickets)::bigint AS total_wickets
+		FROM bowling_data
+		WHERE match_id = ANY($1::bigint[])
+		GROUP BY match_id, inning_number
+	)
+	SELECT
 		m.match_date,
 		b.player_id,
 		m.format_id,
@@ -738,8 +750,8 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		b.runs,
 		b.balls,
 		b.wickets,
-		(COALESCE((SELECT SUM(b2.runs) FROM batting_data b2 WHERE b2.match_id = b.match_id AND b2.inning_number = b.inning_number), 0))::bigint AS innings_runs,
-		(COALESCE((SELECT SUM(bw2.wickets) FROM bowling_data bw2 WHERE bw2.match_id = b.match_id AND bw2.inning_number = b.inning_number), 0))::bigint AS innings_wickets,
+		COALESCE(ir.total_runs, 0)::bigint AS innings_runs,
+		COALESCE(iw.total_wickets, 0)::bigint AS innings_wickets,
 		COALESCE(w.temp, 0), COALESCE(w.wind, 0), COALESCE(w.rain, 0), COALESCE(w.humidity, 0), COALESCE(w.cloud, 0), COALESCE(w.pressure, 0),
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 		COALESCE(mi.inning_number, 1),
@@ -751,6 +763,8 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
+	LEFT JOIN innings_runs_cte ir ON ir.match_id = b.match_id AND ir.inning_number = b.inning_number
+	LEFT JOIN innings_wickets_cte iw ON iw.match_id = b.match_id AND iw.inning_number = b.inning_number
 	LEFT JOIN player p ON b.player_id = p.id
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number

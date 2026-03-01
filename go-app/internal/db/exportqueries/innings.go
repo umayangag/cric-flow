@@ -64,38 +64,44 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		FROM bowling_data bw
 		JOIN innings_filtered i ON i.match_id = bw.match_id AND i.inning_number = bw.inning_number
 	),
-	bat_consistency AS (
-		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number)
-			bp.match_id, bp.inning_number, fcs.batting_value AS v
-		FROM bat_players bp
-		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
-		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number, fcs.as_of_date DESC
+	bat_features_raw AS (
+		(SELECT match_id, inning_number, 'consistency'::text AS kind, v FROM (
+			SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number)
+				bp.match_id, bp.inning_number, fcs.batting_value AS v
+			FROM bat_players bp
+			JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
+			ORDER BY fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number, fcs.as_of_date DESC
+		) x)
+		UNION ALL
+		(SELECT match_id, inning_number, 'form'::text AS kind, v FROM (
+			SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id, bp.inning_number)
+				bp.match_id, bp.inning_number, ff.batting_value AS v
+			FROM bat_players bp
+			JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
+			ORDER BY ff.player_id, ff.format_id, bp.match_id, bp.inning_number, ff.as_of_date DESC
+		) y)
 	),
-	bowl_consistency AS (
-		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number)
-			bp.match_id, bp.inning_number, fcs.bowling_value AS v
-		FROM bowl_players bp
-		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
-		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number, fcs.as_of_date DESC
+	bowl_features_raw AS (
+		(SELECT match_id, inning_number, 'consistency'::text AS kind, v FROM (
+			SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number)
+				bp.match_id, bp.inning_number, fcs.bowling_value AS v
+			FROM bowl_players bp
+			JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
+			ORDER BY fcs.player_id, fcs.format_id, bp.match_id, bp.inning_number, fcs.as_of_date DESC
+		) x)
+		UNION ALL
+		(SELECT match_id, inning_number, 'form'::text AS kind, v FROM (
+			SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id, bp.inning_number)
+				bp.match_id, bp.inning_number, ff.bowling_value AS v
+			FROM bowl_players bp
+			JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
+			ORDER BY ff.player_id, ff.format_id, bp.match_id, bp.inning_number, ff.as_of_date DESC
+		) y)
 	),
-	bat_form AS (
-		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id, bp.inning_number)
-			bp.match_id, bp.inning_number, ff.batting_value AS v
-		FROM bat_players bp
-		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
-		ORDER BY ff.player_id, ff.format_id, bp.match_id, bp.inning_number, ff.as_of_date DESC
-	),
-	bowl_form AS (
-		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id, bp.inning_number)
-			bp.match_id, bp.inning_number, ff.bowling_value AS v
-		FROM bowl_players bp
-		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
-		ORDER BY ff.player_id, ff.format_id, bp.match_id, bp.inning_number, ff.as_of_date DESC
-	),
-	bat_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_consistency GROUP BY match_id, inning_number),
-	bowl_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_consistency GROUP BY match_id, inning_number),
-	bat_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_form GROUP BY match_id, inning_number),
-	bowl_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id, inning_number)
+	bat_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_features_raw WHERE kind = 'consistency' GROUP BY match_id, inning_number),
+	bowl_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'consistency' GROUP BY match_id, inning_number),
+	bat_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number),
+	bowl_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number)
 	SELECT i.match_id, i.inning_number, i.innings_runs, i.innings_wickets, i.format_id, i.venue_id, i.season_id, i.opposition_id, i.format_code,
 		i.match_date,
 		i.temp, i.wind, i.rain, i.humidity, i.cloud, i.pressure, i.viscosity,
