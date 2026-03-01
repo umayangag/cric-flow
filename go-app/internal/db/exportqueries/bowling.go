@@ -540,7 +540,8 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id
-	WHERE m.match_date < $1`
+	WHERE m.match_date < $1
+	ORDER BY m.match_date ASC, b.match_id, b.player_id`
 	args = []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(
