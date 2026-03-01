@@ -1992,6 +1992,7 @@ def _run_search_two_phase(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+        _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
 
@@ -2314,9 +2315,7 @@ def load_win_from_api(
     return by_format
 
 
-def _load_via_csv_or_api(
-    csv_path: str, load_csv_fn: Callable[[], Any], load_api_fn: Callable[[], Any]
-) -> Any:
+def _load_via_csv_or_api(csv_path: str, load_csv_fn: Callable[[], Any], load_api_fn: Callable[[], Any]) -> Any:
     """Try loading from CSV; if not found, fall back to API. Reduces duplication in from_api loading."""
     if os.path.isfile(csv_path):
         logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
@@ -2342,6 +2341,7 @@ def run_auto_tune(
     use_pycaret: Optional[bool] = None,
     fast_mode: bool = False,
     rescreen: bool = False,
+    algorithms_explicitly_passed: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -2370,7 +2370,7 @@ def run_auto_tune(
             format_suffix or "(unified)",
             prior_algo,
         )
-    if use_pycaret is not False and prior is None:
+    if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
         pycaret_algos = _maybe_run_pycaret_ranking(
             X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
         )
@@ -2430,6 +2430,7 @@ def run_auto_tune_extras(
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
     rescreen: bool = False,
+    algorithms_explicitly_passed: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -2454,7 +2455,7 @@ def run_auto_tune_extras(
             format_suffix or "(unified)",
             prior_algo,
         )
-    if use_pycaret is not False and prior is None:
+    if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
         pycaret_algos = _maybe_run_pycaret_ranking(
             X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
         )
@@ -2804,6 +2805,7 @@ def run_auto_tune_win(
     fast_mode: bool = False,
     use_autogluon: Optional[bool] = None,
     rescreen: bool = False,
+    algorithms_explicitly_passed: bool = False,
 ) -> Dict[str, Any]:
     """Run two-phase classification search for win; save model only + report."""
     tuning = _get_tuning_config()
@@ -2828,7 +2830,7 @@ def run_auto_tune_win(
             format_suffix or "(unified)",
             prior_algo,
         )
-    if use_pycaret is not False and prior is None:
+    if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
         pycaret_algos = _maybe_run_pycaret_ranking(
             X, Y, "classification", use_pycaret, "win", format_suffix, task_index, task_total
         )
@@ -3114,9 +3116,7 @@ def main() -> None:
                             by_f = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_extras_csv(csv_path, fmt),
-                                lambda: load_extras_from_api(
-                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
-                                ),
+                                lambda: load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
@@ -3138,6 +3138,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
@@ -3160,6 +3161,7 @@ def main() -> None:
                                         fast_mode=fast_mode,
                                         use_autogluon=use_autogluon,
                                         rescreen=args.rescreen,
+                                        algorithms_explicitly_passed=bool(algorithms_override),
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, "extras", fcode, report, args.api_key or None
@@ -3176,9 +3178,7 @@ def main() -> None:
                             by_f = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_win_csv(csv_path, fmt),
-                                lambda: load_win_from_api(
-                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
-                                ),
+                                lambda: load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
@@ -3200,6 +3200,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "win", None, report, args.api_key or None)
                                 logger.info(
@@ -3222,6 +3223,7 @@ def main() -> None:
                                         fast_mode=fast_mode,
                                         use_autogluon=use_autogluon,
                                         rescreen=args.rescreen,
+                                        algorithms_explicitly_passed=bool(algorithms_override),
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, "win", fcode, report, args.api_key or None
@@ -3262,9 +3264,7 @@ def main() -> None:
                             by_f = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_fielding_csv(csv_path, fmt),
-                                lambda: load_fielding_from_api(
-                                    args.go_app_url, args.cutoff, args.api_key or None, fmt
-                                ),
+                                lambda: load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
                             )
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
@@ -3286,6 +3286,7 @@ def main() -> None:
                                     use_pycaret=use_pycaret,
                                     fast_mode=fast_mode,
                                     rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, None, report, args.api_key or None
@@ -3311,6 +3312,7 @@ def main() -> None:
                                         use_pycaret=use_pycaret,
                                         fast_mode=fast_mode,
                                         rescreen=args.rescreen,
+                                        algorithms_explicitly_passed=bool(algorithms_override),
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -3340,6 +3342,7 @@ def main() -> None:
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
+                        algorithms_explicitly_passed=bool(algorithms_override),
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -3396,6 +3399,7 @@ def main() -> None:
                                 fast_mode=fast_mode,
                                 use_autogluon=use_autogluon,
                                 rescreen=args.rescreen,
+                                algorithms_explicitly_passed=bool(algorithms_override),
                             )
                             _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                             logger.info(
@@ -3418,6 +3422,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -3471,6 +3476,7 @@ def main() -> None:
                                 fast_mode=fast_mode,
                                 use_autogluon=use_autogluon,
                                 rescreen=args.rescreen,
+                                algorithms_explicitly_passed=bool(algorithms_override),
                             )
                             _maybe_save_tuned_params(args.go_app_url, "win", None, report, args.api_key or None)
                             logger.info(
@@ -3493,6 +3499,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                                 logger.info(
@@ -3541,6 +3548,7 @@ def main() -> None:
                                 use_pycaret=use_pycaret,
                                 fast_mode=fast_mode,
                                 rescreen=args.rescreen,
+                                algorithms_explicitly_passed=bool(algorithms_override),
                             )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
@@ -3602,6 +3610,7 @@ def main() -> None:
                         use_pycaret=use_pycaret,
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
+                        algorithms_explicitly_passed=bool(algorithms_override),
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
