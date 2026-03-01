@@ -80,6 +80,17 @@ def test_get_cv_object_walk_forward():
     assert isinstance(cv, TimeSeriesSplit)
 
 
+def test_effective_timeseries_gap():
+    """_effective_timeseries_gap caps gap for small datasets (win, extras)."""
+    m = _get_module()
+    assert m._effective_timeseries_gap(200, 2007) == 0  # win: small dataset, no gap
+    assert m._effective_timeseries_gap(200, 4000) == 0  # below 5000
+    assert m._effective_timeseries_gap(200, 23862) == 200  # bowling: use full gap
+    assert m._effective_timeseries_gap(500, 10000) == 500  # cap at n/20=500
+    assert m._effective_timeseries_gap(500, 5000) == 250  # cap at 5000/20=250
+    assert m._effective_timeseries_gap(0, 10000) == 0
+
+
 def test_get_cv_object_tiny_samples_raises():
     """_get_cv_object raises for fewer than 2 samples."""
     m = _get_module()
