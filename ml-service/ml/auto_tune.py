@@ -2229,7 +2229,7 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
     except StopIteration:
         return rows
     try:
-        return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) else "")
+        return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) and r[idx] is not None else "")
     except Exception as e:
         logger.warning(
             "_sort_rows_by_match_date failed to sort rows, returning original order. error=%s",
