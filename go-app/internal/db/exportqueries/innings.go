@@ -113,7 +113,8 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	LEFT JOIN bat_cons_agg bc ON bc.match_id = i.match_id AND bc.inning_number = i.inning_number
 	LEFT JOIN bowl_cons_agg bwc ON bwc.match_id = i.match_id AND bwc.inning_number = i.inning_number
 	LEFT JOIN bat_form_agg bf ON bf.match_id = i.match_id AND bf.inning_number = i.inning_number
-	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = i.match_id AND bwf.inning_number = i.inning_number`
+	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = i.match_id AND bwf.inning_number = i.inning_number
+	ORDER BY i.match_date ASC, i.match_id, i.inning_number`
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

@@ -2131,8 +2131,38 @@ def _save_artifacts(
 
 
 # ---- Data loading (CSV) ----
+
+
+def _sort_xy_by_match_date(X: np.ndarray, Y: np.ndarray, dates: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Sort X and Y by match_date (chronological) for temporal CV. Ensures no future leakage."""
+    if X.size == 0 or dates is None or len(dates) == 0:
+        return X, Y
+    order = np.argsort(pd.to_datetime(dates, errors="coerce"))
+    return X[order], Y[order]
+
+
+def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[List[str]]:
+    """Sort rows by match_date column for temporal order. Returns sorted rows."""
+    if not headers or not rows:
+        return rows
+    date_cols = ("match_date", "match-date", "date")
+    idx = None
+    for dc in date_cols:
+        if dc in headers:
+            idx = headers.index(dc)
+            break
+    if idx is None:
+        return rows
+    try:
+        return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) else "")
+    except Exception:
+        return rows
+
+
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
+    if "match_date" in df.columns:
+        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
     for col in ("batting_form_short", "batting_form_long"):
         if col not in df.columns and "batting_form" in df.columns:
             df[col] = df["batting_form"]
@@ -2173,6 +2203,8 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
+    if "match_date" in df.columns:
+        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
     if "bowling_momentum" not in df.columns:
         df["bowling_momentum"] = 0.0
     if "bowling_career_avg" not in df.columns:
@@ -2218,6 +2250,8 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
         logger.error("auto_tune.load_fielding_csv.train_fielding_unavailable")
         raise RuntimeError("ml.train_fielding not available for fielding CSV")
     df = pd.read_csv(path)
+    if "match_date" in df.columns:
+        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
@@ -2231,6 +2265,8 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, T
         logger.error("auto_tune.load_extras_csv.train_extras_unavailable")
         raise RuntimeError("ml.train_extras not available for extras CSV")
     df = pd.read_csv(path)
+    if "match_date" in df.columns:
+        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_extras.rows_to_xy_by_format(headers, rows)
@@ -2244,6 +2280,8 @@ def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tupl
         logger.error("auto_tune.load_win_csv.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win CSV")
     df = pd.read_csv(path)
+    if "match_date" in df.columns:
+        df = df.sort_values("match_date", kind="mergesort").reset_index(drop=True)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
     by_format = _train_win.rows_to_xy_by_format(headers, rows)
@@ -2260,7 +2298,7 @@ def load_batting_from_api(
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="batting")
     bat = data.get("batting") or {}
     headers = bat.get("headers") or []
-    rows = bat.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, bat.get("rows") or [])
     return _batting_rows_to_xy(headers, rows)
 
 
@@ -2272,7 +2310,7 @@ def load_bowling_from_api(
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="bowling")
     bowl = data.get("bowling") or {}
     headers = bowl.get("headers") or []
-    rows = bowl.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, bowl.get("rows") or [])
     return _bowling_rows_to_xy(headers, rows)
 
 
@@ -2284,7 +2322,7 @@ def load_fielding_from_api(
         raise RuntimeError("ml.train_fielding not available for fielding API")
     field = _train_fielding.fetch_fielding_data(go_app_url, cutoff, api_key)
     headers = field.get("headers") or []
-    rows = field.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, field.get("rows") or [])
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
     if format_filter and format_filter in by_format:
         return {format_filter: by_format[format_filter]}
@@ -2299,7 +2337,7 @@ def load_extras_from_api(
         raise RuntimeError("ml.train_extras not available for extras API")
     extras = _train_extras.fetch_extras_data(go_app_url, cutoff, api_key)
     headers = extras.get("headers") or []
-    rows = extras.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, extras.get("rows") or [])
     by_format = _train_extras.rows_to_xy_by_format(headers, rows)
     if format_filter and format_filter in by_format:
         return {format_filter: by_format[format_filter]}
@@ -2315,7 +2353,7 @@ def load_innings_from_api(
         raise RuntimeError("ml.train_innings not available for innings API")
     innings = _train_innings.fetch_innings_data(go_app_url, cutoff, api_key)
     headers = innings.get("headers") or []
-    rows = innings.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, innings.get("rows") or [])
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
@@ -2360,7 +2398,7 @@ def load_win_from_api(
         raise RuntimeError("ml.train_win not available for win API")
     win = _train_win.fetch_win_data(go_app_url, cutoff, api_key)
     headers = win.get("headers") or []
-    rows = win.get("rows") or []
+    rows = _sort_rows_by_match_date(headers, win.get("rows") or [])
     by_format = _train_win.rows_to_xy_by_format(headers, rows)
     if format_filter and format_filter in by_format:
         return {format_filter: by_format[format_filter]}

@@ -95,7 +95,8 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	LEFT JOIN bat_cons_agg bc ON bc.match_id = m.match_id
 	LEFT JOIN bowl_cons_agg bwc ON bwc.match_id = m.match_id
 	LEFT JOIN bat_form_agg bf ON bf.match_id = m.match_id
-	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = m.match_id`
+	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = m.match_id
+	ORDER BY m.match_date ASC, m.match_id`
 	args := []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(

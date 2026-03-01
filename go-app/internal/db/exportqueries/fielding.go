@@ -47,7 +47,8 @@ func fieldingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string
 	LEFT JOIN match_inning mi1 ON mi1.match_id = fd.match_id AND mi1.inning_number = 1
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON w.match_id = fd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
-	WHERE m.match_date < $1`
+	WHERE m.match_date < $1
+	ORDER BY m.match_date ASC, fd.match_id, fd.player_id`
 	args = []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(

@@ -263,6 +263,8 @@ func trainingStepToModel(stepID string) string {
 		return "fielding"
 	case "train_extras":
 		return "extras"
+	case "train_innings":
+		return "innings"
 	case "train_win":
 		return "win"
 	default:
