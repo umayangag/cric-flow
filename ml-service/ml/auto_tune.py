@@ -2315,11 +2315,23 @@ def load_win_from_api(
     return by_format
 
 
-def _load_via_csv_or_api(csv_path: str, load_csv_fn: Callable[[], Any], load_api_fn: Callable[[], Any]) -> Any:
-    """Try loading from CSV; if not found, fall back to API. Reduces duplication in from_api loading."""
+def _load_via_csv_or_api(
+    csv_path: str,
+    load_csv_fn: Callable[[], Any],
+    load_api_fn: Callable[[], Any],
+    *,
+    can_fallback_to_api: bool = True,
+) -> Any:
+    """Try loading from CSV; if not found, fall back to API when can_fallback_to_api is True."""
     if os.path.isfile(csv_path):
         logger.info("auto_tune.loading_csv path=%s (prefer over API)", csv_path)
         return load_csv_fn()
+    if not can_fallback_to_api:
+        logger.warning(
+            "auto_tune.csv_not_found path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
+            csv_path,
+        )
+        return None
     logger.warning(
         "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
         csv_path,
@@ -3364,29 +3376,20 @@ def main() -> None:
                 else:
                     # Prefer CSV; fallback to API with warning when CSV not found
                     default_dir = os.environ.get("GO_APP_OUTPUT_DIR", default_go_app_export_dir())
+                    api_available = bool(args.go_app_url and args.cutoff)
                     if model_kind == "extras":
                         csv_path = args.csv or os.path.join(default_dir, "extras_encoded_all.csv")
-                        if os.path.isfile(csv_path):
-                            try:
-                                by_f = load_extras_csv(csv_path, fmt)
-                            except (RuntimeError, FileNotFoundError) as e:
-                                logger.error("auto_tune.load_extras_csv_failed path=%s error=%s", csv_path, e)
-                                continue
-                        elif args.go_app_url and args.cutoff:
-                            logger.warning(
-                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                        try:
+                            by_f = _load_via_csv_or_api(
                                 csv_path,
+                                lambda: load_extras_csv(csv_path, fmt),
+                                lambda: load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
-                            try:
-                                by_f = load_extras_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
-                            except (ValueError, RuntimeError) as e:
-                                logger.error("auto_tune.load_extras_failed error=%s", e)
-                                continue
-                        else:
-                            logger.warning(
-                                "auto_tune.skip_extras_csv_not_found path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
-                                csv_path,
-                            )
+                        except (ValueError, RuntimeError, FileNotFoundError) as e:
+                            logger.error("auto_tune.load_extras_failed path=%s error=%s", csv_path, e)
+                            continue
+                        if by_f is None:
                             continue
                         if not by_f:
                             logger.warning("auto_tune.no_extras_data format=%s", fmt)
@@ -3443,27 +3446,17 @@ def main() -> None:
                         continue
                     if model_kind == "win":
                         csv_path = args.csv or os.path.join(default_dir, "win_encoded_all.csv")
-                        if os.path.isfile(csv_path):
-                            try:
-                                by_f = load_win_csv(csv_path, fmt)
-                            except (RuntimeError, FileNotFoundError) as e:
-                                logger.error("auto_tune.load_win_csv_failed path=%s error=%s", csv_path, e)
-                                continue
-                        elif args.go_app_url and args.cutoff:
-                            logger.warning(
-                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                        try:
+                            by_f = _load_via_csv_or_api(
                                 csv_path,
+                                lambda: load_win_csv(csv_path, fmt),
+                                lambda: load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
-                            try:
-                                by_f = load_win_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
-                            except (ValueError, RuntimeError) as e:
-                                logger.error("auto_tune.load_win_failed error=%s", e)
-                                continue
-                        else:
-                            logger.warning(
-                                "auto_tune.skip_win_csv_not_found path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
-                                csv_path,
-                            )
+                        except (ValueError, RuntimeError, FileNotFoundError) as e:
+                            logger.error("auto_tune.load_win_failed path=%s error=%s", csv_path, e)
+                            continue
+                        if by_f is None:
                             continue
                         if not by_f:
                             logger.warning("auto_tune.no_win_data format=%s", fmt)
@@ -3522,26 +3515,17 @@ def main() -> None:
                         csv_path = args.csv or os.path.join(default_dir, f"fielding_encoded_{fmt or 'ALL'}.csv")
                         if not os.path.isfile(csv_path) and not args.csv:
                             csv_path = os.path.join(default_dir, "fielding_encoded_all.csv")
-                        if os.path.isfile(csv_path):
-                            try:
-                                by_f = load_fielding_csv(csv_path, fmt)
-                            except (RuntimeError, FileNotFoundError) as e:
-                                logger.error("auto_tune.load_fielding_csv_failed path=%s error=%s", csv_path, e)
-                                continue
-                        elif args.go_app_url and args.cutoff:
-                            logger.warning(
-                                "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
+                        try:
+                            by_f = _load_via_csv_or_api(
                                 csv_path,
+                                lambda: load_fielding_csv(csv_path, fmt),
+                                lambda: load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt),
+                                can_fallback_to_api=api_available,
                             )
-                            try:
-                                by_f = load_fielding_from_api(args.go_app_url, args.cutoff, args.api_key or None, fmt)
-                            except (ValueError, RuntimeError) as e:
-                                logger.error("auto_tune.load_fielding_failed error=%s", e)
-                                continue
-                        else:
-                            logger.warning(
-                                "auto_tune.skip_csv_not_found model=%s format=%s path=%s", model_kind, fmt, csv_path
-                            )
+                        except (ValueError, RuntimeError, FileNotFoundError) as e:
+                            logger.error("auto_tune.load_fielding_failed path=%s error=%s", csv_path, e)
+                            continue
+                        if by_f is None:
                             continue
                         for fcode, (X, Y, *_) in by_f.items():
                             if X.size == 0 or Y.size == 0:
@@ -3569,42 +3553,31 @@ def main() -> None:
                             )
                         continue
                     csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded_{fmt or 'LEGACY'}.csv")
-                    if not os.path.isfile(csv_path):
-                        csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded.csv")
-                    if os.path.isfile(csv_path):
-                        try:
-                            if model_kind == "batting":
-                                X, Y = load_batting_csv(csv_path)
-                            else:
-                                X, Y = load_bowling_csv(csv_path)
-                        except Exception as e:
-                            logger.error("auto_tune.load_csv_failed model=%s path=%s error=%s", model_kind, csv_path, e)
-                            continue
-                    elif args.go_app_url and args.cutoff:
-                        logger.warning(
-                            "auto_tune.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
-                            csv_path,
+                    if not os.path.isfile(csv_path) and not args.csv:
+                        csv_path = os.path.join(default_dir, f"{model_kind}_encoded.csv")
+                    if model_kind == "batting":
+                        load_csv = lambda: load_batting_csv(csv_path)
+                        load_api = lambda: load_batting_from_api(
+                            args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                         )
-                        try:
-                            if model_kind == "batting":
-                                X, Y = load_batting_from_api(
-                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                )
-                            else:
-                                X, Y = load_bowling_from_api(
-                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                )
-                        except (ValueError, RuntimeError) as e:
-                            logger.error("auto_tune.load_from_api_failed model=%s error=%s", model_kind, e)
-                            continue
                     else:
-                        logger.warning(
-                            "auto_tune.skip_csv_not_found model=%s format=%s path=%s hint=Run export-dataset or provide --go-app-url and --cutoff",
-                            model_kind,
-                            fmt,
-                            csv_path,
+                        load_csv = lambda: load_bowling_csv(csv_path)
+                        load_api = lambda: load_bowling_from_api(
+                            args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                         )
+                    try:
+                        result = _load_via_csv_or_api(
+                            csv_path,
+                            load_csv,
+                            load_api,
+                            can_fallback_to_api=api_available,
+                        )
+                    except (ValueError, RuntimeError, Exception) as e:
+                        logger.error("auto_tune.load_failed model=%s path=%s error=%s", model_kind, csv_path, e)
                         continue
+                    if result is None:
+                        continue
+                    X, Y = result
                     if X.size == 0 or Y.size == 0:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue

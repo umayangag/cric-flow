@@ -176,17 +176,17 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 						// Build accuracy_display from metrics when present
 						if acc := metrics["accuracy_pct"]; acc != nil {
 							modelMap["accuracy_display"] = formatAccuracyPct(acc)
-						} else if mae := metrics["mae"]; mae != nil {
-							parts := []string{fmt.Sprintf("MAE=%v", mae)}
-							if rmse := metrics["rmse"]; rmse != nil {
-								parts = append(parts, fmt.Sprintf("RMSE=%v", rmse))
+						} else if mae, ok := metrics["mae"].(float64); ok {
+							parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
+							if rmse, ok := metrics["rmse"].(float64); ok {
+								parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
 							}
-							if r2 := metrics["r2_pct"]; r2 != nil {
-								parts = append(parts, fmt.Sprintf("R²=%v%%", r2))
+							if r2, ok := metrics["r2_pct"].(float64); ok {
+								parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
 							}
 							modelMap["accuracy_display"] = strings.Join(parts, ", ")
-						} else if r2 := metrics["r2_pct"]; r2 != nil {
-							modelMap["accuracy_display"] = fmt.Sprintf("R²=%v%%", r2)
+						} else if r2, ok := metrics["r2_pct"].(float64); ok {
+							modelMap["accuracy_display"] = fmt.Sprintf("R²=%.1f%%", r2)
 						}
 					}
 				}
