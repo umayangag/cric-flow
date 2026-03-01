@@ -73,17 +73,17 @@ function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' |
 }
 
 /** Flatten metrics for display; expand nested objects so chips show key=value instead of [object Object]. */
-function flattenMetricsForDisplay(metrics: Record<string, unknown>): Array<[string, string | number | boolean]> {
+function flattenMetricsForDisplay(
+  metrics: Record<string, unknown>,
+): Array<[string, string | number | boolean]> {
   const out: Array<[string, string | number | boolean]> = [];
   for (const [k, v] of Object.entries(metrics)) {
     if (v == null) continue;
-    if (typeof v === 'object' && !Array.isArray(v) && k === 'per_target_mae') {
-      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
-        if (sv != null && typeof sv !== 'object') out.push([sk, String(sv)]);
-      }
+    // The backend is expected to flatten nested objects.
+    // Any remaining objects are skipped to avoid '[object Object]' in chips.
+    if (typeof v === 'object' && !Array.isArray(v)) {
       continue;
     }
-    if (typeof v === 'object' && !Array.isArray(v)) continue;
     if (Array.isArray(v)) {
       out.push([k, v.map(String).join(', ')]);
       continue;
@@ -153,18 +153,32 @@ function TuningInsights({
   if (items.length === 0) return null;
   return (
     <Box sx={{ mt: 1.5, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
+      >
         Tuning insights
       </Typography>
       <Stack spacing={0.5}>
         {items.map(({ label, value, hint }) => (
-          <Typography key={label} variant="caption" component="div" sx={{ fontFamily: 'monospace' }}>
+          <Typography
+            key={label}
+            variant="caption"
+            component="div"
+            sx={{ fontFamily: 'monospace' }}
+          >
             <Box component="span" sx={{ fontWeight: 600, mr: 0.5 }}>
               {label}:
             </Box>
             {value}
             {hint && (
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5, fontStyle: 'italic' }}>
+              <Typography
+                component="span"
+                variant="caption"
+                color="text.secondary"
+                sx={{ ml: 0.5, fontStyle: 'italic' }}
+              >
                 ({hint})
               </Typography>
             )}
@@ -255,15 +269,17 @@ function ModelRow({ model }: { model: MLModelStat }) {
                       Metrics
                     </Typography>
                     <Stack direction="row" flexWrap="wrap" spacing={0.5}>
-                      {flattenMetricsForDisplay(metrics as Record<string, unknown>).map(([k, v]) => (
-                        <Chip
-                          key={k}
-                          label={`${k}=${String(v)}`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-                        />
-                      ))}
+                      {flattenMetricsForDisplay(metrics as Record<string, unknown>).map(
+                        ([k, v]) => (
+                          <Chip
+                            key={k}
+                            label={`${k}=${String(v)}`}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                          />
+                        ),
+                      )}
                     </Stack>
                     <TuningInsights metrics={metrics} mlqa={mlqa} />
                   </Box>
