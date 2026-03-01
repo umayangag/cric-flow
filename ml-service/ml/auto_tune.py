@@ -217,6 +217,24 @@ BOWLING_FEATURE_COLS = [
 ] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
+# Target names for per-target MAE in model-stats UI (model_kind -> list of target column names)
+_TARGET_NAMES_BY_KIND: Dict[str, List[str]] = {
+    "batting": BATTING_TARGET_COLS,
+    "bowling": BOWLING_TARGET_COLS,
+}
+# Fielding and innings added lazily if modules available
+
+
+def _target_names_for_model(model_kind: str) -> Optional[List[str]]:
+    """Return target column names for per-target MAE when available."""
+    if model_kind in _TARGET_NAMES_BY_KIND:
+        return _TARGET_NAMES_BY_KIND[model_kind]
+    if model_kind == "fielding" and _train_fielding is not None:
+        return getattr(_train_fielding, "FIELDING_TARGET_COLS", None)
+    if model_kind == "innings" and _train_innings is not None:
+        return getattr(_train_innings, "INNINGS_TARGET_COLS", None)
+    return None
+
 
 def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
@@ -361,27 +379,28 @@ AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "et", "hgb", "quantile", "stacked"
 
 
 # Phase 1: coarse param grids for algorithm screening (few trials, large steps)
+# min_samples_leaf biased higher (4–16) to favor stability and reduce CV fold variance
 _PHASE1_COARSE_RF = {
     "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [6, 12, 20],
-    "est__estimator__min_samples_leaf": [2, 8, 16],
+    "est__estimator__min_samples_leaf": [4, 8, 12, 16],
 }
 _PHASE1_COARSE_GB = {
     "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [4, 8, 12],
     "est__estimator__learning_rate": [0.05, 0.15],
-    "est__estimator__min_samples_leaf": [2, 8, 16],
+    "est__estimator__min_samples_leaf": [4, 8, 12, 16],
 }
 _PHASE1_COARSE_ET = {
     "est__estimator__n_estimators": [50, 150, 300, 500],
     "est__estimator__max_depth": [6, 12, 20],
-    "est__estimator__min_samples_leaf": [2, 8, 16],
+    "est__estimator__min_samples_leaf": [4, 8, 12, 16],
 }
 _PHASE1_COARSE_HGB = {
     "est__estimator__max_iter": [100, 200, 300],
     "est__estimator__max_depth": [4, 8, 12],
     "est__estimator__learning_rate": [0.05, 0.15],
-    "est__estimator__min_samples_leaf": [2, 8, 16],
+    "est__estimator__min_samples_leaf": [4, 8, 12, 16],
 }
 _PHASE1_COARSE_MLP_REG = {
     "est__estimator__hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
@@ -419,20 +438,27 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
-def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
+def _compute_metrics_regression(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    target_names: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Compute regression metrics from cross-validated predictions.
 
     Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance,
     target_context (mean, std, min, max for MAE interpretation), baseline comparison
-    (naive MAE, improvement %), and learning_curve summary.
+    (naive MAE, improvement %), learning_curve summary, and per_target_mae when
+    target_names is provided for multi-output models.
     - mae: mean absolute error (interpretable units)
-    - target_mean, target_std: provide context for MAE (e.g. MAE=6 vs mean=10 = ~60% relative error)
-    - baseline_mae: MAE of naive predictor (always predict target mean)
-    - baseline_improvement_pct: how much better than naive (positive = model adds value)
-    - learning_curve: val_still_improving, overfitting_gap
+    - baseline_improvement_pct: top-level for UI (how much better than naive)
+    - mae_pct_of_mean: top-level for UI (MAE as % of target mean)
+    - per_target_mae: per-target MAE for multi-output (e.g. bowling runs, balls, wickets)
     """
     try:
-        y_flat = np.asarray(y).ravel()
+        y_arr = np.asarray(y)
+        y_flat = y_arr.ravel()
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
         y_pred_flat = np.asarray(y_pred).ravel()
         mae = float(mean_absolute_error(y_flat, y_pred_flat))
@@ -464,6 +490,11 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
             "median_ae": round(median_ae, 4),
             "max_error": round(worst_err, 4),
             "explained_variance": round(expl_var, 4),
+            # Top-level for UI: key tuning/eval metrics
+            "baseline_improvement_pct": baseline_improvement_pct,
+            "mae_pct_of_mean": mae_pct_of_mean,
+            "target_mean": round(target_mean, 4),
+            "target_std": round(target_std, 4),
             "target_context": {
                 "target_mean": round(target_mean, 4),
                 "target_std": round(target_std, 4),
@@ -477,10 +508,24 @@ def _compute_metrics_regression(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv
             },
         }
 
+        # Per-target MAE for multi-output (bowling: runs, balls, wickets; batting: runs, balls, etc.)
+        if target_names and y_arr.ndim == 2 and y_arr.shape[1] > 1:
+            y_pred_arr = np.asarray(y_pred)
+            n_t = y_arr.shape[1]
+            if y_pred_arr.ndim == 2 and y_pred_arr.shape[1] >= n_t:
+                per_target: Dict[str, float] = {}
+                for j in range(min(n_t, len(target_names))):
+                    mae_j = float(mean_absolute_error(y_arr[:, j], y_pred_arr[:, j]))
+                    per_target[f"mae_{target_names[j]}"] = round(mae_j, 4)
+                out["per_target_mae"] = per_target
+
         # Learning curve: does validation still improve with more data? overfitting?
         lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
         if lc:
             out["learning_curve"] = lc
+            # Top-level for UI
+            out["overfitting_gap"] = lc.get("overfitting_gap")
+            out["val_still_improving"] = lc.get("val_still_improving")
 
         return out
     except Exception as e:
@@ -765,7 +810,11 @@ def _compute_mlqa_audit(
             "final_verdict": final_verdict,
             "checks": {
                 "overfitting": {"delta": round(delta, 4), "flagged": overfitting_risk},
-                "stability": {"cv_std": round(fold_std, 4), "flagged": unstable},
+                "stability": {
+                    "cv_std": round(fold_std, 4),
+                    "flagged": unstable,
+                    "cv_fold_scores": [round(float(s), 4) for s in fold_scores],
+                },
             },
         }
     except Exception as e:
@@ -1058,8 +1107,12 @@ def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tup
         p["est__estimator__random_state"] = [rs]
         candidates.append(("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), p))
     if "et" in allow:
-        p = dict(_PHASE1_COARSE_ET)
-        p["est__estimator__random_state"] = [rs]
+        et_space = get_tuning_search_space("et")
+        if et_space:
+            p = _to_pipeline_params(et_space, rs)
+        else:
+            p = dict(_PHASE1_COARSE_ET)
+            p["est__estimator__random_state"] = [rs]
         candidates.append(("et", "ExtraTreesRegressor", ExtraTreesRegressor(), p))
     if "hgb" in allow:
         p = dict(_PHASE1_COARSE_HGB)
@@ -1307,7 +1360,9 @@ def _run_search_two_phase_single_regression(
             "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
         }
         if best_pipe:
-            report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+            report["metrics"] = _compute_metrics_regression(
+                best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
+            )
             _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
         return best_pipe, best_params, report
 
@@ -1317,7 +1372,7 @@ def _run_search_two_phase_single_regression(
             est = RandomForestRegressor(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "gb":
@@ -1325,14 +1380,14 @@ def _run_search_two_phase_single_regression(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "et":
             est = ExtraTreesRegressor(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "mlp":
@@ -1352,7 +1407,7 @@ def _run_search_two_phase_single_regression(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         pipe = _build_pipeline_single_regression(est)
@@ -1448,7 +1503,9 @@ def _run_search_two_phase_single_regression(
         "candidates": [{"algorithm": r[0], "best_score": r[2]} for r in results],
     }
     if best_pipe:
-        report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["metrics"] = _compute_metrics_regression(
+            best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
+        )
         _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
@@ -1526,7 +1583,9 @@ def _run_search_single_regression(
         "candidates": all_cv_results,
     }
     if best_pipe is not None:
-        report["metrics"] = _compute_metrics_regression(best_pipe, X, y, cv)
+        report["metrics"] = _compute_metrics_regression(
+            best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
+        )
         _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
@@ -1788,7 +1847,9 @@ def _run_search_two_phase(
             "phase": "screening_only",
         }
         if best_pipe is not None:
-            report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+            report["metrics"] = _compute_metrics_regression(
+                best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
+            )
             _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
         return best_pipe, best_params, report
 
@@ -1820,7 +1881,7 @@ def _run_search_two_phase(
         if alg == "rf":
             n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
+            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
             est = RandomForestRegressor(
                 n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
             )
@@ -1828,7 +1889,7 @@ def _run_search_two_phase(
             n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 3, 20, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
+            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
             est = GradientBoostingRegressor(
                 n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
@@ -1838,7 +1899,7 @@ def _run_search_two_phase(
                 n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
                 depth = trial.suggest_int("max_depth", 4, 20, step=2)
                 lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-                leaf = trial.suggest_int("min_samples_leaf", 1, 24)
+                leaf = trial.suggest_int("min_samples_leaf", 4, 24)
                 est = GradientBoostingRegressor(
                     n_estimators=n_est,
                     max_depth=depth,
@@ -1855,7 +1916,7 @@ def _run_search_two_phase(
         elif alg == "et":
             n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
+            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
             est = ExtraTreesRegressor(
                 n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
             )
@@ -1863,7 +1924,7 @@ def _run_search_two_phase(
             n_est = trial.suggest_int("max_iter", 50, 400, step=50)
             depth = trial.suggest_int("max_depth", 3, 14, step=1)
             lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 1, 24)
+            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
             est = HistGradientBoostingRegressor(
                 max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
             )
@@ -1998,7 +2059,9 @@ def _run_search_two_phase(
         "phase": "two_phase",
     }
     if best_pipe is not None:
-        report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+        report["metrics"] = _compute_metrics_regression(
+            best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
+        )
         _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
@@ -2085,7 +2148,9 @@ def _run_search(
         "candidates": all_cv_results,
     }
     if best_pipe is not None:
-        report["metrics"] = _compute_metrics_regression(best_pipe, X, Y, cv)
+        report["metrics"] = _compute_metrics_regression(
+            best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
+        )
         _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
     return best_pipe, best_params, report
 
@@ -2757,7 +2822,7 @@ def _run_search_two_phase_classification(
             est = RandomForestClassifier(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "gb":
@@ -2765,14 +2830,14 @@ def _run_search_two_phase_classification(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "et":
             est = ExtraTreesClassifier(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         elif alg == "mlp":
@@ -2792,7 +2857,7 @@ def _run_search_two_phase_classification(
                 max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
                 max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
                 learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 24),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
                 random_state=random_state,
             )
         pipe = Pipeline([("scaler", StandardScaler()), ("est", est)])

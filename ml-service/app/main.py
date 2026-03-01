@@ -1165,6 +1165,24 @@ def _get_model_artifact_stats(
     }
 
 
+def _flatten_metrics_for_display(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten nested metric dicts so the UI can display key=value chips.
+
+    Expands per_target_mae (e.g. mae_runs, mae_balls, mae_wickets) to top-level.
+    Skips nested dicts/lists that would render as [object Object].
+    """
+    out: Dict[str, Any] = {}
+    for k, v in metrics.items():
+        if k == "per_target_mae" and isinstance(v, dict):
+            for sk, sv in v.items():
+                out[sk] = sv
+            continue
+        if isinstance(v, (dict, list)) and not isinstance(v, (str, bytes)):
+            continue
+        out[k] = v
+    return out
+
+
 def _enrich_with_tuning_report(
     rec: Dict[str, Any],
     models_dir: str,
@@ -1210,7 +1228,9 @@ def _enrich_with_tuning_report(
         rec["n_features"] = report.get("n_features")
         metrics = report.get("metrics") or {}
         if metrics:
-            rec["metrics"] = metrics
+            # Flatten nested structures for UI display (target_context, baseline_comparison,
+            # learning_curve, per_target_mae) so values show as key=value chips instead of [object Object]
+            rec["metrics"] = _flatten_metrics_for_display(metrics)
         feature_importance = report.get("feature_importance")
         if feature_importance and isinstance(feature_importance, dict):
             rec["feature_importance"] = feature_importance

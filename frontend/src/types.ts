@@ -60,7 +60,11 @@ export type MLQAAudit = {
   final_verdict: string;
   checks?: {
     overfitting?: { delta: number; flagged: boolean };
-    stability?: { cv_std: number; flagged: boolean };
+    stability?: {
+      cv_std: number;
+      flagged: boolean;
+      cv_fold_scores?: number[];
+    };
   };
 };
 
