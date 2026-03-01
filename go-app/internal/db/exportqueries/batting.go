@@ -521,10 +521,14 @@ func BattingTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, err
 // battingTrainingRowsRawQuery returns SQL and args for the raw batting training query (no snapshot joins).
 // If formatIDs is nil, no format filter; otherwise WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2.
 func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string, args []any) {
-	q = `WITH innings_sums AS (
-		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
-		FROM batting_data
-		GROUP BY match_id, inning_number
+	q = `WITH eligible_matches AS (
+		SELECT match_id FROM match m WHERE m.match_date < $1
+	),
+	innings_sums AS (
+		SELECT bd.match_id, bd.inning_number, SUM(bd.runs)::bigint AS total_runs
+		FROM batting_data bd
+		WHERE bd.match_id IN (SELECT match_id FROM eligible_matches)
+		GROUP BY bd.match_id, bd.inning_number
 	)
 	SELECT
 		m.match_date,
@@ -562,7 +566,7 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 			q,
 			"WHERE m.match_date < $1",
 			"WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2",
-			1,
+			2, // replace in eligible_matches and main WHERE
 		)
 		args = []any{formatIDs, cutoff}
 	}

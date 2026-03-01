@@ -494,15 +494,20 @@ func BowlingTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, err
 
 // bowlingTrainingRowsRawQuery returns SQL and args for the raw bowling training query (no snapshot joins).
 func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string, args []any) {
-	q = `WITH innings_runs_cte AS (
-		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
-		FROM batting_data
-		GROUP BY match_id, inning_number
+	q = `WITH eligible_matches AS (
+		SELECT match_id FROM match m WHERE m.match_date < $1
+	),
+	innings_runs_cte AS (
+		SELECT bd.match_id, bd.inning_number, SUM(bd.runs)::bigint AS total_runs
+		FROM batting_data bd
+		WHERE bd.match_id IN (SELECT match_id FROM eligible_matches)
+		GROUP BY bd.match_id, bd.inning_number
 	),
 	innings_wickets_cte AS (
-		SELECT match_id, inning_number, SUM(wickets)::bigint AS total_wickets
-		FROM bowling_data
-		GROUP BY match_id, inning_number
+		SELECT bd.match_id, bd.inning_number, SUM(bd.wickets)::bigint AS total_wickets
+		FROM bowling_data bd
+		WHERE bd.match_id IN (SELECT match_id FROM eligible_matches)
+		GROUP BY bd.match_id, bd.inning_number
 	)
 	SELECT
 		m.match_date,
@@ -542,7 +547,7 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 			q,
 			"WHERE m.match_date < $1",
 			"WHERE m.format_id = ANY($1::bigint[]) AND m.match_date < $2",
-			1,
+			2, // replace in eligible_matches and main WHERE
 		)
 		args = []any{formatIDs, cutoff}
 	}
