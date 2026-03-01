@@ -138,13 +138,9 @@ const HealthTab: React.FC = () => {
 
   const legacyValue = useMemo(() => {
     if (!mlData) return '—';
-    const legacy = [
-      mlData.legacy_batting_available && 'batting',
-      mlData.legacy_bowling_available && 'bowling',
-      mlData.legacy_fielding_available && 'fielding',
-      mlData.legacy_extras_available && 'extras',
-      mlData.legacy_win_available && 'win',
-    ]
+    const legacy = MODEL_TYPES.map(
+      (t) => mlData?.[`legacy_${t}_available` as keyof HealthResponse] && t,
+    )
       .filter(Boolean)
       .join(', ');
     return legacy || 'None';

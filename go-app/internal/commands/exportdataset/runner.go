@@ -83,6 +83,28 @@ func (r *Runner) perFormatExporters() []perFormatExporter {
 	}
 }
 
+// addPerFormatExportGoroutines adds goroutines to g that export fielding/extras/win per-format CSVs.
+func (r *Runner) addPerFormatExportGoroutines(
+	parentCtx context.Context,
+	g *errgroup.Group,
+	outDir string,
+	format string,
+) {
+	for _, fe := range r.perFormatExporters() {
+		if !fe.enabled {
+			continue
+		}
+		fe := fe
+		g.Go(func() error {
+			return r.writeUsing(
+				outDir,
+				fmt.Sprintf("%s_encoded_%s.csv", fe.name, format),
+				func(w io.Writer) error { return fe.exporter.ExportFormat(parentCtx, format, w) },
+			)
+		})
+	}
+}
+
 // NewRunnerWithServices constructs a Runner with filesystem and export services.
 // Field, Extras, Win can be nil to skip their export (e.g. backward compatibility).
 func NewRunnerWithServices(
@@ -196,19 +218,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 						func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 					)
 				})
-				for _, fe := range r.perFormatExporters() {
-					if !fe.enabled {
-						continue
-					}
-					fe := fe
-					g.Go(func() error {
-						return r.writeUsing(
-							opts.OutDir,
-							fmt.Sprintf("%s_encoded_%s.csv", fe.name, f),
-							func(w io.Writer) error { return fe.exporter.ExportFormat(parentCtx, f, w) },
-						)
-					})
-				}
+				r.addPerFormatExportGoroutines(parentCtx, &g, opts.OutDir, f)
 			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))
@@ -276,19 +286,7 @@ func (r *Runner) Run(ctx context.Context, opts cli.Options) error {
 					func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 				)
 			})
-			for _, fe := range r.perFormatExporters() {
-				if !fe.enabled {
-					continue
-				}
-				fe := fe
-				g.Go(func() error {
-					return r.writeUsing(
-						opts.OutDir,
-						fmt.Sprintf("%s_encoded_%s.csv", fe.name, f),
-						func(w io.Writer) error { return fe.exporter.ExportFormat(parentCtx, f, w) },
-					)
-				})
-			}
+			r.addPerFormatExportGoroutines(parentCtx, &g, opts.OutDir, f)
 		}
 		if err := g.Wait(); err != nil {
 			slog.Error("exportdataset.Runner.Run format export failed", slog.Any("err", err))
