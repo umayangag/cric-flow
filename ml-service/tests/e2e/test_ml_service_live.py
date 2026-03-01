@@ -123,3 +123,14 @@ def test_model_stats_live():
     assert "models_dir" in body
     assert "models" in body
     assert isinstance(body["models"], list)
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
+def test_openapi_schema_live():
+    """GET /openapi.json returns 200 with valid OpenAPI structure."""
+    resp = httpx.get(f"{_base_url()}/openapi.json", timeout=5.0)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "openapi" in body
+    assert "paths" in body

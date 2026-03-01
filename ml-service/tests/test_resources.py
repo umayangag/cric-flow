@@ -190,3 +190,49 @@ def test_suggested_n_jobs_invalid_per_job_falls_back():
             ):
                 n = suggested_n_jobs("training")
                 assert n >= 1
+
+
+def test_memory_limit_mb_cgroup_max_continues():
+    """When cgroup file contains 'max', loop continues to next path or psutil."""
+    from ml.resources import _memory_limit_mb
+
+    def open_side_effect(path, *args, **kwargs):
+        if "memory.max" in str(path):
+            from io import StringIO
+
+            return StringIO("max")
+        if "memory.limit_in_bytes" in str(path):
+            from io import StringIO
+
+            return StringIO("2147483648")  # 2GB
+        raise FileNotFoundError(path)
+
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("builtins.open", side_effect=open_side_effect):
+            result = _memory_limit_mb()
+            assert result == 2048
+
+
+def test_memory_limit_mb_psutil_fallback_when_cgroup_fails():
+    """When cgroup paths fail, psutil fallback is used."""
+    from ml.resources import _memory_limit_mb
+
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("builtins.open", side_effect=FileNotFoundError("no cgroup")):
+            with patch("psutil.virtual_memory") as mock_vm:
+                mock_vm.return_value.total = 8 * 1024 * 1024 * 1024  # 8GB
+                result = _memory_limit_mb()
+                assert result == 8192
+
+
+def test_memory_limit_mb_psutil_exception_returns_zero():
+    """When psutil.virtual_memory raises, returns 0."""
+    import psutil
+
+    from ml.resources import _memory_limit_mb
+
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("builtins.open", side_effect=FileNotFoundError("no cgroup")):
+            with patch.object(psutil, "virtual_memory", side_effect=RuntimeError("psutil failed")):
+                result = _memory_limit_mb()
+                assert result == 0

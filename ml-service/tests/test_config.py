@@ -501,3 +501,63 @@ def test_config_load_user_fails_keeps_default(monkeypatch):
         assert cfg == {"inputs": {}}
     finally:
         config_mod._cached = None
+
+
+def test_get_tuned_params_from_go_app_404_returns_none():
+    """get_tuned_params_from_go_app returns None on 404."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 404, "Not Found", None, None)
+    with patch("urllib.request.urlopen", side_effect=err):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_http_error_non_404_returns_none():
+    """get_tuned_params_from_go_app returns None on non-404 HTTPError."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 500, "Internal Error", None, None)
+    with patch("urllib.request.urlopen", side_effect=err):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_os_error_returns_none():
+    """get_tuned_params_from_go_app returns None on OSError (connection refused)."""
+    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_get_tuned_params_from_go_app_params_string_json_decode_fails():
+    """get_tuned_params_from_go_app returns None when params is invalid JSON string."""
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"params": "not valid json {"}'
+    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
+    assert result is None
+
+
+def test_save_tuned_params_to_go_app_http_error_raises():
+    """save_tuned_params_to_go_app raises ValueError on HTTPError."""
+    import urllib.error
+
+    err = urllib.error.HTTPError("http://x", 500, "Error", None, None)
+    err.read = lambda: b"error body"
+    with patch("urllib.request.urlopen", side_effect=err):
+        with pytest.raises(ValueError, match="HTTP 500"):
+            config_mod.save_tuned_params_to_go_app(
+                "http://localhost:8080", "batting", "ODI", {"n_estimators": 100}
+            )
+
+
+def test_save_tuned_params_to_go_app_os_error_raises():
+    """save_tuned_params_to_go_app raises ValueError on OSError."""
+    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        with pytest.raises(ValueError, match="request failed"):
+            config_mod.save_tuned_params_to_go_app(
+                "http://localhost:8080", "batting", "ODI", {"n_estimators": 100}
+            )
