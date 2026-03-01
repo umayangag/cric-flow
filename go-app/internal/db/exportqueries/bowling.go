@@ -538,34 +538,34 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 }
 
 type bowlingTrainingRowRaw struct {
-	matchDate     time.Time
-	playerID      int64
-	formatID      int64
-	venueID       int64
-	oppositionID  int64
-	runs          string
-	balls         string
-	wickets       string
-	inningsRuns   string
+	matchDate      time.Time
+	playerID       int64
+	formatID       int64
+	venueID        int64
+	oppositionID   int64
+	runs           string
+	balls          string
+	wickets        string
+	inningsRuns    string
 	inningsWickets string
-	temp         string
-	wind         string
-	rain         string
-	humidity     string
-	cloud        string
-	pressure     string
-	viscosity    string
-	inning       string
-	sess         string
-	toss         string
-	seasonID     string
-	playerName   string
-	formatCode   string
-	catches      string
-	runOuts      string
-	stumpings    string
-	runoutsDH    string
-	fieldingInv  string
+	temp           string
+	wind           string
+	rain           string
+	humidity       string
+	cloud          string
+	pressure       string
+	viscosity      string
+	inning         string
+	sess           string
+	toss           string
+	seasonID       string
+	playerName     string
+	formatCode     string
+	catches        string
+	runOuts        string
+	stumpings      string
+	runoutsDH      string
+	fieldingInv    string
 }
 
 func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
@@ -654,7 +654,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	}
 	headers := []string{
 		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-		"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum", "bowling_career_avg",
+		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -690,7 +690,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
 			floatToExport(
 				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
@@ -755,7 +755,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	if len(matchIDs) == 0 {
 		headers := []string{
 			"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-			"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum", "bowling_career_avg",
+			"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -843,7 +843,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	headers := []string{
 		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-		"bowling_consistency", "bowling_form", "bowling_form_short", "bowling_form_long", "bowling_momentum", "bowling_career_avg",
+		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
@@ -877,7 +877,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
 			floatToExport(
 				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
