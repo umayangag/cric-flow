@@ -122,7 +122,7 @@ function TuningInsights({
   if (og != null && typeof og === 'number') {
     items.push({
       label: 'Overfitting gap',
-      value: String(og.toFixed(4)),
+      value: og.toFixed(4),
       hint: 'train−val score diff; high = overfitting',
     });
   }
@@ -138,7 +138,7 @@ function TuningInsights({
   if (cvStd != null && typeof cvStd === 'number') {
     items.push({
       label: 'CV fold σ',
-      value: String(cvStd.toFixed(4)),
+      value: cvStd.toFixed(4),
       hint: 'stability; >0.05 = unstable',
     });
   }
