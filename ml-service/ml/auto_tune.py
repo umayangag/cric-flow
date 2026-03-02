@@ -416,25 +416,33 @@ _PHASE1_COARSE_MLP_CLF = {
 }
 
 
-def _effective_timeseries_gap(gap: int, n_samples: int) -> int:
+def _effective_timeseries_gap(gap: int, n_samples: int, small_dataset_threshold: int = 5000) -> int:
     """Cap gap for small datasets; large gaps hurt small models (e.g. win with ~2k samples).
 
-    Use gap=0 when n_samples < 5000 so win/extras keep prior behavior. For larger datasets
-    (bowling, batting), cap gap at 5% of samples to avoid over-restrictive splits.
+    Use gap=0 when n_samples < small_dataset_threshold so win/extras keep prior behavior. For larger
+    datasets (bowling, batting), cap gap at 5% of samples to avoid over-restrictive splits.
+    Config: ml.tuning.timeseries_small_dataset_threshold.
     """
     if gap <= 0:
         return 0
-    if n_samples < 5000:
+    if n_samples < small_dataset_threshold:
         return 0  # Small datasets: no gap to avoid regressions (win, extras, etc.)
     return min(gap, max(1, n_samples // 20))  # Cap at ~5% of data
 
 
-def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, random_state: int = 42, gap: int = 0):
+def _get_cv_object(
+    validation_method: str,
+    cv_splits: int,
+    n_samples: int,
+    random_state: int = 42,
+    gap: int = 0,
+    small_dataset_threshold: int = 5000,
+):
     """Return a CV splitter for RandomizedSearchCV. validation_method: kfold | walk_forward.
 
     When walk_forward, uses TimeSeriesSplit with optional gap (samples between train/test) to
     reduce temporal leakage. Config: ml.tuning.timeseries_split_gap. Gap is capped for small
-    datasets via _effective_timeseries_gap.
+    datasets via _effective_timeseries_gap (ml.tuning.timeseries_small_dataset_threshold).
     """
     if n_samples < 2:
         raise ValueError(f"Need at least 2 samples for cross-validation, got {n_samples}")
@@ -447,7 +455,7 @@ def _get_cv_object(validation_method: str, cv_splits: int, n_samples: int, rando
             return KFold(n_splits=max(2, min(cv_splits, n_samples - 1)), shuffle=True, random_state=random_state)
         if n_samples < n_splits + 1:
             return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
-        effective_gap = _effective_timeseries_gap(max(0, int(gap)), n_samples)
+        effective_gap = _effective_timeseries_gap(max(0, int(gap)), n_samples, small_dataset_threshold)
         return TimeSeriesSplit(n_splits=n_splits, gap=effective_gap)
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
@@ -1266,7 +1274,10 @@ def _run_search_two_phase_single_regression(
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression_single(allow)
     if not candidates:
@@ -1545,7 +1556,10 @@ def _run_search_single_regression(
     if not candidates:
         raise ValueError(f"No algorithms selected for extras; available: rf, gb. You requested: {list(algorithms)}")
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     best_score = None
     best_pipe = None
     best_params = None
@@ -1625,7 +1639,10 @@ def _run_search_classification(
     if not candidates:
         raise ValueError(f"No algorithms selected for win; available: rf, gb. You requested: {list(algorithms)}")
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     best_score = None
     best_pipe = None
     best_params = None
@@ -1736,7 +1753,10 @@ def _run_search_two_phase(
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_regression(model_kind, allow)
     if not candidates:
@@ -2103,7 +2123,10 @@ def _run_search(
             f"No algorithms selected for {model_kind}; available: rf, gb, quantile, et, hgb, stacked, mlp. You requested: {list(algorithms)}"
         )
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     best_score = None
     best_pipe = None
     best_params = None
@@ -2230,7 +2253,7 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
         return rows
     try:
         return sorted(rows, key=lambda r: str(r[idx]) if idx < len(r) and r[idx] is not None else "")
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         logger.warning(
             "_sort_rows_by_match_date failed to sort rows, returning original order. error=%s",
             e,
@@ -2715,7 +2738,10 @@ def _run_search_two_phase_classification(
             algs = list(algs) + ["mlp"]
     allow = frozenset(str(a).lower().strip() for a in (algs if isinstance(algs, (list, tuple)) else [algs]))
     gap = max(0, int(tuning_cfg.get("timeseries_split_gap", 0) or 0))
-    cv = _get_cv_object(validation_method, cv_splits, X.shape[0], random_state, gap=gap)
+    small_thresh = int(tuning_cfg.get("timeseries_small_dataset_threshold", 5000) or 5000)
+    cv = _get_cv_object(
+        validation_method, cv_splits, X.shape[0], random_state, gap=gap, small_dataset_threshold=small_thresh
+    )
     n_jobs = _effective_n_jobs(tuning_cfg, n_jobs_override)
     candidates = _phase1_candidates_classification(allow)
     if not candidates:

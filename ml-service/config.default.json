@@ -84,6 +84,7 @@
       ],
       "validation_method": "walk_forward",
       "timeseries_split_gap": 200,
+      "timeseries_small_dataset_threshold": 5000,
       "search_space": {
         "rf": {
           "n_estimators": [
@@ -237,3 +238,4 @@
     "max_wickets_per_innings": 10
   }
 }
+
