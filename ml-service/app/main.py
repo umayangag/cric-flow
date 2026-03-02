@@ -1232,8 +1232,8 @@ def _enrich_with_tuning_report(
         rec["n_features"] = report.get("n_features")
         metrics = report.get("metrics") or {}
         if metrics:
-            # Flatten nested structures for UI display (target_context, baseline_comparison,
-            # learning_curve, per_target_mae) so values show as key=value chips instead of [object Object]
+            # Flatten metrics for UI display by expanding `per_target_mae` and joining lists.
+            # Other nested objects are skipped to avoid '[object Object]' in the UI.
             rec["metrics"] = _flatten_metrics_for_display(metrics)
         feature_importance = report.get("feature_importance")
         if feature_importance and isinstance(feature_importance, dict):
