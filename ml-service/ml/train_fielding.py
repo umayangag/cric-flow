@@ -186,7 +186,7 @@ def train_and_save(
         model.fit(Xs, Y)
 
     # Extract feature importance
-    feature_importance = TrainingPipeline._extract_feature_importance(model, FIELDING_FEATURE_COLS)
+    feature_importance = TrainingPipeline.extract_feature_importance(model, FIELDING_FEATURE_COLS)
 
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]

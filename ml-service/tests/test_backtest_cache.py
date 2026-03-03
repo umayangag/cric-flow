@@ -1,9 +1,6 @@
 """Unit tests for BacktestCache behavior (in-memory backtest cache)."""
 
-from datetime import timedelta
 from typing import Any, Dict, List
-
-import time
 
 from app.backtest_cache import BacktestCache
 
@@ -61,4 +58,3 @@ def test_backtest_cache_increment_and_reset_compute_counts() -> None:
     players_after, match_after = cache.get_compute_counts()
     assert players_after == 0
     assert match_after == 0
-

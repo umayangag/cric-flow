@@ -38,6 +38,7 @@ from ml.tuning.types import (
     _train_innings,
     _train_win,
 )
+from ml.utils import extract_feature_importance_from_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -352,22 +353,7 @@ def _extract_feature_importance(
     Returns dict {feature_name: importance} or None if not available (e.g. MLP, linear).
     """
     est = pipe.named_steps.get("est") if pipe else None
-    if est is None:
-        return None
-    imps = None
-    if hasattr(est, "estimators_") and len(est.estimators_) > 0:
-        imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
-        if imp_list:
-            imps = np.mean(imp_list, axis=0)
-    elif hasattr(est, "feature_importances_"):
-        imps = est.feature_importances_
-    if imps is None:
-        return None
-    if imps.ndim > 1:
-        imps = np.mean(imps, axis=0)
-    n = min(n_features, len(imps))
-    names = feature_names if feature_names and len(feature_names) >= n else [f"feature_{i}" for i in range(n)]
-    return {names[i]: float(imps[i]) for i in range(n)}
+    return extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
 
 
 def _compute_mlqa_audit(

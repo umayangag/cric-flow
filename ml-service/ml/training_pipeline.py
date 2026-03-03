@@ -32,7 +32,7 @@ from .config import get_pipeline_common_config, get_training_params
 from .data_quality import clip_target_outliers, impute_features
 from .feature_transforms import apply_transforms, get_transform_config
 from .pipeline_common import compute_time_decay_weights, get_scaler
-from .utils import make_base_estimator
+from .utils import extract_feature_importance_from_estimator, make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ class TrainingPipeline:
 
         # Extract feature importance
         feature_names_for_importance = (metadata.get("feature_names") if metadata else None) or self.spec.feature_cols
-        feature_importance = self._extract_feature_importance(model, feature_names_for_importance)
+        feature_importance = self.extract_feature_importance(model, feature_names_for_importance)
 
         # Save artifacts
         prefix = f"{self.spec.artifact_prefix}_share" if share_model else self.spec.artifact_prefix
@@ -645,29 +645,19 @@ class TrainingPipeline:
             raise SystemExit(1)
 
     @staticmethod
-    def _extract_feature_importance(model: Any, feature_names: List[str]) -> Optional[Dict[str, float]]:
-        """Extract average feature importance from a (Multi)OutputRegressor."""
-        estimators = getattr(model, "estimators_", None)
-        if not estimators:
-            # Single estimator (not MultiOutput)
-            if hasattr(model, "feature_importances_"):
-                n_f = min(len(feature_names), len(model.feature_importances_))
-                importance = {feature_names[i]: float(model.feature_importances_[i]) for i in range(n_f)}
-                top = sorted(importance.items(), key=lambda x: -x[1])[:5]
-                logger.info("training_pipeline.feature_importance_top5 %s", top)
-                return importance
+    def extract_feature_importance(model: Any, feature_names: List[str]) -> Optional[Dict[str, float]]:
+        """Extract average feature importance and log the top contributors."""
+        importance = extract_feature_importance_from_estimator(model, feature_names)
+        if not importance:
             return None
-        imps = []
-        for est in estimators:
-            if hasattr(est, "feature_importances_"):
-                imps.append(est.feature_importances_)
-        if not imps:
-            return None
-        n_f = min(len(feature_names), len(imps[0]))
-        importance = {feature_names[i]: float(np.mean([arr[i] for arr in imps])) for i in range(n_f)}
         top = sorted(importance.items(), key=lambda x: -x[1])[:5]
         logger.info("training_pipeline.feature_importance_top5 %s", top)
         return importance
+
+    @staticmethod
+    def _extract_feature_importance(model: Any, feature_names: List[str]) -> Optional[Dict[str, float]]:
+        """Backward-compatible alias for callers using the old private name."""
+        return TrainingPipeline.extract_feature_importance(model, feature_names)
 
 
 # ── Module-level helpers ─────────────────────────────────────────────────
