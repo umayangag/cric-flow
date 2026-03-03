@@ -94,11 +94,11 @@ When coverage **passes** (actual ≥ threshold), raise the threshold to match th
 |-------------|-----------------|--------|
 | **go-app**  | `go-app/Makefile` | `COV_MIN ?= N` (line ~148) |
 |             | Root `Makefile` | `COV_MIN_GO ?= N` (line ~588) |
-|             | `.github/workflows/go-app-tests.yml` | `COV_MIN: "N"` in coverage-check step |
+|             | `.github/workflows/go-app-ci.yml` | `COV_MIN: "N"` in coverage-check step |
 | **frontend**| `frontend/vite.config.ts` | In `test.coverage`, set each of `lines`, `functions`, `statements`, `branches` to floor(that metric’s actual %). E.g. if lines=62.3% and threshold 50, set lines to 62. |
 | **ml-service** | `ml-service/Makefile` | `COV_MIN?=N` (line ~11) |
 |             | Root `Makefile` | `COV_MIN_ML ?= N` (line ~589) |
-|             | `.github/workflows/ml-service-tests.yml` | `COV_MIN: "N"` in coverage-check step |
+|             | `.github/workflows/ml-service-ci.yml` | `COV_MIN: "N"` in coverage-check step |
 
 After raising, re-run the coverage-check step for that component to confirm it still passes.
 
