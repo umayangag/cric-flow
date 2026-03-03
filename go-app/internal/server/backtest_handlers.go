@@ -484,9 +484,17 @@ func populateMatchAggregatesAndMetrics(
 
 	// When win model is available and we have features, get win probability and rescale predictions.
 	if len(features) > 0 {
-		if winCtx, err := db.GetMatchWinContext(ctx, matchID); err == nil {
+		winCtx, err := db.GetMatchWinContext(ctx, matchID)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to get match win context for rescaling", slog.Int64("match_id", matchID), slog.Any("err", err))
+		} else {
 			w := buildBacktestWinFeatures(winCtx, formatFromFilters(resp.Filters), playerTeams, team1, team2, features)
-			if p, err := mlPredictMatchWinFunc(ctx, w); err == nil && p >= 0 && p <= 1 {
+			p, err := mlPredictMatchWinFunc(ctx, w)
+			if err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					slog.WarnContext(ctx, "win model prediction failed during rescaling", slog.Int64("match_id", matchID), slog.Any("err", err))
+				}
+			} else if p >= 0 && p <= 1 {
 				rescaleBacktestPredictionsToWinProbability(resp, playerTeams, team1, team2, p)
 			}
 		}
