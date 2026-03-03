@@ -26,7 +26,7 @@ def _batting_headers():
 
 
 def _one_batting_row():
-    """One row: 5 targets + 26 features + player_name. Order matches _batting_headers()."""
+    """One row: 5 targets + feature columns + player_name. Order matches _batting_headers()."""
     targets = ["10", "12", "1", "0", "3"]  # runs, balls, fours, sixes, batting_position
     feats = [
         "0.5",
@@ -54,8 +54,11 @@ def _one_batting_row():
         "0",
         "0",
         "0",
-        "0",  # seq cols (8)
+        "0",  # initial seq cols (may be extended below)
     ]
+    # Pad with zeros if new feature columns are added in shared config.
+    while len(feats) < len(BATTING_FEATURE_COLS):
+        feats.append("0")
     assert len(feats) == len(BATTING_FEATURE_COLS)
     return targets + feats + ["Player One"]
 
@@ -66,7 +69,7 @@ def _bowling_headers():
 
 
 def _one_bowling_row():
-    """One row: 3 targets + 25 features + player_name. Order matches _bowling_headers()."""
+    """One row: 3 targets + feature columns + player_name. Order matches _bowling_headers()."""
     targets = ["24", "24", "2"]  # runs, balls, wickets
     feats = [
         "0.4",
@@ -93,8 +96,11 @@ def _one_bowling_row():
         "0",
         "0",
         "0",
-        "0",  # seq cols (8)
+        "0",  # initial seq cols (may be extended below)
     ]
+    # Pad with zeros if new feature columns are added in shared config.
+    while len(feats) < len(BOWLING_FEATURE_COLS):
+        feats.append("0")
     assert len(feats) == len(BOWLING_FEATURE_COLS)
     return targets + feats + ["Bowler One"]
 
