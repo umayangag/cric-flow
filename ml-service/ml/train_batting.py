@@ -59,6 +59,7 @@ FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
+    "match_date_unix",
 ] + BAT_SEQ_COLS
 
 TARGET_COLS = [
@@ -89,6 +90,7 @@ def _batting_col_map() -> Dict[str, str]:
         "batting_venue": "batting_venue",
         "batting_opposition": "batting_opposition",
         "season_id": "season_id",
+        "match_date_unix": "match_date_unix",
         "batting_consistency": "batting_consistency",
         "batting_form": "batting_form",
         "batting_form_short": "batting_form_short",

@@ -143,7 +143,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	defer rows.Close()
 	headers := []string{
 		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
-		"match_date",
+		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"team1_bat_consistency_sum", "team1_bowl_consistency_sum", "team2_bat_consistency_sum", "team2_bowl_consistency_sum",
 		"team1_bat_form_sum", "team1_bowl_form_sum", "team2_bat_form_sum", "team2_bowl_form_sum",
@@ -175,6 +175,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.Itoa(team1Wins),
 			formatCode,
 			matchDate.Format("2006-01-02"),
+			strconv.FormatInt(matchDate.Unix(), 10),
 			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),

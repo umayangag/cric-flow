@@ -1,6 +1,8 @@
 import importlib
 import os
 
+from app.feature_config import get_feature_names
+
 
 def test_batting_feature_vector_length(tmp_path):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
@@ -28,8 +30,8 @@ def test_batting_feature_vector_length(tmp_path):
     )
     vec = m.batting_feature_vector(f)
     assert isinstance(vec, list)
-    # batting: 18 base + 8 seq = 26
-    assert len(vec) == 26
+    # batting length is defined by shared feature config
+    assert len(vec) == len(get_feature_names("batting"))
 
 
 def test_bowling_feature_vector_length(tmp_path):
@@ -58,5 +60,5 @@ def test_bowling_feature_vector_length(tmp_path):
     )
     vec = m.bowling_feature_vector(f)
     assert isinstance(vec, list)
-    # bowling: 17 base + 8 seq = 25 (consistency, form, momentum, career_avg + 7 weather + 3 inning/session/toss + 3 venue/opp/season + 8 seq)
-    assert len(vec) == 25
+    # bowling length is defined by shared feature config
+    assert len(vec) == len(get_feature_names("bowling"))

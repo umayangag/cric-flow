@@ -61,6 +61,7 @@ FIELDING_FEATURE_COLS = [
     "fielding_venue",
     "fielding_opposition",
     "season_id",
+    "match_date_unix",
 ]
 FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
 

@@ -38,6 +38,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  0 AS bowling_session,
 	  CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END AS toss,
 	  s.id AS season_id,
+	  EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 	  p.player_name,
 	  mf.code AS format_code,
 	  COALESCE(fd.catches,0) AS catches,
@@ -158,7 +159,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	baseHeaders := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "season_id", "player_name", "format_code",
+		"inning", "bowling_session", "toss", "season_id", "match_date_unix", "player_name", "format_code",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
 		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
@@ -197,6 +198,7 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 		tvv.bowling_venue,
 		tvo.bowling_opposition,
 		s.id AS season_id,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
@@ -246,7 +248,7 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 	headers := []string{
 		"runs", "balls", "wickets", "bowling_consistency", "bowling_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "match_date_unix", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
@@ -296,6 +298,7 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		COALESCE(tvv.bowling_venue, 0) AS bowling_venue,
 		COALESCE(tvo.bowling_opposition, 0) AS bowling_opposition,
 		COALESCE(s.id, 0) AS season,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches,
 		COALESCE(fd.run_outs,0) AS run_outs,
@@ -357,6 +360,7 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		"bowling_venue",
 		"bowling_opposition",
 		"season",
+		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",
@@ -400,6 +404,7 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		tvv.bowling_venue,
 		tvo.bowling_opposition,
 		s.id AS season_id,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches,
 		COALESCE(fd.run_outs,0) AS run_outs,
@@ -460,6 +465,7 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		"bowling_venue",
 		"bowling_opposition",
 		"season_id",
+		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",

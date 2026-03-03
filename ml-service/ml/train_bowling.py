@@ -58,6 +58,7 @@ FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
+    "match_date_unix",
 ] + BOWL_SEQ_COLS
 
 TARGET_COLS = [
@@ -86,6 +87,7 @@ def _prepare_bowling_df(df: pd.DataFrame) -> pd.DataFrame:
         "bowling_venue": "bowling_venue",
         "bowling_opposition": "bowling_opposition",
         "season_id": "season_id",
+        "match_date_unix": "match_date_unix",
         "bowling_consistency": "bowling_consistency",
         "bowling_form": "bowling_form",
         "bowling_momentum": "bowling_momentum",

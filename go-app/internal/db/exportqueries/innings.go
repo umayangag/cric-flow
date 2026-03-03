@@ -122,7 +122,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	defer rows.Close()
 	headers := []string{
 		"match_id", "inning_number", "innings_runs", "innings_wickets", "format_id", "venue_id", "season_id", "opposition_id", "format_code",
-		"match_date",
+		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
@@ -151,7 +151,10 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			strconv.FormatInt(oppositionID, 10),
 			formatCode,
 			matchDate.Format("2006-01-02"),
-			strconv.Itoa(temp), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
+			strconv.FormatInt(matchDate.Unix(), 10),
+			strconv.Itoa(
+				temp,
+			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 			strconv.FormatFloat(batConsSum, 'f', -1, 64),
 			strconv.FormatFloat(bowlConsSum, 'f', -1, 64),
 			strconv.FormatFloat(batFormSum, 'f', -1, 64),
