@@ -169,7 +169,7 @@ const OpsStatusTab: React.FC = () => {
         <Stack spacing={2}>
           <SectionCard
             title="Pipeline"
-            subtitle="Data import → precompute → export → train models. Click a step to copy its command."
+            subtitle="Import → precompute → export → train (uses config + DB params) or auto-tune (discover params). Click a step to copy its command."
           >
             <OpsPipelineGraph data={data} onRefresh={fetchStatus} />
             <PipelineProgressPanel
