@@ -47,7 +47,7 @@ All training params from `ml-service/config.json` → `ml.training.<model>` (def
 |-------|-------|-----------|------------|--------------|-----------|-------|
 | **Batting** | Player | 27 | 5 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
 | **Bowling** | Player | 26 | 3 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
-| **Fielding** | Player | 16 | 3 | 150 | 10 | StandardScaler on X; MultiOutputRegressor |
+| **Fielding** | Player | 15 | 3 | 150 | 10 | StandardScaler on X; MultiOutputRegressor |
 | **Extras** | Match | 16 | 1 | 100 | 8 | RandomForestRegressor; no scaler |
 | **Win** | Match | 22 | 1 (prob) | 100 | 8 | RandomForestClassifier; no scaler |
 | **Innings** | Innings | 17 | 2 | 100 | 8 | StandardScaler on X; MultiOutputRegressor (runs, wickets) |
