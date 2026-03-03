@@ -19,10 +19,31 @@ export type PredictScorecardSummary = {
   extras_innings2?: number;
 };
 
+/** Monte Carlo simulation result (when simulate=true on team-selection). */
+export type PredictSimulationResult = {
+  win_probability_team1: number;
+  win_probability_team2: number;
+  draw_probability: number;
+  innings1_total_mean: number;
+  innings1_total_std: number;
+  innings1_total_p10: number;
+  innings1_total_p50: number;
+  innings1_total_p90: number;
+  innings2_total_mean: number;
+  innings2_total_std: number;
+  innings2_total_p10: number;
+  innings2_total_p50: number;
+  innings2_total_p90: number;
+  num_matchups: number;
+  num_samples: number;
+};
+
 export type PredictTeamSelectionResponse = {
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
   scorecard_summary?: PredictScorecardSummary;
+  /** Present when simulate=true; win probs and innings distributions from Monte Carlo. */
+  simulation?: PredictSimulationResult;
 };
 
 export type HealthResponse = {
