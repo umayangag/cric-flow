@@ -293,9 +293,7 @@ class TrainingPipeline:
         # Outlier clipping on targets
         clip_percentile = training_params.get("target_clip_percentile", 99.0)
         clip_names = self.spec.target_names_for_clip or self.spec.target_cols
-        Y, clip_info = clip_target_outliers(
-            Y, percentile=clip_percentile, target_names=clip_names[: Y.shape[1]]
-        )
+        Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=clip_names[: Y.shape[1]])
 
         # Build and fit model
         compress = training_params["joblib_compress"]
@@ -402,7 +400,6 @@ class TrainingPipeline:
     # ── Private helpers ──────────────────────────────────────────────────
 
     def _parse_args(self) -> argparse.Namespace:
-        default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
         default_out_dir = os.environ.get("ML_SERVICE_OUTPUT_DIR", svc_config.default_artifacts_dir())
 
         parser = argparse.ArgumentParser()
@@ -438,9 +435,7 @@ class TrainingPipeline:
     def _auto_detect_formats(self, csv_dir: str) -> List[str]:
         prefix = f"{self.spec.artifact_prefix}_encoded_"
         cfg_fmts = _config_formats()
-        existing = [
-            f for f in cfg_fmts if os.path.exists(os.path.join(csv_dir, f"{prefix}{f}.csv"))
-        ]
+        existing = [f for f in cfg_fmts if os.path.exists(os.path.join(csv_dir, f"{prefix}{f}.csv"))]
         if existing:
             return existing
         targets: List[str] = []
@@ -506,12 +501,22 @@ class TrainingPipeline:
                 "imputation_medians": medians,
             }
             self.train_and_save(
-                X, Y, args.out, training_params, fmt, meta, transform_config,
-                sample_weight=weights, share_model=args.share_targets,
+                X,
+                Y,
+                args.out,
+                training_params,
+                fmt,
+                meta,
+                transform_config,
+                sample_weight=weights,
+                share_model=args.share_targets,
             )
             logger.info(
                 "train_%s.saved_format format=%s out_dir=%s rows=%s",
-                self.spec.name, fmt, args.out, int(X.shape[0]),
+                self.spec.name,
+                fmt,
+                args.out,
+                int(X.shape[0]),
             )
             return 1
 
@@ -524,9 +529,7 @@ class TrainingPipeline:
         training_params = get_training_params(self.spec.name, None)
         csv_path = args.csv or os.path.join(csv_dir, f"{self.spec.artifact_prefix}_encoded.csv")
         try:
-            X, Y, feature_names_used, medians, weights = self.load_dataset(
-                csv_path, share_targets=args.share_targets
-            )
+            X, Y, feature_names_used, medians, weights = self.load_dataset(csv_path, share_targets=args.share_targets)
         except FileNotFoundError as e:
             logger.error("train_%s.legacy_csv_not_found path=%s error=%s", self.spec.name, csv_path, e)
             raise SystemExit(1) from e
@@ -546,17 +549,24 @@ class TrainingPipeline:
             "imputation_medians": medians,
         }
         self.train_and_save(
-            X, Y, args.out, training_params, None, meta, transform_config,
-            sample_weight=weights, share_model=args.share_targets,
+            X,
+            Y,
+            args.out,
+            training_params,
+            None,
+            meta,
+            transform_config,
+            sample_weight=weights,
+            share_model=args.share_targets,
         )
         logger.info("train_%s.saved_legacy out_dir=%s", self.spec.name, args.out)
 
-    def _run_csv_format_loop(
-        self, args: argparse.Namespace, targets: List[str], csv_dir: str
-    ) -> None:
+    def _run_csv_format_loop(self, args: argparse.Namespace, targets: List[str], csv_dir: str) -> None:
         logger.info(
             "pipeline: train_%s loading from CSV formats=%s csv_dir=%s",
-            self.spec.name, targets, csv_dir,
+            self.spec.name,
+            targets,
+            csv_dir,
         )
 
         def _train_one_csv(fmt: str) -> int:
@@ -566,7 +576,9 @@ class TrainingPipeline:
             if not os.path.exists(csv_path):
                 logger.warning(
                     "train_%s.skip_format_csv_not_found format=%s path=%s",
-                    self.spec.name, fmt, csv_path,
+                    self.spec.name,
+                    fmt,
+                    csv_path,
                 )
                 return 0
             try:
@@ -576,13 +588,18 @@ class TrainingPipeline:
             except Exception as e:
                 logger.error(
                     "train_%s.load_dataset_failed format=%s path=%s error=%s",
-                    self.spec.name, fmt, csv_path, e,
+                    self.spec.name,
+                    fmt,
+                    csv_path,
+                    e,
                 )
                 return 0
             if X.size == 0 or Y.size == 0:
                 logger.warning(
                     "train_%s.skip_format_no_data format=%s path=%s",
-                    self.spec.name, fmt, csv_path,
+                    self.spec.name,
+                    fmt,
+                    csv_path,
                 )
                 return 0
             transform_config = get_transform_config(self.spec.name)
@@ -598,12 +615,22 @@ class TrainingPipeline:
                 "imputation_medians": medians,
             }
             self.train_and_save(
-                X, Y, args.out, training_params, fmt, meta, transform_config,
-                sample_weight=weights, share_model=args.share_targets,
+                X,
+                Y,
+                args.out,
+                training_params,
+                fmt,
+                meta,
+                transform_config,
+                sample_weight=weights,
+                share_model=args.share_targets,
             )
             logger.info(
                 "train_%s.saved_format format=%s out_dir=%s rows=%s",
-                self.spec.name, fmt, args.out, int(X.shape[0]),
+                self.spec.name,
+                fmt,
+                args.out,
+                int(X.shape[0]),
             )
             return 1
 
@@ -611,14 +638,14 @@ class TrainingPipeline:
         if targets and saved_count == 0:
             logger.error(
                 "train_%s.no_models_saved csv_dir=%s out_dir=%s",
-                self.spec.name, csv_dir, args.out,
+                self.spec.name,
+                csv_dir,
+                args.out,
             )
             raise SystemExit(1)
 
     @staticmethod
-    def _extract_feature_importance(
-        model: Any, feature_names: List[str]
-    ) -> Optional[Dict[str, float]]:
+    def _extract_feature_importance(model: Any, feature_names: List[str]) -> Optional[Dict[str, float]]:
         """Extract average feature importance from a (Multi)OutputRegressor."""
         estimators = getattr(model, "estimators_", None)
         if not estimators:
@@ -637,9 +664,7 @@ class TrainingPipeline:
         if not imps:
             return None
         n_f = min(len(feature_names), len(imps[0]))
-        importance = {
-            feature_names[i]: float(np.mean([arr[i] for arr in imps])) for i in range(n_f)
-        }
+        importance = {feature_names[i]: float(np.mean([arr[i] for arr in imps])) for i in range(n_f)}
         top = sorted(importance.items(), key=lambda x: -x[1])[:5]
         logger.info("training_pipeline.feature_importance_top5 %s", top)
         return importance

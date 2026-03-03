@@ -11,7 +11,7 @@ import (
 func TestStopRun_CallsCancelJobAndCancelMigration(t *testing.T) {
 	var cancelJobCalled, cancelMigrationCalled bool
 	cancelJob := func() { cancelJobCalled = true }
-	cancelMigration := func(ctx context.Context, reason string) (bool, error) {
+	cancelMigration := func(_ context.Context, _ string) (bool, error) {
 		cancelMigrationCalled = true
 		return true, nil
 	}
@@ -24,7 +24,7 @@ func TestStopRun_CallsCancelJobAndCancelMigration(t *testing.T) {
 
 func TestStopRun_ReturnsCancelMigrationResult(t *testing.T) {
 	cancelJob := func() {}
-	cancelMigration := func(ctx context.Context, reason string) (bool, error) {
+	cancelMigration := func(_ context.Context, _ string) (bool, error) {
 		return false, errors.New("no run to cancel")
 	}
 	cancelled, err := StopRun(context.Background(), "user", cancelJob, cancelMigration)

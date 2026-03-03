@@ -25,14 +25,7 @@ const MLModelStatsTab: React.FC = () => {
     fetchStats();
   }, [fetchStats]);
 
-  return (
-    <MLModelStatsSection
-      data={data}
-      error={error}
-      loading={loading}
-      onRefresh={fetchStats}
-    />
-  );
+  return <MLModelStatsSection data={data} error={error} loading={loading} onRefresh={fetchStats} />;
 };
 
 export default MLModelStatsTab;

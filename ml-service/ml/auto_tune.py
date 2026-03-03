@@ -7,25 +7,11 @@ Usage unchanged:
 
 from __future__ import annotations
 
-# ── Re-export types / constants ─────────────────────────────────────────
-from ml.tuning.types import (  # noqa: F401
-    AVAILABLE_ALGORITHMS,
-    BAT_SEQ_COLS,
-    BATTING_FEATURE_COLS,
-    BATTING_TARGET_COLS,
-    BOWL_SEQ_COLS,
-    BOWLING_FEATURE_COLS,
-    BOWLING_TARGET_COLS,
-    PHASE1_TRIALS_PER_ALGORITHM,
-    PHASE2_TRIALS,
-    _PHASE1_COARSE_ET,
-    _PHASE1_COARSE_GB,
-    _PHASE1_COARSE_HGB,
-    _PHASE1_COARSE_MLP_CLF,
-    _PHASE1_COARSE_MLP_REG,
-    _PHASE1_COARSE_RF,
-    target_names_for_model as _target_names_for_model,
-)
+# ── Tuning config helper (used by tests) ────────────────────────────────
+from ml.config import get_tuning_config as _get_tuning_config  # noqa: F401
+
+# ── Re-export CLI ───────────────────────────────────────────────────────
+from ml.tuning.cli import main  # noqa: F401
 
 # ── Re-export cv / metrics ──────────────────────────────────────────────
 from ml.tuning.cv_metrics import (  # noqa: F401
@@ -39,36 +25,6 @@ from ml.tuning.cv_metrics import (  # noqa: F401
     _extract_feature_importance,
     _get_cv_object,
     _mlqa_feature_names,
-)
-
-# ── Re-export search space ──────────────────────────────────────────────
-from ml.tuning.search_space import (  # noqa: F401
-    _build_pipeline,
-    _build_pipeline_single_regression,
-    _coarse_to_single_prefix,
-    _get_prior_tuned_algorithm,
-    _normalize_hidden_layer_sizes,
-    _phase1_candidates_classification,
-    _phase1_candidates_regression,
-    _phase1_candidates_regression_single,
-    _prior_params_to_optuna_regression,
-    _search_space_classification,
-    _search_space_regression,
-    _search_space_regression_single,
-    _to_pipeline_params,
-    _to_pipeline_params_single,
-)
-
-# ── Re-export optuna search runners ─────────────────────────────────────
-from ml.tuning.optuna_search import (  # noqa: F401
-    _count_combinations,
-    _run_search,
-    _run_search_classification,
-    _run_search_single_regression,
-    _run_search_two_phase,
-    _run_search_two_phase_single_regression,
-    _save_artifacts,
-    _save_artifacts_model_only,
 )
 
 # ── Re-export data loaders ──────────────────────────────────────────────
@@ -89,6 +45,18 @@ from ml.tuning.data_loaders import (  # noqa: F401
     load_win_from_api,
 )
 
+# ── Re-export optuna search runners ─────────────────────────────────────
+from ml.tuning.optuna_search import (  # noqa: F401
+    _count_combinations,
+    _run_search,
+    _run_search_classification,
+    _run_search_single_regression,
+    _run_search_two_phase,
+    _run_search_two_phase_single_regression,
+    _save_artifacts,
+    _save_artifacts_model_only,
+)
+
 # ── Re-export public runners ────────────────────────────────────────────
 from ml.tuning.runners import (  # noqa: F401
     _maybe_run_autogluon_and_compare,
@@ -99,11 +67,42 @@ from ml.tuning.runners import (  # noqa: F401
     run_auto_tune_win,
 )
 
-# ── Re-export CLI ───────────────────────────────────────────────────────
-from ml.tuning.cli import main  # noqa: F401
+# ── Re-export search space ──────────────────────────────────────────────
+from ml.tuning.search_space import (  # noqa: F401
+    _build_pipeline,
+    _build_pipeline_single_regression,
+    _coarse_to_single_prefix,
+    _get_prior_tuned_algorithm,
+    _normalize_hidden_layer_sizes,
+    _phase1_candidates_classification,
+    _phase1_candidates_regression,
+    _phase1_candidates_regression_single,
+    _prior_params_to_optuna_regression,
+    _search_space_classification,
+    _search_space_regression,
+    _search_space_regression_single,
+    _to_pipeline_params,
+    _to_pipeline_params_single,
+)
 
-# ── Tuning config helper (used by tests) ────────────────────────────────
-from ml.config import get_tuning_config as _get_tuning_config  # noqa: F401
+# ── Re-export types / constants ─────────────────────────────────────────
+from ml.tuning.types import (  # noqa: F401
+    _PHASE1_COARSE_ET,
+    _PHASE1_COARSE_GB,
+    _PHASE1_COARSE_HGB,
+    _PHASE1_COARSE_MLP_CLF,
+    _PHASE1_COARSE_MLP_REG,
+    _PHASE1_COARSE_RF,
+    AVAILABLE_ALGORITHMS,
+    BAT_SEQ_COLS,
+    BATTING_FEATURE_COLS,
+    BATTING_TARGET_COLS,
+    BOWL_SEQ_COLS,
+    BOWLING_FEATURE_COLS,
+    BOWLING_TARGET_COLS,
+    PHASE1_TRIALS_PER_ALGORITHM,
+    PHASE2_TRIALS,
+)
 
 if __name__ == "__main__":
     main()

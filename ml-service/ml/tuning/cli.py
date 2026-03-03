@@ -13,10 +13,12 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+_ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ML_ROOT not in sys.path:
+    sys.path.insert(0, _ML_ROOT)
+
 from ml.config import (
     default_go_app_export_dir,
-    get_training_params,
-    get_tuning_config,
     save_tuned_params_to_go_app,
 )
 from ml.tuning.data_loaders import (
@@ -38,7 +40,6 @@ from ml.tuning.runners import (
     run_auto_tune_extras,
     run_auto_tune_win,
 )
-from ml.tuning.types import _train_fielding, _train_innings
 
 try:
     from ml import auto_tune_progress as _progress
@@ -46,6 +47,7 @@ except ImportError:
     _progress = None
 
 logger = logging.getLogger(__name__)
+
 
 def main() -> None:
     if not logging.getLogger().handlers:

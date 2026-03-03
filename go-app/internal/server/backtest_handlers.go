@@ -382,7 +382,7 @@ func buildBacktestWinFeatures(
 		Team2OppositionID:       int(winCtx.Team2OppositionID),
 		TossWinnerOppositionID:  int(winCtx.TossWinnerOppositionID),
 		Team1BatConsistencySum:  sumForTeam(team1, "batting_consistency"),
-		Team1BowlConsistencySum:  sumForTeam(team1, "bowling_consistency"),
+		Team1BowlConsistencySum: sumForTeam(team1, "bowling_consistency"),
 		Team2BatConsistencySum:  sumForTeam(team2, "batting_consistency"),
 		Team2BowlConsistencySum: sumForTeam(team2, "bowling_consistency"),
 		Team1BatFormSum:         sumForTeam(team1, "batting_form"),
@@ -404,16 +404,17 @@ func rescaleBacktestPredictionsToWinProbability(
 	var runs1, runs2, wkt1, wkt2 float64
 	for i := range resp.Players {
 		pid := resp.Players[i].PlayerID
-		t, _ := playerTeams[pid]
+		t := playerTeams[pid]
 		var r, w float64
 		if resp.Players[i].Predicted != nil {
-			r, _ = resp.Players[i].Predicted["runs"]
-			w, _ = resp.Players[i].Predicted["wickets"]
+			r = resp.Players[i].Predicted["runs"]
+			w = resp.Players[i].Predicted["wickets"]
 		}
-		if t == team1 {
+		switch t {
+		case team1:
 			runs1 += r
 			wkt1 += w
-		} else if t == team2 {
+		case team2:
 			runs2 += r
 			wkt2 += w
 		}
@@ -439,18 +440,19 @@ func rescaleBacktestPredictionsToWinProbability(
 		}
 	}
 	for i := range resp.Players {
-		t, _ := playerTeams[resp.Players[i].PlayerID]
+		t := playerTeams[resp.Players[i].PlayerID]
 		if resp.Players[i].Predicted == nil {
 			continue
 		}
-		if t == team1 {
+		switch t {
+		case team1:
 			if v, ok := resp.Players[i].Predicted["runs"]; ok {
 				resp.Players[i].Predicted["runs"] = v * factorR1
 			}
 			if v, ok := resp.Players[i].Predicted["wickets"]; ok {
 				resp.Players[i].Predicted["wickets"] = v * factorW1
 			}
-		} else if t == team2 {
+		case team2:
 			if v, ok := resp.Players[i].Predicted["runs"]; ok {
 				resp.Players[i].Predicted["runs"] = v * factorR2
 			}
@@ -486,7 +488,12 @@ func populateMatchAggregatesAndMetrics(
 	if len(features) > 0 {
 		winCtx, err := db.GetMatchWinContext(ctx, matchID)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to get match win context for rescaling", slog.Int64("match_id", matchID), slog.Any("err", err))
+			slog.WarnContext(
+				ctx,
+				"failed to get match win context for rescaling",
+				slog.Int64("match_id", matchID),
+				slog.Any("err", err),
+			)
 		} else {
 			w := buildBacktestWinFeatures(winCtx, formatFromFilters(resp.Filters), playerTeams, team1, team2, features)
 			p, err := mlPredictMatchWinFunc(ctx, w)

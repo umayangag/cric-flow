@@ -118,7 +118,11 @@ func ReconcileStaleRuns(ctx context.Context, reason string, staleOlderThan time.
 		return n, err
 	}
 	if n > 0 {
-		slog.Info("cancelled stale in-progress pipeline runs", slog.Int("count", n), slog.Duration("stale_older_than", staleOlderThan))
+		slog.Info(
+			"cancelled stale in-progress pipeline runs",
+			slog.Int("count", n),
+			slog.Duration("stale_older_than", staleOlderThan),
+		)
 	}
 	return n, nil
 }

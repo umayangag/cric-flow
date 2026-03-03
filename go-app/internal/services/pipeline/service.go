@@ -14,7 +14,12 @@ type CancelMigrationFunc func(ctx context.Context, reason string) (cancelled boo
 // StopRun cancels the current job and marks the in-progress migration as cancelled.
 // It calls cancelJob then cancelMigration(ctx, reason). Returns (cancelled, err) from
 // cancelMigration; cancelJob is always invoked.
-func StopRun(ctx context.Context, reason string, cancelJob CancelJobFunc, cancelMigration CancelMigrationFunc) (cancelled bool, err error) {
+func StopRun(
+	ctx context.Context,
+	reason string,
+	cancelJob CancelJobFunc,
+	cancelMigration CancelMigrationFunc,
+) (cancelled bool, err error) {
 	cancelJob()
 	return cancelMigration(ctx, reason)
 }

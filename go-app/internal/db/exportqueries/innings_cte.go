@@ -14,4 +14,3 @@ func inningsRunsHoldoutCTE(cteName string) string {
 		GROUP BY match_id, inning_number
 	)`, cteName)
 }
-

@@ -107,27 +107,27 @@ type MLPredictor interface {
 
 // WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, toss, weather, team consistency/form sums).
 type WinFeatures struct {
-	FormatID               int
-	VenueID                int
-	Team1OppositionID      int
-	Team2OppositionID      int
-	TossWinnerOppositionID int
-	Temp                   int
-	Wind                   int
-	Rain                   int
-	Humidity               int
-	Cloud                  int
-	Pressure               int
-	Viscosity              int
-	Team1BatConsistencySum float64
+	FormatID                int
+	VenueID                 int
+	Team1OppositionID       int
+	Team2OppositionID       int
+	TossWinnerOppositionID  int
+	Temp                    int
+	Wind                    int
+	Rain                    int
+	Humidity                int
+	Cloud                   int
+	Pressure                int
+	Viscosity               int
+	Team1BatConsistencySum  float64
 	Team1BowlConsistencySum float64
-	Team2BatConsistencySum float64
+	Team2BatConsistencySum  float64
 	Team2BowlConsistencySum float64
-	Team1BatFormSum        float64
-	Team1BowlFormSum       float64
-	Team2BatFormSum        float64
-	Team2BowlFormSum       float64
-	Format                 string
+	Team1BatFormSum         float64
+	Team1BowlFormSum        float64
+	Team2BatFormSum         float64
+	Team2BowlFormSum        float64
+	Format                  string
 }
 
 // PlayerPred holds ML prediction output.
@@ -629,7 +629,7 @@ func getMatchWinProbability(
 		Pressure:                pressure,
 		Viscosity:               0,
 		Team1BatConsistencySum:  sumBatConsistency(ids1),
-		Team1BowlConsistencySum:  sumBowlConsistency(ids1),
+		Team1BowlConsistencySum: sumBowlConsistency(ids1),
 		Team2BatConsistencySum:  sumBatConsistency(ids2),
 		Team2BowlConsistencySum: sumBowlConsistency(ids2),
 		Team1BatFormSum:         sumBatForm(ids1),

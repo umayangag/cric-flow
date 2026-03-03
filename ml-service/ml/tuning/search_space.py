@@ -7,7 +7,6 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 from sklearn.ensemble import (
     ExtraTreesClassifier,
     ExtraTreesRegressor,
@@ -27,16 +26,17 @@ from sklearn.preprocessing import StandardScaler
 
 from ml.config import get_training_params, get_tuned_params_from_go_app, get_tuning_config, get_tuning_search_space
 from ml.tuning.types import (
-    AVAILABLE_ALGORITHMS,
     _PHASE1_COARSE_ET,
     _PHASE1_COARSE_GB,
     _PHASE1_COARSE_HGB,
     _PHASE1_COARSE_MLP_CLF,
     _PHASE1_COARSE_MLP_REG,
     _PHASE1_COARSE_RF,
+    AVAILABLE_ALGORITHMS,
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _get_prior_tuned_algorithm(
     model_kind: str,

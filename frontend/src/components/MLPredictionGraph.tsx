@@ -14,10 +14,7 @@ type StageNodeData = {
   bold?: boolean;
 };
 
-const stageColors: Record<
-  StageVariant,
-  { bgcolor: string; color: string; borderColor: string }
-> = {
+const stageColors: Record<StageVariant, { bgcolor: string; color: string; borderColor: string }> = {
   default: { bgcolor: 'background.paper', color: 'text.primary', borderColor: 'divider' },
   primary: { bgcolor: 'primary.light', color: 'primary.contrastText', borderColor: 'primary.main' },
   success: { bgcolor: 'success.light', color: 'success.contrastText', borderColor: 'success.main' },
@@ -66,8 +63,7 @@ const nodeTypes = {
 };
 
 const MLPredictionGraph: React.FC = () => {
-  const supportsReactFlow =
-    typeof window !== 'undefined' && typeof (window as any).ResizeObserver !== 'undefined';
+  const supportsReactFlow = typeof window !== 'undefined' && 'ResizeObserver' in window;
 
   const { nodes, edges } = useMemo(() => {
     const nodes: Node<StageNodeData>[] = [
@@ -86,7 +82,11 @@ const MLPredictionGraph: React.FC = () => {
         id: 'batting',
         type: 'stage',
         position: { x: -250, y: 120 },
-        data: { label: 'Batting model', subtitle: 'per-player runs, balls, 4s/6s', variant: 'primary' },
+        data: {
+          label: 'Batting model',
+          subtitle: 'per-player runs, balls, 4s/6s',
+          variant: 'primary',
+        },
         targetPosition: Position.Top,
         sourcePosition: Position.Bottom,
       },
@@ -94,7 +94,11 @@ const MLPredictionGraph: React.FC = () => {
         id: 'bowling',
         type: 'stage',
         position: { x: 0, y: 120 },
-        data: { label: 'Bowling model', subtitle: 'per-player runs conceded, wickets, econ', variant: 'primary' },
+        data: {
+          label: 'Bowling model',
+          subtitle: 'per-player runs conceded, wickets, econ',
+          variant: 'primary',
+        },
         targetPosition: Position.Top,
         sourcePosition: Position.Bottom,
       },
@@ -268,4 +272,3 @@ const MLPredictionGraph: React.FC = () => {
 };
 
 export default MLPredictionGraph;
-
