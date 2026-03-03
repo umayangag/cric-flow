@@ -87,7 +87,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-batting',
       description:
-        'Train per-format and unified (legacy) batting models from exported CSVs. Run from project root.',
+        'Train per-format and unified (legacy) batting models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
     },
     {
@@ -96,7 +96,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-bowling',
       description:
-        'Train per-format and unified (legacy) bowling models from exported CSVs. Run from project root.',
+        'Train per-format and unified (legacy) bowling models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
     },
     {
@@ -105,7 +105,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format fielding models. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
+        'Train unified plus per-format fielding models. Uses params from config and DB. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -114,7 +114,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format extras models. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
+        'Train unified plus per-format extras models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -123,7 +123,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format win models. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
+        'Train unified plus per-format win models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -132,7 +132,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-innings CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train per-format innings models (innings_runs, innings_wickets) for reconciliation. Set CUTOFF and GO_APP_URL. Run from project root.',
+        'Train per-format innings models (innings_runs, innings_wickets) for reconciliation. Uses params from config and DB. Set CUTOFF and GO_APP_URL. Run from project root.',
       runnable: true,
     },
     {
@@ -141,7 +141,7 @@ function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       description:
-        'Optional: tune the unified model and all per-format models (batting, bowling, fielding, extras, win, innings). Best params are saved to DB when GO_APP_URL is set. You can run this from the UI or from project root.',
+        'Discover best algorithm and hyperparameters (saves to DB when GO_APP_URL is set). Run when params are unknown or you want to re-optimize. After auto-tune, you can run Train steps to refresh all artifacts from the new DB params. Optional; use Train steps only when params are already known.',
       runnable: true,
     },
   ];

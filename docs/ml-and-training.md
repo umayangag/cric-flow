@@ -21,7 +21,7 @@ Input dimensions, estimators, and aggregation (e.g. sum runs, win prob) are in [
 
 **Pipeline order:** Precompute → export-dataset → train models → run (or restart) ML service. Batting/bowling use exported CSVs; fielding/extras/win can use API with cutoff.
 
-**Training commands (from repo root or ml-service):** `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=<RFC3339>`, `make train-extras`, `make train-win`, `make train-all`. Fielding/extras/win need `GO_APP_URL` (and optionally `CUTOFF` or CSV path).
+**Training commands (from repo root or ml-service):** `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=<RFC3339>`, `make train-extras`, `make train-win`, or `make train-all` to run all train steps in sequence. Each step uses params from config and, when `GO_APP_URL` is set, from the go-app tuned-params DB. Fielding/extras/win need `GO_APP_URL` (and optionally `CUTOFF` or CSV path).
 
 **Artifacts:** Per-format: `batting_scaler_<FMT>.joblib`, `batting_model_<FMT>.joblib` (same for bowling, fielding, extras, win). Legacy: unsuffixed names.
 
@@ -56,6 +56,38 @@ You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or
 **Prerequisites:** Stack running (`make dev-up`). `export.split_by_format: true` in go-app config. For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
 
 **CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format and legacy artifacts. ML loads them and uses per-format when request has format; falls back to legacy when format missing or no per-format model (e.g. fielding).
+
+---
+
+## Pipeline modes: params known vs unknown
+
+**Single-train principle:** Train each model **once** with the params you intend to use. Params come from `ml-service/config.json` (`ml.training.<model>`) and, when `GO_APP_URL` is set, are **overlaid** by tuned params stored in the go-app DB (from a previous auto-tune). So you either train with known params (config + DB) or run auto-tune to discover params, then train once with those.
+
+### Mode A — Params known (fast path)
+
+When you already have good hyperparameters (in config or from a previous auto-tune saved to DB):
+
+1. **Import** → **Precompute** → **Export** → **Train all** (batting, bowling, fielding, extras, win, innings).
+2. Do **not** run auto-tune. Each train step reads params from config and, when available, from the go-app tuned-params API; one pass produces all artifacts.
+
+Use this for routine retrains (e.g. after new data or a fixed cutoff) when you are not re-optimizing hyperparameters.
+
+### Mode B — Params unknown or re-optimizing (tuning path)
+
+When you need to discover or refresh best algorithm and hyperparameters:
+
+1. **Import** → **Precompute** → **Export** → **Auto-tune** (per model/format or all).
+2. Auto-tune finds best algorithm + hyperparameters, saves params to the go-app DB (and writes artifacts). Optionally run **Train all** afterward so every artifact is produced by the same train scripts using the new DB params (single code path for artifacts).
+
+Use this when setting up a new format, after major data changes, or when you want to re-run algorithm screening or Optuna fine-tuning.
+
+**Summary:** Train = produce artifacts from current params (config + DB). Auto-tune = discover and persist params (and optionally artifacts). Avoid running train with defaults and then auto-tune for the same models; choose one of the two modes above.
+
+---
+
+## Precompute and feature parameters
+
+Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.consistency_last_n`, `form_window_n`, `momentum_last_n`, etc.) control how form, consistency, and venue/opposition features are computed. They are used in **precompute** and in the export/training-data path (`GetFeatureExtractionParams()`). Changing them changes the feature space, so you must **re-precompute → re-export → re-train** (or re-auto-tune). There is no joint optimization of precompute params and model params in one run; treat precompute-param tuning as a separate, slower loop (e.g. change config → precompute → export → train/eval → compare metrics). See **config-and-data.md** for the full list of `features.*` keys.
 
 ---
 

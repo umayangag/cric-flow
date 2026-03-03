@@ -63,6 +63,8 @@ from .models import (
 )
 from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
+from .backtest_cache import BacktestCache
+from . import training_orchestrator
 
 try:
     from ml.config import get_prediction_defaults
@@ -145,11 +147,14 @@ def _install_crash_logging() -> None:
 
 _install_crash_logging()
 
-ENABLE_HOT_RELOAD = os.environ.get("ENABLE_HOT_RELOAD", "").strip().lower() in {"1", "true", "yes"}
-ADMIN_API_KEY = (os.environ.get("ADMIN_API_KEY") or "").strip()
+# Centralized configuration: load once per process from app.settings
+_settings = app_settings.load_ml_service_settings()
+
+ENABLE_HOT_RELOAD = _settings.enable_hot_reload
+ADMIN_API_KEY = _settings.admin_api_key
 
 # Max concurrent training jobs (admin train); prevents DoS via many concurrent requests
-MAX_CONCURRENT_TRAINING_JOBS = max(1, int(os.environ.get("MAX_CONCURRENT_TRAINING_JOBS", "1")))
+MAX_CONCURRENT_TRAINING_JOBS = _settings.max_concurrent_training_jobs
 _training_semaphore: Optional[asyncio.Semaphore] = None
 
 
@@ -181,29 +186,27 @@ def _verify_admin_api_key(request: Request) -> None:
         )
 
 
-MAX_PREDICT_BATCH_SIZE = int(os.environ.get("MAX_PREDICT_BATCH_SIZE", "10000"))
+MAX_PREDICT_BATCH_SIZE = _settings.max_predict_batch_size
 
 # -------------------- Simple in-memory cache for backtest endpoint --------------------
-DISABLE_BACKTEST_CACHE = os.environ.get("DISABLE_BACKTEST_CACHE", "").strip().lower() in {"1", "true", "yes"}
-CACHE_TTL_SECONDS = int(os.environ.get("BACKTEST_CACHE_TTL", "300") or "300")
+DISABLE_BACKTEST_CACHE = _settings.disable_backtest_cache
+CACHE_TTL_SECONDS = _settings.backtest_cache_ttl_seconds
 # When use_latest_model=True, round the cutoff to this granularity for cache key. Prevents DoS from unique
 # timestamps per request. Configurable via TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY env var.
 # Values: "none" (exact now, no cache), "second", "minute", "hour", "day". Default: "hour"
-TRAIN_LATEST_CACHE_GRANULARITY = (os.environ.get("TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY") or "hour").strip().lower()
+TRAIN_LATEST_CACHE_GRANULARITY = _settings.train_latest_cache_granularity
 
 # -------------------- Simple in-memory cache for model-stats endpoint --------------------
-MODEL_STATS_CACHE_TTL = int(os.environ.get("MODEL_STATS_CACHE_TTL", "60") or "60")
+MODEL_STATS_CACHE_TTL = _settings.model_stats_cache_ttl
 _model_stats_cache: Optional[Tuple[float, Dict[str, Any]]] = None
 
-# Cache key: (mode, cutoff_iso, tuple(sorted(ids)))
-_backtest_cache: Dict[Tuple[str, str, Tuple[Any, ...]], Tuple[float, Dict[str, Any]]] = {}
-BACKTEST_PLAYERS_COMPUTE_COUNT = 0
-BACKTEST_MATCH_COMPUTE_COUNT = 0
+# Backtest cache and counters
+_backtest_cache = BacktestCache(ttl_seconds=CACHE_TTL_SECONDS, disabled=DISABLE_BACKTEST_CACHE)
 
 # -------------------- CORS for local frontend dev --------------------
 # Allow the Vite dev server by default; can be overridden via FRONTEND_ORIGIN
-_frontend_origin_env = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
-_allowed_origins = [o.strip() for o in _frontend_origin_env.split(",") if o.strip()]
+_frontend_origin_env = _settings.frontend_origin_raw
+_allowed_origins = _settings.frontend_allowed_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -213,37 +216,13 @@ app.add_middleware(
 )
 
 
-def _cache_get(mode: str, cutoff_iso: str, ids: List[Any]) -> Optional[Dict[str, Any]]:
-    if DISABLE_BACKTEST_CACHE or CACHE_TTL_SECONDS <= 0:
-        return None
-    key = (mode, cutoff_iso, tuple(sorted(ids)))
-    rec = _backtest_cache.get(key)
-    if not rec:
-        return None
-    ts, payload = rec
-    if (time.time() - ts) > CACHE_TTL_SECONDS:
-        _backtest_cache.pop(key, None)
-        return None
-    return payload
-
-
-def _cache_put(mode: str, cutoff_iso: str, ids: List[Any], payload: Dict[str, Any]) -> None:
-    if DISABLE_BACKTEST_CACHE or CACHE_TTL_SECONDS <= 0:
-        return
-    key = (mode, cutoff_iso, tuple(sorted(ids)))
-    _backtest_cache[key] = (time.time(), payload)
-
-
 def reset_backtest_cache() -> None:
     """Utility for tests to clear cache and counters."""
-    global _backtest_cache, BACKTEST_PLAYERS_COMPUTE_COUNT, BACKTEST_MATCH_COMPUTE_COUNT
-    _backtest_cache = {}
-    BACKTEST_PLAYERS_COMPUTE_COUNT = 0
-    BACKTEST_MATCH_COMPUTE_COUNT = 0
+    _backtest_cache.reset()
 
 
 def get_backtest_compute_counts() -> Tuple[int, int]:
-    return BACKTEST_PLAYERS_COMPUTE_COUNT, BACKTEST_MATCH_COMPUTE_COUNT
+    return _backtest_cache.get_compute_counts()
 
 
 @app.middleware("http")
@@ -674,12 +653,11 @@ def backtest_predict(req: BacktestPredictRequest):
             cutoff_iso=cutoff_iso,
             player_count=len(req.player_ids),
         )
-        cached = None if req.match_context else _cache_get("players", cutoff_iso, list(req.player_ids))
+        cached = None if req.match_context else _backtest_cache.get("players", cutoff_iso, list(req.player_ids))
         if cached is not None:
             logger.info("backtest_predict.player.cache_hit", cutoff_iso=cutoff_iso, player_count=len(req.player_ids))
             return JSONResponse(status_code=200, content=cached)
-        global BACKTEST_PLAYERS_COMPUTE_COUNT
-        BACKTEST_PLAYERS_COMPUTE_COUNT += 1
+        _backtest_cache.increment_players_compute()
         try:
             preds = _predict_players_with_features(
                 cutoff,
@@ -729,19 +707,18 @@ def backtest_predict(req: BacktestPredictRequest):
             predictions_count=len(preds),
         )
         body = BacktestPlayersResponse(players=preds).model_dump()
-        _cache_put("players", cutoff_iso, list(req.player_ids), body)
+        _backtest_cache.put("players", cutoff_iso, list(req.player_ids), body)
         return JSONResponse(status_code=200, content=body)
     if req.teams is not None:
-        cached = _cache_get("match", cutoff_iso, list(req.teams))
+        cached = _backtest_cache.get("match", cutoff_iso, list(req.teams))
         if cached is not None:
             return JSONResponse(status_code=200, content=cached)
-        global BACKTEST_MATCH_COMPUTE_COUNT
-        BACKTEST_MATCH_COMPUTE_COUNT += 1
+        _backtest_cache.increment_match_compute()
         match = svc_predict_match_baseline(cutoff, req.teams)
         body = BacktestMatchResponse(
             match=match, model_version=svc_resolve_model_version(getattr(app, "version", ""))
         ).model_dump()
-        _cache_put("match", cutoff_iso, list(req.teams), body)
+        _backtest_cache.put("match", cutoff_iso, list(req.teams), body)
         return JSONResponse(status_code=200, content=body)
     logger.warning(
         "backtest_predict.invalid_request",
@@ -1665,76 +1642,6 @@ async def admin_reload(request: Request):
         ) from e
 
 
-def _ml_service_root() -> str:
-    """Return the ml-service project root (directory containing the 'ml' package)."""
-    import ml as _ml  # noqa: PLC0415
-
-    return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
-
-
-def _run_training_subprocess(
-    module: str,
-    extra_args: Optional[List[str]] = None,
-    extra_env: Optional[Dict[str, str]] = None,
-) -> None:
-    """Run a training module as subprocess; raises on non-zero exit or timeout.
-    Timeout from config (inputs.training_subprocess_timeout_sec) or env TRAINING_SUBPROCESS_TIMEOUT_SEC (default 7 days).
-    Sets SKIP_PIPELINE_TRACKING=1 so the subprocess does not try to start tracking (go-app already owns the step).
-    extra_env: optional env vars to merge into the subprocess env (e.g. AUTO_TUNE_N_JOBS for single-task auto-tune).
-    Output is captured and logged on failure for debugging.
-    """
-    import subprocess
-
-    from ml.config import get_training_subprocess_timeout_sec
-
-    root = _ml_service_root()
-    cmd = [sys.executable, "-m", module]
-    if extra_args:
-        cmd.extend(extra_args)
-    logger.info(
-        "pipeline: starting training subprocess",
-        module=module,
-        extra_args=extra_args or [],
-        cwd=root,
-    )
-    env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
-    if extra_env:
-        env.update(extra_env)
-    timeout_sec = get_training_subprocess_timeout_sec()
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=root,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
-    except subprocess.TimeoutExpired as e:
-        logger.error(
-            "pipeline: training subprocess timed out",
-            module=module,
-            timeout_sec=timeout_sec,
-        )
-        raise ValueError(f"Training timed out after {timeout_sec}s") from e
-    if proc.returncode != 0:
-        # Log subprocess output for debugging (includes Python traceback on failure)
-        stdout_lines = (proc.stdout or "").strip().splitlines() if proc.stdout else []
-        stderr_lines = (proc.stderr or "").strip().splitlines() if proc.stderr else []
-        # Keep last N lines to avoid huge logs; tracebacks are usually at the end
-        max_lines = 100
-        stdout_tail = "\n".join(stdout_lines[-max_lines:]) if stdout_lines else "(empty)"
-        stderr_tail = "\n".join(stderr_lines[-max_lines:]) if stderr_lines else "(empty)"
-        logger.error(
-            "pipeline: training subprocess failed",
-            module=module,
-            returncode=proc.returncode,
-            subprocess_stdout=stdout_tail,
-            subprocess_stderr=stderr_tail,
-        )
-        raise ValueError(f"Training failed (exit {proc.returncode})")
-
-
 def _require_admin_train(step: str, fail_message: str):
     """Decorator for /admin/train/* endpoints: ENABLE_HOT_RELOAD check, admin API key verification, ValueError -> 500."""
 
@@ -1775,44 +1682,6 @@ def _require_admin_train(step: str, fail_message: str):
     return decorator
 
 
-def _export_csvs_available(prefix: str) -> bool:
-    """True if GO_APP_OUTPUT_DIR contains at least one CSV matching prefix (e.g. batting_encoded_*, bowling_encoded_*)."""
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    try:
-        for name in os.listdir(out_dir):
-            if name.startswith(prefix) and name.endswith(".csv"):
-                return True
-    except OSError:
-        pass
-    return False
-
-
-def _unified_batting_csv_available() -> bool:
-    """True if batting_encoded_all.csv (or legacy batting_encoded.csv) exists in export dir for unified model training."""
-    from ml.config import default_go_app_export_dir
-
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    return os.path.isfile(os.path.join(out_dir, "batting_encoded_all.csv")) or os.path.isfile(
-        os.path.join(out_dir, "batting_encoded.csv")
-    )
-
-
-def _unified_bowling_csv_available() -> bool:
-    """True if bowling_encoded_all.csv (or legacy bowling_encoded.csv) exists in export dir for unified model training."""
-    from ml.config import default_go_app_export_dir
-
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    return os.path.isfile(os.path.join(out_dir, "bowling_encoded_all.csv")) or os.path.isfile(
-        os.path.join(out_dir, "bowling_encoded.csv")
-    )
-
-
 @app.post("/admin/train/batting")
 @_require_admin_train("batting", "Batting training failed")
 async def admin_train_batting(request: Request, cutoff: str = ""):
@@ -1821,38 +1690,14 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
     When cutoff is set but GO_APP_OUTPUT_DIR has batting_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Writes to MODELS_DIR. Guarded by ENABLE_HOT_RELOAD.
     """
-    cutoff = (cutoff or "").strip()
-    csv_available = _export_csvs_available("batting_encoded_")
-    use_api = bool(cutoff) and not csv_available
-    if use_api:
-        go_app_url = _get_go_app_url()
-        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
-    else:
-        extra = ["--all-formats"]
-        logger.info(
-            "admin.train.start",
-            step="batting",
-            per_format=True,
-            from_api=False,
-            from_csv=bool(cutoff and csv_available),
-        )
-    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
+    go_app_url = _get_go_app_url()
     async with _get_training_semaphore():
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_batting", extra, _train_env)
-    # Also train unified model (batting_model.joblib / batting_scaler.joblib) when unified CSV exists
-    if _unified_batting_csv_available():
-        try:
-            from ml.train_batting_model import run_training as run_unified_batting
-
-            # run_training() is called directly (no __main__ block), so it does not use
-            # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
-            await asyncio.to_thread(run_unified_batting)
-            logger.info("admin.train.success", step="batting", unified=True)
-        except Exception as e:
-            logger.warning("admin.train.unified_batting_failed", error=str(e))
-    else:
-        logger.info("admin.train.success", step="batting", unified=False)
+        await asyncio.to_thread(
+            training_orchestrator.run_batting_training,
+            (cutoff or "").strip(),
+            go_app_url,
+            logger,
+        )
     return {"status": "ok", "step": "batting"}
 
 
@@ -1864,38 +1709,14 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
     When cutoff is set but GO_APP_OUTPUT_DIR has bowling_encoded_*.csv, prefer CSV to avoid API dependency.
     Otherwise: read from GO_APP_OUTPUT_DIR CSVs. Guarded by ENABLE_HOT_RELOAD.
     """
-    cutoff = (cutoff or "").strip()
-    csv_available = _export_csvs_available("bowling_encoded_")
-    use_api = bool(cutoff) and not csv_available
-    if use_api:
-        go_app_url = _get_go_app_url()
-        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
-    else:
-        extra = ["--all-formats"]
-        logger.info(
-            "admin.train.start",
-            step="bowling",
-            per_format=True,
-            from_api=False,
-            from_csv=bool(cutoff and csv_available),
-        )
-    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
+    go_app_url = _get_go_app_url()
     async with _get_training_semaphore():
-        await asyncio.to_thread(_run_training_subprocess, "ml.train_bowling", extra, _train_env)
-    # Also train unified model (bowling_model.joblib / bowling_scaler.joblib) when unified CSV exists
-    if _unified_bowling_csv_available():
-        try:
-            from ml.train_bowling_model import run_training as run_unified_bowling
-
-            # run_training() is called directly (no __main__ block), so it does not use
-            # pipeline tracking; no need to set SKIP_PIPELINE_TRACKING (avoids thread-unsafe os.environ mutation).
-            await asyncio.to_thread(run_unified_bowling)
-            logger.info("admin.train.success", step="bowling", unified=True)
-        except Exception as e:
-            logger.warning("admin.train.unified_bowling_failed", error=str(e))
-    else:
-        logger.info("admin.train.success", step="bowling", unified=False)
+        await asyncio.to_thread(
+            training_orchestrator.run_bowling_training,
+            (cutoff or "").strip(),
+            go_app_url,
+            logger,
+        )
     return {"status": "ok", "step": "bowling"}
 
 
@@ -1906,23 +1727,14 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
     If cutoff provided: fetch from go-app training-data API. If omitted: use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
     Guarded by ENABLE_HOT_RELOAD. Blocks until complete.
     """
-    cutoff = (cutoff or "").strip()
-    if cutoff:
-        go_app_url = _get_go_app_url()
-        args = ["--cutoff", cutoff, "--go-app-url", go_app_url]
-        logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
-    else:
-        args = []
-        logger.info("admin.train.start", step="fielding", source="csv")
-    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
+    go_app_url = _get_go_app_url()
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_fielding",
-            args,
-            _train_env,
+            training_orchestrator.run_fielding_training,
+            (cutoff or "").strip(),
+            go_app_url,
+            logger,
         )
-    logger.info("admin.train.success", step="fielding")
     return {"status": "ok", "step": "fielding"}
 
 
@@ -1943,16 +1755,13 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
             ),
         )
     go_app_url = _get_go_app_url()
-    logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
-    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_extras",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-            _train_env,
+            training_orchestrator.run_extras_training,
+            cutoff,
+            go_app_url,
+            logger,
         )
-    logger.info("admin.train.success", step="extras")
     return {"status": "ok", "step": "extras"}
 
 
@@ -1973,16 +1782,13 @@ async def admin_train_win(request: Request, cutoff: str = ""):
             ),
         )
     go_app_url = _get_go_app_url()
-    logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
-    _train_env = {"ML_N_JOBS": "-1"}  # Use resource-aware parallelism for faster training
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_win",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-            _train_env,
+            training_orchestrator.run_win_training,
+            cutoff,
+            go_app_url,
+            logger,
         )
-    logger.info("admin.train.success", step="win")
     return {"status": "ok", "step": "win"}
 
 
@@ -2003,34 +1809,14 @@ async def admin_train_innings(request: Request, cutoff: str = ""):
             ),
         )
     go_app_url = _get_go_app_url()
-    logger.info("admin.train.start", step="innings", cutoff=cutoff, go_app_url=go_app_url)
-    _train_env = {"ML_N_JOBS": "-1"}
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.train_innings",
-            ["--cutoff", cutoff, "--go-app-url", go_app_url],
-            _train_env,
+            training_orchestrator.run_innings_training,
+            cutoff,
+            go_app_url,
+            logger,
         )
-    logger.info("admin.train.success", step="innings")
     return {"status": "ok", "step": "innings"}
-
-
-_VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")
-_VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
-
-
-def _get_auto_tune_progress_path() -> str:
-    """Return path to auto-tune progress JSON file."""
-    path = os.environ.get("AUTO_TUNE_PROGRESS_FILE")
-    if path:
-        return path
-    try:
-        from ml.config import default_artifacts_dir
-
-        return os.path.join(default_artifacts_dir(), "auto_tune_progress.json")
-    except Exception:
-        return os.path.join("..", "..", "output", "ml-service", "auto_tune_progress.json")
 
 
 @app.get("/admin/train/auto-tune/progress")
@@ -2038,14 +1824,7 @@ async def admin_train_auto_tune_progress(request: Request) -> Dict[str, Any]:
     """Return live auto-tune progress (phase, algorithm, hyperparams, trial, etc.) for frontend display.
     Protected by admin API key when ADMIN_API_KEY is set; go-app should pass X-API-Key."""
     _verify_admin_api_key(request)
-    path = _get_auto_tune_progress_path()
-    if not os.path.isfile(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return training_orchestrator.get_auto_tune_progress()
 
 
 @app.post("/admin/train/auto-tune")
@@ -2068,20 +1847,20 @@ async def admin_train_auto_tune(
     Uses go-app training-data API (--from-api). Optional cutoff (RFC3339). Guarded by ENABLE_HOT_RELOAD.
     """
     model = (model or "all").strip().lower()
-    if model not in _VALID_AUTO_TUNE_MODELS:
+    if model not in training_orchestrator.VALID_AUTO_TUNE_MODELS:
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
                 code="INVALID_MODEL",
                 message="Invalid model",
-                hint=f"model must be one of: {', '.join(_VALID_AUTO_TUNE_MODELS)}",
+                hint=f"model must be one of: {', '.join(training_orchestrator.VALID_AUTO_TUNE_MODELS)}",
             ),
         )
     use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
     use_unified = (unified or "").strip().lower() in ("1", "true", "yes")
     fmt = (format or "").strip().upper()
     if not use_all_formats and not use_unified:
-        if not fmt or fmt not in _VALID_AUTO_TUNE_FORMATS:
+        if not fmt or fmt not in training_orchestrator.VALID_AUTO_TUNE_FORMATS:
             raise HTTPException(
                 status_code=400,
                 detail=_error_payload(
@@ -2094,53 +1873,18 @@ async def admin_train_auto_tune(
     if not cutoff:
         cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
     go_app_url = _get_go_app_url()
-    extra = [
-        "--model",
-        model,
-        "--from-api",
-        "--cutoff",
-        cutoff,
-        "--go-app-url",
-        go_app_url,
-    ]
-    if use_all_formats:
-        extra.append("--all-formats")
-    elif use_unified:
-        extra.append("--unified")
-    elif not use_unified:
-        extra.extend(["--format", fmt])
-    if (rescreen or "").strip().lower() in ("1", "true", "yes"):
-        extra.append("--rescreen")
-    if (algorithms or "").strip():
-        extra.extend(["--algorithms", algorithms.strip()])
-    # Always use parallel when running from the frontend/API; each parallel subprocess uses 1 job.
-    # When single task (one model + one format or unified), auto_tune falls through to sequential.
-    single_task = model != "all" and (not use_all_formats or use_unified)
-    extra.append("--parallel")
-    subprocess_env: Optional[Dict[str, str]] = None
-    if single_task:
-        subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}
-    # ml.auto_tune reads GO_APP_API_KEY from the environment; do not pass --api-key
-    # on the command line, as that would expose it in process listings (ps).
-    logger.info(
-        "admin.train.start",
-        step="auto-tune",
-        cutoff=cutoff,
-        go_app_url=go_app_url,
-        model=model,
-        all_formats=use_all_formats,
-        unified=use_unified,
-        format=fmt or None,
-        rescreen=(rescreen or "").strip().lower() in ("1", "true", "yes"),
-        algorithms=algorithms.strip() or None,
-        single_task=single_task,
-    )
+    rescreen_bool = (rescreen or "").strip().lower() in ("1", "true", "yes")
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            _run_training_subprocess,
-            "ml.auto_tune",
-            extra,
-            subprocess_env,
+            training_orchestrator.run_auto_tune,
+            cutoff,
+            go_app_url,
+            model,
+            use_all_formats,
+            use_unified,
+            fmt,
+            rescreen_bool,
+            algorithms or "",
+            logger,
         )
-    logger.info("admin.train.success", step="auto-tune")
     return {"status": "ok", "step": "auto-tune"}
