@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 from . import settings as app_settings
 from . import training_orchestrator
 from .artifact_service import build_artifacts_status, build_health_response
-from .artifacts import BAT_MODELS, BOWL_MODELS  # re-exported for test compatibility
+from .artifacts import BAT_MODELS, BOWL_MODELS  # noqa: F401  # re-exported for test compatibility
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_cache import BacktestCache
@@ -39,6 +39,7 @@ from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
+from .features import batting_feature_vector, bowling_feature_vector  # noqa: F401  # re-exported for test compatibility
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .model_metadata import get_model_metadata
 from .model_stats_service import build_model_stats
@@ -56,7 +57,6 @@ from .models import (
     WinFeatures,
     WinPrediction,
 )
-from .features import batting_feature_vector, bowling_feature_vector  # re-exported for test compatibility
 from .prediction_service import (
     predict_players_with_features,
     round_datetime_to_granularity,
@@ -67,10 +67,10 @@ from .prediction_service import (
     validate_predict_batch,
 )
 
-
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> Any:
@@ -99,6 +99,7 @@ logger = get_struct_logger()
 # ---------------------------------------------------------------------------
 # Crash logging
 # ---------------------------------------------------------------------------
+
 
 def _install_crash_logging() -> None:
     """Ensure uncaught exceptions and thread crashes are logged before exit."""
@@ -289,6 +290,7 @@ except Exception as e:
 # Route handlers — thin wrappers delegating to service modules
 # ---------------------------------------------------------------------------
 
+
 @app.get("/health")
 async def health():
     logger.info("health.check.start")
@@ -384,29 +386,41 @@ def backtest_predict(req: BacktestPredictRequest):
         except ValueError as e:
             logger.exception(
                 "backtest_predict.player.train_on_the_fly_failed",
-                format=req.format, cutoff_iso=cutoff_iso, player_count=len(req.player_ids), error=str(e),
+                format=req.format,
+                cutoff_iso=cutoff_iso,
+                player_count=len(req.player_ids),
+                error=str(e),
             )
             raise HTTPException(
                 status_code=503,
                 detail=error_payload(
-                    code="TRAIN_ON_THE_FLY_FAILED", message=str(e),
+                    code="TRAIN_ON_THE_FLY_FAILED",
+                    message=str(e),
                     hint="Ensure GO_APP_URL is set and go-app has training data for this format and cutoff.",
                 ),
             ) from e
         except Exception as e:
             logger.exception(
                 "backtest_predict.player.prediction_failed",
-                format=req.format, cutoff_iso=cutoff_iso, player_count=len(req.player_ids), error=str(e),
+                format=req.format,
+                cutoff_iso=cutoff_iso,
+                player_count=len(req.player_ids),
+                error=str(e),
             )
             raise HTTPException(
                 status_code=503,
                 detail=error_payload(
-                    code="PREDICTION_FAILED", message="Train-on-the-fly or prediction failed", hint=str(e),
+                    code="PREDICTION_FAILED",
+                    message="Train-on-the-fly or prediction failed",
+                    hint=str(e),
                 ),
             ) from e
         logger.info(
             "backtest_predict.player.success",
-            format=req.format, cutoff_iso=cutoff_iso, player_count=len(req.player_ids), predictions_count=len(preds),
+            format=req.format,
+            cutoff_iso=cutoff_iso,
+            player_count=len(req.player_ids),
+            predictions_count=len(preds),
         )
         body = BacktestPlayersResponse(players=preds).model_dump()
         _backtest_cache.put("players", cutoff_iso, list(req.player_ids), body)
@@ -426,7 +440,8 @@ def backtest_predict(req: BacktestPredictRequest):
     raise HTTPException(
         status_code=400,
         detail=error_payload(
-            code="INVALID_REQUEST", message="provide either player_ids or teams",
+            code="INVALID_REQUEST",
+            message="provide either player_ids or teams",
             hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
         ),
     )
@@ -474,6 +489,7 @@ async def predict_win(features: List[WinFeatures]):
 # Admin endpoints
 # ---------------------------------------------------------------------------
 
+
 @app.post("/admin/reload")
 async def admin_reload(request: Request):
     """Rescan the models directory and reload artifacts."""
@@ -482,7 +498,8 @@ async def admin_reload(request: Request):
         raise HTTPException(
             status_code=403,
             detail=_error_payload(
-                code="RELOAD_DISABLED", message="Hot reload is disabled",
+                code="RELOAD_DISABLED",
+                message="Hot reload is disabled",
                 hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/reload.",
             ),
         )
@@ -513,7 +530,8 @@ def _require_admin_train(step: str, fail_message: str):
                 raise HTTPException(
                     status_code=403,
                     detail=_error_payload(
-                        code="TRAIN_DISABLED", message="Admin train is disabled",
+                        code="TRAIN_DISABLED",
+                        message="Admin train is disabled",
                         hint="Set ENABLE_HOT_RELOAD=1 to enable /admin/train/*.",
                     ),
                 )
@@ -525,7 +543,8 @@ def _require_admin_train(step: str, fail_message: str):
                 raise HTTPException(
                     status_code=500,
                     detail=_error_payload(
-                        code="TRAIN_FAILED", message=fail_message,
+                        code="TRAIN_FAILED",
+                        message=fail_message,
                         hint="Check server logs with the provided request_id for details.",
                     ),
                 ) from e
@@ -541,7 +560,10 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
     """Run batting model training per format."""
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            training_orchestrator.run_batting_training, (cutoff or "").strip(), _settings.go_app_url, logger,
+            training_orchestrator.run_batting_training,
+            (cutoff or "").strip(),
+            _settings.go_app_url,
+            logger,
         )
     return {"status": "ok", "step": "batting"}
 
@@ -552,7 +574,10 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
     """Run bowling model training per format."""
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            training_orchestrator.run_bowling_training, (cutoff or "").strip(), _settings.go_app_url, logger,
+            training_orchestrator.run_bowling_training,
+            (cutoff or "").strip(),
+            _settings.go_app_url,
+            logger,
         )
     return {"status": "ok", "step": "bowling"}
 
@@ -563,7 +588,10 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
     """Run fielding model training."""
     async with _get_training_semaphore():
         await asyncio.to_thread(
-            training_orchestrator.run_fielding_training, (cutoff or "").strip(), _settings.go_app_url, logger,
+            training_orchestrator.run_fielding_training,
+            (cutoff or "").strip(),
+            _settings.go_app_url,
+            logger,
         )
     return {"status": "ok", "step": "fielding"}
 
@@ -577,7 +605,8 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
-                code="CUTOFF_REQUIRED", message="Extras training requires cutoff",
+                code="CUTOFF_REQUIRED",
+                message="Extras training requires cutoff",
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )
@@ -595,7 +624,8 @@ async def admin_train_win(request: Request, cutoff: str = ""):
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
-                code="CUTOFF_REQUIRED", message="Win training requires cutoff",
+                code="CUTOFF_REQUIRED",
+                message="Win training requires cutoff",
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )
@@ -613,7 +643,8 @@ async def admin_train_innings(request: Request, cutoff: str = ""):
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
-                code="CUTOFF_REQUIRED", message="Innings training requires cutoff",
+                code="CUTOFF_REQUIRED",
+                message="Innings training requires cutoff",
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )
@@ -640,7 +671,8 @@ async def admin_train_auto_tune(
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
-                code="CUTOFF_REQUIRED", message="Auto-tune requires cutoff",
+                code="CUTOFF_REQUIRED",
+                message="Auto-tune requires cutoff",
                 hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
             ),
         )

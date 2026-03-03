@@ -68,13 +68,33 @@
 
 ## Defaults
 - Branching: never to main/master; branches `type/short-slug`; Conventional Commits; focused PRs.
-- Testing:
+- Testing (General):
   - Use interfaces + mockery for mocks (no fakes).
-  - For unit tests, use table-driven tests following the AAA pattern (arrange, act, assert). Also prefer using *_test package for unit tests. avoid using if conditions inside t.Run. Instead move conditional checks inside assert function.
-  - error handling and error logging is a must. do not suppress errors.
-  - Go: 1.26+, std `testing`, table‑driven, `make test` or `go test ./...`, use `httptest`, avoid ifs in tests; use asserts; name the file `{pkg}_test.go` and append `_test` to the package name`.
-  - Python: 3.10+, `pytest` under `tests/` with `test_*.py`, deps via `requirements.txt`, `make test` or `pytest -q`, no ifs in tests; table‑driven.
-  - Use explicit relative imports in Python.
+  - Follow the AAA pattern (arrange, act, assert) for all unit tests.
+  - Error handling and error logging is a must. Do not suppress errors.
+  - Avoid `if` conditions inside test cases; use assertion helpers instead.
+
+- Testing (Go — `go-app/`):
+  - Go 1.26+, std `testing` package, `github.com/stretchr/testify/assert` and `require` for assertions.
+  - Table-driven tests: define a `tests` slice of structs, iterate with `for _, tt := range tests { t.Run(tt.name, func(t *testing.T) { ... }) }`.
+  - Use the external test package (`package foo_test`) to test the public API. Use the internal package (`package foo`) only when testing unexported helpers.
+  - Name test files `{pkg}_test.go` (e.g., `server_test.go`).
+  - Use `httptest.NewRequest` and `httptest.NewRecorder` for HTTP handler tests.
+  - Use `t.Helper()` in custom assertion/setup functions.
+  - Use `t.Cleanup()` or `defer` for teardown; avoid `TestMain` unless truly global setup is needed.
+  - Use `t.Parallel()` for independent tests when safe.
+  - Run: `make go-test` or `cd go-app && go test ./...`.
+
+- Testing (Python — `ml-service/`):
+  - Python 3.10+, `pytest` framework. All tests live under `ml-service/tests/` with `test_*.py` naming.
+  - Use `conftest.py` for shared fixtures; prefer `@pytest.fixture` over manual setup/teardown.
+  - Use `@pytest.mark.parametrize` for table-driven / parameterized tests.
+  - Use explicit relative imports in test files.
+  - Use `unittest.mock.patch` / `pytest-mock` (`mocker` fixture) for mocking; prefer patching at the boundary.
+  - Use `tmp_path` fixture for temporary files; avoid hardcoded paths.
+  - Set random seeds (`random.seed`, `np.random.seed`) in fixtures for reproducibility.
+  - Organize tests mirroring source layout: `tests/unit/`, `tests/integration/`, `tests/e2e/`.
+  - Run: `make ml-test` or `cd ml-service && pytest tests/ -q`.
 - Execution: Prefer Makefile targets and docker-compose. Default to unit tests; run integration via `docker compose up` only when planned.
 - Data/Artifacts (ML): small deterministic fixtures (`tests/fixtures/` or `data/sample/`), no large downloads; temp under `output/`; set seeds.
 - Network: tests offline by default; mock externals; allow internet only if plan says.

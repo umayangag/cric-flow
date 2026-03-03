@@ -356,11 +356,11 @@ const UpcomingMatchTab: React.FC = () => {
                   </Typography>
                 )}
                 {result.scorecard_summary.team1_win_probability != null && (
-                    <Typography variant="body2">
-                      <strong>Win probability ({team1}):</strong>{' '}
-                      {(result.scorecard_summary.team1_win_probability * 100).toFixed(1)}%
-                    </Typography>
-                  )}
+                  <Typography variant="body2">
+                    <strong>Win probability ({team1}):</strong>{' '}
+                    {(result.scorecard_summary.team1_win_probability * 100).toFixed(1)}%
+                  </Typography>
+                )}
               </Stack>
             </Paper>
           )}
@@ -379,7 +379,8 @@ const UpcomingMatchTab: React.FC = () => {
                   {(result.simulation.win_probability_team2 * 100).toFixed(1)}%
                 </Typography>
                 <Typography variant="body2">
-                  <strong>Draw:</strong>{(result.simulation.draw_probability * 100).toFixed(1)}%
+                  <strong>Draw:</strong>
+                  {(result.simulation.draw_probability * 100).toFixed(1)}%
                 </Typography>
               </Stack>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>

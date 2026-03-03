@@ -24,7 +24,11 @@ func TestBattingHoldoutRawQuery_UsesSharedInningsRunsCTE(t *testing.T) {
 	require.Contains(t, q, "FROM batting_data")
 	require.Contains(t, q, "SUM(runs)::bigint AS total_runs")
 	require.Contains(t, q, "match_id = ANY($1::bigint[])")
-	require.Contains(t, q, "LEFT JOIN innings_sums ins ON ins.match_id = bd.match_id AND ins.inning_number = bd.inning_number")
+	require.Contains(
+		t,
+		q,
+		"LEFT JOIN innings_sums ins ON ins.match_id = bd.match_id AND ins.inning_number = bd.inning_number",
+	)
 }
 
 func TestBowlingHoldoutRawQuery_UsesSharedInningsRunsCTE(t *testing.T) {
@@ -35,5 +39,9 @@ func TestBowlingHoldoutRawQuery_UsesSharedInningsRunsCTE(t *testing.T) {
 	require.Contains(t, q, "FROM batting_data")
 	require.True(t, strings.Contains(q, "SUM(runs)::bigint AS total_runs"), "query should use shared runs aggregation")
 	require.Contains(t, q, "match_id = ANY($1::bigint[])")
-	require.Contains(t, q, "LEFT JOIN innings_runs_cte ir ON ir.match_id = b.match_id AND ir.inning_number = b.inning_number")
+	require.Contains(
+		t,
+		q,
+		"LEFT JOIN innings_runs_cte ir ON ir.match_id = b.match_id AND ir.inning_number = b.inning_number",
+	)
 }

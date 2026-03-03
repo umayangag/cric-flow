@@ -13,8 +13,8 @@ from typing import Any, Dict, List, TypedDict
 
 from .feature_config import get_feature_names
 
-
 # --- Model mode registry (single source of truth for legacy vs per-format vs unified) ---
+
 
 class ModelModeEntry(TypedDict, total=False):
     name: str
@@ -42,6 +42,7 @@ MODEL_MODE_REGISTRY: List[ModelModeEntry] = [
 def get_model_modes() -> List[Dict[str, Any]]:
     """Return the model mode registry for UIs and API. Safe to extend with runtime availability later."""
     return [dict(entry) for entry in MODEL_MODE_REGISTRY]
+
 
 # Output column names per model (aligned with prediction response and training scripts)
 BATTING_OUTPUTS = [

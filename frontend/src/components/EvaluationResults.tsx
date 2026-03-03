@@ -30,7 +30,10 @@ const DEFAULT_CV: Record<string, number> = {
   run_outs: 0.5,
 };
 
-function assumedPercentiles(mean: number, metricKey: string): { p10: number; p50: number; p90: number } {
+function assumedPercentiles(
+  mean: number,
+  metricKey: string,
+): { p10: number; p50: number; p90: number } {
   const cv = DEFAULT_CV[metricKey] ?? 0.35;
   const sigma = Math.max(mean * cv, 0.1);
   const z = 1.28; // ~80% interval

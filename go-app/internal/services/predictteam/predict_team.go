@@ -4,6 +4,8 @@ package predictteam
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -105,27 +107,27 @@ type MLPredictor interface {
 
 // WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, toss, weather, team consistency/form sums).
 type WinFeatures struct {
-	FormatID               int
-	VenueID                int
-	Team1OppositionID      int
-	Team2OppositionID      int
-	TossWinnerOppositionID int
-	Temp                   int
-	Wind                   int
-	Rain                   int
-	Humidity               int
-	Cloud                  int
-	Pressure               int
-	Viscosity              int
-	Team1BatConsistencySum float64
+	FormatID                int
+	VenueID                 int
+	Team1OppositionID       int
+	Team2OppositionID       int
+	TossWinnerOppositionID  int
+	Temp                    int
+	Wind                    int
+	Rain                    int
+	Humidity                int
+	Cloud                   int
+	Pressure                int
+	Viscosity               int
+	Team1BatConsistencySum  float64
 	Team1BowlConsistencySum float64
-	Team2BatConsistencySum float64
+	Team2BatConsistencySum  float64
 	Team2BowlConsistencySum float64
-	Team1BatFormSum        float64
-	Team1BowlFormSum       float64
-	Team2BatFormSum        float64
-	Team2BowlFormSum       float64
-	Format                 string
+	Team1BatFormSum         float64
+	Team1BowlFormSum        float64
+	Team2BatFormSum         float64
+	Team2BowlFormSum        float64
+	Format                  string
 }
 
 // PlayerPred holds ML prediction output.
@@ -418,7 +420,22 @@ func predictTeamsWithIntermediates(
 	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
 	summary := ComputeScorecardSummary(result.Team1, result.Team2, extras1, extras2, team1, team2)
 	// When win model is available, use it for winner and rescale individual predictions so team totals match win probability.
-	if p, err := getMatchWinProbability(ctx, predictor, format, formatID, venueIDVal, opp1IDVal, opp2IDVal, input.Weather, nameToID1, nameToID2, sel1, sel2, allFeats); err == nil {
+	p, err := getMatchWinProbability(
+		ctx,
+		predictor,
+		format,
+		formatID,
+		venueIDVal,
+		opp1IDVal,
+		opp2IDVal,
+		input.Weather,
+		nameToID1,
+		nameToID2,
+		sel1,
+		sel2,
+		allFeats,
+	)
+	if err == nil {
 		summary.Team1WinProbability = p
 		if p >= 0.5 {
 			summary.PredictedWinner = team1
@@ -436,6 +453,8 @@ func predictTeamsWithIntermediates(
 		}
 		summary.Innings1Total = runs1 + extras1
 		summary.Innings2Total = runs2 + extras2
+	} else if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows is expected if win model is not loaded.
+		slog.WarnContext(ctx, "failed to get match win probability", slog.Any("err", err))
 	}
 	result.ScorecardSummary = &summary
 
@@ -610,7 +629,7 @@ func getMatchWinProbability(
 		Pressure:                pressure,
 		Viscosity:               0,
 		Team1BatConsistencySum:  sumBatConsistency(ids1),
-		Team1BowlConsistencySum:  sumBowlConsistency(ids1),
+		Team1BowlConsistencySum: sumBowlConsistency(ids1),
 		Team2BatConsistencySum:  sumBatConsistency(ids2),
 		Team2BowlConsistencySum: sumBowlConsistency(ids2),
 		Team1BatFormSum:         sumBatForm(ids1),

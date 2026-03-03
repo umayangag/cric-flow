@@ -21,10 +21,12 @@ type AccuracyTrendItem struct {
 // ComputeSummaryAndProgressive builds summary and progressive aggregates from
 // a list of accuracy-trend items. For each metric, averages use the count of
 // matches where that metric is present as the denominator.
-func ComputeSummaryAndProgressive(items []AccuracyTrendItem) (summary map[string]float64, progressive []map[string]float64) {
+func ComputeSummaryAndProgressive(
+	items []AccuracyTrendItem,
+) (summary map[string]float64, progressive []map[string]float64) {
 	var (
 		sumPlayerMAE, nPlayerMAE     float64
-		sumTeamRunsMAE, nTeamRunsMAE  float64
+		sumTeamRunsMAE, nTeamRunsMAE float64
 		sumWinnerAcc, nWinnerAcc     float64
 	)
 	nMatches := float64(len(items))

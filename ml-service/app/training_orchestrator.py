@@ -20,6 +20,7 @@ Logger = Any
 def ml_service_root() -> str:
     """Return the ml-service project root (directory containing the 'ml' package)."""
     import ml as _ml  # noqa: PLC0415
+
     return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
 
 
@@ -102,6 +103,7 @@ def export_csvs_available(prefix: str) -> bool:
 def unified_batting_csv_available() -> bool:
     """True if batting_encoded_all.csv or batting_encoded.csv exists in export dir."""
     from ml.config import default_go_app_export_dir
+
     out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
     if not out_dir or not os.path.isdir(out_dir):
         return False
@@ -113,6 +115,7 @@ def unified_batting_csv_available() -> bool:
 def unified_bowling_csv_available() -> bool:
     """True if bowling_encoded_all.csv or bowling_encoded.csv exists in export dir."""
     from ml.config import default_go_app_export_dir
+
     out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
     if not out_dir or not os.path.isdir(out_dir):
         return False
@@ -132,11 +135,18 @@ def run_batting_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
     else:
         extra = ["--all-formats"]
         if logger:
-            logger.info("admin.train.start", step="batting", per_format=True, from_api=False, from_csv=bool(cutoff and csv_available))
+            logger.info(
+                "admin.train.start",
+                step="batting",
+                per_format=True,
+                from_api=False,
+                from_csv=bool(cutoff and csv_available),
+            )
     run_training_subprocess("ml.train_batting", extra, {"ML_N_JOBS": "-1"}, logger=logger)
     if unified_batting_csv_available():
         try:
             from ml.train_batting_model import run_training as run_unified_batting
+
             run_unified_batting()
             if logger:
                 logger.info("admin.train.success", step="batting", unified=True)
@@ -159,11 +169,18 @@ def run_bowling_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
     else:
         extra = ["--all-formats"]
         if logger:
-            logger.info("admin.train.start", step="bowling", per_format=True, from_api=False, from_csv=bool(cutoff and csv_available))
+            logger.info(
+                "admin.train.start",
+                step="bowling",
+                per_format=True,
+                from_api=False,
+                from_csv=bool(cutoff and csv_available),
+            )
     run_training_subprocess("ml.train_bowling", extra, {"ML_N_JOBS": "-1"}, logger=logger)
     if unified_bowling_csv_available():
         try:
             from ml.train_bowling_model import run_training as run_unified_bowling
+
             run_unified_bowling()
             if logger:
                 logger.info("admin.train.success", step="bowling", unified=True)
@@ -239,6 +256,7 @@ def get_auto_tune_progress_path() -> str:
         return path
     try:
         from ml.config import default_artifacts_dir
+
         return os.path.join(default_artifacts_dir(), "auto_tune_progress.json")
     except Exception:
         return os.path.join("..", "..", "output", "ml-service", "auto_tune_progress.json")
@@ -273,8 +291,13 @@ def run_auto_tune(
 ) -> None:
     """Run auto-tune subprocess. Raises ValueError on failure."""
     extra = [
-        "--model", model,
-        "--from-api", "--cutoff", cutoff, "--go-app-url", go_app_url,
+        "--model",
+        model,
+        "--from-api",
+        "--cutoff",
+        cutoff,
+        "--go-app-url",
+        go_app_url,
     ]
     if use_all_formats:
         extra.append("--all-formats")
