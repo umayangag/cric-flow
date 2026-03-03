@@ -1,4 +1,5 @@
 {
+  "version": "1",
   "batting": [
     "batting_consistency",
     "batting_form",
