@@ -129,9 +129,19 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     BAT_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.batting", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.batting",
+                        format=code,
+                        artifact_type="batting",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.batting_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.batting_model_missing",
+                        format=code,
+                        artifact_type="batting",
+                        path=mpath,
+                    )
             if lf.startswith("bowling_scaler_") and lf.endswith(".joblib") and not lf.startswith("bowling_share_"):
                 code = fname[len("bowling_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -140,9 +150,19 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     BOWL_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.bowling", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.bowling",
+                        format=code,
+                        artifact_type="bowling",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.bowling_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.bowling_model_missing",
+                        format=code,
+                        artifact_type="bowling",
+                        path=mpath,
+                    )
             if lf.startswith("batting_share_scaler_") and lf.endswith(".joblib"):
                 code = fname[len("batting_share_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -151,9 +171,19 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     BAT_SHARE_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.batting_share", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.batting_share",
+                        format=code,
+                        artifact_type="batting_share",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.batting_share_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.batting_share_model_missing",
+                        format=code,
+                        artifact_type="batting_share",
+                        path=mpath,
+                    )
             if lf.startswith("bowling_share_scaler_") and lf.endswith(".joblib"):
                 code = fname[len("bowling_share_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -162,9 +192,19 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     BOWL_SHARE_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.bowling_share", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.bowling_share",
+                        format=code,
+                        artifact_type="bowling_share",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.bowling_share_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.bowling_share_model_missing",
+                        format=code,
+                        artifact_type="bowling_share",
+                        path=mpath,
+                    )
             if lf.startswith("fielding_scaler_") and lf.endswith(".joblib"):
                 code = fname[len("fielding_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -173,19 +213,39 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     FIELD_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.fielding", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.fielding",
+                        format=code,
+                        artifact_type="fielding",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.fielding_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.fielding_model_missing",
+                        format=code,
+                        artifact_type="fielding",
+                        path=mpath,
+                    )
             if lf.startswith("extras_model_") and lf.endswith(".joblib"):
                 code = fname[len("extras_model_") : -len(".joblib")].upper()
                 model = joblib.load(os.path.join(models_dir, fname))
                 EXTRAS_MODELS[code] = model
-                logger.info("artifacts.load_per_format.extras", format=code, models_dir=models_dir)
+                logger.info(
+                    "artifacts.load_per_format.extras",
+                    format=code,
+                    artifact_type="extras",
+                    models_dir=models_dir,
+                )
             if lf.startswith("win_model_") and lf.endswith(".joblib"):
                 code = fname[len("win_model_") : -len(".joblib")].upper()
                 model = joblib.load(os.path.join(models_dir, fname))
                 WIN_MODELS[code] = model
-                logger.info("artifacts.load_per_format.win", format=code, models_dir=models_dir)
+                logger.info(
+                    "artifacts.load_per_format.win",
+                    format=code,
+                    artifact_type="win",
+                    models_dir=models_dir,
+                )
             if lf.startswith("innings_scaler_") and lf.endswith(".joblib"):
                 code = fname[len("innings_scaler_") : -len(".joblib")].upper()
                 scaler = joblib.load(os.path.join(models_dir, fname))
@@ -194,9 +254,19 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     INNINGS_MODELS[code] = (scaler, model)
-                    logger.info("artifacts.load_per_format.innings", format=code, models_dir=models_dir)
+                    logger.info(
+                        "artifacts.load_per_format.innings",
+                        format=code,
+                        artifact_type="innings",
+                        models_dir=models_dir,
+                    )
                 else:
-                    logger.warning("artifacts.load_per_format.innings_model_missing", format=code, path=mpath)
+                    logger.warning(
+                        "artifacts.load_per_format.innings_model_missing",
+                        format=code,
+                        artifact_type="innings",
+                        path=mpath,
+                    )
         except Exception as e:
             logger.error(
                 "artifacts.load_per_format.load_failed",

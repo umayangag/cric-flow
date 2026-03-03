@@ -631,6 +631,10 @@ For any specific debt area, the agent should:
 
 ### 7.1. Model Modes (Legacy, Per‑Format, Unified, Shared)
 
+**Progress**
+
+- **Done:** Model mode registry added in `ml-service/app/model_metadata.py`: `MODEL_MODE_REGISTRY` and `get_model_modes()` list legacy and per_format with name, available, deprecated, description. `get_model_metadata()` includes top-level `model_modes` so GET /model-metadata surfaces mode info to the frontend. Unit tests in `tests/test_model_metadata.py` cover the registry and response shape.
+
 **Problem**
 
 - Multiple parallel notions of model modes are implemented:
@@ -711,6 +715,10 @@ For any specific debt area, the agent should:
 
 ### 7.3. Feature Vector Schema as a First‑Class Contract
 
+**Progress**
+
+- **Done:** `configs/feature_vectors.json` now includes a `version` field (e.g. `"1"`). Go `internal/features` contract struct and default contract include `Version`; `ContractVersion()` exposes it. Validation tests in `internal/features/contract_test.go`: default contract non-empty and no duplicates, feature name getters match default, load from JSON includes version; tests run as part of `go test` (and thus `make check-all` via go-app-check).
+
 **Problem**
 
 - Feature vectors are central but enforced via convention across:
@@ -754,7 +762,8 @@ For any specific debt area, the agent should:
 **Progress**
 
 - **Done (first slice):** `docs/observability.md` added, mapping Go `/ops/status` and health, ML `/health` + `/model-stats` + artifacts, and the frontend tabs that surface those signals, plus guidance on common IDs (`pipeline_id`, `run_id`, `format`, `artifact_type`).
-- **Todo:** Tighten and standardize log fields in Go and ML to consistently include these IDs for easier cross-service correlation.
+- **Done:** Go `internal/pipeline/job.go`: pipeline job logs now use `command` and `run_id` (when tracker is present) for correlation. ML `app/artifacts.py`: artifact load logs include `format` and `artifact_type` in structured log keys.
+- **Todo:** Further standardize log fields elsewhere (e.g. backtest, train-on-the-fly) as needed.
 
 **Problem**
 

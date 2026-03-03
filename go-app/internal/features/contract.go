@@ -12,7 +12,9 @@ import (
 )
 
 // contract holds batting, bowling, and fielding feature name lists (input features only).
+// Version is optional in JSON; when present it identifies the schema for compatibility checks.
 type contract struct {
+	Version  string   `json:"version,omitempty"`
 	Batting  []string `json:"batting"`
 	Bowling  []string `json:"bowling"`
 	Fielding []string `json:"fielding"`
@@ -26,6 +28,7 @@ var (
 
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
 var defaultContract = contract{
+	Version: "1",
 	Batting: []string{
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
@@ -123,4 +126,10 @@ func FieldingFeatureNames() []string {
 	out := make([]string, len(c.Fielding))
 	copy(out, c.Fielding)
 	return out
+}
+
+// ContractVersion returns the version string from the loaded contract, or "" if unversioned.
+// Used for compatibility checks and observability.
+func ContractVersion() string {
+	return getContract().Version
 }
