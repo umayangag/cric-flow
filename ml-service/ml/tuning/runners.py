@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import shutil
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
@@ -25,7 +24,6 @@ from sklearn.preprocessing import StandardScaler
 from ml.config import (
     get_training_params,
     get_tuning_config,
-    save_tuned_params_to_go_app,
 )
 from ml.data_quality import clip_target_outliers
 
@@ -48,6 +46,7 @@ except ImportError:
 
 try:
     import optuna
+
     _HAS_OPTUNA = True
 except ImportError:
     _HAS_OPTUNA = False
@@ -56,33 +55,28 @@ from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
     _effective_n_jobs,
-    _effective_timeseries_gap,
     _get_cv_object,
 )
 from ml.tuning.optuna_search import (
     _count_combinations,
+    _run_search_classification,
     _run_search_two_phase,
     _run_search_two_phase_single_regression,
     _save_artifacts,
     _save_artifacts_model_only,
 )
 from ml.tuning.search_space import (
-    _build_pipeline_single_regression,
     _get_prior_tuned_algorithm,
-    _normalize_hidden_layer_sizes,
     _phase1_candidates_classification,
     _prior_params_to_optuna_regression,
-    _search_space_classification,
-    _to_pipeline_params_single,
 )
 from ml.tuning.types import (
-    AVAILABLE_ALGORITHMS,
     PHASE1_TRIALS_PER_ALGORITHM,
     PHASE2_TRIALS,
-    target_names_for_model,
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _get_tuning_config() -> Dict[str, Any]:
     return get_tuning_config()
@@ -154,7 +148,6 @@ def _maybe_run_autogluon_and_compare(
     optuna_best_score: float,
 ) -> Tuple[bool, Optional[Any], Dict[str, Any]]:
     """Run AutoGluon when enabled; compare to Optuna score. Returns (autogluon_wins, wrapper_or_none, report_updates)."""
-    import shutil
 
     if use_autogluon is False or AutogluonPredictorWrapper is None:
         return False, None, {}

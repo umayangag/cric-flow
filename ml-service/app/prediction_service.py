@@ -443,7 +443,7 @@ def resolve_model_pair(
             detail=error_payload(
                 code="MISSING_FORMAT",
                 message=f"Missing 'format' and no legacy {domain} model loaded",
-                hint=f"Set 'format' in the request or train legacy artifacts.",
+                hint="Set 'format' in the request or train legacy artifacts.",
             ),
         )
     return pair

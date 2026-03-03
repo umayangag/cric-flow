@@ -258,7 +258,14 @@ func TestComputeAccuracyTrendSummaryAndProgressive(t *testing.T) {
 	}
 	svcItems := make([]backtest.AccuracyTrendItem, len(items))
 	for i := range items {
-		svcItems[i] = backtest.AccuracyTrendItem{MatchID: items[i].MatchID, MatchDate: items[i].MatchDate, Format: items[i].Format, Team1: items[i].Team1, Team2: items[i].Team2, Metrics: items[i].Metrics}
+		svcItems[i] = backtest.AccuracyTrendItem{
+			MatchID:   items[i].MatchID,
+			MatchDate: items[i].MatchDate,
+			Format:    items[i].Format,
+			Team1:     items[i].Team1,
+			Team2:     items[i].Team2,
+			Metrics:   items[i].Metrics,
+		}
 	}
 	summary, prog := backtest.ComputeSummaryAndProgressive(svcItems)
 

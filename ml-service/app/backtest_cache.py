@@ -9,12 +9,12 @@ Cache keys are (mode, cutoff_iso, tuple(sorted(ids))):
 Entries expire after ttl_seconds. When disabled=True or ttl_seconds<=0, get/put are no-ops.
 Player and match full-computation counts are tracked for tests and observability.
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
-
 
 CacheKey = Tuple[str, str, Tuple[Any, ...]]
 
@@ -70,4 +70,3 @@ class BacktestCache:
 
     def get_compute_counts(self) -> Tuple[int, int]:
         return self._players_compute_count, self._match_compute_count
-

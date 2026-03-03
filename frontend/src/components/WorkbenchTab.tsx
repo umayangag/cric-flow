@@ -2,15 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   Typography,
   Alert,
-  CircularProgress,
-  TextField,
   Table,
   TableBody,
   TableCell,
@@ -18,7 +12,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  LinearProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -33,7 +26,6 @@ import { api } from '../api';
 import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
-  AccuracyTrendItem,
   ModelMetadataResponse,
   WalkForwardRegistry,
   WalkForwardWindowEntry,
@@ -324,10 +316,6 @@ const WorkbenchTab: React.FC = () => {
     }
   };
 
-  const metricKeys = trendData?.results?.[0]
-    ? Object.keys(trendData.results[0].metrics).sort()
-    : [];
-
   const effectiveModelFeatures: ModelMetadataResponse = modelFeatures ?? DEFAULT_MODEL_FEATURES;
 
   return (
@@ -515,15 +503,15 @@ const WorkbenchTab: React.FC = () => {
                 <strong>Match-level:</strong> Extras: from <code>POST /predict/extras</code> (if
                 model loaded) with match-level features, or from DB historical average (
                 <code>GetAverageExtrasForFormat</code>). Win: from <code>POST /predict/win</code>{' '}
-                with team/match features; when win model is loaded, winner and team scores are
-                taken from it (team totals reconciled to win probability).
+                with team/match features; when win model is loaded, winner and team scores are taken
+                from it (team totals reconciled to win probability).
               </li>
               <li>
                 <strong>Aggregates:</strong> Predicted innings total = sum of selected XI batting
                 runs + extras. Winner comes from the win model when loaded; team scores are
                 reconciled to that probability (feedback). Team selection: scores from
-                batting/bowling/fielding predictions, optional combination-meta weights,
-                constraints (min bowlers, keeper); optimizer or greedy selection picks XI.
+                batting/bowling/fielding predictions, optional combination-meta weights, constraints
+                (min bowlers, keeper); optimizer or greedy selection picks XI.
               </li>
             </Box>
             <strong>APIs:</strong> Backtest: <code>GET /api/backtest/accuracy-trend</code> (runs

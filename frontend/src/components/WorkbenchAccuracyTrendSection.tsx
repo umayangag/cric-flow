@@ -68,12 +68,12 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
       subtitle="Load backtest accuracy (MAE, etc.) for played matches. Filters choose which matches to include; then the API runs predictions and returns metrics."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load accuracy
-        trend&quot;. Use <strong>Prediction model</strong> to compare format-specific models vs the
-        unified (legacy) model. The table shows one row per match with error metrics (e.g. runs_mae,
-        wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include every format, or pick
-        one (e.g. T20) to evaluate that format only. Prerequisites: precompute and ML artifacts must
-        be in place.
+        <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load
+        accuracy trend&quot;. Use <strong>Prediction model</strong> to compare format-specific
+        models vs the unified (legacy) model. The table shows one row per match with error metrics
+        (e.g. runs_mae, wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include
+        every format, or pick one (e.g. T20) to evaluate that format only. Prerequisites: precompute
+        and ML artifacts must be in place.
       </Typography>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -218,4 +218,3 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
 };
 
 export default WorkbenchAccuracyTrendSection;
-

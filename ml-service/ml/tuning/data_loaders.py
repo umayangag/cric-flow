@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ml.config import default_go_app_export_dir
 from ml.data_quality import impute_features
 from ml.tuning.types import (
     BAT_SEQ_COLS,
@@ -25,6 +24,7 @@ from ml.tuning.types import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _sort_df_by_match_date(df: pd.DataFrame) -> pd.DataFrame:
     """Sorts a DataFrame by 'match_date' if the column exists."""

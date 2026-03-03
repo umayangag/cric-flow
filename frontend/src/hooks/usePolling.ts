@@ -44,4 +44,3 @@ export function usePolling(callback: PollingCallback, intervalMs: number, enable
     };
   }, [enabled, intervalMs]);
 }
-

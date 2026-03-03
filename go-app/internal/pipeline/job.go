@@ -91,7 +91,11 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	defer func() {
 		if v := recover(); v != nil {
 			runErr = fmt.Errorf("panic: %v", v)
-			attrs := []any{slog.String("panic", fmt.Sprint(v)), slog.String("stack", string(debug.Stack())), slog.String("command", jobName)}
+			attrs := []any{
+				slog.String("panic", fmt.Sprint(v)),
+				slog.String("stack", string(debug.Stack())),
+				slog.String("command", jobName),
+			}
 			if tracker != nil {
 				attrs = append(attrs, slog.Int("run_id", tracker.ID))
 			}

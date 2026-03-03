@@ -48,10 +48,10 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         2,
         3,
         1,
-            7.5,
-            8.5,
-            2024,
-        ]
+        7.5,
+        8.5,
+        2024,
+    ]
     # All remaining seq feature cols default to 0.0 when absent.
     assert bat_vec[18:] == [0.0] * (len(bat_vec) - 18)
 
@@ -91,10 +91,10 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         2,
         3,
         1,
-            7.5,
-            8.5,
-            2024,
-        ]
+        7.5,
+        8.5,
+        2024,
+    ]
     # All remaining seq feature cols default to 0.0 when absent.
     assert bowl_vec[17:] == [0.0] * (len(bowl_vec) - 17)
 

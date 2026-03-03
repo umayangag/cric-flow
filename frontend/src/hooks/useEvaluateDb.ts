@@ -278,9 +278,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     if (!currentJobId || !evaluating) return;
     try {
       const status = await api.getEvaluateStatus(currentJobId);
-      setEvaluationSteps(
-        status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
-      );
+      setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
       if (status.status === 'done') {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);

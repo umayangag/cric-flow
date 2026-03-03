@@ -29,7 +29,7 @@ from sklearn.model_selection import (
 )
 from sklearn.pipeline import Pipeline
 
-from ml.config import get_mlqa_config, get_tuning_config, get_tuning_search_space
+from ml.config import get_mlqa_config
 from ml.tuning.types import (
     BATTING_FEATURE_COLS,
     BOWLING_FEATURE_COLS,
@@ -37,7 +37,6 @@ from ml.tuning.types import (
     _train_fielding,
     _train_innings,
     _train_win,
-    target_names_for_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Simpler algorithms for complexity check: prefer these if within 1% of best
 _MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
 _MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
+
 
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
     """Resolve n_jobs: override if set, else config, else env AUTO_TUNE_N_JOBS. When result is -1, use resource-aware suggested_n_jobs('tuning') for multi-CPU."""

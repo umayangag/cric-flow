@@ -1,0 +1,32 @@
+---
+description: Language-specific standards for writing unit tests in this repo
+alwaysApply: true
+---
+
+# Unit Test Standards
+
+When writing or editing unit tests, follow the **language-specific conventions** below.
+
+## Go (`*_test.go`)
+
+- **Location:** Test files live next to the code they test (`foo.go` → `foo_test.go`), same package (or `_test` for external tests).
+- **Naming:** `func TestXxx(t *testing.T)` where `Xxx` is descriptive and often `FunctionName_Scenario_Outcome` (e.g. `TestChooseBacktestMode_EmptyModeWithMatchID_ReturnsEvaluate`).
+- **Structure:** Prefer **table-driven tests**: define a slice of structs with at least a `name` field and inputs/expected values, then loop with `t.Run(tt.name, func(t *testing.T) { ... })` so each case runs as a subtest.
+- **Assertions:** Use `t.Fatalf` / `t.Errorf` with a clear message including got/want, or `require`/`assert` from `github.com/stretchr/testify` where it improves readability (e.g. `require.NoError(t, err)`).
+- **Integration tests:** Use a distinct name or file (e.g. `*_integration_test.go`) and skip or gate with build tags/env if they need DB or external services.
+
+## Python (`test_*.py`, pytest)
+
+- **Location:** Tests live under `ml-service/tests/` with module names `test_<module_or_feature>.py`.
+- **Naming:** Test functions must be named `test_<descriptive_snake_case>` (e.g. `test_backtest_cache_put_and_get_with_sorted_ids`). Use a short docstring to describe the scenario.
+- **Style:** One logical scenario per test; use plain `assert` for expectations. Type-hint test functions as `-> None` where appropriate.
+- **Fixtures:** Use pytest fixtures (`@pytest.fixture`) or `monkeypatch`/`tmp_path` for setup; avoid heavy global setup.
+- **Imports:** Prefer importing the code under test from the application package (e.g. `from app.backtest_cache import BacktestCache`), not relative paths that assume a specific CWD.
+
+## TypeScript / React (Vitest)
+
+- **Location:** Colocated `*.test.ts` / `*.test.tsx` next to the module, or under `frontend/tests/` for shared component tests.
+- **Runner:** Use **Vitest** (`describe`, `it`, `expect`). Use `vi` for mocks (`vi.fn()`, `vi.stubGlobal`, `vi.restoreAllMocks()`).
+- **Structure:** Group with `describe('module or component name', () => { ... })`; each case in `it('does something specific', () => { ... })`. Use `beforeEach` for common setup (e.g. restoring mocks).
+- **Assertions:** Use `expect(...).toEqual(...)`, `expect(...).toThrow(...)`, etc. Prefer specific matchers over generic ones.
+- **React components:** Use `@testing-library/react` for rendering and queries; avoid testing implementation details.

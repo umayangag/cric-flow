@@ -14,9 +14,8 @@ Usage:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List
+from typing import Dict
 
-import numpy as np
 import pandas as pd
 
 from .training_pipeline import ModelSpec, TrainingPipeline
