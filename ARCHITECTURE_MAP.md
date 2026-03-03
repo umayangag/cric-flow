@@ -48,8 +48,8 @@ All training params from `ml-service/config.json` → `ml.training.<model>` (def
 | **Batting** | Player | 27 | 5 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
 | **Bowling** | Player | 26 | 3 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
 | **Fielding** | Player | 15 | 3 | 150 | 10 | StandardScaler on X; MultiOutputRegressor |
-| **Extras** | Match | 16 | 1 | 100 | 8 | RandomForestRegressor; no scaler |
-| **Win** | Match | 22 | 1 (prob) | 100 | 8 | RandomForestClassifier; no scaler |
+| **Extras** | Match | 15 | 1 | 100 | 8 | RandomForestRegressor; no scaler |
+| **Win** | Match | 21 | 1 (prob) | 100 | 8 | RandomForestClassifier; no scaler |
 | **Innings** | Innings | 17 | 2 | 100 | 8 | StandardScaler on X; MultiOutputRegressor (runs, wickets) |
 
 ### Batting
@@ -65,11 +65,11 @@ All training params from `ml-service/config.json` → `ml.training.<model>` (def
 - **Outputs** (3): `catches`, `run_outs`, `stumpings`.
 
 ### Extras
-- **Inputs** (16, from `ml.train_extras.EXTRAS_FEATURE_COLS`): `format_id`, `venue_id`, `season_id`, `match_date_unix`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`.
+- **Inputs** (15, from `ml.train_extras.EXTRAS_FEATURE_COLS`): `format_id`, `venue_id`, `season_id`, `match_date_unix`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`.
 - **Output** (1): `total_extras`.
 
 ### Win
-- **Inputs** (22, from `ml.train_win.WIN_FEATURE_COLS`): `format_id`, `venue_id`, `match_date_unix`, `team1_opposition_id`, `team2_opposition_id`, `toss_winner_opposition_id`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `team1_bat_consistency_sum`, `team1_bowl_consistency_sum`, `team2_bat_consistency_sum`, `team2_bowl_consistency_sum`, `team1_bat_form_sum`, `team1_bowl_form_sum`, `team2_bat_form_sum`, `team2_bowl_form_sum`.
+- **Inputs** (21, from `ml.train_win.WIN_FEATURE_COLS`): `format_id`, `venue_id`, `match_date_unix`, `team1_opposition_id`, `team2_opposition_id`, `toss_winner_opposition_id`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `team1_bat_consistency_sum`, `team1_bowl_consistency_sum`, `team2_bat_consistency_sum`, `team2_bowl_consistency_sum`, `team1_bat_form_sum`, `team1_bowl_form_sum`, `team2_bat_form_sum`, `team2_bowl_form_sum`.
 - **Output** (1): `team1_win_probability` (0–1).
 
 ### Innings
