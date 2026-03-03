@@ -57,12 +57,14 @@ type SelectedPlayer struct {
 }
 
 // ScorecardSummary holds predicted innings totals and winner for an upcoming match.
+// When the win model is used, PredictedWinner and optionally Innings1Total/Innings2Total are consistent with Team1WinProbability (feedback).
 type ScorecardSummary struct {
-	Innings1Total   float64 `json:"innings1_total"`
-	Innings2Total   float64 `json:"innings2_total"`
-	PredictedWinner string  `json:"predicted_winner"`
-	ExtrasInnings1  float64 `json:"extras_innings1,omitempty"`
-	ExtrasInnings2  float64 `json:"extras_innings2,omitempty"`
+	Innings1Total       float64 `json:"innings1_total"`
+	Innings2Total       float64 `json:"innings2_total"`
+	PredictedWinner     string  `json:"predicted_winner"`
+	Team1WinProbability float64 `json:"team1_win_probability,omitempty"` // from win model when available
+	ExtrasInnings1      float64 `json:"extras_innings1,omitempty"`
+	ExtrasInnings2      float64 `json:"extras_innings2,omitempty"`
 }
 
 // Result holds the best 11 for each team and optional scorecard summary.
@@ -85,7 +87,7 @@ type MatchContext struct {
 	Temp, Wind, Rain, Humidity, Cloud, Pressure, Viscosity int
 }
 
-// MLPredictor provides player predictions from features (e.g. via ML backtest endpoint).
+// MLPredictor provides player predictions and optional match-level win probability.
 // When matchCtx is non-nil, ML may rescale predictions for consistency (requires innings model).
 type MLPredictor interface {
 	PredictPlayers(
@@ -96,6 +98,34 @@ type MLPredictor interface {
 		features map[int64]map[string]float64,
 		matchCtx *MatchContext,
 	) (map[int64]PlayerPred, error)
+	// PredictMatchWin returns team1 (batting first) win probability in [0,1].
+	// When the win model is not loaded or request fails, returns an error and the caller should use winner-from-totals.
+	PredictMatchWin(ctx context.Context, w WinFeatures) (team1WinProbability float64, err error)
+}
+
+// WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, toss, weather, team consistency/form sums).
+type WinFeatures struct {
+	FormatID               int
+	VenueID                int
+	Team1OppositionID      int
+	Team2OppositionID      int
+	TossWinnerOppositionID int
+	Temp                   int
+	Wind                   int
+	Rain                   int
+	Humidity               int
+	Cloud                  int
+	Pressure               int
+	Viscosity              int
+	Team1BatConsistencySum float64
+	Team1BowlConsistencySum float64
+	Team2BatConsistencySum float64
+	Team2BowlConsistencySum float64
+	Team1BatFormSum        float64
+	Team1BowlFormSum       float64
+	Team2BatFormSum        float64
+	Team2BowlFormSum       float64
+	Format                 string
 }
 
 // PlayerPred holds ML prediction output.
@@ -387,6 +417,26 @@ func predictTeamsWithIntermediates(
 	// Predicted scorecard summary: innings totals and winner from selected XI predictions.
 	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
 	summary := ComputeScorecardSummary(result.Team1, result.Team2, extras1, extras2, team1, team2)
+	// When win model is available, use it for winner and rescale individual predictions so team totals match win probability.
+	if p, err := getMatchWinProbability(ctx, predictor, format, formatID, venueIDVal, opp1IDVal, opp2IDVal, input.Weather, nameToID1, nameToID2, sel1, sel2, allFeats); err == nil {
+		summary.Team1WinProbability = p
+		if p >= 0.5 {
+			summary.PredictedWinner = team1
+		} else {
+			summary.PredictedWinner = team2
+		}
+		rescaleTeamPredictionsToWinProbability(result.Team1, result.Team2, extras1, extras2, p)
+		// Recompute summary from rescaled runs
+		var runs1, runs2 float64
+		for _, p := range result.Team1 {
+			runs1 += p.Runs
+		}
+		for _, p := range result.Team2 {
+			runs2 += p.Runs
+		}
+		summary.Innings1Total = runs1 + extras1
+		summary.Innings2Total = runs2 + extras2
+	}
 	result.ScorecardSummary = &summary
 
 	mid := &predictIntermediates{
@@ -440,6 +490,136 @@ func ComputeScorecardSummary(
 		ExtrasInnings1:  extrasInnings1,
 		ExtrasInnings2:  extrasInnings2,
 	}
+}
+
+// rescaleTeamPredictionsToWinProbability rescales each player's Runs (and Wickets, Economy) so that
+// team totals match win probability p: innings1 = total_innings*p, innings2 = total_innings*(1-p).
+func rescaleTeamPredictionsToWinProbability(
+	team1, team2 []SelectedPlayer,
+	extras1, extras2 float64,
+	p float64,
+) {
+	var runs1, runs2 float64
+	for _, p := range team1 {
+		runs1 += p.Runs
+	}
+	for _, p := range team2 {
+		runs2 += p.Runs
+	}
+	totalInnings := runs1 + extras1 + runs2 + extras2
+	if totalInnings <= 0 {
+		return
+	}
+	targetRuns1 := totalInnings*p - extras1
+	targetRuns2 := totalInnings*(1-p) - extras2
+	factor1, factor2 := 1.0, 1.0
+	if runs1 > 0 {
+		factor1 = targetRuns1 / runs1
+	}
+	if runs2 > 0 {
+		factor2 = targetRuns2 / runs2
+	}
+	for i := range team1 {
+		team1[i].Runs *= factor1
+	}
+	for i := range team2 {
+		team2[i].Runs *= factor2
+	}
+}
+
+// getMatchWinProbability builds match-level win features from selected XIs and allFeats, calls the win model, and returns team1 win probability.
+// Returns error when the win model is not loaded or the request fails; caller then keeps winner-from-totals.
+func getMatchWinProbability(
+	ctx context.Context,
+	predictor MLPredictor,
+	format string,
+	formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	weather *WeatherInput,
+	nameToID1, nameToID2 map[string]int64,
+	sel1, sel2 []teamselect.Player,
+	allFeats map[int64]map[string]float64,
+) (float64, error) {
+	sumBatConsistency := func(ids []int64) float64 {
+		s := 0.0
+		for _, pid := range ids {
+			if m := allFeats[pid]; m != nil {
+				s += m["batting_consistency"]
+			}
+		}
+		return s
+	}
+	sumBowlConsistency := func(ids []int64) float64 {
+		s := 0.0
+		for _, pid := range ids {
+			if m := allFeats[pid]; m != nil {
+				s += m["bowling_consistency"]
+			}
+		}
+		return s
+	}
+	sumBatForm := func(ids []int64) float64 {
+		s := 0.0
+		for _, pid := range ids {
+			if m := allFeats[pid]; m != nil {
+				s += m["batting_form"]
+			}
+		}
+		return s
+	}
+	sumBowlForm := func(ids []int64) float64 {
+		s := 0.0
+		for _, pid := range ids {
+			if m := allFeats[pid]; m != nil {
+				s += m["bowling_form"]
+			}
+		}
+		return s
+	}
+	ids1 := make([]int64, 0, len(sel1))
+	for _, p := range sel1 {
+		if id, ok := nameToID1[p.Name]; ok {
+			ids1 = append(ids1, id)
+		}
+	}
+	ids2 := make([]int64, 0, len(sel2))
+	for _, p := range sel2 {
+		if id, ok := nameToID2[p.Name]; ok {
+			ids2 = append(ids2, id)
+		}
+	}
+	temp, wind, rain, humidity, cloud, pressure := 0, 0, 0, 0, 0, 0
+	if weather != nil {
+		temp = int(weather.Temp)
+		wind = int(weather.Wind)
+		rain = int(weather.Rain)
+		humidity = int(weather.Humidity)
+		cloud = int(weather.Cloud)
+		pressure = int(weather.Pressure)
+	}
+	w := WinFeatures{
+		FormatID:                int(formatID),
+		VenueID:                 int(venueIDVal),
+		Team1OppositionID:       int(opp2IDVal), // team1 bats first, faces team2
+		Team2OppositionID:       int(opp1IDVal),
+		TossWinnerOppositionID:  0,
+		Temp:                    temp,
+		Wind:                    wind,
+		Rain:                    rain,
+		Humidity:                humidity,
+		Cloud:                   cloud,
+		Pressure:                pressure,
+		Viscosity:               0,
+		Team1BatConsistencySum:  sumBatConsistency(ids1),
+		Team1BowlConsistencySum:  sumBowlConsistency(ids1),
+		Team2BatConsistencySum:  sumBatConsistency(ids2),
+		Team2BowlConsistencySum: sumBowlConsistency(ids2),
+		Team1BatFormSum:         sumBatForm(ids1),
+		Team1BowlFormSum:        sumBowlForm(ids1),
+		Team2BatFormSum:         sumBatForm(ids2),
+		Team2BowlFormSum:        sumBowlForm(ids2),
+		Format:                  strings.TrimSpace(strings.ToUpper(format)),
+	}
+	return predictor.PredictMatchWin(ctx, w)
 }
 
 // getExtrasForMatch returns predicted extras per innings (same for both innings from format/venue average).

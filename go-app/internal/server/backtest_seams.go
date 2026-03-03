@@ -7,6 +7,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // testing seam for DB call
@@ -53,6 +54,10 @@ var (
 	mlHistoricalBacktestFunc = func(ctx context.Context, cutoff time.Time, matchID *int64, filters *HistoricalMatchFilters) (HistoricalBacktestResult, error) {
 		client := NewBacktestMLClient()
 		return client.historicalMatchBacktest(ctx, cutoff, matchID, filters)
+	}
+	// PredictMatchWin: match-level win model (POST /predict/win). When win model not loaded, return error so caller uses winner-from-totals.
+	mlPredictMatchWinFunc = func(_ context.Context, _ predictteam.WinFeatures) (float64, error) {
+		return 0, sql.ErrNoRows
 	}
 )
 

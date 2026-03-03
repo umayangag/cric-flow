@@ -17,6 +17,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // --- Helpers extracted for readability (no behavior change) ---
@@ -340,9 +341,128 @@ func computePlayerResultsAndMetrics(
 	return players, metrics
 }
 
+func formatFromFilters(filters map[string]any) string {
+	if v, ok := filters["format"]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(strings.ToUpper(s))
+		}
+	}
+	return ""
+}
+
+// buildBacktestWinFeatures builds win model features from match context, player teams, and per-player features.
+func buildBacktestWinFeatures(
+	winCtx *db.MatchWinContext,
+	format string,
+	playerTeams map[int64]string,
+	team1, team2 string,
+	features map[int64]map[string]float64,
+) predictteam.WinFeatures {
+	sumForTeam := func(team string, key string) float64 {
+		s := 0.0
+		for pid, t := range playerTeams {
+			if t != team {
+				continue
+			}
+			if m := features[pid]; m != nil {
+				s += m[key]
+			}
+		}
+		return s
+	}
+	venueID := 0
+	if winCtx.VenueID != 0 {
+		venueID = int(winCtx.VenueID)
+	}
+	return predictteam.WinFeatures{
+		FormatID:                int(winCtx.FormatID),
+		VenueID:                 venueID,
+		Team1OppositionID:       int(winCtx.Team1OppositionID),
+		Team2OppositionID:       int(winCtx.Team2OppositionID),
+		TossWinnerOppositionID:  int(winCtx.TossWinnerOppositionID),
+		Team1BatConsistencySum:  sumForTeam(team1, "batting_consistency"),
+		Team1BowlConsistencySum:  sumForTeam(team1, "bowling_consistency"),
+		Team2BatConsistencySum:  sumForTeam(team2, "batting_consistency"),
+		Team2BowlConsistencySum: sumForTeam(team2, "bowling_consistency"),
+		Team1BatFormSum:         sumForTeam(team1, "batting_form"),
+		Team1BowlFormSum:        sumForTeam(team1, "bowling_form"),
+		Team2BatFormSum:         sumForTeam(team2, "batting_form"),
+		Team2BowlFormSum:        sumForTeam(team2, "bowling_form"),
+		Format:                  format,
+	}
+}
+
+// rescaleBacktestPredictionsToWinProbability rescales each player's predicted runs and wickets
+// so that team1 total = total*p and team2 total = total*(1-p), preserving proportions within each team.
+func rescaleBacktestPredictionsToWinProbability(
+	resp *backtestEvaluateResponse,
+	playerTeams map[int64]string,
+	team1, team2 string,
+	p float64,
+) {
+	var runs1, runs2, wkt1, wkt2 float64
+	for i := range resp.Players {
+		pid := resp.Players[i].PlayerID
+		t, _ := playerTeams[pid]
+		var r, w float64
+		if resp.Players[i].Predicted != nil {
+			r, _ = resp.Players[i].Predicted["runs"]
+			w, _ = resp.Players[i].Predicted["wickets"]
+		}
+		if t == team1 {
+			runs1 += r
+			wkt1 += w
+		} else if t == team2 {
+			runs2 += r
+			wkt2 += w
+		}
+	}
+	totalRuns := runs1 + runs2
+	totalWickets := wkt1 + wkt2
+	factorR1, factorR2 := 1.0, 1.0
+	if totalRuns > 0 {
+		if runs1 > 0 {
+			factorR1 = (totalRuns * p) / runs1
+		}
+		if runs2 > 0 {
+			factorR2 = (totalRuns * (1 - p)) / runs2
+		}
+	}
+	factorW1, factorW2 := 1.0, 1.0
+	if totalWickets > 0 {
+		if wkt1 > 0 {
+			factorW1 = (totalWickets * p) / wkt1
+		}
+		if wkt2 > 0 {
+			factorW2 = (totalWickets * (1 - p)) / wkt2
+		}
+	}
+	for i := range resp.Players {
+		t, _ := playerTeams[resp.Players[i].PlayerID]
+		if resp.Players[i].Predicted == nil {
+			continue
+		}
+		if t == team1 {
+			if v, ok := resp.Players[i].Predicted["runs"]; ok {
+				resp.Players[i].Predicted["runs"] = v * factorR1
+			}
+			if v, ok := resp.Players[i].Predicted["wickets"]; ok {
+				resp.Players[i].Predicted["wickets"] = v * factorW1
+			}
+		} else if t == team2 {
+			if v, ok := resp.Players[i].Predicted["runs"]; ok {
+				resp.Players[i].Predicted["runs"] = v * factorR2
+			}
+			if v, ok := resp.Players[i].Predicted["wickets"]; ok {
+				resp.Players[i].Predicted["wickets"] = v * factorW2
+			}
+		}
+	}
+}
+
 // populateMatchAggregatesAndMetrics fills the response with match-level predicted/actual aggregates
-// and associated metrics. Predicted aggregates are derived from player predictions (no baseline/RNG).
-// Actuals come from DB. No behavior change if actuals seam fails.
+// and associated metrics. When features is non-nil, uses the win model for winner and rescales
+// individual predicted runs (and wickets) so team totals match win probability.
 func populateMatchAggregatesAndMetrics(
 	ctx context.Context,
 	resp *backtestEvaluateResponse,
@@ -350,10 +470,8 @@ func populateMatchAggregatesAndMetrics(
 	team1 string,
 	team2 string,
 	matchID int64,
+	features map[int64]map[string]float64,
 ) {
-	// Predicted: sum from player predictions; winner from team run totals.
-	var predRuns, predWickets float64
-	teamRuns := make(map[string]float64)
 	playerTeams, err := db.GetMatchPlayerTeams(ctx, matchID)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to get match player teams", slog.Int64("match_id", matchID), slog.Any("err", err))
@@ -362,6 +480,20 @@ func populateMatchAggregatesAndMetrics(
 	if playerTeams == nil {
 		playerTeams = make(map[int64]string)
 	}
+
+	// When win model is available and we have features, get win probability and rescale predictions.
+	if len(features) > 0 {
+		if winCtx, err := db.GetMatchWinContext(ctx, matchID); err == nil {
+			w := buildBacktestWinFeatures(winCtx, formatFromFilters(resp.Filters), playerTeams, team1, team2, features)
+			if p, err := mlPredictMatchWinFunc(ctx, w); err == nil && p >= 0 && p <= 1 {
+				rescaleBacktestPredictionsToWinProbability(resp, playerTeams, team1, team2, p)
+			}
+		}
+	}
+
+	// Predicted: sum from (possibly rescaled) player predictions; winner from win model or team run totals.
+	var predRuns, predWickets float64
+	teamRuns := make(map[string]float64)
 	for _, p := range resp.Players {
 		r := 0.0
 		if p.Predicted != nil {
@@ -588,7 +720,7 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("aggregates", "Fetching match-level aggregates...")
 	}
-	populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid)
+	populateMatchAggregatesAndMetrics(ctx, &resp, cutoff, team1, team2, mid, features)
 
 	if progress != nil {
 		progress("scorecard", "Building predicted scorecard...")

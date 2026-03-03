@@ -181,7 +181,7 @@ const OpsStatusTab: React.FC = () => {
           </SectionCard>
           <SectionCard
             title="Prediction model flow"
-            subtitle="How ML models connect: batting → bowling → fielding → combined metrics → performance predictor → win model → final team (XI)."
+            subtitle="Features at cutoff → per-player models (batting, bowling, fielding) → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation."
           >
             <MLPredictionGraph />
           </SectionCard>

@@ -9,9 +9,20 @@ export type PredictTeamSelectedPlayer = {
   run_outs: number;
 };
 
+/** Scorecard summary: innings totals and winner; when win model is used, totals are reconciled to win probability. */
+export type PredictScorecardSummary = {
+  innings1_total: number;
+  innings2_total: number;
+  predicted_winner: string;
+  team1_win_probability?: number;
+  extras_innings1?: number;
+  extras_innings2?: number;
+};
+
 export type PredictTeamSelectionResponse = {
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
+  scorecard_summary?: PredictScorecardSummary;
 };
 
 export type HealthResponse = {
