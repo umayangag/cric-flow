@@ -5,8 +5,9 @@ import Typography from '@mui/material/Typography';
 
 /**
  * Static graph showing how ML models connect toward the final prediction outcome.
- * Parallel models (Batting, Bowling, Fielding) are stacked vertically; rest is horizontal flow.
- * Flow: Features → [Batting, Bowling, Fielding in parallel] → Combined metrics → Performance predictor → Win model → Team selection (XI).
+ * Parallel player models (Batting, Bowling, Fielding) are stacked vertically; rest is horizontal flow.
+ * Flow: Features at cutoff → [Batting, Bowling, Fielding in parallel] → Per‑player scores
+ *       → Team aggregates + Extras → Win model (winner; team scores reconciled to win probability) → Team selection / simulation.
  */
 const MLPredictionGraph: React.FC = () => {
   const nodeSx = {
@@ -32,19 +33,19 @@ const MLPredictionGraph: React.FC = () => {
   const parallelModels = [
     {
       id: 'batting',
-      label: 'Batting',
+      label: 'Batting model',
       sx: { ...nodeSx, borderColor: 'primary.light' },
       color: 'primary.dark',
     },
     {
       id: 'bowling',
-      label: 'Bowling',
+      label: 'Bowling model',
       sx: { ...nodeSx, borderColor: 'secondary.light' },
       color: 'secondary.dark',
     },
     {
       id: 'fielding',
-      label: 'Fielding',
+      label: 'Fielding model',
       sub: '(optional)',
       sx: { ...nodeSx, opacity: 0.9 },
       color: 'text.secondary',
@@ -52,22 +53,26 @@ const MLPredictionGraph: React.FC = () => {
   ];
 
   const downstreamNodes = [
-    { id: 'combined', label: 'Combined metrics', sx: nodeSx },
     {
-      id: 'perf',
-      label: 'Performance predictor',
+      id: 'players',
+      label: 'Per‑player scores',
+      sx: nodeSx,
+    },
+    {
+      id: 'team',
+      label: 'Team aggregates + Extras model',
       sx: { ...nodeSx, borderColor: 'info.light', bgcolor: 'info.50' },
       color: 'info.dark',
     },
     {
       id: 'win',
-      label: 'Win model',
+      label: 'Win model (winner + team scores)',
       sx: { ...nodeSx, borderColor: 'success.light', bgcolor: 'success.50' },
       color: 'success.dark',
     },
     {
-      id: 'team',
-      label: 'Team selection (XI)',
+      id: 'selection',
+      label: 'Team selection / simulation',
       sx: { ...nodeSx, borderColor: 'primary.main', bgcolor: 'primary.50' },
       color: 'primary.dark',
       bold: true,
@@ -84,12 +89,12 @@ const MLPredictionGraph: React.FC = () => {
         py: 1.5,
       }}
       role="img"
-      aria-label="ML prediction flow: Features to parallel Batting, Bowling, Fielding, then Combined metrics, Performance predictor, Win model, Team selection"
+      aria-label="ML prediction flow: Features at cutoff to parallel Batting, Bowling, Fielding models, then per-player scores, team aggregates with Extras, Win model (winner and team scores from win probability), and final team selection or simulation"
     >
       {/* Features */}
       <Paper component="span" elevation={0} sx={nodeSx}>
         <Typography component="span" variant="body2" fontWeight={600}>
-          Features (DB)
+          Features at cutoff (go-app)
         </Typography>
       </Paper>
       <Typography component="span" sx={arrowSx} aria-hidden>

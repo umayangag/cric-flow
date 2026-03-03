@@ -512,13 +512,14 @@ const WorkbenchTab: React.FC = () => {
                 <strong>Match-level:</strong> Extras: from <code>POST /predict/extras</code> (if
                 model loaded) with match-level features, or from DB historical average (
                 <code>GetAverageExtrasForFormat</code>). Win: from <code>POST /predict/win</code>{' '}
-                with team/match features, or by comparing innings totals (sum of player runs +
-                extras).
+                with team/match features; when win model is loaded, winner and team scores are
+                taken from it (team totals reconciled to win probability).
               </li>
               <li>
                 <strong>Aggregates:</strong> Predicted innings total = sum of selected XI batting
-                runs + extras. Winner = higher total or win model output. Team selection: scores
-                from batting/bowling/fielding predictions, optional combination-meta weights,
+                runs + extras. Winner comes from the win model when loaded; team scores are
+                reconciled to that probability (feedback). Team selection: scores from
+                batting/bowling/fielding predictions, optional combination-meta weights,
                 constraints (min bowlers, keeper); optimizer or greedy selection picks XI.
               </li>
             </Box>

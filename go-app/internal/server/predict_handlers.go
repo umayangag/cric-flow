@@ -60,6 +60,10 @@ func (mlPredictorAdapter) PredictPlayers(
 	return out, nil
 }
 
+func (mlPredictorAdapter) PredictMatchWin(ctx context.Context, w predictteam.WinFeatures) (float64, error) {
+	return mlPredictMatchWinFunc(ctx, w)
+}
+
 // predictTeamSelectionHandler handles POST /api/predict/team-selection
 func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
