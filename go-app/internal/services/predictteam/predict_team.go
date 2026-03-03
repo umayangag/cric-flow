@@ -4,6 +4,8 @@ package predictteam
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -418,7 +420,22 @@ func predictTeamsWithIntermediates(
 	extras1, extras2 := getExtrasForMatch(ctx, formatID, venueID)
 	summary := ComputeScorecardSummary(result.Team1, result.Team2, extras1, extras2, team1, team2)
 	// When win model is available, use it for winner and rescale individual predictions so team totals match win probability.
-	if p, err := getMatchWinProbability(ctx, predictor, format, formatID, venueIDVal, opp1IDVal, opp2IDVal, input.Weather, nameToID1, nameToID2, sel1, sel2, allFeats); err == nil {
+	p, err := getMatchWinProbability(
+		ctx,
+		predictor,
+		format,
+		formatID,
+		venueIDVal,
+		opp1IDVal,
+		opp2IDVal,
+		input.Weather,
+		nameToID1,
+		nameToID2,
+		sel1,
+		sel2,
+		allFeats,
+	)
+	if err == nil {
 		summary.Team1WinProbability = p
 		if p >= 0.5 {
 			summary.PredictedWinner = team1
@@ -436,6 +453,8 @@ func predictTeamsWithIntermediates(
 		}
 		summary.Innings1Total = runs1 + extras1
 		summary.Innings2Total = runs2 + extras2
+	} else if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows is expected if win model is not loaded.
+		slog.WarnContext(ctx, "failed to get match win probability", slog.Any("err", err))
 	}
 	result.ScorecardSummary = &summary
 
