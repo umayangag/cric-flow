@@ -106,7 +106,8 @@ For any specific debt area, the agent should:
 **Progress**
 
 - **Done:** `internal/services/backtest` added; accuracy-trend summary/progressive aggregation moved to `backtest.ComputeSummaryAndProgressive`; handlers delegate, tests added.
-- **Done:** `internal/services/pipeline` added; `pipeline.StopRun` extracts stop-orchestration (cancel job + cancel migration); `pipelineStopHandler` delegates to it.
+- **Done:** `internal/services/pipeline` added; `pipeline.StopRun` extracts stop-orchestration (cancel job + cancel migration); `pipelineStopHandler` delegates to it; pipeline service unit tests added.
+- **Done:** `backtest.EmptySummaryAndProgressive()` added; accuracy-trend handler uses it for the zero-candidates response.
 - **Todo:** Further handler delegation (SelectCandidates, EvaluateRun, StartRun, StreamStatus) and thicker service methods as needed.
 
 **Problem**
@@ -159,7 +160,9 @@ For any specific debt area, the agent should:
 
 - **Done:** `internal/tracking/doc.go` added — describes Run ID / Run type / Run state, state transitions, and where runs are created/updated/surfaced.
 - **Done:** `ReconcileStaleRuns(ctx, reason, staleOlderThan)` added; startup in `cmd/api/main.go` now calls it instead of `CancelStaleInProgressMigrations` + manual logging.
-- **Todo:** Refactor ops_status_* to use tracking abstractions more explicitly if needed; optional config toggles for “run reconciliation on startup” (currently always on when DB connected).
+- **Done:** Optional config toggles for run reconciliation on startup (`RUN_TRACKING_RECONCILIATION_AT_STARTUP=0`); see 4.4.
+- **Done:** `tracking.InProgressByCommand(ctx)` added; `buildPipelineSection` uses it so pipeline step "running" state is derived from one tracking call instead of N.
+- **Todo:** Further refactor of ops_status_* to use tracking abstractions if needed (optional).
 
 **Problem**
 
@@ -205,6 +208,7 @@ For any specific debt area, the agent should:
 **Progress**
 
 - **Done (first slice):** Extracted a shared `inningsRunsHoldoutCTE` helper in `internal/db/exportqueries` and rewired batting/bowling holdout queries to use it, so innings‑level total runs logic now lives in one place.
+- **Done:** Unit tests in `internal/db/exportqueries/innings_cte_test.go` asserting the CTE fragment and that batting/bowling holdout raw queries use the shared CTE.
 - **Todo:** Broader scan of `repo_*.go` and `exportqueries/*.go` for overlapping joins/filters; add shared helpers (e.g. per-domain fragments) and fixture-based validation tests for at least one domain (e.g. batting) that compare repo vs export semantics.
 
 **Problem**
@@ -247,7 +251,8 @@ For any specific debt area, the agent should:
 
 - **Done:** `RunMigrations` lives in `internal/db`; `ReconcileStaleRuns` in `internal/tracking`. Startup in `cmd/api/main.go` calls them when enabled.
 - **Done:** Env toggles: `RUN_MIGRATIONS_AT_STARTUP=0` and `RUN_TRACKING_RECONCILIATION_AT_STARTUP=0` disable migrations and reconciliation at startup (default: both on).
-- **Todo:** Small tests for startup orchestration (migration failure, ordering) if desired.
+- **Done:** Unit tests in `cmd/api/main_test.go` for startup env toggles (`runMigrationsAtStartup`, `runTrackingReconciliationAtStartup`).
+- **Todo:** Small tests for migration failure / ordering if desired (optional).
 
 **Problem**
 
@@ -477,7 +482,8 @@ For any specific debt area, the agent should:
 **Progress**
 
 - **Done (first slice):** Extracted `WorkbenchAccuracyTrendSection` as a presentational component and wired `WorkbenchTab` to act as its container (state, data fetching, and handlers), reducing tab complexity.
-- **Todo:** Repeat this pattern for the remaining large tabs (EvaluateDbTab, OpsStatusTab, MLModelStatsTab) and for additional sub‑sections of Workbench (e.g. walk-forward registry, model metadata).
+- **Done:** Extracted `MLModelStatsSection` as a presentational component; `MLModelStatsTab` is now a thin container (state, fetch, effect) that renders `MLModelStatsSection` with data/error/loading/onRefresh.
+- **Todo:** Repeat this pattern for the remaining large tabs (EvaluateDbTab, OpsStatusTab) and for additional sub‑sections of Workbench (e.g. walk-forward registry, model metadata).
 
 **Problem**
 
@@ -666,6 +672,10 @@ For any specific debt area, the agent should:
 - Adding/removing a mode happens by editing the registry and updating tests, not by implicitly adding new branches in multiple places.
 
 ### 7.2. Configuration Semantics
+
+**Progress**
+
+- **Done:** `docs/configuration.md` added: precedence (env overrides, config file, defaults), key env vars for Go API and ML service, defaulting when config is missing. Precedence and defaulting are already covered by existing tests in `go-app/internal/config` (e.g. `load_test.go`, `config_test.go`).
 
 **Problem**
 

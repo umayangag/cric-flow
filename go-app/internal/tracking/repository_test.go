@@ -355,3 +355,14 @@ func TestHasInProgressForAnyCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestInProgressByCommand(t *testing.T) {
+	t.Run("db_not_available_returns_empty_map", func(t *testing.T) {
+		db.SetDB(nil)
+		defer func() { db.SetDB(nil) }()
+		got, err := InProgressByCommand(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Empty(t, got)
+	})
+}

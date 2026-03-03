@@ -17,6 +17,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
@@ -850,6 +851,7 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if len(candidates) == 0 {
+		summary, progressive := backtest.EmptySummaryAndProgressive()
 		resp := accuracyTrendResponse{
 			Filters: map[string]any{
 				"format": params.Format, "team1": params.Team1, "team2": params.Team2,
@@ -859,8 +861,8 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 			},
 			Count:       0,
 			Results:     []accuracyTrendItem{},
-			Summary:     map[string]float64{"n": 0},
-			Progressive: []map[string]float64{},
+			Summary:     summary,
+			Progressive: progressive,
 		}
 		writeJSON(w, http.StatusOK, resp)
 		return

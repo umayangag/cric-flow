@@ -43,13 +43,14 @@ var pipelineStepPreviousCommand = map[string]string{
 // Steps that share the same previous (e.g. train_batting, train_bowling, train_fielding after export) can run concurrently.
 // Import is always runnable when not running so the pipeline can be retriggered from the beginning.
 func buildPipelineSection(ctx context.Context) map[string]any {
+	inProgress, err := tracking.InProgressByCommand(ctx)
+	if err != nil {
+		slog.Warn("pipeline: InProgressByCommand failed", "err", err)
+		inProgress = map[string]bool{}
+	}
 	steps := map[string]any{}
 	for stepID, command := range pipelineStepCommands {
-		running, err := tracking.HasInProgressForCommand(ctx, command)
-		if err != nil {
-			slog.Warn("pipeline: HasInProgressForCommand failed", "step", stepID, "command", command, "err", err)
-			running = false
-		}
+		running := inProgress[command]
 		completed, err := tracking.HasCompletedSuccessfullyForCommand(ctx, command)
 		if err != nil {
 			slog.Warn(
@@ -99,19 +100,7 @@ func buildPipelineSection(ctx context.Context) map[string]any {
 			break
 		}
 	}
-	autoTuneRunning, err := tracking.HasInProgressForCommand(ctx, "ml-auto-tune")
-	if err != nil {
-		slog.Warn(
-			"pipeline: HasInProgressForCommand failed",
-			"step",
-			"auto_tune",
-			"command",
-			"ml-auto-tune",
-			"err",
-			err,
-		)
-		autoTuneRunning = false
-	}
+	autoTuneRunning := inProgress["ml-auto-tune"]
 	autoTuneCompleted, err := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
 	if err != nil {
 		slog.Warn(

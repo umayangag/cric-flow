@@ -2,6 +2,12 @@
 // so HTTP handlers can stay thin and delegate to this package.
 package backtest
 
+// EmptySummaryAndProgressive returns the canonical empty summary and progressive
+// slice for the accuracy-trend API when there are no candidates.
+func EmptySummaryAndProgressive() (summary map[string]float64, progressive []map[string]float64) {
+	return map[string]float64{"n": 0}, nil
+}
+
 // AccuracyTrendItem is one match's metrics for the accuracy-trend API.
 type AccuracyTrendItem struct {
 	MatchID   int64
