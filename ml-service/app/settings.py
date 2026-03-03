@@ -76,6 +76,9 @@ class MLServiceSettings:
     backtest_cache_ttl_seconds: int
     train_latest_cache_granularity: str
     model_stats_cache_ttl: int
+    go_app_url: str
+    enable_train_on_the_fly: bool
+    go_app_api_key: str
     frontend_origin_raw: str
 
     @property
@@ -99,6 +102,9 @@ def load_ml_service_settings() -> MLServiceSettings:
     backtest_cache_ttl_seconds = _env_int("BACKTEST_CACHE_TTL", default=300)
     train_latest_cache_granularity = (os.environ.get("TRAIN_ON_THE_FLY_LATEST_CACHE_GRANULARITY") or "hour").strip().lower()
     model_stats_cache_ttl = _env_int("MODEL_STATS_CACHE_TTL", default=60)
+    go_app_url = (os.environ.get("GO_APP_URL") or "").strip() or "http://localhost:8080"
+    enable_train_on_the_fly = _env_bool("ENABLE_TRAIN_ON_THE_FLY", default=False)
+    go_app_api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
     frontend_origin_raw = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 
     return MLServiceSettings(
@@ -110,5 +116,8 @@ def load_ml_service_settings() -> MLServiceSettings:
         backtest_cache_ttl_seconds=backtest_cache_ttl_seconds,
         train_latest_cache_granularity=train_latest_cache_granularity,
         model_stats_cache_ttl=model_stats_cache_ttl,
+        go_app_url=go_app_url,
+        enable_train_on_the_fly=enable_train_on_the_fly,
+        go_app_api_key=go_app_api_key,
         frontend_origin_raw=frontend_origin_raw,
     )

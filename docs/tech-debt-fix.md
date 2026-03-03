@@ -108,7 +108,7 @@ For any specific debt area, the agent should:
 - **Done:** `internal/services/backtest` added; accuracy-trend summary/progressive aggregation moved to `backtest.ComputeSummaryAndProgressive`; handlers delegate, tests added.
 - **Done:** `internal/services/pipeline` added; `pipeline.StopRun` extracts stop-orchestration (cancel job + cancel migration); `pipelineStopHandler` delegates to it; pipeline service unit tests added.
 - **Done:** `backtest.EmptySummaryAndProgressive()` added; accuracy-trend handler uses it for the zero-candidates response.
-- **Todo:** Further handler delegation (SelectCandidates, EvaluateRun, StartRun, StreamStatus) and thicker service methods as needed.
+- **Done:** Backtest select/evaluate handlers now delegate to helper functions: handleBacktestSelect (candidates via listPlayedByFmtTeams), handleBacktestEvaluate + doEvaluateWork (evaluate pipeline), and evaluate job helpers (startEvaluateJob, getEvaluateJobStatus, backtestEvaluateStreamHandler) so HTTP handlers mainly parse requests and map responses.
 
 **Problem**
 
@@ -162,7 +162,7 @@ For any specific debt area, the agent should:
 - **Done:** `ReconcileStaleRuns(ctx, reason, staleOlderThan)` added; startup in `cmd/api/main.go` now calls it instead of `CancelStaleInProgressMigrations` + manual logging.
 - **Done:** Optional config toggles for run reconciliation on startup (`RUN_TRACKING_RECONCILIATION_AT_STARTUP=0`); see 4.4.
 - **Done:** `tracking.InProgressByCommand(ctx)` added; `buildPipelineSection` uses it so pipeline step "running" state is derived from one tracking call instead of N.
-- **Todo:** Further refactor of ops_status_* to use tracking abstractions if needed (optional).
+- **Note:** Further refactor of ops_status_* to use tracking abstractions can be done later if needed (optional); current tracking helpers and ops status behavior are sufficient for the roadmap.
 
 **Problem**
 
