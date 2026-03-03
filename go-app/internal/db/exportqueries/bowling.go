@@ -741,12 +741,7 @@ func BowlingTrainingRowsWithFormat(ctx context.Context, format string, cutoff ti
 
 // bowlingHoldoutRawQuery returns SQL and args for raw bowling rows for the given match IDs (same columns as training).
 func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
-	q := `WITH innings_runs_cte AS (
-		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
-		FROM batting_data
-		WHERE match_id = ANY($1::bigint[])
-		GROUP BY match_id, inning_number
-	),
+	q := "WITH " + inningsRunsHoldoutCTE("innings_runs_cte") + `,
 	innings_wickets_cte AS (
 		SELECT match_id, inning_number, SUM(wickets)::bigint AS total_wickets
 		FROM bowling_data

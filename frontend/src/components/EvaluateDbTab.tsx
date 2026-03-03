@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -23,6 +23,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { api } from '../api';
 import { accentGradient } from '../theme';
+import { usePolling } from '../hooks/usePolling';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 import CandidatesTable from './CandidatesTable';
 import EvaluationResults from './EvaluationResults';
@@ -171,10 +172,9 @@ const EvaluateDbTab: React.FC = () => {
   // Evaluate job (survives refresh: job_id stored in localStorage, poll status)
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
-  const [evaluationSteps, setEvaluationSteps] = useState<Array<{ step: string; message: string }>>(
-    [],
-  );
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [evaluationSteps, setEvaluationSteps] = useState<
+    Array<{ step: string; message: string }>
+  >([]);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -264,74 +264,50 @@ const EvaluateDbTab: React.FC = () => {
   }, []);
 
   // Poll evaluate status while job is running
-  useEffect(() => {
+  const pollEvaluateStatus = useCallback(async () => {
     if (!currentJobId || !evaluating) return;
-
-    const poll = () => {
-      api
-        .getEvaluateStatus(currentJobId)
-        .then((status) => {
-          setEvaluationSteps(
-            status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
-          );
-          if (status.status === 'done') {
-            setEvaluating(false);
-            setEvaluationResult(status.result ?? null);
-            setStatusMessage('Evaluation complete.');
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            try {
-              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-            } catch {
-              /* ignore */
-            }
-          } else if (status.status === 'error') {
-            setEvaluating(false);
-            setError(status.error ?? 'Unknown error');
-            setStatusMessage('');
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            try {
-              localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-            } catch {
-              /* ignore */
-            }
-          }
-        })
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          setEvaluating(false);
-          if (msg.includes('404') || msg.includes('NOT_FOUND')) {
-            setError('Evaluation job no longer available (server may have restarted).');
-          } else {
-            setError(msg || 'Failed to fetch evaluation status.');
-          }
-          setStatusMessage('');
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-          try {
-            localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-          } catch {
-            /* ignore */
-          }
-        });
-    };
-
-    poll();
-    pollIntervalRef.current = setInterval(poll, 2000);
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
+    try {
+      const status = await api.getEvaluateStatus(currentJobId);
+      setEvaluationSteps(
+        status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? [],
+      );
+      if (status.status === 'done') {
+        setEvaluating(false);
+        setEvaluationResult(status.result ?? null);
+        setStatusMessage('Evaluation complete.');
+        try {
+          localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+      } else if (status.status === 'error') {
+        setEvaluating(false);
+        setError(status.error ?? 'Unknown error');
+        setStatusMessage('');
+        try {
+          localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
       }
-    };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setEvaluating(false);
+      if (msg.includes('404') || msg.includes('NOT_FOUND')) {
+        setError('Evaluation job no longer available (server may have restarted).');
+      } else {
+        setError(msg || 'Failed to fetch evaluation status.');
+      }
+      setStatusMessage('');
+      try {
+        localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
   }, [currentJobId, evaluating]);
+
+  usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
 
   // Load match scorecard when a match is selected
   useEffect(() => {

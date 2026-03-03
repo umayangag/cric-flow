@@ -66,6 +66,9 @@ const nodeTypes = {
 };
 
 const MLPredictionGraph: React.FC = () => {
+  const supportsReactFlow =
+    typeof window !== 'undefined' && typeof (window as any).ResizeObserver !== 'undefined';
+
   const { nodes, edges } = useMemo(() => {
     const nodes: Node<StageNodeData>[] = [
       {
@@ -206,6 +209,30 @@ const MLPredictionGraph: React.FC = () => {
 
     return { nodes, edges };
   }, []);
+
+  if (!supportsReactFlow) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: 260,
+          bgcolor: 'grey.50',
+          borderRadius: 1,
+          border: '1px dashed',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: 2,
+          textAlign: 'center',
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Prediction flow diagram is available only in browsers that support ResizeObserver.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box

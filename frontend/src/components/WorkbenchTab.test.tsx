@@ -34,4 +34,30 @@ describe('WorkbenchTab', () => {
     await waitFor(() => expect(mockGetFormats).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: /load accuracy trend/i })).toBeInTheDocument();
   });
+
+  it('uses backend model metadata when available', async () => {
+    mockGetFormats.mockResolvedValue([]);
+    mockGetModelMetadata.mockResolvedValue({
+      batting: {
+        level: 'player',
+        hasScaler: false,
+        artifactsPattern: { perFormat: 'pf', legacy: 'lg' },
+        features: ['x_feature'],
+        outputs: ['y_output'],
+        note: 'from-backend',
+      },
+    });
+    render(<WorkbenchTab />);
+    await waitFor(() => expect(mockGetModelMetadata).toHaveBeenCalled());
+    expect(screen.getByText(/from-backend/i)).toBeInTheDocument();
+  });
+
+  it('falls back to DEFAULT_MODEL_FEATURES when metadata fetch fails', async () => {
+    mockGetFormats.mockResolvedValue([]);
+    mockGetModelMetadata.mockRejectedValue(new Error('boom'));
+    render(<WorkbenchTab />);
+    await waitFor(() => expect(mockGetModelMetadata).toHaveBeenCalled());
+    // A known feature from DEFAULT_MODEL_FEATURES should be present in the UI (batting section).
+    expect(screen.getByText(/batting_consistency/i)).toBeInTheDocument();
+  });
 });
