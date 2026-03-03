@@ -232,6 +232,20 @@ func GetInProgressMigrations(ctx context.Context) ([]Migration, error) {
 	return scanMigrations(rows)
 }
 
+// InProgressByCommand returns a set of commands that currently have an IN_PROGRESS run.
+// Call this once when building pipeline/ops status to avoid N separate HasInProgressForCommand calls.
+func InProgressByCommand(ctx context.Context) (map[string]bool, error) {
+	list, err := GetInProgressMigrations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(list))
+	for _, m := range list {
+		out[m.Command] = true
+	}
+	return out, nil
+}
+
 func scanMigrations(rows db.Rows) ([]Migration, error) {
 	var migrations []Migration
 	for rows.Next() {

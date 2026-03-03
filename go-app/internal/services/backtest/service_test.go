@@ -1,6 +1,16 @@
 package backtest
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestEmptySummaryAndProgressive(t *testing.T) {
+	summary, progressive := EmptySummaryAndProgressive()
+	require.Equal(t, map[string]float64{"n": 0}, summary)
+	require.Nil(t, progressive)
+}
 
 func almostEqual(a, b float64) bool {
 	const eps = 1e-9
