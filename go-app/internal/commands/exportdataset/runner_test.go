@@ -156,7 +156,9 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 				bat.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
 				bow.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
 				extras.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(nil)
-				win.EXPECT().ExportFormat(mock.Anything, "ODI", mock.Anything).Return(errors.New("win format export failed"))
+				win.EXPECT().
+					ExportFormat(mock.Anything, "ODI", mock.Anything).
+					Return(errors.New("win format export failed"))
 				r := cmd.NewRunnerWithServices(bat, bow, nil, extras, win)
 				return r, cli.Options{OutDir: t.TempDir(), Unified: true, Formats: []string{"ODI"}}
 			},

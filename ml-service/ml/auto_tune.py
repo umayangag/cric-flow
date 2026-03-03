@@ -194,6 +194,7 @@ BATTING_FEATURE_COLS = [
     "batting_venue",
     "batting_opposition",
     "season_id",
+    "match_date_unix",
 ] + BAT_SEQ_COLS
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = [
@@ -214,6 +215,7 @@ BOWLING_FEATURE_COLS = [
     "bowling_venue",
     "bowling_opposition",
     "season_id",
+    "match_date_unix",
 ] + BOWL_SEQ_COLS
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
 
@@ -223,17 +225,15 @@ _TARGET_NAMES_BY_KIND: Dict[str, List[str]] = {
     "bowling": BOWLING_TARGET_COLS,
 }
 # Fielding and innings added lazily if modules available
+if _train_fielding is not None and hasattr(_train_fielding, "FIELDING_TARGET_COLS"):
+    _TARGET_NAMES_BY_KIND["fielding"] = getattr(_train_fielding, "FIELDING_TARGET_COLS")
+if _train_innings is not None and hasattr(_train_innings, "INNINGS_TARGET_COLS"):
+    _TARGET_NAMES_BY_KIND["innings"] = getattr(_train_innings, "INNINGS_TARGET_COLS")
 
 
 def _target_names_for_model(model_kind: str) -> Optional[List[str]]:
     """Return target column names for per-target MAE when available."""
-    if model_kind in _TARGET_NAMES_BY_KIND:
-        return _TARGET_NAMES_BY_KIND[model_kind]
-    if model_kind == "fielding" and _train_fielding is not None:
-        return getattr(_train_fielding, "FIELDING_TARGET_COLS", None)
-    if model_kind == "innings" and _train_innings is not None:
-        return getattr(_train_innings, "INNINGS_TARGET_COLS", None)
-    return None
+    return _TARGET_NAMES_BY_KIND.get(model_kind)
 
 
 def _get_tuning_config() -> Dict[str, Any]:

@@ -100,56 +100,66 @@ function TuningInsights({
 }: {
   metrics: Record<string, unknown>;
   mlqa?: { checks?: { stability?: { cv_std?: number; cv_fold_scores?: number[] } } };
-}) {
-  const items: Array<{ label: string; value: string; hint?: string }> = [];
-  const b = metrics.baseline_improvement_pct;
-  if (b != null && typeof b === 'number') {
-    items.push({
+}): JSX.Element | null {
+  const insightDefinitions: Array<{
+    label: string;
+    value: unknown;
+    condition: (v: unknown) => boolean;
+    format: (v: unknown) => string;
+    hint?: string;
+  }> = [
+    {
       label: 'Baseline improvement',
-      value: `${b}%`,
+      value: metrics.baseline_improvement_pct as number,
+      condition: (v) => typeof v === 'number',
+      format: (v) => `${v as number}%`,
       hint: 'vs naive (predict mean); higher = model adds more value',
-    });
-  }
-  const m = metrics.mae_pct_of_mean;
-  if (m != null && typeof m === 'number') {
-    items.push({
+    },
+    {
       label: 'MAE % of mean',
-      value: `${m}%`,
+      value: metrics.mae_pct_of_mean as number,
+      condition: (v) => typeof v === 'number',
+      format: (v) => `${v as number}%`,
       hint: 'relative error; lower is better',
-    });
-  }
-  const og = metrics.overfitting_gap;
-  if (og != null && typeof og === 'number') {
-    items.push({
+    },
+    {
       label: 'Overfitting gap',
-      value: og.toFixed(4),
+      value: metrics.overfitting_gap as number,
+      condition: (v) => typeof v === 'number',
+      format: (v) => (v as number).toFixed(4),
       hint: 'train−val score diff; high = overfitting',
-    });
-  }
-  const vsi = metrics.val_still_improving;
-  if (typeof vsi === 'boolean') {
-    items.push({
+    },
+    {
       label: 'Val still improving',
-      value: vsi ? 'Yes' : 'No',
+      value: metrics.val_still_improving as boolean,
+      condition: (v) => typeof v === 'boolean',
+      format: (v) => ((v as boolean) ? 'Yes' : 'No'),
       hint: 'more data might help if Yes',
-    });
-  }
-  const cvStd = mlqa?.checks?.stability?.cv_std;
-  if (cvStd != null && typeof cvStd === 'number') {
-    items.push({
+    },
+    {
       label: 'CV fold σ',
-      value: cvStd.toFixed(4),
+      value: mlqa?.checks?.stability?.cv_std as number,
+      condition: (v) => typeof v === 'number',
+      format: (v) => (v as number).toFixed(4),
       hint: 'stability; >0.05 = unstable',
-    });
-  }
-  const foldScores = mlqa?.checks?.stability?.cv_fold_scores;
-  if (foldScores && Array.isArray(foldScores) && foldScores.length > 0) {
-    items.push({
+    },
+    {
       label: 'CV fold scores',
-      value: foldScores.map((s) => String(s)).join(', '),
+      value: mlqa?.checks?.stability?.cv_fold_scores as number[],
+      condition: (v) => Array.isArray(v) && v.length > 0,
+      format: (v) => (v as number[]).map(String).join(', '),
       hint: 'per-fold scores (neg_MAE)',
-    });
-  }
+    },
+  ];
+
+  const items = insightDefinitions
+    .filter(({ value, condition }) => value != null && condition(value))
+    .map(({ label, value, format, hint }) => ({
+      label,
+      value: format(value),
+      hint,
+    }));
+
   if (items.length === 0) return null;
   return (
     <Box sx={{ mt: 1.5, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>

@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 WIN_FEATURE_COLS = [
     "format_id",
     "venue_id",
+    "match_date_unix",
     "team1_opposition_id",
     "team2_opposition_id",
     "toss_winner_opposition_id",

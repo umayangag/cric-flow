@@ -129,7 +129,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
 		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
@@ -151,7 +151,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 			r.catches, r.runOuts, r.stumpings,
 			floatToExport(snap.consistency), floatToExport(snap.form),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
-			r.inning, r.toss, venueStr, oppStr, r.seasonID, r.playerName,
+			r.inning, r.toss, venueStr, oppStr, r.seasonID, strconv.FormatInt(r.matchDate.Unix(), 10), r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
 			r.matchDate.Format("2006-01-02"),
 		}
@@ -194,7 +194,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			"catches", "run_outs", "stumpings",
 			"fielding_consistency", "fielding_form",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-			"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+			"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
 			"match_date",
 		}
 		return [][]string{headers}, nil
@@ -241,7 +241,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "player_name", "format_code",
+		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
 		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
@@ -262,7 +262,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			r.catches, r.runOuts, r.stumpings,
 			floatToExport(snap.consistency), floatToExport(snap.form),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
-			r.inning, r.toss, venueStr, oppStr, r.seasonID, r.playerName,
+			r.inning, r.toss, venueStr, oppStr, r.seasonID, strconv.FormatInt(r.matchDate.Unix(), 10), r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
 			r.matchDate.Format("2006-01-02"),
 		}
