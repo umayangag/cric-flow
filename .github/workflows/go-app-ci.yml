@@ -1,4 +1,5 @@
-name: Go App Tests
+# Single CI workflow: lint + tests in one job to minimize runners and setup.
+name: Go App CI
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -9,20 +10,21 @@ on:
     branches: [ main ]
     paths:
       - 'go-app/**'
-      - '.github/workflows/go-app-tests.yml'
+      - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'go-app/**'
-      - '.github/workflows/go-app-tests.yml'
+      - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'
 
 jobs:
-  test:
+  ci:
     if: github.event.pull_request.draft == false
+    name: Lint & Test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -33,7 +35,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-
-          --health-cmd "pg_isready -U postgres -d cricket_data" 
+          --health-cmd "pg_isready -U postgres -d cricket_data"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -43,9 +45,24 @@ jobs:
         with:
           go-version: '1.26.x'
           check-latest: true
+          cache: true
+          cache-dependency-path: go-app/go.sum
 
       - name: Init (tools + modules)
         run: make -C go-app init
+
+      - name: Format check
+        run: make -C go-app fmt-check
+
+      - name: Vet
+        run: make -C go-app vet
+
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: go-app
+          args: -c ../.golangci.yml
 
       - name: Apply migrations
         env:
@@ -62,7 +79,6 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
-          # Minimum 60%; matches root Makefile COV_MIN_GO.
           COV_MIN: "60"
         run: make -C go-app coverage-check
 

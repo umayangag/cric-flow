@@ -1,4 +1,5 @@
-name: ML Service Lint
+# Single CI workflow: format/lint check + tests in one job to minimize runners and setup.
+name: ML Service CI
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -9,18 +10,19 @@ on:
     branches: [ main ]
     paths:
       - 'ml-service/**'
-      - '.github/workflows/ml-service-lint.yml'
+      - '.github/workflows/ml-service-ci.yml'
       - 'ml-service/requirements.txt'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ml-service/**'
-      - '.github/workflows/ml-service-lint.yml'
+      - '.github/workflows/ml-service-ci.yml'
       - 'ml-service/requirements.txt'
 
 jobs:
-  lint:
+  ci:
     if: github.event.pull_request.draft == false
+    name: Lint & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,8 +41,23 @@ jobs:
           docker image prune --all --force 2>/dev/null || true
           docker builder prune -a -f 2>/dev/null || true
 
-      - name: Install dev tools
+      - name: Install deps and tools
         run: make -C ml-service ci-setup
 
       - name: Format and lint check (ruff)
         run: make -C ml-service fmt-check
+
+      - name: Run tests with coverage (xml + term)
+        run: make -C ml-service coverage
+
+      - name: Enforce coverage threshold
+        env:
+          COV_MIN: "57"
+        run: make -C ml-service coverage-check
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-service-coverage
+          path: ml-service/coverage.xml
