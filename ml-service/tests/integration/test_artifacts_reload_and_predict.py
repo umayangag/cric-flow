@@ -15,12 +15,14 @@ from fastapi.testclient import TestClient
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
+from app.train_on_the_fly import BATTING_FEATURE_COLS, BOWLING_FEATURE_COLS
+
 
 @pytest.mark.integration
 def test_reload_artifacts_from_dir_and_predict_batting(tmp_path):
     """After reload from a dir with batting scaler+model, POST /predict/batting returns 200."""
-    # Build minimal valid artifacts: scaler + model (batting feature vector length = 26, output = 6 cols)
-    n_features = 26
+    # Build minimal valid artifacts: scaler + model using current batting feature vector length.
+    n_features = len(BATTING_FEATURE_COLS)
     scaler = StandardScaler()
     scaler.fit(np.random.RandomState(42).randn(10, n_features))
     model = RandomForestRegressor(n_estimators=2, max_depth=2, random_state=42)
@@ -66,7 +68,8 @@ def test_reload_artifacts_from_dir_and_predict_batting(tmp_path):
 @pytest.mark.integration
 def test_reload_artifacts_from_dir_and_predict_bowling(tmp_path):
     """After reload from a dir with bowling scaler+model, POST /predict/bowling returns 200."""
-    n_features = 25  # bowling: 17 base + 8 seq (consistency, form, momentum, career_avg + 7 weather + 3 inning/session/toss + 3 venue/opp/season + 8 seq)
+    # Build minimal valid artifacts: scaler + model using current bowling feature vector length.
+    n_features = len(BOWLING_FEATURE_COLS)
     scaler = StandardScaler()
     scaler.fit(np.random.RandomState(42).randn(10, n_features))
     model = RandomForestRegressor(n_estimators=2, max_depth=2, random_state=42)

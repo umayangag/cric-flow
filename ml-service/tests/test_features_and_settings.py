@@ -2,6 +2,8 @@ import importlib
 import os
 from types import SimpleNamespace
 
+from app.feature_config import get_feature_names
+
 
 def test_batting_and_bowling_feature_vectors_content(tmp_path):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
@@ -29,7 +31,7 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         season=2024,
     )
     bat_vec = features_mod.batting_feature_vector(bat)
-    # 18 base + 8 seq (0 when absent)
+    # 18 base + seq (0 when absent)
     assert bat_vec[:18] == [
         1.1,
         2.2,
@@ -46,11 +48,12 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         2,
         3,
         1,
-        7.5,
-        8.5,
-        2024,
-    ]
-    assert bat_vec[18:] == [0.0] * 8  # seq cols default to 0
+            7.5,
+            8.5,
+            2024,
+        ]
+    # All remaining seq feature cols default to 0.0 when absent.
+    assert bat_vec[18:] == [0.0] * (len(bat_vec) - 18)
 
     bowl = SimpleNamespace(
         bowling_consistency=1.1,
@@ -72,7 +75,7 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         season=2024,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
-    # 17 base + 8 seq (0 when absent): consistency, form, momentum, career_avg, temp..viscosity, inning, session, toss, venue, opp, season
+    # 17 base + seq (0 when absent): consistency, form, momentum, career_avg, temp..viscosity, inning, session, toss, venue, opp, season
     assert bowl_vec[:17] == [
         1.1,
         2.2,
@@ -88,11 +91,12 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         2,
         3,
         1,
-        7.5,
-        8.5,
-        2024,
-    ]
-    assert bowl_vec[17:] == [0.0] * 8  # seq cols default to 0
+            7.5,
+            8.5,
+            2024,
+        ]
+    # All remaining seq feature cols default to 0.0 when absent.
+    assert bowl_vec[17:] == [0.0] * (len(bowl_vec) - 17)
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):
@@ -150,8 +154,9 @@ def test_feature_value_via_batting_vector_with_none_and_bad_types(tmp_path):
     )
     vec = features_mod.batting_feature_vector(bat)
     # Seq cols: bat_prev_sr (None->0), bat_prev_out_rate (bad->0), rest numeric
-    idx_prev_sr = 18
-    idx_prev_out = 19
+    names = get_feature_names("batting")
+    idx_prev_sr = names.index("bat_prev_sr")
+    idx_prev_out = names.index("bat_prev_out_rate")
     assert vec[idx_prev_sr] == 0.0
     assert vec[idx_prev_out] == 0.0
 
@@ -179,10 +184,12 @@ def test_fielding_feature_vector(tmp_path):
         fielding_season=2024,
     )
     vec = features_mod.fielding_feature_vector(fld)
-    assert len(vec) == 14
+    names = get_feature_names("fielding")
+    assert len(vec) == len(names)
     assert vec[0] == 0.6
     assert vec[1] == 0.3
-    assert vec[13] == 2024
+    season_idx = names.index("season_id")
+    assert vec[season_idx] == 2024
 
 
 def test_settings_get_models_dir_precedence(tmp_path, monkeypatch):
