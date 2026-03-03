@@ -1,10 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Card,
   CardContent,
   Chip,
+  Collapse,
   Grid,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -15,7 +17,76 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import type { BacktestEvaluateResponse } from '../types';
+
+/** Default CV for assumed distribution (runs ~0.35, wickets ~0.4, economy ~0.15). */
+const DEFAULT_CV: Record<string, number> = {
+  runs: 0.35,
+  wickets: 0.4,
+  economy: 0.15,
+  catches: 0.5,
+  run_outs: 0.5,
+};
+
+function assumedPercentiles(mean: number, metricKey: string): { p10: number; p50: number; p90: number } {
+  const cv = DEFAULT_CV[metricKey] ?? 0.35;
+  const sigma = Math.max(mean * cv, 0.1);
+  const z = 1.28; // ~80% interval
+  return {
+    p10: Math.max(0, mean - z * sigma),
+    p50: mean,
+    p90: mean + z * sigma,
+  };
+}
+
+const PredictedCellWithDistribution: React.FC<{
+  playerId: number;
+  metricKey: string;
+  predVal: number | undefined;
+  expandedKey: string | null;
+  onToggle: (key: string) => void;
+}> = ({ playerId, metricKey, predVal, expandedKey, onToggle }) => {
+  const key = `${playerId}-${metricKey}`;
+  const expanded = expandedKey === key;
+  const numVal = typeof predVal === 'number' && Number.isFinite(predVal) ? predVal : null;
+  const percentiles = numVal != null ? assumedPercentiles(numVal, metricKey) : null;
+
+  return (
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+      <Typography component="span" variant="body2">
+        {formatCell(predVal)}
+      </Typography>
+      {numVal != null && (
+        <IconButton
+          size="small"
+          aria-label={expanded ? 'Hide distribution' : 'Show distribution'}
+          onClick={() => onToggle(key)}
+          sx={{ p: 0.25 }}
+        >
+          {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+        </IconButton>
+      )}
+      {expanded && percentiles != null && (
+        <Collapse in={expanded}>
+          <Paper variant="outlined" sx={{ p: 1, mt: 0.5, bgcolor: 'grey.50' }}>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Assumed distribution (CV={DEFAULT_CV[metricKey] ?? 0.35})
+            </Typography>
+            <Typography variant="caption" component="div">
+              P10: {percentiles.p10.toFixed(1)} · P50: {percentiles.p50.toFixed(1)} · P90:{' '}
+              {percentiles.p90.toFixed(1)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+              Full simulation distribution can be added via API.
+            </Typography>
+          </Paper>
+        </Collapse>
+      )}
+    </Box>
+  );
+};
 
 type EvaluationResultsProps = {
   result: BacktestEvaluateResponse;
@@ -137,6 +208,7 @@ function diffSeverity(
 }
 
 const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }) => {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const anyWickets = result.players?.some(
     (p) => typeof p.predicted['wickets'] === 'number' || typeof p.actual['wickets'] === 'number',
   );
@@ -243,9 +315,15 @@ const PlayersTable: React.FC<{ result: BacktestEvaluateResponse }> = ({ result }
                     </TableCell>
                     <TableCell
                       align="right"
-                      sx={{ bgcolor: 'primary.light', color: 'primary.dark' }}
+                      sx={{ bgcolor: 'primary.light', color: 'primary.dark', position: 'relative' }}
                     >
-                      {formatCell(predVal)}
+                      <PredictedCellWithDistribution
+                        playerId={p.player_id}
+                        metricKey={m.key}
+                        predVal={typeof predVal === 'number' ? predVal : undefined}
+                        expandedKey={expandedKey}
+                        onToggle={(key) => setExpandedKey((prev) => (prev === key ? null : key))}
+                      />
                     </TableCell>
                     <TableCell
                       align="center"
