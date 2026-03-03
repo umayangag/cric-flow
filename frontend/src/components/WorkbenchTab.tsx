@@ -28,6 +28,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
+import WorkbenchAccuracyTrendSection from './WorkbenchAccuracyTrendSection';
 import { api } from '../api';
 import type {
   AccuracyTrendResponse,
@@ -327,6 +328,8 @@ const WorkbenchTab: React.FC = () => {
     ? Object.keys(trendData.results[0].metrics).sort()
     : [];
 
+  const effectiveModelFeatures: ModelMetadataResponse = modelFeatures ?? DEFAULT_MODEL_FEATURES;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Alert severity="info" sx={{ mb: 1 }}>
@@ -552,158 +555,24 @@ const WorkbenchTab: React.FC = () => {
         </Paper>
       </SectionCard>
 
-      <SectionCard
-        title="Accuracy trend"
-        subtitle="Load backtest accuracy (MAE, etc.) for played matches. Filters choose which matches to include; then the API runs predictions and returns metrics."
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load
-          accuracy trend&quot;. Use <strong>Prediction model</strong> to compare format-specific
-          models vs the unified (legacy) model. The table shows one row per match with error metrics
-          (e.g. runs_mae, wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include
-          every format, or pick one (e.g. T20) to evaluate that format only. Prerequisites:
-          precompute and ML artifacts must be in place.
-        </Typography>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          flexWrap="wrap"
-          alignItems="flex-start"
-        >
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel id="workbench-format-label">Format</InputLabel>
-            <Select
-              value={format}
-              labelId="workbench-format-label"
-              label="Format"
-              onChange={(e) => setFormat(e.target.value)}
-            >
-              <MenuItem value="">All formats</MenuItem>
-              {availableFormats.map((f) => (
-                <MenuItem key={f} value={f}>
-                  {f}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel id="workbench-model-label">Prediction model</InputLabel>
-            <Select
-              value={predictionModel}
-              labelId="workbench-model-label"
-              label="Prediction model"
-              onChange={(e) => setPredictionModel(e.target.value as 'format' | 'unified')}
-            >
-              <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
-              <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            size="small"
-            label="Start date"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: 160 }}
-            helperText="Only matches on or after this date (YYYY-MM-DD). Leave empty for no start filter."
-          />
-          <TextField
-            size="small"
-            label="End date"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ width: 160 }}
-            helperText="Only matches on or before this date (YYYY-MM-DD). Leave empty for no end filter."
-          />
-          <TextField
-            size="small"
-            label="Limit"
-            type="number"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value) || DEFAULT_LIMIT)}
-            inputProps={{ min: 1, max: MAX_LIMIT }}
-            sx={{ width: 90 }}
-            helperText={`Max matches to evaluate (1–${MAX_LIMIT}). Fewer = faster.`}
-          />
-          <Button
-            variant="contained"
-            onClick={loadAccuracyTrend}
-            disabled={trendLoading}
-            startIcon={trendLoading ? <CircularProgress size={16} color="inherit" /> : null}
-          >
-            {trendLoading ? 'Loading…' : 'Load accuracy trend'}
-          </Button>
-        </Stack>
-        {trendError && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {trendError}
-          </Alert>
-        )}
-        {trendLoading && <LinearProgress sx={{ mt: 1 }} />}
-        {trendData && !trendLoading && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Matches: {trendData.count}
-              {Object.keys(trendData.summary || {}).length > 0 && (
-                <>
-                  {' '}
-                  · Summary:{' '}
-                  {Object.entries(trendData.summary)
-                    .filter(([k]) => k !== 'n')
-                    .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
-                    .join(', ')}
-                </>
-              )}
-            </Typography>
-            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360, mt: 1 }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Match ID</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Format</TableCell>
-                    <TableCell>Team1</TableCell>
-                    <TableCell>Team2</TableCell>
-                    {metricKeys.map((k) => (
-                      <TableCell key={k} align="right">
-                        {k}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(trendData.results || []).slice(0, 200).map((row: AccuracyTrendItem) => (
-                    <TableRow key={row.match_id}>
-                      <TableCell>{row.match_id}</TableCell>
-                      <TableCell>{formatDate(row.match_date)}</TableCell>
-                      <TableCell>{row.format}</TableCell>
-                      <TableCell>{row.team1}</TableCell>
-                      <TableCell>{row.team2}</TableCell>
-                      {metricKeys.map((k) => (
-                        <TableCell key={k} align="right">
-                          {row.metrics[k] != null ? Number(row.metrics[k]).toFixed(2) : '—'}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            {(trendData.results?.length ?? 0) > 200 && (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mt: 0.5, display: 'block' }}
-              >
-                Showing first 200 of {trendData.results?.length} rows.
-              </Typography>
-            )}
-          </Box>
-        )}
-      </SectionCard>
+      <WorkbenchAccuracyTrendSection
+        format={format}
+        availableFormats={availableFormats}
+        predictionModel={predictionModel}
+        startDate={startDate}
+        endDate={endDate}
+        limit={limit}
+        maxLimit={MAX_LIMIT}
+        trendLoading={trendLoading}
+        trendError={trendError}
+        trendData={trendData}
+        onChangeFormat={setFormat}
+        onChangePredictionModel={(value) => setPredictionModel(value)}
+        onChangeStartDate={setStartDate}
+        onChangeEndDate={setEndDate}
+        onChangeLimit={(value) => setLimit(value)}
+        onLoad={loadAccuracyTrend}
+      />
 
       <SectionCard
         title="Walk-forward registry"
@@ -939,9 +808,9 @@ const WorkbenchTab: React.FC = () => {
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
           Features, outputs, and artifacts by model
         </Typography>
-        {(modelFeatures ?? DEFAULT_MODEL_FEATURES) &&
+        {effectiveModelFeatures &&
           MODEL_KEYS.map((key) => {
-            const m = (modelFeatures ?? DEFAULT_MODEL_FEATURES)[key];
+            const m = effectiveModelFeatures[key];
             if (!m) return null;
             return (
               <Accordion

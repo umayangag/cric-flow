@@ -103,6 +103,12 @@ For any specific debt area, the agent should:
 
 ### 4.1. Decompose Backtest and Pipeline HTTP Handlers
 
+**Progress**
+
+- **Done:** `internal/services/backtest` added; accuracy-trend summary/progressive aggregation moved to `backtest.ComputeSummaryAndProgressive`; handlers delegate, tests added.
+- **Done:** `internal/services/pipeline` added; `pipeline.StopRun` extracts stop-orchestration (cancel job + cancel migration); `pipelineStopHandler` delegates to it.
+- **Todo:** Further handler delegation (SelectCandidates, EvaluateRun, StartRun, StreamStatus) and thicker service methods as needed.
+
 **Problem**
 
 - `internal/server/backtest_handlers.go`, `backtest_services.go`, `pipeline_handlers.go`, and `ops_status_*` are orchestration “hubs” that:
@@ -149,6 +155,12 @@ For any specific debt area, the agent should:
 
 ### 4.2. Clarify Tracking and Ops Status Lifecycle
 
+**Progress**
+
+- **Done:** `internal/tracking/doc.go` added — describes Run ID / Run type / Run state, state transitions, and where runs are created/updated/surfaced.
+- **Done:** `ReconcileStaleRuns(ctx, reason, staleOlderThan)` added; startup in `cmd/api/main.go` now calls it instead of `CancelStaleInProgressMigrations` + manual logging.
+- **Todo:** Refactor ops_status_* to use tracking abstractions more explicitly if needed; optional config toggles for “run reconciliation on startup” (currently always on when DB connected).
+
 **Problem**
 
 - Pipeline and job tracking spans:
@@ -190,6 +202,11 @@ For any specific debt area, the agent should:
 
 ### 4.3. Reduce Duplication in DB and Export Queries
 
+**Progress**
+
+- **Done (first slice):** Extracted a shared `inningsRunsHoldoutCTE` helper in `internal/db/exportqueries` and rewired batting/bowling holdout queries to use it, so innings‑level total runs logic now lives in one place.
+- **Todo:** Broader scan of `repo_*.go` and `exportqueries/*.go` for overlapping joins/filters; add shared helpers (e.g. per-domain fragments) and fixture-based validation tests for at least one domain (e.g. batting) that compare repo vs export semantics.
+
 **Problem**
 
 - `internal/db/repo_*.go` and `internal/db/exportqueries/*.go` encode overlapping logic.
@@ -225,6 +242,12 @@ For any specific debt area, the agent should:
 - Adding a new metric or constraint in DB logic does not require manual updates in multiple files without tests catching drift.
 
 ### 4.4. Make Migrations and Startup Behavior More Flexible
+
+**Progress**
+
+- **Done:** `RunMigrations` lives in `internal/db`; `ReconcileStaleRuns` in `internal/tracking`. Startup in `cmd/api/main.go` calls them when enabled.
+- **Done:** Env toggles: `RUN_MIGRATIONS_AT_STARTUP=0` and `RUN_TRACKING_RECONCILIATION_AT_STARTUP=0` disable migrations and reconciliation at startup (default: both on).
+- **Todo:** Small tests for startup orchestration (migration failure, ordering) if desired.
 
 **Problem**
 
@@ -451,6 +474,11 @@ For any specific debt area, the agent should:
 
 ### 6.1. Split Large Tab Components into Containers and Presentational Pieces
 
+**Progress**
+
+- **Done (first slice):** Extracted `WorkbenchAccuracyTrendSection` as a presentational component and wired `WorkbenchTab` to act as its container (state, data fetching, and handlers), reducing tab complexity.
+- **Todo:** Repeat this pattern for the remaining large tabs (EvaluateDbTab, OpsStatusTab, MLModelStatsTab) and for additional sub‑sections of Workbench (e.g. walk-forward registry, model metadata).
+
 **Problem**
 
 - `EvaluateDbTab`, `OpsStatusTab`, `WorkbenchTab`, `MLModelStatsTab` combine:
@@ -504,6 +532,12 @@ For any specific debt area, the agent should:
 - Test coverage is at least as strong as before.
 
 ### 6.2. Normalize Side‑Effect Patterns and Remove ESLint Disables
+
+**Progress**
+
+- **Done:** Added a reusable `usePolling` hook in `frontend/src/hooks/usePolling.ts` and wired it into `OpsStatusTab` (auto‑refresh) and `EvaluateDbTab` (evaluate‑job status polling). Frontend tests cover both paths.
+- **Done:** `MLPredictionGraph` now detects missing `ResizeObserver` (e.g. jsdom/tests) and renders a simple textual fallback instead of crashing.
+- **Todo:** Further tighten `useEffect` dependency arrays and remove legacy ESLint disables as hooks are introduced for the remaining patterns.
 
 **Problem**
 
@@ -578,6 +612,7 @@ For any specific debt area, the agent should:
    - Add tests ensuring:
      - Workbench uses backend metadata when available.
      - Fallback works if metadata endpoint fails.
+   - **Status:** Initial tests added in `WorkbenchTab.test.tsx` to cover both cases for model metadata.
 
 **Success criteria**
 
@@ -705,6 +740,11 @@ For any specific debt area, the agent should:
   - Be caught by CI if any consumer drifts.
 
 ### 7.4. Observability Map
+
+**Progress**
+
+- **Done (first slice):** `docs/observability.md` added, mapping Go `/ops/status` and health, ML `/health` + `/model-stats` + artifacts, and the frontend tabs that surface those signals, plus guidance on common IDs (`pipeline_id`, `run_id`, `format`, `artifact_type`).
+- **Todo:** Tighten and standardize log fields in Go and ML to consistently include these IDs for easier cross-service correlation.
 
 **Problem**
 

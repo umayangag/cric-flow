@@ -59,23 +59,26 @@ func run() int {
 		return 1
 	}
 
-	// Run migrations on startup (idempotent)
-	migrationsDir := os.Getenv("MIGRATIONS_DIR")
-	if migrationsDir == "" {
-		migrationsDir = "/migrations"
-	}
-	if err := db.RunMigrations(ctx, migrationsDir); err != nil {
-		slog.Error("migrations failed", slog.Any("err", err))
-		return 1
+	// Run migrations on startup when enabled (idempotent). Disable with RUN_MIGRATIONS_AT_STARTUP=0
+	// when migrations are run in CI or a dedicated job.
+	if runMigrationsAtStartup() {
+		migrationsDir := os.Getenv("MIGRATIONS_DIR")
+		if migrationsDir == "" {
+			migrationsDir = "/migrations"
+		}
+		if err := db.RunMigrations(ctx, migrationsDir); err != nil {
+			slog.Error("migrations failed", slog.Any("err", err))
+			return 1
+		}
 	}
 
-	// Cancel only stale IN_PROGRESS runs (started longer ago than threshold), so we don't
-	// cancel a pipeline that another instance (B) is currently running when this instance (A) restarts.
-	staleCancelAge := trackingStaleCancelAge()
-	if n, err := tracking.CancelStaleInProgressMigrations(ctx, "interrupted (server restart or crash)", staleCancelAge); err != nil {
-		slog.Warn("failed to cancel stale in-progress migrations", slog.Any("err", err))
-	} else if n > 0 {
-		slog.Info("cancelled stale in-progress pipeline runs", slog.Int("count", n), slog.Duration("stale_older_than", staleCancelAge))
+	// Cancel only stale IN_PROGRESS runs when enabled (started longer ago than threshold).
+	// Disable with RUN_TRACKING_RECONCILIATION_AT_STARTUP=0 if reconciliation is done elsewhere.
+	if runTrackingReconciliationAtStartup() {
+		staleCancelAge := trackingStaleCancelAge()
+		if _, err := tracking.ReconcileStaleRuns(ctx, "interrupted (server restart or crash)", staleCancelAge); err != nil {
+			slog.Warn("failed to cancel stale in-progress migrations", slog.Any("err", err))
+		}
 	}
 
 	// Context cancelled on SIGTERM/SIGINT so in-flight pipeline jobs exit gracefully
@@ -158,6 +161,18 @@ func memStatsInterval() time.Duration {
 		return 0
 	}
 	return d
+}
+
+// runMigrationsAtStartup returns false when RUN_MIGRATIONS_AT_STARTUP=0 or false (migrations in CI/dedicated job).
+func runMigrationsAtStartup() bool {
+	s := os.Getenv("RUN_MIGRATIONS_AT_STARTUP")
+	return s != "0" && s != "false" && s != "no"
+}
+
+// runTrackingReconciliationAtStartup returns false when RUN_TRACKING_RECONCILIATION_AT_STARTUP=0 or false.
+func runTrackingReconciliationAtStartup() bool {
+	s := os.Getenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP")
+	return s != "0" && s != "false" && s != "no"
 }
 
 // trackingStaleCancelAge returns how old an IN_PROGRESS run must be to be cancelled on startup

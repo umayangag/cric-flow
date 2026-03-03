@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { FormatHierarchyNode } from '../types';
 import { api } from '../api';
 import OpsMatrix from './OpsMatrix';
@@ -16,6 +16,7 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
+import { usePolling } from '../hooks/usePolling';
 import { TableStat } from '../types';
 
 // Local helpers for safely reading dynamic sections
@@ -87,7 +88,6 @@ const OpsStatusTab: React.FC = () => {
   const [data, setData] = useState<OpsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const timerRef = useRef<number | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -102,29 +102,8 @@ const OpsStatusTab: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const schedule = () => {
-      // Use recursive setTimeout to play nicer with fake timers in tests
-      timerRef.current = window.setTimeout(async () => {
-        if (cancelled) return;
-        await fetchStatus();
-        if (!cancelled) schedule();
-      }, REFRESH_MS);
-    };
-
-    fetchStatus();
-    schedule();
-
-    return () => {
-      cancelled = true;
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [fetchStatus]);
+  // Initial load + auto-refresh while the tab is mounted.
+  usePolling(fetchStatus, REFRESH_MS, true);
 
   const lastUpdated = useMemo(() => {
     if (!data?.timestamp) return '';

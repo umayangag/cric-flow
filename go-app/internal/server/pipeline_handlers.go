@@ -20,14 +20,14 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
+	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // pipelineStopHandler handles POST /ops/pipeline/stop. Cancels the current pipeline job context and marks the in-progress migration as CANCELLED.
 func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
-	a.CancelCurrentJob()
-	cancelled, err := tracking.CancelInProgressMigration(r.Context(), "cancelled by user")
+	cancelled, err := pipelinesvc.StopRun(r.Context(), "cancelled by user", a.CancelCurrentJob, tracking.CancelInProgressMigration)
 	if err != nil {
 		slog.Warn("pipeline stop: cancel migration failed", slog.Any("err", err))
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

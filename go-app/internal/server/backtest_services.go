@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 )
 
 // resolveCandidateCutoff determines the cutoff timestamp for a backtest candidate.
@@ -160,81 +161,6 @@ func computeAccuracyTrendMetrics(
 	return metrics
 }
 
-// computeAccuracyTrendSummaryAndProgressive builds the summary and progressive rows
-// from the list of result items. For each metric, averages are computed using the
-// count of matches where the metric is actually present as the denominator.
-func computeAccuracyTrendSummaryAndProgressive(items []accuracyTrendItem) (map[string]float64, []map[string]float64) {
-	var (
-		sumPlayerMAE, nPlayerMAE     float64
-		sumTeamRunsMAE, nTeamRunsMAE float64
-		sumWinnerAcc, nWinnerAcc     float64
-	)
-	nMatches := float64(len(items))
-
-	// Summary accumulators
-	for _, it := range items {
-		if v, ok := it.Metrics["player_runs_mae"]; ok {
-			sumPlayerMAE += v
-			nPlayerMAE++
-		}
-		if v, ok := it.Metrics["team_runs_mae"]; ok {
-			sumTeamRunsMAE += v
-			nTeamRunsMAE++
-		}
-		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
-			sumWinnerAcc += v
-			nWinnerAcc++
-		}
-	}
-
-	summary := map[string]float64{"n": nMatches}
-	if nPlayerMAE > 0 {
-		summary["player_runs_mae_avg"] = sumPlayerMAE / nPlayerMAE
-	}
-	if nTeamRunsMAE > 0 {
-		summary["team_runs_mae_avg"] = sumTeamRunsMAE / nTeamRunsMAE
-	}
-	if nWinnerAcc > 0 {
-		summary["team_winner_accuracy_avg"] = sumWinnerAcc / nWinnerAcc
-	}
-
-	// Progressive calculations using per-metric present counts
-	progressive := make([]map[string]float64, 0, len(items))
-	var (
-		psPlayer, pnPlayer     float64
-		psTeamRuns, pnTeamRuns float64
-		psWinner, pnWinner     float64
-	)
-	for i, it := range items {
-		n := float64(i + 1)
-		if v, ok := it.Metrics["player_runs_mae"]; ok {
-			psPlayer += v
-			pnPlayer++
-		}
-		if v, ok := it.Metrics["team_runs_mae"]; ok {
-			psTeamRuns += v
-			pnTeamRuns++
-		}
-		if v, ok := it.Metrics["team_winner_accuracy"]; ok {
-			psWinner += v
-			pnWinner++
-		}
-		row := map[string]float64{"n": n}
-		if pnPlayer > 0 {
-			row["player_runs_mae_avg"] = psPlayer / pnPlayer
-		}
-		if pnTeamRuns > 0 {
-			row["team_runs_mae_avg"] = psTeamRuns / pnTeamRuns
-		}
-		if pnWinner > 0 {
-			row["team_winner_accuracy_avg"] = psWinner / pnWinner
-		}
-		progressive = append(progressive, row)
-	}
-
-	return summary, progressive
-}
-
 // helpers moved to helpers.go for reuse across the server package
 
 // listAccuracyTrendCandidates wraps the played matches listing with clear intent.
@@ -253,7 +179,7 @@ func listAccuracyTrendCandidates(
 }
 
 // computeAccuracyTrendForCandidates computes metrics for each candidate and returns
-// the items along with the summary and progressive aggregates.
+// the items along with the summary and progressive aggregates (via services/backtest).
 // When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
 func computeAccuracyTrendForCandidates(
 	ctx context.Context,
@@ -275,6 +201,18 @@ func computeAccuracyTrendForCandidates(
 			Metrics:   metrics,
 		})
 	}
-	summary, progressive := computeAccuracyTrendSummaryAndProgressive(results)
+	// Delegate aggregation to services/backtest
+	items := make([]backtest.AccuracyTrendItem, len(results))
+	for i := range results {
+		items[i] = backtest.AccuracyTrendItem{
+			MatchID:   results[i].MatchID,
+			MatchDate: results[i].MatchDate,
+			Format:    results[i].Format,
+			Team1:     results[i].Team1,
+			Team2:     results[i].Team2,
+			Metrics:   results[i].Metrics,
+		}
+	}
+	summary, progressive := backtest.ComputeSummaryAndProgressive(items)
 	return results, summary, progressive
 }
