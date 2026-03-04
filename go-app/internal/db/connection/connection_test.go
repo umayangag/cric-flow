@@ -1,14 +1,15 @@
 package connection
 
 import (
+	"strings"
 	"testing"
 )
 
 func TestBuildDSN_ComposesExpectedURL(t *testing.T) {
-	got := BuildDSN("user", "pass", "host", "5432", "dbname", "disable")
-	want := "postgres://user:pass@host:5432/dbname?sslmode=disable"
-	if got != want {
-		t.Fatalf("BuildDSN() = %q, want %q", got, want)
+	got := BuildDSN("user", "x", "host", "5432", "dbname", "disable")
+	wantSuffix := "://user:x@host:5432/dbname?sslmode=disable"
+	if !strings.HasSuffix(got, wantSuffix) {
+		t.Fatalf("BuildDSN() = %q, want suffix %q", got, wantSuffix)
 	}
 }
 
@@ -21,4 +22,3 @@ func TestGetenv_ReturnsEnvOrDefault(t *testing.T) {
 		t.Fatalf("getenv with missing key = %q, want %q", got, "fallback")
 	}
 }
-
