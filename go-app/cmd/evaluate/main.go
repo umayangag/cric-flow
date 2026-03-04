@@ -7,9 +7,8 @@ import (
 	"log/slog"
 	"os"
 
-	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
-
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
 )
 
 // demoRepo preserves existing scaffold behavior by returning fixed arrays.

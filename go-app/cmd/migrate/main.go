@@ -7,10 +7,9 @@ import (
 	"log/slog"
 	"os"
 
-	migsvc "github.com/umayangag/cric-flow/go-app/internal/services/migrate"
-
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	migsvc "github.com/umayangag/cric-flow/go-app/internal/services/migrate"
 )
 
 func main() {

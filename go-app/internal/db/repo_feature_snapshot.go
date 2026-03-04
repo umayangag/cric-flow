@@ -12,8 +12,8 @@ func UpsertFeatureFormSnapshot(
 	playerID int64,
 	asOf time.Time,
 	formatID int64,
-	scope string,
-	scopeID *int64,
+	scope string, // 'overall' | 'venue' | 'opposition'
+	scopeID *int64, // nil when scope == 'overall'
 	battingValue float64,
 	bowlingValue float64,
 	alpha float64,
@@ -61,8 +61,8 @@ func UpsertFeatureConsistencySnapshot(
 	playerID int64,
 	asOf time.Time,
 	formatID int64,
-	scope string,
-	scopeID *int64,
+	scope string, // 'overall' | 'venue' | 'opposition'
+	scopeID *int64, // nil when scope == 'overall'
 	battingValue float64,
 	bowlingValue float64,
 	windowN int,
