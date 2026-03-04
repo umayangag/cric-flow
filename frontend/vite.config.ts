@@ -27,10 +27,10 @@ export default defineConfig({
         'src/types/papaparse.d.ts',
       ],
       // Soft gate: fail if coverage drops below this (raise over time)
-      lines: 50,
+      lines: 59,
       functions: 50,
-      statements: 50,
-      branches: 50,
+      statements: 59,
+      branches: 65,
     },
   },
 });

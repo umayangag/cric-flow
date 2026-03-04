@@ -1,4 +1,10 @@
-"""Unit tests for ml.auto_tune helper functions and data loading."""
+"""Unit tests for ml.auto_tune helper functions and data loading.
+
+Tests in this file must NOT run real model training (no Optuna/search, no fitting
+multi-estimator pipelines). Use mocks for run_auto_tune* entry points. Any new
+test that would run real training belongs in a separate module (e.g. behind
+RUN_AUTO_TUNE_SMOKE=1) so CI stays fast.
+"""
 
 import os
 from unittest.mock import patch
@@ -6,9 +12,10 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import KFold, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from ml.auto_tune import (
     AVAILABLE_ALGORITHMS,
@@ -331,66 +338,109 @@ def test_phase1_candidates_classification():
     assert len(cands) == 2
 
 
+def _minimal_batting_pipeline():
+    """Minimal pipeline for run_auto_tune (scaler + model) so _save_artifacts can dump without running search."""
+    return Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("est", RandomForestRegressor(n_estimators=1, random_state=42)),
+        ]
+    )
+
+
+def _minimal_model_only_pipeline(regression=True):
+    """Minimal pipeline for extras/win (model only) so _save_artifacts_model_only can dump without running search."""
+    est = (
+        RandomForestRegressor(n_estimators=1, random_state=42)
+        if regression
+        else RandomForestClassifier(n_estimators=1, random_state=42)
+    )
+    return Pipeline([("est", est)])
+
+
 def test_run_auto_tune_batting_minimal(tmp_path):
-    """run_auto_tune completes with minimal data for batting (fast smoke test)."""
+    """run_auto_tune returns report and writes artifacts; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.rand(40, 5).astype(np.float32)
     out_dir = str(tmp_path / "out")
-    report = m.run_auto_tune(
-        model_kind="batting",
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_batting_pipeline()
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf", "metrics": {}}
+
+    with patch("ml.tuning.runners._run_search_two_phase", return_value=(minimal_pipe, {}, mock_report)):
+        report = m.run_auto_tune(
+            model_kind="batting",
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "metrics" in report or "best_algorithm" in report
     assert (tmp_path / "out" / "batting_scaler_T20.joblib").exists()
     assert (tmp_path / "out" / "batting_model_T20.joblib").exists()
 
 
 def test_run_auto_tune_extras_minimal(tmp_path):
-    """run_auto_tune_extras completes with minimal data (fast smoke test)."""
+    """run_auto_tune_extras returns report and writes model artifact; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.rand(40).astype(np.float32)
     out_dir = str(tmp_path / "out_extras")
-    report = m.run_auto_tune_extras(
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_model_only_pipeline(regression=True)
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf"}
+    # Omit best_cv_score so run_auto_tune_extras does not invoke _maybe_run_autogluon_and_compare
+
+    with patch(
+        "ml.tuning.runners._run_search_two_phase_single_regression",
+        return_value=(minimal_pipe, {}, mock_report),
+    ):
+        report = m.run_auto_tune_extras(
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "best_cv_score" in report or "best_algorithm" in report
     assert (tmp_path / "out_extras" / "extras_model_T20.joblib").exists()
 
 
 def test_run_auto_tune_win_minimal(tmp_path):
-    """run_auto_tune_win completes with minimal binary classification data (fast smoke test)."""
+    """run_auto_tune_win returns report and writes model artifact; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.randint(0, 2, size=40).astype(np.float32)
     out_dir = str(tmp_path / "out_win")
-    report = m.run_auto_tune_win(
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_model_only_pipeline(regression=False)
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf"}
+    # Omit best_cv_score so run_auto_tune_win does not invoke _maybe_run_autogluon_and_compare
+
+    with patch(
+        "ml.tuning.runners._run_search_two_phase_classification",
+        return_value=(minimal_pipe, {}, mock_report),
+    ):
+        report = m.run_auto_tune_win(
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "best_cv_score" in report or "best_algorithm" in report
     assert (tmp_path / "out_win" / "win_model_T20.joblib").exists()

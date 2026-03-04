@@ -61,6 +61,9 @@ go-app/go-app
 dist/
 build/
 
+# Frontend test env (Node v25+ Web Storage)
+frontend/.vitest-localstorage
+
 # OS-specific
 .DS_Store
 # tools/ - Not ignoring tools/ directory if it contains scripts/source

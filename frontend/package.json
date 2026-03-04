@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run --environment jsdom --coverage",
-    "test:coverage": "vitest run --environment jsdom --coverage",
-    "test:watch": "vitest --environment jsdom",
+    "test": "NODE_OPTIONS='--localstorage-file=./.vitest-localstorage' vitest run --environment jsdom --coverage",
+    "test:coverage": "NODE_OPTIONS='--localstorage-file=./.vitest-localstorage' vitest run --environment jsdom --coverage",
+    "test:watch": "NODE_OPTIONS='--localstorage-file=./.vitest-localstorage' vitest --environment jsdom",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "format": "prettier -w .",
     "format:check": "prettier -c ."

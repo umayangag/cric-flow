@@ -13,6 +13,7 @@ ignore = ["E501"]
 markers = [
     "integration: tests that exercise multiple components together (in-process, no live services)",
     "e2e: end-to-end tests that require live ML service (and optionally go-api); set RUN_E2E=1 to run",
+    "runs_real_training: test runs real model training (Optuna/sklearn); exclude with -m 'not runs_real_training' for fast CI",
 ]
 testpaths = ["tests"]
 # 4 skipped by default: e2e tests in tests/e2e/test_ml_service_live.py (run with RUN_E2E=1)
