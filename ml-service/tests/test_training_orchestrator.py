@@ -93,7 +93,9 @@ def test_run_training_subprocess_success_uses_env_and_timeout(monkeypatch) -> No
     assert calls["env"]["EXTRA_FLAG"] == "1"
     assert calls["timeout"] == 42
     # Logger should have been used at least once
-    assert any("pipeline: starting training subprocess" in (rec["args"][0] if rec["args"] else "") for rec in logger.infos)
+    assert any(
+        "pipeline: starting training subprocess" in (rec["args"][0] if rec["args"] else "") for rec in logger.infos
+    )
 
 
 def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
@@ -239,4 +241,3 @@ def test_run_auto_tune_invokes_training_subprocess_with_expected_args(monkeypatc
     # When single_task is true we set AUTO_TUNE_N_JOBS
     assert captured["extra_env"] == {"AUTO_TUNE_N_JOBS": "-1"}
     assert isinstance(captured["logger"], DummyLogger)
-

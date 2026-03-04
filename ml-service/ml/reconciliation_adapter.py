@@ -13,10 +13,7 @@ Responsibilities:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
-
-import numpy as np
 
 from app.models import (
     BacktestPlayerPred,
@@ -35,7 +32,6 @@ from .consistency_checker import (
     check_reconciled_scorecard_consistency,
 )
 from .reconciliation_service import reconcile_match_players
-
 
 # Internal team id convention for constraint-based reconciliation (partitioning only)
 TEAM1_ID = 1
@@ -69,7 +65,6 @@ def build_match_reconciliation_inputs_from_backtest_preds(
 ) -> MatchReconciliationInputs:
     """Construct MatchReconciliationInputs from raw backtest predictions and innings totals."""
     team1_set = {int(pid) for pid in team1_ids}
-    team2_set = {int(pid) for pid in team2_ids}
 
     deliveries_bowl = _default_bowling_deliveries_for_format(format_code)
 
@@ -220,11 +215,8 @@ def apply_constraint_reconciliation_from_backtest_preds(
                 legal_balls=float(i.preferred_legal_balls) if i.preferred_legal_balls is not None else None,
             )
 
-    violations = check_reconciled_scorecard_consistency(
-        after_stats, TEAM1_ID, TEAM2_ID, inn1=inn1_t, inn2=inn2_t
-    )
+    violations = check_reconciled_scorecard_consistency(after_stats, TEAM1_ID, TEAM2_ID, inn1=inn1_t, inn2=inn2_t)
     if violations:
         adjustment["violations"] = violations
 
     return out, adjustment
-

@@ -39,7 +39,9 @@ def test_realism_within_allowed_bands_known_stat():
     assert out["delta_mean_ok"] is True
     assert out["stat_label"] == "runs_per_innings"
     # at limit
-    out2 = realism_within_allowed_bands({"delta_mean": max_dm, "delta_std": max_ds, "delta_p50": max_dp}, "runs_per_innings")
+    out2 = realism_within_allowed_bands(
+        {"delta_mean": max_dm, "delta_std": max_ds, "delta_p50": max_dp}, "runs_per_innings"
+    )
     assert out2["within_band"] is True
     # above limit on delta_mean
     out3 = realism_within_allowed_bands({"delta_mean": max_dm + 1, "delta_std": 0, "delta_p50": 0}, "runs_per_innings")
@@ -55,4 +57,3 @@ def test_realism_within_allowed_bands_unknown_stat_uses_default():
     assert out["band_used"] == list(DEFAULT_REALISM_BAND)
     out2 = realism_within_allowed_bands({"delta_mean": max_dm + 1, "delta_std": 0, "delta_p50": 0}, "unknown_stat")
     assert out2["within_band"] is False
-

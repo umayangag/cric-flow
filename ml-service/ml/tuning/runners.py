@@ -51,13 +51,13 @@ try:
 except ImportError:
     _HAS_OPTUNA = False
 
+from ml.tuning.consistency_tuning import augment_tuning_report_with_consistency
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
     _effective_n_jobs,
     _get_cv_object,
 )
-from ml.tuning.consistency_tuning import augment_tuning_report_with_consistency
 from ml.tuning.optuna_search import (
     _count_combinations,
     _run_search_classification,

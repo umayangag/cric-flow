@@ -29,4 +29,3 @@ def test_compute_realism_for_column_raises_on_missing_column():
         assert "Column 'b' not found" in str(e)
     else:
         assert False, "Expected ValueError for missing column"
-

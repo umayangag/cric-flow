@@ -93,12 +93,13 @@ type mlInningsSummary struct {
 	Wickets      float64 `json:"wickets"`
 }
 
-// mlGenerateMatchResponse matches ml-service GenerateMatchResponse.
-type mlGenerateMatchResponse struct {
+// MlGenerateMatchResponse matches ml-service GenerateMatchResponse.
+// Exported so the public GenerateMatch method can return it.
+type MlGenerateMatchResponse struct {
 	Players             []mlBacktestPlayerPred `json:"players"`
-	Innings             []mlInningsSummary     `json:"innings"`
-	WinProbabilityTeam1 float64                `json:"win_probability_team1"`
-	ModelVersion        string                 `json:"model_version"`
+	Innings             []mlInningsSummary    `json:"innings"`
+	WinProbabilityTeam1 float64               `json:"win_probability_team1"`
+	ModelVersion        string                `json:"model_version"`
 }
 
 type mlBacktestMatchAggRequest struct {
@@ -379,9 +380,9 @@ func (c *BacktestMLClient) GenerateMatch(
 	features map[int64]map[string]float64,
 	useLatestModel bool,
 	matchCtx *MatchContextForReconciliation,
-) (mlGenerateMatchResponse, error) {
+) (MlGenerateMatchResponse, error) {
 	if len(playerIDs) == 0 {
-		return mlGenerateMatchResponse{}, errors.New("playerIDs required")
+		return MlGenerateMatchResponse{}, errors.New("playerIDs required")
 	}
 	reqBody := mlGenerateMatchRequest{
 		CutoffDate:     cutoff.Format(time.RFC3339),
@@ -421,20 +422,20 @@ func (c *BacktestMLClient) GenerateMatch(
 		bytes.NewReader(payload),
 	)
 	if err != nil {
-		return mlGenerateMatchResponse{}, err
+		return MlGenerateMatchResponse{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return mlGenerateMatchResponse{}, err
+		return MlGenerateMatchResponse{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mlGenerateMatchResponse{}, logMLNon2xx(resp, "api/ml/generate-match")
+		return MlGenerateMatchResponse{}, logMLNon2xx(resp, "api/ml/generate-match")
 	}
-	var out mlGenerateMatchResponse
+	var out MlGenerateMatchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return mlGenerateMatchResponse{}, err
+		return MlGenerateMatchResponse{}, err
 	}
 	return out, nil
 }

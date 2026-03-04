@@ -35,4 +35,3 @@ def test_aggregate_win_coherence_raises_on_missing_columns():
         assert "Column 'missing_margin' not found" in str(e)
     else:
         assert False, "Expected ValueError for missing margin column"
-

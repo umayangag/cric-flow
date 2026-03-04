@@ -131,4 +131,3 @@ def compute_consistency_metrics(
     - Higher‑level helpers that first call build_before_after_stats_from_predictions.
     """
     return adjustment_magnitude(before_stats, after_stats)
-

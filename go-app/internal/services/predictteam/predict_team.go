@@ -32,21 +32,21 @@ type WeatherInput struct {
 
 // Input defines the request for future-match team selection.
 type Input struct {
-	Format              string        `json:"format"`
-	Team1               string        `json:"team1"`
-	Team2               string        `json:"team2"`
-	Venue               string        `json:"venue,omitempty"` // venue name; empty = unknown venue
-	MatchDate           time.Time     `json:"match_date"`
-	SeasonID            *int64        `json:"season_id,omitempty"`
-	Weather             *WeatherInput `json:"weather,omitempty"`               // optional; when set, used in features
-	ExtraTeam1          []int64       `json:"extra_team1,omitempty"`           // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2          []int64       `json:"extra_team2,omitempty"`           // extra player IDs for team2
-	OppositionPlayerIDs []int64       `json:"opposition_player_ids,omitempty"` // optional; for future batter-bowler matchup features
-	MinBowlers               int  `json:"min_bowlers,omitempty"`               // default 5
-	RequireKeeper            bool `json:"require_keeper,omitempty"`            // default true
-	UseUnifiedModel          bool `json:"use_unified_model,omitempty"`         // when true, use legacy unified model instead of format-specific
-	UseReconciledScorecard   bool `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
-	IncludeBothScorecards    bool `json:"include_both_scorecards,omitempty"`   // when true, return both standard and reconciled scorecards for comparison
+	Format                 string        `json:"format"`
+	Team1                  string        `json:"team1"`
+	Team2                  string        `json:"team2"`
+	Venue                  string        `json:"venue,omitempty"` // venue name; empty = unknown venue
+	MatchDate              time.Time     `json:"match_date"`
+	SeasonID               *int64        `json:"season_id,omitempty"`
+	Weather                *WeatherInput `json:"weather,omitempty"`                  // optional; when set, used in features
+	ExtraTeam1             []int64       `json:"extra_team1,omitempty"`              // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2             []int64       `json:"extra_team2,omitempty"`              // extra player IDs for team2
+	OppositionPlayerIDs    []int64       `json:"opposition_player_ids,omitempty"`    // optional; for future batter-bowler matchup features
+	MinBowlers             int           `json:"min_bowlers,omitempty"`              // default 5
+	RequireKeeper          bool          `json:"require_keeper,omitempty"`           // default true
+	UseUnifiedModel        bool          `json:"use_unified_model,omitempty"`        // when true, use legacy unified model instead of format-specific
+	UseReconciledScorecard bool          `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
+	IncludeBothScorecards  bool          `json:"include_both_scorecards,omitempty"`  // when true, return both standard and reconciled scorecards for comparison
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -73,9 +73,9 @@ type ScorecardSummary struct {
 
 // Result holds the best 11 for each team and optional scorecard summary.
 type Result struct {
-	Team1                     []SelectedPlayer  `json:"team1"`
-	Team2                     []SelectedPlayer  `json:"team2"`
-	ScorecardSummary          *ScorecardSummary `json:"scorecard_summary,omitempty"`
+	Team1                      []SelectedPlayer  `json:"team1"`
+	Team2                      []SelectedPlayer  `json:"team2"`
+	ScorecardSummary           *ScorecardSummary `json:"scorecard_summary,omitempty"`
 	ScorecardSummaryReconciled *ScorecardSummary `json:"scorecard_summary_reconciled,omitempty"` // from generate-match when requested
 }
 
@@ -494,7 +494,15 @@ func predictTeamsWithIntermediates(
 		for _, pid := range selectedIDs {
 			featuresForSelected[pid] = allFeats[pid] // may be nil/empty; ML accepts missing features
 		}
-		reconciledPlayers, in1, in2, winProb, _, errGen := reconciledGen(ctx, cutoff, formatForPrediction, selectedIDs, featuresForSelected, true, matchCtx)
+		reconciledPlayers, in1, in2, winProb, _, errGen := reconciledGen(
+			ctx,
+			cutoff,
+			formatForPrediction,
+			selectedIDs,
+			featuresForSelected,
+			true,
+			matchCtx,
+		)
 		if errGen == nil {
 			reconciledSummary := ScorecardSummary{
 				Innings1Total:       in1,
@@ -552,7 +560,12 @@ func predictTeamsWithIntermediates(
 // PredictTeams runs the full pipeline: pool, features, ML predict, team select.
 // reconciledGen is optional; when non-nil and input.UseReconciledScorecard or input.IncludeBothScorecards is set,
 // it is used to fetch a reconciled scorecard (and optionally both for comparison).
-func PredictTeams(ctx context.Context, input Input, predictor MLPredictor, reconciledGen GenerateMatchFunc) (*Result, error) {
+func PredictTeams(
+	ctx context.Context,
+	input Input,
+	predictor MLPredictor,
+	reconciledGen GenerateMatchFunc,
+) (*Result, error) {
 	result, _, err := predictTeamsWithIntermediates(ctx, input, predictor, reconciledGen)
 	return result, err
 }

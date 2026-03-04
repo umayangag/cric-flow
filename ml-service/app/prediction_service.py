@@ -41,11 +41,8 @@ from .models import (
     BowlingPrediction,
     ExtrasFeatures,
     ExtrasPrediction,
-    InningsReconciliationPreferences,
     InningsSummary,
     MatchContext,
-    MatchReconciliationInputs,
-    PlayerReconciliationPreferences,
     WinFeatures,
     WinPrediction,
 )
@@ -498,6 +495,7 @@ def generate_match(
         build_win_features_standardized = None
     p_team1 = 0.5
     if build_win_features_standardized is not None:
+
         def _sum_f(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
             bat_sum = bowl_sum = 0.0
             for pid in ids:
@@ -505,6 +503,7 @@ def generate_match(
                 bat_sum += float(fm.get(key_bat, 0) or 0)
                 bowl_sum += float(fm.get(key_bowl, 0) or 0)
             return bat_sum, bowl_sum
+
         t1_bat_cons, t1_bowl_cons = _sum_f(team1_ids, "batting_consistency", "bowling_consistency")
         t1_bat_form, t1_bowl_form = _sum_f(team1_ids, "batting_form", "bowling_form")
         t2_bat_cons, t2_bowl_cons = _sum_f(team2_ids, "batting_consistency", "bowling_consistency")
@@ -532,6 +531,7 @@ def generate_match(
     margin = team1_runs - team2_runs
     try:
         from ml.win_coherence_metrics import win_probability_coherence_from_margin
+
         coh = win_probability_coherence_from_margin(p_team1, margin, scale=25.0)
         logger.info(
             "win_coherence.metrics",

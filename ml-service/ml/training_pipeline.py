@@ -20,7 +20,10 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .consistency_checker import ReconciledPlayerStats
 
 import joblib
 import numpy as np
@@ -363,7 +366,7 @@ class TrainingPipeline:
     def evaluate_consistency_on_validation(
         self,
         before_after_by_match: Mapping[
-            str, Tuple[Mapping[int, "ReconciledPlayerStats"], Mapping[int, "ReconciledPlayerStats"]]
+            str, Tuple[Mapping[int, ReconciledPlayerStats], Mapping[int, ReconciledPlayerStats]]
         ],
         format_code: Optional[str] = None,
     ) -> Dict[str, float]:
@@ -385,7 +388,6 @@ class TrainingPipeline:
         """
         # Import locally to avoid any possibility of circular import at module load.
         from .consistency_eval import compute_consistency_metrics
-        from .consistency_checker import ReconciledPlayerStats  # type: ignore  # for forward reference typing
 
         merged_before: Dict[int, ReconciledPlayerStats] = {}
         merged_after: Dict[int, ReconciledPlayerStats] = {}
@@ -407,8 +409,7 @@ class TrainingPipeline:
 
         if not merged_before or not merged_after:
             logger.info(
-                "training.consistency.metrics_skipped "
-                "model=%s format=%s reason=no_merged_before_after_stats",
+                "training.consistency.metrics_skipped model=%s format=%s reason=no_merged_before_after_stats",
                 self.spec.name,
                 format_code or "",
             )

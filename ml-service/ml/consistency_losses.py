@@ -50,4 +50,3 @@ def consistency_regularization_loss(
     pct_runs = metrics.get("mean_abs_pct_delta_runs", 0.0)
     pct_wkts = metrics.get("mean_abs_pct_delta_wickets", 0.0)
     return float(weight_runs * pct_runs + weight_wickets * pct_wkts)
-

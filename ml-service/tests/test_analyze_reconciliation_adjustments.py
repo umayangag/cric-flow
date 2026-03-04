@@ -1,6 +1,6 @@
 """Tests for ml.analyze_reconciliation_adjustments."""
 
-from ml.analyze_reconciliation_adjustments import analyze_reconciliation_records, EVENT_NAME
+from ml.analyze_reconciliation_adjustments import EVENT_NAME, analyze_reconciliation_records
 
 
 def test_analyze_reconciliation_records_aggregates_overall_and_by_format():
@@ -96,4 +96,3 @@ def test_analyze_reconciliation_records_group_by_month():
     assert "2024-01" in by_month
     assert by_month["2024-01"]["count"] == 2
     assert by_month["2024-01"]["avg_mean_abs_delta_runs"] == 4.0
-

@@ -85,12 +85,12 @@ type predictTeamRequest struct {
 		Cloud    float64 `json:"cloud"`
 		Pressure float64 `json:"pressure"`
 	} `json:"weather"`
-	ExtraTeam1              []int64 `json:"extra_team1"`
-	ExtraTeam2              []int64 `json:"extra_team2"`
-	MinBowlers              int     `json:"min_bowlers"`
-	RequireKeeper           *bool   `json:"require_keeper"`
-	UseReconciledScorecard  *bool   `json:"use_reconciled_scorecard,omitempty"`
-	IncludeBothScorecards   *bool   `json:"include_both_scorecards,omitempty"`
+	ExtraTeam1             []int64 `json:"extra_team1"`
+	ExtraTeam2             []int64 `json:"extra_team2"`
+	MinBowlers             int     `json:"min_bowlers"`
+	RequireKeeper          *bool   `json:"require_keeper"`
+	UseReconciledScorecard *bool   `json:"use_reconciled_scorecard,omitempty"`
+	IncludeBothScorecards  *bool   `json:"include_both_scorecards,omitempty"`
 }
 
 // parsePredictTeamRequest decodes the request body from JSON or query params.
@@ -328,7 +328,13 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: err.Error()})
 			return
 		}
-		result, sim, err := predictteam.PredictTeamsWithSimulation(r.Context(), input, mlPredictorAdapter{}, opts, reconciledGen)
+		result, sim, err := predictteam.PredictTeamsWithSimulation(
+			r.Context(),
+			input,
+			mlPredictorAdapter{},
+			opts,
+			reconciledGen,
+		)
 		if err != nil {
 			respondErr(w, err)
 			return

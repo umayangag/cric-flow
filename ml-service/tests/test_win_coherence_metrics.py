@@ -30,4 +30,3 @@ def test_win_probability_coherence_from_margin_reports_abs_diff():
     assert 0.0 <= metrics["p_model_team1"] <= 1.0
     assert 0.0 <= metrics["p_implied_team1"] <= 1.0
     assert metrics["abs_diff"] == abs(metrics["p_model_team1"] - metrics["p_implied_team1"])
-

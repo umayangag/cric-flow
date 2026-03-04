@@ -32,7 +32,6 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, TextIO
 
-
 EVENT_NAME = "backtest_predict.reconciliation.applied"
 METRIC_KEYS = [
     "mean_abs_delta_runs",
@@ -218,9 +217,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         with open(args.log_file, "r", encoding="utf-8") as f:
             records = list(_iter_log_lines(f))
 
-    summary = analyze_reconciliation_records(
-        records, model_family=args.model_family, group_by=args.group_by
-    )
+    summary = analyze_reconciliation_records(records, model_family=args.model_family, group_by=args.group_by)
 
     output = json.dumps(summary, indent=2, sort_keys=True)
     if args.output_json == "-" or not args.output_json:
@@ -232,4 +229,3 @@ def main(argv: Optional[List[str]] = None) -> None:
 
 if __name__ == "__main__":
     main()
-

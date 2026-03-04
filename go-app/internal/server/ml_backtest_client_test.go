@@ -171,7 +171,6 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when neither matchID nor filters provided")
 	}
-
 }
 
 // Test GenerateMatch sends cutoff, format, player_ids, features, and match_context and maps response.

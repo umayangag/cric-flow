@@ -75,4 +75,3 @@ def win_probability_coherence_from_margin(
         "p_implied_team1": p_implied,
         "abs_diff": abs(p_m - p_implied),
     }
-

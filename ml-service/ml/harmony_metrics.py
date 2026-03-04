@@ -100,4 +100,3 @@ def realism_within_allowed_bands(
         "band_used": list(band),
         "stat_label": stat_label,
     }
-
