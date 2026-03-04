@@ -21,337 +21,45 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
-// --- Helpers extracted for readability (no behavior change) ---
+// --- Helpers: thin delegations to services/backtest ---
 
-// chooseBacktestMode decides the mode based on explicit input and presence of match_id.
-// If mode is empty, defaults to "select" when match_id is empty, otherwise "evaluate".
 func chooseBacktestMode(modeInput, matchID string) string {
-	m := strings.TrimSpace(modeInput)
-	if m == "" {
-		if strings.TrimSpace(matchID) == "" {
-			return "select"
-		}
-		return "evaluate"
-	}
-	return m
+	return backtest.ChooseBacktestMode(modeInput, matchID)
 }
 
-// computeR2 returns the coefficient of determination given total squared error and actual values.
 func computeR2(totalSquaredError float64, actuals []float64) float64 {
-	if len(actuals) == 0 {
-		return 0
-	}
-	var mean float64
-	for _, v := range actuals {
-		mean += v
-	}
-	mean /= float64(len(actuals))
-	var ssTot float64
-	for _, v := range actuals {
-		d := v - mean
-		ssTot += d * d
-	}
-	if ssTot <= 0 {
-		return 0
-	}
-	return 1.0 - (totalSquaredError / ssTot)
+	return backtest.ComputeR2(totalSquaredError, actuals)
 }
 
-// winnerAccuracy computes 1.0 when winner codes match (case-insensitive), else 0.0; returns 0.0 if any is empty.
 func winnerAccuracy(predWinner, actualWinner string) float64 {
-	if predWinner == "" || actualWinner == "" {
-		return 0
-	}
-	if strings.EqualFold(predWinner, actualWinner) {
-		return 1
-	}
-	return 0
+	return backtest.WinnerAccuracy(predWinner, actualWinner)
 }
 
-// buildPredictedScorecard builds a scorecard from the actual layout with ML-predicted stats per player.
-// Predictions use only data before the match date. Batting rows get predicted runs; bowling rows get predicted wickets, economy, and derived runs.
-// playerTeams maps player_id -> team name so we sum predicted runs for all 11 of the batting team (not just those who batted).
+
 func buildPredictedScorecard(
 	actual *db.MatchScorecard,
 	preds map[int64]playerPredictions,
 	playerTeams map[int64]string,
 ) *db.MatchScorecard {
-	if actual == nil {
-		return nil
-	}
-	out := &db.MatchScorecard{
-		MatchID:   actual.MatchID,
-		MatchDate: actual.MatchDate,
-		Venue:     actual.Venue,
-		Innings:   make([]db.ScorecardInning, 0, len(actual.Innings)),
-	}
-	for _, in := range actual.Innings {
-		inn := db.ScorecardInning{
-			InningNumber:    in.InningNumber,
-			BattingTeamName: in.BattingTeamName,
-			BowlingTeamName: in.BowlingTeamName,
-			Extras:          in.Extras,
-			TargetRuns:      in.TargetRuns,
-			Batting:         make([]db.ScorecardBatting, 0, 11),
-			Bowling:         make([]db.ScorecardBowling, 0, len(in.Bowling)),
-		}
-		// Sum predicted runs for ALL players in the batting team (full XI), not just those who batted.
-		var predRunsSum int
-		battedSet := make(map[int64]struct{})
-		for _, b := range in.Batting {
-			battedSet[b.PlayerID] = struct{}{}
-		}
-		for pid, team := range playerTeams {
-			if team != in.BattingTeamName {
-				continue
-			}
-			p := preds[pid]
-			predRunsSum += int(math.Round(p.Runs))
-		}
-		// Build batting rows: those who batted first (with predicted runs), then those who didn't bat.
-		for _, b := range in.Batting {
-			p := preds[b.PlayerID]
-			r := int(math.Round(p.Runs))
-			var ballsP, foursP, sixesP *int
-			var strikeRate *float32
-			bl := int(math.Round(p.Balls))
-			ballsP = &bl
-			f := int(math.Round(p.Fours))
-			foursP = &f
-			s := int(math.Round(p.Sixes))
-			sixesP = &s
-			if p.Balls > 0 {
-				sr := float32(100.0 * p.Runs / p.Balls)
-				strikeRate = &sr
-			}
-			inn.Batting = append(inn.Batting, db.ScorecardBatting{
-				PlayerID:   b.PlayerID,
-				PlayerName: b.PlayerName,
-				Runs:       intPtr(r),
-				Balls:      ballsP,
-				Fours:      foursP,
-				Sixes:      sixesP,
-				StrikeRate: strikeRate,
-				HowOut:     nil,
-			})
-		}
-		// Build playerID->name map from all innings so we can look up names for DNB entries.
-		playerNames := make(map[int64]string)
-		for _, oth := range actual.Innings {
-			for _, b := range oth.Batting {
-				playerNames[b.PlayerID] = b.PlayerName
-			}
-			for _, w := range oth.Bowling {
-				playerNames[w.PlayerID] = w.PlayerName
-			}
-		}
-		// Add "Did Not Bat" rows for all batting team players who didn't bat (from playerTeams).
-		for pid, team := range playerTeams {
-			if team != in.BattingTeamName {
-				continue
-			}
-			if _, batted := battedSet[pid]; batted {
-				continue
-			}
-			battedSet[pid] = struct{}{}
-			p := preds[pid]
-			r := int(math.Round(p.Runs))
-			name := playerNames[pid]
-			inn.Batting = append(inn.Batting, db.ScorecardBatting{
-				PlayerID:   pid,
-				PlayerName: name,
-				Runs:       intPtr(r),
-				Balls:      nil,
-				Fours:      nil,
-				Sixes:      nil,
-				StrikeRate: nil,
-				HowOut:     nil,
-			})
-		}
-		inn.RunsScored = predRunsSum
-		// First pass: collect raw wicket predictions
-		type bowlerPred struct {
-			w    db.ScorecardBowling
-			wkts float64
-		}
-		var bowlerPreds []bowlerPred
-		var predWicketsSum float64
-		for _, w := range in.Bowling {
-			p := preds[w.PlayerID]
-			wkts := math.Max(0, p.Wickets)
-			predWicketsSum += wkts
-			ec := float32Ptr(float32(p.Economy))
-			var predRuns *int
-			if w.Balls != nil && *w.Balls > 0 {
-				predRuns = intPtr(int(math.Round(float64(*w.Balls) * p.Economy / 6)))
-			} else if w.Overs != nil && *w.Overs > 0 {
-				// Cricket overs are often stored as e.g. 3.5 = 3 overs 5 balls (23 balls), not 3.5*6=21.
-				// Convert to balls: whole overs * 6 + fractional part as balls in last over (0–5).
-				ov := float64(*w.Overs)
-				whole := int(ov)
-				frac := ov - float64(whole)
-				ballsInOver := int(math.Round(frac * 10))
-				if ballsInOver > 5 {
-					ballsInOver = 5
-				}
-				totalBalls := whole*6 + ballsInOver
-				predRuns = intPtr(int(math.Round(float64(totalBalls) * p.Economy / 6)))
-			}
-			bowlerPreds = append(bowlerPreds, bowlerPred{
-				w: db.ScorecardBowling{
-					PlayerID:   w.PlayerID,
-					PlayerName: w.PlayerName,
-					Overs:      w.Overs,
-					Maidens:    nil,
-					Runs:       predRuns,
-					Wickets:    nil, // set after scaling
-					Economy:    ec,
-					Wides:      nil,
-					NoBalls:    nil,
-					Balls:      w.Balls,
-				},
-				wkts: wkts,
-			})
-		}
-		// Scale wickets so total per inning does not exceed 10 (cricket max)
-		const maxWicketsPerInning = 10
-		scale := 1.0
-		if predWicketsSum > maxWicketsPerInning && predWicketsSum > 0 {
-			scale = maxWicketsPerInning / predWicketsSum
-		}
-		var scaledSum int
-		for _, bp := range bowlerPreds {
-			scaled := int(math.Round(bp.wkts * scale))
-			scaledSum += scaled
-			bp.w.Wickets = intPtr(scaled)
-			inn.Bowling = append(inn.Bowling, bp.w)
-		}
-		inn.WicketsLost = scaledSum
-		out.Innings = append(out.Innings, inn)
-	}
-	return out
+	return backtest.BuildPredictedScorecard(actual, preds, playerTeams)
 }
 
-func intPtr(n int) *int {
-	v := n
-	return &v
-}
+func intPtr(n int) *int { return &n }
 
-func float32Ptr(f float32) *float32 {
-	v := f
-	return &v
-}
+func float32Ptr(f float32) *float32 { return &f }
 
-// computePlayerResultsAndMetrics walks through the given squad, pairing predictions with
-// actuals to produce per-player results and summary metrics.
-// Metrics computed:
-// - player_runs_mae, player_runs_rmse, player_runs_r2
-// - player_wickets_mae, player_economy_mae, player_catches_mae, player_run_outs_mae
-// Behavior mirrors the inline logic previously in backtestMatchHandler.
 func computePlayerResultsAndMetrics(
 	squad []int64,
 	preds map[int64]playerPredictions,
 	actuals map[int64]playerActuals,
 ) ([]BacktestPlayerResult, map[string]float64) {
-	players := make([]BacktestPlayerResult, 0, len(squad))
-	metrics := map[string]float64{}
-
-	var (
-		totalAbsErrRuns, countRuns float64
-		totalSqErrRuns             float64
-		runsActuals                []float64
-
-		totalAbsErrWickets, countWickets float64
-		totalAbsErrEcon, countEcon       float64
-		totalAbsErrCatches, countCatches float64
-		totalAbsErrRunOuts, countRunOuts float64
-	)
-
-	for _, pid := range squad {
-		pp, okP := preds[pid]
-		aa, okA := actuals[pid]
-		if !okP || !okA {
-			// Skip players without both prediction and actuals
-			continue
-		}
-
-		// Player result item
-		var pRes BacktestPlayerResult
-		pRes.PlayerID = pid
-		pRes.Predicted = map[string]float64{
-			"runs":     pp.Runs,
-			"wickets":  pp.Wickets,
-			"economy":  pp.Economy,
-			"catches":  pp.Catches,
-			"run_outs": pp.RunOuts,
-		}
-		pRes.Actual = map[string]float64{
-			"runs":     aa.Runs,
-			"wickets":  aa.Wickets,
-			"economy":  aa.Economy,
-			"catches":  aa.Catches,
-			"run_outs": aa.RunOuts,
-		}
-		diffRuns := pp.Runs - aa.Runs
-		pRes.Errors = map[string]float64{
-			"runs_mae":     math.Abs(diffRuns),
-			"wickets_mae":  math.Abs(pp.Wickets - aa.Wickets),
-			"economy_mae":  math.Abs(pp.Economy - aa.Economy),
-			"catches_mae":  math.Abs(pp.Catches - aa.Catches),
-			"run_outs_mae": math.Abs(pp.RunOuts - aa.RunOuts),
-		}
-		players = append(players, pRes)
-
-		// Aggregate for metrics
-		totalAbsErrRuns += pRes.Errors["runs_mae"]
-		totalSqErrRuns += diffRuns * diffRuns
-		countRuns++
-		runsActuals = append(runsActuals, aa.Runs)
-
-		totalAbsErrWickets += pRes.Errors["wickets_mae"]
-		countWickets++
-
-		totalAbsErrEcon += pRes.Errors["economy_mae"]
-		countEcon++
-
-		totalAbsErrCatches += pRes.Errors["catches_mae"]
-		countCatches++
-
-		totalAbsErrRunOuts += pRes.Errors["run_outs_mae"]
-		countRunOuts++
-	}
-
-	if countRuns > 0 {
-		metrics["player_runs_mae"] = totalAbsErrRuns / countRuns
-		metrics["player_runs_rmse"] = math.Sqrt(totalSqErrRuns / countRuns)
-		metrics["player_runs_r2"] = computeR2(totalSqErrRuns, runsActuals)
-	}
-	if countWickets > 0 {
-		metrics["player_wickets_mae"] = totalAbsErrWickets / countWickets
-	}
-	if countEcon > 0 {
-		metrics["player_economy_mae"] = totalAbsErrEcon / countEcon
-	}
-	if countCatches > 0 {
-		metrics["player_catches_mae"] = totalAbsErrCatches / countCatches
-	}
-	if countRunOuts > 0 {
-		metrics["player_run_outs_mae"] = totalAbsErrRunOuts / countRunOuts
-	}
-
-	return players, metrics
+	return backtest.ComputePlayerResultsAndMetrics(squad, preds, actuals)
 }
 
 func formatFromFilters(filters map[string]any) string {
-	if v, ok := filters["format"]; ok {
-		if s, ok := v.(string); ok {
-			return strings.TrimSpace(strings.ToUpper(s))
-		}
-	}
-	return ""
+	return backtest.FormatFromFilters(filters)
 }
 
-// buildBacktestWinFeatures builds win model features from match context, player teams, and per-player features.
 func buildBacktestWinFeatures(
 	winCtx *db.MatchWinContext,
 	format string,
@@ -359,108 +67,16 @@ func buildBacktestWinFeatures(
 	team1, team2 string,
 	features map[int64]map[string]float64,
 ) predictteam.WinFeatures {
-	sumForTeam := func(team string, key string) float64 {
-		s := 0.0
-		for pid, t := range playerTeams {
-			if t != team {
-				continue
-			}
-			if m := features[pid]; m != nil {
-				s += m[key]
-			}
-		}
-		return s
-	}
-	venueID := 0
-	if winCtx.VenueID != 0 {
-		venueID = int(winCtx.VenueID)
-	}
-	return predictteam.WinFeatures{
-		FormatID:                int(winCtx.FormatID),
-		VenueID:                 venueID,
-		Team1OppositionID:       int(winCtx.Team1OppositionID),
-		Team2OppositionID:       int(winCtx.Team2OppositionID),
-		TossWinnerOppositionID:  int(winCtx.TossWinnerOppositionID),
-		Team1BatConsistencySum:  sumForTeam(team1, "batting_consistency"),
-		Team1BowlConsistencySum: sumForTeam(team1, "bowling_consistency"),
-		Team2BatConsistencySum:  sumForTeam(team2, "batting_consistency"),
-		Team2BowlConsistencySum: sumForTeam(team2, "bowling_consistency"),
-		Team1BatFormSum:         sumForTeam(team1, "batting_form"),
-		Team1BowlFormSum:        sumForTeam(team1, "bowling_form"),
-		Team2BatFormSum:         sumForTeam(team2, "batting_form"),
-		Team2BowlFormSum:        sumForTeam(team2, "bowling_form"),
-		Format:                  format,
-	}
+	return backtest.BuildBacktestWinFeatures(winCtx, format, playerTeams, team1, team2, features)
 }
 
-// rescaleBacktestPredictionsToWinProbability rescales each player's predicted runs and wickets
-// so that team1 total = total*p and team2 total = total*(1-p), preserving proportions within each team.
 func rescaleBacktestPredictionsToWinProbability(
 	resp *backtestEvaluateResponse,
 	playerTeams map[int64]string,
 	team1, team2 string,
 	p float64,
 ) {
-	var runs1, runs2, wkt1, wkt2 float64
-	for i := range resp.Players {
-		pid := resp.Players[i].PlayerID
-		t := playerTeams[pid]
-		var r, w float64
-		if resp.Players[i].Predicted != nil {
-			r = resp.Players[i].Predicted["runs"]
-			w = resp.Players[i].Predicted["wickets"]
-		}
-		switch t {
-		case team1:
-			runs1 += r
-			wkt1 += w
-		case team2:
-			runs2 += r
-			wkt2 += w
-		}
-	}
-	totalRuns := runs1 + runs2
-	totalWickets := wkt1 + wkt2
-	factorR1, factorR2 := 1.0, 1.0
-	if totalRuns > 0 {
-		if runs1 > 0 {
-			factorR1 = (totalRuns * p) / runs1
-		}
-		if runs2 > 0 {
-			factorR2 = (totalRuns * (1 - p)) / runs2
-		}
-	}
-	factorW1, factorW2 := 1.0, 1.0
-	if totalWickets > 0 {
-		if wkt1 > 0 {
-			factorW1 = (totalWickets * p) / wkt1
-		}
-		if wkt2 > 0 {
-			factorW2 = (totalWickets * (1 - p)) / wkt2
-		}
-	}
-	for i := range resp.Players {
-		t := playerTeams[resp.Players[i].PlayerID]
-		if resp.Players[i].Predicted == nil {
-			continue
-		}
-		switch t {
-		case team1:
-			if v, ok := resp.Players[i].Predicted["runs"]; ok {
-				resp.Players[i].Predicted["runs"] = v * factorR1
-			}
-			if v, ok := resp.Players[i].Predicted["wickets"]; ok {
-				resp.Players[i].Predicted["wickets"] = v * factorW1
-			}
-		case team2:
-			if v, ok := resp.Players[i].Predicted["runs"]; ok {
-				resp.Players[i].Predicted["runs"] = v * factorR2
-			}
-			if v, ok := resp.Players[i].Predicted["wickets"]; ok {
-				resp.Players[i].Predicted["wickets"] = v * factorW2
-			}
-		}
-	}
+	backtest.RescalePredictionsToWinProbability(resp, playerTeams, team1, team2, p)
 }
 
 // populateMatchAggregatesAndMetrics fills the response with match-level predicted/actual aggregates

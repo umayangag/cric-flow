@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -14,7 +13,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
-	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -24,23 +23,8 @@ const (
 )
 
 // contributionRow is one row for the combination meta-model CSV.
-type contributionRow struct {
-	BatScore   float64
-	BowlScore  float64
-	FieldScore float64
-	IsKeeper   int
-	Format     string
-	Target     float64
-}
-
-// exportContributionsRequest is the body for POST /api/backtest/export-contributions.
-type exportContributionsRequest struct {
-	Format          string  `json:"format"`
-	Team1           string  `json:"team1"`
-	Team2           string  `json:"team2"`
-	MatchIDs        []int64 `json:"match_ids"`
-	UseUnifiedModel bool    `json:"use_unified_model,omitempty"`
-}
+// Types contributionRow and exportContributionsRequest are defined as aliases in backtest_types.go
+// pointing to services/backtest package.
 
 // backtestExportContributionsHandler handles POST /api/backtest/export-contributions.
 // Starts a background job that runs evaluate for each match_id, builds contribution rows, and writes CSV.
@@ -199,68 +183,9 @@ func buildContributionRows(
 	format string,
 	batDiv, wicketDiv, econBase, fieldDiv float64,
 ) []contributionRow {
-	out := make([]contributionRow, 0, len(players))
-	for _, p := range players {
-		pred := p.Predicted
-		act := p.Actual
-		if pred == nil || act == nil {
-			continue
-		}
-		runs := pred["runs"]
-		wickets := pred["wickets"]
-		econ := pred["economy"]
-		catches := pred["catches"]
-		runOuts := pred["run_outs"]
-		actualRuns := act["runs"]
-
-		batScore := teamselect.NormalizeBatScore(runs, batDiv)
-		bowlScore := teamselect.NormalizeBowlScore(wickets, econ, wicketDiv, econBase)
-		fieldScore := teamselect.NormalizeFieldScore(catches, runOuts, fieldDiv)
-
-		isKeeper := 0
-		if keeperMap[p.PlayerID] {
-			isKeeper = 1
-		}
-		target := 0.0
-		if batDiv > 0 {
-			target = actualRuns / batDiv
-		}
-		out = append(out, contributionRow{
-			BatScore:   batScore,
-			BowlScore:  bowlScore,
-			FieldScore: fieldScore,
-			IsKeeper:   isKeeper,
-			Format:     format,
-			Target:     target,
-		})
-	}
-	return out
+	return backtest.BuildContributionRows(players, keeperMap, format, batDiv, wicketDiv, econBase, fieldDiv)
 }
 
 func writeContributionsCSV(path string, rows []contributionRow) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	w := csv.NewWriter(f)
-	header := []string{"bat_score", "bowl_score", "field_score", "is_keeper", "format", "target"}
-	if err := w.Write(header); err != nil {
-		return err
-	}
-	for _, r := range rows {
-		record := []string{
-			strconv.FormatFloat(r.BatScore, 'f', -1, 64),
-			strconv.FormatFloat(r.BowlScore, 'f', -1, 64),
-			strconv.FormatFloat(r.FieldScore, 'f', -1, 64),
-			strconv.Itoa(r.IsKeeper),
-			r.Format,
-			strconv.FormatFloat(r.Target, 'f', -1, 64),
-		}
-		if err := w.Write(record); err != nil {
-			return err
-		}
-	}
-	w.Flush()
-	return w.Error()
+	return backtest.WriteContributionsCSV(path, rows)
 }
