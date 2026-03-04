@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"context"
@@ -24,15 +24,15 @@ func getMap(m map[string]any, key string, t *testing.T) map[string]any {
 
 func TestBuildPrecomputeSection_NoFinishedRun_AllMissing(t *testing.T) {
 	// Arrange
-	orig := getPrecomputeStatus
-	t.Cleanup(func() { getPrecomputeStatus = orig })
-	getPrecomputeStatus = func() precompute.Status {
+	orig := GetPrecomputeStatus
+	t.Cleanup(func() { GetPrecomputeStatus = orig })
+	GetPrecomputeStatus = func() precompute.Status {
 		return precompute.Status{} // zero FinishedAt
 	}
 	now := time.Date(2026, 1, 21, 12, 0, 0, 0, time.UTC)
 
 	// Act (no DB in unit test, so tracking fallback returns nil → all missing)
-	sec := buildPrecomputeSection(context.Background(), now)
+	sec := BuildPrecomputeSection(context.Background(), now)
 
 	// Assert
 	if sec["last_run"] != "" || sec["as_of"] != "" {
@@ -50,15 +50,15 @@ func TestBuildPrecomputeSection_NoFinishedRun_AllMissing(t *testing.T) {
 }
 
 func TestBuildPrecomputeSection_Today_OkForRanFormats(t *testing.T) {
-	orig := getPrecomputeStatus
-	t.Cleanup(func() { getPrecomputeStatus = orig })
+	orig := GetPrecomputeStatus
+	t.Cleanup(func() { GetPrecomputeStatus = orig })
 	finished := time.Date(2026, 1, 21, 6, 30, 0, 0, time.UTC)
-	getPrecomputeStatus = func() precompute.Status {
+	GetPrecomputeStatus = func() precompute.Status {
 		return precompute.Status{FinishedAt: finished, Formats: []string{"ODI", "T20"}}
 	}
 	now := time.Date(2026, 1, 21, 18, 0, 0, 0, time.UTC)
 
-	sec := buildPrecomputeSection(context.Background(), now)
+	sec := BuildPrecomputeSection(context.Background(), now)
 	if sec["last_run"] == "" || sec["as_of"] == "" {
 		t.Fatalf("expected last_run/as_of to be set")
 	}
@@ -78,15 +78,15 @@ func TestBuildPrecomputeSection_Today_OkForRanFormats(t *testing.T) {
 }
 
 func TestBuildPrecomputeSection_Yesterday_StaleForRanFormats(t *testing.T) {
-	orig := getPrecomputeStatus
-	t.Cleanup(func() { getPrecomputeStatus = orig })
+	orig := GetPrecomputeStatus
+	t.Cleanup(func() { GetPrecomputeStatus = orig })
 	finished := time.Date(2026, 1, 20, 23, 50, 0, 0, time.UTC)
-	getPrecomputeStatus = func() precompute.Status {
+	GetPrecomputeStatus = func() precompute.Status {
 		return precompute.Status{FinishedAt: finished, Formats: []string{"TEST", "T20I"}}
 	}
 	now := time.Date(2026, 1, 21, 0, 10, 0, 0, time.UTC)
 
-	sec := buildPrecomputeSection(context.Background(), now)
+	sec := BuildPrecomputeSection(context.Background(), now)
 	formats := getMap(sec, "formats", t)
 	if st := getMap(formats, "TEST", t)["status"].(string); st != "stale" {
 		t.Fatalf("TEST expected stale, got %s", st)

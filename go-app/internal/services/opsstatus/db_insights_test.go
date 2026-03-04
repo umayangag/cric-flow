@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"testing"
@@ -32,7 +32,7 @@ func TestWorseStatus(t *testing.T) {
 }
 
 func TestGetCricketFormats(t *testing.T) {
-	got := getCricketFormats()
+	got := CricketFormatCodes
 	require.NotEmpty(t, got)
 	require.Contains(t, got, "TEST")
 	require.Contains(t, got, "ODI")

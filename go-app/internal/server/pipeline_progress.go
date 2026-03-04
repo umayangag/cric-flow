@@ -1,94 +1,16 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
-func mlServiceBaseURLForProgress() string {
-	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
-	if s != "" {
-		return strings.TrimSuffix(s, "/")
-	}
-	return config.ServerMLBaseURLFallback(config.Load())
-}
-
-func fetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
-	base := mlServiceBaseURLForProgress()
-	url := base + "/admin/train/auto-tune/progress"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil
-	}
-	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		if resp != nil {
-			resp.Body.Close()
-		}
-		return nil
-	}
-	defer resp.Body.Close()
-	var m map[string]interface{}
-	if json.NewDecoder(resp.Body).Decode(&m) != nil {
-		return nil
-	}
-	return m
-}
-
-// commandToStepID maps data_migrations command to pipeline step ID for the UI.
-var commandToStepID = map[string]string{
-	"cricsheet-import":       "import",
-	"precompute-features":    "precompute",
-	"export-dataset":         "export",
-	"train-batting":          "train_batting",
-	"train-bowling":          "train_bowling",
-	"train-fielding":         "train_fielding",
-	"train-extras":           "train_extras",
-	"train-win":              "train_win",
-	"train-innings":          "train_innings",
-	"train-combination-meta": "train_combination_meta",
-	"ml-auto-tune":           "auto_tune",
-}
-
-var commandToStepLabel = map[string]string{
-	"cricsheet-import":       "Import",
-	"precompute-features":    "Precompute",
-	"export-dataset":         "Export",
-	"train-batting":          "Train Batting",
-	"train-bowling":          "Train Bowling",
-	"train-fielding":         "Train Fielding",
-	"train-extras":           "Train Extras",
-	"train-win":              "Train Win",
-	"train-innings":          "Train Innings",
-	"train-combination-meta": "Train Combination Meta",
-	"ml-auto-tune":           "Auto-tune",
-}
-
-func pipelineProgressInterval() time.Duration {
-	sec := config.ServerPipelineProgressSec(config.Load())
-	return time.Duration(sec) * time.Second
-}
-
-// defaultPrecomputeETASecPerFormat returns config precompute_eta_seconds_per_fmt, or 180 if unset (used only before any format completes).
-func defaultPrecomputeETASecPerFormat() int {
-	return config.PipelinePrecomputeETASecondsPerFmt(config.Load())
-}
 
 // pipelineProgressPayload is the JSON sent in each SSE "progress" event.
 type pipelineProgressPayload struct {
@@ -113,82 +35,6 @@ type precomputeProgress struct {
 	FormatsTotal int `json:"formats_total,omitempty"`
 }
 
-// buildProgressDetailAndParams returns a short human-readable detail string and a params map from migration command and args.
-func buildProgressDetailAndParams(
-	command string,
-	argsJSON json.RawMessage,
-) (detail string, params map[string]interface{}) {
-	params = make(map[string]interface{})
-	if len(argsJSON) > 0 {
-		_ = json.Unmarshal(argsJSON, &params)
-	}
-	// Omit internal "step" from params for display
-	delete(params, "step")
-
-	switch command {
-	case "cricsheet-import":
-		if dir, _ := params["dir"].(string); dir != "" {
-			detail = fmt.Sprintf("Importing Cricsheet from %s", dir)
-		} else {
-			detail = "Importing Cricsheet data"
-		}
-	case "precompute-features":
-		detail = "Computing features and consistency per format"
-		if season, _ := params["season"].(string); season != "" {
-			params["season"] = season
-		}
-	case "export-dataset":
-		if outDir, _ := params["out_dir"].(string); outDir != "" {
-			detail = fmt.Sprintf("Exporting training dataset to %s", outDir)
-		} else {
-			detail = "Exporting training dataset"
-		}
-	case "train-batting", "train-bowling", "train-fielding", "train-extras", "train-win":
-		model := strings.TrimPrefix(command, "train-")
-		if len(model) > 0 {
-			model = strings.ToUpper(model[:1]) + model[1:]
-		}
-		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
-			detail = fmt.Sprintf("Training %s models (cutoff %s)", model, cutoff)
-		} else {
-			detail = fmt.Sprintf("Training %s models", model)
-		}
-	case "ml-auto-tune":
-		model, _ := params["model"].(string)
-		if model == "" {
-			model = "all"
-		}
-		format, _ := params["format"].(string)
-		allFormats, _ := params["all_formats"].(string)
-		switch {
-		case allFormats != "":
-			detail = fmt.Sprintf(
-				"Auto-tuning: model %s, all formats (searching best algorithm and hyperparameters)",
-				model,
-			)
-		case format != "":
-			detail = fmt.Sprintf(
-				"Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)",
-				model,
-				format,
-			)
-		default:
-			detail = fmt.Sprintf("Auto-tuning: model %s (searching best algorithm and hyperparameters)", model)
-		}
-		params["model"] = model
-		if format != "" {
-			params["format"] = format
-		}
-		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
-			params["cutoff"] = cutoff
-		}
-	case "train-combination-meta":
-		detail = "Training combination meta-model"
-	default:
-		detail = command
-	}
-	return detail, params
-}
 
 // pipelineProgressStreamHandler handles GET /ops/pipeline/stream and streams pipeline progress via SSE.
 func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +57,7 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 		return true
 	}
 
-	ticker := time.NewTicker(pipelineProgressInterval())
+	ticker := time.NewTicker(pipelinesvc.ProgressInterval())
 	defer ticker.Stop()
 
 	// Send initial event immediately
@@ -225,16 +71,16 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 		}
 		// Use the most recently started migration (first in list)
 		m := inProgress[0]
-		stepID := commandToStepID[m.Command]
+		stepID := pipelinesvc.CommandToStepID[m.Command]
 		if stepID == "" {
 			stepID = m.Command
 		}
-		stepLabel := commandToStepLabel[m.Command]
+		stepLabel := pipelinesvc.CommandToStepLabel[m.Command]
 		if stepLabel == "" {
 			stepLabel = m.Command
 		}
 		elapsed := time.Since(m.StartedAt).Seconds()
-		detail, params := buildProgressDetailAndParams(m.Command, m.Args)
+		detail, params := pipelinesvc.BuildProgressDetailAndParams(m.Command, m.Args)
 		payload := pipelineProgressPayload{
 			Running:    true,
 			StepID:     stepID,
@@ -261,7 +107,7 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 				FormatsTotal:  len(pc.Formats),
 			}
 			// ETA: use observed time per format when available; else config default (fallback for first format).
-			secPerFormat := defaultPrecomputeETASecPerFormat()
+			secPerFormat := pipelinesvc.DefaultPrecomputeETASecPerFormat()
 			elapsedTotalSec := time.Since(m.StartedAt).Seconds()
 			elapsedCurrentFormatSec := 0.0
 			if !pc.FormatStartedAt.IsZero() {
@@ -295,7 +141,7 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		if m.Command == "ml-auto-tune" {
-			payload.AutoTune = fetchAutoTuneProgress(r.Context())
+			payload.AutoTune = pipelinesvc.FetchAutoTuneProgress(r.Context())
 		}
 		data, _ := json.Marshal(payload)
 		return writeSSE("progress", string(data))

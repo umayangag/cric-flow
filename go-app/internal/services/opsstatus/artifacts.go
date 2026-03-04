@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"encoding/json"
@@ -17,18 +17,18 @@ import (
 // formats supported for reporting (canonical order from internal/formats)
 var artifactFormats = formatsPkg.CanonicalCodes()
 
-// artifactsFallbackRoot returns the filesystem root for the artifacts fallback scan
+// ArtifactsFallbackRoot returns the filesystem root for the artifacts fallback scan
 // when the ML service is unreachable. GO_APP_ARTIFACTS_ROOT overrides the default.
-func artifactsFallbackRoot() string {
+func ArtifactsFallbackRoot() string {
 	if p := strings.TrimSpace(os.Getenv("GO_APP_ARTIFACTS_ROOT")); p != "" {
 		return p
 	}
 	return filepath.Join("output", "ml-service")
 }
 
-// buildArtifactsSection probes the ML service (if available) and/or filesystem to
+// BuildArtifactsSection probes the ML service (if available) and/or filesystem to
 // construct the artifacts section for /ops/status. It also returns the mlHealth bool.
-func buildArtifactsSection(client *http.Client, fsRoot string) (section map[string]any, mlHealth bool) {
+func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[string]any, mlHealth bool) {
 	base := os.Getenv("ML_SERVICE_URL")
 	if strings.TrimSpace(base) == "" {
 		base = config.ServerMLBaseURLFallback(config.Load())
@@ -38,7 +38,6 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		client = &http.Client{Timeout: time.Duration(sec) * time.Second}
 	}
 
-	// default scaffold (formats + unified/legacy for "all formats" model)
 	section = map[string]any{
 		"root":    fsRoot,
 		"formats": map[string]any{},
@@ -62,7 +61,6 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	}
 	section["formats"] = fm
 
-	// Probe ML /health first
 	type healthResp struct {
 		Status       string `json:"status"`
 		BattingModel bool   `json:"batting_model"`
@@ -72,8 +70,6 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		mlHealth = true
 	}
 
-	// Try detailed artifacts endpoint; if 200 OK and parseable, use it
-	// Expected shape (lenient): { formats: { FMT: { batting: {exists, loaded, modified, path}, bowling: {...} } } }
 	var art map[string]any
 	if resp, code, err := httpGetRaw(client, base+"/artifacts/status"); err == nil && code >= 200 && code < 300 {
 		if err := json.Unmarshal(resp, &art); err == nil {
@@ -97,10 +93,8 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 				return section, mlHealth
 			}
 		}
-		// If parse failed, fall through to FS
 	}
 
-	// Filesystem fallback: per-format batting, bowling, fielding, extras, win
 	entries, _ := os.ReadDir(fsRoot)
 	for _, f := range artifactFormats {
 		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
@@ -114,7 +108,6 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		}
 	}
 	section["formats"] = fm
-	// Unified (legacy) artifacts: batting_model.joblib, bowling_model.joblib, etc. (reuse entries from above)
 	if unif, ok := section["unified"].(map[string]any); ok {
 		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
 			if p, mod, ok := findLegacyArtifactByKind(entries, fsRoot, kind); ok {
@@ -130,7 +123,6 @@ func buildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	return section, mlHealth
 }
 
-// httpGetJSON performs a GET and unmarshals JSON into T.
 func httpGetJSON[T any](client *http.Client, url string) (T, error) {
 	var zero T
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -153,7 +145,6 @@ func httpGetJSON[T any](client *http.Client, url string) (T, error) {
 	return out, nil
 }
 
-// httpGetRaw returns body bytes, status code, error
 func httpGetRaw(client *http.Client, url string) ([]byte, int, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -171,9 +162,6 @@ func httpGetRaw(client *http.Client, url string) ([]byte, int, error) {
 	return b, resp.StatusCode, nil
 }
 
-// findPerFormatArtifact finds a per-format artifact by kind from pre-read dir entries.
-// kind: batting, bowling, fielding (require scaler+model), extras, win (model only).
-// Naming: batting_scaler_<FMT>.joblib + batting_model_<FMT>.joblib, etc.
 func findPerFormatArtifact(
 	entries []os.DirEntry,
 	root string,
@@ -223,7 +211,6 @@ func findPerFormatArtifact(
 			}
 			modelPath = full
 			modelMod = info.ModTime()
-			// don't break: we may still need to see the scaler in the same loop
 		}
 	}
 	if hasScaler && modelPath != "" {
@@ -232,8 +219,6 @@ func findPerFormatArtifact(
 	return "", time.Time{}, false
 }
 
-// findLegacyArtifactByKind finds legacy (unified) artifact by kind from pre-read dir entries.
-// kind: batting (requires batting_scaler.joblib + batting_model.joblib), bowling (scaler+model), fielding (scaler+model), extras (extras_model.joblib), win (win_model.joblib).
 func findLegacyArtifactByKind(entries []os.DirEntry, root string, kind string) (path string, mod time.Time, ok bool) {
 	var needScaler, modelName string
 	switch kind {

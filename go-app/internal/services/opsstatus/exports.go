@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"bufio"
@@ -9,23 +9,14 @@ import (
 	"time"
 )
 
-// buildExportsSection inspects a filesystem root for exported CSVs and returns
+// BuildExportsSection inspects a filesystem root for exported CSVs and returns
 // a map suitable to be embedded under the `exports` key of /ops/status.
-// The function is conservative and pattern-based:
-//   - Recognizes unified files: batting_on.csv, bowling_on.csv (apply to all formats)
-//   - Recognizes per-format files by substring match containing the format code
-//     and either "bat" or "bowl" tokens.
-//
-// Row counting is capped to avoid heavy reads.
-func buildExportsSection(root string) map[string]any {
-	// Ensure root exists; if not, return empty scaffold
+func BuildExportsSection(root string) map[string]any {
 	formats := []string{"TEST", "ODI", "T20I", "T20"}
 	out := map[string]any{
 		"root":    root,
 		"formats": map[string]any{},
 	}
-
-	// Prepare container per format
 	fm := map[string]any{}
 	for _, f := range formats {
 		fm[f] = map[string]any{
@@ -33,15 +24,12 @@ func buildExportsSection(root string) map[string]any {
 		}
 	}
 
-	// List directory entries (non-recursive)
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		// Directory may not exist yet; return empty structures
 		out["formats"] = fm
 		return out
 	}
 
-	// Collect unified files once
 	var unifiedBat, unifiedBowl string
 	for _, e := range entries {
 		if e.IsDir() {
@@ -59,7 +47,6 @@ func buildExportsSection(root string) map[string]any {
 		}
 	}
 
-	// Helper to append a file entry for a format if it matches
 	appendFile := func(format, file string) {
 		full := filepath.Join(root, file)
 		info, err := os.Stat(full)
@@ -70,19 +57,16 @@ func buildExportsSection(root string) map[string]any {
 		}
 		if exists {
 			entry["modified"] = info.ModTime().UTC().Format(time.RFC3339)
-			// Cap at 100k to balance dashboard responsiveness with per-format variation visibility.
 			if rows, err := countCSVRowsCapped(full, 100000); err == nil {
 				entry["rows"] = rows
 			}
 		}
-		// append to format's files list
 		ff := fm[format].(map[string]any)
 		files := ff["files"].([]map[string]any)
 		ff["files"] = append(files, entry)
 		fm[format] = ff
 	}
 
-	// First, if unified files exist, add them for all formats
 	if unifiedBat != "" {
 		for _, f := range formats {
 			appendFile(f, unifiedBat)
@@ -94,20 +78,17 @@ func buildExportsSection(root string) map[string]any {
 		}
 	}
 
-	// Next, scan for per-format files. Match format as a token (e.g. _ODI.csv or _T20_) so
-	// that "T20" does not match "T20I" (which would incorrectly attach T20I files to T20).
 	fileMatchesFormat := func(lowerName, format string) bool {
 		fLower := strings.ToLower(format)
-		// Suffix like batting_encoded_ODI.csv or batting_encoded_T20I.csv
 		if strings.HasSuffix(lowerName, "_"+fLower+".csv") {
 			return true
 		}
-		// Token in middle like my_batting_ODI_2020.csv
 		if strings.Contains(lowerName, "_"+fLower+"_") {
 			return true
 		}
 		return false
 	}
+
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -117,11 +98,9 @@ func buildExportsSection(root string) map[string]any {
 		if !strings.HasSuffix(lower, ".csv") {
 			continue
 		}
-		// skip unified, already handled
 		if lower == "batting_on.csv" || lower == "bowling_on.csv" {
 			continue
 		}
-		// crude classification tokens
 		isBat := strings.Contains(lower, "bat")
 		isBowl := strings.Contains(lower, "bowl")
 		if !isBat && !isBowl {
@@ -133,13 +112,11 @@ func buildExportsSection(root string) map[string]any {
 			}
 		}
 	}
-
 	out["formats"] = fm
 	return out
 }
 
-// countCSVRowsCapped counts lines in a file up to a maximum; returns the
-// counted number and never reads the entire file if not needed.
+// countCSVRowsCapped counts lines in a file up to a maximum.
 func countCSVRowsCapped(path string, maxRows int) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -154,12 +131,11 @@ func countCSVRowsCapped(path string, maxRows int) (int, error) {
 	count := 0
 	for count < maxRows {
 		line, err := r.ReadBytes('\n')
-		_ = line // ignore content
+		_ = line
 		if len(line) > 0 {
 			count++
 		}
 		if err != nil {
-			// eof or other errors end loop
 			break
 		}
 	}

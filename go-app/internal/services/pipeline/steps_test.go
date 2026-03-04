@@ -1,4 +1,4 @@
-package server
+package pipeline
 
 import (
 	"testing"
@@ -30,7 +30,7 @@ func TestStepToCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, stepToCommand(tt.step))
+			assert.Equal(t, tt.want, StepToCommand(tt.step))
 		})
 	}
 }
@@ -56,7 +56,7 @@ func TestTrainingStepToModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, trainingStepToModel(tt.stepID))
+			assert.Equal(t, tt.want, TrainingStepToModel(tt.stepID))
 		})
 	}
 }
@@ -87,7 +87,7 @@ func TestMLServiceBaseURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("ML_SERVICE_URL", tt.envVal)
-			got := mlServiceBaseURL()
+			got := MLServiceBaseURL()
 			assert.Contains(t, got, tt.wantHas)
 			// Must never end with trailing slash.
 			assert.NotRegexp(t, `/$`, got)
@@ -99,7 +99,7 @@ func TestDefaultCutoff(t *testing.T) {
 	t.Parallel()
 
 	before := time.Now().UTC()
-	cutoff := defaultCutoff()
+	cutoff := DefaultCutoff()
 	after := time.Now().UTC()
 
 	parsed, err := time.Parse(time.RFC3339, cutoff)

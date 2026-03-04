@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"encoding/json"
@@ -154,7 +154,7 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			client, root := tc.setup(t)
-			sec, mlOK := buildArtifactsSection(client, root)
+			sec, mlOK := BuildArtifactsSection(client, root)
 			// marshal for potential debug
 			_, _ = json.Marshal(sec)
 			tc.assert(t, sec, mlOK)

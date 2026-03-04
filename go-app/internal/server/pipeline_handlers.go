@@ -3,14 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	exportcli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
@@ -21,6 +18,7 @@ import (
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -70,13 +68,13 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		"train_win",
 		"train_innings",
 		"train_combination_meta":
-		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
+		if ok, msg := opsstatus.CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
 		}
 	}
 	if step == "auto_tune" {
-		if ok, msg := CanRunPipelineStep(r.Context(), step); !ok {
+		if ok, msg := opsstatus.CanRunPipelineStep(r.Context(), step); !ok {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": msg})
 			return
 		}
@@ -134,28 +132,6 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func stepToCommand(step string) string {
-	switch step {
-	case "train_batting":
-		return "make train-batting CUTOFF=2025-01-01T00:00:00Z"
-	case "train_bowling":
-		return "make train-bowling CUTOFF=2025-01-01T00:00:00Z"
-	case "train_fielding":
-		return "make train-fielding CUTOFF=2025-01-01T00:00:00Z"
-	case "train_extras":
-		return "make train-extras CUTOFF=2025-01-01T00:00:00Z"
-	case "train_win":
-		return "make train-win CUTOFF=2025-01-01T00:00:00Z"
-	case "train_innings":
-		return "make train-innings CUTOFF=2025-01-01T00:00:00Z"
-	case "train_combination_meta":
-		return "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json"
-	case "auto_tune":
-		return "make ml-auto-tune MODEL=all ALL_FORMATS=1"
-	default:
-		return ""
-	}
-}
 
 // runExportHandler starts export-dataset in the background with tracking.
 func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
@@ -206,76 +182,6 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
 }
 
-func trainStepTimeout() time.Duration {
-	mins := config.ServerTrainStepTimeoutMin(config.Load())
-	return time.Duration(mins) * time.Minute
-}
-
-func mlServiceBaseURL() string {
-	s := strings.TrimSpace(os.Getenv("ML_SERVICE_URL"))
-	if s != "" {
-		return strings.TrimSuffix(s, "/")
-	}
-	return config.ServerMLBaseURLFallback(config.Load())
-}
-
-// callMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
-// When ml-service ADMIN_API_KEY is set, send X-API-Key (use ML_SERVICE_ADMIN_API_KEY or API_KEY so it matches).
-func callMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
-	base := mlServiceBaseURL()
-	url := base + "/admin/train/" + step + querySuffix
-	slog.Info("pipeline: calling ML service train endpoint",
-		slog.String("step", step),
-		slog.String("url", url))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return err
-	}
-	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	}
-	client := &http.Client{Timeout: trainStepTimeout()}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		msg := string(body)
-		if msg != "" {
-			return fmt.Errorf("ml-service %s: %s — %s", url, resp.Status, msg)
-		}
-		return fmt.Errorf("ml-service %s: %s", url, resp.Status)
-	}
-	return nil
-}
-
-func defaultCutoff() string {
-	return time.Now().UTC().Format(time.RFC3339)
-}
-
-// trainingStepToModel maps pipeline train step ID to ml model name for tuned-params lookup.
-func trainingStepToModel(stepID string) string {
-	switch stepID {
-	case "train_batting":
-		return "batting"
-	case "train_bowling":
-		return "bowling"
-	case "train_fielding":
-		return "fielding"
-	case "train_extras":
-		return "extras"
-	case "train_innings":
-		return "innings"
-	case "train_win":
-		return "win"
-	default:
-		return ""
-	}
-}
 
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
 // For auto_tune, forwards query params: model, format, all_formats, unified.
@@ -287,13 +193,13 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 		q := r.URL.Query()
 		cutoff := q.Get("cutoff")
 		if cutoff == "" {
-			cutoff = defaultCutoff()
+ 		cutoff = pipelinesvc.DefaultCutoff()
 		}
 		args["cutoff"] = cutoff
 		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
 
 		// Training steps: require user confirmation when no tuned params in DB (unless confirm_use_default is set).
-		if model := trainingStepToModel(stepID); model != "" {
+		if model := pipelinesvc.TrainingStepToModel(stepID); model != "" {
 			confirmVal := strings.TrimSpace(strings.ToLower(q.Get("confirm_use_default")))
 			confirmUseDefault := confirmVal == "1" || confirmVal == "true" || confirmVal == "yes"
 			if !confirmUseDefault && db.Pool != nil {
@@ -354,10 +260,10 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 				jobCtx,
 				command,
 				args,
-				trainStepTimeout(),
-				func(ctx context.Context) (any, error) {
-					return nil, callMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
-				},
+ 			pipelinesvc.TrainStepTimeout(),
+ 			func(ctx context.Context) (any, error) {
+ 				return nil, pipelinesvc.CallMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
+ 			},
 			)
 			if runErr != nil {
 				slog.Error(command+" failed", slog.Any("err", runErr))

@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"encoding/json"
@@ -197,7 +197,7 @@ func TestBuildExportsSection_Table(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			root := tc.setup(t)
-			sec := buildExportsSection(root)
+			sec := BuildExportsSection(root)
 			// debug dump on failure convenience
 			_, _ = json.Marshal(sec)
 			tc.assert(t, sec)

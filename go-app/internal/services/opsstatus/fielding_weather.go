@@ -1,17 +1,16 @@
-package server
+package opsstatus
 
 import (
 	"context"
 )
 
-// buildFieldingSection reports availability and row counts for fielding data per format and overall.
-// Uses a single grouped query when available to avoid N queries per format.
-func buildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
+// BuildFieldingSection reports availability and row counts for fielding data per format and overall.
+func BuildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
 	out := map[string]any{"available": false, "formats": map[string]any{}, "overall": map[string]any{"rows": int64(0)}}
 	if probe == nil {
 		return out
 	}
-	formats := getCricketFormats()
+	formats := CricketFormatCodes
 	fm := map[string]any{}
 	var total int64
 	counts, err := probe.CountFieldingByFormatGrouped(ctx)
@@ -35,8 +34,8 @@ func buildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
 	return out
 }
 
-// buildWeatherSection reports availability stats for weather data using DBProbe.
-func buildWeatherSection(ctx context.Context, probe DBProbe) map[string]any {
+// BuildWeatherSection reports availability stats for weather data using DBProbe.
+func BuildWeatherSection(ctx context.Context, probe DBProbe) map[string]any {
 	out := map[string]any{"available": false}
 	if probe == nil {
 		return out

@@ -1,4 +1,4 @@
-package server
+package opsstatus
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func (f fakeInsightsProbe) CountMatchesSinceByFormat(_ context.Context, format s
 
 func TestBuildDBFreshnessSection_Table(t *testing.T) {
 	now := time.Date(2026, 1, 24, 12, 0, 0, 0, time.UTC)
-	formats := getCricketFormats()
+	formats := CricketFormatCodes
 
 	mk := func(deltas map[string]int) fakeInsightsProbe {
 		m := map[string]time.Time{}
@@ -99,7 +99,7 @@ func TestBuildDBFreshnessSection_Table(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := buildDBFreshnessSection(context.Background(), tc.probe, now)
+			got := BuildDBFreshnessSection(context.Background(), tc.probe, now)
 			// validate structure
 			fm, ok := got["formats"].(map[string]any)
 			if !ok {
@@ -137,7 +137,7 @@ func TestBuildDBCompletenessSection_Table(t *testing.T) {
 			"T20":  5,
 		},
 	}
-	got := buildDBCompletenessSection(context.Background(), p, now)
+	got := BuildDBCompletenessSection(context.Background(), p, now)
 	fm := got["formats"].(map[string]any)
 	want := map[string]string{"TEST": "ok", "ODI": "ok", "T20I": "missing", "T20": "ok"}
 	for k, w := range want {
@@ -160,7 +160,7 @@ func TestBuildDBCompletenessSection_ErrorUnknown(t *testing.T) {
 	p := fakeInsightsProbe{
 		countErr: map[string]error{"ODI": assertErr{}},
 	}
-	got := buildDBCompletenessSection(context.Background(), p, now)
+	got := BuildDBCompletenessSection(context.Background(), p, now)
 	fm := got["formats"].(map[string]any)
 	m := fm["ODI"].(map[string]any)
 	if st := m["status"].(string); st != "unknown" {
