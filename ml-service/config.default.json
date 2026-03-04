@@ -230,7 +230,13 @@
       }
     },
     "prediction_defaults": {
-      "economy": 6
+      "economy": 6,
+      "bowling_deliveries_by_format": {
+        "T20": 24,
+        "T20I": 24,
+        "ODI": 60,
+        "TEST": 60
+      }
     }
   },
   "team_prediction": {

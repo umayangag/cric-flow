@@ -71,29 +71,19 @@ def check_reconciled_scorecard_consistency(
         target_runs = int(round(inn1.runs))
         target_wkts = int(round(inn1.wickets))
         if bat_runs_1 != target_runs:
-            violations.append(
-                f"innings1: sum(batting_runs team1)={bat_runs_1} != target_runs={target_runs}"
-            )
+            violations.append(f"innings1: sum(batting_runs team1)={bat_runs_1} != target_runs={target_runs}")
         if bowl_runs_2 != target_runs:
-            violations.append(
-                f"innings1: sum(bowling_runs team2)={bowl_runs_2} != target_runs={target_runs}"
-            )
+            violations.append(f"innings1: sum(bowling_runs team2)={bowl_runs_2} != target_runs={target_runs}")
         if wkts_2 != target_wkts:
-            violations.append(
-                f"innings1: sum(wickets team2)={wkts_2} != target_wickets={target_wkts}"
-            )
+            violations.append(f"innings1: sum(wickets team2)={wkts_2} != target_wickets={target_wkts}")
         if inn1.legal_balls is not None:
             balls_bat_1 = sum(s.batting_balls for s in t1)
             balls_bowl_2 = sum(s.bowling_balls for s in t2)
             target_balls = int(round(inn1.legal_balls))
             if balls_bat_1 != target_balls:
-                violations.append(
-                    f"innings1: sum(batting_balls team1)={balls_bat_1} != legal_balls={target_balls}"
-                )
+                violations.append(f"innings1: sum(batting_balls team1)={balls_bat_1} != legal_balls={target_balls}")
             if balls_bowl_2 != target_balls:
-                violations.append(
-                    f"innings1: sum(bowling_balls team2)={balls_bowl_2} != legal_balls={target_balls}"
-                )
+                violations.append(f"innings1: sum(bowling_balls team2)={balls_bowl_2} != legal_balls={target_balls}")
 
     if inn2 is not None:
         t1 = team_stats(team1_id)
@@ -104,29 +94,19 @@ def check_reconciled_scorecard_consistency(
         target_runs = int(round(inn2.runs))
         target_wkts = int(round(inn2.wickets))
         if bat_runs_2 != target_runs:
-            violations.append(
-                f"innings2: sum(batting_runs team2)={bat_runs_2} != target_runs={target_runs}"
-            )
+            violations.append(f"innings2: sum(batting_runs team2)={bat_runs_2} != target_runs={target_runs}")
         if bowl_runs_1 != target_runs:
-            violations.append(
-                f"innings2: sum(bowling_runs team1)={bowl_runs_1} != target_runs={target_runs}"
-            )
+            violations.append(f"innings2: sum(bowling_runs team1)={bowl_runs_1} != target_runs={target_runs}")
         if wkts_1 != target_wkts:
-            violations.append(
-                f"innings2: sum(wickets team1)={wkts_1} != target_wickets={target_wkts}"
-            )
+            violations.append(f"innings2: sum(wickets team1)={wkts_1} != target_wickets={target_wkts}")
         if inn2.legal_balls is not None:
             balls_bat_2 = sum(s.batting_balls for s in t2)
             balls_bowl_1 = sum(s.bowling_balls for s in t1)
             target_balls = int(round(inn2.legal_balls))
             if balls_bat_2 != target_balls:
-                violations.append(
-                    f"innings2: sum(batting_balls team2)={balls_bat_2} != legal_balls={target_balls}"
-                )
+                violations.append(f"innings2: sum(batting_balls team2)={balls_bat_2} != legal_balls={target_balls}")
             if balls_bowl_1 != target_balls:
-                violations.append(
-                    f"innings2: sum(bowling_balls team1)={balls_bowl_1} != legal_balls={target_balls}"
-                )
+                violations.append(f"innings2: sum(bowling_balls team1)={balls_bowl_1} != legal_balls={target_balls}")
 
     return violations
 

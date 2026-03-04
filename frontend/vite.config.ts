@@ -1,4 +1,7 @@
 /// <reference types="vitest/config" />
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -14,6 +17,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    execArgv: [
+      '--localstorage-file',
+      path.resolve(os.tmpdir(), `vitest-${process.pid}.localstorage`),
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

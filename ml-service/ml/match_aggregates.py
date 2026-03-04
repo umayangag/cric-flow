@@ -11,7 +11,7 @@ that work on batting/bowling lines or team aggregates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Mapping, Optional, Tuple
+from typing import Dict, Mapping, Tuple
 
 from .match_schema import (
     BallEvent,
@@ -49,9 +49,7 @@ class BowlingLine:
         return divmod(self.legal_balls, 6)
 
 
-def _get_or_create_batting_line(
-    lines: Dict[int, BattingLine], player_id: int
-) -> BattingLine:
+def _get_or_create_batting_line(lines: Dict[int, BattingLine], player_id: int) -> BattingLine:
     line = lines.get(player_id)
     if line is None:
         line = BattingLine(player_id=player_id)
@@ -59,9 +57,7 @@ def _get_or_create_batting_line(
     return line
 
 
-def _get_or_create_bowling_line(
-    lines: Dict[int, BowlingLine], player_id: int
-) -> BowlingLine:
+def _get_or_create_bowling_line(lines: Dict[int, BowlingLine], player_id: int) -> BowlingLine:
     line = lines.get(player_id)
     if line is None:
         line = BowlingLine(player_id=player_id)
@@ -212,4 +208,3 @@ def aggregate_match_bowling(
                 total.legal_balls += line.legal_balls
                 total.wickets += line.wickets
     return agg
-

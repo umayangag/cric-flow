@@ -24,7 +24,7 @@ from typing import Tuple
 
 import numpy as np
 
-from .reconciliation_core import ConstraintKind, LinearConstraint, ReconciliationProblem
+from .reconciliation_core import ConstraintKind, ReconciliationProblem
 
 
 def _build_constraint_matrix(
@@ -113,4 +113,3 @@ def solve_reconciliation_problem(
     # Recover x* = μ - W^{-1} A^T λ
     x = mu - inv_w * (A.T @ lamb)
     return x
-

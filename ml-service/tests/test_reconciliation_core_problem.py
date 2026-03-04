@@ -175,11 +175,7 @@ def test_problem_builder_soft_favor_top_order_balls_scales_weights():
 
     # Find BAT_BALLS indices and their weights (by player order in pref: 1=pos1, 2=pos2, 3=pos1, 4=pos2)
     def get_ball_weights(prob):
-        return [
-            (v.player_id, prob.weights[v.index])
-            for v in prob.variables
-            if v.kind == VariableKind.BAT_BALLS
-        ]
+        return [(v.player_id, prob.weights[v.index]) for v in prob.variables if v.kind == VariableKind.BAT_BALLS]
 
     weights_none = dict(get_ball_weights(problem_none))
     weights_soft = dict(get_ball_weights(problem_soft))
@@ -192,4 +188,3 @@ def test_problem_builder_soft_favor_top_order_balls_scales_weights():
     # With soft=1, position-1 batsmen (players 1, 3) should have higher weight than position-2 (2, 4)
     assert weights_soft[1] > weights_soft[2]
     assert weights_soft[3] > weights_soft[4]
-

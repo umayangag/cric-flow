@@ -167,4 +167,3 @@ def test_reconcile_match_players_produces_integer_stats_and_respects_totals():
     team2_bat_balls = sum(s.batting_balls for s in stats.values() if s.team_id == 200)
     team1_bowl_balls = sum(s.bowling_balls for s in stats.values() if s.team_id == 100)
     assert team2_bat_balls == team1_bowl_balls == int(round(inn2.preferred_legal_balls or 0.0))
-

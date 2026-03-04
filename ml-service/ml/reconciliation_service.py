@@ -18,6 +18,7 @@ from typing import Dict, Mapping
 import numpy as np
 
 from app.models import MatchReconciliationInputs
+
 from .reconciliation_core import ProblemBuilder, VariableKind
 from .reconciliation_solver import solve_reconciliation_problem
 
@@ -62,10 +63,8 @@ def _sum_preserving_round(values: Dict[int, float], target: float) -> Dict[int, 
 
     keys = list(values.keys())
 
-    # For positive delta, add 1 to entries with largest positive frac first.
-    # For negative delta, subtract 1 from entries with smallest frac (closest to floor)
-    # but keep values non-negative.
     if delta > 0:
+        # For positive delta, add 1 to entries with largest positive frac first.
         # Sort by descending fractional part
         ordered = sorted(keys, key=lambda k: fracs[k], reverse=True)
         idx = 0
@@ -74,16 +73,10 @@ def _sum_preserving_round(values: Dict[int, float], target: float) -> Dict[int, 
             result[k] += 1
             delta -= 1
             idx += 1
-    else:  # delta < 0
-        # Sort by ascending fractional part so we subtract from those closest to floor
-        ordered = sorted(keys, key=lambda k: fracs[k])
-        idx = 0
-        while delta < 0 and ordered:
-            k = ordered[idx % len(ordered)]
-            if result[k] > 0:
-                result[k] -= 1
-                delta += 1
-            idx += 1
+    else:
+        # See docstring: by construction delta = round(sum(fractional_parts)) so delta >= 0.
+        # Keep an assertion here to guard against future changes that might violate this invariant.
+        assert delta >= 0, f"delta must be non-negative, got {delta}"
 
     return result
 
@@ -232,4 +225,3 @@ def reconcile_match_players(
         )
 
     return stats
-

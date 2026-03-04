@@ -229,4 +229,3 @@ class MatchState:
         if self.format_code is None:
             return False
         return self.format_code.upper() in {"ODI", "T20", "T20I", "ODM", "MDM"}
-

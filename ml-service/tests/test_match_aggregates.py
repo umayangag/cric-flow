@@ -221,4 +221,3 @@ def test_match_level_aggregation():
     assert total_bat_runs == sum(b.runs_batter for b in inn.balls)
     assert total_bowl_runs == 6
     assert sum(l.legal_balls for l in bowl_map.values()) == inn.legal_balls
-

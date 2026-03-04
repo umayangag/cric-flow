@@ -145,4 +145,3 @@ def test_solver_handles_no_constraints_case():
     problem.constraints.clear()
     x = solve_reconciliation_problem(problem)
     assert np.allclose(x, problem.mu)
-

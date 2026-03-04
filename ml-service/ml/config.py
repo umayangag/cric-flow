@@ -428,4 +428,18 @@ def get_prediction_defaults() -> Dict[str, Any]:
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     pd_def = (ml.get("prediction_defaults") if isinstance(ml, dict) else None) or {}
-    return {"economy": float(pd_def.get("economy", 6.0))}
+
+    bowling_cfg = pd_def.get("bowling_deliveries_by_format") or {}
+    bowling_by_format: Dict[str, float] = {}
+    if isinstance(bowling_cfg, dict):
+        for fmt, val in bowling_cfg.items():
+            try:
+                bowling_by_format[str(fmt).upper()] = float(val)
+            except (TypeError, ValueError):
+                # Skip invalid entries but keep others.
+                continue
+
+    return {
+        "economy": float(pd_def.get("economy", 6.0)),
+        "bowling_deliveries_by_format": bowling_by_format,
+    }

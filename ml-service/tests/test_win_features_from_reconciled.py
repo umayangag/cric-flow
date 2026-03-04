@@ -30,4 +30,3 @@ def test_build_win_features_standardized_sets_fields_and_normalizes_format():
     assert f.toss_winner_opposition_id == 1
     assert f.team1_bat_consistency_sum == 10.0
     assert f.team2_bowl_form_sum == 3.0
-

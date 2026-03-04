@@ -67,4 +67,3 @@ def build_win_features_standardized(
         team2_bowl_form_sum=float(team2_bowl_form_sum),
         format=fmt,
     )
-

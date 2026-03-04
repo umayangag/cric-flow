@@ -131,6 +131,31 @@ We will mark items as we implement them: `[ ]` = pending, `[x]` = done.
 
 ---
 
+## 9. Test coverage, CI gates, and training CLIs
+
+- [x] **9.1 Component‑level coverage gates**
+  - [x] Treat coverage thresholds as **per‑component quality bars**:
+    - [x] Frontend: thresholds live in `frontend/vite.config.ts` under `test.coverage` (lines, branches, functions, statements). Raise them to the floor of current coverage when we improve tests.
+    - [x] Go app: thresholds are `COV_MIN` in `go-app/Makefile` and `COV_MIN_GO` in the root `Makefile`, plus the `COV_MIN` env in `.github/workflows/go-app-ci.yml`. Only raise, never lower.
+    - [x] ML service: threshold is `COV_MIN` in `ml-service/Makefile`, mirrored as `COV_MIN_ML` in the root `Makefile` and the `COV_MIN` env in `.github/workflows/ml-service-ci.yml`. Keep all three in sync.
+
+- [x] **9.2 What counts toward ML‑service coverage**
+  - [x] Coverage gates for ML service focus on **inference‑time and service code paths** (`app.*`, `ml.*` that power prediction, reconciliation, and APIs).
+  - [x] Long‑running offline training and tuning entrypoints are **excluded from coverage accounting** via `pyproject.toml`:
+    - [x] `ml/train_*.py` (per‑model training CLIs),
+    - [x] `ml/training_pipeline.py`,
+    - [x] `ml/tuning/*.py`,
+    - [x] `ml/walk_forward.py`,
+    - [x] `ml/validate_exports.py`.
+  - [x] These scripts are still tested via focused unit tests and integration/e2e runs, but they do not block the core ML‑service coverage gate.
+
+- [x] **9.3 Node 25 / Vitest behavior**
+  - [x] When running frontend tests on Node ≥25, configure Node so Vitest’s jsdom environment behaves predictably:
+    - [x] Test scripts in `frontend/package.json` set `NODE_OPTIONS=--no-webstorage` when invoking Vitest.
+    - [x] This avoids `--localstorage-file` warnings from Node’s built‑in Web Storage implementation while keeping test semantics aligned with jsdom.
+
+---
+
 ## 9. Monitoring, diagnostics & realism metrics
 
 - [x] **9.1 Automated consistency checker**

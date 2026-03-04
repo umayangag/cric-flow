@@ -182,10 +182,27 @@ def _build_reconciliation_inputs_from_backtest_preds(
 ) -> MatchReconciliationInputs:
     """Build MatchReconciliationInputs from raw backtest predictions and innings totals."""
     players: List[PlayerReconciliationPreferences] = []
+
+    # BacktestPlayerPred has no bowling deliveries; use a format-aware placeholder so
+    # runs_conceded = economy * overs, with overs derived from config where available.
+    deliveries_bowl_default = 24.0  # 4 overs, suitable for T20
+    deliveries_bowl = deliveries_bowl_default
+    if get_prediction_defaults is not None:
+        try:
+            pd_defaults = get_prediction_defaults()
+        except Exception:  # pragma: no cover - defensive against unexpected config failures
+            pd_defaults = {}
+        mapping = pd_defaults.get("bowling_deliveries_by_format") or {}
+        if isinstance(mapping, dict):
+            fmt_key = (format_code or "").upper() if format_code is not None else ""
+            if fmt_key:
+                try:
+                    deliveries_bowl = float(mapping.get(fmt_key, deliveries_bowl_default))
+                except (TypeError, ValueError):
+                    deliveries_bowl = deliveries_bowl_default
+
     for p in preds:
         tid = _TEAM1_ID if p.player_id in team1_ids else _TEAM2_ID
-        # BacktestPlayerPred has no bowling deliveries; use placeholder 4 overs so runs_conceded = economy * 4
-        deliveries_bowl = 24.0
         r_conceded = (p.economy or 0.0) * (deliveries_bowl / 6.0)
         players.append(
             PlayerReconciliationPreferences(
@@ -299,9 +316,7 @@ def _apply_constraint_reconciliation(
                     wickets=inn2_wkts,
                     legal_balls=float(i.preferred_legal_balls) if i.preferred_legal_balls is not None else None,
                 )
-        violations = check_reconciled_scorecard_consistency(
-            reconciled, _TEAM1_ID, _TEAM2_ID, inn1_t, inn2_t
-        )
+        violations = check_reconciled_scorecard_consistency(reconciled, _TEAM1_ID, _TEAM2_ID, inn1_t, inn2_t)
         adjustment["violations"] = violations
     return out, adjustment
 

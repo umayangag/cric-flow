@@ -154,11 +154,7 @@ class ProblemBuilder:
                 return idx
             # Soft realism: favor top-order batsmen for BAT_BALLS (higher weight = trust μ more)
             w = float(weight)
-            if (
-                kind == VariableKind.BAT_BALLS
-                and batting_position is not None
-                and self._soft_favor_top_order_balls > 0
-            ):
+            if kind == VariableKind.BAT_BALLS and batting_position is not None and self._soft_favor_top_order_balls > 0:
                 # position 1 -> factor (1 + scale); position 11 -> factor 1
                 pos = max(1.0, min(12.0, float(batting_position)))
                 w *= 1.0 + self._soft_favor_top_order_balls * (12.0 - pos) / 11.0
@@ -238,9 +234,7 @@ class ProblemBuilder:
                     continue
                 coeffs[idx] = coeffs.get(idx, 0.0) + coef
             if coeffs:
-                constraints.append(
-                    LinearConstraint(coefficients=coeffs, rhs=rhs, description=desc, kind=kind)
-                )
+                constraints.append(LinearConstraint(coefficients=coeffs, rhs=rhs, description=desc, kind=kind))
 
         # 2.1 Runs constraints
         if inn1 is not None and inn1.preferred_runs is not None:
@@ -299,4 +293,3 @@ class ProblemBuilder:
             weights=weights,
             constraints=constraints,
         )
-
