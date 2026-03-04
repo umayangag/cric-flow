@@ -1,4 +1,5 @@
 package config
+
 // Server holds API/server timeouts, body limits, and URL fallbacks (used when env vars are unset).
 type ServerConfig struct {
 	MLHealthTimeoutSec     int    `json:"ml_health_timeout_sec"`          // ML health proxy timeout (default 10)
@@ -41,10 +42,10 @@ type ResourcesConfig struct {
 	ImportMBPerWorker                int `json:"import_mb_per_worker"`                 // default 150
 	ExportMBPerWorker                int `json:"export_mb_per_worker"`                 // default 100
 	SeqCalcMBPerWorker               int `json:"seqcalc_mb_per_worker"`                // default 500
-	FieldingMBPerWorker              int `json:"fielding_mb_per_worker"`               // default 50
+	FieldingMBPerWorker              int `json:"fielding_mb_per_worker"`               // default 100
 	MemoryUsageFractionPercent       int `json:"memory_usage_fraction_percent"`        // percent of limit for workers (default 80)
 	SeqCalcLowMemoryLimitGiB         int `json:"seqcalc_low_memory_limit_gib"`         // cap seqcalc concurrency to 1 below this (default 2)
-	PrecomputeConcurrencyWhenNoLimit int `json:"precompute_concurrency_when_no_limit"` // when no GOMEMLIMIT/cgroup (default 2)
+	PrecomputeConcurrencyWhenNoLimit int `json:"precompute_concurrency_when_no_limit"` // 0 = auto (NumCPU); set >0 to cap (default 0)
 }
 
 // Config holds directory defaults for go-app commands.
