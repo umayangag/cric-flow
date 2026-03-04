@@ -23,3 +23,11 @@ filterwarnings = [
     "ignore:.*disp.*iprint.*:DeprecationWarning",
     "ignore:.*Maximum iterations.*:sklearn.exceptions.ConvergenceWarning",
 ]
+
+[tool.coverage.run]
+source = ["app", "ml"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
