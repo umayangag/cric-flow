@@ -409,6 +409,7 @@ def predict_players_with_features(
                 )
                 logger.info(
                     "backtest_predict.reconciliation.applied",
+                    format=fmt_upper,
                     innings1_runs=inn1_runs,
                     innings2_runs=inn2_runs,
                     innings1_wickets=inn1_wkts,

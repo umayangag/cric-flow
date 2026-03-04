@@ -12,9 +12,25 @@ The idea is to:
 
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Dict, Mapping
 
 from .consistency_checker import ReconciledPlayerStats, adjustment_magnitude
+
+
+def consistency_penalty_from_metrics(
+    metrics: Dict[str, float],
+    weight_runs: float = 1.0,
+    weight_wickets: float = 1.0,
+) -> float:
+    """Compute scalar consistency penalty from adjustment_magnitude-style metrics.
+
+    Use this when you already have a metrics dict (e.g. from
+    consistency_eval.compute_consistency_metrics or from logs) and want a single
+    penalty for tuning/ranking. Same formula as consistency_regularization_loss.
+    """
+    pct_runs = float(metrics.get("mean_abs_pct_delta_runs", 0.0))
+    pct_wkts = float(metrics.get("mean_abs_pct_delta_wickets", 0.0))
+    return weight_runs * pct_runs + weight_wickets * pct_wkts
 
 
 def consistency_regularization_loss(

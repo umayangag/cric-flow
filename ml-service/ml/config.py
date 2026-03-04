@@ -353,6 +353,48 @@ def get_tuning_config() -> Dict[str, Any]:
     }
 
 
+def get_consistency_regularization_config(model_kind: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load consistency regularization settings from ml.consistency_regularization.
+
+    Used by tuning to optionally combine base error with a consistency penalty
+    for model selection (Stage 2.2). When model_kind is set, per-model overrides
+    under ml.consistency_regularization.models.<model_kind> are merged over defaults.
+
+    Returns:
+        Dict with: enabled (bool), lambda_runs (float), lambda_wickets (float).
+        enabled is False by default so consistency-aware selection is off until opted in.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    cr = (ml.get("consistency_regularization") if isinstance(ml, dict) else None) or {}
+    defaults = {
+        "enabled": bool(cr.get("enabled", False)),
+        "lambda_runs": float(cr.get("lambda_runs", 0.01)),
+        "lambda_wickets": float(cr.get("lambda_wickets", 0.01)),
+    }
+    if not model_kind:
+        return defaults
+    models_block = cr.get("models") if isinstance(cr.get("models"), dict) else {}
+    overrides = models_block.get(model_kind) if isinstance(models_block.get(model_kind), dict) else {}
+    if not overrides:
+        return defaults
+    out = dict(defaults)
+    if "enabled" in overrides:
+        out["enabled"] = bool(overrides["enabled"])
+    if "lambda_runs" in overrides:
+        try:
+            out["lambda_runs"] = float(overrides["lambda_runs"])
+        except (TypeError, ValueError):
+            pass
+    if "lambda_wickets" in overrides:
+        try:
+            out["lambda_wickets"] = float(overrides["lambda_wickets"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def get_mlqa_config() -> Dict[str, Any]:
     """
     Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.

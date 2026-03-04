@@ -130,7 +130,7 @@ We split Stage 2 into three layers:
 
 ### 2.2 Model selection: combined objective for auto-tuning / pipeline
 
-- [ ] **2.2.1 Extend tuning to accept an extra scalar metric**
+- [~] **2.2.1 Extend tuning to accept an extra scalar metric**
   - In `ml/auto_tune` (or equivalent tuning logic):
     - When training candidate models under different hyperparameters, compute:
       - Base score (e.g. MAE, RMSE) on validation set.
@@ -138,23 +138,24 @@ We split Stage 2 into three layers:
     - Define a combined score:
       - `score_combined = base_error + lambda_consistency * consistency_penalty`.
     - Use `score_combined` as the primary ranking metric for choosing best parameters.
+  - **Done:** Combined score and penalty are computed in `ml.tuning.consistency_tuning` when the report contains `consistency_metrics`; they are logged and written to the tuning report/DB. Ranking by `score_combined` is ready once `consistency_metrics` are injected (e.g. from an offline validation step). Computing consistency inside the Optuna objective per trial is not yet implemented (requires match-level validation data in the tuning pipeline).
 
-- [ ] **2.2.2 Configuration for λ and reporting**
+- [x] **2.2.2 Configuration for λ and reporting**
   - Extend `ml.config` to support `ml.consistency_regularization`:
     - Fields:
-      - `lambda_runs`, `lambda_wickets` (per-model defaults, e.g. per `ml.training.batting.consistency` section).
+      - `lambda_runs`, `lambda_wickets` (per-model defaults, e.g. per `ml.consistency_regularization.models.<model>`).
       - Flags to enable/disable consistency penalty per model.
   - Ensure tuning logs **both**:
     - Base error metrics (for interpretability).
     - Consistency penalty and combined score (for harmony tracking).
 
-- [ ] **2.2.3 Backward-compatibility & rollout**
+- [x] **2.2.3 Backward-compatibility & rollout**
   - Make consistency-aware selection:
-    - **Off by default** initially (config flag).
-    - Enabled for experimental runs and specific formats.
+    - **Off by default** initially (config flag `ml.consistency_regularization.enabled`).
+    - Enabled for experimental runs and specific formats via per-model overrides under `ml.consistency_regularization.models`.
   - Guard rails:
     - If consistency evaluation or reconciliation fails on a candidate:
-      - Fallback to base-error ranking for that run.
+      - Fallback to base-error ranking for that run (augment function no-ops or skips when `consistency_metrics` missing or penalty computation raises).
 
 ### 2.3 Optional: true custom-loss training (beyond scikit-learn RF)
 

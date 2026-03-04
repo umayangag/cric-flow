@@ -202,6 +202,12 @@
         }
       }
     },
+    "consistency_regularization": {
+      "enabled": false,
+      "lambda_runs": 0.01,
+      "lambda_wickets": 0.01,
+      "models": {}
+    },
     "mlqa": {
       "overfitting_delta_threshold": 0.08,
       "stability_fold_std_threshold": 0.05,
