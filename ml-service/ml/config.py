@@ -347,6 +347,8 @@ def get_tuning_config() -> Dict[str, Any]:
         "search_space": tuning.get("search_space"),
         "algorithms": algorithms,
         "validation_method": validation_method,
+        "timeseries_split_gap": int(tuning.get("timeseries_split_gap", 0) or 0),
+        "timeseries_small_dataset_threshold": int(tuning.get("timeseries_small_dataset_threshold", 5000) or 5000),
         "stages": stages if isinstance(stages, dict) else {},
     }
 
@@ -369,8 +371,8 @@ def get_mlqa_config() -> Dict[str, Any]:
 
 
 def get_tuning_search_space(estimator_key: str) -> Optional[Dict[str, Any]]:
-    """Return search space for auto_tune from ml.tuning.search_space.<rf|gb>. None if not configured.
-    estimator_key: 'rf' for RandomForest, 'gb' for GradientBoosting.
+    """Return search space for auto_tune from ml.tuning.search_space.<key>. None if not configured.
+    estimator_key: 'rf', 'gb', or 'et' for RandomForest, GradientBoosting, ExtraTrees.
     """
     cfg = get_tuning_config()
     space = cfg.get("search_space")

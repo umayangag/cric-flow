@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 )
 
 func almostEqual(a, b float64) bool {
@@ -249,43 +250,46 @@ func TestFloat32Ptr(t *testing.T) {
 }
 
 func TestComputeAccuracyTrendSummaryAndProgressive(t *testing.T) {
-	// Craft 3 items with partial metric presence
+	// Same test as services/backtest; ensures server wiring produces same result.
 	items := []accuracyTrendItem{
 		{Metrics: map[string]float64{"player_runs_mae": 10, "team_runs_mae": 5}},
 		{Metrics: map[string]float64{"team_runs_mae": 7, "team_winner_accuracy": 1}},
 		{Metrics: map[string]float64{"player_runs_mae": 20}},
 	}
-	summary, prog := computeAccuracyTrendSummaryAndProgressive(items)
+	svcItems := make([]backtest.AccuracyTrendItem, len(items))
+	for i := range items {
+		svcItems[i] = backtest.AccuracyTrendItem{
+			MatchID:   items[i].MatchID,
+			MatchDate: items[i].MatchDate,
+			Format:    items[i].Format,
+			Team1:     items[i].Team1,
+			Team2:     items[i].Team2,
+			Metrics:   items[i].Metrics,
+		}
+	}
+	summary, prog := backtest.ComputeSummaryAndProgressive(svcItems)
 
-	// Summary checks
 	if got, ok := summary["n"]; !ok || got != 3 {
 		t.Fatalf("summary n expected 3, got %v", summary["n"])
 	}
-	// player_runs_mae present in 2 items: (10 + 20)/2 = 15
 	if got := summary["player_runs_mae_avg"]; !almostEqual(got, 15) {
 		t.Fatalf("player_runs_mae_avg got %v want 15", got)
 	}
-	// team_runs_mae present in 2 items: (5 + 7)/2 = 6
 	if got := summary["team_runs_mae_avg"]; !almostEqual(got, 6) {
 		t.Fatalf("team_runs_mae_avg got %v want 6", got)
 	}
-	// winner_accuracy present in 1 item: 1/1 = 1
 	if got := summary["team_winner_accuracy_avg"]; !almostEqual(got, 1) {
 		t.Fatalf("team_winner_accuracy_avg got %v want 1", got)
 	}
-
-	// Progressive length equals items
 	if len(prog) != 3 {
 		t.Fatalf("progressive len got %d want 3", len(prog))
 	}
-	// After first item: player=10, team=5
 	if got := prog[0]["player_runs_mae_avg"]; !almostEqual(got, 10) {
 		t.Fatalf("prog0 player_runs_mae_avg got %v want 10", got)
 	}
 	if got := prog[0]["team_runs_mae_avg"]; !almostEqual(got, 5) {
 		t.Fatalf("prog0 team_runs_mae_avg got %v want 5", got)
 	}
-	// After second item: player still 10/1, team (5+7)/2 = 6, winner 1/1 = 1
 	if got := prog[1]["team_runs_mae_avg"]; !almostEqual(got, 6) {
 		t.Fatalf("prog1 team_runs_mae_avg got %v want 6", got)
 	}

@@ -653,6 +653,7 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"bowling_session":             0,
 			"opposition_batting_strength": oppBatStr,
 			"opposition_bowling_strength": oppBowlStr,
+			"match_date_unix":             float64(cutoff.Unix()),
 		}
 		for _, k := range battingSequenceKeys {
 			feats[k] = 0
@@ -755,6 +756,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
+			"match_date_unix": float64(cutoff.Unix()),
 		}
 		ensureContractKeys(feats)
 		out[pid] = feats
@@ -884,6 +886,7 @@ func ComputeFeaturesAtCutoffForMatch(
 			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
+			"match_date_unix": float64(cutoff.Unix()),
 		}
 		ensureContractKeys(feats)
 		out[pid] = feats

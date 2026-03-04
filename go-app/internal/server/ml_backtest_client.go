@@ -93,6 +93,36 @@ type mlBacktestMatchAggResponse struct {
 	ModelVersion string             `json:"model_version,omitempty"`
 }
 
+// mlWinFeatures matches ML service WinFeatures (POST /predict/win request body element).
+type mlWinFeatures struct {
+	FormatID                int     `json:"format_id"`
+	VenueID                 int     `json:"venue_id"`
+	Team1OppositionID       int     `json:"team1_opposition_id"`
+	Team2OppositionID       int     `json:"team2_opposition_id"`
+	TossWinnerOppositionID  int     `json:"toss_winner_opposition_id"`
+	Temp                    int     `json:"temp"`
+	Wind                    int     `json:"wind"`
+	Rain                    int     `json:"rain"`
+	Humidity                int     `json:"humidity"`
+	Cloud                   int     `json:"cloud"`
+	Pressure                int     `json:"pressure"`
+	Viscosity               int     `json:"viscosity"`
+	Team1BatConsistencySum  float64 `json:"team1_bat_consistency_sum"`
+	Team1BowlConsistencySum float64 `json:"team1_bowl_consistency_sum"`
+	Team2BatConsistencySum  float64 `json:"team2_bat_consistency_sum"`
+	Team2BowlConsistencySum float64 `json:"team2_bowl_consistency_sum"`
+	Team1BatFormSum         float64 `json:"team1_bat_form_sum"`
+	Team1BowlFormSum        float64 `json:"team1_bowl_form_sum"`
+	Team2BatFormSum         float64 `json:"team2_bat_form_sum"`
+	Team2BowlFormSum        float64 `json:"team2_bowl_form_sum"`
+	Format                  string  `json:"format,omitempty"`
+}
+
+// mlWinPrediction matches ML service WinPrediction (POST /predict/win response element).
+type mlWinPrediction struct {
+	Team1WinProbability float64 `json:"team1_win_probability"`
+}
+
 // mlErrorDetail is a subset of the ML service error response (FastAPI sends {"detail": ...}).
 type mlErrorDetail struct {
 	Code    string `json:"code"`
@@ -350,6 +380,37 @@ func (c *BacktestMLClient) predictMatchAggregates(
 		Extras:         out.Match.Extras,
 		WinnerTeamCode: out.Match.WinnerTeamCode,
 	}, out.ModelVersion, nil
+}
+
+// PredictMatchWin calls the ML service POST /predict/win with one WinFeatures row.
+// Returns team1 (batting first) win probability in [0,1]. Returns error if win model is not loaded or request fails.
+func (c *BacktestMLClient) PredictMatchWin(ctx context.Context, features mlWinFeatures) (float64, error) {
+	body := []mlWinFeatures{features}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/predict/win", bytes.NewReader(payload))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, logMLNon2xx(resp, "predict/win")
+	}
+	var out []mlWinPrediction
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	if len(out) == 0 {
+		return 0, errors.New("predict/win: empty response")
+	}
+	return out[0].Team1WinProbability, nil
 }
 
 // historicalMatchBacktest calls the ML service to evaluate a specific, already-played match.

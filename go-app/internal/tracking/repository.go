@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
@@ -104,6 +105,24 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 	`, StatusCancelled, reasonPtr, StatusInProgress, staleSeconds).Scan(&n)
 	if err != nil {
 		return 0, err
+	}
+	return n, nil
+}
+
+// ReconcileStaleRuns cancels IN_PROGRESS runs older than staleOlderThan (e.g. on API startup
+// so runs interrupted by restart/crash are marked CANCELLED). Logs how many were cancelled.
+// Use when db is already connected. Returns the number of runs cancelled and any error.
+func ReconcileStaleRuns(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
+	n, err := CancelStaleInProgressMigrations(ctx, reason, staleOlderThan)
+	if err != nil {
+		return n, err
+	}
+	if n > 0 {
+		slog.Info(
+			"cancelled stale in-progress pipeline runs",
+			slog.Int("count", n),
+			slog.Duration("stale_older_than", staleOlderThan),
+		)
 	}
 	return n, nil
 }
@@ -215,6 +234,20 @@ func GetInProgressMigrations(ctx context.Context) ([]Migration, error) {
 	}
 	defer rows.Close()
 	return scanMigrations(rows)
+}
+
+// InProgressByCommand returns a set of commands that currently have an IN_PROGRESS run.
+// Call this once when building pipeline/ops status to avoid N separate HasInProgressForCommand calls.
+func InProgressByCommand(ctx context.Context) (map[string]bool, error) {
+	list, err := GetInProgressMigrations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(list))
+	for _, m := range list {
+		out[m.Command] = true
+	}
+	return out, nil
 }
 
 func scanMigrations(rows db.Rows) ([]Migration, error) {

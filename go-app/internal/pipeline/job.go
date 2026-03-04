@@ -48,12 +48,6 @@ type JobFunc func(ctx context.Context) (exitMeta any, err error)
 func RunJob(parent context.Context, jobName string, startMeta any, timeout time.Duration, fn JobFunc) error {
 	var runErr error
 	var exitMeta any
-
-	slog.Info("pipeline: job starting",
-		slog.String("job", jobName),
-		slog.Duration("timeout", timeout),
-		slog.Any("start_meta", startMeta))
-
 	ctx := parent
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -64,7 +58,9 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	// Enforce singleton: only one pipeline step for the whole system at a time.
 	busy, err := tracking.HasInProgressForAnyCommand(ctx, PipelineCommands)
 	if err != nil {
-		slog.Warn(jobName+": check for existing pipeline failed", slog.Any("err", err))
+		slog.Warn("pipeline: check for existing run failed",
+			slog.String("command", jobName),
+			slog.Any("err", err))
 	}
 	if busy {
 		return ErrPipelineBusy
@@ -72,27 +68,48 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 
 	tracker, tErr := tracking.Start(ctx, jobName, startMeta)
 	if tErr != nil {
-		slog.Warn(jobName+": tracking start failed", slog.Any("err", tErr))
+		slog.Warn("pipeline: tracking start failed",
+			slog.String("command", jobName),
+			slog.Any("err", tErr))
 	}
 	if tracker != nil {
 		defer func() {
 			tracker.CaptureExit(ctx, &runErr, exitMeta)
 		}()
+		// Log with run_id for cross-service correlation (see docs/observability.md).
+		slog.Info("pipeline: job starting",
+			slog.String("command", jobName),
+			slog.Int("run_id", tracker.ID),
+			slog.Duration("timeout", timeout),
+			slog.Any("start_meta", startMeta))
+	} else {
+		slog.Info("pipeline: job starting",
+			slog.String("command", jobName),
+			slog.Duration("timeout", timeout),
+			slog.Any("start_meta", startMeta))
 	}
 	defer func() {
 		if v := recover(); v != nil {
 			runErr = fmt.Errorf("panic: %v", v)
-			slog.Error(jobName+" panic (DB 'connection to client lost' usually follows)",
+			attrs := []any{
 				slog.String("panic", fmt.Sprint(v)),
-				slog.String("stack", string(debug.Stack())))
+				slog.String("stack", string(debug.Stack())),
+				slog.String("command", jobName),
+			}
+			if tracker != nil {
+				attrs = append(attrs, slog.Int("run_id", tracker.ID))
+			}
+			slog.Error("pipeline: job panic (DB 'connection to client lost' usually follows)", attrs...)
 		}
 	}()
 
 	exitMeta, runErr = fn(ctx)
 	if runErr != nil {
-		slog.Error(jobName+" job function failed",
-			slog.Any("err", runErr),
-			slog.Any("start_meta", startMeta))
+		attrs := []any{slog.Any("err", runErr), slog.String("command", jobName), slog.Any("start_meta", startMeta)}
+		if tracker != nil {
+			attrs = append(attrs, slog.Int("run_id", tracker.ID))
+		}
+		slog.Error("pipeline: job function failed", attrs...)
 	}
 	return runErr
 }

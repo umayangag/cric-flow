@@ -11,6 +11,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // types and seams moved to dedicated files for clarity
@@ -227,6 +228,35 @@ func init() {
 			return matchAggregates{}, "", errors.New("ml client not initialized")
 		}
 		return mlClient.predictMatchAggregates(ctx, cutoff, teams)
+	}
+	mlPredictMatchWinFunc = func(ctx context.Context, w predictteam.WinFeatures) (float64, error) {
+		if mlClient == nil {
+			return 0, errors.New("ml client not initialized")
+		}
+		mw := mlWinFeatures{
+			FormatID:                w.FormatID,
+			VenueID:                 w.VenueID,
+			Team1OppositionID:       w.Team1OppositionID,
+			Team2OppositionID:       w.Team2OppositionID,
+			TossWinnerOppositionID:  w.TossWinnerOppositionID,
+			Temp:                    w.Temp,
+			Wind:                    w.Wind,
+			Rain:                    w.Rain,
+			Humidity:                w.Humidity,
+			Cloud:                   w.Cloud,
+			Pressure:                w.Pressure,
+			Viscosity:               w.Viscosity,
+			Team1BatConsistencySum:  w.Team1BatConsistencySum,
+			Team1BowlConsistencySum: w.Team1BowlConsistencySum,
+			Team2BatConsistencySum:  w.Team2BatConsistencySum,
+			Team2BowlConsistencySum: w.Team2BowlConsistencySum,
+			Team1BatFormSum:         w.Team1BatFormSum,
+			Team1BowlFormSum:        w.Team1BowlFormSum,
+			Team2BatFormSum:         w.Team2BatFormSum,
+			Team2BowlFormSum:        w.Team2BowlFormSum,
+			Format:                  w.Format,
+		}
+		return mlClient.PredictMatchWin(ctx, mw)
 	}
 	getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
 		ma, err := db.GetMatchAggregates(ctx, matchID)

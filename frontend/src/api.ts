@@ -425,7 +425,7 @@ export const api = {
 
   /**
    * Predict best 11 for each team for an upcoming match.
-   * Requires future date within max limit (e.g. 2 weeks) for accurate predictions.
+   * When simulate=true, runs Monte Carlo over top-k XIs and returns win probs and innings distributions.
    */
   predictTeamSelection(params: {
     format: string;
@@ -439,6 +439,10 @@ export const api = {
     min_bowlers?: number;
     require_keeper?: boolean;
     use_unified_model?: boolean;
+    simulate?: boolean;
+    simulation_top_k?: number;
+    simulation_samples?: number;
+    simulation_max_pairs?: number;
   }): Promise<PredictTeamSelectionResponse> {
     return httpApi('/api/predict/team-selection', {
       method: 'POST',

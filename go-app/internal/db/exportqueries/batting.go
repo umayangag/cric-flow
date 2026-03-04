@@ -39,6 +39,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  0 AS batting_session,
 	  CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END AS toss,
 	  s.id AS season_id,
+	  EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 	  p.player_name,
 	  mf.code AS format_code,
 	  COALESCE(fd.catches,0) AS catches,
@@ -161,7 +162,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	baseHeaders := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "season_id", "player_name", "format_code",
+		"inning", "batting_session", "toss", "season_id", "match_date_unix", "player_name", "format_code",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"bat_form_TEST_asof", "bat_consistency_TEST_asof", "bat_vs_opp_TEST_asof", "bat_at_venue_TEST_asof",
 		"bat_form_ODI_asof", "bat_consistency_ODI_asof", "bat_vs_opp_ODI_asof", "bat_at_venue_ODI_asof",
@@ -213,6 +214,7 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 		tvv.batting_venue,
 		tvo.batting_opposition,
 		s.id AS season_id,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name
 		FROM batting_data bd
 		LEFT JOIN player p ON bd.player_id = p.id
@@ -262,7 +264,7 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 	headers := []string{
 		"runs", "balls", "fours", "sixes", "batting_position", "batting_consistency", "batting_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity", "inning", "batting_session", "toss",
-		"batting_venue", "batting_opposition", "season_id", "player_name",
+		"batting_venue", "batting_opposition", "season_id", "match_date_unix", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
@@ -312,6 +314,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		COALESCE(tvv.batting_venue, 0) AS venue,
 		COALESCE(tvo.batting_opposition, 0) AS opposition,
 		COALESCE(s.id, 0) AS season,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches,
 		COALESCE(fd.run_outs,0) AS run_outs,
@@ -373,6 +376,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		"venue",
 		"opposition",
 		"season",
+		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",
@@ -429,6 +433,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		tvv.batting_venue,
 		tvo.batting_opposition,
 		s.id AS season_id,
+		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches,
 		COALESCE(fd.run_outs,0) AS run_outs,
@@ -489,6 +494,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		"batting_venue",
 		"batting_opposition",
 		"season_id",
+		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",
@@ -559,7 +565,8 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
-	WHERE m.match_date < $1`
+	WHERE m.match_date < $1
+	ORDER BY m.match_date ASC, bd.match_id, bd.player_id`
 	args = []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(
@@ -759,12 +766,7 @@ func BattingTrainingRowsWithFormat(ctx context.Context, format string, cutoff ti
 
 // battingHoldoutRawQuery returns SQL and args for raw batting rows for the given match IDs (same columns as training).
 func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
-	q := `WITH innings_sums AS (
-		SELECT match_id, inning_number, SUM(runs)::bigint AS total_runs
-		FROM batting_data
-		WHERE match_id = ANY($1::bigint[])
-		GROUP BY match_id, inning_number
-	)
+	q := "WITH " + inningsRunsHoldoutCTE("innings_sums") + `
 	SELECT
 		m.match_date,
 		bd.player_id,

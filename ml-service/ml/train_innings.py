@@ -53,6 +53,7 @@ INNINGS_FEATURE_COLS = [
     "format_id",
     "venue_id",
     "season_id",
+    "match_date_unix",
     "inning_number",
     "opposition_id",
     "temp",

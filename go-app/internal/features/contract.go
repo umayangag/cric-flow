@@ -12,7 +12,9 @@ import (
 )
 
 // contract holds batting, bowling, and fielding feature name lists (input features only).
+// Version is optional in JSON; when present it identifies the schema for compatibility checks.
 type contract struct {
+	Version  string   `json:"version,omitempty"`
 	Batting  []string `json:"batting"`
 	Bowling  []string `json:"bowling"`
 	Fielding []string `json:"fielding"`
@@ -26,23 +28,24 @@ var (
 
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
 var defaultContract = contract{
+	Version: "1",
 	Batting: []string{
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
-		"batting_inning", "batting_session", "toss", "venue", "opposition", "season",
+		"batting_inning", "batting_session", "toss", "venue", "opposition", "season", "match_date_unix",
 		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
 		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
 	},
 	Bowling: []string{
 		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity",
-		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season",
+		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season", "match_date_unix",
 		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
 		"bowl_react_after_boundary_wkt_rate_next", "bowl_spell_first_over_wkt_rate", "bowl_over_ball1_wkt_rate", "bowl_over_ball6_wkt_rate",
 	},
 	Fielding: []string{
 		"fielding_consistency", "fielding_form", "fielding_temp", "fielding_wind", "fielding_rain", "fielding_humidity",
-		"fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition", "season_id",
+		"fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix",
 	},
 }
 
@@ -123,4 +126,10 @@ func FieldingFeatureNames() []string {
 	out := make([]string, len(c.Fielding))
 	copy(out, c.Fielding)
 	return out
+}
+
+// ContractVersion returns the version string from the loaded contract, or "" if unversioned.
+// Used for compatibility checks and observability.
+func ContractVersion() string {
+	return getContract().Version
 }

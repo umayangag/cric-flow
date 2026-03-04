@@ -359,10 +359,12 @@ class CricketGeneralizedPipeline:
             self.feature_names_.append("match_year")
 
         X = df[self.feature_names_].copy()
-        for c in self.categorical_cols_:
-            if c in df.columns and c not in X.columns:
-                X[c] = df[c]
-                self.feature_names_.append(c)
+        # Only include categorical columns when we will target-encode them; otherwise scaler would get raw strings.
+        if self.config.use_target_encoding and HAS_TARGET_ENCODER:
+            for c in self.categorical_cols_:
+                if c in df.columns and c not in X.columns:
+                    X[c] = df[c]
+                    self.feature_names_.append(c)
 
         X = X.fillna(0)
 

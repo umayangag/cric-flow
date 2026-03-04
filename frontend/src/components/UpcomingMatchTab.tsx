@@ -3,11 +3,13 @@ import {
   Box,
   Button,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
   Select,
   Stack,
+  Switch,
   Typography,
   Alert,
   CircularProgress,
@@ -46,6 +48,7 @@ const UpcomingMatchTab: React.FC = () => {
   const [venue, setVenue] = useState<string>('');
   const [matchDate, setMatchDate] = useState<string>('');
   const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
+  const [runSimulation, setRunSimulation] = useState<boolean>(false);
 
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
@@ -198,6 +201,7 @@ const UpcomingMatchTab: React.FC = () => {
         venue: venue.trim() || undefined,
         match_date: matchDate,
         use_unified_model: predictionModel === 'unified',
+        simulate: runSimulation,
       });
       setResult(res);
     } catch (e) {
@@ -303,6 +307,17 @@ const UpcomingMatchTab: React.FC = () => {
           </Select>
         </FormControl>
 
+        <FormControlLabel
+          control={
+            <Switch
+              checked={runSimulation}
+              onChange={(_, checked) => setRunSimulation(checked)}
+              color="primary"
+            />
+          }
+          label="Run Monte Carlo simulation (win prob & innings distribution over top XIs)"
+        />
+
         <Button
           variant="contained"
           onClick={handlePredict}
@@ -321,6 +336,68 @@ const UpcomingMatchTab: React.FC = () => {
 
       {result && (
         <Box sx={{ mt: 3 }}>
+          {result.scorecard_summary && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Scorecard summary (winner from win model when available)
+              </Typography>
+              <Stack direction="row" spacing={3} flexWrap="wrap">
+                <Typography variant="body2">
+                  <strong>Innings 1 ({team1}):</strong>{' '}
+                  {result.scorecard_summary.innings1_total.toFixed(0)} runs
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Innings 2 ({team2}):</strong>{' '}
+                  {result.scorecard_summary.innings2_total.toFixed(0)} runs
+                </Typography>
+                {result.scorecard_summary.predicted_winner && (
+                  <Typography variant="body2">
+                    <strong>Predicted winner:</strong> {result.scorecard_summary.predicted_winner}
+                  </Typography>
+                )}
+                {result.scorecard_summary.team1_win_probability != null && (
+                  <Typography variant="body2">
+                    <strong>Win probability ({team1}):</strong>{' '}
+                    {(result.scorecard_summary.team1_win_probability * 100).toFixed(1)}%
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+          )}
+          {result.simulation && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
+              <Typography variant="subtitle2" color="primary.dark" gutterBottom>
+                Monte Carlo simulation (over top XIs and sampled outcomes)
+              </Typography>
+              <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  <strong>Win prob ({team1}):</strong>{' '}
+                  {(result.simulation.win_probability_team1 * 100).toFixed(1)}%
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Win prob ({team2}):</strong>{' '}
+                  {(result.simulation.win_probability_team2 * 100).toFixed(1)}%
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Draw:</strong>
+                  {(result.simulation.draw_probability * 100).toFixed(1)}%
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                Innings 1 total: P10 = {result.simulation.innings1_total_p10.toFixed(0)} · P50 ={' '}
+                {result.simulation.innings1_total_p50.toFixed(0)} · P90 ={' '}
+                {result.simulation.innings1_total_p90.toFixed(0)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Innings 2 total: P10 = {result.simulation.innings2_total_p10.toFixed(0)} · P50 ={' '}
+                {result.simulation.innings2_total_p50.toFixed(0)} · P90 ={' '}
+                {result.simulation.innings2_total_p90.toFixed(0)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                {result.simulation.num_matchups} matchups × {result.simulation.num_samples} samples
+              </Typography>
+            </Paper>
+          )}
           <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
             Best 11 for each team
           </Typography>

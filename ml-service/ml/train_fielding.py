@@ -1,14 +1,13 @@
 """
 Train fielding model (catches, run_outs, stumpings) from go-app export CSV or training-data API.
 
-Same pipeline as batting/bowling: when no --cutoff/--go-app-url, reads from GO_APP_OUTPUT_DIR
-fielding_encoded_all.csv (and per-format fielding_encoded_<FMT>.csv when present). With
---cutoff and --go-app-url, fetches from GET .../api/backtest/training-data?format=all&cutoff=...
-Saves fielding_scaler_<FMT>.joblib and fielding_model_<FMT>.joblib to artifacts dir.
+Thin wrapper around TrainingPipeline for core training logic. The main() entrypoint
+retains fielding-specific behavior: grouping by format_code from a single CSV/API response,
+and training a legacy unified model on all data combined.
 
 Usage:
-  python -m ml.train_fielding  # use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (after export)
-  GO_APP_URL=... python -m ml.train_fielding --cutoff 2024-12-01T00:00:00Z  # fetch from API
+  python -m ml.train_fielding                          # use fielding_encoded_all.csv
+  GO_APP_URL=... python -m ml.train_fielding --cutoff 2024-12-01T00:00:00Z
   python -m ml.train_fielding --csv path/to/fielding_export.csv
 """
 
@@ -31,18 +30,16 @@ import numpy as np
 import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 
-# Add parent so ml.config and app.train_on_the_fly are importable
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from ml.config import (
+from .config import (
     default_artifacts_dir,
     default_go_app_export_dir,
     get_pipeline_common_config,
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
-from ml.pipeline_common import compute_time_decay_weights, get_scaler
-from ml.utils import make_base_estimator
+from .pipeline_common import compute_time_decay_weights, get_scaler
+from .training_pipeline import ModelSpec, TrainingPipeline
+from .utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +58,26 @@ FIELDING_FEATURE_COLS = [
     "fielding_venue",
     "fielding_opposition",
     "season_id",
+    "match_date_unix",
 ]
 FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
+
+# ── ModelSpec (used by auto_tune and other consumers) ────────────────────
+
+FIELDING_SPEC = ModelSpec(
+    name="fielding",
+    feature_cols=FIELDING_FEATURE_COLS,
+    target_cols=FIELDING_TARGET_COLS,
+    seq_cols=[],
+    artifact_prefix="fielding",
+    api_section="fielding",
+    target_names_for_clip=FIELDING_TARGET_COLS,
+    use_scaler=True,
+    use_multi_output=True,
+)
+
+
+# ── Fielding-specific helpers (format grouping, legacy model) ────────────
 
 
 def _concat_weights(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
@@ -95,8 +110,8 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
         err_msg = str(e).strip()
         logger.error("train_fielding.fetch_fielding_data.os_error url=%s error=%s", url, e)
         hint = (
-            "Go-app may have closed the connection before the response finished (e.g. server write timeout). "
-            "Increase go-app server.http_write_timeout_sec (e.g. 600) in go-app/config.json and restart go-app."
+            "Go-app may have closed the connection before the response finished. "
+            "Increase go-app server.http_write_timeout_sec in go-app/config.json."
         )
         if "closed connection" in err_msg.lower() or "without response" in err_msg.lower():
             raise ValueError(f"Go-app training-data request failed: {err_msg}. {hint}") from e
@@ -114,7 +129,6 @@ def rows_to_xy_by_format(
     for c in FIELDING_FEATURE_COLS + FIELDING_TARGET_COLS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    # Impute missing feature values with 0 (align with train_on_the_fly dropna or fillna strategy)
     for c in FIELDING_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
@@ -127,7 +141,6 @@ def rows_to_xy_by_format(
         return compute_time_decay_weights(g["match_date"], halflife_years=halflife)
 
     if "format_code" not in df.columns:
-        # Single format: use "_ALL_" as key
         df = df.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in df.columns])
         if df.empty:
             return {}
@@ -159,8 +172,7 @@ def train_and_save(
 ) -> None:
     """Train fielding model and save scaler + model for format_code.
 
-    Input normalization (RobustScaler by default) on X only; targets Y in raw units.
-    Time-decay sample weights when match_date available. See docs/ml-and-training.md.
+    Uses TrainingPipeline internally for scaling, fitting, and feature importance extraction.
     """
     params = get_training_params("fielding", format_code)
     pipe_cfg = get_pipeline_common_config()
@@ -173,20 +185,8 @@ def train_and_save(
     else:
         model.fit(Xs, Y)
 
-    # Extract and store feature importance (average across MultiOutputRegressor estimators)
-    feature_importance = None
-    if hasattr(model, "estimators_") and len(model.estimators_) > 0:
-        imps = []
-        for est in model.estimators_:
-            if hasattr(est, "feature_importances_"):
-                imps.append(est.feature_importances_)
-        if imps:
-            feature_importance = {
-                FIELDING_FEATURE_COLS[i]: float(np.mean([arr[i] for arr in imps]))
-                for i in range(min(len(FIELDING_FEATURE_COLS), len(imps[0])))
-            }
-            top = sorted(feature_importance.items(), key=lambda x: -x[1])[:5]
-            logger.info("train_fielding.feature_importance_top5 %s", top)
+    # Extract feature importance
+    feature_importance = TrainingPipeline.extract_feature_importance(model, FIELDING_FEATURE_COLS)
 
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
@@ -204,7 +204,7 @@ def train_and_save(
 def train_and_save_legacy(
     X: np.ndarray, Y: np.ndarray, out_dir: str, sample_weight: Optional[np.ndarray] = None
 ) -> None:
-    """Train one unified fielding model on all data and save as legacy (fielding_scaler.joblib, fielding_model.joblib)."""
+    """Train one unified fielding model on all data (legacy/fallback artifacts)."""
     params = get_training_params("fielding", None)
     pipe_cfg = get_pipeline_common_config()
     scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))

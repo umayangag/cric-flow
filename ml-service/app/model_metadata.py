@@ -4,11 +4,45 @@ Model metadata for the Workbench UI: features, outputs, level, artifacts pattern
 Generated from the source of truth: feature_vectors.json (batting, bowling, fielding),
 train_extras.EXTRAS_FEATURE_COLS, train_win.WIN_FEATURE_COLS, and static metadata.
 Served by GET /model-metadata so the frontend stays in sync with the backend.
+
+Model mode registry: central list of prediction/artifact modes (legacy vs per-format)
+so UIs and callers can show mode names, deprecation, and descriptions without hardcoding.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 from .feature_config import get_feature_names
+
+# --- Model mode registry (single source of truth for legacy vs per-format vs unified) ---
+
+
+class ModelModeEntry(TypedDict, total=False):
+    name: str
+    available: bool
+    deprecated: bool
+    description: str
+
+
+MODEL_MODE_REGISTRY: List[ModelModeEntry] = [
+    {
+        "name": "legacy",
+        "available": True,
+        "deprecated": False,
+        "description": "Legacy unified model (no format suffix); used when format is omitted or no per-format artifact is loaded.",
+    },
+    {
+        "name": "per_format",
+        "available": True,
+        "deprecated": False,
+        "description": "Per-format model (e.g. T20, ODI); used when format is provided and matching artifacts are loaded.",
+    },
+]
+
+
+def get_model_modes() -> List[Dict[str, Any]]:
+    """Return the model mode registry for UIs and API. Safe to extend with runtime availability later."""
+    return [dict(entry) for entry in MODEL_MODE_REGISTRY]
+
 
 # Output column names per model (aligned with prediction response and training scripts)
 BATTING_OUTPUTS = [
@@ -101,9 +135,11 @@ def _win_feature_cols() -> List[str]:
         return []
 
 
-def get_model_metadata() -> Dict[str, Dict[str, Any]]:
-    """Build model metadata from feature config and training modules. One source of truth for the UI."""
-    out: Dict[str, Dict[str, Any]] = {}
+def get_model_metadata() -> Dict[str, Any]:
+    """Build model metadata from feature config and training modules. One source of truth for the UI.
+    Includes model_modes (registry of legacy/per_format) for frontend display and deprecation hints.
+    """
+    out: Dict[str, Any] = {"model_modes": get_model_modes()}
 
     for kind in ("batting", "bowling", "fielding"):
         try:

@@ -95,7 +95,8 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	LEFT JOIN bat_cons_agg bc ON bc.match_id = m.match_id
 	LEFT JOIN bowl_cons_agg bwc ON bwc.match_id = m.match_id
 	LEFT JOIN bat_form_agg bf ON bf.match_id = m.match_id
-	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = m.match_id`
+	LEFT JOIN bowl_form_agg bwf ON bwf.match_id = m.match_id
+	ORDER BY m.match_date ASC, m.match_id`
 	args := []any{cutoff}
 	if formatIDs != nil {
 		q = strings.Replace(
@@ -113,7 +114,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	defer rows.Close()
 	headers := []string{
 		"match_id", "format_id", "venue_id", "season_id", "total_extras", "format_code",
-		"match_date",
+		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
@@ -140,6 +141,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.Itoa(totalExtras),
 			formatCode,
 			matchDate.Format("2006-01-02"),
+			strconv.FormatInt(matchDate.Unix(), 10),
 			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
