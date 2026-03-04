@@ -186,4 +186,49 @@ We will mark items as we implement them: `[ ]` = pending, `[x]` = done.
 - [ ] **10.3 Gradual adoption**
   - [ ] Enable reconciled outputs for a subset of formats or users while keeping a fallback to the current behavior.
   - [ ] Once stable, make reconciled outputs the default while retaining a kill switch and continuing to monitor metrics.
+-
+---
 
+## 11. Technical debt remediation plan (hierarchical)
+
+This section tracks the implementation-focused work to harden the reconciliation stack and its integration with the existing prediction pipeline. Items here are more granular and code-oriented than the conceptual plan above.
+
+- [ ] **11.1 Reconciliation core robustness (TD2, TD3)**
+  - [ ] **11.1.1 Robust rounding in `ml.reconciliation_service` (TD2)**
+    - [ ] Generalize `_sum_preserving_round` to handle both positive and negative deltas (target sums above or below current totals) without assertions.
+    - [ ] Ensure `_adjust_team_stat` uses `_sum_preserving_round` only as a small, numerically stable correction step, not as a substitute for missing constraints.
+    - [ ] Add targeted unit tests for `_sum_preserving_round` covering:
+      - [ ] Positive delta (sum of values below target).
+      - [ ] Negative delta (sum of values above target).
+      - [ ] Edge cases with zeros and single-player teams.
+  - [ ] **11.1.2 Move balls constraints into QP (`ml.reconciliation_core`) (TD3)**
+    - [ ] Extend `ProblemBuilder` to encode preferred legal balls as hard constraints:
+      - [ ] Batting balls for the batting team per innings sum to `preferred_legal_balls`.
+      - [ ] Bowling balls for the bowling team per innings sum to `preferred_legal_balls`.
+    - [ ] Keep `_sum_preserving_round` as a safety net only, verifying that deltas are typically small when constraints are present.
+    - [ ] Update reconciliation tests to validate balls constraints at both continuous (QP) and integer (rounded) levels.
+
+- [ ] **11.2 Prediction service layering & configuration (TD1, TD4, TD5, TD6)**
+  - [ ] **11.2.1 Centralize prediction defaults in `ml.config` (TD4)**
+    - [ ] Define a structured config for reconciliation-related defaults (e.g. `default_economy`, `bowling_deliveries_by_format`).
+    - [ ] Expose a single `get_prediction_defaults()` accessor with validation and optional memoization.
+    - [ ] Remove magic numbers (e.g. default overs) from `app.prediction_service` and route them through `ml.config`.
+  - [ ] **11.2.2 Introduce a reconciliation adapter in `ml.*` (TD1/TD6)**
+    - [ ] Move construction of `MatchReconciliationInputs` from `BacktestPlayerPred` plus innings totals into a dedicated adapter module.
+    - [ ] Have the adapter call `reconcile_match_players`, `check_reconciled_scorecard_consistency`, and adjustment-magnitude helpers in one place.
+    - [ ] Return reconciled stats and a structured metrics payload that `prediction_service` can log or surface.
+  - [ ] **11.2.3 Thin `app.prediction_service` orchestration layer (TD1, TD5)**
+    - [ ] Refactor `predict_players_with_features` to delegate reconciliation work to the adapter.
+    - [ ] Standardize reconciliation logging fields (e.g. `applied`, mean deltas, violations) for downstream dashboards.
+    - [ ] Clarify and centralize behavior when reconciliation modules are not available (ImportError-based fallbacks).
+
+- [ ] **11.3 Future enhancements and win-model alignment (Plan §6–7, §9)**
+  - [ ] **11.3.1 Extend constraints beyond runs/wickets/balls**
+    - [ ] Design and gradually add constraints for extras breakdown, per-bowler over caps, and innings termination flags, ensuring they are expressed in `ProblemBuilder` rather than ad-hoc corrections.
+    - [ ] Keep these constraints versioned and documented in `docs/match-schema.md`.
+  - [ ] **11.3.2 Align win prediction with reconciled match state**
+    - [ ] Define a canonical helper to transform reconciled `MatchState` into `WinFeatures`.
+    - [ ] Add tests comparing implied and model win probabilities where simulators or score distributions are available.
+  - [ ] **11.3.3 Metrics and observability**
+    - [ ] Wire adjustment magnitude and violation summaries into structured logs.
+    - [ ] Use these metrics for harmony/realism dashboards and to guide future model calibration work.

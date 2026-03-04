@@ -52,20 +52,11 @@ from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
 
 try:
-    from ml.consistency_checker import (
-        InningsTargets,
-        check_reconciled_scorecard_consistency,
-    )
-    from ml.reconciliation_service import reconcile_match_players
-except ImportError:
-    check_reconciled_scorecard_consistency = None  # type: ignore[assignment]
-    InningsTargets = None  # type: ignore[assignment]
-    reconcile_match_players = None  # type: ignore[assignment]
-
-try:
     from ml.config import get_prediction_defaults
+    from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
 except ImportError:
-    get_prediction_defaults = None
+    get_prediction_defaults = None  # type: ignore[assignment]
+    apply_constraint_reconciliation_from_backtest_preds = None  # type: ignore[assignment]
 
 try:
     from ml.train_extras import EXTRAS_FEATURE_COLS
@@ -164,161 +155,8 @@ def predict_match_innings(
     return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
 
 
-# Internal team id convention for constraint-based reconciliation (partitioning only)
 _TEAM1_ID = 1
 _TEAM2_ID = 2
-
-
-def _build_reconciliation_inputs_from_backtest_preds(
-    preds: List[BacktestPlayerPred],
-    team1_ids: set,
-    team2_ids: set,
-    inn1_runs: float,
-    inn1_wkts: float,
-    inn2_runs: float,
-    inn2_wkts: float,
-    match_id: int = 0,
-    format_code: Optional[str] = None,
-) -> MatchReconciliationInputs:
-    """Build MatchReconciliationInputs from raw backtest predictions and innings totals."""
-    players: List[PlayerReconciliationPreferences] = []
-
-    # BacktestPlayerPred has no bowling deliveries; use a format-aware placeholder so
-    # runs_conceded = economy * overs, with overs derived from config where available.
-    deliveries_bowl_default = 24.0  # 4 overs, suitable for T20
-    deliveries_bowl = deliveries_bowl_default
-    if get_prediction_defaults is not None:
-        try:
-            pd_defaults = get_prediction_defaults()
-        except Exception:  # pragma: no cover - defensive against unexpected config failures
-            pd_defaults = {}
-        mapping = pd_defaults.get("bowling_deliveries_by_format") or {}
-        if isinstance(mapping, dict):
-            fmt_key = (format_code or "").upper() if format_code is not None else ""
-            if fmt_key:
-                try:
-                    deliveries_bowl = float(mapping.get(fmt_key, deliveries_bowl_default))
-                except (TypeError, ValueError):
-                    deliveries_bowl = deliveries_bowl_default
-
-    for p in preds:
-        tid = _TEAM1_ID if p.player_id in team1_ids else _TEAM2_ID
-        r_conceded = (p.economy or 0.0) * (deliveries_bowl / 6.0)
-        players.append(
-            PlayerReconciliationPreferences(
-                player_id=p.player_id,
-                team_id=tid,
-                batting=BattingPrediction(
-                    runs_scored=p.runs or 0.0,
-                    balls_faced=float(p.balls) if p.balls is not None else 0.0,
-                    fours_scored=float(p.fours) if p.fours is not None else 0.0,
-                    sixes_scored=float(p.sixes) if p.sixes is not None else 0.0,
-                    batting_position=1.0,
-                    strike_rate=(p.runs or 0) / (p.balls or 1) * 100.0,
-                ),
-                bowling=BowlingPrediction(
-                    runs_conceded=r_conceded,
-                    deliveries=deliveries_bowl,
-                    wickets_taken=p.wickets or 0.0,
-                    econ=p.economy or 6.0,
-                ),
-            )
-        )
-    innings = [
-        InningsReconciliationPreferences(
-            inning_number=1,
-            batting_team_id=_TEAM1_ID,
-            bowling_team_id=_TEAM2_ID,
-            preferred_runs=inn1_runs,
-            preferred_wickets=inn1_wkts,
-        ),
-        InningsReconciliationPreferences(
-            inning_number=2,
-            batting_team_id=_TEAM2_ID,
-            bowling_team_id=_TEAM1_ID,
-            preferred_runs=inn2_runs,
-            preferred_wickets=inn2_wkts,
-        ),
-    ]
-    return MatchReconciliationInputs(
-        match_id=match_id,
-        format=format_code,
-        players=players,
-        innings=innings,
-        win=None,
-    )
-
-
-def _apply_constraint_reconciliation(
-    preds: List[BacktestPlayerPred],
-    team1_ids: set,
-    team2_ids: set,
-    inn1_runs: float,
-    inn1_wkts: float,
-    inn2_runs: float,
-    inn2_wkts: float,
-    match_id: int = 0,
-    format_code: Optional[str] = None,
-    default_economy: float = 6.0,
-) -> Tuple[List[BacktestPlayerPred], Dict[str, Any]]:
-    """Run constraint-based reconciliation and return adjusted preds plus adjustment stats."""
-    if reconcile_match_players is None:
-        return preds, {"applied": False, "reason": "reconciliation_service not available"}
-    pref = _build_reconciliation_inputs_from_backtest_preds(
-        preds, team1_ids, team2_ids, inn1_runs, inn1_wkts, inn2_runs, inn2_wkts, match_id, format_code
-    )
-    reconciled = reconcile_match_players(pref, team1_id=_TEAM1_ID, team2_id=_TEAM2_ID)
-    pid_to_recon = {s.player_id: s for s in reconciled.values()}
-    out: List[BacktestPlayerPred] = []
-    deltas_runs, deltas_wickets = [], []
-    for p in preds:
-        r = pid_to_recon.get(p.player_id)
-        if r is None:
-            out.append(p)
-            continue
-        econ = (r.bowling_runs / (r.bowling_balls / 6.0)) if r.bowling_balls > 0 else default_economy
-        out.append(
-            BacktestPlayerPred(
-                player_id=p.player_id,
-                runs=float(r.batting_runs),
-                balls=float(r.batting_balls) if r.batting_balls else p.balls,
-                fours=p.fours,
-                sixes=p.sixes,
-                wickets=float(r.wickets),
-                economy=econ,
-                catches=p.catches,
-                run_outs=p.run_outs,
-            )
-        )
-        deltas_runs.append(abs(r.batting_runs - (p.runs or 0)))
-        deltas_wickets.append(abs(r.wickets - (p.wickets or 0)))
-    adjustment: Dict[str, Any] = {
-        "applied": True,
-        "mean_abs_delta_runs": float(np.mean(deltas_runs)) if deltas_runs else 0.0,
-        "mean_abs_delta_wickets": float(np.mean(deltas_wickets)) if deltas_wickets else 0.0,
-    }
-    if check_reconciled_scorecard_consistency is not None and InningsTargets is not None:
-        inn1_t = inn2_t = None
-        for i in pref.innings:
-            if i.inning_number == 1:
-                inn1_t = InningsTargets(
-                    batting_team_id=_TEAM1_ID,
-                    bowling_team_id=_TEAM2_ID,
-                    runs=inn1_runs,
-                    wickets=inn1_wkts,
-                    legal_balls=float(i.preferred_legal_balls) if i.preferred_legal_balls is not None else None,
-                )
-            elif i.inning_number == 2:
-                inn2_t = InningsTargets(
-                    batting_team_id=_TEAM2_ID,
-                    bowling_team_id=_TEAM1_ID,
-                    runs=inn2_runs,
-                    wickets=inn2_wkts,
-                    legal_balls=float(i.preferred_legal_balls) if i.preferred_legal_balls is not None else None,
-                )
-        violations = check_reconciled_scorecard_consistency(reconciled, _TEAM1_ID, _TEAM2_ID, inn1_t, inn2_t)
-        adjustment["violations"] = violations
-    return out, adjustment
 
 
 def predict_players_with_features(
@@ -556,8 +394,8 @@ def predict_players_with_features(
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
             team2_ids = {int(pid) for pid in match_context.team2_player_ids}
-            if reconcile_match_players is not None:
-                out, adj = _apply_constraint_reconciliation(
+            if apply_constraint_reconciliation_from_backtest_preds is not None:
+                out, adj = apply_constraint_reconciliation_from_backtest_preds(
                     out,
                     team1_ids,
                     team2_ids,
@@ -577,6 +415,10 @@ def predict_players_with_features(
                     innings2_wickets=inn2_wkts,
                     mean_abs_delta_runs=adj.get("mean_abs_delta_runs"),
                     mean_abs_delta_wickets=adj.get("mean_abs_delta_wickets"),
+                    mean_abs_pct_delta_runs=adj.get("mean_abs_pct_delta_runs"),
+                    mean_abs_pct_delta_wickets=adj.get("mean_abs_pct_delta_wickets"),
+                    total_before_runs=adj.get("total_before_runs"),
+                    total_before_wickets=adj.get("total_before_wickets"),
                 )
                 if adj.get("violations"):
                     logger.warning(

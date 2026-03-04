@@ -120,6 +120,113 @@ def _make_match_inputs() -> MatchReconciliationInputs:
     )
 
 
+def _make_match_inputs_with_balls() -> MatchReconciliationInputs:
+    """Like _make_match_inputs, but with preferred_legal_balls and consistent ball totals."""
+    players = [
+        # Team1 batting in innings1: 30 + 30 = 60 balls; bowling in innings2: 36 + 24 = 60 balls
+        PlayerReconciliationPreferences(
+            player_id=1,
+            team_id=100,
+            batting=BattingPrediction(
+                runs_scored=30.0,
+                balls_faced=30.0,
+                fours_scored=3.0,
+                sixes_scored=1.0,
+                batting_position=1.0,
+                strike_rate=100.0,
+            ),
+            bowling=BowlingPrediction(
+                runs_conceded=35.0,
+                deliveries=36.0,
+                wickets_taken=1.0,
+                econ=5.83,
+            ),
+        ),
+        PlayerReconciliationPreferences(
+            player_id=2,
+            team_id=100,
+            batting=BattingPrediction(
+                runs_scored=30.0,
+                balls_faced=30.0,
+                fours_scored=2.0,
+                sixes_scored=0.0,
+                batting_position=2.0,
+                strike_rate=100.0,
+            ),
+            bowling=BowlingPrediction(
+                runs_conceded=35.0,
+                deliveries=24.0,
+                wickets_taken=1.0,
+                econ=8.75,
+            ),
+        ),
+        # Team2 batting in innings2: 40 + 20 = 60 balls; bowling in innings1: 30 + 30 = 60 balls
+        PlayerReconciliationPreferences(
+            player_id=3,
+            team_id=200,
+            batting=BattingPrediction(
+                runs_scored=40.0,
+                balls_faced=40.0,
+                fours_scored=4.0,
+                sixes_scored=1.0,
+                batting_position=1.0,
+                strike_rate=100.0,
+            ),
+            bowling=BowlingPrediction(
+                runs_conceded=30.0,
+                deliveries=30.0,
+                wickets_taken=2.0,
+                econ=6.0,
+            ),
+        ),
+        PlayerReconciliationPreferences(
+            player_id=4,
+            team_id=200,
+            batting=BattingPrediction(
+                runs_scored=30.0,
+                balls_faced=20.0,
+                fours_scored=1.0,
+                sixes_scored=0.0,
+                batting_position=2.0,
+                strike_rate=90.0,
+            ),
+            bowling=BowlingPrediction(
+                runs_conceded=40.0,
+                deliveries=30.0,
+                wickets_taken=1.0,
+                econ=8.0,
+            ),
+        ),
+    ]
+
+    innings_prefs = [
+        InningsReconciliationPreferences(
+            inning_number=1,
+            batting_team_id=100,
+            bowling_team_id=200,
+            preferred_runs=70.0,
+            preferred_wickets=3.0,
+            preferred_legal_balls=60.0,
+        ),
+        InningsReconciliationPreferences(
+            inning_number=2,
+            batting_team_id=200,
+            bowling_team_id=100,
+            preferred_runs=80.0,
+            preferred_wickets=2.0,
+            preferred_legal_balls=60.0,
+        ),
+    ]
+
+    return MatchReconciliationInputs(
+        match_id=2,
+        format="T20",
+        players=players,
+        innings=innings_prefs,
+        win=None,
+    )
+
+
 def test_problem_builder_constructs_variables_and_mu():
     pref = _make_match_inputs()
     builder = ProblemBuilder(runs_weight=2.0, wickets_weight=3.0)
@@ -161,6 +268,24 @@ def test_problem_builder_adds_runs_and_wickets_constraints():
     # Since μ comes directly from model outputs and innings totals are constructed
     # from those same numbers in _make_match_inputs, the residual at μ should be ~0.
     residuals = np.array([_constraint_residual_at_mu(i) for i in range(len(problem.constraints))])
+    assert np.allclose(residuals, 0.0)
+
+
+def test_problem_builder_adds_ball_constraints_when_preferred_legal_balls_present():
+    pref = _make_match_inputs_with_balls()
+    builder = ProblemBuilder()
+    problem = builder.build_from_match(pref, team1_id=100, team2_id=200)
+
+    # Filter constraints that mention balls in their description
+    ball_constraints = [c for c in problem.constraints if "balls" in c.description]
+    assert ball_constraints, "expected ball constraints when preferred_legal_balls is set"
+
+    def _residual(c_idx: int) -> float:
+        c = ball_constraints[c_idx]
+        lhs = sum(c.coefficients[i] * problem.mu[i] for i in c.coefficients.keys())
+        return lhs - c.rhs
+
+    residuals = np.array([_residual(i) for i in range(len(ball_constraints))])
     assert np.allclose(residuals, 0.0)
 
 

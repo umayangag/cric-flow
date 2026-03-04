@@ -43,8 +43,9 @@ def _sum_preserving_round(values: Dict[int, float], target: float) -> Dict[int, 
     - Start from floor(values).
     - Compute how many units we need to add/subtract to reach target_int
       (rounded target).
-    - Adjust entries in descending order of fractional part magnitude until
-      the total matches.
+    - For positive deltas, increment entries with largest fractional parts.
+    - For negative deltas, decrement entries with largest values first,
+      without driving any entry below zero.
     """
     if not values:
         return {}
@@ -74,9 +75,23 @@ def _sum_preserving_round(values: Dict[int, float], target: float) -> Dict[int, 
             delta -= 1
             idx += 1
     else:
-        # See docstring: by construction delta = round(sum(fractional_parts)) so delta >= 0.
-        # Keep an assertion here to guard against future changes that might violate this invariant.
-        assert delta >= 0, f"delta must be non-negative, got {delta}"
+        # For negative delta, subtract 1 from entries with largest current value
+        # first, while avoiding negative counts. This keeps the total close to
+        # the original distribution even when the target is below the current sum.
+        ordered = sorted(keys, key=lambda k: floors[k], reverse=True)
+        while delta < 0 and ordered:
+            changed = False
+            for k in ordered:
+                if delta == 0:
+                    break
+                if result[k] <= 0:
+                    continue
+                result[k] -= 1
+                delta += 1
+                changed = True
+            if not changed:
+                # All entries are already zero; cannot reduce further.
+                break
 
     return result
 

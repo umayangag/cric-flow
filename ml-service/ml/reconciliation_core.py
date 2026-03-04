@@ -212,7 +212,7 @@ class ProblemBuilder:
                         weight=self._runs_weight,
                     )
 
-        # 2) Encode innings-level constraints for runs and wickets where targets exist.
+        # 2) Encode innings-level constraints for runs, wickets, and (optionally) balls where targets exist.
         #
         # We assume at most two innings here; additional innings can be handled
         # later by extending the mapping logic.
@@ -283,6 +283,55 @@ class ProblemBuilder:
                 if p.team_id == team1_id:
                     coeffs[(VariableKind.BOWL_WKTS, p.player_id)] = 1.0
             _add_constraint(coeffs, rhs=inn2.preferred_wickets, desc="team1 wickets = innings2 wickets")
+
+        # 2.3 Balls constraints (legal balls per innings)
+        # When preferred_legal_balls is provided, ensure that batting balls for the
+        # batting team and bowling balls for the bowling team match this target.
+        if inn1 is not None and getattr(inn1, "preferred_legal_balls", None) is not None:
+            # Team1 bats in innings 1
+            coeffs = {}
+            for p in pref.players:
+                if p.team_id == team1_id:
+                    coeffs[(VariableKind.BAT_BALLS, p.player_id)] = 1.0
+            _add_constraint(
+                coeffs,
+                rhs=float(inn1.preferred_legal_balls),
+                desc="team1 batting balls = innings1 legal_balls",
+            )
+
+            # Team2 bowls in innings 1
+            coeffs = {}
+            for p in pref.players:
+                if p.team_id == team2_id:
+                    coeffs[(VariableKind.BOWL_BALLS, p.player_id)] = 1.0
+            _add_constraint(
+                coeffs,
+                rhs=float(inn1.preferred_legal_balls),
+                desc="team2 bowling balls = innings1 legal_balls",
+            )
+
+        if inn2 is not None and getattr(inn2, "preferred_legal_balls", None) is not None:
+            # Team2 bats in innings 2
+            coeffs = {}
+            for p in pref.players:
+                if p.team_id == team2_id:
+                    coeffs[(VariableKind.BAT_BALLS, p.player_id)] = 1.0
+            _add_constraint(
+                coeffs,
+                rhs=float(inn2.preferred_legal_balls),
+                desc="team2 batting balls = innings2 legal_balls",
+            )
+
+            # Team1 bowls in innings 2
+            coeffs = {}
+            for p in pref.players:
+                if p.team_id == team1_id:
+                    coeffs[(VariableKind.BOWL_BALLS, p.player_id)] = 1.0
+            _add_constraint(
+                coeffs,
+                rhs=float(inn2.preferred_legal_balls),
+                desc="team1 bowling balls = innings2 legal_balls",
+            )
 
         mu = np.asarray(mu_list, dtype=float)
         weights = np.asarray(weights_list, dtype=float)

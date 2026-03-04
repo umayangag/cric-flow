@@ -7,7 +7,11 @@ from app.models import (
     MatchReconciliationInputs,
     PlayerReconciliationPreferences,
 )
-from ml.reconciliation_service import ReconciledPlayerStats, reconcile_match_players
+from ml.reconciliation_service import (
+    ReconciledPlayerStats,
+    _sum_preserving_round,
+    reconcile_match_players,
+)
 
 
 def _make_match_inputs() -> MatchReconciliationInputs:
@@ -167,3 +171,19 @@ def test_reconcile_match_players_produces_integer_stats_and_respects_totals():
     team2_bat_balls = sum(s.batting_balls for s in stats.values() if s.team_id == 200)
     team1_bowl_balls = sum(s.bowling_balls for s in stats.values() if s.team_id == 100)
     assert team2_bat_balls == team1_bowl_balls == int(round(inn2.preferred_legal_balls or 0.0))
+
+
+def test_sum_preserving_round_handles_positive_and_negative_deltas():
+    # Positive delta: target sum above current floors
+    vals_pos = {1: 3.2, 2: 1.7, 3: 0.1}
+    target_pos = 7.0  # round -> 7
+    out_pos = _sum_preserving_round(vals_pos, target_pos)
+    assert sum(out_pos.values()) == int(round(target_pos))
+    assert all(isinstance(v, int) and v >= 0 for v in out_pos.values())
+
+    # Negative delta: target sum below current floors
+    vals_neg = {1: 5.0, 2: 4.0, 3: 3.0}
+    target_neg = 8.0  # round -> 8, floors sum to 12
+    out_neg = _sum_preserving_round(vals_neg, target_neg)
+    assert sum(out_neg.values()) == int(round(target_neg))
+    assert all(isinstance(v, int) and v >= 0 for v in out_neg.values())
