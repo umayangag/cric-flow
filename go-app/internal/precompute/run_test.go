@@ -73,16 +73,16 @@ func setupMockDB(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	tests := []struct {
-		name         string
-		formats      []string
-		opts         *RunOpts
-		formatIDs    map[string]int64
-		formatIDErr  error
-		runnerErr    error
-		wantErr      bool
-		wantErrMsg   string
-		wantCalls    int
-		wantStatus   string // expected phase after Run
+		name        string
+		formats     []string
+		opts        *RunOpts
+		formatIDs   map[string]int64
+		formatIDErr error
+		runnerErr   error
+		wantErr     bool
+		wantErrMsg  string
+		wantCalls   int
+		wantStatus  string // expected phase after Run
 	}{
 		{
 			name:       "happy_path_single_format",

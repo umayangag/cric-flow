@@ -12,19 +12,19 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
 
 // Package-level function variables allow tests to replace external dependencies.
 var (
-	loadConfig          = config.Load
-	connectDB           = db.Connect
-	getFormatIDByCode   = db.GetMatchFormatIDByCode
-	getResourceLimit    = resources.GetLimit
-	newRunner           = func() replayRunner { return pfcmd.NewRunner() }
+	loadConfig        = config.Load
+	connectDB         = db.Connect
+	getFormatIDByCode = db.GetMatchFormatIDByCode
+	getResourceLimit  = resources.GetLimit
+	newRunner         = func() replayRunner { return pfcmd.NewRunner() }
 )
 
 // replayRunner abstracts the RunReplay method for testability.
@@ -50,7 +50,7 @@ type RunOpts struct {
 func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
 	cfg := loadConfig()
-	if !db.Available() && db.Pool == nil {
+	if !db.Available() {
 		slog.Info("precompute: connecting to database (pool was nil)")
 		if _, connectErr := connectDB(ctx); connectErr != nil {
 			slog.Error("precompute: database connect failed", slog.Any("err", connectErr))

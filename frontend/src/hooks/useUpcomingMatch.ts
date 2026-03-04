@@ -36,79 +36,170 @@ export function useUpcomingMatch() {
 
   useEffect(() => {
     let active = true;
-    api.getFormats().then((f) => { if (active) setAvailableFormats(f); }).catch((e) => {
-      if (active) setError(`Failed to load formats: ${e instanceof Error ? e.message : String(e)}`);
-    });
-    return () => { active = false; };
+    api
+      .getFormats()
+      .then((f) => {
+        if (active) setAvailableFormats(f);
+      })
+      .catch((e) => {
+        if (active)
+          setError(`Failed to load formats: ${e instanceof Error ? e.message : String(e)}`);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (!format) { setAvailableTeam1s([]); setTeam1(''); return; }
+    if (!format) {
+      setAvailableTeam1s([]);
+      setTeam1('');
+      return;
+    }
     let active = true;
-    api.getTeamsByFormat(format).then((teams) => {
-      if (active) { setAvailableTeam1s(teams); setTeam1((prev) => (prev && !teams.includes(prev) ? '' : prev)); }
-    }).catch((e) => { if (active) setError(`Failed to load teams: ${e instanceof Error ? e.message : String(e)}`); });
-    return () => { active = false; };
+    api
+      .getTeamsByFormat(format)
+      .then((teams) => {
+        if (active) {
+          setAvailableTeam1s(teams);
+          setTeam1((prev) => (prev && !teams.includes(prev) ? '' : prev));
+        }
+      })
+      .catch((e) => {
+        if (active) setError(`Failed to load teams: ${e instanceof Error ? e.message : String(e)}`);
+      });
+    return () => {
+      active = false;
+    };
   }, [format]);
 
   useEffect(() => {
-    if (!format || !team1) { setAvailableTeam2s([]); setTeam2(''); return; }
+    if (!format || !team1) {
+      setAvailableTeam2s([]);
+      setTeam2('');
+      return;
+    }
     let active = true;
-    api.getOpponents(format, team1).then((opps) => {
-      if (active) { setAvailableTeam2s(opps); setTeam2((prev) => (prev && !opps.includes(prev) ? '' : prev)); }
-    }).catch((e) => { if (active) setError(`Failed to load opponents: ${e instanceof Error ? e.message : String(e)}`); });
-    return () => { active = false; };
+    api
+      .getOpponents(format, team1)
+      .then((opps) => {
+        if (active) {
+          setAvailableTeam2s(opps);
+          setTeam2((prev) => (prev && !opps.includes(prev) ? '' : prev));
+        }
+      })
+      .catch((e) => {
+        if (active)
+          setError(`Failed to load opponents: ${e instanceof Error ? e.message : String(e)}`);
+      });
+    return () => {
+      active = false;
+    };
   }, [format, team1]);
 
   const fetchVenueOptions = (query: string) => {
     const trimmed = query.trim();
-    if (trimmed.length < 3) { setVenueOptions([]); return; }
+    if (trimmed.length < 3) {
+      setVenueOptions([]);
+      return;
+    }
     setVenueLoading(true);
-    api.searchVenues(trimmed).then((list) => setVenueOptions(list)).catch(() => setVenueOptions([])).finally(() => setVenueLoading(false));
+    api
+      .searchVenues(trimmed)
+      .then((list) => setVenueOptions(list))
+      .catch(() => setVenueOptions([]))
+      .finally(() => setVenueLoading(false));
   };
 
   const handleVenueInputChange = (_: React.SyntheticEvent, value: string) => {
     setVenue(value);
-    if (venueSearchRef.current) { clearTimeout(venueSearchRef.current); venueSearchRef.current = null; }
-    if (value.trim().length < 3) { setVenueOptions([]); return; }
+    if (venueSearchRef.current) {
+      clearTimeout(venueSearchRef.current);
+      venueSearchRef.current = null;
+    }
+    if (value.trim().length < 3) {
+      setVenueOptions([]);
+      return;
+    }
     venueSearchRef.current = setTimeout(() => fetchVenueOptions(value), 300);
   };
 
-  useEffect(() => { return () => { if (venueSearchRef.current) clearTimeout(venueSearchRef.current); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (venueSearchRef.current) clearTimeout(venueSearchRef.current);
+    };
+  }, []);
 
   const dateError = useMemo(() => {
     if (!matchDate) return 'Match date is required';
     const [y, m, d] = matchDate.split('-').map(Number);
     const selectedLocal = new Date(y, m - 1, d);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const max = new Date(today); max.setDate(max.getDate() + MAX_FUTURE_DAYS);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const max = new Date(today);
+    max.setDate(max.getDate() + MAX_FUTURE_DAYS);
     if (selectedLocal < today) return 'Date must be today or in the future';
     if (selectedLocal > max) return `Date must be within ${MAX_FUTURE_DAYS} days from today`;
     return null;
   }, [matchDate]);
 
-  const canPredict = useMemo(() => !!format && !!team1 && !!team2 && !!matchDate && !dateError && !loading, [format, team1, team2, matchDate, dateError, loading]);
+  const canPredict = useMemo(
+    () => !!format && !!team1 && !!team2 && !!matchDate && !dateError && !loading,
+    [format, team1, team2, matchDate, dateError, loading],
+  );
 
   const handlePredict = async () => {
     if (!canPredict) return;
-    setError(null); setResult(null); setLoading(true);
+    setError(null);
+    setResult(null);
+    setLoading(true);
     try {
       const res = await api.predictTeamSelection({
-        format: format.trim(), team1: team1.trim(), team2: team2.trim(),
-        venue: venue.trim() || undefined, match_date: matchDate,
-        use_unified_model: predictionModel === 'unified', simulate: runSimulation,
+        format: format.trim(),
+        team1: team1.trim(),
+        team2: team2.trim(),
+        venue: venue.trim() || undefined,
+        match_date: matchDate,
+        use_unified_model: predictionModel === 'unified',
+        simulate: runSimulation,
       });
       setResult(res);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {
-    format, setFormat, team1, setTeam1, team2, setTeam2, venue, setVenue,
-    matchDate, setMatchDate, predictionModel, setPredictionModel,
-    runSimulation, setRunSimulation, availableFormats, availableTeam1s,
-    availableTeam2s, venueOptions, venueLoading, handleVenueInputChange,
-    loading, error, result, minDate, maxDate, dateError, canPredict,
-    handlePredict, maxFutureDays: MAX_FUTURE_DAYS,
+    format,
+    setFormat,
+    team1,
+    setTeam1,
+    team2,
+    setTeam2,
+    venue,
+    setVenue,
+    matchDate,
+    setMatchDate,
+    predictionModel,
+    setPredictionModel,
+    runSimulation,
+    setRunSimulation,
+    availableFormats,
+    availableTeam1s,
+    availableTeam2s,
+    venueOptions,
+    venueLoading,
+    handleVenueInputChange,
+    loading,
+    error,
+    result,
+    minDate,
+    maxDate,
+    dateError,
+    canPredict,
+    handlePredict,
+    maxFutureDays: MAX_FUTURE_DAYS,
   };
 }

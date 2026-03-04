@@ -14,7 +14,10 @@ function formatBytes(n: number | undefined): string {
   const units = ['B', 'KB', 'MB', 'GB'];
   let i = 0;
   let v = n;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
@@ -62,7 +65,8 @@ export function MLModelRow({ model }: { model: MLModelStat }) {
     (model.tuned_parameters && Object.keys(model.tuned_parameters).length > 0) ||
     (model.metrics && Object.keys(model.metrics).length > 0) ||
     (model.feature_importance && Object.keys(model.feature_importance).length > 0) ||
-    (model.mlqa_audit && (model.mlqa_audit.key_findings?.length > 0 || model.mlqa_audit.final_verdict));
+    (model.mlqa_audit &&
+      (model.mlqa_audit.key_findings?.length > 0 || model.mlqa_audit.final_verdict));
 
   return (
     <>
@@ -78,14 +82,24 @@ export function MLModelRow({ model }: { model: MLModelStat }) {
             </IconButton>
           )}
         </TableCell>
-        <TableCell component="th" scope="row">{model.model_name}</TableCell>
-        <TableCell><Chip label={model.match_format} size="small" variant="outlined" /></TableCell>
+        <TableCell component="th" scope="row">
+          {model.model_name}
+        </TableCell>
+        <TableCell>
+          <Chip label={model.match_format} size="small" variant="outlined" />
+        </TableCell>
         <TableCell>{model.algorithm ?? '—'}</TableCell>
         <TableCell>{getAccuracyDisplay(model)}</TableCell>
         <TableCell>
           {model.mlqa_audit ? (
-            <Chip label={model.mlqa_audit.audit_status} size="small" color={statusColor(model.mlqa_audit.audit_status)} />
-          ) : '—'}
+            <Chip
+              label={model.mlqa_audit.audit_status}
+              size="small"
+              color={statusColor(model.mlqa_audit.audit_status)}
+            />
+          ) : (
+            '—'
+          )}
         </TableCell>
         <TableCell>{formatBytes(model.size_bytes)}</TableCell>
         <TableCell sx={{ fontSize: '0.85rem' }}>{formatModified(model.modified)}</TableCell>

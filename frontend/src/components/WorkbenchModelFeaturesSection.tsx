@@ -130,12 +130,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
                 <Typography sx={{ textTransform: 'capitalize', fontWeight: 600 }}>
                   {key.replace('_', ' ')}
                 </Typography>
-                <Chip
-                  label={m.level}
-                  size="small"
-                  variant="outlined"
-                  sx={{ fontSize: '0.7rem' }}
-                />
+                <Chip label={m.level} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                 {m.hasScaler !== undefined && (
                   <Chip
                     label={m.hasScaler ? 'scaler + model' : 'model only'}

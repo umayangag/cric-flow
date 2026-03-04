@@ -22,7 +22,11 @@ func TestStepToCommand(t *testing.T) {
 		{name: "train_win", step: "train_win", want: "make train-win CUTOFF=2025-01-01T00:00:00Z"},
 		{name: "train_innings", step: "train_innings", want: "make train-innings CUTOFF=2025-01-01T00:00:00Z"},
 		{name: "auto_tune", step: "auto_tune", want: "make ml-auto-tune MODEL=all ALL_FORMATS=1"},
-		{name: "train_combination_meta", step: "train_combination_meta", want: "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json"},
+		{
+			name: "train_combination_meta",
+			step: "train_combination_meta",
+			want: "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json",
+		},
 		{name: "unknown_returns_empty", step: "unknown_step", want: ""},
 		{name: "empty_returns_empty", step: "", want: ""},
 	}

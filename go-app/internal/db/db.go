@@ -4,14 +4,14 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db/connection"
 )
 
 // Pool is a global connection pool reference returned by Connect.
@@ -243,44 +243,15 @@ func (t txCopyAdapter) Rollback(ctx context.Context) error { return t.Tx.Rollbac
 
 // BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
 func BuildDSN(user, pass, host, port, database, ssl string) string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, database, ssl)
+	return connection.BuildDSN(user, pass, host, port, database, ssl)
 }
 
-// Connect initializes a pgx connection pool using environment variables:
-// POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_SSLMODE
+// Connect initializes a pgx connection pool using environment variables and wires it into package-level state.
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
-	host := getenv("POSTGRES_HOST", "localhost")
-	port := getenv("POSTGRES_PORT", "5432")
-	db := getenv("POSTGRES_DB", "cricket_data")
-	user := getenv("POSTGRES_USER", "postgres")
-	pass := getenv("POSTGRES_PASSWORD", "postgres")
-	ssl := getenv("POSTGRES_SSLMODE", "disable")
-
-	dsn := BuildDSN(user, pass, host, port, db, ssl)
-	slog.Info("db.Connect: parsing config", slog.String("host", host), slog.String("db", db))
-	cfg, err := pgxpool.ParseConfig(dsn)
+	pool, err := connection.Connect(ctx)
 	if err != nil {
-		slog.Error("db.Connect: parse config failed", slog.Any("err", err))
 		return nil, err
 	}
-	cfg.MaxConns = 10
-	cfg.MinConns = 0
-	cfg.MaxConnLifetime = time.Hour
-	cfg.MaxConnIdleTime = 30 * time.Minute
-
-	// Use background context for pool lifecycle so it doesn't close if Connect's ctx is canceled/times out.
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
-	if err != nil {
-		slog.Error("db.Connect: create pool failed", slog.Any("err", err))
-		return nil, err
-	}
-	// Verify connectivity using the provided (potentially short-lived) context.
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("db.Connect: ping failed", slog.Any("err", err))
-		pool.Close()
-		return nil, err
-	}
-	slog.Info("db.Connect: connected successfully", slog.String("host", host), slog.String("db", db))
 	Pool = pool
 	defaultDB = poolDB{p: pool}
 	PoolAPI = poolAPIAdapter{p: pool}
@@ -299,11 +270,10 @@ func Close() {
 		if Pool == nil {
 			return
 		}
-		Pool.Close()
+		connection.Close(Pool)
 		Pool = nil
 		defaultDB = nil
 		PoolAPI = nil
-		slog.Info("db.Close: pool closed")
 	})
 }
 

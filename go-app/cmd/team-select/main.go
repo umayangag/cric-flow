@@ -10,17 +10,16 @@ import (
 	"os"
 	"time"
 
-	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
-	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/teamselect"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 func main() { os.Exit(run()) }
 
 func run() int {
 	fs := flag.NewFlagSet("team-select", flag.ContinueOnError)
-	opts, err := cli.ParseArgs(fs, os.Args[1:])
+	opts, err := svc.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parse failed", slog.Any("err", err))
 		return 2
@@ -31,7 +30,7 @@ func run() int {
 	defer cancel()
 
 	// Build runner with selector adapter and DB connector (only used when FromDB)
-	runner := cmd.NewRunner(cmd.NewSelectionAdapter(), db.RealConnector{})
+	runner := svc.NewRunner(svc.NewSelectionAdapter(), db.RealConnector{})
 	if runErr := runner.Run(ctx, opts, os.Stdout); runErr != nil {
 		slog.Error("team-select failed", slog.Any("err", runErr))
 		return 1

@@ -9,17 +9,17 @@ import (
 )
 
 func TestCorsMiddleware(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
 	tests := []struct {
-		name           string
-		method         string
-		envOrigin      string
-		wantOrigin     string
-		wantStatus     int
-		wantInnerCall  bool
+		name          string
+		method        string
+		envOrigin     string
+		wantOrigin    string
+		wantStatus    int
+		wantInnerCall bool
 	}{
 		{
 			name:          "get_request_default_origin",

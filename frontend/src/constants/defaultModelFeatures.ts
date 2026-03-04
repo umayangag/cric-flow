@@ -181,4 +181,11 @@ export const DEFAULT_MODEL_FEATURES: ModelMetadataResponse = {
   },
 };
 
-export const MODEL_KEYS = ['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'] as const;
+export const MODEL_KEYS = [
+  'batting',
+  'bowling',
+  'fielding',
+  'extras',
+  'win',
+  'combination_meta',
+] as const;

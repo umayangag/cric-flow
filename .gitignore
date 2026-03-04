@@ -75,3 +75,4 @@ ml-service/logs.log
 logs.log
 frontend/.vitest-localstorage-wal
 frontend/.vitest-localstorage-shm
+tmp/

@@ -11,7 +11,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
-
 // pipelineProgressPayload is the JSON sent in each SSE "progress" event.
 type pipelineProgressPayload struct {
 	Running      bool                   `json:"running"`
@@ -34,7 +33,6 @@ type precomputeProgress struct {
 	CurrentIndex int `json:"current_index,omitempty"`
 	FormatsTotal int `json:"formats_total,omitempty"`
 }
-
 
 // pipelineProgressStreamHandler handles GET /ops/pipeline/stream and streams pipeline progress via SSE.
 func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Request) {

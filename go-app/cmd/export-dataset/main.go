@@ -11,21 +11,20 @@ import (
 	"syscall"
 	"time"
 
-	exportcli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
-	expcmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
+	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
-	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
 
 func main() { os.Exit(run()) }
 
 func run() int {
 	fs := flag.NewFlagSet("export-dataset", flag.ContinueOnError)
-	opts, err := exportcli.ParseArgs(fs, os.Args[1:])
+	opts, err := exportsvc.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		return 2
@@ -56,7 +55,7 @@ func run() int {
 		field := exportsvc.NewFieldingService(repo)
 		extras := exportsvc.NewExtrasService(repo)
 		win := exportsvc.NewWinService(repo)
-		runner := expcmd.NewRunnerWithServices(bat, bow, field, extras, win)
+		runner := exportsvc.NewRunnerWithServices(bat, bow, field, extras, win)
 		err := runner.Run(jobCtx, opts)
 		return map[string]any{"out_dir": outDir}, err
 	})

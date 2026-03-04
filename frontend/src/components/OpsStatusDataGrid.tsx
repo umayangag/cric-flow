@@ -7,13 +7,7 @@ import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
 import OpsMatrix from './OpsMatrix';
-import {
-  FORMATS,
-  asObj,
-  getFormats,
-  readStatus,
-  readNumber,
-} from '../utils/opsStatusHelpers';
+import { FORMATS, asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
 import type { FormatCode, ExportFile, OpsStatus } from '../utils/opsStatusHelpers';
 
 interface OpsStatusDataGridProps {
