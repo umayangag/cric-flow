@@ -5,11 +5,7 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import PipelineStepDialog from './PipelineStepDialog';
-import {
-  derivePipelineSteps,
-  statusIcon,
-  getStatusColor,
-} from '../utils/pipelineSteps';
+import { derivePipelineSteps, statusIcon, getStatusColor } from '../utils/pipelineSteps';
 import type { PipelineStep, StepStatus } from '../utils/pipelineSteps';
 
 // Re-export types so existing consumers don't break

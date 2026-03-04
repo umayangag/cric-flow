@@ -7,13 +7,7 @@ import SectionCard from './common/SectionCard';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsStatusDataGrid from './OpsStatusDataGrid';
 import JsonCollapse from './common/JsonCollapse';
-import {
-  FORMATS,
-  asObj,
-  getFormats,
-  readStatus,
-  readNumber,
-} from '../utils/opsStatusHelpers';
+import { FORMATS, asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
 import type { FormatCode, OpsStatus } from '../utils/opsStatusHelpers';
 
 interface OpsStatusDetailsGridProps {
@@ -58,9 +52,7 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
                     const row = asObj(fm[f]);
                     const st = readStatus(row.status);
                     const latest =
-                      typeof row.latest_match_date === 'string'
-                        ? row.latest_match_date
-                        : undefined;
+                      typeof row.latest_match_date === 'string' ? row.latest_match_date : undefined;
                     const days = readNumber(row.days_since);
                     const matchCount = readNumber(row.match_count);
                     return (

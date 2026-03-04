@@ -35,7 +35,6 @@ func winnerAccuracy(predWinner, actualWinner string) float64 {
 	return backtest.WinnerAccuracy(predWinner, actualWinner)
 }
 
-
 func buildPredictedScorecard(
 	actual *db.MatchScorecard,
 	preds map[int64]playerPredictions,

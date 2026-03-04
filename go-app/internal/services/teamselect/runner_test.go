@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 	"github.com/umayangag/cric-flow/go-app/internal/selection"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 type fakeConnector struct {

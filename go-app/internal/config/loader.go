@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 )
+
 var (
 	cached     *Config
 	loadedFrom string // path of config file loaded; empty if none found

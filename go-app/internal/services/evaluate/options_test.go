@@ -17,7 +17,11 @@ func TestParseArgs(t *testing.T) {
 		want    svc.Options
 	}{
 		{name: "defaults", args: []string{}, want: svc.Options{Season: "demo", Format: "T20"}},
-		{name: "overrides", args: []string{"-season", "2019", "-format", "ODI"}, want: svc.Options{Season: "2019", Format: "ODI"}},
+		{
+			name: "overrides",
+			args: []string{"-season", "2019", "-format", "ODI"},
+			want: svc.Options{Season: "2019", Format: "ODI"},
+		},
 		{name: "missing season", args: []string{"-season", "", "-format", "T20"}, wantErr: "season must not be empty"},
 		{name: "missing format", args: []string{"-season", "2019", "-format", ""}, wantErr: "format must not be empty"},
 	}

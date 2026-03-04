@@ -61,13 +61,13 @@ func ComputePlayerResultsAndMetrics(
 	players := make([]PlayerResult, 0, len(squad))
 	metrics := map[string]float64{}
 	var (
-		totalAbsErrRuns, countRuns          float64
-		totalSqErrRuns                      float64
-		runsActuals                         []float64
-		totalAbsErrWickets, countWickets    float64
-		totalAbsErrEcon, countEcon          float64
-		totalAbsErrCatches, countCatches    float64
-		totalAbsErrRunOuts, countRunOuts    float64
+		totalAbsErrRuns, countRuns       float64
+		totalSqErrRuns                   float64
+		runsActuals                      []float64
+		totalAbsErrWickets, countWickets float64
+		totalAbsErrEcon, countEcon       float64
+		totalAbsErrCatches, countCatches float64
+		totalAbsErrRunOuts, countRunOuts float64
 	)
 	for _, pid := range squad {
 		pp, okP := preds[pid]
@@ -146,4 +146,3 @@ func FormatFromFilters(filters map[string]any) string {
 	}
 	return ""
 }
-

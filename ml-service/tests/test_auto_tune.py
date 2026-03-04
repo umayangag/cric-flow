@@ -255,9 +255,7 @@ def test_compute_metrics_regression_multi_output_per_target_mae():
     Y = np.random.RandomState(43).rand(50, 3)
     pipe.fit(X, Y)
     cv = KFold(n_splits=3, shuffle=True, random_state=42)
-    metrics = m._compute_metrics_regression(
-        pipe, X, Y, cv, target_names=["runs", "balls", "wickets"]
-    )
+    metrics = m._compute_metrics_regression(pipe, X, Y, cv, target_names=["runs", "balls", "wickets"])
     assert "per_target_mae" in metrics
     assert "mae_runs" in metrics["per_target_mae"]
     assert "mae_balls" in metrics["per_target_mae"]
@@ -557,6 +555,7 @@ def test_save_artifacts_writes_scaler_model_and_report(tmp_path):
     report_path = tmp_path / "artifacts" / "tuning_report_batting_ODI.json"
     assert report_path.exists()
     import json
+
     with open(report_path, encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded["best_algorithm"] == "rf"
@@ -581,6 +580,7 @@ def test_save_artifacts_model_only_writes_model_and_report(tmp_path):
     _save_artifacts_model_only(pipe, out_dir, "extras", "T20", joblib_compress=1, report=report)
     assert (tmp_path / "extras" / "extras_model_T20.joblib").exists()
     import json
+
     with open(tmp_path / "extras" / "tuning_report_extras_T20.json", encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded["best_algorithm"] == "gb"

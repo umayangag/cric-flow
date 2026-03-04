@@ -66,17 +66,17 @@ func (mlPredictorAdapter) PredictMatchWin(ctx context.Context, w predictteam.Win
 
 // predictTeamRequest holds the parsed request body for team-selection prediction.
 type predictTeamRequest struct {
-	Format             string  `json:"format"`
-	Team1              string  `json:"team1"`
-	Team2              string  `json:"team2"`
-	Venue              string  `json:"venue"`
-	MatchDate          string  `json:"match_date"`
-	SeasonID           *int64  `json:"season_id"`
-	UseUnifiedModel    *bool   `json:"use_unified_model,omitempty"`
-	Simulate           *bool   `json:"simulate,omitempty"`
-	SimulationTopK     int     `json:"simulation_top_k,omitempty"`
-	SimulationSamples  int     `json:"simulation_samples,omitempty"`
-	SimulationMaxPairs int     `json:"simulation_max_pairs,omitempty"`
+	Format             string `json:"format"`
+	Team1              string `json:"team1"`
+	Team2              string `json:"team2"`
+	Venue              string `json:"venue"`
+	MatchDate          string `json:"match_date"`
+	SeasonID           *int64 `json:"season_id"`
+	UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
+	Simulate           *bool  `json:"simulate,omitempty"`
+	SimulationTopK     int    `json:"simulation_top_k,omitempty"`
+	SimulationSamples  int    `json:"simulation_samples,omitempty"`
+	SimulationMaxPairs int    `json:"simulation_max_pairs,omitempty"`
 	Weather            *struct {
 		Temp     float64 `json:"temp"`
 		Humidity float64 `json:"humidity"`
@@ -213,7 +213,9 @@ func buildSimulationOpts(body predictTeamRequest) (predictteam.SimulationOpts, e
 		matchups = opts.MaxMatchups
 	}
 	if matchups*opts.NumSamplesPerMatchup > maxTotalSamples {
-		return opts, errors.New("simulation would exceed max samples (reduce simulation_top_k, simulation_samples, or simulation_max_pairs)")
+		return opts, errors.New(
+			"simulation would exceed max samples (reduce simulation_top_k, simulation_samples, or simulation_max_pairs)",
+		)
 	}
 	return opts, nil
 }
@@ -230,16 +232,28 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if body.Format == "" || body.Team1 == "" || body.Team2 == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"},
+		)
 		return
 	}
 	if body.MatchDate == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_date is required (RFC3339 or YYYY-MM-DD)"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "match_date is required (RFC3339 or YYYY-MM-DD)"},
+		)
 		return
 	}
 	matchDate, err := parseMatchDate(body.MatchDate)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_date must be RFC3339 or YYYY-MM-DD: " + err.Error()})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			apiError{Code: "INVALID_PARAM", Message: "match_date must be RFC3339 or YYYY-MM-DD: " + err.Error()},
+		)
 		return
 	}
 	input := buildPredictInput(body, matchDate)

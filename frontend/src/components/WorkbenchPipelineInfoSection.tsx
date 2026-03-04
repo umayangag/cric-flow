@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
 
 const WorkbenchPipelineInfoSection: React.FC = () => {
@@ -31,8 +30,8 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
             <li>
               Writes: <code>match</code>, <code>match_inning</code>, <code>match_format</code>,{' '}
               <code>batting_data</code>, <code>bowling_data</code>, <code>fielding_data</code>,{' '}
-              <code>player</code>, <code>venue</code>, <code>opposition</code>,{' '}
-              <code>season</code>, <code>weather_data</code>, etc.
+              <code>player</code>, <code>venue</code>, <code>opposition</code>, <code>season</code>,{' '}
+              <code>weather_data</code>, etc.
             </li>
             <li>
               Each match has innings, player-level runs/balls/wickets, and optional weather. No
@@ -69,8 +68,8 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
               model is loaded.
             </li>
           </Box>
-          <strong>Commands:</strong> <code>make precompute-all-all-formats</code> (or Precompute from
-          Ops → Pipeline). Prerequisite: Import done. Required before export and before any
+          <strong>Commands:</strong> <code>make precompute-all-all-formats</code> (or Precompute
+          from Ops → Pipeline). Prerequisite: Import done. Required before export and before any
           prediction that needs form/consistency.
         </Typography>
       </Paper>
@@ -99,8 +98,8 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
               <code>GET /api/backtest/training-data?cutoff=...&amp;format=all</code>.
             </li>
             <li>
-              Each row is one player-match (batting/bowling/fielding) or one match (extras/win), with
-              all features and the target column.
+              Each row is one player-match (batting/bowling/fielding) or one match (extras/win),
+              with all features and the target column.
             </li>
           </Box>
           <strong>Commands:</strong> <code>make export-dataset</code> (or Export from Ops →
@@ -115,17 +114,17 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
         </Typography>
         <Typography variant="body2" color="text.secondary" component="div">
           <strong>What:</strong> Train ML models (batting, bowling, fielding, extras, win) from the
-          exported CSVs or training-data API. Produces joblib artifacts (model + optional scaler) per
-          model type and format.
+          exported CSVs or training-data API. Produces joblib artifacts (model + optional scaler)
+          per model type and format.
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
             <li>
               Reads: CSVs from export_dir or <code>GET /api/backtest/training-data</code>. Uses
               hyperparameters from <code>ml-service/configs/</code> (or auto-tune results).
             </li>
             <li>
-              Writes: <code>output/ml-service/</code> — e.g.{' '}
-              <code>batting_model_T20.joblib</code>, <code>batting_scaler_T20.joblib</code>,{' '}
-              <code>extras_model_ODI.joblib</code>, <code>win_model.joblib</code>, etc.
+              Writes: <code>output/ml-service/</code> — e.g. <code>batting_model_T20.joblib</code>,{' '}
+              <code>batting_scaler_T20.joblib</code>, <code>extras_model_ODI.joblib</code>,{' '}
+              <code>win_model.joblib</code>, etc.
             </li>
             <li>
               Optional: <code>train_combination_meta</code> — learns Ridge weights to combine
@@ -179,8 +178,8 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
           component="div"
           sx={{ fontSize: '0.85rem' }}
         >
-          Import → Precompute → Export → Train (batting, bowling, fielding, extras, win) [→ optional:
-          train_combination_meta] → Prediction
+          Import → Precompute → Export → Train (batting, bowling, fielding, extras, win) [→
+          optional: train_combination_meta] → Prediction
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           Ops Status → Pipeline shows each step as runnable only after the previous completed.

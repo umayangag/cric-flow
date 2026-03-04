@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	pacli "github.com/umayangag/cric-flow/go-app/internal/services/precomputeall"
-	pfsvc "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
@@ -21,6 +19,8 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
+	pacli "github.com/umayangag/cric-flow/go-app/internal/services/precomputeall"
+	pfsvc "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
 
 func main() { os.Exit(run()) }

@@ -10,9 +10,9 @@ import (
 	"os"
 	"time"
 
-	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
+	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 func main() { os.Exit(run()) }

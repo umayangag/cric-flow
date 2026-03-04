@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
-	
+
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
@@ -131,7 +131,6 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 // runExportHandler starts export-dataset in the background with tracking.
 func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	outDir := config.DefaultExportDir()
@@ -181,7 +180,6 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
 }
 
-
 // makeMLTrainHandler creates a handler for a training pipeline step that calls an ML service endpoint.
 // For auto_tune, forwards query params: model, format, all_formats, unified.
 // For train_* steps: if no auto-tuned params exist in DB and confirm_use_default is not set, returns 200 with
@@ -192,7 +190,7 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 		q := r.URL.Query()
 		cutoff := q.Get("cutoff")
 		if cutoff == "" {
- 		cutoff = pipelinesvc.DefaultCutoff()
+			cutoff = pipelinesvc.DefaultCutoff()
 		}
 		args["cutoff"] = cutoff
 		querySuffix := "?cutoff=" + url.QueryEscape(strings.TrimSpace(cutoff))
@@ -259,10 +257,10 @@ func (a *App) makeMLTrainHandler(stepID, command, mlEndpoint string) http.Handle
 				jobCtx,
 				command,
 				args,
- 			pipelinesvc.TrainStepTimeout(),
- 			func(ctx context.Context) (any, error) {
- 				return nil, pipelinesvc.CallMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
- 			},
+				pipelinesvc.TrainStepTimeout(),
+				func(ctx context.Context) (any, error) {
+					return nil, pipelinesvc.CallMLTrainEndpoint(ctx, mlEndpoint, querySuffix)
+				},
 			)
 			if runErr != nil {
 				slog.Error(command+" failed", slog.Any("err", runErr))

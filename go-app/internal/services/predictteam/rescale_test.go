@@ -10,14 +10,14 @@ func TestRescaleTeamPredictionsToWinProbability(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		team1      []SelectedPlayer
-		team2      []SelectedPlayer
-		extras1    float64
-		extras2    float64
-		winProb    float64
-		wantRuns1  float64 // sum of team1 runs after rescale
-		wantRuns2  float64 // sum of team2 runs after rescale
+		name      string
+		team1     []SelectedPlayer
+		team2     []SelectedPlayer
+		extras1   float64
+		extras2   float64
+		winProb   float64
+		wantRuns1 float64 // sum of team1 runs after rescale
+		wantRuns2 float64 // sum of team2 runs after rescale
 	}{
 		{
 			name: "equal_probability_no_change",

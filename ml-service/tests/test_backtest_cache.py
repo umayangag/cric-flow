@@ -1,6 +1,5 @@
 """Unit tests for BacktestCache behavior (in-memory backtest cache)."""
 
-import time
 from typing import Any, Dict, List
 from unittest.mock import patch
 

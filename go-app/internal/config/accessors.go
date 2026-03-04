@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 )
+
 // EffectiveScoreNormParams returns format-specific normalization divisors for score computation.
 // Falls back to defaults when format is not configured.
 func EffectiveScoreNormParams(cfg *Config, format string) (batDiv, wicketDiv, econBase, fieldDiv float64) {
@@ -29,7 +30,6 @@ func EffectiveScoreNormParams(cfg *Config, format string) (batDiv, wicketDiv, ec
 	}
 	return batDiv, wicketDiv, econBase, fieldDiv
 }
-
 
 // EffectiveScoreWeightsForFormat returns score weights for the given format, with per-format override when configured.
 func EffectiveScoreWeightsForFormat(cfg *Config, format string) (bat, bowl, field, keeperBonus float64) {
@@ -422,4 +422,3 @@ func DefaultExportDir() string {
 	}
 	return filepath.Join("output", "go-app")
 }
-

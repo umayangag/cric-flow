@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 	"github.com/umayangag/cric-flow/go-app/internal/selection"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 // These are orchestration-style tests that live next to the cmd but use the public Runner API.

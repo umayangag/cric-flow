@@ -12,19 +12,19 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	pfcmd "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
 
 // Package-level function variables allow tests to replace external dependencies.
 var (
-	loadConfig          = config.Load
-	connectDB           = db.Connect
-	getFormatIDByCode   = db.GetMatchFormatIDByCode
-	getResourceLimit    = resources.GetLimit
-	newRunner           = func() replayRunner { return pfcmd.NewRunner() }
+	loadConfig        = config.Load
+	connectDB         = db.Connect
+	getFormatIDByCode = db.GetMatchFormatIDByCode
+	getResourceLimit  = resources.GetLimit
+	newRunner         = func() replayRunner { return pfcmd.NewRunner() }
 )
 
 // replayRunner abstracts the RunReplay method for testability.
