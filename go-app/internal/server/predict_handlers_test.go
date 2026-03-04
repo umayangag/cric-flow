@@ -4,47 +4,66 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestParseMatchDate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
-		s       string
+		input   string
+		want    time.Time
 		wantErr bool
 	}{
-		{"empty", "", true},
-		{"invalid", "not-a-date", true},
-		{"RFC3339", "2024-03-15T12:00:00Z", false},
-		{"RFC3339 with offset", "2024-03-15T12:00:00+05:30", false},
-		{"date only", "2024-03-15", false},
-		{"whitespace trimmed", "  2024-03-15  ", false},
+		{
+			name:  "rfc3339_full",
+			input: "2025-06-15T10:30:00Z",
+			want:  time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC),
+		},
+		{
+			name:  "rfc3339_with_offset",
+			input: "2025-06-15T10:30:00+05:30",
+			want:  time.Date(2025, 6, 15, 10, 30, 0, 0, time.FixedZone("", 5*3600+30*60)),
+		},
+		{
+			name:  "date_only_yyyy_mm_dd",
+			input: "2025-06-15",
+			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:  "whitespace_trimmed",
+			input: "  2025-06-15  ",
+			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:    "empty_string",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid_format",
+			input:   "15/06/2025",
+			wantErr: true,
+		},
+		{
+			name:    "partial_date",
+			input:   "2025-06",
+			wantErr: true,
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseMatchDate(tt.s)
+			t.Parallel()
+			got, err := parseMatchDate(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			require.False(t, got.IsZero())
+			assert.True(t, tt.want.Equal(got), "expected %v, got %v", tt.want, got)
 		})
 	}
-}
-
-func TestParseMatchDate_ValidFormats(t *testing.T) {
-	// RFC3339
-	t1, err := parseMatchDate("2024-03-15T12:00:00Z")
-	require.NoError(t, err)
-	require.Equal(t, 2024, t1.Year())
-	require.Equal(t, time.March, t1.Month())
-	require.Equal(t, 15, t1.Day())
-
-	// Date only
-	t2, err := parseMatchDate("2024-03-15")
-	require.NoError(t, err)
-	require.Equal(t, 2024, t2.Year())
-	require.Equal(t, time.March, t2.Month())
-	require.Equal(t, 15, t2.Day())
 }
