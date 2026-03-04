@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
-	tpcmd "github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
 	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
@@ -25,7 +23,7 @@ func main() { os.Exit(run()) }
 
 func run() int {
 	fs := flag.NewFlagSet("team-predictor", flag.ContinueOnError)
-	opts, err := cli.ParseArgs(fs, os.Args[1:])
+	opts, err := svc.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parse failed", slog.Any("err", err))
 		return 2
@@ -59,8 +57,7 @@ func run() int {
 	}()
 
 	service := svc.NewService(nil)
-	runner := tpcmd.NewRunner(service)
-	resp, runErr = runner.Run(ctx, opts)
+	resp, runErr = service.Predict(ctx, opts)
 	if runErr != nil {
 		slog.Error("team-predictor failed", slog.Any("err", runErr))
 		return 1

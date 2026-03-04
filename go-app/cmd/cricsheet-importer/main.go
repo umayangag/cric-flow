@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	cricsheetcli "github.com/umayangag/cric-flow/go-app/internal/cli/cricsheetimporter"
+	cricsheetcli "github.com/umayangag/cric-flow/go-app/internal/services/cricsheetimporter"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"

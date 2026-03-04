@@ -7,8 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teamselect"
-	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/teamselect"
+	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 	"github.com/umayangag/cric-flow/go-app/internal/selection"
 )
@@ -63,7 +62,7 @@ func sampleResult() selection.Result {
 func TestOrch_Table(t *testing.T) {
 	t.Parallel()
 
-	type arrangeFn func() (r cmd.Runner, opts cli.Options, buf *bytes.Buffer, fc *fakeConnector)
+	type arrangeFn func() (r ts.Runner, opts ts.Options, buf *bytes.Buffer, fc *fakeConnector)
 	type assertFn func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector)
 
 	cases := []struct {
@@ -73,12 +72,12 @@ func TestOrch_Table(t *testing.T) {
 	}{
 		{
 			name: "FromDB success prints team and connects once",
-			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
 				fs := fakeSelector{res: sampleResult()}
 				fc := &fakeConnector{}
-				r := cmd.NewRunner(fs, fc)
+				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := cli.Options{
+				opts := ts.Options{
 					FromDB:     true,
 					MatchID:    1,
 					Format:     "T20",
@@ -99,12 +98,12 @@ func TestOrch_Table(t *testing.T) {
 		},
 		{
 			name: "FromDB connect error surfaces",
-			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
 				fs := fakeSelector{res: sampleResult()}
 				fc := &fakeConnector{err: errors.New("boom")}
-				r := cmd.NewRunner(fs, fc)
+				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := cli.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}
+				opts := ts.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}
 				return r, opts, buf, fc
 			},
 			assert: func(t *testing.T, _ *bytes.Buffer, err error, _ *fakeConnector) {
@@ -114,12 +113,12 @@ func TestOrch_Table(t *testing.T) {
 		},
 		{
 			name: "FromCSV success prints team and does not connect",
-			arrange: func() (cmd.Runner, cli.Options, *bytes.Buffer, *fakeConnector) {
+			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
 				fs := fakeSelector{res: sampleResult()}
 				fc := &fakeConnector{}
-				r := cmd.NewRunner(fs, fc)
+				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := cli.Options{
+				opts := ts.Options{
 					FromDB:   false,
 					PoolPath: "/tmp/pool.csv",
 					MatchID:  1,
@@ -183,9 +182,9 @@ func TestOrch_OptionPropagation_DB(t *testing.T) {
 	t.Parallel()
 	sel := &capturingSelector{}
 	fc := &fakeConnector{}
-	r := cmd.NewRunner(sel, fc)
+	r := ts.NewRunner(sel, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{
+	opts := ts.Options{
 		FromDB:        true,
 		MatchID:       1,
 		Format:        "T20",
@@ -206,9 +205,9 @@ func TestOrch_OptionPropagation_CSV(t *testing.T) {
 	t.Parallel()
 	sel := &capturingSelector{}
 	fc := &fakeConnector{}
-	r := cmd.NewRunner(sel, fc)
+	r := ts.NewRunner(sel, fc)
 	buf := &bytes.Buffer{}
-	opts := cli.Options{
+	opts := ts.Options{
 		FromDB:     false,
 		PoolPath:   "/tmp/pool.csv",
 		MatchID:    1,

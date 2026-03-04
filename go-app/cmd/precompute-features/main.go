@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	pfcli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputefeatures"
-	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
+	pfsvc "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
+	
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
@@ -26,7 +26,7 @@ func main() { os.Exit(run()) }
 
 func run() int {
 	fs := flag.NewFlagSet("precompute-features", flag.ContinueOnError)
-	opts, err := pfcli.ParseArgs(fs, os.Args[1:])
+	opts, err := pfsvc.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		return 2
@@ -64,7 +64,7 @@ func run() int {
 
 	startMeta := map[string]any{"format": opts.Format, "replay": opts.Replay}
 	runErr := pipeline.RunJob(ctx, "precompute-features", startMeta, 0, func(jobCtx context.Context) (any, error) {
-		runner := pfcmd.NewRunner()
+		runner := pfsvc.NewRunner()
 		if opts.Replay {
 			err := runner.RunReplay(jobCtx, opts.Format, formatID, opts.EWMAlpha, opts.LastN, windowN, 0)
 			return map[string]any{"type": "replay"}, err

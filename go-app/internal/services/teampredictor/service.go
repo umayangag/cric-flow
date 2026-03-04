@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
 	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
 
@@ -18,7 +17,7 @@ type Service struct {
 // NewService wires the ML client dependency.
 func NewService(c MLClient) *Service { return &Service{mlClient: c} }
 
-func (s *Service) Predict(ctx context.Context, opts cli.Options) (mlclient.PredictResponse, error) {
+func (s *Service) Predict(ctx context.Context, opts Options) (mlclient.PredictResponse, error) {
 	if s == nil || s.mlClient == nil {
 		return mlclient.PredictResponse{}, errors.New("nil service or client client")
 	}

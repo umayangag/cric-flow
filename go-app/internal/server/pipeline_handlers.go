@@ -10,14 +10,13 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	exportcli "github.com/umayangag/cric-flow/go-app/internal/cli/exportdataset"
-	expcmd "github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset"
+	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+	
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
-	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -137,7 +136,7 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	outDir := config.DefaultExportDir()
 	cfg := config.Load()
-	opts := exportcli.Options{
+	opts := exportsvc.Options{
 		OutDir:  outDir,
 		Unified: true,
 	}
@@ -166,7 +165,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 				field := exportsvc.NewFieldingService(repo)
 				extras := exportsvc.NewExtrasService(repo)
 				win := exportsvc.NewWinService(repo)
-				runner := expcmd.NewRunnerWithServices(bat, bow, field, extras, win)
+				runner := exportsvc.NewRunnerWithServices(bat, bow, field, extras, win)
 				err := runner.Run(ctx, opts)
 				return map[string]any{"out_dir": outDir}, err
 			},

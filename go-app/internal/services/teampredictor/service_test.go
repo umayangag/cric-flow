@@ -7,22 +7,21 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	cli "github.com/umayangag/cric-flow/go-app/internal/cli/teampredictor"
 	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teampredictor"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teampredictor/internal/mocks"
 )
 
-type assertFn func(t *testing.T, out mlclient.PredictResponse, err error)
+type svcAssertFn func(t *testing.T, out mlclient.PredictResponse, err error)
 
-func assertNoErrorPlayers(want []string) assertFn {
+func assertNoErrorPlayers(want []string) svcAssertFn {
 	return func(t *testing.T, out mlclient.PredictResponse, err error) {
 		require.NoError(t, err)
 		require.Equal(t, want, out.Players)
 	}
 }
 
-func assertErrContains(sub string) assertFn {
+func assertErrContains(sub string) svcAssertFn {
 	return func(t *testing.T, _ mlclient.PredictResponse, err error) {
 		require.Error(t, err)
 		require.Contains(t, strings.ToLower(err.Error()), strings.ToLower(sub))
@@ -36,13 +35,13 @@ func TestService_Predict_Table(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		opts    cli.Options
+		opts    svc.Options
 		arrange arrangeFn
-		assert  assertFn
+		assert  svcAssertFn
 	}{
 		{
 			name: "happy path",
-			opts: cli.Options{MatchID: 1, Format: "T20", Season: "2019", Bat: 6, Bowl: 5},
+			opts: svc.Options{MatchID: 1, Format: "T20", Season: "2019", Bat: 6, Bowl: 5},
 			arrange: func(t *testing.T) *svc.Service {
 				m := mocks.NewMockMLClient(t)
 				m.EXPECT().PredictTeam(
@@ -55,7 +54,7 @@ func TestService_Predict_Table(t *testing.T) {
 		},
 		{
 			name: "client error surfaces",
-			opts: cli.Options{MatchID: 2, Format: "ODI", Season: "2011"},
+			opts: svc.Options{MatchID: 2, Format: "ODI", Season: "2011"},
 			arrange: func(t *testing.T) *svc.Service {
 				m := mocks.NewMockMLClient(t)
 				m.EXPECT().PredictTeam(
@@ -68,7 +67,7 @@ func TestService_Predict_Table(t *testing.T) {
 		},
 		{
 			name: "invalid options",
-			opts: cli.Options{MatchID: 0, Format: "T20", Season: "2019"},
+			opts: svc.Options{MatchID: 0, Format: "T20", Season: "2019"},
 			arrange: func(t *testing.T) *svc.Service {
 				// Predict should short-circuit before calling client
 				m := mocks.NewMockMLClient(t)
@@ -78,7 +77,7 @@ func TestService_Predict_Table(t *testing.T) {
 		},
 		{
 			name: "nil service",
-			opts: cli.Options{MatchID: 1, Format: "T20", Season: "2019"},
+			opts: svc.Options{MatchID: 1, Format: "T20", Season: "2019"},
 			arrange: func(_ *testing.T) *svc.Service {
 				return svc.NewService(nil)
 			},

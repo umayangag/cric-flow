@@ -1,3 +1,4 @@
+// Command evaluate computes prediction-quality metrics.
 package main
 
 import (
@@ -6,10 +7,9 @@ import (
 	"log/slog"
 	"os"
 
-	clieval "github.com/umayangag/cric-flow/go-app/internal/cli/evaluate"
-	cmd "github.com/umayangag/cric-flow/go-app/internal/commands/evaluate"
-	"github.com/umayangag/cric-flow/go-app/internal/logger"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
+
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
 )
 
 // demoRepo preserves existing scaffold behavior by returning fixed arrays.
@@ -25,9 +25,8 @@ func (demoRepo) LoadInputs(_ context.Context, _, _ string) (svc.Inputs, error) {
 }
 
 func main() {
-	// Thin delegator: parse, wire, run.
 	fs := flag.NewFlagSet("evaluate", flag.ContinueOnError)
-	opts, err := clieval.ParseArgs(fs, os.Args[1:])
+	opts, err := svc.ParseArgs(fs, os.Args[1:])
 	if err != nil {
 		slog.Error("flag parsing failed", slog.Any("err", err))
 		os.Exit(1)
@@ -35,7 +34,7 @@ func main() {
 
 	logger.SetupFromEnv()
 
-	r := cmd.Runner{Repo: demoRepo{}, Out: os.Stdout}
+	r := svc.Runner{Repo: demoRepo{}, Out: os.Stdout}
 	if err := r.Run(context.Background(), opts); err != nil {
 		panic(err)
 	}
