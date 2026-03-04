@@ -144,8 +144,8 @@ lint:
 # Coverage targets
 .PHONY: coverage coverage-html coverage-func coverage-check
 
-# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=58 make coverage-check`
-COV_MIN ?= 58
+# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=60 make coverage-check`
+COV_MIN ?= 60
 
 # Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data structs), internal/safeurl (minimal util),
 # internal/db, internal/db/exportqueries (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),

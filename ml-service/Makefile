@@ -6,8 +6,8 @@ PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
-# Enforced by CI and make coverage-check. Set to 56 after replacing run_auto_tune* with mocks and recovering coverage via other unit tests (save/prior/cv_metrics/config/reconciliation/utils). Raise to 57+ once additional tests cover tuning/orchestrator or prediction_service.
-COV_MIN?=56
+# Enforced by CI and make coverage-check. Raise to 57 once additional tests cover tuning/orchestrator or prediction_service.
+COV_MIN?=57
 # CI sets REQUIREMENTS_FILE=requirements-ci.txt so venv gets minimal deps (no pycaret/autogluon).
 REQUIREMENTS_FILE?=requirements.txt
 
