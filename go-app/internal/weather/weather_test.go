@@ -3,6 +3,8 @@ package weather
 import (
 	"context"
 	"testing"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func TestNormalizeVenue(t *testing.T) {
@@ -36,6 +38,22 @@ func TestEnqueueJob_EmptyVenueReturnsNil(t *testing.T) {
 	err := EnqueueJob(ctx, 1, "", "", 2)
 	if err != nil {
 		t.Errorf("EnqueueJob with empty venue/city should return nil, got %v", err)
+	}
+}
+
+func TestEnqueueJob_DBErrorPropagated(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Ensure db.EnqueueWeatherJob sees a nil pool and returns an error, which
+	// EnqueueJob should propagate after logging.
+	oldPool := db.Pool
+	defer func() { db.Pool = oldPool }()
+	db.Pool = nil
+
+	err := EnqueueJob(ctx, 42, "Melbourne", "MCG", 2)
+	if err == nil {
+		t.Fatalf("EnqueueJob should propagate error when db pool is nil")
 	}
 }
 

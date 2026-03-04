@@ -366,3 +366,76 @@ func TestInProgressByCommand(t *testing.T) {
 		require.Empty(t, got)
 	})
 }
+
+func TestCancelStaleInProgressMigrations(t *testing.T) {
+	// Do not use t.Parallel(); uses db.SetDB (global).
+
+	t.Run("db_not_available_or_too_short_returns_zero", func(t *testing.T) {
+		db.SetDB(nil)
+		defer func() { db.SetDB(nil) }()
+		n, err := CancelStaleInProgressMigrations(context.Background(), "reason", 500*time.Millisecond)
+		require.NoError(t, err)
+		require.Equal(t, 0, n)
+	})
+
+	t.Run("happy_path_returns_updated_count", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		// Expect a single QueryRow call and scan an integer count.
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(scanIntRow(3))
+
+		n, err := CancelStaleInProgressMigrations(context.Background(), "reason", 2*time.Hour)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		m.AssertExpectations(t)
+	})
+}
+
+func TestGetInProgressMigrationIDForCommand(t *testing.T) {
+	// Do not use t.Parallel(); uses db.SetDB (global).
+
+	t.Run("db_not_available_or_empty_command_returns_zero", func(t *testing.T) {
+		db.SetDB(nil)
+		defer func() { db.SetDB(nil) }()
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "")
+		require.NoError(t, err)
+		require.Equal(t, 0, id)
+	})
+
+	t.Run("no_rows_returns_zero", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanErrRow{err: sql.ErrNoRows})
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.NoError(t, err)
+		require.Equal(t, 0, id)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("happy_path_returns_id", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanIntRow(42))
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.NoError(t, err)
+		require.Equal(t, 42, id)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("query_error_propagated", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanErrRow{err: errors.New("db error")})
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.Error(t, err)
+		require.Equal(t, 0, id)
+		m.AssertExpectations(t)
+	})
+}
