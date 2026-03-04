@@ -3,6 +3,7 @@ package teamselect_test
 import (
 	"flag"
 	"os"
+	"strings"
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
@@ -55,19 +56,7 @@ func assertErrorContains(sub string) optsAssertFn {
 }
 
 func indexOfStr(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
+	return strings.Index(s, sub)
 }
 
 func TestParseArgs_Basic(t *testing.T) {
