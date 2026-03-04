@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import KFold, TimeSeriesSplit
+from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -441,7 +442,7 @@ def _minimal_batting_pipeline():
     return Pipeline(
         [
             ("scaler", StandardScaler()),
-            ("est", RandomForestRegressor(n_estimators=1, random_state=42)),
+            ("est", MultiOutputRegressor(RandomForestRegressor(n_estimators=1, random_state=42))),
         ]
     )
 
@@ -453,7 +454,7 @@ def _minimal_model_only_pipeline(regression=True):
         if regression
         else RandomForestClassifier(n_estimators=1, random_state=42)
     )
-    return Pipeline([("est", est)])
+    return Pipeline([("scaler", StandardScaler()), ("est", est)])
 
 
 def test_run_auto_tune_batting_minimal(tmp_path):
