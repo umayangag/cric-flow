@@ -56,11 +56,13 @@ describe('AuthContext', () => {
   });
 
   it('useAuth throws when used outside AuthProvider', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const Throwing = () => {
       useAuth();
       return null;
     };
     expect(() => render(<Throwing />)).toThrow('useAuth must be used within an AuthProvider');
+    consoleErrorSpy.mockRestore();
   });
 
   it('provides isAuthenticated false and null apiKey when no key in storage', () => {

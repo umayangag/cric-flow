@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React from 'react';
 import {
   Box,
   Button,
@@ -14,19 +14,10 @@ import {
   Alert,
   CircularProgress,
   TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
 } from '@mui/material';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
-import { api } from '../api';
-import type { PredictTeamSelectionResponse, PredictTeamSelectedPlayer } from '../types';
-
-/** Maximum days in the future allowed for match date (predictions degrade beyond this). */
-const MAX_FUTURE_DAYS = 14;
+import TeamTable from './TeamTable';
+import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
 
 const filter = createFilterOptions<string>();
 
@@ -37,179 +28,38 @@ function teamFilterOptions(options: string[], params: Parameters<typeof filter>[
   return filtered;
 }
 
-function formatDateForInput(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 const UpcomingMatchTab: React.FC = () => {
-  const [format, setFormat] = useState<string>('');
-  const [team1, setTeam1] = useState<string>('');
-  const [team2, setTeam2] = useState<string>('');
-  const [venue, setVenue] = useState<string>('');
-  const [matchDate, setMatchDate] = useState<string>('');
-  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
-  const [runSimulation, setRunSimulation] = useState<boolean>(false);
-
-  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
-  const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
-  const [availableTeam2s, setAvailableTeam2s] = useState<string[]>([]);
-  const [venueOptions, setVenueOptions] = useState<string[]>([]);
-  const [venueLoading, setVenueLoading] = useState<boolean>(false);
-  const venueSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<PredictTeamSelectionResponse | null>(null);
-
-  // Date constraints: today and today + MAX_FUTURE_DAYS
-  const { minDate, maxDate } = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const max = new Date(today);
-    max.setDate(max.getDate() + MAX_FUTURE_DAYS);
-    return {
-      minDate: formatDateForInput(today),
-      maxDate: formatDateForInput(max),
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    api
-      .getFormats()
-      .then((f) => {
-        if (active) setAvailableFormats(f);
-      })
-      .catch((e) => {
-        if (active)
-          setError(`Failed to load formats: ${e instanceof Error ? e.message : String(e)}`);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!format) {
-      setAvailableTeam1s([]);
-      setTeam1('');
-      return;
-    }
-    let active = true;
-    api
-      .getTeamsByFormat(format)
-      .then((teams) => {
-        if (active) {
-          setAvailableTeam1s(teams);
-          setTeam1((prev) => (prev && !teams.includes(prev) ? '' : prev));
-        }
-      })
-      .catch((e) => {
-        if (active) setError(`Failed to load teams: ${e instanceof Error ? e.message : String(e)}`);
-      });
-    return () => {
-      active = false;
-    };
-  }, [format]);
-
-  useEffect(() => {
-    if (!format || !team1) {
-      setAvailableTeam2s([]);
-      setTeam2('');
-      return;
-    }
-    let active = true;
-    api
-      .getOpponents(format, team1)
-      .then((opps) => {
-        if (active) {
-          setAvailableTeam2s(opps);
-          setTeam2((prev) => (prev && !opps.includes(prev) ? '' : prev));
-        }
-      })
-      .catch((e) => {
-        if (active)
-          setError(`Failed to load opponents: ${e instanceof Error ? e.message : String(e)}`);
-      });
-    return () => {
-      active = false;
-    };
-  }, [format, team1]);
-
-  const fetchVenueOptions = (query: string) => {
-    const trimmed = query.trim();
-    if (trimmed.length < 3) {
-      setVenueOptions([]);
-      return;
-    }
-    setVenueLoading(true);
-    api
-      .searchVenues(trimmed)
-      .then((list) => setVenueOptions(list))
-      .catch(() => setVenueOptions([]))
-      .finally(() => setVenueLoading(false));
-  };
-
-  const handleVenueInputChange = (_: React.SyntheticEvent, value: string) => {
-    setVenue(value);
-    if (venueSearchRef.current) {
-      clearTimeout(venueSearchRef.current);
-      venueSearchRef.current = null;
-    }
-    if (value.trim().length < 3) {
-      setVenueOptions([]);
-      return;
-    }
-    venueSearchRef.current = setTimeout(() => fetchVenueOptions(value), 300);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (venueSearchRef.current) clearTimeout(venueSearchRef.current);
-    };
-  }, []);
-
-  const dateError = useMemo(() => {
-    if (!matchDate) return 'Match date is required';
-    // Parse YYYY-MM-DD as local date (input[type=date] gives calendar date; new Date(str) parses as UTC).
-    const [y, m, d] = matchDate.split('-').map(Number);
-    const selectedLocal = new Date(y, m - 1, d);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const max = new Date(today);
-    max.setDate(max.getDate() + MAX_FUTURE_DAYS);
-    if (selectedLocal < today) return 'Date must be today or in the future';
-    if (selectedLocal > max) return `Date must be within ${MAX_FUTURE_DAYS} days from today`;
-    return null;
-  }, [matchDate]);
-
-  const canPredict = useMemo(
-    () => !!format && !!team1 && !!team2 && !!matchDate && !dateError && !loading,
-    [format, team1, team2, matchDate, dateError, loading],
-  );
-
-  const handlePredict = async () => {
-    if (!canPredict) return;
-    setError(null);
-    setResult(null);
-    setLoading(true);
-    try {
-      const res = await api.predictTeamSelection({
-        format: format.trim(),
-        team1: team1.trim(),
-        team2: team2.trim(),
-        venue: venue.trim() || undefined,
-        match_date: matchDate,
-        use_unified_model: predictionModel === 'unified',
-        simulate: runSimulation,
-      });
-      setResult(res);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    format,
+    setFormat,
+    team1,
+    setTeam1,
+    team2,
+    setTeam2,
+    venue,
+    setVenue,
+    matchDate,
+    setMatchDate,
+    predictionModel,
+    setPredictionModel,
+    runSimulation,
+    setRunSimulation,
+    availableFormats,
+    availableTeam1s,
+    availableTeam2s,
+    venueOptions,
+    venueLoading,
+    handleVenueInputChange,
+    loading,
+    error,
+    result,
+    minDate,
+    maxDate,
+    dateError,
+    canPredict,
+    handlePredict,
+    maxFutureDays,
+  } = useUpcomingMatch();
 
   return (
     <Box>
@@ -218,7 +68,7 @@ const UpcomingMatchTab: React.FC = () => {
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Select format, teams, venue (optional), and a future match date. Date must be today or
-        within {MAX_FUTURE_DAYS} days to ensure accurate predictions.
+        within {maxFutureDays} days to ensure accurate predictions.
       </Typography>
 
       <Stack spacing={2} sx={{ mb: 3 }}>
@@ -285,10 +135,7 @@ const UpcomingMatchTab: React.FC = () => {
           value={matchDate}
           onChange={(e) => setMatchDate(e.target.value)}
           InputLabelProps={{ shrink: true }}
-          inputProps={{
-            min: minDate,
-            max: maxDate,
-          }}
+          inputProps={{ min: minDate, max: maxDate }}
           error={!!dateError}
           helperText={dateError}
           fullWidth
@@ -410,47 +257,5 @@ const UpcomingMatchTab: React.FC = () => {
     </Box>
   );
 };
-
-function TeamTable({
-  teamName,
-  players,
-}: {
-  teamName: string;
-  players: PredictTeamSelectedPlayer[];
-}) {
-  return (
-    <Paper variant="outlined" sx={{ flex: 1, overflow: 'hidden' }}>
-      <Typography variant="subtitle2" sx={{ px: 2, py: 1, bgcolor: 'action.hover' }}>
-        {teamName}
-      </Typography>
-      <TableContainer>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell>Player</TableCell>
-              <TableCell align="right">Runs</TableCell>
-              <TableCell align="right">Wkts</TableCell>
-              <TableCell align="right">Econ</TableCell>
-              <TableCell align="right">Catches</TableCell>
-              <TableCell align="right">RO</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {players.map((p) => (
-              <TableRow key={p.player_id}>
-                <TableCell>{p.player_name}</TableCell>
-                <TableCell align="right">{p.runs.toFixed(1)}</TableCell>
-                <TableCell align="right">{p.wickets.toFixed(1)}</TableCell>
-                <TableCell align="right">{p.economy.toFixed(2)}</TableCell>
-                <TableCell align="right">{p.catches.toFixed(0)}</TableCell>
-                <TableCell align="right">{p.run_outs.toFixed(0)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
-  );
-}
 
 export default UpcomingMatchTab;

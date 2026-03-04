@@ -541,6 +541,16 @@ def test_get_tuned_params_from_go_app_params_string_json_decode_fails():
     assert result is None
 
 
+def test_save_tuned_params_to_go_app_success(monkeypatch):
+    """save_tuned_params_to_go_app returns without raising on 2xx response."""
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
+
+
 def test_save_tuned_params_to_go_app_http_error_raises():
     """save_tuned_params_to_go_app raises ValueError on HTTPError."""
     import urllib.error
@@ -557,3 +567,22 @@ def test_save_tuned_params_to_go_app_os_error_raises():
     with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
         with pytest.raises(ValueError, match="request failed"):
             config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
+
+
+def test_get_tuning_config_algorithms_all_expands_to_list(monkeypatch):
+    """get_tuning_config with algorithms='all' or None uses default list."""
+    config_mod._cached = None
+    with patch("ml.config._load", return_value={"ml": {"tuning": {"algorithms": "all", "cv_splits": 5, "n_iter": 25}}}):
+        cfg = get_tuning_config()
+    assert cfg["algorithms"] == ["rf", "gb", "quantile"]
+
+
+def test_get_tuning_config_validation_method_invalid_falls_back_to_walk_forward(monkeypatch):
+    """get_tuning_config with invalid validation_method uses walk_forward."""
+    config_mod._cached = None
+    with patch(
+        "ml.config._load",
+        return_value={"ml": {"tuning": {"validation_method": "other", "cv_splits": 5, "n_iter": 25}}},
+    ):
+        cfg = get_tuning_config()
+    assert cfg["validation_method"] == "walk_forward"

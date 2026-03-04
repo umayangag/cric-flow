@@ -366,3 +366,279 @@ func TestInProgressByCommand(t *testing.T) {
 		require.Empty(t, got)
 	})
 }
+
+func TestCancelStaleInProgressMigrations(t *testing.T) {
+	// Do not use t.Parallel(); uses db.SetDB (global).
+
+	t.Run("db_not_available_or_too_short_returns_zero", func(t *testing.T) {
+		db.SetDB(nil)
+		defer func() { db.SetDB(nil) }()
+		n, err := CancelStaleInProgressMigrations(context.Background(), "reason", 500*time.Millisecond)
+		require.NoError(t, err)
+		require.Equal(t, 0, n)
+	})
+
+	t.Run("happy_path_returns_updated_count", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		// Expect a single QueryRow call and scan an integer count.
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(scanIntRow(3))
+
+		n, err := CancelStaleInProgressMigrations(context.Background(), "reason", 2*time.Hour)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		m.AssertExpectations(t)
+	})
+}
+
+func TestGetInProgressMigrationIDForCommand(t *testing.T) {
+	// Do not use t.Parallel(); uses db.SetDB (global).
+
+	t.Run("db_not_available_or_empty_command_returns_zero", func(t *testing.T) {
+		db.SetDB(nil)
+		defer func() { db.SetDB(nil) }()
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "")
+		require.NoError(t, err)
+		require.Equal(t, 0, id)
+	})
+
+	t.Run("no_rows_returns_zero", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanErrRow{err: sql.ErrNoRows})
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.NoError(t, err)
+		require.Equal(t, 0, id)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("happy_path_returns_id", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanIntRow(42))
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.NoError(t, err)
+		require.Equal(t, 42, id)
+		m.AssertExpectations(t)
+	})
+
+	t.Run("query_error_propagated", func(t *testing.T) {
+		m := &mocks.MockDB{}
+		setupDB(t, m)
+		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
+			Return(scanErrRow{err: errors.New("db error")})
+
+		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
+		require.Error(t, err)
+		require.Equal(t, 0, id)
+		m.AssertExpectations(t)
+	})
+}
+
+// stubRows implements db.Rows for testing scanMigrations and repository helpers.
+type stubRows struct {
+	migrations []Migration
+	index      int
+	err        error
+}
+
+func (s *stubRows) Next() bool {
+	if s.index < len(s.migrations) {
+		s.index++
+		return true
+	}
+	return false
+}
+
+func (s *stubRows) Scan(dest ...any) error {
+	if s.index == 0 || s.index > len(s.migrations) {
+		return errors.New("scan called with no current row")
+	}
+	m := s.migrations[s.index-1]
+
+	if len(dest) != 8 {
+		return errors.New("unexpected dest len")
+	}
+
+	if p, ok := dest[0].(*int); ok {
+		*p = m.ID
+	}
+	if p, ok := dest[1].(*string); ok {
+		*p = m.Command
+	}
+	if p, ok := dest[2].(*[]byte); ok {
+		*p = []byte(m.Args)
+	}
+	if p, ok := dest[3].(*time.Time); ok {
+		*p = m.StartedAt
+	}
+	if pp, ok := dest[4].(**time.Time); ok {
+		*pp = m.CompletedAt
+	}
+	if p, ok := dest[5].(*MigrationStatus); ok {
+		*p = m.Status
+	}
+	if p, ok := dest[6].(*[]byte); ok {
+		*p = []byte(m.Metadata)
+	}
+	if pp, ok := dest[7].(**string); ok {
+		if m.ErrorMessage == "" {
+			*pp = nil
+		} else {
+			msg := m.ErrorMessage
+			*pp = &msg
+		}
+	}
+	return nil
+}
+
+func (s *stubRows) Close() {}
+
+func (s *stubRows) Err() error { return s.err }
+
+func TestScanMigrations(t *testing.T) {
+	now := time.Now().UTC()
+	migs := []Migration{
+		{
+			ID:          1,
+			Command:     "precompute",
+			Args:        []byte(`{"k":"v"}`),
+			StartedAt:   now,
+			CompletedAt: &now,
+			Status:      StatusCompleted,
+			Metadata:    []byte(`{"meta":true}`),
+		},
+		{
+			ID:        2,
+			Command:   "export-dataset",
+			Args:      []byte(`{}`),
+			StartedAt: now.Add(time.Minute),
+			Status:    StatusInProgress,
+		},
+	}
+
+	rows := &stubRows{migrations: migs}
+
+	got, err := scanMigrations(rows)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	assert.Equal(t, migs[0].ID, got[0].ID)
+	assert.Equal(t, migs[0].Command, got[0].Command)
+	assert.Equal(t, migs[0].Status, got[0].Status)
+	assert.Equal(t, migs[0].CompletedAt, got[0].CompletedAt)
+
+	assert.Equal(t, migs[1].ID, got[1].ID)
+	assert.Equal(t, migs[1].Command, got[1].Command)
+	assert.Equal(t, migs[1].Status, got[1].Status)
+}
+
+func TestScanMigrations_ErrPropagation(t *testing.T) {
+	rows := &stubRows{err: errors.New("rows error")}
+
+	got, err := scanMigrations(rows)
+	require.Error(t, err)
+	require.Nil(t, got)
+}
+
+func TestGetInProgressMigrations_DBUnavailable(t *testing.T) {
+	db.SetDB(nil)
+	t.Cleanup(func() { db.SetDB(nil) })
+
+	got, err := GetInProgressMigrations(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestGetInProgressMigrations_HappyPath(t *testing.T) {
+	m := &mocks.MockDB{}
+	setupDB(t, m)
+
+	migs := []Migration{
+		{ID: 1, Command: "precompute"},
+		{ID: 2, Command: "export-dataset"},
+	}
+	rows := &stubRows{migrations: migs}
+
+	m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+		Return(rows, nil)
+
+	got, err := GetInProgressMigrations(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, migs[0].ID, got[0].ID)
+	assert.Equal(t, migs[1].ID, got[1].ID)
+	m.AssertExpectations(t)
+}
+
+func TestGetRecentMigrations_DBUnavailable(t *testing.T) {
+	db.SetDB(nil)
+	t.Cleanup(func() { db.SetDB(nil) })
+
+	got, err := GetRecentMigrations(context.Background(), 5)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestGetRecentMigrations_HappyPath(t *testing.T) {
+	m := &mocks.MockDB{}
+	setupDB(t, m)
+
+	migs := []Migration{
+		{ID: 1, Command: "precompute"},
+		{ID: 2, Command: "export-dataset"},
+	}
+	rows := &stubRows{migrations: migs}
+
+	m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+		Return(rows, nil)
+
+	got, err := GetRecentMigrations(context.Background(), 10)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, migs[0].ID, got[0].ID)
+	assert.Equal(t, migs[1].ID, got[1].ID)
+	m.AssertExpectations(t)
+}
+
+func TestGetMigrationsPaginated_DBUnavailable(t *testing.T) {
+	db.SetDB(nil)
+	t.Cleanup(func() { db.SetDB(nil) })
+
+	got, total, err := GetMigrationsPaginated(context.Background(), 10, 0)
+	require.NoError(t, err)
+	require.Nil(t, got)
+	require.Equal(t, 0, total)
+}
+
+func TestGetMigrationsPaginated_HappyPath(t *testing.T) {
+	m := &mocks.MockDB{}
+	setupDB(t, m)
+
+	migs := []Migration{
+		{ID: 1, Command: "precompute"},
+		{ID: 2, Command: "export-dataset"},
+	}
+	rows := &stubRows{migrations: migs}
+
+	// COUNT(*) total
+	m.On("QueryRow", mock.Anything, mock.Anything).
+		Return(scanIntRow(len(migs)))
+
+	// page rows
+	m.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(rows, nil)
+
+	got, total, err := GetMigrationsPaginated(context.Background(), 10, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, len(migs), total)
+	assert.Equal(t, migs[0].ID, got[0].ID)
+	assert.Equal(t, migs[1].ID, got[1].ID)
+	m.AssertExpectations(t)
+}

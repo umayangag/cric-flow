@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	pacli "github.com/umayangag/cric-flow/go-app/internal/cli/precomputeall"
-	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
@@ -21,6 +19,8 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
+	pacli "github.com/umayangag/cric-flow/go-app/internal/services/precomputeall"
+	pfsvc "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
 
 func main() { os.Exit(run()) }
@@ -124,7 +124,7 @@ func run() int {
 			return meta, precompute.Run(jobCtx, "", []string{opts.Format}, precomputeOpts)
 		}
 		// Single-date mode (as-of): not supported by precompute.Run, use runner directly
-		runner := pfcmd.NewRunner()
+		runner := pfsvc.NewRunner()
 		if err := runner.RunPointInTime(jobCtx, opts.Format, formatID, asOf, opts.EWMAlpha, opts.LastN, windowN, 0); err != nil {
 			return nil, err
 		}

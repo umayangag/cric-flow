@@ -72,6 +72,14 @@ def test_suggested_n_jobs_ml_n_jobs_max_invalid_ignored():
                 assert suggested_n_jobs("training") == 4
 
 
+def test_suggested_n_jobs_kind_prediction():
+    """kind='prediction' uses prediction_mb_per_job for memory cap."""
+    with patch.dict(os.environ, {"ML_MEMORY_LIMIT_MB": "2000"}, clear=False):
+        with patch("ml.resources._cpu_count", return_value=8):
+            n = suggested_n_jobs("prediction")
+            assert n >= 1
+
+
 def test_suggested_n_jobs_kind_tuning():
     """kind='tuning' uses tuning MB per job for memory cap."""
     with patch.dict(os.environ, {"ML_MEMORY_LIMIT_MB": "2500"}, clear=False):
@@ -80,8 +88,8 @@ def test_suggested_n_jobs_kind_tuning():
             assert n >= 1
 
 
-def test_suggested_n_jobs_kind_prediction():
-    """kind='prediction' uses prediction MB per job."""
+def test_suggested_n_jobs_kind_prediction_low_memory():
+    """kind='prediction' with low memory limit uses prediction MB per job."""
     with patch.dict(os.environ, {"ML_MEMORY_LIMIT_MB": "500"}, clear=False):
         with patch("ml.resources._cpu_count", return_value=8):
             n = suggested_n_jobs("prediction")

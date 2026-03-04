@@ -1,6 +1,7 @@
 """Unit tests for BacktestCache behavior (in-memory backtest cache)."""
 
 from typing import Any, Dict, List
+from unittest.mock import patch
 
 from app.backtest_cache import BacktestCache
 
@@ -58,3 +59,14 @@ def test_backtest_cache_increment_and_reset_compute_counts() -> None:
     players_after, match_after = cache.get_compute_counts()
     assert players_after == 0
     assert match_after == 0
+
+
+def test_backtest_cache_get_expired_returns_none() -> None:
+    """get() returns None when entry is past TTL."""
+    cache = BacktestCache(ttl_seconds=60, disabled=False)
+    cache.put("players", "2025-02-26T12:00:00Z", [1, 2], {"ok": True})
+    with patch("app.backtest_cache.time") as mock_time:
+        mock_time.time.side_effect = [1000.0, 1070.0]
+        cache.put("players", "2025-02-26T12:00:00Z", [1, 2], {"ok": True})
+        got = cache.get("players", "2025-02-26T12:00:00Z", [1, 2])
+    assert got is None

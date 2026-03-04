@@ -12,11 +12,25 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	pfcmd "github.com/umayangag/cric-flow/go-app/internal/commands/precomputefeatures"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
+
+// Package-level function variables allow tests to replace external dependencies.
+var (
+	loadConfig        = config.Load
+	connectDB         = db.Connect
+	getFormatIDByCode = db.GetMatchFormatIDByCode
+	getResourceLimit  = resources.GetLimit
+	newRunner         = func() replayRunner { return pfcmd.NewRunner() }
+)
+
+// replayRunner abstracts the RunReplay method for testability.
+type replayRunner interface {
+	RunReplay(ctx context.Context, code string, formatID int64, alpha float64, lastN, windowN, limit int) error
+}
 
 // RunOpts holds optional overrides for Run. Nil or zero values mean use config.
 type RunOpts struct {
@@ -35,10 +49,10 @@ type RunOpts struct {
 // Callers (API pipeline.RunJob or CLI precompute-all) set the timeout (e.g. 24h or 0 for no limit).
 func Run(parent context.Context, season string, formats []string, opts *RunOpts) (err error) {
 	ctx := parent
-	cfg := config.Load()
-	if db.Pool == nil {
+	cfg := loadConfig()
+	if !db.Available() {
 		slog.Info("precompute: connecting to database (pool was nil)")
-		if _, connectErr := db.Connect(ctx); connectErr != nil {
+		if _, connectErr := connectDB(ctx); connectErr != nil {
 			slog.Error("precompute: database connect failed", slog.Any("err", connectErr))
 			return connectErr
 		}
@@ -89,7 +103,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	}
 
 	// Resource-aware limit (from env/config: 80% of available memory/CPU). Split across formats when running in parallel.
-	totalLimit := resources.GetLimit(resources.KindPrecompute)
+	totalLimit := getResourceLimit(resources.KindPrecompute)
 	if totalLimit < 1 {
 		totalLimit = 1
 	}
@@ -110,7 +124,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	}
 	jobs := make([]formatJob, 0, len(codes))
 	for _, code := range codes {
-		formatID, idErr := db.GetMatchFormatIDByCode(ctx, code)
+		formatID, idErr := getFormatIDByCode(ctx, code)
 		if idErr != nil {
 			slog.Error("precompute: get format ID failed", slog.String("format", code), slog.Any("err", idErr))
 			return idErr
@@ -121,7 +135,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	setPhase("form")
 	setCurrentFormat(strings.Join(codes, ", "))
 
-	runner := pfcmd.NewRunner()
+	runner := newRunner()
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, job := range jobs {
 		job := job

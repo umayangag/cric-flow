@@ -336,6 +336,14 @@ func TestConfigBacktestAndOpsHelpers(t *testing.T) {
 	require.Equal(t, 20, OpsMigrationsPageDefault(cfg))
 }
 
+func TestPipelinePrecomputeETASecondsPerFmt(t *testing.T) {
+	require.Equal(t, DefaultServerPrecomputeETASecPerFmt, PipelinePrecomputeETASecondsPerFmt(nil))
+
+	cfg := &Config{}
+	cfg.Pipeline.PrecomputeETASecondsPerFmt = 123
+	require.Equal(t, 123, PipelinePrecomputeETASecondsPerFmt(cfg))
+}
+
 func TestConfigServerAndResourcesHelpers(t *testing.T) {
 	require.Equal(t, DefaultServerReadinessTimeoutSec, ServerReadinessTimeoutSec(nil))
 	require.Equal(t, DefaultPrecomputeMBPerWorker, ResourcesPrecomputeMBPerWorker(nil))
@@ -442,6 +450,26 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 	cfgEvalJob.Backtest.Job = &BacktestJobConfig{EvalJobMaxDurationHr: 8}
 	cfgExportJob := &Config{}
 	cfgExportJob.Backtest.Job = &BacktestJobConfig{ExportContributionsMaxDurHr: 4}
+	cfgEvalConcurrency := &Config{}
+	cfgEvalConcurrency.Backtest.Job = &BacktestJobConfig{
+		EvalJobConcurrencyMin: 2,
+		EvalJobConcurrencyMax: 4,
+	}
+	cfgServerTimeouts := &Config{}
+	cfgServerTimeouts.Server.DBProbeLongTimeoutSec = 10
+	cfgServerTimeouts.Server.ArtifactsTimeoutSec = 120
+	cfgServerTimeouts.Server.HTTPReadTimeoutSec = 15
+	cfgServerTimeouts.Server.HTTPWriteTimeoutSec = 20
+	cfgServerTimeouts.Server.HTTPIdleTimeoutSec = 25
+	cfgResources := &Config{
+		Resources: &ResourcesConfig{
+			ExportMBPerWorker:                256,
+			FieldingMBPerWorker:              128,
+			MemoryUsageFractionPercent:       75,
+			SeqCalcLowMemoryLimitGiB:         8,
+			PrecomputeConcurrencyWhenNoLimit: 6,
+		},
+	}
 
 	tests := []struct {
 		name string
@@ -466,6 +494,7 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		{"BacktestEvalJobMaxDurationHr set", cfgEvalJob, BacktestEvalJobMaxDurationHr, 8},
 		{"OpsMigrationsPageMax nil", nil, OpsMigrationsPageMax, DefaultOpsMigrationsPageMax},
 		{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
+		{"BacktestAccuracyTrendMaxLimit nil", nil, BacktestAccuracyTrendMaxLimit, DefaultBacktestListMaxLimit},
 		{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
 		{
 			"OpsRecentMigrationsCount set",
@@ -480,10 +509,112 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			200,
 		},
 		{
+			"ResourcesExportMBPerWorker set",
+			cfgResources,
+			ResourcesExportMBPerWorker,
+			256,
+		},
+		{
+			"ResourcesFieldingMBPerWorker set",
+			cfgResources,
+			ResourcesFieldingMBPerWorker,
+			128,
+		},
+		{
+			"ResourcesMemoryUsageFractionPercent set",
+			cfgResources,
+			ResourcesMemoryUsageFractionPercent,
+			75,
+		},
+		{
+			"ResourcesSeqCalcLowMemoryLimitGiB set",
+			cfgResources,
+			ResourcesSeqCalcLowMemoryLimitGiB,
+			8,
+		},
+		{
+			"ResourcesPrecomputeConcurrencyWhenNoLimit set",
+			cfgResources,
+			ResourcesPrecomputeConcurrencyWhenNoLimit,
+			6,
+		},
+		{
 			"BacktestExportContributionsJobMaxDurationHr set",
 			cfgExportJob,
 			BacktestExportContributionsJobMaxDurationHr,
 			4,
+		},
+		{
+			"BacktestEvalJobConcurrencyMin set",
+			cfgEvalConcurrency,
+			BacktestEvalJobConcurrencyMin,
+			2,
+		},
+		{
+			"BacktestEvalJobConcurrencyMax set",
+			cfgEvalConcurrency,
+			BacktestEvalJobConcurrencyMax,
+			4,
+		},
+		{
+			"ServerDBProbeLongTimeoutSec default when nil",
+			nil,
+			ServerDBProbeLongTimeoutSec,
+			DefaultServerDBProbeLongTimeoutSec,
+		},
+		{
+			"ServerDBProbeLongTimeoutSec set",
+			cfgServerTimeouts,
+			ServerDBProbeLongTimeoutSec,
+			10,
+		},
+		{
+			"ServerArtifactsTimeoutSec default when nil",
+			nil,
+			ServerArtifactsTimeoutSec,
+			DefaultServerArtifactsTimeoutSec,
+		},
+		{
+			"ServerArtifactsTimeoutSec set",
+			cfgServerTimeouts,
+			ServerArtifactsTimeoutSec,
+			120,
+		},
+		{
+			"ServerHTTPReadTimeoutSec default when nil",
+			nil,
+			ServerHTTPReadTimeoutSec,
+			DefaultServerHTTPReadTimeoutSec,
+		},
+		{
+			"ServerHTTPReadTimeoutSec set",
+			cfgServerTimeouts,
+			ServerHTTPReadTimeoutSec,
+			15,
+		},
+		{
+			"ServerHTTPWriteTimeoutSec default when nil",
+			nil,
+			ServerHTTPWriteTimeoutSec,
+			DefaultServerHTTPWriteTimeoutSec,
+		},
+		{
+			"ServerHTTPWriteTimeoutSec set",
+			cfgServerTimeouts,
+			ServerHTTPWriteTimeoutSec,
+			20,
+		},
+		{
+			"ServerHTTPIdleTimeoutSec default when nil",
+			nil,
+			ServerHTTPIdleTimeoutSec,
+			DefaultServerHTTPIdleTimeoutSec,
+		},
+		{
+			"ServerHTTPIdleTimeoutSec set",
+			cfgServerTimeouts,
+			ServerHTTPIdleTimeoutSec,
+			25,
 		},
 	}
 

@@ -60,3 +60,13 @@ def test_default_models_dir_from_config_success():
     mock_config.default_artifacts_dir.return_value = "/custom"
     out = _default_models_dir_from_config(mock_config)
     assert out == "/custom"
+
+
+def test_env_int_invalid_returns_default(monkeypatch):
+    """_env_int returns default when env value is not an integer."""
+    from app.settings import _env_int, load_ml_service_settings
+
+    monkeypatch.setenv("MAX_PREDICT_BATCH_SIZE", "not_a_number")
+    assert _env_int("MAX_PREDICT_BATCH_SIZE", default=10000) == 10000
+    settings = load_ml_service_settings()
+    assert settings.max_predict_batch_size == 10000

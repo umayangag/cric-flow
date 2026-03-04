@@ -1,6 +1,9 @@
 """Unit tests for ml.utils (make_base_estimator and shared ML utilities)."""
 
-from ml.utils import make_base_estimator
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from ml.utils import extract_feature_importance_from_estimator, make_base_estimator
 
 
 def test_make_base_estimator_rf_default():
@@ -166,3 +169,28 @@ def test_make_base_estimator_quantile_level_clamped():
     }
     est = make_base_estimator(params)
     assert est.alpha == 0.25
+
+
+def test_extract_feature_importance_from_estimator_none_returns_none():
+    """extract_feature_importance_from_estimator returns None for None estimator."""
+    assert extract_feature_importance_from_estimator(None, ["a", "b"]) is None
+
+
+def test_extract_feature_importance_from_estimator_with_max_features():
+    """extract_feature_importance_from_estimator respects max_features."""
+    est = RandomForestRegressor(n_estimators=5, random_state=42)
+    est.fit(np.random.rand(20, 5), np.random.rand(20))
+    out = extract_feature_importance_from_estimator(est, ["f0", "f1", "f2", "f3", "f4"], max_features=2)
+    assert out is not None
+    assert len(out) == 2
+
+
+def test_extract_feature_importance_from_estimator_no_names_uses_default():
+    """extract_feature_importance_from_estimator uses feature_0, feature_1 when feature_names is None."""
+    est = RandomForestRegressor(n_estimators=5, random_state=42)
+    est.fit(np.random.rand(20, 3), np.random.rand(20))
+    out = extract_feature_importance_from_estimator(est, None)
+    assert out is not None
+    assert "feature_0" in out
+    assert "feature_1" in out
+    assert "feature_2" in out

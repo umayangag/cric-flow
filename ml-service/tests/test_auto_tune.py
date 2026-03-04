@@ -1,4 +1,10 @@
-"""Unit tests for ml.auto_tune helper functions and data loading."""
+"""Unit tests for ml.auto_tune helper functions and data loading.
+
+Tests in this file must NOT run real model training (no Optuna/search, no fitting
+multi-estimator pipelines). Use mocks for run_auto_tune* entry points. Any new
+test that would run real training belongs in a separate module (e.g. behind
+RUN_AUTO_TUNE_SMOKE=1) so CI stays fast.
+"""
 
 import os
 from unittest.mock import patch
@@ -6,9 +12,11 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import KFold, TimeSeriesSplit
+from sklearn.multioutput import MultiOutputRegressor
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from ml.auto_tune import (
     AVAILABLE_ALGORITHMS,
@@ -17,8 +25,14 @@ from ml.auto_tune import (
     BOWL_SEQ_COLS,
     BOWLING_FEATURE_COLS,
     BOWLING_TARGET_COLS,
+    _get_prior_tuned_algorithm,
+    _normalize_hidden_layer_sizes,
+    _prior_params_to_optuna_regression,
+    _save_artifacts,
+    _save_artifacts_model_only,
     load_bowling_csv,
 )
+from ml.tuning.types import target_names_for_model
 
 
 def _get_module():
@@ -233,6 +247,96 @@ def test_compute_metrics_regression_single_output():
     assert "r2" in metrics
 
 
+def test_compute_metrics_regression_multi_output_per_target_mae():
+    """_compute_metrics_regression with 2D y and target_names includes per_target_mae."""
+    m = _get_module()
+    pipe = _minimal_batting_pipeline()
+    X = np.random.RandomState(42).rand(50, 5)
+    Y = np.random.RandomState(43).rand(50, 3)
+    pipe.fit(X, Y)
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    metrics = m._compute_metrics_regression(pipe, X, Y, cv, target_names=["runs", "balls", "wickets"])
+    assert "per_target_mae" in metrics
+    assert "mae_runs" in metrics["per_target_mae"]
+    assert "mae_balls" in metrics["per_target_mae"]
+    assert "mae_wickets" in metrics["per_target_mae"]
+
+
+def test_compute_metrics_classification_minimal():
+    """_compute_metrics_classification returns accuracy, precision, recall, f1."""
+    m = _get_module()
+    pipe = _minimal_model_only_pipeline(regression=False)
+    X = np.random.RandomState(42).rand(50, 5)
+    y = np.random.RandomState(43).randint(0, 2, 50)
+    pipe.fit(X, y)
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    metrics = m._compute_metrics_classification(pipe, X, y, cv)
+    assert "accuracy" in metrics
+    assert "accuracy_pct" in metrics
+    assert "precision" in metrics
+    assert "recall" in metrics
+    assert "f1" in metrics
+
+
+def test_compute_mlqa_audit_missing_score_returns_warning():
+    """_compute_mlqa_audit returns WARNING when report has no best_cv_score."""
+    m = _get_module()
+    pipe = _minimal_model_only_pipeline(regression=True)
+    X = np.random.RandomState(42).rand(30, 5)
+    y = np.random.RandomState(43).rand(30)
+    pipe.fit(X, y)
+    cv = KFold(n_splits=2, shuffle=True, random_state=42)
+    audit = m._compute_mlqa_audit({}, pipe, X, y, cv, "neg_mean_absolute_error", "regression")
+    assert audit["audit_status"] == "WARNING"
+    assert "Missing validation score" in audit["key_findings"][0]
+
+
+def test_compute_learning_curve_regression_small_n_returns_none():
+    """_compute_learning_curve_regression returns None when n_samples < 20."""
+    m = _get_module()
+    pipe = _minimal_model_only_pipeline(regression=True)
+    X = np.random.RandomState(42).rand(10, 5)
+    y = np.random.RandomState(43).rand(10)
+    pipe.fit(X, y)
+    cv = KFold(n_splits=2, shuffle=True, random_state=42)
+    lc = m._compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
+    assert lc is None
+
+
+def test_compute_mlqa_audit_with_fairness_metrics():
+    """_compute_mlqa_audit includes fairness check when report has fairness_metrics."""
+    m = _get_module()
+    est = RandomForestRegressor(n_estimators=10, random_state=42)
+    pipe = m._build_pipeline_single_regression(est)
+    X = np.random.RandomState(42).rand(80, 5)
+    y = np.random.RandomState(43).rand(80)
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    report = {
+        "best_cv_score": -0.4,
+        "fairness_metrics": {"disparate_impact_ratio": 0.95},
+    }
+    audit = m._compute_mlqa_audit(
+        report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", ["f0", "f1", "f2", "f3", "f4"]
+    )
+    assert "Fairness" in " ".join(audit["key_findings"]) or "fairness" in audit["bias_report"].lower()
+
+
+def test_add_final_report_details_adds_mlqa_and_feature_importance():
+    """_add_final_report_details adds mlqa_audit and feature_importance to report."""
+    m = _get_module()
+    est = RandomForestRegressor(n_estimators=10, random_state=42)
+    pipe = m._build_pipeline_single_regression(est)
+    X = np.random.RandomState(42).rand(50, 5)
+    y = np.random.RandomState(43).rand(50)
+    pipe.fit(X, y)
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    report = {"best_cv_score": -0.35}
+    m._add_final_report_details(report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", "batting")
+    assert "mlqa_audit" in report
+    assert "feature_importance" in report
+    assert len(report["feature_importance"]) <= 5
+
+
 def test_compute_mlqa_audit():
     """_compute_mlqa_audit returns audit_status, key_findings, bias_report, final_verdict."""
     m = _get_module()
@@ -331,66 +435,242 @@ def test_phase1_candidates_classification():
     assert len(cands) == 2
 
 
+def _minimal_batting_pipeline():
+    """Minimal pipeline for run_auto_tune (scaler + model) so _save_artifacts can dump without running search."""
+    return Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("est", MultiOutputRegressor(RandomForestRegressor(n_estimators=1, random_state=42))),
+        ]
+    )
+
+
+def _minimal_model_only_pipeline(regression=True):
+    """Minimal pipeline for extras/win (model only) so _save_artifacts_model_only can dump without running search."""
+    est = (
+        RandomForestRegressor(n_estimators=1, random_state=42)
+        if regression
+        else RandomForestClassifier(n_estimators=1, random_state=42)
+    )
+    return Pipeline([("scaler", StandardScaler()), ("est", est)])
+
+
 def test_run_auto_tune_batting_minimal(tmp_path):
-    """run_auto_tune completes with minimal data for batting (fast smoke test)."""
+    """run_auto_tune returns report and writes artifacts; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.rand(40, 5).astype(np.float32)
     out_dir = str(tmp_path / "out")
-    report = m.run_auto_tune(
-        model_kind="batting",
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_batting_pipeline()
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf", "metrics": {}}
+
+    with patch("ml.tuning.runners._run_search_two_phase", return_value=(minimal_pipe, {}, mock_report)):
+        report = m.run_auto_tune(
+            model_kind="batting",
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "metrics" in report or "best_algorithm" in report
     assert (tmp_path / "out" / "batting_scaler_T20.joblib").exists()
     assert (tmp_path / "out" / "batting_model_T20.joblib").exists()
 
 
 def test_run_auto_tune_extras_minimal(tmp_path):
-    """run_auto_tune_extras completes with minimal data (fast smoke test)."""
+    """run_auto_tune_extras returns report and writes model artifact; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.rand(40).astype(np.float32)
     out_dir = str(tmp_path / "out_extras")
-    report = m.run_auto_tune_extras(
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_model_only_pipeline(regression=True)
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf"}
+    # Omit best_cv_score so run_auto_tune_extras does not invoke _maybe_run_autogluon_and_compare
+
+    with patch(
+        "ml.tuning.runners._run_search_two_phase_single_regression",
+        return_value=(minimal_pipe, {}, mock_report),
+    ):
+        report = m.run_auto_tune_extras(
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "best_cv_score" in report or "best_algorithm" in report
     assert (tmp_path / "out_extras" / "extras_model_T20.joblib").exists()
 
 
 def test_run_auto_tune_win_minimal(tmp_path):
-    """run_auto_tune_win completes with minimal binary classification data (fast smoke test)."""
+    """run_auto_tune_win returns report and writes model artifact; search is mocked to avoid real training."""
     m = _get_module()
     np.random.seed(42)
     X = np.random.rand(40, 5).astype(np.float32)
     Y = np.random.randint(0, 2, size=40).astype(np.float32)
     out_dir = str(tmp_path / "out_win")
-    report = m.run_auto_tune_win(
-        X=X,
-        Y=Y,
-        format_suffix="T20",
-        out_dir=out_dir,
-        algorithms=["rf"],
-        validation_method="kfold",
-        n_jobs_override=1,
-        fast_mode=True,
-    )
+    minimal_pipe = _minimal_model_only_pipeline(regression=False)
+    minimal_pipe.fit(X, Y)
+    mock_report = {"best_algorithm": "rf"}
+    # Omit best_cv_score so run_auto_tune_win does not invoke _maybe_run_autogluon_and_compare
+
+    with patch(
+        "ml.tuning.runners._run_search_two_phase_classification",
+        return_value=(minimal_pipe, {}, mock_report),
+    ):
+        report = m.run_auto_tune_win(
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+        )
     assert "best_cv_score" in report or "best_algorithm" in report
     assert (tmp_path / "out_win" / "win_model_T20.joblib").exists()
+
+
+def test_save_artifacts_writes_scaler_model_and_report(tmp_path):
+    """_save_artifacts writes scaler, model, and report JSON (covers optuna_search save path without search)."""
+    pipe = _minimal_batting_pipeline()
+    pipe.fit(np.random.rand(10, 3), np.random.rand(10, 2))
+    report = {"best_algorithm": "rf", "best_cv_score": -0.5}
+    out_dir = str(tmp_path / "artifacts")
+    _save_artifacts(pipe, out_dir, "batting", "ODI", joblib_compress=1, report=report)
+    assert (tmp_path / "artifacts" / "batting_scaler_ODI.joblib").exists()
+    assert (tmp_path / "artifacts" / "batting_model_ODI.joblib").exists()
+    report_path = tmp_path / "artifacts" / "tuning_report_batting_ODI.json"
+    assert report_path.exists()
+    import json
+
+    with open(report_path, encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded["best_algorithm"] == "rf"
+
+
+def test_save_artifacts_without_format_suffix(tmp_path):
+    """_save_artifacts with format_suffix=None uses unscoped filenames."""
+    pipe = _minimal_batting_pipeline()
+    pipe.fit(np.random.rand(10, 3), np.random.rand(10, 2))
+    _save_artifacts(pipe, str(tmp_path), "bowling", None, joblib_compress=0, report={})
+    assert (tmp_path / "bowling_scaler.joblib").exists()
+    assert (tmp_path / "bowling_model.joblib").exists()
+    assert (tmp_path / "tuning_report_bowling.json").exists()
+
+
+def test_save_artifacts_model_only_writes_model_and_report(tmp_path):
+    """_save_artifacts_model_only writes model and report JSON (covers optuna_search save path without search)."""
+    pipe = _minimal_model_only_pipeline(regression=True)
+    pipe.fit(np.random.rand(10, 3), np.random.rand(10))
+    report = {"best_algorithm": "gb"}
+    out_dir = str(tmp_path / "extras")
+    _save_artifacts_model_only(pipe, out_dir, "extras", "T20", joblib_compress=1, report=report)
+    assert (tmp_path / "extras" / "extras_model_T20.joblib").exists()
+    import json
+
+    with open(tmp_path / "extras" / "tuning_report_extras_T20.json", encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded["best_algorithm"] == "gb"
+
+
+def test_save_artifacts_model_only_without_format_suffix(tmp_path):
+    """_save_artifacts_model_only with format_suffix=None uses unscoped filenames."""
+    pipe = _minimal_model_only_pipeline(regression=False)
+    pipe.fit(np.random.rand(10, 3), np.random.randint(0, 2, 10))
+    _save_artifacts_model_only(pipe, str(tmp_path), "win", None, joblib_compress=0, report={})
+    assert (tmp_path / "win_model.joblib").exists()
+    assert (tmp_path / "tuning_report_win.json").exists()
+
+
+def test_get_prior_tuned_algorithm_from_report_file(tmp_path):
+    """_get_prior_tuned_algorithm returns (algorithm, params) when tuning_report exists in out_dir."""
+    report_path = tmp_path / "tuning_report_batting_T20.json"
+    report_path.write_text(
+        '{"algorithms": ["rf"], "config_snippet": {"n_estimators": 50}, "best_params": {}}',
+        encoding="utf-8",
+    )
+    out_dir = str(tmp_path)
+    result = _get_prior_tuned_algorithm("batting", "T20", out_dir)
+    assert result is not None
+    algo, prior = result
+    assert algo == "rf"
+    assert prior.get("n_estimators") == 50
+
+
+def test_get_prior_tuned_algorithm_returns_none_when_no_report(tmp_path):
+    """_get_prior_tuned_algorithm returns None when out_dir has no tuning report."""
+    result = _get_prior_tuned_algorithm("batting", "T20", str(tmp_path))
+    assert result is None
+
+
+def test_run_auto_tune_with_prior_report_uses_prior_algorithm(tmp_path):
+    """run_auto_tune with prior report in out_dir uses prior algorithm (covers prior branch; search mocked)."""
+    (tmp_path / "tuning_report_batting_T20.json").write_text(
+        '{"algorithms": ["rf"], "config_snippet": {"n_estimators": 20}, "best_params": {}}',
+        encoding="utf-8",
+    )
+    m = _get_module()
+    np.random.seed(42)
+    X = np.random.rand(40, 5).astype(np.float32)
+    Y = np.random.rand(40, 5).astype(np.float32)
+    out_dir = str(tmp_path)
+    minimal_pipe = _minimal_batting_pipeline()
+    minimal_pipe.fit(X, Y)
+    with patch("ml.tuning.runners._run_search_two_phase", return_value=(minimal_pipe, {}, {"best_algorithm": "rf"})):
+        report = m.run_auto_tune(
+            model_kind="batting",
+            X=X,
+            Y=Y,
+            format_suffix="T20",
+            out_dir=out_dir,
+            algorithms=["rf"],
+            validation_method="kfold",
+            n_jobs_override=1,
+            fast_mode=True,
+            rescreen=False,
+        )
+    assert report.get("best_algorithm") == "rf"
+    assert (tmp_path / "batting_scaler_T20.joblib").exists()
+    assert (tmp_path / "batting_model_T20.joblib").exists()
+
+
+def test_normalize_hidden_layer_sizes():
+    """_normalize_hidden_layer_sizes accepts tuple, list, JSON string; returns tuple or None."""
+    assert _normalize_hidden_layer_sizes((64, 32)) == (64, 32)
+    assert _normalize_hidden_layer_sizes([64, 32]) == (64, 32)
+    assert _normalize_hidden_layer_sizes("[64, 32]") == (64, 32)
+    assert _normalize_hidden_layer_sizes(None) is None
+    assert _normalize_hidden_layer_sizes("not-json") is None
+    assert _normalize_hidden_layer_sizes([1.5, 2]) == (1, 2)
+
+
+def test_target_names_for_model():
+    """target_names_for_model returns list for batting/bowling, None for unknown."""
+    bat = target_names_for_model("batting")
+    assert bat is not None and "runs" in bat
+    bowl = target_names_for_model("bowling")
+    assert bowl is not None and "runs" in bowl
+    assert target_names_for_model("unknown_kind") is None
+
+
+def test_prior_params_to_optuna_regression():
+    """_prior_params_to_optuna_regression strips est__ prefix and passes through common keys."""
+    out = _prior_params_to_optuna_regression("rf", {"est__estimator__n_estimators": 50, "max_depth": 5})
+    assert out["algorithm"] == "rf"
+    assert out["n_estimators"] == 50
+    assert out["max_depth"] == 5
+    out2 = _prior_params_to_optuna_regression("mlp", {"hidden_layer_sizes": [64, 32]})
+    assert out2["hidden_layer_sizes"] == (64, 32)
