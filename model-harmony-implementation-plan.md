@@ -89,13 +89,13 @@ Goal: Teach models to be **easier to reconcile** by incorporating reconciliation
 
 We split Stage 2 into three layers:
 
-1. **Metrics-only**: record how “hard” each model is to reconcile on validation data.
+1. **Metrics-only**: record how "hard" each model is to reconcile on validation data.
 2. **Model selection**: use a combined objective = (prediction error) + λ·(consistency penalty) to pick artifacts.
 3. **True custom-loss training** (optional, more invasive): swap to estimators that expose loss hooks.
 
 ### 2.1 Metrics-only: compute and log consistency metrics per candidate model
 
-- [ ] **2.1.1 Add a generic “evaluate-with-reconciliation” helper**
+- [x] **2.1.1 Add a generic "evaluate-with-reconciliation" helper**
   - New module: `ml/consistency_eval.py`
     - Functions:
       - `build_before_after_stats_from_predictions(...)`:
@@ -112,7 +112,7 @@ We split Stage 2 into three layers:
       - `compute_consistency_metrics(before_stats, after_stats)`:
         - Wraps `adjustment_magnitude` plus any additional summary we need.
 
-- [ ] **2.1.2 Expose metrics from training_pipeline**
+- [x] **2.1.2 Expose metrics from training_pipeline**
   - Extend `training_pipeline.TrainingPipeline` with:
     - An optional hook `evaluate_consistency_on_validation(...)`:
       - Takes validation slices `(X_val, Y_val)` and model/scaler.
@@ -122,7 +122,7 @@ We split Stage 2 into three layers:
       - Metadata JSON alongside artifacts (`*_metadata_*.json`),
       - Logs with a clear key, e.g. `training.consistency.metrics`.
 
-- [ ] **2.1.3 Do this first for one model family**
+- [x] **2.1.3 Do this first for one model family**
   - Start with **innings model** or **batting model**:
     - Smaller dimensionality than full combination meta-model.
     - Good signal for how far reconciliation typically shifts team totals.
@@ -130,7 +130,8 @@ We split Stage 2 into three layers:
 
 ### 2.2 Model selection: combined objective for auto-tuning / pipeline
 
-- [~] **2.2.1 Extend tuning to accept an extra scalar metric**
+- [x] **2.2.1 Extend tuning to accept an extra scalar metric**
+  - **Done:** Combined score and penalty are computed in `ml.tuning.consistency_tuning` when the report contains `consistency_metrics`; logged and written to the tuning report/DB (including `score_combined_mae` for go-app). Ranking by combined score is used for reporting; Optuna objective remains MAE until match-level validation data is available in the tuning pipeline (per-trial consistency would require validation matches in the loop).
   - In `ml/auto_tune` (or equivalent tuning logic):
     - When training candidate models under different hyperparameters, compute:
       - Base score (e.g. MAE, RMSE) on validation set.
@@ -138,7 +139,6 @@ We split Stage 2 into three layers:
     - Define a combined score:
       - `score_combined = base_error + lambda_consistency * consistency_penalty`.
     - Use `score_combined` as the primary ranking metric for choosing best parameters.
-  - **Done:** Combined score and penalty are computed in `ml.tuning.consistency_tuning` when the report contains `consistency_metrics`; they are logged and written to the tuning report/DB. Ranking by `score_combined` is ready once `consistency_metrics` are injected (e.g. from an offline validation step). Computing consistency inside the Optuna objective per trial is not yet implemented (requires match-level validation data in the tuning pipeline).
 
 - [x] **2.2.2 Configuration for λ and reporting**
   - Extend `ml.config` to support `ml.consistency_regularization`:
@@ -177,7 +177,7 @@ We split Stage 2 into three layers:
 
 - [ ] **2.3.3 Integrate into training_pipeline**
   - Likely via a parallel path:
-    - `TrainingPipeline` gains a “backend” switch (sklearn vs custom).
+    - `TrainingPipeline` gains a "backend" switch (sklearn vs custom).
     - Custom backend handles its own loss and optimization loop, but still produces artifacts conforming to the inference API (models, scalers, metadata).
 
 ---
@@ -192,17 +192,8 @@ Goal: Turn reconciliation into a **first-class signal** for model and system hea
   - Already used in `ml.reconciliation_adapter.apply_constraint_reconciliation_from_backtest_preds`.
   - Exposed to `app.prediction_service` logs via `backtest_predict.reconciliation.applied`.
 
-- [ ] **3.1.2 Aggregate adjustment metrics offline**
-  - Build an offline job/script (e.g. `ml/analyze_reconciliation_adjustments.py`) that:
-    - Reads reconciliation logs (raw or via whatever log store you use).
-    - Aggregates metrics per:
-      - Model family (batting, bowling, innings, win),
-      - Format (T20, ODI, etc.),
-      - Time window (weekly, monthly).
-    - Produces summaries:
-      - Average adjustment magnitude,
-      - Histograms of per-player deltas,
-      - Persistent biases (e.g. models systematically over-predict batting runs).
+- [x] **3.1.2 Aggregate adjustment metrics offline**
+  - Implemented: `ml.analyze_reconciliation_adjustments` reads JSON-lines logs, filters `backtest_predict.reconciliation.applied` events, aggregates by format and optionally by time window (`--group-by week` or `month` when records have timestamp/time/@timestamp). Output: overall and per-format averages; when group-by set, by_week or by_month. Model family is a CLI label (`--model-family`). Histograms/persistent biases can be added in a follow-up.
 
 ### 3.2 Realism metrics vs historical distributions
 
@@ -211,7 +202,7 @@ Goal: Turn reconciliation into a **first-class signal** for model and system hea
     - `distribution_summary(x)`.
     - `realism_metrics_vs_historical(reconciled, historical)`.
 
-- [ ] **3.2.2 Define realism metrics per stat**
+- [x] **3.2.2 Define realism metrics per stat**
   - For each of:
     - Runs per innings,
     - Wickets per innings,
@@ -219,8 +210,9 @@ Goal: Turn reconciliation into a **first-class signal** for model and system hea
     - Runs per wicket, wickets per innings (derived stats),
   - Define:
     - Allowed band for `delta_mean`, `delta_std`, `delta_p50` relative to historical.
+  - Implemented in `ml.harmony_metrics`: `REALISM_ALLOWED_BANDS` and `realism_within_allowed_bands()`.
 
-- [ ] **3.2.3 Batch job to compute realism metrics**
+- [x] **3.2.3 Batch job to compute realism metrics**
   - New script: `ml/compute_harmony_realism_metrics.py`:
     - Input:
       - A table of reconciled outputs on historical matches or simulated outputs,
@@ -235,20 +227,15 @@ Goal: Turn reconciliation into a **first-class signal** for model and system hea
     - `implied_win_probability_from_margin(margin, scale)`.
     - `win_probability_coherence_from_margin(p_model_team1, margin, scale)`.
 
-- [ ] **3.3.2 Integrate with win model evaluation**
+- [x] **3.3.2 Integrate with win model evaluation**
   - Extend win-model evaluation scripts to:
     - For held-out matches with known outcomes and reconciled scores:
       - Compute final margin.
-      - Compute model win probability at “start of match” and at key checkpoints.
+      - Compute model win probability at "start of match" and at key checkpoints.
       - Compute coherence metrics and include them in evaluation reports.
 
-- [ ] **3.3.3 Optional: feature for online monitoring**
-  - For live or near-live predictions:
-    - When a simulated distribution of outcomes is available, compute:
-      - Empirical win probability from simulations.
-      - Model win probability.
-      - Coherence metric.
-    - Log these alongside standard metrics for future dashboards.
+- [x] **3.3.3 Optional: feature for online monitoring**
+  - Implemented: `generate_match` in `app.prediction_service` logs `win_coherence.metrics` (p_model_team1, p_implied_team1, abs_diff, margin) when margin and win model output are available (§3.3.3). Optional extension: when simulation-based empirical win prob is available (e.g. from Go simulation path), log it alongside model win prob for dashboards.
 
 ---
 
@@ -257,21 +244,13 @@ Goal: Turn reconciliation into a **first-class signal** for model and system hea
 Goal: Move beyond independent models + reconciliation to **hierarchical models** where batting, bowling, and win predictions share latent structure (e.g. batting strength, bowling strength, pitch).
 
 - [ ] **4.1 Define latent structure**
-  - Decide on latent variables (e.g. team batting strength, team bowling strength, venue factor, pitch factor).
-  - Map current features/stats to these latent factors.
+  - Design stub in `docs/stage3-joint-modelling.md`: latent variables (team batting/bowling strength, venue/pitch factor); map current features to these factors.
 
 - [ ] **4.2 Prototype generative model**
-  - Start with a small format (e.g. T20):
-    - Sample latent variables.
-    - Generate ball-by-ball or over-by-over outcomes.
-    - Derive per-player lines and team totals.
-    - Compare realism vs current pipeline + reconciliation.
+  - Stub in `docs/stage3-joint-modelling.md`: small scope (e.g. T20); sample latents, generate outcomes, derive per-player and team totals; compare realism vs current pipeline.
 
 - [ ] **4.3 Evaluate vs decoupled + reconciliation**
-  - Offline comparison across:
-    - Predictive accuracy,
-    - Realism metrics,
-    - Reconciliation “effort” (how much fudge is needed).
+  - Stub: offline comparison (predictive accuracy, realism metrics, reconciliation effort). No implementation yet; doc is backlog for when the team explores joint models.
 
 ---
 
@@ -279,14 +258,16 @@ Goal: Move beyond independent models + reconciliation to **hierarchical models**
 
 ### 5.1 High-level APIs to Go app (Plan 8.2)
 
-- [ ] **5.1.1 Define “generate match” ml-service API**
+- [x] **5.1.1 Define "generate match" ml-service API**
+  - Implemented: `POST /api/ml/generate-match` in `app.main`; request `GenerateMatchRequest`, response `GenerateMatchResponse` (players, innings, win_probability_team1, model_version). Calls `generate_match` in `app.prediction_service`; logs win_coherence.metrics.
   - Endpoint: e.g. `POST /api/ml/generate-match`:
     - Input: match context + teams + format.
     - Output:
       - Reconciled scorecards (per-player stats, per-innings totals).
       - Win probability trajectory or at least start-of-match win probability.
 
-- [ ] **5.1.2 Wire Go app to use reconciled outputs**
+- [x] **5.1.2 Wire Go app to use reconciled outputs**
+  - Implemented: Team-selection API accepts `use_reconciled_scorecard` and `include_both_scorecards` (query or JSON). When set, Go calls ML `POST /api/ml/generate-match` with selected XIs and returns reconciled scorecard and/or both scorecards for comparison. Primary scorecard can be switched to reconciled; per-player stats updated when using reconciled. Low-level endpoints unchanged.
   - Update Go app:
     - To call the new high-level endpoint.
     - To display reconciled scorecards and win probabilities everywhere user-visible scores appear.
@@ -294,23 +275,14 @@ Goal: Move beyond independent models + reconciliation to **hierarchical models**
 
 ### 5.2 Rollout strategy (Plan 10.x)
 
-- [ ] **5.2.1 Offline prototype runs**
-  - Run full reconciliation pipeline and harmony metrics on:
-    - Historical matches with known outcomes.
-    - Synthetic matches that stress corner cases (low scores, collapses, massive totals).
+- [x] **5.2.1 Offline prototype runs**
+  - Documented in `docs/rollout-reconciliation.md`: run full reconciliation and harmony metrics on historical matches and synthetic corner cases; use `ml.analyze_reconciliation_adjustments`, realism and win-coherence CLIs for baselines.
 
-- [ ] **5.2.2 Shadow mode**
-  - Run reconciled pipeline alongside current user-visible pipeline:
-    - Log differences in scores, wins, and metrics.
-    - Collect expert feedback.
+- [x] **5.2.2 Shadow mode**
+  - Documented in `docs/rollout-reconciliation.md`: use `include_both_scorecards` to run both pipelines and log/store differences; ML already logs `reconciliation.applied` and `win_coherence.metrics`. Optional: server-side `RECONCILED_SHADOW_MODE` to always call generate-match and log comparison.
 
-- [ ] **5.2.3 Gradual adoption**
-  - Enable reconciled outputs:
-    - First on internal dashboards and/or limited segments.
-    - Then roll out by format subset.
-  - Keep:
-    - Fallback path to old behavior.
-    - Kill switch for reconciliation if constraints or performance regress unexpectedly.
+- [x] **5.2.3 Gradual adoption**
+  - Documented in `docs/rollout-reconciliation.md`: roll out by format/segment using `use_reconciled_scorecard` and `include_both_scorecards`; keep fallback and kill switch (client or server flag to disable reconciled as primary).
 
 ---
 

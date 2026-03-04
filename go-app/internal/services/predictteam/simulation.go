@@ -70,13 +70,15 @@ type SimulationResult struct {
 
 // PredictTeamsWithSimulation runs the same pipeline as PredictTeams (sharing pools and ML predictions),
 // then runs Monte Carlo simulation over top-k XIs per team and returns the best-XI result plus simulation summary.
+// reconciledGen is optional; when set, reconciled/compare scorecard behaviour is the same as in PredictTeams.
 func PredictTeamsWithSimulation(
 	ctx context.Context,
 	input Input,
 	predictor MLPredictor,
 	opts SimulationOpts,
+	reconciledGen GenerateMatchFunc,
 ) (*Result, *SimulationResult, error) {
-	result, mid, err := predictTeamsWithIntermediates(ctx, input, predictor)
+	result, mid, err := predictTeamsWithIntermediates(ctx, input, predictor, reconciledGen)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -42,6 +42,7 @@ from .models import (
     ExtrasFeatures,
     ExtrasPrediction,
     InningsReconciliationPreferences,
+    InningsSummary,
     MatchContext,
     MatchReconciliationInputs,
     PlayerReconciliationPreferences,
@@ -446,6 +447,108 @@ def predict_players_with_features(
                 )
 
     return out
+
+
+def generate_match(
+    cutoff: datetime,
+    player_ids: List[int],
+    fmt: str,
+    features_map: Dict[str, Dict[str, float]],
+    match_context: MatchContext,
+    models_dir: str,
+    enable_train_on_the_fly: bool,
+    go_app_url: str,
+    go_app_api_key: Optional[str],
+    train_latest_cache_granularity: str,
+    use_latest_model: bool = False,
+    model_version: str = "",
+) -> Dict[str, Any]:
+    """Produce reconciled scorecards and win probability for a single match (§5.1.1).
+
+    Calls predict_players_with_features with match_context (so reconciliation runs),
+    aggregates team totals, builds WinFeatures from context + features, runs win model,
+    and logs win coherence (margin vs model win prob) for monitoring (§3.3.3).
+    """
+    preds = predict_players_with_features(
+        cutoff,
+        player_ids,
+        fmt,
+        features_map,
+        models_dir,
+        enable_train_on_the_fly,
+        go_app_url,
+        go_app_api_key,
+        train_latest_cache_granularity,
+        use_latest_model,
+        match_context=match_context,
+    )
+    team1_ids = {int(pid) for pid in match_context.team1_player_ids}
+    team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+    team1_runs = sum(p.runs for p in preds if p.player_id in team1_ids)
+    team2_runs = sum(p.runs for p in preds if p.player_id in team2_ids)
+    inn1_wickets = sum(p.wickets or 0 for p in preds if p.player_id in team2_ids)
+    inn2_wickets = sum(p.wickets or 0 for p in preds if p.player_id in team1_ids)
+    innings = [
+        InningsSummary(inning_number=1, runs=team1_runs, wickets=float(inn1_wickets)),
+        InningsSummary(inning_number=2, runs=team2_runs, wickets=float(inn2_wickets)),
+    ]
+    try:
+        from ml.win_features_from_reconciled import build_win_features_standardized
+    except ImportError:
+        build_win_features_standardized = None
+    p_team1 = 0.5
+    if build_win_features_standardized is not None:
+        def _sum_f(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
+            bat_sum = bowl_sum = 0.0
+            for pid in ids:
+                fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+                bat_sum += float(fm.get(key_bat, 0) or 0)
+                bowl_sum += float(fm.get(key_bowl, 0) or 0)
+            return bat_sum, bowl_sum
+        t1_bat_cons, t1_bowl_cons = _sum_f(team1_ids, "batting_consistency", "bowling_consistency")
+        t1_bat_form, t1_bowl_form = _sum_f(team1_ids, "batting_form", "bowling_form")
+        t2_bat_cons, t2_bowl_cons = _sum_f(team2_ids, "batting_consistency", "bowling_consistency")
+        t2_bat_form, t2_bowl_form = _sum_f(team2_ids, "batting_form", "bowling_form")
+        wf = build_win_features_standardized(
+            format_code=fmt,
+            format_id=int(match_context.format_id),
+            venue_id=int(match_context.venue_id),
+            season_id=int(match_context.season_id),
+            team1_opposition_id=int(match_context.team1_opposition_id),
+            team2_opposition_id=int(match_context.team2_opposition_id),
+            toss_winner_opposition_id=0,
+            team1_bat_consistency_sum=t1_bat_cons,
+            team1_bowl_consistency_sum=t1_bowl_cons,
+            team2_bat_consistency_sum=t2_bat_cons,
+            team2_bowl_consistency_sum=t2_bowl_cons,
+            team1_bat_form_sum=t1_bat_form,
+            team1_bowl_form_sum=t1_bowl_form,
+            team2_bat_form_sum=t2_bat_form,
+            team2_bowl_form_sum=t2_bowl_form,
+        )
+        win_preds = run_win_prediction([wf])
+        if win_preds:
+            p_team1 = win_preds[0].team1_win_probability
+    margin = team1_runs - team2_runs
+    try:
+        from ml.win_coherence_metrics import win_probability_coherence_from_margin
+        coh = win_probability_coherence_from_margin(p_team1, margin, scale=25.0)
+        logger.info(
+            "win_coherence.metrics",
+            format=(fmt or "").strip().upper(),
+            p_model_team1=coh.get("p_model_team1"),
+            p_implied_team1=coh.get("p_implied_team1"),
+            abs_diff=coh.get("abs_diff"),
+            margin=margin,
+        )
+    except Exception:
+        pass
+    return {
+        "players": preds,
+        "innings": innings,
+        "win_probability_team1": p_team1,
+        "model_version": model_version,
+    }
 
 
 # ---------------------------------------------------------------------------

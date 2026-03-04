@@ -171,4 +171,81 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when neither matchID nor filters provided")
 	}
+
+}
+
+// Test GenerateMatch sends cutoff, format, player_ids, features, and match_context and maps response.
+func TestBacktestMLClient_GenerateMatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ml/generate-match" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var payload mlGenerateMatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload.CutoffDate == "" {
+			t.Fatalf("missing cutoff_date")
+		}
+		expIDs := []int64{10, 20}
+		if !reflect.DeepEqual(payload.PlayerIDs, expIDs) {
+			t.Fatalf("player_ids = %#v, want %#v", payload.PlayerIDs, expIDs)
+		}
+		if payload.Format != "T20" {
+			t.Fatalf("format = %q, want T20", payload.Format)
+		}
+		if payload.Features == nil || len(payload.Features) != 2 {
+			t.Fatalf("expected features for 2 players, got %#v", payload.Features)
+		}
+		if _, ok := payload.Features["10"]; !ok {
+			t.Fatalf("expected features key \"10\"")
+		}
+		if payload.MatchContext == nil || len(payload.MatchContext.Team1PlayerIDs) != 1 {
+			t.Fatalf("expected non-nil match_context with team1_player_ids")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"players": []map[string]any{
+				{"player_id": 10, "runs": 42.0, "wickets": 1.0},
+				{"player_id": 20, "runs": 35.0, "wickets": 2.0},
+			},
+			"innings": []map[string]any{
+				{"inning_number": 1, "runs": 170.0, "wickets": 6.0},
+				{"inning_number": 2, "runs": 160.0, "wickets": 8.0},
+			},
+			"win_probability_team1": 0.58,
+			"model_version":         "v-test-generate",
+		})
+	}))
+	defer srv.Close()
+
+	t.Setenv("ML_SERVICE_URL", srv.URL)
+	c := NewBacktestMLClient()
+	cutoff := time.Date(2024, 11, 1, 10, 0, 0, 0, time.UTC)
+	features := map[int64]map[string]float64{
+		10: {"batting_consistency": 0.5},
+		20: {"batting_consistency": 0.7},
+	}
+	ctx := &MatchContextForReconciliation{
+		Team1PlayerIDs:    []int64{10},
+		Team2PlayerIDs:    []int64{20},
+		VenueID:           1,
+		SeasonID:          2024,
+		FormatID:          3,
+		Team1OppositionID: 100,
+		Team2OppositionID: 200,
+		Temp:              25,
+	}
+	res, err := c.GenerateMatch(t.Context(), cutoff, "T20", []int64{10, 20}, features, true, ctx)
+	if err != nil {
+		t.Fatalf("GenerateMatch error: %v", err)
+	}
+	if res.ModelVersion != "v-test-generate" {
+		t.Fatalf("ModelVersion = %q, want v-test-generate", res.ModelVersion)
+	}
+	if len(res.Players) != 2 || len(res.Innings) != 2 {
+		t.Fatalf("unexpected sizes: players=%d innings=%d", len(res.Players), len(res.Innings))
+	}
+	if res.WinProbabilityTeam1 <= 0 || res.WinProbabilityTeam1 >= 1 {
+		t.Fatalf("WinProbabilityTeam1 = %v, want in (0,1)", res.WinProbabilityTeam1)
+	}
 }

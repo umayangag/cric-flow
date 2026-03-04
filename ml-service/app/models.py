@@ -166,6 +166,44 @@ class BacktestPlayersResponse(BaseModel):
     players: List[BacktestPlayerPred]
 
 
+class GenerateMatchRequest(BaseModel):
+    """Request for POST /api/ml/generate-match: match context + players + features."""
+
+    cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
+    player_ids: List[int] = Field(..., description="Player IDs for both teams")
+    format: str = Field(..., description="Format code (e.g. T20, ODI)")
+    features: Dict[str, Dict[str, float]] = Field(
+        default_factory=dict,
+        description="Per-player features (player_id as str -> feature name -> value)",
+    )
+    match_context: MatchContext = Field(..., description="Team assignment, venue, season, opposition, weather")
+    use_latest_model: bool = Field(default=False, description="Use latest model when True")
+
+    @field_validator("player_ids")
+    def _player_ids_positive(cls, v: List[int]):
+        for pid in v:
+            if pid <= 0:
+                raise ValueError("player_ids must be positive integers")
+        return v
+
+
+class InningsSummary(BaseModel):
+    """One innings summary for generate-match response."""
+
+    inning_number: int = Field(..., ge=1, le=2)
+    runs: float = Field(..., ge=0)
+    wickets: float = Field(..., ge=0, le=10)
+
+
+class GenerateMatchResponse(BaseModel):
+    """Response from POST /api/ml/generate-match: reconciled scorecards + win probability."""
+
+    players: List[BacktestPlayerPred] = Field(..., description="Reconciled per-player predictions")
+    innings: List[InningsSummary] = Field(..., description="Per-innings totals (1 and 2)")
+    win_probability_team1: float = Field(..., ge=0, le=1, description="P(team1 wins) from win model")
+    model_version: str = Field(default="", description="Model version label for traceability")
+
+
 class BacktestMatchAgg(BaseModel):
     runs: float
     wickets: float

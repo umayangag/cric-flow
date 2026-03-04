@@ -42,9 +42,11 @@ type Input struct {
 	ExtraTeam1          []int64       `json:"extra_team1,omitempty"`           // extra player IDs for team1 (e.g. IPL auction)
 	ExtraTeam2          []int64       `json:"extra_team2,omitempty"`           // extra player IDs for team2
 	OppositionPlayerIDs []int64       `json:"opposition_player_ids,omitempty"` // optional; for future batter-bowler matchup features
-	MinBowlers          int           `json:"min_bowlers,omitempty"`           // default 5
-	RequireKeeper       bool          `json:"require_keeper,omitempty"`        // default true
-	UseUnifiedModel     bool          `json:"use_unified_model,omitempty"`     // when true, use legacy unified model instead of format-specific
+	MinBowlers               int  `json:"min_bowlers,omitempty"`               // default 5
+	RequireKeeper            bool `json:"require_keeper,omitempty"`            // default true
+	UseUnifiedModel          bool `json:"use_unified_model,omitempty"`         // when true, use legacy unified model instead of format-specific
+	UseReconciledScorecard   bool `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
+	IncludeBothScorecards    bool `json:"include_both_scorecards,omitempty"`   // when true, return both standard and reconciled scorecards for comparison
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -71,9 +73,10 @@ type ScorecardSummary struct {
 
 // Result holds the best 11 for each team and optional scorecard summary.
 type Result struct {
-	Team1            []SelectedPlayer  `json:"team1"`
-	Team2            []SelectedPlayer  `json:"team2"`
-	ScorecardSummary *ScorecardSummary `json:"scorecard_summary,omitempty"`
+	Team1                     []SelectedPlayer  `json:"team1"`
+	Team2                     []SelectedPlayer  `json:"team2"`
+	ScorecardSummary          *ScorecardSummary `json:"scorecard_summary,omitempty"`
+	ScorecardSummaryReconciled *ScorecardSummary `json:"scorecard_summary_reconciled,omitempty"` // from generate-match when requested
 }
 
 // MatchContext is optional context for hybrid reconciliation (innings model rescaling).
@@ -88,6 +91,19 @@ type MatchContext struct {
 	Team2OppositionID                                      int64 // team1's ID when team2 bats (innings 2)
 	Temp, Wind, Rain, Humidity, Cloud, Pressure, Viscosity int
 }
+
+// GenerateMatchFunc is an optional callback to fetch a reconciled match projection (per-player stats,
+// innings totals, win probability) from the ML generate-match API. Used when UseReconciledScorecard
+// or IncludeBothScorecards is set so the client can compare or switch between standard and reconciled outputs.
+type GenerateMatchFunc func(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	playerIDs []int64,
+	features map[int64]map[string]float64,
+	useLatest bool,
+	matchCtx *MatchContext,
+) (players map[int64]PlayerPred, innings1Runs, innings2Runs float64, winProbTeam1 float64, modelVersion string, err error)
 
 // MLPredictor provides player predictions and optional match-level win probability.
 // When matchCtx is non-nil, ML may rescale predictions for consistency (requires innings model).
@@ -152,10 +168,13 @@ type predictIntermediates struct {
 
 // predictTeamsWithIntermediates runs the full pipeline and returns the result plus
 // intermediates (pools, preds, formatID, venueID, extras, team names) for reuse.
+// When reconciledGen is non-nil and input requests reconciled/compare scorecards, it is called
+// with the selected XI and used to populate ScorecardSummaryReconciled and optionally override the primary summary.
 func predictTeamsWithIntermediates(
 	ctx context.Context,
 	input Input,
 	predictor MLPredictor,
+	reconciledGen GenerateMatchFunc,
 ) (*Result, *predictIntermediates, error) {
 	if input.MinBowlers <= 0 {
 		if cfg := config.Load(); cfg != nil && cfg.Team.MinBowlers > 0 {
@@ -458,6 +477,63 @@ func predictTeamsWithIntermediates(
 	}
 	result.ScorecardSummary = &summary
 
+	// Optionally call generate-match for reconciled scorecard (and/or to return both for comparison).
+	if (input.UseReconciledScorecard || input.IncludeBothScorecards) && reconciledGen != nil {
+		selectedIDs := make([]int64, 0, len(sel1)+len(sel2))
+		for _, p := range sel1 {
+			if id, ok := nameToID1[p.Name]; ok {
+				selectedIDs = append(selectedIDs, id)
+			}
+		}
+		for _, p := range sel2 {
+			if id, ok := nameToID2[p.Name]; ok {
+				selectedIDs = append(selectedIDs, id)
+			}
+		}
+		featuresForSelected := make(map[int64]map[string]float64, len(selectedIDs))
+		for _, pid := range selectedIDs {
+			featuresForSelected[pid] = allFeats[pid] // may be nil/empty; ML accepts missing features
+		}
+		reconciledPlayers, in1, in2, winProb, _, errGen := reconciledGen(ctx, cutoff, formatForPrediction, selectedIDs, featuresForSelected, true, matchCtx)
+		if errGen == nil {
+			reconciledSummary := ScorecardSummary{
+				Innings1Total:       in1,
+				Innings2Total:       in2,
+				Team1WinProbability: winProb,
+			}
+			if winProb >= 0.5 {
+				reconciledSummary.PredictedWinner = team1
+			} else {
+				reconciledSummary.PredictedWinner = team2
+			}
+			result.ScorecardSummaryReconciled = &reconciledSummary
+			if input.UseReconciledScorecard {
+				result.ScorecardSummary = &reconciledSummary
+				// Overwrite per-player stats with reconciled values so the response reflects the reconciled scorecard.
+				for i := range result.Team1 {
+					if pr, ok := reconciledPlayers[result.Team1[i].PlayerID]; ok {
+						result.Team1[i].Runs = pr.Runs
+						result.Team1[i].Wickets = pr.Wickets
+						result.Team1[i].Economy = pr.Economy
+						result.Team1[i].Catches = pr.Catches
+						result.Team1[i].RunOuts = pr.RunOuts
+					}
+				}
+				for i := range result.Team2 {
+					if pr, ok := reconciledPlayers[result.Team2[i].PlayerID]; ok {
+						result.Team2[i].Runs = pr.Runs
+						result.Team2[i].Wickets = pr.Wickets
+						result.Team2[i].Economy = pr.Economy
+						result.Team2[i].Catches = pr.Catches
+						result.Team2[i].RunOuts = pr.RunOuts
+					}
+				}
+			}
+		} else {
+			slog.WarnContext(ctx, "reconciled generate-match failed, skipping reconciled scorecard", slog.Any("err", errGen))
+		}
+	}
+
 	mid := &predictIntermediates{
 		Pool1:    pool1,
 		Pool2:    pool2,
@@ -474,8 +550,10 @@ func predictTeamsWithIntermediates(
 }
 
 // PredictTeams runs the full pipeline: pool, features, ML predict, team select.
-func PredictTeams(ctx context.Context, input Input, predictor MLPredictor) (*Result, error) {
-	result, _, err := predictTeamsWithIntermediates(ctx, input, predictor)
+// reconciledGen is optional; when non-nil and input.UseReconciledScorecard or input.IncludeBothScorecards is set,
+// it is used to fetch a reconciled scorecard (and optionally both for comparison).
+func PredictTeams(ctx context.Context, input Input, predictor MLPredictor, reconciledGen GenerateMatchFunc) (*Result, error) {
+	result, _, err := predictTeamsWithIntermediates(ctx, input, predictor, reconciledGen)
 	return result, err
 }
 
