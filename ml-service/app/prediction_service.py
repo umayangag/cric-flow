@@ -7,6 +7,7 @@ Extracted from app.main to keep route handlers thin. Contains:
 - Match-level and player-level prediction orchestration
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -68,6 +69,15 @@ except ImportError:
     WIN_FEATURE_COLS = []
 
 logger = get_struct_logger()
+
+
+@dataclass
+class GenerateMatchSettings:
+    models_dir: str
+    enable_train_on_the_fly: bool
+    go_app_url: str
+    go_app_api_key: Optional[str]
+    train_latest_cache_granularity: str
 
 
 def round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
@@ -460,11 +470,7 @@ def generate_match(
     fmt: str,
     features_map: Dict[str, Dict[str, float]],
     match_context: MatchContext,
-    models_dir: str,
-    enable_train_on_the_fly: bool,
-    go_app_url: str,
-    go_app_api_key: Optional[str],
-    train_latest_cache_granularity: str,
+    settings: GenerateMatchSettings,
     use_latest_model: bool = False,
     model_version: str = "",
 ) -> Dict[str, Any]:
@@ -479,11 +485,11 @@ def generate_match(
         player_ids,
         fmt,
         features_map,
-        models_dir,
-        enable_train_on_the_fly,
-        go_app_url,
-        go_app_api_key,
-        train_latest_cache_granularity,
+        settings.models_dir,
+        settings.enable_train_on_the_fly,
+        settings.go_app_url,
+        settings.go_app_api_key,
+        settings.train_latest_cache_granularity,
         use_latest_model,
         match_context=match_context,
     )

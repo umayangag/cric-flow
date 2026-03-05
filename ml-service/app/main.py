@@ -60,6 +60,7 @@ from .models import (
     WinPrediction,
 )
 from .prediction_service import (
+    GenerateMatchSettings,
     generate_match,
     predict_players_with_features,
     round_datetime_to_granularity,
@@ -462,11 +463,13 @@ def api_generate_match(req: GenerateMatchRequest):
             req.format or "",
             req.features or {},
             req.match_context,
-            MODELS_DIR,
-            _settings.enable_train_on_the_fly,
-            _settings.go_app_url,
-            _settings.go_app_api_key or None,
-            TRAIN_LATEST_CACHE_GRANULARITY,
+            GenerateMatchSettings(
+                models_dir=MODELS_DIR,
+                enable_train_on_the_fly=_settings.enable_train_on_the_fly,
+                go_app_url=_settings.go_app_url,
+                go_app_api_key=_settings.go_app_api_key or None,
+                train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
+            ),
             req.use_latest_model,
             model_version=svc_resolve_model_version(getattr(app, "version", "")),
         )
