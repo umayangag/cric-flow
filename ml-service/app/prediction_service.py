@@ -115,6 +115,7 @@ def predict_match_innings(
     match_context: MatchContext,
     features_map: Dict[str, Dict[str, float]],
     fmt_upper: str,
+    match_date_unix: float,
 ) -> Optional[Tuple[float, float, float, float]]:
     """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
     innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
@@ -139,6 +140,7 @@ def predict_match_innings(
         format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
+        match_date_unix=match_date_unix,
         opposition_id=match_context.team1_opposition_id,
         temp=match_context.temp,
         wind=match_context.wind,
@@ -159,6 +161,7 @@ def predict_match_innings(
         format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
+        match_date_unix=match_date_unix,
         opposition_id=match_context.team2_opposition_id,
         temp=match_context.temp,
         wind=match_context.wind,
@@ -315,7 +318,8 @@ def predict_players_with_features(
     # Phase 3 share path: predict innings first when use_share so we can multiply shares
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
     if use_share and match_context is not None:
-        predicted = predict_match_innings(match_context, features_map, fmt_upper)
+        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
+        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
 
@@ -405,7 +409,8 @@ def predict_players_with_features(
 
     # Hybrid reconciliation: when match_context and innings model are available, run inference-time reconciliation
     if match_context is not None and not use_share:
-        predicted = predict_match_innings(match_context, features_map, fmt_upper)
+        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
+        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}

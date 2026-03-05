@@ -249,6 +249,7 @@ class ExtrasFeatures(BaseModel):
     format_id: int = Field(default=0, ge=0, description="Format dimension id")
     venue_id: int = Field(default=0, ge=0)
     season_id: int = Field(default=0, ge=0)
+    match_date_unix: float = Field(default=0.0, ge=0)
     temp: int = Field(default=0)
     wind: int = Field(default=0, ge=0)
     rain: int = Field(default=0, ge=0)
@@ -280,6 +281,7 @@ class WinFeatures(BaseModel):
 
     format_id: int = Field(default=0, ge=0)
     venue_id: int = Field(default=0, ge=0)
+    match_date_unix: float = Field(default=0.0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
     toss_winner_opposition_id: int = Field(default=0, ge=0)
