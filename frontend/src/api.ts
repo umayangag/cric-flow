@@ -47,7 +47,10 @@ function buildBacktestEvaluateUrl(
 function apiHeaders(includeJsonContentType = true): Record<string, string> {
   const headers: Record<string, string> = {};
   if (includeJsonContentType) headers['Content-Type'] = 'application/json';
-  const apiKey = localStorage.getItem('cric_info_api_key');
+  let apiKey: string | null = null;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    apiKey = window.localStorage.getItem('cric_info_api_key');
+  }
   if (apiKey) headers['X-API-Key'] = apiKey;
   return headers;
 }

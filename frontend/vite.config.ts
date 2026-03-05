@@ -17,10 +17,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    execArgv: [
-      '--localstorage-file',
-      path.resolve(os.tmpdir(), `vitest-${process.pid}.localstorage`),
-    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
