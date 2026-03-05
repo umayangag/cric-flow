@@ -11,9 +11,10 @@ import (
 // App holds long-lived application dependencies to be shared with handlers.
 // Extend this struct as new dependencies are introduced.
 type App struct {
-	mlClient   Client
-	dbProbe    opsstatus.DBProbe
-	jobContext context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	mlClient         Client
+	backtestMLClient *BacktestMLClient
+	dbProbe          opsstatus.DBProbe
+	jobContext       context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// currentJobCancel is the cancel func for the running pipeline job (if any). Used by Stop pipeline.
 	currentJobCancelMu sync.Mutex
@@ -24,9 +25,10 @@ type App struct {
 // pipeline jobs use it so they stop cleanly during shutdown. Pass nil in tests for context.Background() behavior.
 func NewApp(jobCtx context.Context, client Client) *App {
 	return &App{
-		mlClient:   client,
-		dbProbe:    opsstatus.NewProductionDBProbe(),
-		jobContext: jobCtx,
+		mlClient:         client,
+		backtestMLClient: NewBacktestMLClient(),
+		dbProbe:          opsstatus.NewProductionDBProbe(),
+		jobContext:       jobCtx,
 	}
 }
 

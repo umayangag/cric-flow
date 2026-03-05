@@ -53,11 +53,15 @@ from .models import (
     BowlingPrediction,
     ExtrasFeatures,
     ExtrasPrediction,
+    GenerateMatchRequest,
+    GenerateMatchResponse,
     HistoricalMatchBacktestRequest,
     WinFeatures,
     WinPrediction,
 )
 from .prediction_service import (
+    GenerateMatchSettings,
+    generate_match,
     predict_players_with_features,
     round_datetime_to_granularity,
     run_batting_prediction,
@@ -444,6 +448,45 @@ def backtest_predict(req: BacktestPredictRequest):
             message="provide either player_ids or teams",
             hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
         ),
+    )
+
+
+@app.post("/api/ml/generate-match", response_model=GenerateMatchResponse)
+def api_generate_match(req: GenerateMatchRequest):
+    """Generate a reconciled match: per-player stats, innings totals, and win probability (§5.1.1)."""
+    cutoff = req.cutoff_date
+    cutoff_with_tz = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=timezone.utc)
+    try:
+        result = generate_match(
+            cutoff_with_tz,
+            req.player_ids,
+            req.format or "",
+            req.features or {},
+            req.match_context,
+            GenerateMatchSettings(
+                models_dir=MODELS_DIR,
+                enable_train_on_the_fly=_settings.enable_train_on_the_fly,
+                go_app_url=_settings.go_app_url,
+                go_app_api_key=_settings.go_app_api_key or None,
+                train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
+            ),
+            req.use_latest_model,
+            model_version=svc_resolve_model_version(getattr(app, "version", "")),
+        )
+    except ValueError as e:
+        logger.warning("generate_match.validation_failed", error=str(e))
+        raise HTTPException(status_code=400, detail=error_payload(code="VALIDATION_FAILED", message=str(e))) from e
+    except Exception as e:
+        logger.exception("generate_match.error", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=error_payload(code="GENERATE_MATCH_FAILED", message=str(e)),
+        ) from e
+    return GenerateMatchResponse(
+        players=result["players"],
+        innings=result["innings"],
+        win_probability_team1=result["win_probability_team1"],
+        model_version=result["model_version"],
     )
 
 

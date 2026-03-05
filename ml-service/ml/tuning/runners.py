@@ -51,6 +51,7 @@ try:
 except ImportError:
     _HAS_OPTUNA = False
 
+from ml.tuning.consistency_tuning import augment_tuning_report_with_consistency
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -284,6 +285,7 @@ def run_auto_tune(
     )
     if clip_info:
         report["target_clip_info"] = clip_info
+    augment_tuning_report_with_consistency(report, model_kind, format_suffix)
     _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
     return report
 
@@ -379,6 +381,7 @@ def run_auto_tune_extras(
             return report
     if clip_info:
         report["target_clip_info"] = clip_info
+    augment_tuning_report_with_consistency(report, "extras", format_suffix)
     _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
     return report
 
@@ -748,5 +751,6 @@ def run_auto_tune_win(
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report
+    augment_tuning_report_with_consistency(report, "win", format_suffix)
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report

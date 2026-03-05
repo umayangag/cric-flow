@@ -109,6 +109,10 @@ def build_batting_features_from_map(
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
+    # Use provided match_date_unix when available; fall back to cutoff timestamp.
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
+    )
     bat_form = max(0.0, _get_required_float(d, "batting_form"))
     base = dict(
         batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
@@ -129,6 +133,7 @@ def build_batting_features_from_map(
         venue=_get_required_float(d, "venue"),
         opposition=_get_required_float(d, "opposition"),
         season=season,
+        match_date_unix=match_date_unix,
         player_name="",
         format=fmt,
     )
@@ -155,6 +160,7 @@ class FieldingFeatures:
     fielding_venue: float
     fielding_opposition: float
     fielding_season: int
+    match_date_unix: float
 
 
 def build_fielding_features_from_map(
@@ -169,6 +175,10 @@ def build_fielding_features_from_map(
     c = defs.get("common", {})
     f = defs.get("fielding", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
+    # Use provided match_date_unix when available; fall back to cutoff timestamp.
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
+    )
     return FieldingFeatures(
         fielding_consistency=max(0.0, _float(d, "fielding_consistency", f.get("consistency", 0.5))),
         fielding_form=max(0.0, _float(d, "fielding_form", f.get("form", 0.0))),
@@ -186,6 +196,7 @@ def build_fielding_features_from_map(
         fielding_venue=_float(d, "fielding_venue", _float(d, "venue", f.get("venue", 0.5))),
         fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", f.get("opposition", 0.5))),
         fielding_season=season,
+        match_date_unix=match_date_unix,
     )
 
 
@@ -198,6 +209,10 @@ def build_bowling_features_from_map(
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
+    # Use provided match_date_unix when available; fall back to cutoff timestamp.
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
+    )
     bowl_form = max(0.0, _get_required_float(d, "bowling_form"))
     base = dict(
         bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
@@ -219,6 +234,7 @@ def build_bowling_features_from_map(
         bowling_venue=_get_required_float(d, "bowling_venue"),
         bowling_opposition=_get_required_float(d, "bowling_opposition"),
         season=season,
+        match_date_unix=match_date_unix,
         player_name="",
         format=fmt,
     )

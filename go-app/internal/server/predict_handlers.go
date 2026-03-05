@@ -85,10 +85,12 @@ type predictTeamRequest struct {
 		Cloud    float64 `json:"cloud"`
 		Pressure float64 `json:"pressure"`
 	} `json:"weather"`
-	ExtraTeam1    []int64 `json:"extra_team1"`
-	ExtraTeam2    []int64 `json:"extra_team2"`
-	MinBowlers    int     `json:"min_bowlers"`
-	RequireKeeper *bool   `json:"require_keeper"`
+	ExtraTeam1             []int64 `json:"extra_team1"`
+	ExtraTeam2             []int64 `json:"extra_team2"`
+	MinBowlers             int     `json:"min_bowlers"`
+	RequireKeeper          *bool   `json:"require_keeper"`
+	UseReconciledScorecard *bool   `json:"use_reconciled_scorecard,omitempty"`
+	IncludeBothScorecards  *bool   `json:"include_both_scorecards,omitempty"`
 }
 
 // parsePredictTeamRequest decodes the request body from JSON or query params.
@@ -147,23 +149,33 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 			body.SimulationMaxPairs = n
 		}
 	}
+	if s := q.Get("use_reconciled_scorecard"); s == "1" || strings.EqualFold(s, "true") {
+		t := true
+		body.UseReconciledScorecard = &t
+	}
+	if s := q.Get("include_both_scorecards"); s == "1" || strings.EqualFold(s, "true") {
+		t := true
+		body.IncludeBothScorecards = &t
+	}
 	return body, nil
 }
 
 // buildPredictInput converts a parsed request into a predictteam.Input.
 func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam.Input {
 	input := predictteam.Input{
-		Format:          body.Format,
-		Team1:           body.Team1,
-		Team2:           body.Team2,
-		Venue:           body.Venue,
-		MatchDate:       matchDate,
-		SeasonID:        body.SeasonID,
-		ExtraTeam1:      body.ExtraTeam1,
-		ExtraTeam2:      body.ExtraTeam2,
-		MinBowlers:      body.MinBowlers,
-		RequireKeeper:   true,
-		UseUnifiedModel: body.UseUnifiedModel != nil && *body.UseUnifiedModel,
+		Format:                 body.Format,
+		Team1:                  body.Team1,
+		Team2:                  body.Team2,
+		Venue:                  body.Venue,
+		MatchDate:              matchDate,
+		SeasonID:               body.SeasonID,
+		ExtraTeam1:             body.ExtraTeam1,
+		ExtraTeam2:             body.ExtraTeam2,
+		MinBowlers:             body.MinBowlers,
+		RequireKeeper:          true,
+		UseUnifiedModel:        body.UseUnifiedModel != nil && *body.UseUnifiedModel,
+		UseReconciledScorecard: body.UseReconciledScorecard != nil && *body.UseReconciledScorecard,
+		IncludeBothScorecards:  body.IncludeBothScorecards != nil && *body.IncludeBothScorecards,
 	}
 	if body.Weather != nil {
 		input.Weather = &predictteam.WeatherInput{
@@ -220,6 +232,70 @@ func buildSimulationOpts(body predictTeamRequest) (predictteam.SimulationOpts, e
 	return opts, nil
 }
 
+func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchFunc {
+	return func(
+		ctx context.Context,
+		cutoff time.Time,
+		format string,
+		playerIDs []int64,
+		features map[int64]map[string]float64,
+		useLatest bool,
+		matchCtx *predictteam.MatchContext,
+	) (map[int64]predictteam.PlayerPred, float64, float64, float64, string, error) {
+		var mc *MatchContextForReconciliation
+		if matchCtx != nil {
+			mc = &MatchContextForReconciliation{
+				Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
+				Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
+				VenueID:           matchCtx.VenueID,
+				SeasonID:          matchCtx.SeasonID,
+				FormatID:          matchCtx.FormatID,
+				Team1OppositionID: matchCtx.Team1OppositionID,
+				Team2OppositionID: matchCtx.Team2OppositionID,
+				Temp:              matchCtx.Temp,
+				Wind:              matchCtx.Wind,
+				Rain:              matchCtx.Rain,
+				Humidity:          matchCtx.Humidity,
+				Cloud:             matchCtx.Cloud,
+				Pressure:          matchCtx.Pressure,
+				Viscosity:         matchCtx.Viscosity,
+			}
+		}
+		resp, err := client.GenerateMatch(ctx, cutoff, format, playerIDs, features, useLatest, mc)
+		if err != nil {
+			return nil, 0, 0, 0, "", err
+		}
+		players := make(map[int64]predictteam.PlayerPred, len(resp.Players))
+		for _, p := range resp.Players {
+			var balls, fours, sixes float64
+			if p.Balls != nil {
+				balls = *p.Balls
+			}
+			if p.Fours != nil {
+				fours = *p.Fours
+			}
+			if p.Sixes != nil {
+				sixes = *p.Sixes
+			}
+			players[p.PlayerID] = predictteam.PlayerPred{
+				Runs:    p.Runs,
+				Balls:   balls,
+				Fours:   fours,
+				Sixes:   sixes,
+				Wickets: p.Wickets,
+				Economy: p.Economy,
+				Catches: p.Catches,
+				RunOuts: p.RunOuts,
+			}
+		}
+		in1, in2 := 0.0, 0.0
+		if len(resp.Innings) >= 2 {
+			in1, in2 = resp.Innings[0].Runs, resp.Innings[1].Runs
+		}
+		return players, in1, in2, resp.WinProbabilityTeam1, resp.ModelVersion, nil
+	}
+}
+
 // predictTeamSelectionHandler handles POST /api/predict/team-selection
 func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -257,24 +333,43 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	input := buildPredictInput(body, matchDate)
+	// Optional reconciled scorecard generator: when client requests reconciled or both scorecards, call ML generate-match.
+	var reconciledGen predictteam.GenerateMatchFunc
+	if input.UseReconciledScorecard || input.IncludeBothScorecards {
+		client := a.backtestMLClient
+		if client == nil {
+			client = NewBacktestMLClient()
+		}
+		reconciledGen = newReconciledGenerator(client)
+	}
 	if body.Simulate != nil && *body.Simulate {
 		opts, err := buildSimulationOpts(body)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: err.Error()})
 			return
 		}
-		result, sim, err := predictteam.PredictTeamsWithSimulation(r.Context(), input, mlPredictorAdapter{}, opts)
+		result, sim, err := predictteam.PredictTeamsWithSimulation(
+			r.Context(),
+			input,
+			mlPredictorAdapter{},
+			opts,
+			reconciledGen,
+		)
 		if err != nil {
 			respondErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		out := map[string]any{
 			"team1": result.Team1, "team2": result.Team2,
 			"scorecard_summary": result.ScorecardSummary, "simulation": sim,
-		})
+		}
+		if result.ScorecardSummaryReconciled != nil {
+			out["scorecard_summary_reconciled"] = result.ScorecardSummaryReconciled
+		}
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	result, err := predictteam.PredictTeams(r.Context(), input, mlPredictorAdapter{})
+	result, err := predictteam.PredictTeams(r.Context(), input, mlPredictorAdapter{}, reconciledGen)
 	if err != nil {
 		respondErr(w, err)
 		return

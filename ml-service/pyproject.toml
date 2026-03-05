@@ -27,6 +27,14 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["app", "ml"]
 branch = true
+omit = [
+  # Offline training and tuning CLIs and helpers (covered by integration/manual runs, not core service)
+  "ml/train_*.py",
+  "ml/training_pipeline.py",
+  "ml/tuning/*.py",
+  "ml/walk_forward.py",
+  "ml/validate_exports.py",
+]
 
 [tool.coverage.report]
 show_missing = true

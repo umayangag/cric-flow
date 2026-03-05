@@ -76,6 +76,32 @@ type mlBacktestPlayersResponse struct {
 	Players []mlBacktestPlayerPred `json:"players"`
 }
 
+// mlGenerateMatchRequest matches ml-service GenerateMatchRequest (POST /api/ml/generate-match).
+type mlGenerateMatchRequest struct {
+	CutoffDate     string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids"`
+	Format         string                        `json:"format"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	MatchContext   *mlBacktestMatchContext       `json:"match_context,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+}
+
+// mlInningsSummary matches ml-service InningsSummary.
+type mlInningsSummary struct {
+	InningNumber int     `json:"inning_number"`
+	Runs         float64 `json:"runs"`
+	Wickets      float64 `json:"wickets"`
+}
+
+// MlGenerateMatchResponse matches ml-service GenerateMatchResponse.
+// Exported so the public GenerateMatch method can return it.
+type MlGenerateMatchResponse struct {
+	Players             []mlBacktestPlayerPred `json:"players"`
+	Innings             []mlInningsSummary     `json:"innings"`
+	WinProbabilityTeam1 float64                `json:"win_probability_team1"`
+	ModelVersion        string                 `json:"model_version"`
+}
+
 type mlBacktestMatchAggRequest struct {
 	Cutoff string    `json:"cutoff_date"`
 	Teams  [2]string `json:"teams"`
@@ -339,6 +365,82 @@ func (c *BacktestMLClient) predictPlayers(
 		res[p.PlayerID] = pp
 	}
 	return res, nil
+}
+
+// GenerateMatch calls the ml-service /api/ml/generate-match endpoint to get a reconciled
+// per-player projection, innings totals, and win probability for a future match.
+// playerIDs must include all players in the match (typically both XIs).
+// features is a per-player feature map (player_id -> feature_name -> value).
+// When useLatestModel is true, ML may ignore the strict cutoff and use the latest available model.
+func (c *BacktestMLClient) GenerateMatch(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	playerIDs []int64,
+	features map[int64]map[string]float64,
+	useLatestModel bool,
+	matchCtx *MatchContextForReconciliation,
+) (MlGenerateMatchResponse, error) {
+	if len(playerIDs) == 0 {
+		return MlGenerateMatchResponse{}, errors.New("playerIDs required")
+	}
+	reqBody := mlGenerateMatchRequest{
+		CutoffDate:     cutoff.Format(time.RFC3339),
+		PlayerIDs:      playerIDs,
+		Format:         strings.TrimSpace(format),
+		UseLatestModel: useLatestModel,
+	}
+	if len(features) > 0 {
+		reqBody.Features = make(map[string]map[string]float64, len(features))
+		for pid, m := range features {
+			reqBody.Features[strconv.FormatInt(pid, 10)] = m
+		}
+	}
+	if matchCtx != nil {
+		reqBody.MatchContext = &mlBacktestMatchContext{
+			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
+			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
+			VenueID:           float64(matchCtx.VenueID),
+			SeasonID:          float64(matchCtx.SeasonID),
+			FormatID:          float64(matchCtx.FormatID),
+			Team1OppositionID: float64(matchCtx.Team1OppositionID),
+			Team2OppositionID: float64(matchCtx.Team2OppositionID),
+			Temp:              matchCtx.Temp,
+			Wind:              matchCtx.Wind,
+			Rain:              matchCtx.Rain,
+			Humidity:          matchCtx.Humidity,
+			Cloud:             matchCtx.Cloud,
+			Pressure:          matchCtx.Pressure,
+			Viscosity:         matchCtx.Viscosity,
+		}
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return MlGenerateMatchResponse{}, fmt.Errorf("failed to marshal generate match request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.BaseURL+"/api/ml/generate-match",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return MlGenerateMatchResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return MlGenerateMatchResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return MlGenerateMatchResponse{}, logMLNon2xx(resp, "api/ml/generate-match")
+	}
+	var out MlGenerateMatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return MlGenerateMatchResponse{}, err
+	}
+	return out, nil
 }
 
 // predictMatchAggregates calls the ML backtest endpoint to get match-level aggregate predictions.

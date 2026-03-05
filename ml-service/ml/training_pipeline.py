@@ -20,7 +20,10 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .consistency_checker import ReconciledPlayerStats
 
 import joblib
 import numpy as np
@@ -357,6 +360,69 @@ class TrainingPipeline:
             model = base_est
         model.fit(Xs, Y)
         return scaler, model
+
+    # ── Consistency evaluation hooks (Stage 2 scaffolding) ────────────────
+
+    def evaluate_consistency_on_validation(
+        self,
+        before_after_by_match: Mapping[
+            str, Tuple[Mapping[int, ReconciledPlayerStats], Mapping[int, ReconciledPlayerStats]]
+        ],
+        format_code: Optional[str] = None,
+    ) -> Dict[str, float]:
+        """Compute reconciliation consistency metrics from before/after stats.
+
+        This helper is intentionally decoupled from how before/after stats are
+        constructed. Callers are expected to:
+
+        - Run their preferred validation or backtest loop to obtain raw
+          per-player predictions for one or more matches,
+        - Use `ml.consistency_eval.build_before_after_stats_from_predictions`
+          (or an equivalent helper) per match, then
+        - Pass a mapping from match identifier -> (before_stats, after_stats)
+          into this method.
+
+        The returned metrics dict is suitable for inclusion in artifact
+        metadata (e.g. *_metadata_*.json) and is also logged with a dedicated
+        key for future dashboards.
+        """
+        # Import locally to avoid any possibility of circular import at module load.
+        from .consistency_eval import compute_consistency_metrics
+
+        merged_before: Dict[int, ReconciledPlayerStats] = {}
+        merged_after: Dict[int, ReconciledPlayerStats] = {}
+
+        for match_id, (before_stats, after_stats) in before_after_by_match.items():
+            if not before_stats or not after_stats:
+                logger.info(
+                    "training.consistency.metrics_skip_empty "
+                    "model=%s format=%s match_id=%s reason=no_before_or_after_stats",
+                    self.spec.name,
+                    format_code or "",
+                    match_id,
+                )
+                continue
+            # Later matches overwrite earlier ones for the same player_id; this
+            # is acceptable for now because typical usage keys by unique match.
+            merged_before.update(before_stats)
+            merged_after.update(after_stats)
+
+        if not merged_before or not merged_after:
+            logger.info(
+                "training.consistency.metrics_skipped model=%s format=%s reason=no_merged_before_after_stats",
+                self.spec.name,
+                format_code or "",
+            )
+            return {}
+
+        metrics = compute_consistency_metrics(merged_before, merged_after)
+        logger.info(
+            "training.consistency.metrics model=%s format=%s metrics=%s",
+            self.spec.name,
+            format_code or "",
+            metrics,
+        )
+        return metrics
 
     # ── CLI entrypoint ───────────────────────────────────────────────────
 

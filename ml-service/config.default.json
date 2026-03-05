@@ -202,6 +202,12 @@
         }
       }
     },
+    "consistency_regularization": {
+      "enabled": false,
+      "lambda_runs": 0.01,
+      "lambda_wickets": 0.01,
+      "models": {}
+    },
     "mlqa": {
       "overfitting_delta_threshold": 0.08,
       "stability_fold_std_threshold": 0.05,
@@ -230,7 +236,22 @@
       }
     },
     "prediction_defaults": {
-      "economy": 6
+      "economy": 6,
+      "default_bowling_deliveries": 24,
+      "bowling_deliveries_by_format": {
+        "T20": 24,
+        "T20I": 24,
+        "ODI": 60,
+        "TEST": 60
+      }
+    },
+    "reconciliation": {
+      "runs_weight": 1.0,
+      "wickets_weight": 1.0,
+      "soft_favor_top_order_balls": 0.0
+    },
+    "win_coherence": {
+      "scale": 25.0
     }
   },
   "team_prediction": {

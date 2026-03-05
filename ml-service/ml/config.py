@@ -353,6 +353,48 @@ def get_tuning_config() -> Dict[str, Any]:
     }
 
 
+def get_consistency_regularization_config(model_kind: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load consistency regularization settings from ml.consistency_regularization.
+
+    Used by tuning to optionally combine base error with a consistency penalty
+    for model selection (Stage 2.2). When model_kind is set, per-model overrides
+    under ml.consistency_regularization.models.<model_kind> are merged over defaults.
+
+    Returns:
+        Dict with: enabled (bool), lambda_runs (float), lambda_wickets (float).
+        enabled is False by default so consistency-aware selection is off until opted in.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    cr = (ml.get("consistency_regularization") if isinstance(ml, dict) else None) or {}
+    defaults = {
+        "enabled": bool(cr.get("enabled", False)),
+        "lambda_runs": float(cr.get("lambda_runs", 0.01)),
+        "lambda_wickets": float(cr.get("lambda_wickets", 0.01)),
+    }
+    if not model_kind:
+        return defaults
+    models_block = cr.get("models") if isinstance(cr.get("models"), dict) else {}
+    overrides = models_block.get(model_kind) if isinstance(models_block.get(model_kind), dict) else {}
+    if not overrides:
+        return defaults
+    out = dict(defaults)
+    if "enabled" in overrides:
+        out["enabled"] = bool(overrides["enabled"])
+    if "lambda_runs" in overrides:
+        try:
+            out["lambda_runs"] = float(overrides["lambda_runs"])
+        except (TypeError, ValueError):
+            pass
+    if "lambda_wickets" in overrides:
+        try:
+            out["lambda_wickets"] = float(overrides["lambda_wickets"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def get_mlqa_config() -> Dict[str, Any]:
     """
     Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.
@@ -428,4 +470,77 @@ def get_prediction_defaults() -> Dict[str, Any]:
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     pd_def = (ml.get("prediction_defaults") if isinstance(ml, dict) else None) or {}
-    return {"economy": float(pd_def.get("economy", 6.0))}
+
+    bowling_cfg = pd_def.get("bowling_deliveries_by_format") or {}
+    bowling_by_format: Dict[str, float] = {}
+    if isinstance(bowling_cfg, dict):
+        for fmt, val in bowling_cfg.items():
+            try:
+                bowling_by_format[str(fmt).upper()] = float(val)
+            except (TypeError, ValueError):
+                # Skip invalid entries but keep others.
+                continue
+
+    default_bowling_deliveries = pd_def.get("default_bowling_deliveries", 24.0)
+    try:
+        default_bowling_deliveries = float(default_bowling_deliveries)
+    except (TypeError, ValueError):
+        default_bowling_deliveries = 24.0
+
+    return {
+        "economy": float(pd_def.get("economy", 6.0)),
+        "bowling_deliveries_by_format": bowling_by_format,
+        "default_bowling_deliveries": default_bowling_deliveries,
+    }
+
+
+def get_reconciliation_config() -> Dict[str, Any]:
+    """
+    Load reconciliation weights from ml.reconciliation.
+
+    Returns:
+        Dict with: runs_weight, wickets_weight, soft_favor_top_order_balls.
+        All values are floats with sensible defaults when not configured.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    recon = (ml.get("reconciliation") if isinstance(ml, dict) else None) or {}
+    runs_weight = recon.get("runs_weight", 1.0)
+    wickets_weight = recon.get("wickets_weight", 1.0)
+    soft_favor_top_order_balls = recon.get("soft_favor_top_order_balls", 0.0)
+    try:
+        runs_weight = float(runs_weight)
+    except (TypeError, ValueError):
+        runs_weight = 1.0
+    try:
+        wickets_weight = float(wickets_weight)
+    except (TypeError, ValueError):
+        wickets_weight = 1.0
+    try:
+        soft_favor_top_order_balls = float(soft_favor_top_order_balls)
+    except (TypeError, ValueError):
+        soft_favor_top_order_balls = 0.0
+    return {
+        "runs_weight": runs_weight,
+        "wickets_weight": wickets_weight,
+        "soft_favor_top_order_balls": soft_favor_top_order_balls,
+    }
+
+
+def get_win_coherence_config() -> Dict[str, Any]:
+    """
+    Load win coherence configuration from ml.win_coherence.
+
+    Returns:
+        Dict with: scale (float), controlling logistic steepness used by
+        win_probability_coherence_from_margin.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    wc = (ml.get("win_coherence") if isinstance(ml, dict) else None) or {}
+    scale = wc.get("scale", 25.0)
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 25.0
+    return {"scale": scale}

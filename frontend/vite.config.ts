@@ -1,4 +1,7 @@
 /// <reference types="vitest/config" />
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 

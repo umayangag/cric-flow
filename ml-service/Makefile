@@ -6,8 +6,8 @@ PY:=$(VENV)/bin/python3
 PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
-# Enforced by CI and make coverage-check. Raise to 57 once additional tests cover tuning/orchestrator or prediction_service.
-COV_MIN?=57
+# Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
+COV_MIN?=74
 # CI sets REQUIREMENTS_FILE=requirements-ci.txt so venv gets minimal deps (no pycaret/autogluon).
 REQUIREMENTS_FILE?=requirements.txt
 

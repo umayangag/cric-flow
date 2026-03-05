@@ -1,7 +1,6 @@
 import React from 'react';
 import OpsPipelineGraph from './OpsPipelineGraph';
 import PipelineProgressPanel from './PipelineProgressPanel';
-import MLPredictionGraph from './MLPredictionGraph';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsTableStats from './OpsTableStats';
 import OpsStatusDetailsGrid from './OpsStatusDetailsGrid';
@@ -78,12 +77,6 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
             )}
             onRefresh={onRefresh}
           />
-        </SectionCard>
-        <SectionCard
-          title="Prediction model flow"
-          subtitle="Features at cutoff → per-player models (batting, bowling, fielding) → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation."
-        >
-          <MLPredictionGraph />
         </SectionCard>
         <SectionCard title="Migration History">
           <OpsMigrationsTable />

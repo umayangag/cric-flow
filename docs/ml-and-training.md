@@ -59,6 +59,36 @@ You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or
 
 ---
 
+## Test coverage and CI gates (ML service)
+
+**Goal:** ML‑service coverage gates should reflect the quality of **API and inference‑time code**, without being dominated by long‑running offline training/tuning CLIs.
+
+- **Coverage configuration:**
+  - `pyproject.toml` configures coverage to track `app` and `ml` packages, with `branch = true`.
+  - Training/tuning entrypoints that are exercised via separate flows are excluded via `omit`:
+    - `ml/train_*.py` (per‑model training CLIs, including `train_batting`, `train_bowling`, `train_extras`, `train_win`, `train_innings`, `train_fielding`, `train_combination_meta`, etc.),
+    - `ml/training_pipeline.py` (shared training helpers),
+    - `ml/tuning/*.py` (auto‑tune orchestration),
+    - `ml/walk_forward.py`,
+    - `ml/validate_exports.py`.
+  - This keeps the coverage number focused on `app.main`, `app/prediction_service.py`, reconciliation (`ml/reconciliation_*`), consistency checking, config, and other request‑time paths.
+
+- **Thresholds and CI integration:**
+  - `ml-service/Makefile` defines `COV_MIN`, the minimum allowed coverage percentage for local `make coverage-check`.
+  - The root `Makefile` exposes this as `COV_MIN_ML` so `make ml-service-check`/`make check-all` use the same gate.
+  - `.github/workflows/ml-service-ci.yml` passes `COV_MIN` into `make -C ml-service coverage-check` in CI. **All three must stay in sync**; when overall coverage improves, raise all three together (e.g. from 57 → 74) and re‑run the gate locally before pushing.
+
+- **Raising, never lowering:**
+  - When `coverage` reports that actual coverage is above the current threshold, we **bump the threshold up to `floor(actual)`** (e.g. 74.99% → 74) in `ml-service/Makefile`, the root `Makefile`, and the CI workflow.
+  - We do **not** lower thresholds; if coverage regresses below the gate, the fix is to add or repair tests.
+
+The same pattern applies to other components:
+
+- **Frontend:** Vitest coverage thresholds live in `frontend/vite.config.ts` under `test.coverage` (lines, functions, statements, branches). Whenever we meaningfully improve tests, we raise each threshold to the floor of the corresponding metric.
+- **Go app:** Go coverage gates use `COV_MIN` in `go-app/Makefile`, mirrored as `COV_MIN_GO` in the root `Makefile` and as the `COV_MIN` env var in `.github/workflows/go-app-ci.yml`. As with ML service, raise these only when coverage improves.
+
+---
+
 ## Pipeline modes: params known vs unknown
 
 **Single-train principle:** Train each model **once** with the params you intend to use. Params come from `ml-service/config.json` (`ml.training.<model>`) and, when `GO_APP_URL` is set, are **overlaid** by tuned params stored in the go-app DB (from a previous auto-tune). So you either train with known params (config + DB) or run auto-tune to discover params, then train once with those.

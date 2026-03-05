@@ -180,6 +180,9 @@ def main() -> None:
         mlqa = report.get("mlqa_audit")
         if mlqa and isinstance(mlqa, dict):
             metrics_to_save["mlqa_audit"] = mlqa
+        for key in ("consistency_penalty", "base_mae", "score_combined_mae"):
+            if report.get(key) is not None:
+                metrics_to_save[key] = report[key]
         try:
             save_tuned_params_to_go_app(
                 go_app_url, model, format_suffix or "", params_to_save, api_key, metrics=metrics_to_save

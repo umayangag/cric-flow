@@ -7,6 +7,7 @@ Extracted from app.main to keep route handlers thin. Contains:
 - Match-level and player-level prediction orchestration
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -41,6 +42,7 @@ from .models import (
     BowlingPrediction,
     ExtrasFeatures,
     ExtrasPrediction,
+    InningsSummary,
     MatchContext,
     WinFeatures,
     WinPrediction,
@@ -49,9 +51,12 @@ from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
 
 try:
-    from ml.config import get_prediction_defaults
+    from ml.config import get_prediction_defaults, get_win_coherence_config
+    from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
 except ImportError:
-    get_prediction_defaults = None
+    get_prediction_defaults = None  # type: ignore[assignment]
+    get_win_coherence_config = None  # type: ignore[assignment]
+    apply_constraint_reconciliation_from_backtest_preds = None  # type: ignore[assignment]
 
 try:
     from ml.train_extras import EXTRAS_FEATURE_COLS
@@ -64,6 +69,15 @@ except ImportError:
     WIN_FEATURE_COLS = []
 
 logger = get_struct_logger()
+
+
+@dataclass
+class GenerateMatchSettings:
+    models_dir: str
+    enable_train_on_the_fly: bool
+    go_app_url: str
+    go_app_api_key: Optional[str]
+    train_latest_cache_granularity: str
 
 
 def round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
@@ -82,10 +96,26 @@ def round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
     return dt  # fallback: no rounding
 
 
+def _sum_team_feature(
+    features_map: Dict[str, Dict[str, float]],
+    ids: set,
+    key_bat: str,
+    key_bowl: str,
+) -> Tuple[float, float]:
+    """Sum batting and bowling feature values for a set of player IDs. Used by predict_match_innings and generate_match."""
+    bat_sum, bowl_sum = 0.0, 0.0
+    for pid in ids:
+        fm = features_map.get(str(pid), {})
+        bat_sum += fm.get(key_bat, 0.0)
+        bowl_sum += fm.get(key_bowl, 0.0)
+    return bat_sum, bowl_sum
+
+
 def predict_match_innings(
     match_context: MatchContext,
     features_map: Dict[str, Dict[str, float]],
     fmt_upper: str,
+    match_date_unix: float,
 ) -> Optional[Tuple[float, float, float, float]]:
     """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
     innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
@@ -95,18 +125,10 @@ def predict_match_innings(
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
 
-    def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
-        bat_sum, bowl_sum = 0.0, 0.0
-        for pid in ids:
-            fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-            bat_sum += float(fm.get(key_bat, 0) or 0)
-            bowl_sum += float(fm.get(key_bowl, 0) or 0)
-        return bat_sum, bowl_sum
-
-    t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
-    t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
-    t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
-    t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
+    t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_consistency", "bowling_consistency")
+    t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+    t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_consistency", "bowling_consistency")
+    t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
     inn1_runs, inn1_wkts = predict_innings(
         scaler_inn,
         model_inn,
@@ -118,6 +140,7 @@ def predict_match_innings(
         format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
+        match_date_unix=match_date_unix,
         opposition_id=match_context.team1_opposition_id,
         temp=match_context.temp,
         wind=match_context.wind,
@@ -138,6 +161,7 @@ def predict_match_innings(
         format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
+        match_date_unix=match_date_unix,
         opposition_id=match_context.team2_opposition_id,
         temp=match_context.temp,
         wind=match_context.wind,
@@ -148,6 +172,10 @@ def predict_match_innings(
         viscosity=match_context.viscosity,
     )
     return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
+
+
+_TEAM1_ID = 1
+_TEAM2_ID = 2
 
 
 def predict_players_with_features(
@@ -290,7 +318,8 @@ def predict_players_with_features(
     # Phase 3 share path: predict innings first when use_share so we can multiply shares
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
     if use_share and match_context is not None:
-        predicted = predict_match_innings(match_context, features_map, fmt_upper)
+        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
+        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
 
@@ -378,32 +407,171 @@ def predict_players_with_features(
             )
         out = out_new
 
-    # Hybrid reconciliation: when match_context and innings model are available, rescale predictions
+    # Hybrid reconciliation: when match_context and innings model are available, run inference-time reconciliation
     if match_context is not None and not use_share:
-        predicted = predict_match_innings(match_context, features_map, fmt_upper)
+        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
+        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
             team2_ids = {int(pid) for pid in match_context.team2_player_ids}
-            out = rescale_player_predictions(
-                out,
-                team1_ids,
-                team2_ids,
-                inn1_runs,
-                inn1_wkts,
-                inn2_runs,
-                inn2_wkts,
-                default_economy=default_econ,
-            )
-            logger.info(
-                "backtest_predict.reconciliation.applied",
-                innings1_runs=inn1_runs,
-                innings2_runs=inn2_runs,
-                innings1_wickets=inn1_wkts,
-                innings2_wickets=inn2_wkts,
-            )
+            if apply_constraint_reconciliation_from_backtest_preds is not None:
+                out, adj = apply_constraint_reconciliation_from_backtest_preds(
+                    out,
+                    team1_ids,
+                    team2_ids,
+                    inn1_runs,
+                    inn1_wkts,
+                    inn2_runs,
+                    inn2_wkts,
+                    match_id=0,
+                    format_code=fmt_upper,
+                    default_economy=default_econ,
+                )
+                logger.info(
+                    "backtest_predict.reconciliation.applied",
+                    format=fmt_upper,
+                    innings1_runs=inn1_runs,
+                    innings2_runs=inn2_runs,
+                    innings1_wickets=inn1_wkts,
+                    innings2_wickets=inn2_wkts,
+                    mean_abs_delta_runs=adj.get("mean_abs_delta_runs"),
+                    mean_abs_delta_wickets=adj.get("mean_abs_delta_wickets"),
+                    mean_abs_pct_delta_runs=adj.get("mean_abs_pct_delta_runs"),
+                    mean_abs_pct_delta_wickets=adj.get("mean_abs_pct_delta_wickets"),
+                    total_before_runs=adj.get("total_before_runs"),
+                    total_before_wickets=adj.get("total_before_wickets"),
+                )
+                if adj.get("violations"):
+                    logger.warning(
+                        "backtest_predict.reconciliation.violations",
+                        violations=adj["violations"],
+                    )
+            else:
+                out = rescale_player_predictions(
+                    out,
+                    team1_ids,
+                    team2_ids,
+                    inn1_runs,
+                    inn1_wkts,
+                    inn2_runs,
+                    inn2_wkts,
+                    default_economy=default_econ,
+                )
+                logger.info(
+                    "backtest_predict.reconciliation.applied",
+                    innings1_runs=inn1_runs,
+                    innings2_runs=inn2_runs,
+                    innings1_wickets=inn1_wkts,
+                    innings2_wickets=inn2_wkts,
+                )
 
     return out
+
+
+def generate_match(
+    cutoff: datetime,
+    player_ids: List[int],
+    fmt: str,
+    features_map: Dict[str, Dict[str, float]],
+    match_context: MatchContext,
+    settings: GenerateMatchSettings,
+    use_latest_model: bool = False,
+    model_version: str = "",
+) -> Dict[str, Any]:
+    """Produce reconciled scorecards and win probability for a single match (§5.1.1).
+
+    Calls predict_players_with_features with match_context (so reconciliation runs),
+    aggregates team totals, builds WinFeatures from context + features, runs win model,
+    and logs win coherence (margin vs model win prob) for monitoring (§3.3.3).
+    """
+    preds = predict_players_with_features(
+        cutoff,
+        player_ids,
+        fmt,
+        features_map,
+        settings.models_dir,
+        settings.enable_train_on_the_fly,
+        settings.go_app_url,
+        settings.go_app_api_key,
+        settings.train_latest_cache_granularity,
+        use_latest_model,
+        match_context=match_context,
+    )
+    team1_ids = {int(pid) for pid in match_context.team1_player_ids}
+    team2_ids = {int(pid) for pid in match_context.team2_player_ids}
+    team1_runs = sum(p.runs for p in preds if p.player_id in team1_ids)
+    team2_runs = sum(p.runs for p in preds if p.player_id in team2_ids)
+    inn1_wickets = sum(p.wickets or 0 for p in preds if p.player_id in team2_ids)
+    inn2_wickets = sum(p.wickets or 0 for p in preds if p.player_id in team1_ids)
+    innings = [
+        InningsSummary(inning_number=1, runs=team1_runs, wickets=float(inn1_wickets)),
+        InningsSummary(inning_number=2, runs=team2_runs, wickets=float(inn2_wickets)),
+    ]
+    try:
+        from ml.win_features_from_reconciled import build_win_features_standardized
+    except ImportError:
+        build_win_features_standardized = None
+    p_team1 = 0.5
+    if build_win_features_standardized is not None:
+        t1_bat_cons, t1_bowl_cons = _sum_team_feature(
+            features_map, team1_ids, "batting_consistency", "bowling_consistency"
+        )
+        t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+        t2_bat_cons, t2_bowl_cons = _sum_team_feature(
+            features_map, team2_ids, "batting_consistency", "bowling_consistency"
+        )
+        t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
+        wf = build_win_features_standardized(
+            format_code=fmt,
+            format_id=int(match_context.format_id),
+            venue_id=int(match_context.venue_id),
+            season_id=int(match_context.season_id),
+            team1_opposition_id=int(match_context.team1_opposition_id),
+            team2_opposition_id=int(match_context.team2_opposition_id),
+            toss_winner_opposition_id=0,
+            team1_bat_consistency_sum=t1_bat_cons,
+            team1_bowl_consistency_sum=t1_bowl_cons,
+            team2_bat_consistency_sum=t2_bat_cons,
+            team2_bowl_consistency_sum=t2_bowl_cons,
+            team1_bat_form_sum=t1_bat_form,
+            team1_bowl_form_sum=t1_bowl_form,
+            team2_bat_form_sum=t2_bat_form,
+            team2_bowl_form_sum=t2_bowl_form,
+        )
+        win_preds = run_win_prediction([wf])
+        if win_preds:
+            p_team1 = win_preds[0].team1_win_probability
+    margin = team1_runs - team2_runs
+    try:
+        from ml.win_coherence_metrics import win_probability_coherence_from_margin
+
+        scale = 25.0
+        if get_win_coherence_config is not None:
+            try:
+                wc_cfg = get_win_coherence_config()
+                scale = float(wc_cfg.get("scale", scale))
+            except Exception:
+                # Fall back to hardcoded default if config is missing or invalid.
+                scale = 25.0
+
+        coh = win_probability_coherence_from_margin(p_team1, margin, scale=scale)
+        logger.info(
+            "win_coherence.metrics",
+            format=(fmt or "").strip().upper(),
+            p_model_team1=coh.get("p_model_team1"),
+            p_implied_team1=coh.get("p_implied_team1"),
+            abs_diff=coh.get("abs_diff"),
+            margin=margin,
+        )
+    except Exception:
+        pass
+    return {
+        "players": preds,
+        "innings": innings,
+        "win_probability_team1": p_team1,
+        "model_version": model_version,
+    }
 
 
 # ---------------------------------------------------------------------------
