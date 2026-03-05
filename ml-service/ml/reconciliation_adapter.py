@@ -158,6 +158,7 @@ def apply_constraint_reconciliation_from_backtest_preds(
     out: List[BacktestPlayerPred] = []
     before_stats: Dict[int, ReconciledPlayerStats] = {}
     after_stats: Dict[int, ReconciledPlayerStats] = {}
+    fallback_bowling_balls = _default_bowling_deliveries_for_format(format_code)
 
     for p in preds:
         r = pid_to_recon.get(p.player_id)
@@ -186,7 +187,7 @@ def apply_constraint_reconciliation_from_backtest_preds(
             team_id=r.team_id,
             batting_runs=int(p.runs or 0),
             batting_balls=int(p.balls or 0) if p.balls is not None else 0,
-            bowling_runs=int((p.economy or default_economy) * (r.bowling_balls or 6) / 6.0),
+            bowling_runs=int((p.economy or default_economy) * (r.bowling_balls or fallback_bowling_balls) / 6.0),
             bowling_balls=int(r.bowling_balls or 0),
             wickets=int(p.wickets or 0),
         )

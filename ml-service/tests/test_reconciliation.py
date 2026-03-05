@@ -21,8 +21,10 @@ def test_build_innings_feature_vector_shape():
         bowl_form_sum=0.5,
     )
     assert X.shape == (1, len(INNINGS_FEATURE_COLS))
-    assert X[0, 3] == 1.0  # inning_number
-    assert X[0, 12] == 1.0  # bat_consistency_sum
+    inning_idx = INNINGS_FEATURE_COLS.index("inning_number")
+    bat_consistency_idx = INNINGS_FEATURE_COLS.index("bat_consistency_sum")
+    assert X[0, inning_idx] == 1.0  # inning_number
+    assert X[0, bat_consistency_idx] == 1.0  # bat_consistency_sum
 
 
 def test_predict_innings_without_scaler():

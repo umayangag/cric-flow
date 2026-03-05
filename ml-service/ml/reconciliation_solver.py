@@ -1,4 +1,4 @@
-"""Numerical solver for reconciliation problems.
+r"""Numerical solver for reconciliation problems.
 
 Given a `ReconciliationProblem` (variables, preferred values μ, weights W, and
 linear equality constraints), this module computes an adjusted vector x* that:

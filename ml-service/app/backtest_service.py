@@ -110,8 +110,8 @@ def build_batting_features_from_map(
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
     # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(
-        d, "match_date_unix", 0.0
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
     )
     bat_form = max(0.0, _get_required_float(d, "batting_form"))
     base = dict(
@@ -176,8 +176,8 @@ def build_fielding_features_from_map(
     f = defs.get("fielding", {})
     season = _int(d, "season", cutoff.year if cutoff else 0)
     # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(
-        d, "match_date_unix", 0.0
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
     )
     return FieldingFeatures(
         fielding_consistency=max(0.0, _float(d, "fielding_consistency", f.get("consistency", 0.5))),
@@ -210,8 +210,8 @@ def build_bowling_features_from_map(
     d = {k: v for k, v in feature_map.items()}
     season = _int(d, "season", cutoff.year if cutoff else 0)
     # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(
-        d, "match_date_unix", 0.0
+    match_date_unix = (
+        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
     )
     bowl_form = max(0.0, _get_required_float(d, "bowling_form"))
     base = dict(

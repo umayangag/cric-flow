@@ -1,4 +1,4 @@
-"""Core structures for constrained reconciliation of model outputs.
+r"""Core structures for constrained reconciliation of model outputs.
 
 This module defines:
 - The variable space \(x\) over which reconciliation operates.
