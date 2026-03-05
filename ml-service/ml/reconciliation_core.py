@@ -77,7 +77,7 @@ class ReconciliationProblem:
         variables: metadata for each decision variable in x.
         mu: preferred values μ for each variable (shape (n_vars,)).
         weights: diagonal weights W (shape (n_vars,)), interpreted as
-            per-variable penalties in \sum_i w_i (x_i - μ_i)^2.
+            per-variable penalties in \\sum_i w_i (x_i - μ_i)^2.
         constraints: list of LinearConstraint objects encoding cricket rules.
     """
 
