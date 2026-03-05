@@ -2,7 +2,7 @@
 Model metadata for the Workbench UI: features, outputs, level, artifacts pattern, notes.
 
 Generated from the source of truth: feature_vectors.json (batting, bowling, fielding),
-train_extras.EXTRAS_FEATURE_COLS, train_win.WIN_FEATURE_COLS, and static metadata.
+train_extras.EXTRAS_FEATURE_COLS, win_features.WIN_ENHANCED_FEATURE_COLS, and static metadata.
 Served by GET /model-metadata so the frontend stays in sync with the backend.
 
 Model mode registry: central list of prediction/artifact modes (legacy vs per-format)
@@ -128,9 +128,9 @@ def _extras_feature_cols() -> List[str]:
 
 def _win_feature_cols() -> List[str]:
     try:
-        from ml.train_win import WIN_FEATURE_COLS
+        from ml.win_features import WIN_ENHANCED_FEATURE_COLS
 
-        return list(WIN_FEATURE_COLS)
+        return list(WIN_ENHANCED_FEATURE_COLS)
     except ImportError:
         return []
 

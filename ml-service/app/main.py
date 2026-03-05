@@ -538,24 +538,9 @@ async def predict_win_enhanced(request: WinFeaturesEnhanced):
     statistics (mean, std, max, min, top3_mean) and derived matchup features
     before running the win model.
     """
-    match_context = {
-        "format_id": float(request.format_id),
-        "venue_id": float(request.venue_id),
-        "match_date_unix": float(request.match_date_unix),
-        "team1_opposition_id": float(request.team1_opposition_id),
-        "team2_opposition_id": float(request.team2_opposition_id),
-        "toss_winner_opposition_id": float(request.toss_winner_opposition_id),
-        "temp": float(request.temp),
-        "wind": float(request.wind),
-        "rain": float(request.rain),
-        "humidity": float(request.humidity),
-        "cloud": float(request.cloud),
-        "pressure": float(request.pressure),
-        "viscosity": float(request.viscosity),
-    }
     return run_win_prediction_enhanced(
         fmt=request.format or "",
-        match_context=match_context,
+        match_context=request.to_match_context_dict(),
         team1_player_features=request.team1_player_features,
         team2_player_features=request.team2_player_features,
     )

@@ -721,23 +721,8 @@ func getMatchWinProbability(
 	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
 		t1Feats := extractPlayerFeatures(ids1, allFeats)
 		t2Feats := extractPlayerFeatures(ids2, allFeats)
-		p, err := enhanced.PredictMatchWinEnhanced(ctx, WinFeaturesEnhanced{
-			FormatID:               int(formatID),
-			VenueID:                int(venueIDVal),
-			Team1OppositionID:      int(opp2IDVal),
-			Team2OppositionID:      int(opp1IDVal),
-			TossWinnerOppositionID: 0,
-			Temp:                   temp,
-			Wind:                   wind,
-			Rain:                   rain,
-			Humidity:               humidity,
-			Cloud:                  cloud,
-			Pressure:               pressure,
-			Viscosity:              0,
-			Team1PlayerFeatures:    t1Feats,
-			Team2PlayerFeatures:    t2Feats,
-			Format:                 strings.TrimSpace(strings.ToUpper(format)),
-		})
+		feats := buildEnhancedWinFeatures(formatID, venueIDVal, opp2IDVal, opp1IDVal, temp, wind, rain, humidity, cloud, pressure, t1Feats, t2Feats, format)
+		p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
 		if err == nil {
 			return p, nil
 		}
@@ -810,6 +795,31 @@ func extractPlayerFeatures(ids []int64, allFeats map[int64]map[string]float64) m
 		}
 	}
 	return out
+}
+
+func buildEnhancedWinFeatures(
+	formatID, venueIDVal, team1OppID, team2OppID int64,
+	temp, wind, rain, humidity, cloud, pressure int,
+	t1Feats, t2Feats map[int64]map[string]float64,
+	format string,
+) WinFeaturesEnhanced {
+	return WinFeaturesEnhanced{
+		FormatID:               int(formatID),
+		VenueID:                int(venueIDVal),
+		Team1OppositionID:      int(team1OppID),
+		Team2OppositionID:      int(team2OppID),
+		TossWinnerOppositionID: 0,
+		Temp:                   temp,
+		Wind:                   wind,
+		Rain:                   rain,
+		Humidity:               humidity,
+		Cloud:                  cloud,
+		Pressure:               pressure,
+		Viscosity:              0,
+		Team1PlayerFeatures:    t1Feats,
+		Team2PlayerFeatures:    t2Feats,
+		Format:                 strings.TrimSpace(strings.ToUpper(format)),
+	}
 }
 
 // getExtrasForMatch returns predicted extras per innings (same for both innings from format/venue average).
@@ -976,44 +986,24 @@ func selectTeamsByWinProbability(
 					candidateIDs = append(candidateIDs, id)
 				}
 			}
-			t1Feats := extractPlayerFeatures(candidateIDs, allFeats)
-			var t2Feats map[int64]map[string]float64
-			var team1OppID, team2OppID int
-			if teamIsTeam1 {
-				team1OppID = int(opp2IDVal)
-				team2OppID = int(opp1IDVal)
-				t2IDs := make([]int64, 0, len(opponentNameToID))
-				for _, id := range opponentNameToID {
-					t2IDs = append(t2IDs, id)
-				}
-				t2Feats = extractPlayerFeatures(t2IDs, allFeats)
-			} else {
-				team1OppID = int(opp1IDVal)
-				team2OppID = int(opp2IDVal)
-				t2Feats = t1Feats
-				t1IDs := make([]int64, 0, len(opponentNameToID))
-				for _, id := range opponentNameToID {
-					t1IDs = append(t1IDs, id)
-				}
-				t1Feats = extractPlayerFeatures(t1IDs, allFeats)
+			candidateFeats := extractPlayerFeatures(candidateIDs, allFeats)
+			opponentIDs := make([]int64, 0, len(opponentNameToID))
+			for _, id := range opponentNameToID {
+				opponentIDs = append(opponentIDs, id)
 			}
-			p, err := enhanced.PredictMatchWinEnhanced(ctx, WinFeaturesEnhanced{
-				FormatID:               int(formatID),
-				VenueID:                int(venueIDVal),
-				Team1OppositionID:      team1OppID,
-				Team2OppositionID:      team2OppID,
-				TossWinnerOppositionID: 0,
-				Temp:                   temp,
-				Wind:                   wind,
-				Rain:                   rain,
-				Humidity:               humidity,
-				Cloud:                  cloud,
-				Pressure:               pressure,
-				Viscosity:              0,
-				Team1PlayerFeatures:    t1Feats,
-				Team2PlayerFeatures:    t2Feats,
-				Format:                 fmtUpper,
-			})
+			opponentFeats := extractPlayerFeatures(opponentIDs, allFeats)
+
+			var t1Feats, t2Feats map[int64]map[string]float64
+			var team1OppID, team2OppID int64
+			if teamIsTeam1 {
+				team1OppID, team2OppID = opp2IDVal, opp1IDVal
+				t1Feats, t2Feats = candidateFeats, opponentFeats
+			} else {
+				team1OppID, team2OppID = opp1IDVal, opp2IDVal
+				t1Feats, t2Feats = opponentFeats, candidateFeats
+			}
+			feats := buildEnhancedWinFeatures(formatID, venueIDVal, team1OppID, team2OppID, temp, wind, rain, humidity, cloud, pressure, t1Feats, t2Feats, fmtUpper)
+			p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
 			if err != nil {
 				return 0, err
 			}

@@ -1,16 +1,18 @@
 """Helpers to build WinFeatures in a standardized way.
 
+.. deprecated::
+    This module is superseded by ``ml.win_features`` which uses distribution
+    statistics (mean, std, max, min, top3_mean) instead of simple sums. It
+    is retained only as a legacy fallback for ``generate_match`` when the
+    enhanced win module is unavailable.  New code should use
+    ``ml.win_features.aggregate_team_features_from_player_maps`` instead.
+
 This module defines a single helper that constructs `WinFeatures` from the
-canonical inputs used by the win model:
+canonical inputs used by the legacy (sum-only) win model:
 
 - Format / venue / season
 - Opposition ids (team1, team2, toss winner)
 - Aggregated batting/bowling consistency and form sums per team
-
-The goal is to ensure that both training and inference use the same mapping
-from high-level match context and pre-game strength summaries into
-`WinFeatures`, and that this mapping can be shared with any future
-reconciliation-aware win pipeline.
 """
 
 from __future__ import annotations

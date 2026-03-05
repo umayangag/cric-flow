@@ -157,11 +157,15 @@ def reconcile_match_players(
     if win_probability is not None:
         inn1_target, inn2_target = _win_conditioned_innings_targets(pref, win_probability)
         if inn1_target is not None and inn2_target is not None:
-            innings_by_number = {i.inning_number: i for i in pref.innings}
-            if 1 in innings_by_number:
-                innings_by_number[1].preferred_runs = inn1_target
-            if 2 in innings_by_number:
-                innings_by_number[2].preferred_runs = inn2_target
+            updated_innings = []
+            for inn in pref.innings:
+                inn_copy = inn.model_copy()
+                if inn_copy.inning_number == 1:
+                    inn_copy.preferred_runs = inn1_target
+                elif inn_copy.inning_number == 2:
+                    inn_copy.preferred_runs = inn2_target
+                updated_innings.append(inn_copy)
+            pref = pref.model_copy(update={"innings": updated_innings})
 
     cfg = get_reconciliation_config()
     builder = ProblemBuilder(

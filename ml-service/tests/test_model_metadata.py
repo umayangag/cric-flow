@@ -99,18 +99,19 @@ def test_get_model_metadata_handles_feature_config_exception():
 
 
 def test_get_model_metadata_extras_win_import_error():
-    """When ml.train_extras or ml.train_win import fails, features list is empty (lines 91-92, 100-101)."""
+    """When ml.train_extras or ml.win_features import fails, features list is empty."""
     import builtins
     import sys
 
     real_import = builtins.__import__
+    blocked = ("ml.train_extras", "ml.win_features")
     saved = {}
-    for mod in ("ml.train_extras", "ml.train_win"):
+    for mod in blocked:
         if mod in sys.modules:
             saved[mod] = sys.modules.pop(mod)
 
     def fake_import(name, *args, **kwargs):
-        if name in ("ml.train_extras", "ml.train_win"):
+        if name in blocked:
             raise ImportError("fake")
         return real_import(name, *args, **kwargs)
 

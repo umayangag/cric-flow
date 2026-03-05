@@ -47,6 +47,10 @@ from ml.win_features import (
     compute_derived_features,
 )
 
+# Backward-compatible alias: other modules (tuning/cv_metrics, model_metadata)
+# reference train_win.WIN_FEATURE_COLS.
+WIN_FEATURE_COLS = WIN_ENHANCED_FEATURE_COLS
+
 logger = logging.getLogger(__name__)
 
 
@@ -214,6 +218,67 @@ def _get_gb_params(format_code: str) -> dict:
     }
 
 
+def _fit_gradient_boosting(
+    X: np.ndarray,
+    Y: np.ndarray,
+    params: dict,
+    sample_weight: Optional[np.ndarray] = None,
+) -> GradientBoostingClassifier:
+    """Fit a GradientBoosting classifier with the given params and optional weights."""
+    model = GradientBoostingClassifier(
+        n_estimators=params["n_estimators"],
+        max_depth=params["max_depth"],
+        learning_rate=params["learning_rate"],
+        subsample=params["subsample"],
+        random_state=params["random_state"],
+    )
+    if sample_weight is not None:
+        model.fit(X, Y, sample_weight=sample_weight)
+    else:
+        model.fit(X, Y)
+    return model
+
+
+def _build_model_metadata(
+    model: GradientBoostingClassifier,
+    X: np.ndarray,
+    feature_cols: list[str],
+    format_code: str,
+    params: dict,
+    cv_metrics: Optional[dict] = None,
+) -> dict:
+    """Build metadata dict for a trained win model."""
+    importance = dict(zip(feature_cols, model.feature_importances_.tolist()))
+    sorted_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+    meta: dict = {
+        "format_code": format_code,
+        "model_type": "GradientBoostingClassifier",
+        "n_samples": int(X.shape[0]),
+        "n_features": int(X.shape[1]),
+        "feature_cols": feature_cols,
+        "params": {k: v for k, v in params.items() if k != "joblib_compress"},
+        "feature_importance_top20": dict(list(sorted_importance.items())[:20]),
+    }
+    if cv_metrics is not None:
+        meta["cv_metrics"] = cv_metrics
+    return meta
+
+
+def _save_model_and_metadata(
+    model: GradientBoostingClassifier,
+    metadata: dict,
+    out_dir: str,
+    model_filename: str,
+    metadata_filename: str,
+    compress: int,
+) -> None:
+    """Persist model joblib and metadata JSON to out_dir."""
+    os.makedirs(out_dir, exist_ok=True)
+    joblib.dump(model, os.path.join(out_dir, model_filename), compress=compress)
+    with open(os.path.join(out_dir, metadata_filename), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+
 def train_and_save(
     X: np.ndarray,
     Y: np.ndarray,
@@ -235,38 +300,14 @@ def train_and_save(
         cv_metrics["per_fold_accuracy"],
     )
 
-    model = GradientBoostingClassifier(
-        n_estimators=params["n_estimators"],
-        max_depth=params["max_depth"],
-        learning_rate=params["learning_rate"],
-        subsample=params["subsample"],
-        random_state=params["random_state"],
-    )
-    if sample_weight is not None:
-        model.fit(X, Y, sample_weight=sample_weight)
-    else:
-        model.fit(X, Y)
-
-    os.makedirs(out_dir, exist_ok=True)
-    compress = params["joblib_compress"]
+    model = _fit_gradient_boosting(X, Y, params, sample_weight)
+    metadata = _build_model_metadata(model, X, feature_cols, format_code, params, cv_metrics)
     code = format_code.replace(" ", "_")
-
-    joblib.dump(model, os.path.join(out_dir, f"win_model_{code}.joblib"), compress=compress)
-
-    importance = dict(zip(feature_cols, model.feature_importances_.tolist()))
-    sorted_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
-    metadata = {
-        "format_code": format_code,
-        "model_type": "GradientBoostingClassifier",
-        "n_samples": int(X.shape[0]),
-        "n_features": int(X.shape[1]),
-        "feature_cols": feature_cols,
-        "params": {k: v for k, v in params.items() if k != "joblib_compress"},
-        "cv_metrics": cv_metrics,
-        "feature_importance_top20": dict(list(sorted_importance.items())[:20]),
-    }
-    with open(os.path.join(out_dir, f"win_model_{code}_metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
+    _save_model_and_metadata(
+        model, metadata, out_dir,
+        f"win_model_{code}.joblib", f"win_model_{code}_metadata.json",
+        params["joblib_compress"],
+    )
 
 
 def train_and_save_legacy(
@@ -278,35 +319,13 @@ def train_and_save_legacy(
 ) -> None:
     """Train one unified GradientBoosting win model on all data and save as legacy (win_model.joblib)."""
     params = _get_gb_params("_ALL_")
-    model = GradientBoostingClassifier(
-        n_estimators=params["n_estimators"],
-        max_depth=params["max_depth"],
-        learning_rate=params["learning_rate"],
-        subsample=params["subsample"],
-        random_state=params["random_state"],
+    model = _fit_gradient_boosting(X, Y, params, sample_weight)
+    metadata = _build_model_metadata(model, X, feature_cols, "_ALL_", params)
+    _save_model_and_metadata(
+        model, metadata, out_dir,
+        "win_model.joblib", "win_model_metadata.json",
+        params["joblib_compress"],
     )
-    if sample_weight is not None:
-        model.fit(X, Y, sample_weight=sample_weight)
-    else:
-        model.fit(X, Y)
-    os.makedirs(out_dir, exist_ok=True)
-    compress = params["joblib_compress"]
-    joblib.dump(model, os.path.join(out_dir, "win_model.joblib"), compress=compress)
-
-    importance = dict(zip(feature_cols, model.feature_importances_.tolist()))
-    sorted_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
-    metadata = {
-        "format_code": "_ALL_",
-        "model_type": "GradientBoostingClassifier",
-        "n_samples": int(X.shape[0]),
-        "n_features": int(X.shape[1]),
-        "feature_cols": feature_cols,
-        "params": {k: v for k, v in params.items() if k != "joblib_compress"},
-        "feature_importance_top20": dict(list(sorted_importance.items())[:20]),
-    }
-    with open(os.path.join(out_dir, "win_model_metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
-
     logger.info("train_win.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 

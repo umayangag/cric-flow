@@ -516,40 +516,74 @@ def generate_match(
         InningsSummary(inning_number=1, runs=team1_runs, wickets=float(inn1_wickets)),
         InningsSummary(inning_number=2, runs=team2_runs, wickets=float(inn2_wickets)),
     ]
-    try:
-        from ml.win_features_from_reconciled import build_win_features_standardized
-    except ImportError:
-        build_win_features_standardized = None
     p_team1 = 0.5
-    if build_win_features_standardized is not None:
-        t1_bat_cons, t1_bowl_cons = _sum_team_feature(
-            features_map, team1_ids, "batting_consistency", "bowling_consistency"
-        )
-        t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
-        t2_bat_cons, t2_bowl_cons = _sum_team_feature(
-            features_map, team2_ids, "batting_consistency", "bowling_consistency"
-        )
-        t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
-        wf = build_win_features_standardized(
-            format_code=fmt,
-            format_id=int(match_context.format_id),
-            venue_id=int(match_context.venue_id),
-            season_id=int(match_context.season_id),
-            team1_opposition_id=int(match_context.team1_opposition_id),
-            team2_opposition_id=int(match_context.team2_opposition_id),
+    if aggregate_team_features_from_player_maps is not None and features_map:
+        t1_feats = {pid: features_map.get(pid, {}) for pid in team1_ids if pid in features_map}
+        t2_feats = {pid: features_map.get(pid, {}) for pid in team2_ids if pid in features_map}
+        from .models import WinFeaturesEnhanced
+
+        match_ctx_for_win = WinFeaturesEnhanced(
+            format_id=match_context.format_id,
+            venue_id=match_context.venue_id,
+            match_date_unix=0.0,
+            team1_opposition_id=match_context.team1_opposition_id,
+            team2_opposition_id=match_context.team2_opposition_id,
             toss_winner_opposition_id=0,
-            team1_bat_consistency_sum=t1_bat_cons,
-            team1_bowl_consistency_sum=t1_bowl_cons,
-            team2_bat_consistency_sum=t2_bat_cons,
-            team2_bowl_consistency_sum=t2_bowl_cons,
-            team1_bat_form_sum=t1_bat_form,
-            team1_bowl_form_sum=t1_bowl_form,
-            team2_bat_form_sum=t2_bat_form,
-            team2_bowl_form_sum=t2_bowl_form,
-        )
-        win_preds = run_win_prediction([wf])
-        if win_preds:
-            p_team1 = win_preds[0].team1_win_probability
+            temp=match_context.temp,
+            wind=match_context.wind,
+            rain=match_context.rain,
+            humidity=match_context.humidity,
+            cloud=match_context.cloud,
+            pressure=match_context.pressure,
+            viscosity=match_context.viscosity,
+            team1_player_features={},
+            team2_player_features={},
+        ).to_match_context_dict()
+        try:
+            result = run_win_prediction_enhanced(
+                fmt=(fmt or "").strip().upper(),
+                match_context=match_ctx_for_win,
+                team1_player_features={str(k): v for k, v in t1_feats.items()},
+                team2_player_features={str(k): v for k, v in t2_feats.items()},
+            )
+            p_team1 = result.team1_win_probability
+        except Exception:
+            logger.warning("generate_match.enhanced_win_failed, falling back to legacy")
+            p_team1 = 0.5
+    if p_team1 == 0.5:
+        try:
+            from ml.win_features_from_reconciled import build_win_features_standardized
+        except ImportError:
+            build_win_features_standardized = None
+        if build_win_features_standardized is not None:
+            t1_bat_cons, t1_bowl_cons = _sum_team_feature(
+                features_map, team1_ids, "batting_consistency", "bowling_consistency"
+            )
+            t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+            t2_bat_cons, t2_bowl_cons = _sum_team_feature(
+                features_map, team2_ids, "batting_consistency", "bowling_consistency"
+            )
+            t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
+            wf = build_win_features_standardized(
+                format_code=fmt,
+                format_id=int(match_context.format_id),
+                venue_id=int(match_context.venue_id),
+                season_id=int(match_context.season_id),
+                team1_opposition_id=int(match_context.team1_opposition_id),
+                team2_opposition_id=int(match_context.team2_opposition_id),
+                toss_winner_opposition_id=0,
+                team1_bat_consistency_sum=t1_bat_cons,
+                team1_bowl_consistency_sum=t1_bowl_cons,
+                team2_bat_consistency_sum=t2_bat_cons,
+                team2_bowl_consistency_sum=t2_bowl_cons,
+                team1_bat_form_sum=t1_bat_form,
+                team1_bowl_form_sum=t1_bowl_form,
+                team2_bat_form_sum=t2_bat_form,
+                team2_bowl_form_sum=t2_bowl_form,
+            )
+            win_preds = run_win_prediction([wf])
+            if win_preds:
+                p_team1 = win_preds[0].team1_win_probability
     margin = team1_runs - team2_runs
     try:
         from ml.win_coherence_metrics import win_probability_coherence_from_margin

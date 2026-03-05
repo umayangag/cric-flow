@@ -343,6 +343,24 @@ class WinFeaturesEnhanced(BaseModel):
             return v
         return v.strip().upper()
 
+    def to_match_context_dict(self) -> Dict[str, float]:
+        """Extract the MATCH_CONTEXT_COLS subset as a float dict for the aggregation pipeline."""
+        return {
+            "format_id": float(self.format_id),
+            "venue_id": float(self.venue_id),
+            "match_date_unix": float(self.match_date_unix),
+            "team1_opposition_id": float(self.team1_opposition_id),
+            "team2_opposition_id": float(self.team2_opposition_id),
+            "toss_winner_opposition_id": float(self.toss_winner_opposition_id),
+            "temp": float(self.temp),
+            "wind": float(self.wind),
+            "rain": float(self.rain),
+            "humidity": float(self.humidity),
+            "cloud": float(self.cloud),
+            "pressure": float(self.pressure),
+            "viscosity": float(self.viscosity),
+        }
+
 
 class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")

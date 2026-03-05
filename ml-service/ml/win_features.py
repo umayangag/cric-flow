@@ -16,7 +16,7 @@ Two entry points:
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Mapping, Sequence
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 
@@ -37,6 +37,22 @@ _FEATURE_GROUPS = [
 
 _DIST_SUFFIXES = ["_sum", "_mean", "_std", "_max", "_min", "_top3_mean", "_count"]
 
+_DIST_STAT_KEYS = ["sum", "mean", "std", "max", "min", "top3_mean", "count"]
+
+# Maps each export feature group to (player-level feature key, team number).
+# team number is 1 or 2; used at inference time to look up the correct team's
+# player feature maps.
+_GROUP_TO_PLAYER_KEY: List[Tuple[str, str, int]] = [
+    ("team1_bat_consistency", "batting_consistency", 1),
+    ("team1_bowl_consistency", "bowling_consistency", 1),
+    ("team2_bat_consistency", "batting_consistency", 2),
+    ("team2_bowl_consistency", "bowling_consistency", 2),
+    ("team1_bat_form", "batting_form", 1),
+    ("team1_bowl_form", "bowling_form", 1),
+    ("team2_bat_form", "batting_form", 2),
+    ("team2_bowl_form", "bowling_form", 2),
+]
+
 MATCH_CONTEXT_COLS = [
     "format_id",
     "venue_id",
@@ -53,10 +69,9 @@ MATCH_CONTEXT_COLS = [
     "viscosity",
 ]
 
-_DIST_FEATURE_COLS: List[str] = []
-for _grp in _FEATURE_GROUPS:
-    for _sfx in _DIST_SUFFIXES:
-        _DIST_FEATURE_COLS.append(_grp + _sfx)
+_DIST_FEATURE_COLS: List[str] = [
+    grp + sfx for grp in _FEATURE_GROUPS for sfx in _DIST_SUFFIXES
+]
 
 DERIVED_FEATURE_COLS = [
     "bat_form_matchup_ratio_team1",
@@ -140,7 +155,7 @@ def compute_derived_features(row: Mapping[str, float]) -> Dict[str, float]:
 def _dist_stats_from_values(values: Sequence[float]) -> Dict[str, float]:
     """Compute sum, mean, std, max, min, top3_mean, count from a list of floats."""
     if not values:
-        return {"sum": 0.0, "mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "top3_mean": 0.0, "count": 0}
+        return {"sum": 0.0, "mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "top3_mean": 0.0, "count": 0.0}
     arr = np.array(values, dtype=np.float64)
     top3 = np.sort(arr)[-3:] if len(arr) >= 3 else arr
     return {
@@ -150,7 +165,7 @@ def _dist_stats_from_values(values: Sequence[float]) -> Dict[str, float]:
         "max": float(np.max(arr)),
         "min": float(np.min(arr)),
         "top3_mean": float(np.mean(top3)),
-        "count": len(arr),
+        "count": float(len(arr)),
     }
 
 
@@ -169,32 +184,20 @@ def aggregate_team_features_from_player_maps(
         team2_features: {player_id: {feature_name: value}} for team 2 (batting inn 2).
         match_context: Dict with keys from MATCH_CONTEXT_COLS.
     """
+    team_by_number = {1: team1_features, 2: team2_features}
     result: Dict[str, float] = {}
     for k in MATCH_CONTEXT_COLS:
         result[k] = float(match_context.get(k, 0.0))
 
-    _PLAYER_KEY_MAP = {
-        "team1_bat_consistency": ("batting_consistency", team1_features),
-        "team1_bowl_consistency": ("bowling_consistency", team1_features),
-        "team2_bat_consistency": ("batting_consistency", team2_features),
-        "team2_bowl_consistency": ("bowling_consistency", team2_features),
-        "team1_bat_form": ("batting_form", team1_features),
-        "team1_bowl_form": ("bowling_form", team1_features),
-        "team2_bat_form": ("batting_form", team2_features),
-        "team2_bowl_form": ("bowling_form", team2_features),
-    }
-
-    for group_name, (player_key, team_feats) in _PLAYER_KEY_MAP.items():
+    for group_name, player_key, team_num in _GROUP_TO_PLAYER_KEY:
+        team_feats = team_by_number[team_num]
         values = [fm.get(player_key, 0.0) for fm in team_feats.values()]
         stats = _dist_stats_from_values(values)
-        for sfx_name, sfx_key in zip(_DIST_SUFFIXES, ["sum", "mean", "std", "max", "min", "top3_mean", "count"]):
-            col = group_name + sfx_name
-            val = stats[sfx_key]
-            result[col] = float(val) if not (isinstance(val, float) and math.isnan(val)) else 0.0
+        for suffix, stat_key in zip(_DIST_SUFFIXES, _DIST_STAT_KEYS):
+            val = stats[stat_key]
+            result[group_name + suffix] = 0.0 if (isinstance(val, float) and math.isnan(val)) else float(val)
 
-    derived = compute_derived_features(result)
-    result.update(derived)
-
+    result.update(compute_derived_features(result))
     return result
 
 

@@ -175,14 +175,58 @@ func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player
 	return out, nil
 }
 
-// selectOptimizedHillClimb starts with greedy Select then improves by swapping one out, one in.
-func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
-	team, err := Select(pool, w, c)
+// hillClimbScoreFunc scores a candidate XI. Returns (score, error).
+// score-based selectors return (score, nil); win-probability selectors may return errors.
+type hillClimbScoreFunc func(candidate []Player) (float64, error)
+
+// hillClimbSwap performs iterative single-swap hill climbing on team vs rest,
+// using scoreFunc to evaluate candidates and respecting constraints.
+// maxIter caps total passes; 0 means unlimited (stop when no improvement).
+func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter int) ([]Player, []Player) {
+	currentScore, err := scoreFunc(team)
 	if err != nil {
-		return nil, err
+		return team, rest
 	}
-	// Build set of indices in team (by name match since we don't have indices)
-	inTeam := make(map[string]bool)
+
+	for iter := 0; maxIter == 0 || iter < maxIter; iter++ {
+		improved := false
+		for i := range team {
+			for j := range rest {
+				newTeam := make([]Player, len(team))
+				copy(newTeam, team)
+				newTeam[i] = rest[j]
+				if !satisfiesConstraints(newTeam, c) {
+					continue
+				}
+				s, err := scoreFunc(newTeam)
+				if err != nil {
+					continue
+				}
+				if s > currentScore {
+					newRest := make([]Player, len(rest))
+					copy(newRest, rest)
+					newRest[j] = team[i]
+					team = newTeam
+					rest = newRest
+					currentScore = s
+					improved = true
+					break
+				}
+			}
+			if improved {
+				break
+			}
+		}
+		if !improved {
+			break
+		}
+	}
+	return team, rest
+}
+
+// splitTeamAndRest partitions pool into selected team and remaining players.
+func splitTeamAndRest(pool, team []Player) []Player {
+	inTeam := make(map[string]bool, len(team))
 	for _, p := range team {
 		inTeam[p.Name] = true
 	}
@@ -192,44 +236,25 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 			rest = append(rest, p)
 		}
 	}
+	return rest
+}
 
-	totalScore := func(xi []Player) float64 {
+// selectOptimizedHillClimb starts with greedy Select then improves by swapping one out, one in.
+func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
+	team, err := Select(pool, w, c)
+	if err != nil {
+		return nil, err
+	}
+	rest := splitTeamAndRest(pool, team)
+
+	scoreFunc := func(xi []Player) (float64, error) {
 		s := 0.0
 		for _, p := range xi {
 			s += ScorePlayer(p, w)
 		}
-		return s
+		return s, nil
 	}
-
-	improved := true
-	for improved {
-		improved = false
-		currentScore := totalScore(team)
-		for i := 0; i < len(team); i++ {
-			for j := 0; j < len(rest); j++ {
-				// Try swapping team[i] with rest[j]
-				newTeam := make([]Player, len(team))
-				copy(newTeam, team)
-				newTeam[i] = rest[j]
-				newRest := make([]Player, len(rest))
-				copy(newRest, rest)
-				newRest[j] = team[i]
-				if !satisfiesConstraints(newTeam, c) {
-					continue
-				}
-				if totalScore(newTeam) > currentScore {
-					team = newTeam
-					rest = newRest
-					currentScore = totalScore(team)
-					improved = true
-					break
-				}
-			}
-			if improved {
-				break
-			}
-		}
-	}
+	team, _ = hillClimbSwap(team, rest, c, scoreFunc, 0)
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }
@@ -253,65 +278,18 @@ func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFu
 	if err != nil {
 		return nil, err
 	}
+	rest := splitTeamAndRest(pool, team)
 
-	inTeam := make(map[string]bool)
-	for _, p := range team {
-		inTeam[p.Name] = true
-	}
-	rest := make([]Player, 0, len(pool)-len(team))
-	for _, p := range pool {
-		if !inTeam[p.Name] {
-			rest = append(rest, p)
-		}
-	}
-
-	teamNames := func(xi []Player) []string {
+	scoreFunc := func(xi []Player) (float64, error) {
 		names := make([]string, len(xi))
 		for i, p := range xi {
 			names[i] = p.Name
 		}
-		return names
+		return evalFunc(names)
 	}
 
-	currentWinProb, err := evalFunc(teamNames(team))
-	if err != nil {
-		return team, nil
-	}
-
-	const maxIterations = 50
-	for iter := 0; iter < maxIterations; iter++ {
-		improved := false
-		for i := 0; i < len(team); i++ {
-			for j := 0; j < len(rest); j++ {
-				newTeam := make([]Player, len(team))
-				copy(newTeam, team)
-				newTeam[i] = rest[j]
-				if !satisfiesConstraints(newTeam, c) {
-					continue
-				}
-				p, err := evalFunc(teamNames(newTeam))
-				if err != nil {
-					continue
-				}
-				if p > currentWinProb {
-					newRest := make([]Player, len(rest))
-					copy(newRest, rest)
-					newRest[j] = team[i]
-					team = newTeam
-					rest = newRest
-					currentWinProb = p
-					improved = true
-					break
-				}
-			}
-			if improved {
-				break
-			}
-		}
-		if !improved {
-			break
-		}
-	}
+	const maxSwapIterations = 50
+	team, _ = hillClimbSwap(team, rest, c, scoreFunc, maxSwapIterations)
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }
