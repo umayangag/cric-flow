@@ -212,7 +212,7 @@ def _get_gb_params(format_code: str) -> dict:
     base_params = get_training_params("win", format_code)
     return {
         "n_estimators": base_params.get("n_estimators", 200),
-        "max_depth": min(base_params.get("max_depth", 4), 6),
+        "max_depth": min(base_params.get("max_depth", 4), base_params.get("max_depth_cap", 6)),
         "learning_rate": base_params.get("learning_rate", 0.1),
         "subsample": base_params.get("subsample", 0.8),
         "random_state": base_params.get("random_state", 42),
@@ -304,7 +304,9 @@ def train_and_save(
 
     model = _fit_gradient_boosting(X, Y, params, sample_weight)
     metadata = _build_model_metadata(model, X, feature_cols, format_code, params, cv_metrics)
-    code = format_code.replace(" ", "_")
+    code = "".join(c for c in format_code if c.isalnum() or c == "_").strip()
+    if not code:
+        code = "unknown"
     _save_model_and_metadata(
         model,
         metadata,

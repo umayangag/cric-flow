@@ -2,6 +2,7 @@ package exportqueries
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -9,6 +10,57 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
+
+// winFeatureCTENames lists the 8 per-player feature CTEs whose aggregation and top-3 stats are
+// generated programmatically to avoid repeating the same SQL pattern 16 times.
+var winFeatureCTENames = []string{
+	"t1_bat_cons", "t1_bowl_cons", "t2_bat_cons", "t2_bowl_cons",
+	"t1_bat_form", "t1_bowl_form", "t2_bat_form", "t2_bowl_form",
+}
+
+func buildWinAggAndTop3CTEs() string {
+	var parts []string
+	for _, name := range winFeatureCTENames {
+		parts = append(parts,
+			fmt.Sprintf("agg_%s AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM %s GROUP BY match_id)", name, name),
+		)
+	}
+	for _, name := range winFeatureCTENames {
+		parts = append(parts,
+			fmt.Sprintf("top3_%s AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM %s) sub WHERE rn <= 3 GROUP BY match_id)", name, name),
+		)
+	}
+	return strings.Join(parts, ",\n\t")
+}
+
+func buildWinFeatureSelectColumns() string {
+	var cols []string
+	for i, name := range winFeatureCTENames {
+		n := i + 1
+		cols = append(cols, fmt.Sprintf(
+			"COALESCE(a%d.s, 0), COALESCE(a%d.mean_v, 0), COALESCE(a%d.std_v, 0), COALESCE(a%d.max_v, 0), COALESCE(a%d.min_v, 0), COALESCE(t3a%d.top3_mean, 0), COALESCE(a%d.cnt, 0) -- %s",
+			n, n, n, n, n, n, n, name,
+		))
+	}
+	return strings.Join(cols, ",\n\t\t")
+}
+
+func buildWinFeatureJoins() string {
+	var joins []string
+	for i, name := range winFeatureCTENames {
+		n := i + 1
+		joins = append(joins,
+			fmt.Sprintf("LEFT JOIN agg_%s a%d ON a%d.match_id = m.match_id", name, n, n),
+		)
+	}
+	for i, name := range winFeatureCTENames {
+		n := i + 1
+		joins = append(joins,
+			fmt.Sprintf("LEFT JOIN top3_%s t3a%d ON t3a%d.match_id = m.match_id", name, n, n),
+		)
+	}
+	return strings.Join(joins, "\n\t")
+}
 
 // WinTrainingRows returns match-level rows for win prediction with enhanced per-player feature
 // distribution statistics: for each of 8 feature groups (team1/team2 x bat/bowl x consistency/form),
@@ -99,60 +151,13 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		JOIN feature_form_snapshots ff ON ff.player_id = p.player_id AND ff.format_id = p.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= p.match_date
 		ORDER BY ff.player_id, ff.format_id, p.match_id, ff.as_of_date DESC
 	),
-	-- Distribution statistics per feature group (sum, mean, std, max, min, count)
-	agg_t1_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bat_cons GROUP BY match_id),
-	agg_t1_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bowl_cons GROUP BY match_id),
-	agg_t2_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bat_cons GROUP BY match_id),
-	agg_t2_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bowl_cons GROUP BY match_id),
-	agg_t1_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bat_form GROUP BY match_id),
-	agg_t1_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bowl_form GROUP BY match_id),
-	agg_t2_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bat_form GROUP BY match_id),
-	agg_t2_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bowl_form GROUP BY match_id),
-	-- Top-3 player mean per feature group (quality of the best players)
-	top3_t1_bat_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bat_cons) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t1_bowl_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bowl_cons) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t2_bat_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bat_cons) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t2_bowl_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bowl_cons) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t1_bat_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bat_form) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t1_bowl_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bowl_form) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t2_bat_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bat_form) sub WHERE rn <= 3 GROUP BY match_id),
-	top3_t2_bowl_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bowl_form) sub WHERE rn <= 3 GROUP BY match_id)
+	` + buildWinAggAndTop3CTEs() + `
 	SELECT m.match_id, m.format_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
-		-- team1 batting consistency distribution
-		COALESCE(a1.s, 0), COALESCE(a1.mean_v, 0), COALESCE(a1.std_v, 0), COALESCE(a1.max_v, 0), COALESCE(a1.min_v, 0), COALESCE(t3a1.top3_mean, 0), COALESCE(a1.cnt, 0),
-		-- team1 bowling consistency distribution
-		COALESCE(a2.s, 0), COALESCE(a2.mean_v, 0), COALESCE(a2.std_v, 0), COALESCE(a2.max_v, 0), COALESCE(a2.min_v, 0), COALESCE(t3a2.top3_mean, 0), COALESCE(a2.cnt, 0),
-		-- team2 batting consistency distribution
-		COALESCE(a3.s, 0), COALESCE(a3.mean_v, 0), COALESCE(a3.std_v, 0), COALESCE(a3.max_v, 0), COALESCE(a3.min_v, 0), COALESCE(t3a3.top3_mean, 0), COALESCE(a3.cnt, 0),
-		-- team2 bowling consistency distribution
-		COALESCE(a4.s, 0), COALESCE(a4.mean_v, 0), COALESCE(a4.std_v, 0), COALESCE(a4.max_v, 0), COALESCE(a4.min_v, 0), COALESCE(t3a4.top3_mean, 0), COALESCE(a4.cnt, 0),
-		-- team1 batting form distribution
-		COALESCE(a5.s, 0), COALESCE(a5.mean_v, 0), COALESCE(a5.std_v, 0), COALESCE(a5.max_v, 0), COALESCE(a5.min_v, 0), COALESCE(t3a5.top3_mean, 0), COALESCE(a5.cnt, 0),
-		-- team1 bowling form distribution
-		COALESCE(a6.s, 0), COALESCE(a6.mean_v, 0), COALESCE(a6.std_v, 0), COALESCE(a6.max_v, 0), COALESCE(a6.min_v, 0), COALESCE(t3a6.top3_mean, 0), COALESCE(a6.cnt, 0),
-		-- team2 batting form distribution
-		COALESCE(a7.s, 0), COALESCE(a7.mean_v, 0), COALESCE(a7.std_v, 0), COALESCE(a7.max_v, 0), COALESCE(a7.min_v, 0), COALESCE(t3a7.top3_mean, 0), COALESCE(a7.cnt, 0),
-		-- team2 bowling form distribution
-		COALESCE(a8.s, 0), COALESCE(a8.mean_v, 0), COALESCE(a8.std_v, 0), COALESCE(a8.max_v, 0), COALESCE(a8.min_v, 0), COALESCE(t3a8.top3_mean, 0), COALESCE(a8.cnt, 0)
+		` + buildWinFeatureSelectColumns() + `
 	FROM matches_filtered m
-	LEFT JOIN agg_t1_bat_cons a1 ON a1.match_id = m.match_id
-	LEFT JOIN agg_t1_bowl_cons a2 ON a2.match_id = m.match_id
-	LEFT JOIN agg_t2_bat_cons a3 ON a3.match_id = m.match_id
-	LEFT JOIN agg_t2_bowl_cons a4 ON a4.match_id = m.match_id
-	LEFT JOIN agg_t1_bat_form a5 ON a5.match_id = m.match_id
-	LEFT JOIN agg_t1_bowl_form a6 ON a6.match_id = m.match_id
-	LEFT JOIN agg_t2_bat_form a7 ON a7.match_id = m.match_id
-	LEFT JOIN agg_t2_bowl_form a8 ON a8.match_id = m.match_id
-	LEFT JOIN top3_t1_bat_cons t3a1 ON t3a1.match_id = m.match_id
-	LEFT JOIN top3_t1_bowl_cons t3a2 ON t3a2.match_id = m.match_id
-	LEFT JOIN top3_t2_bat_cons t3a3 ON t3a3.match_id = m.match_id
-	LEFT JOIN top3_t2_bowl_cons t3a4 ON t3a4.match_id = m.match_id
-	LEFT JOIN top3_t1_bat_form t3a5 ON t3a5.match_id = m.match_id
-	LEFT JOIN top3_t1_bowl_form t3a6 ON t3a6.match_id = m.match_id
-	LEFT JOIN top3_t2_bat_form t3a7 ON t3a7.match_id = m.match_id
-	LEFT JOIN top3_t2_bowl_form t3a8 ON t3a8.match_id = m.match_id
+	` + buildWinFeatureJoins() + `
 	ORDER BY m.match_date ASC, m.match_id`
 	args := []any{cutoff}
 	if formatIDs != nil {

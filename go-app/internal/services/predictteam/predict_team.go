@@ -802,7 +802,7 @@ func getMatchWinProbability(
 	w := WinFeatures{
 		FormatID:                int(formatID),
 		VenueID:                 int(venueIDVal),
-		Team1OppositionID:       int(opp2IDVal),
+		Team1OppositionID:       int(opp2IDVal), // team1 bats first, faces team2
 		Team2OppositionID:       int(opp1IDVal),
 		TossWinnerOppositionID:  0,
 		Temp:                    temp,
@@ -1084,13 +1084,10 @@ func tryServerSideTeamOptimization(
 	maxIter := config.SelectionMaxWinProbSwapIterations(cfg)
 	maxEvals := config.SelectionMaxWinProbEvalBudget(cfg)
 
-	buildMatchContext := func(teamIsTeam1 bool) map[string]float64 {
-		var t1OppID, t2OppID int64
-		if teamIsTeam1 {
-			t1OppID, t2OppID = opp2IDVal, opp1IDVal
-		} else {
-			t1OppID, t2OppID = opp1IDVal, opp2IDVal
-		}
+	buildMatchContext := func(_ bool) map[string]float64 {
+		// Match context is constant: team1_opposition_id is always team2's ID and vice versa.
+		// The TeamIsTeam1 flag in the request body tells the optimizer which team is being optimized.
+		t1OppID, t2OppID := opp2IDVal, opp1IDVal
 		return map[string]float64{
 			"format_id":                 float64(formatID),
 			"venue_id":                  float64(venueIDVal),

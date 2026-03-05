@@ -232,7 +232,8 @@ type mlErrorDetail struct {
 // logMLNon2xx reads the response body, logs status and body for debugging, and returns an error
 // that includes status and a short message extracted from the body if present.
 func logMLNon2xx(resp *http.Response, endpoint string) error {
-	body, err := io.ReadAll(resp.Body)
+	const maxResponseBody = 1 << 20 // 1 MiB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		slog.Error("ml service non-2xx: failed to read response body",
 			slog.String("endpoint", endpoint),
