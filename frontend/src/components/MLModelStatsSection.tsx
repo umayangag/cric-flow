@@ -61,8 +61,8 @@ export function MLModelStatsSection({
           >
             {data.models.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                No model artifacts found. Train models via Ops Status → Pipeline (e.g. train-batting,
-                train-bowling).
+                No model artifacts found. Train models via Ops Status → Pipeline (e.g.
+                train-batting, train-bowling).
               </Typography>
             ) : (
               <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560 }}>

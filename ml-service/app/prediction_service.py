@@ -503,9 +503,13 @@ def generate_match(
         build_win_features_standardized = None
     p_team1 = 0.5
     if build_win_features_standardized is not None:
-        t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_consistency", "bowling_consistency")
+        t1_bat_cons, t1_bowl_cons = _sum_team_feature(
+            features_map, team1_ids, "batting_consistency", "bowling_consistency"
+        )
         t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
-        t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_consistency", "bowling_consistency")
+        t2_bat_cons, t2_bowl_cons = _sum_team_feature(
+            features_map, team2_ids, "batting_consistency", "bowling_consistency"
+        )
         t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
         wf = build_win_features_standardized(
             format_code=fmt,
