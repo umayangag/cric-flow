@@ -117,7 +117,9 @@ def rows_to_xy_by_format(
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    all_possible = list(set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date", "format_code", "match_date_unix"})
+    all_possible = list(
+        set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date", "format_code", "match_date_unix"}
+    )
     for c in all_possible:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -304,8 +306,11 @@ def train_and_save(
     metadata = _build_model_metadata(model, X, feature_cols, format_code, params, cv_metrics)
     code = format_code.replace(" ", "_")
     _save_model_and_metadata(
-        model, metadata, out_dir,
-        f"win_model_{code}.joblib", f"win_model_{code}_metadata.json",
+        model,
+        metadata,
+        out_dir,
+        f"win_model_{code}.joblib",
+        f"win_model_{code}_metadata.json",
         params["joblib_compress"],
     )
 
@@ -322,8 +327,11 @@ def train_and_save_legacy(
     model = _fit_gradient_boosting(X, Y, params, sample_weight)
     metadata = _build_model_metadata(model, X, feature_cols, "_ALL_", params)
     _save_model_and_metadata(
-        model, metadata, out_dir,
-        "win_model.joblib", "win_model_metadata.json",
+        model,
+        metadata,
+        out_dir,
+        "win_model.joblib",
+        "win_model_metadata.json",
         params["joblib_compress"],
     )
     logger.info("train_win.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
@@ -332,7 +340,9 @@ def train_and_save_legacy(
 def main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(description="Train enhanced win model from go-app export CSV (preferred) or training-data API")
+    ap = argparse.ArgumentParser(
+        description="Train enhanced win model from go-app export CSV (preferred) or training-data API"
+    )
     ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required for API fallback)")
     ap.add_argument(
         "--csv",

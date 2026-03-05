@@ -69,9 +69,7 @@ MATCH_CONTEXT_COLS = [
     "viscosity",
 ]
 
-_DIST_FEATURE_COLS: List[str] = [
-    grp + sfx for grp in _FEATURE_GROUPS for sfx in _DIST_SUFFIXES
-]
+_DIST_FEATURE_COLS: List[str] = [grp + sfx for grp in _FEATURE_GROUPS for sfx in _DIST_SUFFIXES]
 
 DERIVED_FEATURE_COLS = [
     "bat_form_matchup_ratio_team1",

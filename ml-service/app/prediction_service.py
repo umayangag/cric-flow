@@ -927,5 +927,7 @@ def run_win_prediction_enhanced(
         logger.exception("predict.win_enhanced.error", error=str(exc))
         raise HTTPException(
             status_code=500,
-            detail=error_payload(code="PREDICT_FAILED", message="Enhanced win prediction failed", hint="See server logs"),
+            detail=error_payload(
+                code="PREDICT_FAILED", message="Enhanced win prediction failed", hint="See server logs"
+            ),
         )

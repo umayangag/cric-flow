@@ -127,14 +127,14 @@ type Config struct {
 	Ops       OpsConfig        `json:"ops"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants
 	Selection struct {
-		DefaultPoolCSV         string                     `json:"default_pool_csv"`
-		MaxPoolSizeForFullEnum int                        `json:"max_pool_size_for_full_enum"` // above this use greedy+hill-climb (0 = 18)
-		RequireKeeper          bool                       `json:"require_keeper"`
-		ScoreWeights           *ScoreWeights              `json:"score_weights"`
-		ScoreNormalization     map[string]ScoreNormParams `json:"score_normalization"`
-		ScoreWeightsByFormat   map[string]ScoreWeights    `json:"score_weights_by_format"`
-		MetaModelPath          string                     `json:"meta_model_path"` // JSON from ml.train_combination_meta
-		UseOptimizer               bool                       `json:"use_optimizer"`                  // when true, select XI by maximizing total score over valid combinations
+		DefaultPoolCSV             string                     `json:"default_pool_csv"`
+		MaxPoolSizeForFullEnum     int                        `json:"max_pool_size_for_full_enum"` // above this use greedy+hill-climb (0 = 18)
+		RequireKeeper              bool                       `json:"require_keeper"`
+		ScoreWeights               *ScoreWeights              `json:"score_weights"`
+		ScoreNormalization         map[string]ScoreNormParams `json:"score_normalization"`
+		ScoreWeightsByFormat       map[string]ScoreWeights    `json:"score_weights_by_format"`
+		MetaModelPath              string                     `json:"meta_model_path"`               // JSON from ml.train_combination_meta
+		UseOptimizer               bool                       `json:"use_optimizer"`                 // when true, select XI by maximizing total score over valid combinations
 		UseWinProbabilitySelection bool                       `json:"use_win_probability_selection"` // when true, select XI by maximizing win probability via hill-climb
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).

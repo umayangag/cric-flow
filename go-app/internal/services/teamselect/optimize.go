@@ -182,10 +182,10 @@ type hillClimbScoreFunc func(candidate []Player) (float64, error)
 // hillClimbSwap performs iterative single-swap hill climbing on team vs rest,
 // using scoreFunc to evaluate candidates and respecting constraints.
 // maxIter caps total passes; 0 means unlimited (stop when no improvement).
-func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter int) ([]Player, []Player) {
+func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter int) []Player {
 	currentScore, err := scoreFunc(team)
 	if err != nil {
-		return team, rest
+		return team
 	}
 
 	for iter := 0; maxIter == 0 || iter < maxIter; iter++ {
@@ -221,7 +221,7 @@ func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreF
 			break
 		}
 	}
-	return team, rest
+	return team
 }
 
 // splitTeamAndRest partitions pool into selected team and remaining players.
@@ -254,7 +254,7 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 		}
 		return s, nil
 	}
-	team, _ = hillClimbSwap(team, rest, c, scoreFunc, 0)
+	team = hillClimbSwap(team, rest, c, scoreFunc, 0)
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }
@@ -289,7 +289,7 @@ func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFu
 	}
 
 	const maxSwapIterations = 50
-	team, _ = hillClimbSwap(team, rest, c, scoreFunc, maxSwapIterations)
+	team = hillClimbSwap(team, rest, c, scoreFunc, maxSwapIterations)
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }

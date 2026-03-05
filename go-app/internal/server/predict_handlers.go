@@ -64,7 +64,10 @@ func (mlPredictorAdapter) PredictMatchWin(ctx context.Context, w predictteam.Win
 	return mlPredictMatchWinFunc(ctx, w)
 }
 
-func (mlPredictorAdapter) PredictMatchWinEnhanced(ctx context.Context, w predictteam.WinFeaturesEnhanced) (float64, error) {
+func (mlPredictorAdapter) PredictMatchWinEnhanced(
+	ctx context.Context,
+	w predictteam.WinFeaturesEnhanced,
+) (float64, error) {
 	return mlPredictMatchWinEnhancedFunc(ctx, w)
 }
 

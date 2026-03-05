@@ -221,11 +221,12 @@ var winFeatureGroupNames = []string{
 var winDistStatSuffixes = []string{"_sum", "_mean", "_std", "_max", "_min", "_top3_mean", "_count"}
 
 func winEnhancedHeaders() []string {
-	base := []string{
+	base := make([]string, 0, 17+len(winDistStatSuffixes)*len(winFeatureGroupNames))
+	base = append(base,
 		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
 		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-	}
+	)
 	for _, group := range winFeatureGroupNames {
 		for _, suffix := range winDistStatSuffixes {
 			base = append(base, group+suffix)
@@ -243,23 +244,26 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 
 	var groups [8]featureDistStats
 
-	dest := []any{
+	dest := make([]any, 0, 16+7*len(groups))
+	dest = append(dest,
 		&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
 		&matchDate,
 		&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
-	}
+	)
 	for i := range groups {
+		g := &groups[i] //nolint:gosec // fixed-size array indexed by range
 		dest = append(dest,
-			&groups[i].sum, &groups[i].mean, &groups[i].std,
-			&groups[i].max, &groups[i].min, &groups[i].top3Mean, &groups[i].count,
+			&g.sum, &g.mean, &g.std,
+			&g.max, &g.min, &g.top3Mean, &g.count,
 		)
 	}
 	if err := rows.Scan(dest...); err != nil {
 		return nil, err
 	}
 	for i := range groups {
-		if math.IsNaN(groups[i].std) {
-			groups[i].std = 0
+		g := &groups[i] //nolint:gosec // fixed-size array indexed by range
+		if math.IsNaN(g.std) {
+			g.std = 0
 		}
 	}
 
@@ -278,7 +282,8 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 		strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 	}
 	for i := range groups {
-		row = append(row, groups[i].toStrings()...)
+		g := &groups[i] //nolint:gosec // fixed-size array indexed by range
+		row = append(row, g.toStrings()...)
 	}
 	return row, nil
 }

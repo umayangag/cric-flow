@@ -448,14 +448,22 @@ func predictTeamsWithIntermediates(
 	if sel1 == nil {
 		sel1, err = selectTeam(tsPool1, weights, constraints, useOptimizer)
 		if err != nil {
-			slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
+			slog.Error(
+				"predictteam.PredictTeams team1 select failed",
+				slog.String("team1", team1),
+				slog.Any("err", err),
+			)
 			return nil, nil, fmt.Errorf("team1 select: %w", err)
 		}
 	}
 	if sel2 == nil {
 		sel2, err = selectTeam(tsPool2, weights, constraints, useOptimizer)
 		if err != nil {
-			slog.Error("predictteam.PredictTeams team2 select failed", slog.String("team2", team2), slog.Any("err", err))
+			slog.Error(
+				"predictteam.PredictTeams team2 select failed",
+				slog.String("team2", team2),
+				slog.Any("err", err),
+			)
 			return nil, nil, fmt.Errorf("team2 select: %w", err)
 		}
 	}
@@ -721,7 +729,21 @@ func getMatchWinProbability(
 	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
 		t1Feats := extractPlayerFeatures(ids1, allFeats)
 		t2Feats := extractPlayerFeatures(ids2, allFeats)
-		feats := buildEnhancedWinFeatures(formatID, venueIDVal, opp2IDVal, opp1IDVal, temp, wind, rain, humidity, cloud, pressure, t1Feats, t2Feats, format)
+		feats := buildEnhancedWinFeatures(
+			formatID,
+			venueIDVal,
+			opp2IDVal,
+			opp1IDVal,
+			temp,
+			wind,
+			rain,
+			humidity,
+			cloud,
+			pressure,
+			t1Feats,
+			t2Feats,
+			format,
+		)
 		p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
 		if err == nil {
 			return p, nil
@@ -1002,7 +1024,21 @@ func selectTeamsByWinProbability(
 				team1OppID, team2OppID = opp1IDVal, opp2IDVal
 				t1Feats, t2Feats = opponentFeats, candidateFeats
 			}
-			feats := buildEnhancedWinFeatures(formatID, venueIDVal, team1OppID, team2OppID, temp, wind, rain, humidity, cloud, pressure, t1Feats, t2Feats, fmtUpper)
+			feats := buildEnhancedWinFeatures(
+				formatID,
+				venueIDVal,
+				team1OppID,
+				team2OppID,
+				temp,
+				wind,
+				rain,
+				humidity,
+				cloud,
+				pressure,
+				t1Feats,
+				t2Feats,
+				fmtUpper,
+			)
 			p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
 			if err != nil {
 				return 0, err

@@ -7,10 +7,10 @@ import math
 import pytest
 
 from ml.win_features import (
+    _DIST_FEATURE_COLS,
     DERIVED_FEATURE_COLS,
     MATCH_CONTEXT_COLS,
     WIN_ENHANCED_FEATURE_COLS,
-    _DIST_FEATURE_COLS,
     _dist_stats_from_values,
     aggregate_team_features_from_player_maps,
     build_feature_vector,
