@@ -939,3 +939,49 @@ def run_win_prediction_enhanced(
                 code="PREDICT_FAILED", message="Enhanced win prediction failed", hint="See server logs"
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# Team selection optimisation (server-side hill-climb)
+# ---------------------------------------------------------------------------
+
+
+def run_team_optimization(
+    fmt: str,
+    pool: "List[PoolPlayer]",
+    opponent_features: Dict[int, Dict[str, float]],
+    match_context: Dict[str, float],
+    constraints: "SelectionConstraints",
+    weights: "ScoreWeights",
+    team_is_team1: bool,
+    max_iterations: int,
+    max_evals: int,
+) -> "OptimizationResult":
+    """Resolve the win model by format and delegate to the team optimizer."""
+    from ml.team_optimizer import OptimizationResult, PoolPlayer, ScoreWeights, SelectionConstraints  # noqa: F811
+    from ml.team_optimizer import optimize_team_by_win_probability
+
+    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="ENHANCED_WIN_NOT_AVAILABLE",
+                message="ml.win_features module not loaded",
+                hint="Ensure ml-service has the win_features module installed.",
+            ),
+        )
+
+    fmt_upper = (fmt or "").strip().upper()
+    model = _resolve_win_model(fmt_upper)
+
+    return optimize_team_by_win_probability(
+        pool=pool,
+        opponent_features=opponent_features,
+        match_context=match_context,
+        constraints=constraints,
+        weights=weights,
+        team_is_team1=team_is_team1,
+        model=model,
+        max_iterations=max_iterations,
+        max_evals=max_evals,
+    )

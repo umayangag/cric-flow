@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // BacktestMLClient is a tiny HTTP client to call the ml-service backtest endpoint.
@@ -163,6 +165,56 @@ type mlWinFeaturesEnhanced struct {
 	Team1PlayerFeatures    map[string]map[string]float64 `json:"team1_player_features"`
 	Team2PlayerFeatures    map[string]map[string]float64 `json:"team2_player_features"`
 	Format                 string                        `json:"format,omitempty"`
+}
+
+// mlTeamOptPoolPlayer is a single player in the optimization pool (JSON wire DTO).
+type mlTeamOptPoolPlayer struct {
+	PlayerID   int64              `json:"player_id"`
+	Name       string             `json:"name"`
+	IsBowler   bool               `json:"is_bowler"`
+	IsKeeper   bool               `json:"is_keeper"`
+	BatScore   float64            `json:"bat_score"`
+	BowlScore  float64            `json:"bowl_score"`
+	FieldScore float64            `json:"field_score"`
+	Features   map[string]float64 `json:"features"`
+}
+
+type mlTeamOptWeights struct {
+	Bat         float64 `json:"bat"`
+	Bowl        float64 `json:"bowl"`
+	Field       float64 `json:"field"`
+	KeeperBonus float64 `json:"keeper_bonus"`
+}
+
+type mlTeamOptConstraints struct {
+	Size          int  `json:"size"`
+	MinBowlers    int  `json:"min_bowlers"`
+	RequireKeeper bool `json:"require_keeper"`
+}
+
+// mlTeamOptRequest is the JSON body for POST /optimize/team-selection.
+type mlTeamOptRequest struct {
+	Pool             []mlTeamOptPoolPlayer         `json:"pool"`
+	OpponentFeatures map[string]map[string]float64 `json:"opponent_features"`
+	MatchContext     map[string]float64            `json:"match_context"`
+	Constraints      mlTeamOptConstraints          `json:"constraints"`
+	Weights          mlTeamOptWeights              `json:"weights"`
+	TeamIsTeam1      bool                          `json:"team_is_team1"`
+	Format           string                        `json:"format,omitempty"`
+	MaxIterations    int                           `json:"max_iterations"`
+	MaxEvals         int                           `json:"max_evals"`
+}
+
+type mlTeamOptSelectedPlayer struct {
+	PlayerID int64  `json:"player_id"`
+	Name     string `json:"name"`
+}
+
+type mlTeamOptResponse struct {
+	Selected       []mlTeamOptSelectedPlayer `json:"selected"`
+	WinProbability float64                   `json:"win_probability"`
+	IterationsUsed int                       `json:"iterations_used"`
+	EvalsPerformed int                       `json:"evals_performed"`
 }
 
 // mlWinPrediction matches ML service WinPrediction (POST /predict/win response element).
@@ -570,6 +622,87 @@ func (c *BacktestMLClient) PredictMatchWinEnhanced(
 		return 0, err
 	}
 	return out.Team1WinProbability, nil
+}
+
+// OptimizeTeamSelection calls POST /optimize/team-selection to run server-side
+// hill-climb team optimisation with batch model inference.
+func (c *BacktestMLClient) OptimizeTeamSelection(
+	ctx context.Context,
+	req predictteam.TeamOptimizationRequest,
+) (*predictteam.TeamOptimizationResult, error) {
+	mlPool := make([]mlTeamOptPoolPlayer, len(req.Pool))
+	for i, p := range req.Pool {
+		mlPool[i] = mlTeamOptPoolPlayer{
+			PlayerID:   p.PlayerID,
+			Name:       p.Name,
+			IsBowler:   p.IsBowler,
+			IsKeeper:   p.IsKeeper,
+			BatScore:   p.BatScore,
+			BowlScore:  p.BowlScore,
+			FieldScore: p.FieldScore,
+			Features:   p.Features,
+		}
+	}
+	oppFeats := make(map[string]map[string]float64, len(req.OpponentFeatures))
+	for pid, feats := range req.OpponentFeatures {
+		oppFeats[strconv.FormatInt(pid, 10)] = feats
+	}
+	mlReq := mlTeamOptRequest{
+		Pool:             mlPool,
+		OpponentFeatures: oppFeats,
+		MatchContext:     req.MatchContext,
+		Constraints: mlTeamOptConstraints{
+			Size:          req.Constraints.Size,
+			MinBowlers:    req.Constraints.MinBowlers,
+			RequireKeeper: req.Constraints.RequireKeeper,
+		},
+		Weights: mlTeamOptWeights{
+			Bat:         req.Weights.Bat,
+			Bowl:        req.Weights.Bowl,
+			Field:       req.Weights.Field,
+			KeeperBonus: req.Weights.KeeperBonus,
+		},
+		TeamIsTeam1:   req.TeamIsTeam1,
+		Format:        req.Format,
+		MaxIterations: req.MaxIterations,
+		MaxEvals:      req.MaxEvals,
+	}
+
+	payload, err := json.Marshal(mlReq)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		c.BaseURL+"/optimize/team-selection",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, logMLNon2xx(resp, "optimize/team-selection")
+	}
+	var out mlTeamOptResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	selected := make([]predictteam.TeamOptSelectedPlayer, len(out.Selected))
+	for i, s := range out.Selected {
+		selected[i] = predictteam.TeamOptSelectedPlayer{PlayerID: s.PlayerID, Name: s.Name}
+	}
+	return &predictteam.TeamOptimizationResult{
+		Selected:       selected,
+		WinProbability: out.WinProbability,
+		IterationsUsed: out.IterationsUsed,
+		EvalsPerformed: out.EvalsPerformed,
+	}, nil
 }
 
 // historicalMatchBacktest calls the ML service to evaluate a specific, already-played match.

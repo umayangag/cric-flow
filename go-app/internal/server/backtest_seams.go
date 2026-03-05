@@ -63,6 +63,10 @@ var (
 	mlPredictMatchWinEnhancedFunc = func(_ context.Context, _ predictteam.WinFeaturesEnhanced) (float64, error) {
 		return 0, sql.ErrNoRows
 	}
+	// OptimizeTeamSelection: server-side team selection optimisation (POST /optimize/team-selection).
+	mlOptimizeTeamSelectionFunc = func(_ context.Context, _ predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
+		return nil, sql.ErrNoRows
+	}
 )
 
 // dashboard accuracy-trend seams (overridable in tests)

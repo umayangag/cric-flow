@@ -56,6 +56,9 @@ from .models import (
     GenerateMatchRequest,
     GenerateMatchResponse,
     HistoricalMatchBacktestRequest,
+    TeamOptimizationRequest,
+    TeamOptimizationResponse,
+    TeamOptimizationSelectedPlayer,
     WinFeatures,
     WinFeaturesEnhanced,
     WinPrediction,
@@ -68,6 +71,7 @@ from .prediction_service import (
     run_batting_prediction,
     run_bowling_prediction,
     run_extras_prediction,
+    run_team_optimization,
     run_win_prediction,
     run_win_prediction_enhanced,
     validate_predict_batch,
@@ -543,6 +547,61 @@ async def predict_win_enhanced(request: WinFeaturesEnhanced):
         match_context=request.to_match_context_dict(),
         team1_player_features=request.team1_player_features,
         team2_player_features=request.team2_player_features,
+    )
+
+
+@app.post("/optimize/team-selection", response_model=TeamOptimizationResponse)
+async def optimize_team_selection(request: TeamOptimizationRequest):
+    """Server-side team selection optimisation via hill-climb with batch inference.
+
+    Replaces hundreds of ``POST /predict/win-enhanced`` calls with a single
+    request.  The ML service runs the full greedy-seed + hill-climb loop
+    internally using vectorised ``model.predict_proba`` batches.
+    """
+    from ml.team_optimizer import PoolPlayer, ScoreWeights, SelectionConstraints
+
+    pool = [
+        PoolPlayer(
+            player_id=p.player_id,
+            name=p.name,
+            is_bowler=p.is_bowler,
+            is_keeper=p.is_keeper,
+            bat_score=p.bat_score,
+            bowl_score=p.bowl_score,
+            field_score=p.field_score,
+            features=p.features,
+        )
+        for p in request.pool
+    ]
+    opponent_features = {int(k): v for k, v in request.opponent_features.items()}
+
+    result = run_team_optimization(
+        fmt=request.format or "",
+        pool=pool,
+        opponent_features=opponent_features,
+        match_context=request.match_context,
+        constraints=SelectionConstraints(
+            size=request.constraints.size,
+            min_bowlers=request.constraints.min_bowlers,
+            require_keeper=request.constraints.require_keeper,
+        ),
+        weights=ScoreWeights(
+            bat=request.weights.bat,
+            bowl=request.weights.bowl,
+            field=request.weights.field,
+            keeper_bonus=request.weights.keeper_bonus,
+        ),
+        team_is_team1=request.team_is_team1,
+        max_iterations=request.max_iterations,
+        max_evals=request.max_evals,
+    )
+    return TeamOptimizationResponse(
+        selected=[
+            TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected
+        ],
+        win_probability=result.win_probability,
+        iterations_used=result.iterations_used,
+        evals_performed=result.evals_performed,
     )
 
 

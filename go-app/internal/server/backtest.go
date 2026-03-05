@@ -289,6 +289,12 @@ func init() {
 			Format:                 w.Format,
 		})
 	}
+	mlOptimizeTeamSelectionFunc = func(ctx context.Context, req predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
+		if mlClient == nil {
+			return nil, errors.New("ml client not initialized")
+		}
+		return mlClient.OptimizeTeamSelection(ctx, req)
+	}
 	getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
 		ma, err := db.GetMatchAggregates(ctx, matchID)
 		if err != nil {

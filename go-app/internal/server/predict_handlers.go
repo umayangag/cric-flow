@@ -71,6 +71,13 @@ func (mlPredictorAdapter) PredictMatchWinEnhanced(
 	return mlPredictMatchWinEnhancedFunc(ctx, w)
 }
 
+func (mlPredictorAdapter) OptimizeTeamSelection(
+	ctx context.Context,
+	req predictteam.TeamOptimizationRequest,
+) (*predictteam.TeamOptimizationResult, error) {
+	return mlOptimizeTeamSelectionFunc(ctx, req)
+}
+
 // predictTeamRequest holds the parsed request body for team-selection prediction.
 type predictTeamRequest struct {
 	Format             string `json:"format"`

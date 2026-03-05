@@ -366,6 +366,76 @@ class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
 
 
+# -------------------- Team selection optimisation models --------------------
+
+
+class TeamOptimizationPoolPlayer(BaseModel):
+    player_id: int
+    name: str
+    is_bowler: bool
+    is_keeper: bool
+    bat_score: float
+    bowl_score: float
+    field_score: float = 0.0
+    features: Dict[str, float]
+
+
+class TeamOptimizationWeights(BaseModel):
+    bat: float = 0.45
+    bowl: float = 0.40
+    field: float = 0.10
+    keeper_bonus: float = 0.02
+
+
+class TeamOptimizationConstraints(BaseModel):
+    size: int = Field(default=11, ge=1)
+    min_bowlers: int = Field(default=5, ge=0)
+    require_keeper: bool = True
+
+
+class TeamOptimizationRequest(BaseModel):
+    """Request for server-side team selection optimisation.
+
+    Sends the full player pool, opponent features, and match context in a single
+    call so the ML service can run hill-climb optimisation with direct model
+    access and batch inference — eliminating per-candidate HTTP round-trips.
+    """
+
+    pool: List[TeamOptimizationPoolPlayer] = Field(..., min_length=1)
+    opponent_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="{player_id: {feature_name: value}} for the fixed opponent team"
+    )
+    match_context: Dict[str, float] = Field(
+        ..., description="MATCH_CONTEXT_COLS values (format_id, venue_id, opposition IDs, weather, etc.)"
+    )
+    constraints: TeamOptimizationConstraints = Field(default_factory=TeamOptimizationConstraints)
+    weights: TeamOptimizationWeights = Field(default_factory=TeamOptimizationWeights)
+    team_is_team1: bool = Field(
+        default=True, description="Whether the pool represents team1 (batting first) or team2"
+    )
+    format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
+    max_iterations: int = Field(default=50, ge=1, le=200)
+    max_evals: int = Field(default=500, ge=1, le=5000)
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+
+class TeamOptimizationSelectedPlayer(BaseModel):
+    player_id: int
+    name: str
+
+
+class TeamOptimizationResponse(BaseModel):
+    selected: List[TeamOptimizationSelectedPlayer]
+    win_probability: float = Field(..., ge=0, le=1)
+    iterations_used: int
+    evals_performed: int
+
+
 # -------------------- Historical match backtest models --------------------
 
 
