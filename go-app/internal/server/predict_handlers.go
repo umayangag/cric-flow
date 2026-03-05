@@ -232,6 +232,57 @@ func buildSimulationOpts(body predictTeamRequest) (predictteam.SimulationOpts, e
 	return opts, nil
 }
 
+func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchFunc {
+	return func(
+		ctx context.Context,
+		cutoff time.Time,
+		format string,
+		playerIDs []int64,
+		features map[int64]map[string]float64,
+		useLatest bool,
+		matchCtx *predictteam.MatchContext,
+	) (map[int64]predictteam.PlayerPred, float64, float64, float64, string, error) {
+		var mc *MatchContextForReconciliation
+		if matchCtx != nil {
+			mc = &MatchContextForReconciliation{
+				Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
+				Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
+				VenueID:           matchCtx.VenueID,
+				SeasonID:          matchCtx.SeasonID,
+				FormatID:          matchCtx.FormatID,
+				Team1OppositionID: matchCtx.Team1OppositionID,
+				Team2OppositionID: matchCtx.Team2OppositionID,
+				Temp:              matchCtx.Temp,
+				Wind:              matchCtx.Wind,
+				Rain:              matchCtx.Rain,
+				Humidity:          matchCtx.Humidity,
+				Cloud:             matchCtx.Cloud,
+				Pressure:          matchCtx.Pressure,
+				Viscosity:         matchCtx.Viscosity,
+			}
+		}
+		resp, err := client.GenerateMatch(ctx, cutoff, format, playerIDs, features, useLatest, mc)
+		if err != nil {
+			return nil, 0, 0, 0, "", err
+		}
+		players := make(map[int64]predictteam.PlayerPred, len(resp.Players))
+		for _, p := range resp.Players {
+			players[p.PlayerID] = predictteam.PlayerPred{
+				Runs:    p.Runs,
+				Wickets: p.Wickets,
+				Economy: p.Economy,
+				Catches: p.Catches,
+				RunOuts: p.RunOuts,
+			}
+		}
+		in1, in2 := 0.0, 0.0
+		if len(resp.Innings) >= 2 {
+			in1, in2 = resp.Innings[0].Runs, resp.Innings[1].Runs
+		}
+		return players, in1, in2, resp.WinProbabilityTeam1, resp.ModelVersion, nil
+	}
+}
+
 // predictTeamSelectionHandler handles POST /api/predict/team-selection
 func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -273,54 +324,7 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	var reconciledGen predictteam.GenerateMatchFunc
 	if input.UseReconciledScorecard || input.IncludeBothScorecards {
 		client := NewBacktestMLClient()
-		reconciledGen = func(
-			ctx context.Context,
-			cutoff time.Time,
-			format string,
-			playerIDs []int64,
-			features map[int64]map[string]float64,
-			useLatest bool,
-			matchCtx *predictteam.MatchContext,
-		) (map[int64]predictteam.PlayerPred, float64, float64, float64, string, error) {
-			var mc *MatchContextForReconciliation
-			if matchCtx != nil {
-				mc = &MatchContextForReconciliation{
-					Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
-					Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
-					VenueID:           matchCtx.VenueID,
-					SeasonID:          matchCtx.SeasonID,
-					FormatID:          matchCtx.FormatID,
-					Team1OppositionID: matchCtx.Team1OppositionID,
-					Team2OppositionID: matchCtx.Team2OppositionID,
-					Temp:              matchCtx.Temp,
-					Wind:              matchCtx.Wind,
-					Rain:              matchCtx.Rain,
-					Humidity:          matchCtx.Humidity,
-					Cloud:             matchCtx.Cloud,
-					Pressure:          matchCtx.Pressure,
-					Viscosity:         matchCtx.Viscosity,
-				}
-			}
-			resp, err := client.GenerateMatch(ctx, cutoff, format, playerIDs, features, useLatest, mc)
-			if err != nil {
-				return nil, 0, 0, 0, "", err
-			}
-			players := make(map[int64]predictteam.PlayerPred, len(resp.Players))
-			for _, p := range resp.Players {
-				players[p.PlayerID] = predictteam.PlayerPred{
-					Runs:    p.Runs,
-					Wickets: p.Wickets,
-					Economy: p.Economy,
-					Catches: p.Catches,
-					RunOuts: p.RunOuts,
-				}
-			}
-			in1, in2 := 0.0, 0.0
-			if len(resp.Innings) >= 2 {
-				in1, in2 = resp.Innings[0].Runs, resp.Innings[1].Runs
-			}
-			return players, in1, in2, resp.WinProbabilityTeam1, resp.ModelVersion, nil
-		}
+		reconciledGen = newReconciledGenerator(client)
 	}
 	if body.Simulate != nil && *body.Simulate {
 		opts, err := buildSimulationOpts(body)

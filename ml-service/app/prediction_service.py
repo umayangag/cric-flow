@@ -94,9 +94,9 @@ def _sum_team_feature(
     """Sum batting and bowling feature values for a set of player IDs. Used by predict_match_innings and generate_match."""
     bat_sum, bowl_sum = 0.0, 0.0
     for pid in ids:
-        fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-        bat_sum += float(fm.get(key_bat, 0) or 0)
-        bowl_sum += float(fm.get(key_bowl, 0) or 0)
+        fm = features_map.get(str(pid), {})
+        bat_sum += fm.get(key_bat, 0.0)
+        bowl_sum += fm.get(key_bowl, 0.0)
     return bat_sum, bowl_sum
 
 
