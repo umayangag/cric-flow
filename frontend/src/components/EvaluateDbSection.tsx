@@ -60,8 +60,6 @@ export interface EvaluateDbSectionProps {
   // Model settings
   predictionModel: 'format' | 'unified';
   onPredictionModelChange: (v: 'format' | 'unified') => void;
-  useLatestModel: boolean;
-  onUseLatestModelChange: (v: boolean) => void;
 
   // Backtest data
   candidates: BacktestCandidate[];
@@ -104,8 +102,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   statusMessage,
   predictionModel,
   onPredictionModelChange,
-  useLatestModel: _useLatestModel,
-  onUseLatestModelChange: _onUseLatestModelChange,
   candidates,
   selectedMatchId,
   onSelectMatch,

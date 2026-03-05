@@ -142,8 +142,8 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		}
 		// model_kind is the machine-readable kind (e.g. "batting_share");
 		// fall back to lowercased model_name for backward compatibility.
-		kindStr, _ := modelMap["model_kind"].(string)
-		if kindStr == "" {
+		kindStr, ok := modelMap["model_kind"].(string)
+		if !ok || kindStr == "" {
 			kindStr = strings.ToLower(modelName)
 		}
 		key := kindStr + "|" + formatKey
