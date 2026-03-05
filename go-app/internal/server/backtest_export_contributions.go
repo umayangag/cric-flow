@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
@@ -90,60 +91,87 @@ func (a *App) backtestExportContributionsStatusHandler(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, snap)
 }
 
+// exportContribsMatchPrep holds pre-computed data for one match before ML prediction.
+type exportContribsMatchPrep struct {
+	matchID  int64
+	cutoff   time.Time
+	squad    []int64
+	features map[int64]map[string]float64
+}
+
 // runExportContributionsWork runs the export in the calling goroutine (used by the background job).
 // Returns path, row count, and error. Keeper lookup failure is returned as error so the job can report it to the user.
+//
+// The function uses three phases to minimise cross-service round-trips:
+//  1. Parallel DB prep  — cutoff, squad, features for every match.
+//  2. Single batch ML call — all predictions in one HTTP request; falls back to
+//     parallel per-match calls if the batch endpoint is unavailable.
+//  3. Parallel result assembly — actuals + player-results for each match.
 func runExportContributionsWork(
 	ctx context.Context,
 	body exportContributionsRequest,
 ) (path string, rows int, err error) {
 	format := strings.TrimSpace(strings.ToUpper(body.Format))
-	team1 := strings.TrimSpace(body.Team1)
-	team2 := strings.TrimSpace(body.Team2)
 
-	// Evaluate matches in parallel with a concurrency limit to avoid overloading external services.
-	var allPlayers []BacktestPlayerResult
-	var mu sync.Mutex
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(exportContributionsConcurrency)
-	for _, mid := range body.MatchIDs {
-		mid := mid
-		g.Go(func() error {
-			matchIDStr := strconv.FormatInt(mid, 10)
-			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, false, nil)
+	// Phase 1: Prep all matches in parallel (DB only, no ML).
+	preps := make([]exportContribsMatchPrep, len(body.MatchIDs))
+	g1, gCtx1 := errgroup.WithContext(ctx)
+	g1.SetLimit(exportContributionsConcurrency)
+	for i, mid := range body.MatchIDs {
+		i, mid := i, mid
+		g1.Go(func() error {
+			cutoff, err := getBacktestMatchDateFunc(gCtx1, mid)
 			if err != nil {
-				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
-				return nil // continue: don't fail the whole job for one match
+				slog.Warn("export-contributions prep failed (match_date)", "match_id", mid, "err", err)
+				return nil
 			}
-			mu.Lock()
-			allPlayers = append(allPlayers, resp.Players...)
-			mu.Unlock()
+			squad, err := getBacktestSquadPlayerIDsFunc(gCtx1, mid, cutoff, format)
+			if err != nil {
+				slog.Warn("export-contributions prep failed (squad)", "match_id", mid, "err", err)
+				return nil
+			}
+			feats, err := getBacktestFeaturesAtCutoffFunc(gCtx1, cutoff, squad, mid, format)
+			if err != nil {
+				slog.Warn("export-contributions prep failed (features)", "match_id", mid, "err", err)
+				return nil
+			}
+			preps[i] = exportContribsMatchPrep{matchID: mid, cutoff: cutoff, squad: squad, features: feats}
 			return nil
 		})
 	}
-	if err := g.Wait(); err != nil {
+	if err := g1.Wait(); err != nil {
 		return "", 0, err
 	}
 
-	if len(allPlayers) == 0 {
-		outDir := config.DefaultExportDir()
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
-			return "", 0, err
+	// Collect successfully prepped matches.
+	formatForPrediction := format
+	if body.UseUnifiedModel {
+		formatForPrediction = ""
+	}
+	var batchInputs []BatchPredictPlayersInput
+	var validIndices []int
+	for i, p := range preps {
+		if p.cutoff.IsZero() {
+			continue
 		}
-		csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+".csv")
-		if err := writeContributionsCSV(csvPath, nil); err != nil {
-			return "", 0, err
-		}
-		return csvPath, 0, nil
+		batchInputs = append(batchInputs, BatchPredictPlayersInput{
+			Cutoff:         p.cutoff,
+			Format:         formatForPrediction,
+			PlayerIDs:      p.squad,
+			Features:       p.features,
+			UseLatestModel: false,
+		})
+		validIndices = append(validIndices, i)
 	}
 
-	playerIDs := make([]int64, 0, len(allPlayers))
-	seen := make(map[int64]bool)
-	for _, p := range allPlayers {
-		if !seen[p.PlayerID] {
-			seen[p.PlayerID] = true
-			playerIDs = append(playerIDs, p.PlayerID)
-		}
+	// Phase 2: ML predictions — batch when available, per-match fallback otherwise.
+	allPlayers := exportContribsBatchPredict(ctx, preps, batchInputs, validIndices, format, body)
+
+	if len(allPlayers) == 0 {
+		return writeEmptyContributionsCSV()
 	}
+
+	playerIDs := uniquePlayerIDs(allPlayers)
 	keeperMap, err := db.ListPlayerIsWicketKeeper(ctx, playerIDs)
 	if err != nil {
 		slog.Warn("export-contributions list keeper failed", "err", err)
@@ -175,6 +203,108 @@ func runExportContributionsWork(
 		return "", 0, err
 	}
 	return csvPath, len(rowList), nil
+}
+
+// exportContribsBatchPredict attempts a single batch ML call for all prepped
+// matches.  Falls back to parallel per-match doEvaluateWork calls when the
+// batch endpoint is unavailable.
+func exportContribsBatchPredict(
+	ctx context.Context,
+	preps []exportContribsMatchPrep,
+	batchInputs []BatchPredictPlayersInput,
+	validIndices []int,
+	format string,
+	body exportContributionsRequest,
+) []BacktestPlayerResult {
+	if len(batchInputs) == 0 {
+		return nil
+	}
+	batchResults, batchErr := mlBacktestPredictBatchFunc(ctx, batchInputs)
+	if batchErr != nil {
+		slog.Warn("batch predict unavailable for export, falling back to per-match calls", slog.Any("err", batchErr))
+		return exportContribsFallback(ctx, body, format)
+	}
+
+	// Phase 3: Assemble player results from batch predictions + actuals.
+	var allPlayers []BacktestPlayerResult
+	var mu sync.Mutex
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(exportContributionsConcurrency)
+	for bi, vi := range validIndices {
+		bi, vi := bi, vi
+		g.Go(func() error {
+			p := preps[vi]
+			preds := batchResults[bi]
+			actuals, err := getBacktestPlayerActualsForMatchFunc(gCtx, p.matchID)
+			if err != nil {
+				slog.Warn("export-contributions actuals failed", "match_id", p.matchID, "err", err)
+				return nil
+			}
+			players, _ := computePlayerResultsAndMetrics(p.squad, preds, actuals)
+			mu.Lock()
+			allPlayers = append(allPlayers, players...)
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return allPlayers
+}
+
+// exportContribsFallback uses the original per-match doEvaluateWork calls when
+// the batch endpoint is unavailable.
+func exportContribsFallback(
+	ctx context.Context,
+	body exportContributionsRequest,
+	format string,
+) []BacktestPlayerResult {
+	team1 := strings.TrimSpace(body.Team1)
+	team2 := strings.TrimSpace(body.Team2)
+	var allPlayers []BacktestPlayerResult
+	var mu sync.Mutex
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(exportContributionsConcurrency)
+	for _, mid := range body.MatchIDs {
+		mid := mid
+		g.Go(func() error {
+			matchIDStr := strconv.FormatInt(mid, 10)
+			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, false, nil)
+			if err != nil {
+				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
+				return nil
+			}
+			mu.Lock()
+			allPlayers = append(allPlayers, resp.Players...)
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return allPlayers
+}
+
+func writeEmptyContributionsCSV() (string, int, error) {
+	outDir := config.DefaultExportDir()
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return "", 0, err
+	}
+	csvPath := filepath.Join(outDir, contributionsCSVFilenamePrefix+".csv")
+	if err := writeContributionsCSV(csvPath, nil); err != nil {
+		return "", 0, err
+	}
+	return csvPath, 0, nil
+}
+
+func uniquePlayerIDs(players []BacktestPlayerResult) []int64 {
+	seen := make(map[int64]bool, len(players))
+	ids := make([]int64, 0, len(players))
+	for _, p := range players {
+		if !seen[p.PlayerID] {
+			seen[p.PlayerID] = true
+			ids = append(ids, p.PlayerID)
+		}
+	}
+	return ids
 }
 
 func buildContributionRows(

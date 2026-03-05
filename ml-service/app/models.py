@@ -434,6 +434,48 @@ class TeamOptimizationResponse(BaseModel):
     evals_performed: int
 
 
+# -------------------- Batch prediction models --------------------
+
+
+class BatchPredictItem(BaseModel):
+    """One item in a batch prediction request — same fields as BacktestPredictRequest but for player predictions only."""
+
+    cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
+    player_ids: List[int] = Field(..., min_length=1, description="Player IDs to predict for")
+    format: str = Field(..., description="Format code (e.g. T20, ODI)")
+    features: Dict[str, Dict[str, float]] = Field(
+        default_factory=dict,
+        description="Per-player features (player_id as str -> feature name -> value)",
+    )
+    use_latest_model: bool = Field(default=False, description="Use latest model when True")
+    match_context: Optional[MatchContext] = Field(default=None, description="Match context for reconciliation")
+
+    @field_validator("player_ids")
+    def _player_ids_positive(cls, v: List[int]):
+        for pid in v:
+            if pid <= 0:
+                raise ValueError("player_ids must be positive integers")
+        return v
+
+
+class BatchPredictRequest(BaseModel):
+    """Request for POST /ml/backtest/predict-batch — multiple prediction sets in one call."""
+
+    requests: List[BatchPredictItem] = Field(..., min_length=1, max_length=500)
+
+
+class BatchPredictResultItem(BaseModel):
+    """One result in a batch prediction response."""
+
+    players: List[BacktestPlayerPred]
+
+
+class BatchPredictResponse(BaseModel):
+    """Response for POST /ml/backtest/predict-batch — one result per request item."""
+
+    results: List[BatchPredictResultItem]
+
+
 # -------------------- Historical match backtest models --------------------
 
 

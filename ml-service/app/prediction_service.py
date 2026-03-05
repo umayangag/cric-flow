@@ -482,6 +482,38 @@ def predict_players_with_features(
     return out
 
 
+def predict_players_batch(
+    items: list,
+    models_dir: str,
+    enable_train_on_the_fly: bool,
+    go_app_url: str,
+    go_app_api_key: Optional[str],
+    train_latest_cache_granularity: str,
+) -> "List[List[BacktestPlayerPred]]":
+    """Run predict_players_with_features for each item in the batch.
+
+    Shares loaded model artifacts across all items (no redundant reloads).
+    Returns a list of prediction lists, one per input item.
+    """
+    results: List[List[BacktestPlayerPred]] = []
+    for item in items:
+        preds = predict_players_with_features(
+            item.cutoff_date,
+            item.player_ids,
+            item.format or "",
+            item.features or {},
+            models_dir,
+            enable_train_on_the_fly,
+            go_app_url,
+            go_app_api_key,
+            train_latest_cache_granularity,
+            item.use_latest_model,
+            item.match_context,
+        )
+        results.append(preds)
+    return results
+
+
 def generate_match(
     cutoff: datetime,
     player_ids: List[int],

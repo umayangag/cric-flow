@@ -67,6 +67,10 @@ var (
 	mlOptimizeTeamSelectionFunc = func(_ context.Context, _ predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
 		return nil, sql.ErrNoRows
 	}
+	// Batch prediction: multiple predict-player calls in a single HTTP request.
+	mlBacktestPredictBatchFunc = func(_ context.Context, _ []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
+		return nil, sql.ErrNoRows
+	}
 )
 
 // dashboard accuracy-trend seams (overridable in tests)

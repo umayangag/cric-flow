@@ -485,7 +485,7 @@ func predictTeamsWithIntermediates(
 			sel1, sel2, err = selectTeamsByWinProbability(
 				ctx, enhanced, tsPool1, tsPool2, constraints,
 				pool1, pool2, weights,
-				format, formatID, venueIDVal, opp1IDVal, opp2IDVal, input.Weather, allFeats,
+				format, formatID, venueIDVal, opp1IDVal, opp2IDVal, float64(cutoff.Unix()), input.Weather, allFeats,
 			)
 			if err != nil {
 				slog.WarnContext(ctx, "win-prob selection failed, falling back to standard", slog.Any("err", err))
@@ -583,6 +583,7 @@ func predictTeamsWithIntermediates(
 		venueIDVal,
 		opp1IDVal,
 		opp2IDVal,
+		float64(cutoff.Unix()),
 		input.Weather,
 		nameToID1,
 		nameToID2,
@@ -765,6 +766,7 @@ func getMatchWinProbability(
 	predictor MLPredictor,
 	format string,
 	formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
 	weather *WeatherInput,
 	nameToID1, nameToID2 map[string]int64,
 	sel1, sel2 []teamselect.Player,
@@ -782,6 +784,7 @@ func getMatchWinProbability(
 			venueIDVal,
 			opp2IDVal,
 			opp1IDVal,
+			matchDateUnix,
 			temp,
 			wind,
 			rain,
@@ -869,6 +872,7 @@ func extractPlayerFeatures(ids []int64, allFeats map[int64]map[string]float64) m
 
 func buildEnhancedWinFeatures(
 	formatID, venueIDVal, team1OppID, team2OppID int64,
+	matchDateUnix float64,
 	temp, wind, rain, humidity, cloud, pressure int,
 	t1Feats, t2Feats map[int64]map[string]float64,
 	format string,
@@ -876,6 +880,7 @@ func buildEnhancedWinFeatures(
 	return WinFeaturesEnhanced{
 		FormatID:               int(formatID),
 		VenueID:                int(venueIDVal),
+		MatchDateUnix:          matchDateUnix,
 		Team1OppositionID:      int(team1OppID),
 		Team2OppositionID:      int(team2OppID),
 		TossWinnerOppositionID: 0,
@@ -1041,13 +1046,14 @@ func selectTeamsByWinProbability(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
 	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
 	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
 		sel1, sel2, err := tryServerSideTeamOptimization(
 			ctx, optimizer, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, weather, allFeats,
+			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, matchDateUnix, weather, allFeats,
 		)
 		if err == nil {
 			return sel1, sel2, nil
@@ -1058,7 +1064,7 @@ func selectTeamsByWinProbability(
 
 	return selectTeamsByWinProbabilityPerCall(
 		ctx, enhanced, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, weather, allFeats,
+		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, matchDateUnix, weather, allFeats,
 	)
 }
 
@@ -1072,6 +1078,7 @@ func tryServerSideTeamOptimization(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
 	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
@@ -1091,7 +1098,7 @@ func tryServerSideTeamOptimization(
 		return map[string]float64{
 			"format_id":                 float64(formatID),
 			"venue_id":                  float64(venueIDVal),
-			"match_date_unix":           0,
+			"match_date_unix":           matchDateUnix,
 			"team1_opposition_id":       float64(t1OppID),
 			"team2_opposition_id":       float64(t2OppID),
 			"toss_winner_opposition_id": 0,
@@ -1220,6 +1227,7 @@ func selectTeamsByWinProbabilityPerCall(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
 	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
@@ -1261,6 +1269,7 @@ func selectTeamsByWinProbabilityPerCall(
 				venueIDVal,
 				team1OppID,
 				team2OppID,
+				matchDateUnix,
 				temp,
 				wind,
 				rain,

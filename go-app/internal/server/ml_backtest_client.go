@@ -441,6 +441,118 @@ func (c *BacktestMLClient) predictPlayers(
 	return res, nil
 }
 
+// ---------------------------------------------------------------------------
+// Batch prediction (POST /ml/backtest/predict-batch)
+// ---------------------------------------------------------------------------
+
+type mlBatchPredictItem struct {
+	CutoffDate     string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids"`
+	Format         string                        `json:"format"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+}
+
+type mlBatchPredictRequest struct {
+	Requests []mlBatchPredictItem `json:"requests"`
+}
+
+type mlBatchPredictResultItem struct {
+	Players []mlBacktestPlayerPred `json:"players"`
+}
+
+type mlBatchPredictResponse struct {
+	Results []mlBatchPredictResultItem `json:"results"`
+}
+
+// BatchPredictPlayersInput holds the inputs for one item in a batch prediction.
+type BatchPredictPlayersInput struct {
+	Cutoff         time.Time
+	Format         string
+	PlayerIDs      []int64
+	Features       map[int64]map[string]float64
+	UseLatestModel bool
+}
+
+// PredictPlayersBatch sends multiple prediction requests to the ML service
+// in a single HTTP call, returning one result map per input item.
+func (c *BacktestMLClient) PredictPlayersBatch(
+	ctx context.Context,
+	inputs []BatchPredictPlayersInput,
+) ([]map[int64]playerPredictions, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+
+	items := make([]mlBatchPredictItem, 0, len(inputs))
+	for _, in := range inputs {
+		item := mlBatchPredictItem{
+			CutoffDate:     in.Cutoff.Format(time.RFC3339),
+			PlayerIDs:      in.PlayerIDs,
+			Format:         strings.TrimSpace(in.Format),
+			UseLatestModel: in.UseLatestModel,
+		}
+		if len(in.Features) > 0 {
+			item.Features = make(map[string]map[string]float64, len(in.Features))
+			for pid, m := range in.Features {
+				item.Features[strconv.FormatInt(pid, 10)] = m
+			}
+		}
+		items = append(items, item)
+	}
+
+	payload, _ := json.Marshal(mlBatchPredictRequest{Requests: items})
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		c.BaseURL+"/ml/backtest/predict-batch",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, logMLNon2xx(resp, "ml batch predict")
+	}
+	var out mlBatchPredictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if len(out.Results) != len(inputs) {
+		return nil, fmt.Errorf("batch predict: got %d results, expected %d", len(out.Results), len(inputs))
+	}
+	results := make([]map[int64]playerPredictions, len(out.Results))
+	for i, result := range out.Results {
+		m := make(map[int64]playerPredictions, len(result.Players))
+		for _, p := range result.Players {
+			pp := playerPredictions{
+				Runs:    p.Runs,
+				Wickets: p.Wickets,
+				Economy: p.Economy,
+				Catches: p.Catches,
+				RunOuts: p.RunOuts,
+			}
+			if p.Balls != nil {
+				pp.Balls = *p.Balls
+			}
+			if p.Fours != nil {
+				pp.Fours = *p.Fours
+			}
+			if p.Sixes != nil {
+				pp.Sixes = *p.Sixes
+			}
+			m[p.PlayerID] = pp
+		}
+		results[i] = m
+	}
+	return results, nil
+}
+
 // GenerateMatch calls the ml-service /api/ml/generate-match endpoint to get a reconciled
 // per-player projection, innings totals, and win probability for a future match.
 // playerIDs must include all players in the match (typically both XIs).

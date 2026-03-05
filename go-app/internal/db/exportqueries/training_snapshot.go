@@ -13,7 +13,17 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
 
-// Ensure feature map has all keys from the canonical contract (configs/feature_vectors.json); fill missing with 0.
+// sequenceFeatureKeys lists bat_*/bowl_* sequence features that are always 0
+// at future-match prediction time because no in-match sequence data exists yet.
+// The ML service defaults missing keys to 0.0, so omitting them saves payload.
+var sequenceFeatureKeys = map[string]struct{}{
+	"bat_prev_sr": {}, "bat_prev_out_rate": {}, "bat_window_sr_12_pp": {}, "bat_window_boundary_rate_12_pp": {},
+	"bat_entry_sr_1_6": {}, "bat_set_sr_13_30": {}, "bat_react_after_dot_sr": {}, "bat_after_k_dots_boundary_p_k2": {},
+	"bowl_prev_wkt_rate": {}, "bowl_window_econ_24_death": {}, "bowl_window_wkt_rate_24_death": {}, "bowl_extras_wide_rate_pp": {},
+	"bowl_react_after_boundary_wkt_rate_next": {}, "bowl_spell_first_over_wkt_rate": {}, "bowl_over_ball1_wkt_rate": {}, "bowl_over_ball6_wkt_rate": {},
+}
+
+// ensureContractKeys fills all canonical contract keys (configs/feature_vectors.json) with 0 when absent.
 func ensureContractKeys(feats map[string]float64) {
 	for _, k := range features.BattingFeatureNames() {
 		if _, ok := feats[k]; !ok {
@@ -21,6 +31,27 @@ func ensureContractKeys(feats map[string]float64) {
 		}
 	}
 	for _, k := range features.BowlingFeatureNames() {
+		if _, ok := feats[k]; !ok {
+			feats[k] = 0
+		}
+	}
+}
+
+// ensureContractKeysSkipSequence fills all canonical contract keys except
+// sequence features (bat_*/bowl_*) which are always 0 for future matches.
+func ensureContractKeysSkipSequence(feats map[string]float64) {
+	for _, k := range features.BattingFeatureNames() {
+		if _, skip := sequenceFeatureKeys[k]; skip {
+			continue
+		}
+		if _, ok := feats[k]; !ok {
+			feats[k] = 0
+		}
+	}
+	for _, k := range features.BowlingFeatureNames() {
+		if _, skip := sequenceFeatureKeys[k]; skip {
+			continue
+		}
 		if _, ok := feats[k]; !ok {
 			feats[k] = 0
 		}
@@ -535,25 +566,12 @@ func computeOppositionStrength(
 	return battingStrength, bowlingStrength, nil
 }
 
-// Batting and bowling sequence feature keys from feature_vectors.json.
-// At future-match prediction these are set to 0 until precompute/seqcalc export them per player.
-var (
-	battingSequenceKeys = []string{
-		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
-		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
-	}
-	bowlingSequenceKeys = []string{
-		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
-		"bowl_react_after_boundary_wkt_rate_next", "bowl_spell_first_over_wkt_rate", "bowl_over_ball1_wkt_rate", "bowl_over_ball6_wkt_rate",
-	}
-)
-
 // ComputeFeaturesAtCutoffForFutureMatch returns a feature map per player for a hypothetical future match.
 // Used when predicting team selection: same venue and opposition for all players (the opposition team).
 // Missing precomputed values are filled with 0 to support new/auction players with no prior history.
 // When weather is non-nil, its values override the default 0 for batting_* and bowling_* weather features.
-// Sequence features (bat_*, bowl_*) are set to 0 until precompute exports them; this aligns the key set
-// with configs/feature_vectors.json so the ML service receives a consistent vector. Optional
+// Sequence features (bat_*, bowl_*) are omitted because they are always 0 for future matches (no
+// in-match data exists yet); the ML service defaults missing keys to 0.0. Optional
 // oppositionPlayerIDs (e.g. the opposition team's pool) are used to compute opposition_batting_strength
 // and opposition_bowling_strength; when not provided or empty, those keys are 0 (training does not yet
 // include them; when a weather source is added, use the same feature names in training and prediction).
@@ -655,13 +673,7 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"opposition_bowling_strength": oppBowlStr,
 			"match_date_unix":             float64(cutoff.Unix()),
 		}
-		for _, k := range battingSequenceKeys {
-			feats[k] = 0
-		}
-		for _, k := range bowlingSequenceKeys {
-			feats[k] = 0
-		}
-		ensureContractKeys(feats)
+		ensureContractKeysSkipSequence(feats)
 		out[pid] = feats
 	}
 	return out, nil

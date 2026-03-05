@@ -295,6 +295,12 @@ func init() {
 		}
 		return mlClient.OptimizeTeamSelection(ctx, req)
 	}
+	mlBacktestPredictBatchFunc = func(ctx context.Context, inputs []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
+		if mlClient == nil {
+			return nil, errors.New("ml client not initialized")
+		}
+		return mlClient.PredictPlayersBatch(ctx, inputs)
+	}
 	getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
 		ma, err := db.GetMatchAggregates(ctx, matchID)
 		if err != nil {
