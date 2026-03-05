@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
@@ -479,7 +480,7 @@ type BatchPredictPlayersInput struct {
 func (c *BacktestMLClient) PredictPlayersBatch(
 	ctx context.Context,
 	inputs []BatchPredictPlayersInput,
-) ([]map[int64]playerPredictions, error) {
+) ([]map[int64]backtest.PlayerPredictions, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -526,11 +527,11 @@ func (c *BacktestMLClient) PredictPlayersBatch(
 	if len(out.Results) != len(inputs) {
 		return nil, fmt.Errorf("batch predict: got %d results, expected %d", len(out.Results), len(inputs))
 	}
-	results := make([]map[int64]playerPredictions, len(out.Results))
+	results := make([]map[int64]backtest.PlayerPredictions, len(out.Results))
 	for i, result := range out.Results {
-		m := make(map[int64]playerPredictions, len(result.Players))
+		m := make(map[int64]backtest.PlayerPredictions, len(result.Players))
 		for _, p := range result.Players {
-			pp := playerPredictions{
+			pp := backtest.PlayerPredictions{
 				Runs:    p.Runs,
 				Wickets: p.Wickets,
 				Economy: p.Economy,

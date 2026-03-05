@@ -19,7 +19,7 @@ var winFeatureCTENames = []string{
 }
 
 func buildWinAggAndTop3CTEs() string {
-	var parts []string
+	parts := make([]string, 0, len(winFeatureCTENames)+len(winFeatureCTENames))
 	for _, name := range winFeatureCTENames {
 		parts = append(parts,
 			fmt.Sprintf("agg_%s AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM %s GROUP BY match_id)", name, name),
@@ -34,7 +34,7 @@ func buildWinAggAndTop3CTEs() string {
 }
 
 func buildWinFeatureSelectColumns() string {
-	var cols []string
+	cols := make([]string, 0, len(winFeatureCTENames))
 	for i, name := range winFeatureCTENames {
 		n := i + 1
 		cols = append(cols, fmt.Sprintf(
@@ -46,7 +46,7 @@ func buildWinFeatureSelectColumns() string {
 }
 
 func buildWinFeatureJoins() string {
-	var joins []string
+	joins := make([]string, 0, len(winFeatureCTENames)+len(winFeatureCTENames))
 	for i, name := range winFeatureCTENames {
 		n := i + 1
 		joins = append(joins,
