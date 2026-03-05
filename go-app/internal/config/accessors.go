@@ -352,6 +352,22 @@ func SelectionMaxPoolSizeForFullEnum(cfg *Config) int {
 	return DefaultSelectionMaxPoolSizeForFullEnum
 }
 
+// SelectionMaxWinProbSwapIterations returns the hill-climb outer-loop cap for win-probability selection.
+func SelectionMaxWinProbSwapIterations(cfg *Config) int {
+	if cfg != nil && cfg.Selection.MaxWinProbSwapIterations > 0 {
+		return cfg.Selection.MaxWinProbSwapIterations
+	}
+	return DefaultSelectionMaxWinProbSwapIterations
+}
+
+// SelectionMaxWinProbEvalBudget returns the total ML evaluation call budget per team for win-probability hill-climb.
+func SelectionMaxWinProbEvalBudget(cfg *Config) int {
+	if cfg != nil && cfg.Selection.MaxWinProbEvalBudget > 0 {
+		return cfg.Selection.MaxWinProbEvalBudget
+	}
+	return DefaultSelectionMaxWinProbEvalBudget
+}
+
 // Resource limits (used by resources package). 0 in config = use default constant.
 func ResourcesPrecomputeMBPerWorker(cfg *Config) int {
 	if cfg != nil && cfg.Resources != nil && cfg.Resources.PrecomputeMBPerWorker > 0 {

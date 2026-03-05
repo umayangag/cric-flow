@@ -913,8 +913,16 @@ def run_win_prediction_enhanced(
     fmt_upper = (fmt or "").strip().upper()
     model = _resolve_win_model(fmt_upper)
 
-    t1_feats = {int(k): v for k, v in team1_player_features.items()}
-    t2_feats = {int(k): v for k, v in team2_player_features.items()}
+    def _validated_player_id(k: str) -> int:
+        if not k.isdigit() or len(k) > 20:
+            raise HTTPException(
+                status_code=400,
+                detail=error_payload(code="INVALID_PLAYER_ID", message=f"Invalid player ID key: {k!r}"),
+            )
+        return int(k)
+
+    t1_feats = {_validated_player_id(k): v for k, v in team1_player_features.items()}
+    t2_feats = {_validated_player_id(k): v for k, v in team2_player_features.items()}
 
     feature_dict = aggregate_team_features_from_player_maps(t1_feats, t2_feats, match_context)
     feature_vec = build_feature_vector(feature_dict)

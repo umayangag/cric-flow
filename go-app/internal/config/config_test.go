@@ -348,6 +348,8 @@ func TestConfigServerAndResourcesHelpers(t *testing.T) {
 	require.Equal(t, DefaultServerReadinessTimeoutSec, ServerReadinessTimeoutSec(nil))
 	require.Equal(t, DefaultPrecomputeMBPerWorker, ResourcesPrecomputeMBPerWorker(nil))
 	require.Equal(t, DefaultSelectionMaxPoolSizeForFullEnum, SelectionMaxPoolSizeForFullEnum(nil))
+	require.Equal(t, DefaultSelectionMaxWinProbSwapIterations, SelectionMaxWinProbSwapIterations(nil))
+	require.Equal(t, DefaultSelectionMaxWinProbEvalBudget, SelectionMaxWinProbEvalBudget(nil))
 	require.Equal(t, DefaultPipelineReplayMatchPageSize, PipelineReplayMatchPageSize(nil))
 
 	cfg := &Config{}
@@ -359,6 +361,12 @@ func TestConfigServerAndResourcesHelpers(t *testing.T) {
 
 	cfg.Selection.MaxPoolSizeForFullEnum = 20
 	require.Equal(t, 20, SelectionMaxPoolSizeForFullEnum(cfg))
+
+	cfg.Selection.MaxWinProbSwapIterations = 30
+	require.Equal(t, 30, SelectionMaxWinProbSwapIterations(cfg))
+
+	cfg.Selection.MaxWinProbEvalBudget = 200
+	require.Equal(t, 200, SelectionMaxWinProbEvalBudget(cfg))
 
 	cfg.Pipeline.ReplayMatchPageSize = 250
 	require.Equal(t, 250, PipelineReplayMatchPageSize(cfg))

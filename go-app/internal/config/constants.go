@@ -126,3 +126,9 @@ const (
 
 // Selection: max pool size for full enumeration; above this use greedy + hill-climb.
 const DefaultSelectionMaxPoolSizeForFullEnum = 18
+
+// Win-probability hill-climb: outer-loop iteration cap and total ML evaluation budget per team.
+const (
+	DefaultSelectionMaxWinProbSwapIterations = 50
+	DefaultSelectionMaxWinProbEvalBudget     = 500
+)

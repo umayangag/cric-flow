@@ -181,17 +181,25 @@ type hillClimbScoreFunc func(candidate []Player) (float64, error)
 
 // hillClimbSwap performs iterative single-swap hill climbing on team vs rest,
 // using scoreFunc to evaluate candidates and respecting constraints.
-// maxIter caps total passes; 0 means unlimited (stop when no improvement).
-func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter int) []Player {
+// maxIter caps total passes (0 = unlimited, stop when no improvement).
+// maxEvals caps total scoreFunc calls across all iterations (0 = unlimited).
+// This budget prevents excessive external calls when scoreFunc is an HTTP round-trip.
+func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter, maxEvals int) []Player {
 	currentScore, err := scoreFunc(team)
 	if err != nil {
 		return team
 	}
+	evalCount := 1
 
 	for iter := 0; maxIter == 0 || iter < maxIter; iter++ {
 		improved := false
+		budgetExhausted := false
 		for i := range team {
 			for j := range rest {
+				if maxEvals > 0 && evalCount >= maxEvals {
+					budgetExhausted = true
+					break
+				}
 				newTeam := make([]Player, len(team))
 				copy(newTeam, team)
 				newTeam[i] = rest[j]
@@ -199,6 +207,7 @@ func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreF
 					continue
 				}
 				s, err := scoreFunc(newTeam)
+				evalCount++
 				if err != nil {
 					continue
 				}
@@ -213,11 +222,11 @@ func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreF
 					break
 				}
 			}
-			if improved {
+			if improved || budgetExhausted {
 				break
 			}
 		}
-		if !improved {
+		if !improved || budgetExhausted {
 			break
 		}
 	}
@@ -254,7 +263,7 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 		}
 		return s, nil
 	}
-	team = hillClimbSwap(team, rest, c, scoreFunc, 0)
+	team = hillClimbSwap(team, rest, c, scoreFunc, 0, 0)
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }
@@ -263,9 +272,21 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 // Returns team1 win probability in [0,1] or an error.
 type WinProbEvalFunc func(candidateNames []string) (float64, error)
 
+// winProbSwapIterations returns the configured hill-climb iteration cap for win-probability selection.
+func winProbSwapIterations() int {
+	return config.SelectionMaxWinProbSwapIterations(config.Load())
+}
+
+// winProbEvalBudget returns the configured ML evaluation call budget for win-probability selection.
+func winProbEvalBudget() int {
+	return config.SelectionMaxWinProbEvalBudget(config.Load())
+}
+
 // SelectByWinProbability selects a team that maximizes win probability using
 // hill-climb optimization. Starts from a greedy seed (ScorePlayer-based),
 // then iteratively swaps players to improve the win probability.
+// Both the iteration count and total ML evaluation calls are capped via config
+// to prevent excessive load on the prediction service.
 func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFunc WinProbEvalFunc) ([]Player, error) {
 	if c.Size < 1 {
 		return nil, errors.New("invalid size")
@@ -288,8 +309,7 @@ func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFu
 		return evalFunc(names)
 	}
 
-	const maxSwapIterations = 50
-	team = hillClimbSwap(team, rest, c, scoreFunc, maxSwapIterations)
+	team = hillClimbSwap(team, rest, c, scoreFunc, winProbSwapIterations(), winProbEvalBudget())
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }
