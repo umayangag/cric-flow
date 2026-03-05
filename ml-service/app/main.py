@@ -596,9 +596,7 @@ async def optimize_team_selection(request: TeamOptimizationRequest):
         max_evals=request.max_evals,
     )
     return TeamOptimizationResponse(
-        selected=[
-            TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected
-        ],
+        selected=[TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected],
         win_probability=result.win_probability,
         iterations_used=result.iterations_used,
         evals_performed=result.evals_performed,

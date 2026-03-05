@@ -12,8 +12,6 @@ from ml.team_optimizer import (
     SelectionConstraints,
     _batch_evaluate_candidates,
     _clamp01,
-    _compute_derived_features_batch,
-    _evaluate_single_team,
     _precompute_fixed_team_stats,
     _satisfies_constraints,
     _score_player,
@@ -173,9 +171,7 @@ class TestBatchEvaluateCandidates:
         opponent_stats = _precompute_fixed_team_stats(opponent_feats, team_number=2)
         match_ctx = {col: 0.0 for col in WIN_ENHANCED_FEATURE_COLS[:13]}
 
-        probas = _batch_evaluate_candidates(
-            team, 0, candidates, opponent_stats, match_ctx, True, _FakeModel()
-        )
+        probas = _batch_evaluate_candidates(team, 0, candidates, opponent_stats, match_ctx, True, _FakeModel())
         assert probas.shape == (len(candidates),)
         assert all(0.0 <= p <= 1.0 for p in probas)
 

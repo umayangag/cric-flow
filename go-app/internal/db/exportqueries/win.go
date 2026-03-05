@@ -222,10 +222,25 @@ var winDistStatSuffixes = []string{"_sum", "_mean", "_std", "_max", "_min", "_to
 
 func winEnhancedHeaders() []string {
 	base := make([]string, 0, 17+len(winDistStatSuffixes)*len(winFeatureGroupNames))
-	base = append(base,
-		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
-		"match_date", "match_date_unix",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+	base = append(
+		base,
+		"match_id",
+		"format_id",
+		"venue_id",
+		"team1_opposition_id",
+		"team2_opposition_id",
+		"toss_winner_opposition_id",
+		"team1_wins",
+		"format_code",
+		"match_date",
+		"match_date_unix",
+		"temp",
+		"wind",
+		"rain",
+		"humidity",
+		"cloud",
+		"pressure",
+		"viscosity",
 	)
 	for _, group := range winFeatureGroupNames {
 		for _, suffix := range winDistStatSuffixes {

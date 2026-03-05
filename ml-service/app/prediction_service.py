@@ -7,9 +7,14 @@ Extracted from app.main to keep route handlers thin. Contains:
 - Match-level and player-level prediction orchestration
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ml.team_optimizer import OptimizationResult, PoolPlayer, ScoreWeights, SelectionConstraints
 
 import numpy as np
 from fastapi import HTTPException
@@ -958,7 +963,6 @@ def run_team_optimization(
     max_evals: int,
 ) -> "OptimizationResult":
     """Resolve the win model by format and delegate to the team optimizer."""
-    from ml.team_optimizer import OptimizationResult, PoolPlayer, ScoreWeights, SelectionConstraints  # noqa: F811
     from ml.team_optimizer import optimize_team_by_win_probability
 
     if aggregate_team_features_from_player_maps is None or build_feature_vector is None:

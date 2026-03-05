@@ -153,3 +153,96 @@ func TestLoad_CachePersistsUntilReset(t *testing.T) {
 		t.Fatalf("expected /second after reset, got %q", c3.Inputs.CricsheetDir)
 	}
 }
+
+func TestLoadMetaModel_NilConfigReturnsNil(t *testing.T) {
+	got := loadMetaModel(nil)
+	if got != nil {
+		t.Fatalf("expected nil for nil config, got %+v", got)
+	}
+}
+
+func TestLoadMetaModel_EmptyPathReturnsNil(t *testing.T) {
+	cfg := &Config{}
+	got := loadMetaModel(cfg)
+	if got != nil {
+		t.Fatalf("expected nil for empty MetaModelPath, got %+v", got)
+	}
+}
+
+func TestLoadMetaModel_FileNotFoundReturnsNil(t *testing.T) {
+	metaModelCache = nil
+	metaModelPath = ""
+	cfg := &Config{}
+	cfg.Selection.MetaModelPath = "/nonexistent/path/meta.json"
+	got := loadMetaModel(cfg)
+	if got != nil {
+		t.Fatalf("expected nil for missing file, got %+v", got)
+	}
+}
+
+func TestLoadMetaModel_InvalidJSONReturnsNil(t *testing.T) {
+	metaModelCache = nil
+	metaModelPath = ""
+	tmp := t.TempDir()
+	bad := filepath.Join(tmp, "bad.json")
+	if err := os.WriteFile(bad, []byte(`{not json}`), 0o600); err != nil {
+		t.Fatalf("write bad json: %v", err)
+	}
+	cfg := &Config{}
+	cfg.Selection.MetaModelPath = bad
+	got := loadMetaModel(cfg)
+	if got != nil {
+		t.Fatalf("expected nil for invalid JSON, got %+v", got)
+	}
+}
+
+func TestLoadMetaModel_RelativePathResolvedAgainstConfigDir(t *testing.T) {
+	metaModelCache = nil
+	metaModelPath = ""
+	cached = nil
+
+	tmp := t.TempDir()
+	metaContent := `{"bat":0.4,"bowl":0.3,"field":0.2,"keeper_bonus":0.1}`
+	if err := os.WriteFile(filepath.Join(tmp, "meta.json"), []byte(metaContent), 0o600); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	cfgPath := filepath.Join(tmp, "config.json")
+	cfgJSON := `{"selection":{"meta_model_path":"meta.json"}}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("GO_APP_CONFIG", cfgPath)
+	cfg := Load()
+
+	got := loadMetaModel(cfg)
+	if got == nil {
+		t.Fatal("expected non-nil meta model")
+	}
+	if got.Bat != 0.4 {
+		t.Fatalf("expected bat=0.4, got %f", got.Bat)
+	}
+}
+
+func TestLoadMetaModel_CacheHitReturnsSamePointer(t *testing.T) {
+	metaModelCache = nil
+	metaModelPath = ""
+	cached = nil
+
+	tmp := t.TempDir()
+	metaContent := `{"bat":0.5,"bowl":0.3,"field":0.15,"keeper_bonus":0.05}`
+	metaFile := filepath.Join(tmp, "meta_cache.json")
+	if err := os.WriteFile(metaFile, []byte(metaContent), 0o600); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	cfg := &Config{}
+	cfg.Selection.MetaModelPath = metaFile
+
+	first := loadMetaModel(cfg)
+	if first == nil {
+		t.Fatal("expected non-nil on first load")
+	}
+	second := loadMetaModel(cfg)
+	if first != second {
+		t.Fatal("expected cache hit to return same pointer")
+	}
+}

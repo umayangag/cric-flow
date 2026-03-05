@@ -648,6 +648,18 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			ServerHTTPIdleTimeoutSec,
 			25,
 		},
+		{"BacktestExportContributionsJobMaxDurationHr nil", nil, BacktestExportContributionsJobMaxDurationHr, DefaultExportContributionsJobMaxDurHr},
+		{"BacktestEvalJobMaxDurationHr nil", nil, BacktestEvalJobMaxDurationHr, DefaultEvalJobMaxDurationHr},
+		{"BacktestEvalJobConcurrencyMin nil", nil, BacktestEvalJobConcurrencyMin, DefaultEvalJobConcurrencyMin},
+		{"BacktestEvalJobConcurrencyMax nil", nil, BacktestEvalJobConcurrencyMax, DefaultEvalJobConcurrencyMax},
+		{"OpsMigrationsPageCap nil", nil, OpsMigrationsPageCap, DefaultOpsMigrationsPageCap},
+		{"OpsRecentMigrationsCount nil", nil, OpsRecentMigrationsCount, DefaultBacktestRecentMigrations},
+		{"ResourcesImportMBPerWorker nil", nil, ResourcesImportMBPerWorker, DefaultImportMBPerWorker},
+		{"ResourcesExportMBPerWorker nil", nil, ResourcesExportMBPerWorker, DefaultExportMBPerWorker},
+		{"ResourcesFieldingMBPerWorker nil", nil, ResourcesFieldingMBPerWorker, DefaultFieldingMBPerWorker},
+		{"ResourcesMemoryUsageFractionPercent nil", nil, ResourcesMemoryUsageFractionPercent, DefaultMemoryUsageFractionPercent},
+		{"ResourcesSeqCalcLowMemoryLimitGiB nil", nil, ResourcesSeqCalcLowMemoryLimitGiB, DefaultSeqCalcLowMemoryLimitGiB},
+		{"ResourcesPrecomputeConcurrencyWhenNoLimit nil", nil, ResourcesPrecomputeConcurrencyWhenNoLimit, DefaultPrecomputeConcurrencyWhenNoLimit},
 	}
 
 	for _, tt := range tests {

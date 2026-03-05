@@ -20,11 +20,11 @@ from typing import Dict, List, Mapping, Sequence
 import numpy as np
 
 from .win_features import (
-    MATCH_CONTEXT_COLS,
-    WIN_ENHANCED_FEATURE_COLS,
     _DIST_STAT_KEYS,
     _DIST_SUFFIXES,
     _GROUP_TO_PLAYER_KEY,
+    MATCH_CONTEXT_COLS,
+    WIN_ENHANCED_FEATURE_COLS,
     aggregate_team_features_from_player_maps,
     build_feature_vector,
 )
@@ -216,33 +216,25 @@ def _compute_derived_features_batch(feature_matrix: np.ndarray) -> None:
     feature_matrix[:, _COL_INDEX["bat_cons_matchup_ratio_team2"]] = _safe_ratio(
         _col("team2_bat_consistency_mean"), _col("team1_bowl_consistency_mean")
     )
-    feature_matrix[:, _COL_INDEX["bowl_depth_diff"]] = (
-        _col("team1_bowl_consistency_count") - _col("team2_bowl_consistency_count")
+    feature_matrix[:, _COL_INDEX["bowl_depth_diff"]] = _col("team1_bowl_consistency_count") - _col(
+        "team2_bowl_consistency_count"
     )
-    feature_matrix[:, _COL_INDEX["bat_form_top3_diff"]] = (
-        _col("team1_bat_form_top3_mean") - _col("team2_bat_form_top3_mean")
+    feature_matrix[:, _COL_INDEX["bat_form_top3_diff"]] = _col("team1_bat_form_top3_mean") - _col(
+        "team2_bat_form_top3_mean"
     )
-    feature_matrix[:, _COL_INDEX["bowl_form_top3_diff"]] = (
-        _col("team1_bowl_form_top3_mean") - _col("team2_bowl_form_top3_mean")
+    feature_matrix[:, _COL_INDEX["bowl_form_top3_diff"]] = _col("team1_bowl_form_top3_mean") - _col(
+        "team2_bowl_form_top3_mean"
     )
-    feature_matrix[:, _COL_INDEX["bat_cons_top3_diff"]] = (
-        _col("team1_bat_consistency_top3_mean") - _col("team2_bat_consistency_top3_mean")
+    feature_matrix[:, _COL_INDEX["bat_cons_top3_diff"]] = _col("team1_bat_consistency_top3_mean") - _col(
+        "team2_bat_consistency_top3_mean"
     )
-    feature_matrix[:, _COL_INDEX["bowl_cons_top3_diff"]] = (
-        _col("team1_bowl_consistency_top3_mean") - _col("team2_bowl_consistency_top3_mean")
+    feature_matrix[:, _COL_INDEX["bowl_cons_top3_diff"]] = _col("team1_bowl_consistency_top3_mean") - _col(
+        "team2_bowl_consistency_top3_mean"
     )
-    feature_matrix[:, _COL_INDEX["team1_bat_form_spread"]] = (
-        _col("team1_bat_form_max") - _col("team1_bat_form_min")
-    )
-    feature_matrix[:, _COL_INDEX["team2_bat_form_spread"]] = (
-        _col("team2_bat_form_max") - _col("team2_bat_form_min")
-    )
-    feature_matrix[:, _COL_INDEX["team1_bowl_form_spread"]] = (
-        _col("team1_bowl_form_max") - _col("team1_bowl_form_min")
-    )
-    feature_matrix[:, _COL_INDEX["team2_bowl_form_spread"]] = (
-        _col("team2_bowl_form_max") - _col("team2_bowl_form_min")
-    )
+    feature_matrix[:, _COL_INDEX["team1_bat_form_spread"]] = _col("team1_bat_form_max") - _col("team1_bat_form_min")
+    feature_matrix[:, _COL_INDEX["team2_bat_form_spread"]] = _col("team2_bat_form_max") - _col("team2_bat_form_min")
+    feature_matrix[:, _COL_INDEX["team1_bowl_form_spread"]] = _col("team1_bowl_form_max") - _col("team1_bowl_form_min")
+    feature_matrix[:, _COL_INDEX["team2_bowl_form_spread"]] = _col("team2_bowl_form_max") - _col("team2_bowl_form_min")
 
 
 def _batch_evaluate_candidates(
@@ -292,9 +284,7 @@ def _batch_evaluate_candidates(
             "max": full_vals.max(axis=1),
             "min": full_vals.min(axis=1),
             "top3_mean": (
-                np.sort(full_vals, axis=1)[:, -3:].mean(axis=1)
-                if full_vals.shape[1] >= 3
-                else full_vals.mean(axis=1)
+                np.sort(full_vals, axis=1)[:, -3:].mean(axis=1) if full_vals.shape[1] >= 3 else full_vals.mean(axis=1)
             ),
             "count": np.full(n_cand, float(full_vals.shape[1])),
         }

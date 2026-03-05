@@ -410,9 +410,7 @@ class TeamOptimizationRequest(BaseModel):
     )
     constraints: TeamOptimizationConstraints = Field(default_factory=TeamOptimizationConstraints)
     weights: TeamOptimizationWeights = Field(default_factory=TeamOptimizationWeights)
-    team_is_team1: bool = Field(
-        default=True, description="Whether the pool represents team1 (batting first) or team2"
-    )
+    team_is_team1: bool = Field(default=True, description="Whether the pool represents team1 (batting first) or team2")
     format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
     max_iterations: int = Field(default=50, ge=1, le=200)
     max_evals: int = Field(default=500, ge=1, le=5000)
