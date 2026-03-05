@@ -99,9 +99,7 @@ class TestGetModelArtifactStats:
         p = tmp_path  # type: ignore[assignment]
         (p / "batting_share_model_T20.joblib").write_bytes(b"m" * 50)
         entries = os.listdir(str(p))
-        rec = get_model_artifact_stats(
-            str(p), entries, "batting_share", "T20", "batting_share_model_T20.joblib"
-        )
+        rec = get_model_artifact_stats(str(p), entries, "batting_share", "T20", "batting_share_model_T20.joblib")
         assert rec is not None
         assert rec["model_kind"] == "batting_share"
         assert rec["model_name"] == "Batting Share"
