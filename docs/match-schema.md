@@ -32,7 +32,7 @@ Logical fields (matching `BALL_COLS` from `ml.ball_by_ball_loader`):
   - `bowler_id: int`
 - **Runs and extras**
   - `runs_batter: int` — runs credited to the batter’s scorecard
-  - `runs_extras: int` — runs credited as extras (wides, no‑balls, leg‑byes, byes, penalties)
+  - `runs_extras: int` — runs credited as extras (wides, no-balls, leg-byes, byes, penalties)
   - `runs_total: int` — runs added to the team total on this ball
   - `extras_kind: Optional[str]` — raw extras type, mapped to `ExtrasKind` enum where possible
 - **Dismissals**
