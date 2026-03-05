@@ -3,6 +3,9 @@ export type PredictTeamSelectedPlayer = {
   player_id: number;
   player_name: string;
   runs: number;
+  balls?: number;
+  fours?: number;
+  sixes?: number;
   wickets: number;
   economy: number;
   catches: number;

@@ -54,6 +54,9 @@ type SelectedPlayer struct {
 	PlayerID   int64   `json:"player_id"`
 	PlayerName string  `json:"player_name"`
 	Runs       float64 `json:"runs"`
+	Balls      float64 `json:"balls,omitempty"`
+	Fours      float64 `json:"fours,omitempty"`
+	Sixes      float64 `json:"sixes,omitempty"`
 	Wickets    float64 `json:"wickets"`
 	Economy    float64 `json:"economy"`
 	Catches    float64 `json:"catches"`
@@ -149,6 +152,9 @@ type WinFeatures struct {
 // PlayerPred holds ML prediction output.
 type PlayerPred struct {
 	Runs    float64
+	Balls   float64
+	Fours   float64
+	Sixes   float64
 	Wickets float64
 	Economy float64
 	Catches float64
@@ -161,6 +167,9 @@ func updatePlayerStatsFromReconciled(players []SelectedPlayer, reconciledPlayers
 	for i := range players {
 		if pr, ok := reconciledPlayers[players[i].PlayerID]; ok {
 			players[i].Runs = pr.Runs
+			players[i].Balls = pr.Balls
+			players[i].Fours = pr.Fours
+			players[i].Sixes = pr.Sixes
 			players[i].Wickets = pr.Wickets
 			players[i].Economy = pr.Economy
 			players[i].Catches = pr.Catches
@@ -429,6 +438,9 @@ func predictTeamsWithIntermediates(
 		result.Team1 = append(result.Team1, SelectedPlayer{
 			PlayerID:   nameToID1[p.Name],
 			PlayerName: p.Name,
+			Balls:      pr.Balls,
+			Fours:      pr.Fours,
+			Sixes:      pr.Sixes,
 			Runs:       pr.Runs,
 			Wickets:    pr.Wickets,
 			Economy:    pr.Economy,
@@ -441,6 +453,9 @@ func predictTeamsWithIntermediates(
 		result.Team2 = append(result.Team2, SelectedPlayer{
 			PlayerID:   nameToID2[p.Name],
 			PlayerName: p.Name,
+			Balls:      pr.Balls,
+			Fours:      pr.Fours,
+			Sixes:      pr.Sixes,
 			Runs:       pr.Runs,
 			Wickets:    pr.Wickets,
 			Economy:    pr.Economy,

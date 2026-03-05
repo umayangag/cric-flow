@@ -171,7 +171,7 @@ def apply_constraint_reconciliation_from_backtest_preds(
         updated = BacktestPlayerPred(
             player_id=p.player_id,
             runs=float(r.batting_runs),
-            balls=float(r.batting_balls) if r.batting_balls else p.balls,
+            balls=float(r.batting_balls),
             fours=p.fours,
             sixes=p.sixes,
             wickets=float(r.wickets),

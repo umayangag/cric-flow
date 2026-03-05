@@ -267,8 +267,21 @@ func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchF
 		}
 		players := make(map[int64]predictteam.PlayerPred, len(resp.Players))
 		for _, p := range resp.Players {
+			var balls, fours, sixes float64
+			if p.Balls != nil {
+				balls = *p.Balls
+			}
+			if p.Fours != nil {
+				fours = *p.Fours
+			}
+			if p.Sixes != nil {
+				sixes = *p.Sixes
+			}
 			players[p.PlayerID] = predictteam.PlayerPred{
 				Runs:    p.Runs,
+				Balls:   balls,
+				Fours:   fours,
+				Sixes:   sixes,
 				Wickets: p.Wickets,
 				Economy: p.Economy,
 				Catches: p.Catches,
