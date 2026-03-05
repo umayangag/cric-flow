@@ -25,12 +25,8 @@ var sequenceFeatureKeys = map[string]struct{}{
 
 // ensureContractKeys fills all canonical contract keys (configs/feature_vectors.json) with 0 when absent.
 func ensureContractKeys(feats map[string]float64) {
-	for _, k := range features.BattingFeatureNames() {
-		if _, ok := feats[k]; !ok {
-			feats[k] = 0
-		}
-	}
-	for _, k := range features.BowlingFeatureNames() {
+	allFeatureNames := append(features.BattingFeatureNames(), features.BowlingFeatureNames()...)
+	for _, k := range allFeatureNames {
 		if _, ok := feats[k]; !ok {
 			feats[k] = 0
 		}
@@ -40,15 +36,8 @@ func ensureContractKeys(feats map[string]float64) {
 // ensureContractKeysSkipSequence fills all canonical contract keys except
 // sequence features (bat_*/bowl_*) which are always 0 for future matches.
 func ensureContractKeysSkipSequence(feats map[string]float64) {
-	for _, k := range features.BattingFeatureNames() {
-		if _, skip := sequenceFeatureKeys[k]; skip {
-			continue
-		}
-		if _, ok := feats[k]; !ok {
-			feats[k] = 0
-		}
-	}
-	for _, k := range features.BowlingFeatureNames() {
+	allFeatureNames := append(features.BattingFeatureNames(), features.BowlingFeatureNames()...)
+	for _, k := range allFeatureNames {
 		if _, skip := sequenceFeatureKeys[k]; skip {
 			continue
 		}

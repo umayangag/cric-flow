@@ -489,7 +489,7 @@ def backtest_predict_batch(req: BatchPredictRequest):
         logger.exception("backtest_predict_batch.error", error=str(e))
         raise HTTPException(
             status_code=503,
-            detail=error_payload(code="BATCH_PREDICT_FAILED", message=str(e)),
+            detail=error_payload(code="BATCH_PREDICT_FAILED", message="Batch prediction failed"),
         ) from e
     logger.info("backtest_predict_batch.success", batch_size=len(req.requests))
     return BatchPredictResponse(

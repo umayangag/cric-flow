@@ -41,6 +41,7 @@ from .features import batting_feature_vector, bowling_feature_vector, fielding_f
 from .logging import get_struct_logger
 from .models import (
     BacktestPlayerPred,
+    BatchPredictItem,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
@@ -483,7 +484,7 @@ def predict_players_with_features(
 
 
 def predict_players_batch(
-    items: list,
+    items: List[BatchPredictItem],
     models_dir: str,
     enable_train_on_the_fly: bool,
     go_app_url: str,
