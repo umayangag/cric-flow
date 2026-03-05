@@ -277,11 +277,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
             labelId="eval-db-temporal-label"
             value="latest"
             label="Model temporal mode"
-            onChange={() => {
-              if (!useLatestModel) {
-                onUseLatestModelChange(true);
-              }
-            }}
             disabled
           >
             <MenuItem value="latest">Latest model only</MenuItem>
