@@ -1084,7 +1084,7 @@ func tryServerSideTeamOptimization(
 	maxIter := config.SelectionMaxWinProbSwapIterations(cfg)
 	maxEvals := config.SelectionMaxWinProbEvalBudget(cfg)
 
-	buildMatchContext := func(_ bool) map[string]float64 {
+	buildMatchContext := func() map[string]float64 {
 		// Match context is constant: team1_opposition_id is always team2's ID and vice versa.
 		// The TeamIsTeam1 flag in the request body tells the optimizer which team is being optimized.
 		t1OppID, t2OppID := opp2IDVal, opp1IDVal
@@ -1113,7 +1113,7 @@ func tryServerSideTeamOptimization(
 	result1, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
 		Pool:             pool1Opt,
 		OpponentFeatures: opp2Feats,
-		MatchContext:     buildMatchContext(true),
+		MatchContext:     buildMatchContext(),
 		Constraints:      constraints,
 		Weights:          weights,
 		TeamIsTeam1:      true,
@@ -1128,7 +1128,7 @@ func tryServerSideTeamOptimization(
 	result2, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
 		Pool:             pool2Opt,
 		OpponentFeatures: opp1Feats,
-		MatchContext:     buildMatchContext(false),
+		MatchContext:     buildMatchContext(),
 		Constraints:      constraints,
 		Weights:          weights,
 		TeamIsTeam1:      false,

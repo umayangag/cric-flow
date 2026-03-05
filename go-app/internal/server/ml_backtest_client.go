@@ -590,8 +590,7 @@ func (c *BacktestMLClient) PredictMatchWin(ctx context.Context, features mlWinFe
 }
 
 // PredictMatchWinEnhanced calls POST /predict/win-enhanced with per-player feature maps.
-// Returns team1 (batting first) win probability. Falls back to PredictMatchWin if the
-// enhanced endpoint is not available (404).
+// Returns team1 (batting first) win probability.
 func (c *BacktestMLClient) PredictMatchWinEnhanced(
 	ctx context.Context,
 	features mlWinFeaturesEnhanced,

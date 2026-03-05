@@ -345,13 +345,6 @@ func TestPipelinePrecomputeETASecondsPerFmt(t *testing.T) {
 }
 
 func TestConfigServerAndResourcesHelpers(t *testing.T) {
-	require.Equal(t, DefaultServerReadinessTimeoutSec, ServerReadinessTimeoutSec(nil))
-	require.Equal(t, DefaultPrecomputeMBPerWorker, ResourcesPrecomputeMBPerWorker(nil))
-	require.Equal(t, DefaultSelectionMaxPoolSizeForFullEnum, SelectionMaxPoolSizeForFullEnum(nil))
-	require.Equal(t, DefaultSelectionMaxWinProbSwapIterations, SelectionMaxWinProbSwapIterations(nil))
-	require.Equal(t, DefaultSelectionMaxWinProbEvalBudget, SelectionMaxWinProbEvalBudget(nil))
-	require.Equal(t, DefaultPipelineReplayMatchPageSize, PipelineReplayMatchPageSize(nil))
-
 	cfg := &Config{}
 	cfg.Server.ReadinessTimeoutSec = 5
 	require.Equal(t, 5, ServerReadinessTimeoutSec(cfg))
@@ -660,6 +653,12 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		{"ResourcesMemoryUsageFractionPercent nil", nil, ResourcesMemoryUsageFractionPercent, DefaultMemoryUsageFractionPercent},
 		{"ResourcesSeqCalcLowMemoryLimitGiB nil", nil, ResourcesSeqCalcLowMemoryLimitGiB, DefaultSeqCalcLowMemoryLimitGiB},
 		{"ResourcesPrecomputeConcurrencyWhenNoLimit nil", nil, ResourcesPrecomputeConcurrencyWhenNoLimit, DefaultPrecomputeConcurrencyWhenNoLimit},
+		{"ServerReadinessTimeoutSec nil", nil, ServerReadinessTimeoutSec, DefaultServerReadinessTimeoutSec},
+		{"ResourcesPrecomputeMBPerWorker nil", nil, ResourcesPrecomputeMBPerWorker, DefaultPrecomputeMBPerWorker},
+		{"SelectionMaxPoolSizeForFullEnum nil", nil, SelectionMaxPoolSizeForFullEnum, DefaultSelectionMaxPoolSizeForFullEnum},
+		{"SelectionMaxWinProbSwapIterations nil", nil, SelectionMaxWinProbSwapIterations, DefaultSelectionMaxWinProbSwapIterations},
+		{"SelectionMaxWinProbEvalBudget nil", nil, SelectionMaxWinProbEvalBudget, DefaultSelectionMaxWinProbEvalBudget},
+		{"PipelineReplayMatchPageSize nil", nil, PipelineReplayMatchPageSize, DefaultPipelineReplayMatchPageSize},
 	}
 
 	for _, tt := range tests {

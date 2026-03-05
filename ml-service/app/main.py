@@ -13,6 +13,7 @@ Domain logic lives in dedicated modules:
 import asyncio
 import functools
 import hmac
+import math
 import os
 import sys
 import threading
@@ -560,6 +561,28 @@ async def optimize_team_selection(request: TeamOptimizationRequest):
     """
     from ml.team_optimizer import PoolPlayer, ScoreWeights, SelectionConstraints
 
+    def _validated_player_id(k: str) -> int:
+        if not k.isdigit() or len(k) > 20:
+            raise HTTPException(
+                status_code=400,
+                detail=_error_payload(code="INVALID_PLAYER_ID", message=f"Invalid player ID key: {k!r}"),
+            )
+        return int(k)
+
+    def _reject_non_finite(features: Dict[str, float], context: str) -> None:
+        for name, val in features.items():
+            if not math.isfinite(val):
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_payload(
+                        code="NON_FINITE_FEATURE",
+                        message=f"Non-finite value in {context}: {name}={val!r}",
+                    ),
+                )
+
+    for p in request.pool:
+        _reject_non_finite(p.features, f"pool player {p.player_id}")
+
     pool = [
         PoolPlayer(
             player_id=p.player_id,
@@ -573,28 +596,42 @@ async def optimize_team_selection(request: TeamOptimizationRequest):
         )
         for p in request.pool
     ]
-    opponent_features = {int(k): v for k, v in request.opponent_features.items()}
+    opponent_features = {_validated_player_id(k): v for k, v in request.opponent_features.items()}
 
-    result = run_team_optimization(
-        fmt=request.format or "",
-        pool=pool,
-        opponent_features=opponent_features,
-        match_context=request.match_context,
-        constraints=SelectionConstraints(
-            size=request.constraints.size,
-            min_bowlers=request.constraints.min_bowlers,
-            require_keeper=request.constraints.require_keeper,
-        ),
-        weights=ScoreWeights(
-            bat=request.weights.bat,
-            bowl=request.weights.bowl,
-            field=request.weights.field,
-            keeper_bonus=request.weights.keeper_bonus,
-        ),
-        team_is_team1=request.team_is_team1,
-        max_iterations=request.max_iterations,
-        max_evals=request.max_evals,
-    )
+    for pid, feats in opponent_features.items():
+        _reject_non_finite(feats, f"opponent player {pid}")
+
+    try:
+        result = run_team_optimization(
+            fmt=request.format or "",
+            pool=pool,
+            opponent_features=opponent_features,
+            match_context=request.match_context,
+            constraints=SelectionConstraints(
+                size=request.constraints.size,
+                min_bowlers=request.constraints.min_bowlers,
+                require_keeper=request.constraints.require_keeper,
+            ),
+            weights=ScoreWeights(
+                bat=request.weights.bat,
+                bowl=request.weights.bowl,
+                field=request.weights.field,
+                keeper_bonus=request.weights.keeper_bonus,
+            ),
+            team_is_team1=request.team_is_team1,
+            max_iterations=request.max_iterations,
+            max_evals=request.max_evals,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_error_payload(
+                code="OPTIMIZATION_CONSTRAINT_ERROR",
+                message=str(exc),
+                hint="Check pool composition satisfies constraints (keeper, bowlers, size).",
+            ),
+        ) from exc
+
     return TeamOptimizationResponse(
         selected=[TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected],
         win_probability=result.win_probability,
