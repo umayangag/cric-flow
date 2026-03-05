@@ -150,9 +150,9 @@ We will mark items as we implement them: `[ ]` = pending, `[x]` = done.
   - [x] These scripts are still tested via focused unit tests and integration/e2e runs, but they do not block the core ML‑service coverage gate.
 
 - [x] **9.3 Node 25 / Vitest behavior**
-  - [x] When running frontend tests on Node ≥25, configure Node so Vitest’s jsdom environment behaves predictably:
-    - [x] Test scripts in `frontend/package.json` set `NODE_OPTIONS=--no-webstorage` when invoking Vitest.
-    - [x] This avoids `--localstorage-file` warnings from Node’s built‑in Web Storage implementation while keeping test semantics aligned with jsdom.
+  - [x] To ensure Vitest’s `jsdom` environment works correctly with Node ≥25, two changes are made:
+    - [x] Test scripts in `frontend/package.json` set `NODE_OPTIONS=--no-webstorage` to disable Node’s native Web Storage API, preventing conflicts with JSDOM.
+    - [x] To support parallel test execution, `frontend/vite.config.ts` is updated to provide each test worker with a unique local storage file via the `--localstorage-file` argument.
 
 ---
 

@@ -97,9 +97,9 @@ type mlInningsSummary struct {
 // Exported so the public GenerateMatch method can return it.
 type MlGenerateMatchResponse struct {
 	Players             []mlBacktestPlayerPred `json:"players"`
-	Innings             []mlInningsSummary    `json:"innings"`
-	WinProbabilityTeam1 float64               `json:"win_probability_team1"`
-	ModelVersion        string                `json:"model_version"`
+	Innings             []mlInningsSummary     `json:"innings"`
+	WinProbabilityTeam1 float64                `json:"win_probability_team1"`
+	ModelVersion        string                 `json:"model_version"`
 }
 
 type mlBacktestMatchAggRequest struct {
@@ -414,7 +414,10 @@ func (c *BacktestMLClient) GenerateMatch(
 			Viscosity:         matchCtx.Viscosity,
 		}
 	}
-	payload, _ := json.Marshal(reqBody)
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return MlGenerateMatchResponse{}, fmt.Errorf("failed to marshal generate match request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,

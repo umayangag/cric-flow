@@ -85,6 +85,21 @@ def round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
     return dt  # fallback: no rounding
 
 
+def _sum_team_feature(
+    features_map: Dict[str, Dict[str, float]],
+    ids: set,
+    key_bat: str,
+    key_bowl: str,
+) -> Tuple[float, float]:
+    """Sum batting and bowling feature values for a set of player IDs. Used by predict_match_innings and generate_match."""
+    bat_sum, bowl_sum = 0.0, 0.0
+    for pid in ids:
+        fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+        bat_sum += float(fm.get(key_bat, 0) or 0)
+        bowl_sum += float(fm.get(key_bowl, 0) or 0)
+    return bat_sum, bowl_sum
+
+
 def predict_match_innings(
     match_context: MatchContext,
     features_map: Dict[str, Dict[str, float]],
@@ -98,18 +113,10 @@ def predict_match_innings(
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
 
-    def _sum_feat(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
-        bat_sum, bowl_sum = 0.0, 0.0
-        for pid in ids:
-            fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-            bat_sum += float(fm.get(key_bat, 0) or 0)
-            bowl_sum += float(fm.get(key_bowl, 0) or 0)
-        return bat_sum, bowl_sum
-
-    t1_bat_cons, t1_bowl_cons = _sum_feat(team1_ids, "batting_consistency", "bowling_consistency")
-    t1_bat_form, t1_bowl_form = _sum_feat(team1_ids, "batting_form", "bowling_form")
-    t2_bat_cons, t2_bowl_cons = _sum_feat(team2_ids, "batting_consistency", "bowling_consistency")
-    t2_bat_form, t2_bowl_form = _sum_feat(team2_ids, "batting_form", "bowling_form")
+    t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_consistency", "bowling_consistency")
+    t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+    t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_consistency", "bowling_consistency")
+    t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
     inn1_runs, inn1_wkts = predict_innings(
         scaler_inn,
         model_inn,
@@ -495,19 +502,10 @@ def generate_match(
         build_win_features_standardized = None
     p_team1 = 0.5
     if build_win_features_standardized is not None:
-
-        def _sum_f(ids: set, key_bat: str, key_bowl: str) -> Tuple[float, float]:
-            bat_sum = bowl_sum = 0.0
-            for pid in ids:
-                fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-                bat_sum += float(fm.get(key_bat, 0) or 0)
-                bowl_sum += float(fm.get(key_bowl, 0) or 0)
-            return bat_sum, bowl_sum
-
-        t1_bat_cons, t1_bowl_cons = _sum_f(team1_ids, "batting_consistency", "bowling_consistency")
-        t1_bat_form, t1_bowl_form = _sum_f(team1_ids, "batting_form", "bowling_form")
-        t2_bat_cons, t2_bowl_cons = _sum_f(team2_ids, "batting_consistency", "bowling_consistency")
-        t2_bat_form, t2_bowl_form = _sum_f(team2_ids, "batting_form", "bowling_form")
+        t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_consistency", "bowling_consistency")
+        t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+        t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_consistency", "bowling_consistency")
+        t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
         wf = build_win_features_standardized(
             format_code=fmt,
             format_id=int(match_context.format_id),
