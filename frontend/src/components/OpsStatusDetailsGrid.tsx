@@ -4,7 +4,6 @@ import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
 import StatusPill from './common/StatusPill';
 import SectionCard from './common/SectionCard';
-import OpsFormatHierarchy from './OpsFormatHierarchy';
 import OpsStatusDataGrid from './OpsStatusDataGrid';
 import JsonCollapse from './common/JsonCollapse';
 import { FORMATS, asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
@@ -159,10 +158,6 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
     </Grid>
 
     <OpsStatusDataGrid data={data} />
-
-    <SectionCard title="Match Type Hierarchy">
-      <OpsFormatHierarchy hierarchy={data.hierarchy} />
-    </SectionCard>
 
     <JsonCollapse data={data} summary="Show raw JSON payload" />
   </>

@@ -136,6 +136,7 @@ export type MLModelStat = {
 export type ModelStatsResponse = {
   models_dir: string;
   models: MLModelStat[];
+  hierarchy?: FormatHierarchyNode[];
 };
 
 // --- Backtest API DTOs ---

@@ -13,6 +13,7 @@ import Paper from '@mui/material/Paper';
 import SectionCard from './common/SectionCard';
 import { MLModelRow } from './MLModelRow';
 import MLPredictionGraph from './MLPredictionGraph';
+import OpsFormatHierarchy from './OpsFormatHierarchy';
 
 /** Presentational section for ML model stats: table, refresh button, loading/error states. */
 export interface MLModelStatsSectionProps {
@@ -97,6 +98,13 @@ export function MLModelStatsSection({
             subtitle="Features at cutoff → per-player models (batting, bowling, fielding) → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation."
           >
             <MLPredictionGraph />
+          </SectionCard>
+
+          <SectionCard
+            title="Match Type Hierarchy"
+            subtitle="Structural hierarchy of match types (bucket → leaf) used by the pipeline for format-specific training and evaluation."
+          >
+            <OpsFormatHierarchy hierarchy={data.hierarchy} />
           </SectionCard>
         </>
       )}
