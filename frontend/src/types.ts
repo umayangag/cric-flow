@@ -105,6 +105,8 @@ export type MLQAAudit = {
 
 /** ML model stats from ml-service GET /model-stats (via go-app proxy). Used by ML Model Stats tab. */
 export type MLModelStat = {
+  /** Machine-readable kind (e.g. "batting_share", "innings"). */
+  model_kind?: string;
   model_name: string;
   match_format: string;
   size_bytes?: number;
@@ -136,6 +138,7 @@ export type MLModelStat = {
 export type ModelStatsResponse = {
   models_dir: string;
   models: MLModelStat[];
+  hierarchy?: FormatHierarchyNode[];
 };
 
 // --- Backtest API DTOs ---

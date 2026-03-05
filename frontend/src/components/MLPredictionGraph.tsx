@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import ReactFlow, { Background, Controls, Edge, Node, Position, Handle } from 'reactflow';
+import ReactFlow, { Background, Edge, Node, Position, Handle } from 'reactflow';
 import 'reactflow/dist/style.css';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -242,7 +242,7 @@ const MLPredictionGraph: React.FC = () => {
     <Box
       sx={{
         width: '100%',
-        height: 520,
+        height: 760,
         bgcolor: 'grey.50',
         borderRadius: 1,
         border: '1px solid',
@@ -257,15 +257,14 @@ const MLPredictionGraph: React.FC = () => {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        panOnDrag
-        zoomOnScroll
-        zoomOnPinch
+        panOnDrag={false}
+        panOnScroll={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
         zoomOnDoubleClick={false}
-        minZoom={0.4}
-        maxZoom={1.6}
+        preventScrolling={false}
       >
         <Background color="#eee" gap={16} />
-        <Controls showInteractive={false} />
       </ReactFlow>
     </Box>
   );

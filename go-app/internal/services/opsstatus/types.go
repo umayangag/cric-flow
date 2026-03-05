@@ -7,23 +7,21 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
-	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // Response is the top-level JSON returned by /ops/status.
 type Response struct {
-	Timestamp      string                        `json:"timestamp"`
-	Services       map[string]bool               `json:"services"`
-	DB             map[string]any                `json:"db"`
-	Precompute     map[string]any                `json:"precompute"`
-	Exports        map[string]any                `json:"exports"`
-	Artifacts      map[string]any                `json:"artifacts"`
-	Fielding       map[string]any                `json:"fielding"`
-	Weather        map[string]any                `json:"weather"`
-	DBFreshness    map[string]any                `json:"db_freshness"`
-	DBCompleteness map[string]any                `json:"db_completeness"`
-	Hierarchy      []formats.FormatHierarchyNode `json:"hierarchy"`
-	Pipeline       map[string]any                `json:"pipeline,omitempty"`
+	Timestamp      string          `json:"timestamp"`
+	Services       map[string]bool `json:"services"`
+	DB             map[string]any  `json:"db"`
+	Precompute     map[string]any  `json:"precompute"`
+	Exports        map[string]any  `json:"exports"`
+	Artifacts      map[string]any  `json:"artifacts"`
+	Fielding       map[string]any  `json:"fielding"`
+	Weather        map[string]any  `json:"weather"`
+	DBFreshness    map[string]any  `json:"db_freshness"`
+	DBCompleteness map[string]any  `json:"db_completeness"`
+	Pipeline       map[string]any  `json:"pipeline,omitempty"`
 }
 
 // DBProbe defines the minimal DB checks needed for /ops/status.

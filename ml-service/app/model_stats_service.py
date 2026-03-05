@@ -8,6 +8,7 @@ Extracted from app.main. Provides:
 
 import json
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -24,23 +25,28 @@ ALGORITHM_NAMES: Dict[str, str] = {
     "ridge": "Ridge",
 }
 
-# Model kinds that have .joblib artifacts (model + optional scaler)
-MODEL_STATS_KINDS = ["batting", "bowling", "fielding", "extras", "win"]
-MODEL_STATS_HAS_SCALER = {"batting", "bowling", "fielding"}
+# Matches any <kind>_model[_<FORMAT>].joblib filename.
+# Group 1 = kind (e.g. "batting", "batting_share"), group 2 = optional format code.
+_MODEL_FILENAME_RE = re.compile(r"^(.+)_model(?:_([^.]+))?\.joblib$", re.IGNORECASE)
 
 
 def parse_model_filename(fname: str) -> Optional[Tuple[str, Optional[str]]]:
-    """Parse model artifact filename. Return (kind, format) or None. format is None for legacy (unified)."""
-    lower = fname.lower()
-    if not lower.endswith(".joblib") or "_model" not in lower:
+    """Parse model artifact filename dynamically. Return (kind, format) or None.
+
+    Recognises any ``<kind>_model[_<FORMAT>].joblib`` file so newly-added model
+    kinds (e.g. innings, batting_share) are picked up automatically.
+    """
+    m = _MODEL_FILENAME_RE.match(fname)
+    if not m:
         return None
-    for kind in MODEL_STATS_KINDS:
-        prefix = f"{kind}_model"
-        if lower.startswith(prefix):
-            rest = fname[len(prefix) :].lstrip("_").rstrip(".joblib")
-            fmt = rest.upper() if rest else None
-            return (kind, fmt)
-    return None
+    kind = m.group(1).lower()
+    fmt = m.group(2).upper() if m.group(2) else None
+    return (kind, fmt)
+
+
+def _kind_display_name(kind: str) -> str:
+    """Human-readable display name: 'batting_share' → 'Batting Share'."""
+    return kind.replace("_", " ").title()
 
 
 def get_model_artifact_stats(
@@ -52,7 +58,8 @@ def get_model_artifact_stats(
 ) -> Optional[Dict[str, Any]]:
     """Process a single model artifact file to get basic stats (size, modified date).
 
-    Returns None if the file is not accessible; otherwise a dict with model_name, match_format, size_bytes, modified.
+    Returns None if the file is not accessible; otherwise a dict with model_kind, model_name,
+    match_format, size_bytes, modified.
     """
     model_path = os.path.join(models_dir, fname)
     try:
@@ -66,19 +73,19 @@ def get_model_artifact_stats(
     modified_ts = int(st.st_mtime)
     modified_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(modified_ts))
 
-    # Include scaler size for kinds that have one
-    if kind in MODEL_STATS_HAS_SCALER:
-        scaler_suffix = f"_{fmt}" if fmt else ""
-        scaler_name = f"{kind}_scaler{scaler_suffix}.joblib"
-        scaler_path = os.path.join(models_dir, scaler_name)
-        if scaler_name in entries and os.path.isfile(scaler_path):
-            try:
-                size_bytes += os.path.getsize(scaler_path)
-            except OSError:
-                pass
+    # Include scaler size if a companion scaler artifact exists
+    scaler_suffix = f"_{fmt}" if fmt else ""
+    scaler_name = f"{kind}_scaler{scaler_suffix}.joblib"
+    scaler_path = os.path.join(models_dir, scaler_name)
+    if scaler_name in entries and os.path.isfile(scaler_path):
+        try:
+            size_bytes += os.path.getsize(scaler_path)
+        except OSError:
+            pass
 
     return {
-        "model_name": kind.capitalize(),
+        "model_kind": kind,
+        "model_name": _kind_display_name(kind),
         "match_format": fmt or "Unified",
         "size_bytes": size_bytes,
         "modified": modified_iso,

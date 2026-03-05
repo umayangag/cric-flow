@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
-	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // AssembleResponse constructs the full Response from available sources.
@@ -22,7 +21,6 @@ func AssembleResponse(ctx context.Context, dbProbe DBProbe) Response {
 		Weather:        map[string]any{},
 		DBFreshness:    map[string]any{},
 		DBCompleteness: map[string]any{},
-		Hierarchy:      formats.GetHierarchy(),
 	}
 
 	// DB

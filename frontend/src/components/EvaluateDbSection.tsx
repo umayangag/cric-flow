@@ -60,8 +60,6 @@ export interface EvaluateDbSectionProps {
   // Model settings
   predictionModel: 'format' | 'unified';
   onPredictionModelChange: (v: 'format' | 'unified') => void;
-  useLatestModel: boolean;
-  onUseLatestModelChange: (v: boolean) => void;
 
   // Backtest data
   candidates: BacktestCandidate[];
@@ -104,8 +102,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   statusMessage,
   predictionModel,
   onPredictionModelChange,
-  useLatestModel,
-  onUseLatestModelChange,
   candidates,
   selectedMatchId,
   onSelectMatch,
@@ -275,12 +271,11 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
           <Select
             labelId="eval-db-temporal-label"
-            value={useLatestModel ? 'latest' : 'strict'}
+            value="latest"
             label="Model temporal mode"
-            onChange={(e) => onUseLatestModelChange(e.target.value === 'latest')}
+            disabled
           >
             <MenuItem value="latest">Latest model only</MenuItem>
-            <MenuItem value="strict">Strict cutoff (requires train-on-the-fly)</MenuItem>
           </Select>
           <Typography
             variant="caption"

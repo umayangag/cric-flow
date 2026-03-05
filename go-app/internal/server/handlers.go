@@ -100,7 +100,11 @@ func (a *App) mlServiceProxy(
 // enrichModelStatsPayload adds migration info (trained_at, duration) and params/metrics from ml_tuned_params
 // to each model when available. DB data takes precedence over disk-based model-stats so the latest auto-tune
 // results are shown even when tuning_report_*.json on disk is stale.
+// It also attaches the static match-type hierarchy so the ML Model Stats tab can render it
+// without a separate API call.
 func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
+	payload["hierarchy"] = formatsPkg.GetHierarchy()
+
 	modelsVal, ok := payload["models"]
 	if !ok {
 		return
@@ -136,7 +140,13 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		if matchFormat == "Unified" || matchFormat == "" {
 			formatKey = ""
 		}
-		key := strings.ToLower(modelName) + "|" + formatKey
+		// model_kind is the machine-readable kind (e.g. "batting_share");
+		// fall back to lowercased model_name for backward compatibility.
+		kindStr, ok := modelMap["model_kind"].(string)
+		if !ok || kindStr == "" {
+			kindStr = strings.ToLower(modelName)
+		}
+		key := kindStr + "|" + formatKey
 
 		if info, has := migrationInfo[key]; has {
 			modelMap["trained_at"] = info.TrainedAt

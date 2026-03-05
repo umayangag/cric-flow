@@ -21,8 +21,6 @@ const EvaluateDbTab: React.FC = () => {
       statusMessage={state.statusMessage}
       predictionModel={state.predictionModel}
       onPredictionModelChange={state.setPredictionModel}
-      useLatestModel={state.useLatestModel}
-      onUseLatestModelChange={state.setUseLatestModel}
       candidates={state.candidates}
       selectedMatchId={state.selectedMatchId}
       onSelectMatch={state.setSelectedMatchId}

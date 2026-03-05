@@ -1,5 +1,3 @@
-import { FormatHierarchyNode } from '../types';
-
 export const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 export type FormatCode = (typeof FORMATS)[number];
 
@@ -54,7 +52,6 @@ export type OpsStatus = {
   pipeline?: { steps?: Record<string, { running?: boolean }> };
   fielding?: unknown;
   weather?: unknown;
-  hierarchy?: FormatHierarchyNode[];
   suggestions?: Array<{ reason: string; commands: string[] }>;
   [key: string]: unknown;
 };
