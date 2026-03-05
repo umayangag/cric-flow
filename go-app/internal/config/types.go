@@ -134,7 +134,8 @@ type Config struct {
 		ScoreNormalization     map[string]ScoreNormParams `json:"score_normalization"`
 		ScoreWeightsByFormat   map[string]ScoreWeights    `json:"score_weights_by_format"`
 		MetaModelPath          string                     `json:"meta_model_path"` // JSON from ml.train_combination_meta
-		UseOptimizer           bool                       `json:"use_optimizer"`   // when true, select XI by maximizing total score over valid combinations
+		UseOptimizer               bool                       `json:"use_optimizer"`                  // when true, select XI by maximizing total score over valid combinations
+		UseWinProbabilitySelection bool                       `json:"use_win_probability_selection"` // when true, select XI by maximizing win probability via hill-climb
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {

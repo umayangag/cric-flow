@@ -234,6 +234,88 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 	return team, nil
 }
 
+// WinProbEvalFunc evaluates the win probability for a candidate XI.
+// Returns team1 win probability in [0,1] or an error.
+type WinProbEvalFunc func(candidateNames []string) (float64, error)
+
+// SelectByWinProbability selects a team that maximizes win probability using
+// hill-climb optimization. Starts from a greedy seed (ScorePlayer-based),
+// then iteratively swaps players to improve the win probability.
+func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFunc WinProbEvalFunc) ([]Player, error) {
+	if c.Size < 1 {
+		return nil, errors.New("invalid size")
+	}
+	if len(pool) < c.Size {
+		return nil, errors.New("insufficient pool size")
+	}
+
+	team, err := Select(pool, w, c)
+	if err != nil {
+		return nil, err
+	}
+
+	inTeam := make(map[string]bool)
+	for _, p := range team {
+		inTeam[p.Name] = true
+	}
+	rest := make([]Player, 0, len(pool)-len(team))
+	for _, p := range pool {
+		if !inTeam[p.Name] {
+			rest = append(rest, p)
+		}
+	}
+
+	teamNames := func(xi []Player) []string {
+		names := make([]string, len(xi))
+		for i, p := range xi {
+			names[i] = p.Name
+		}
+		return names
+	}
+
+	currentWinProb, err := evalFunc(teamNames(team))
+	if err != nil {
+		return team, nil
+	}
+
+	const maxIterations = 50
+	for iter := 0; iter < maxIterations; iter++ {
+		improved := false
+		for i := 0; i < len(team); i++ {
+			for j := 0; j < len(rest); j++ {
+				newTeam := make([]Player, len(team))
+				copy(newTeam, team)
+				newTeam[i] = rest[j]
+				if !satisfiesConstraints(newTeam, c) {
+					continue
+				}
+				p, err := evalFunc(teamNames(newTeam))
+				if err != nil {
+					continue
+				}
+				if p > currentWinProb {
+					newRest := make([]Player, len(rest))
+					copy(newRest, rest)
+					newRest[j] = team[i]
+					team = newTeam
+					rest = newRest
+					currentWinProb = p
+					improved = true
+					break
+				}
+			}
+			if improved {
+				break
+			}
+		}
+		if !improved {
+			break
+		}
+	}
+	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
+	return team, nil
+}
+
 func satisfiesConstraints(xi []Player, c Constraints) bool {
 	keepers := 0
 	bowlers := 0

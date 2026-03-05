@@ -59,6 +59,10 @@ var (
 	mlPredictMatchWinFunc = func(_ context.Context, _ predictteam.WinFeatures) (float64, error) {
 		return 0, sql.ErrNoRows
 	}
+	// PredictMatchWinEnhanced: enhanced win model (POST /predict/win-enhanced) using per-player features.
+	mlPredictMatchWinEnhancedFunc = func(_ context.Context, _ predictteam.WinFeaturesEnhanced) (float64, error) {
+		return 0, sql.ErrNoRows
+	}
 )
 
 // dashboard accuracy-trend seams (overridable in tests)

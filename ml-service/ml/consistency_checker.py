@@ -111,6 +111,45 @@ def check_reconciled_scorecard_consistency(
     return violations
 
 
+def check_win_coherence(
+    stats: Mapping[int, ReconciledPlayerStats],
+    team1_id: int,
+    team2_id: int,
+    win_probability: Optional[float] = None,
+) -> List[str]:
+    """Check that the scorecard margin is directionally consistent with win probability.
+
+    Returns a list of violation messages. Violations occur when:
+    - Win probability favors team1 (>0.5) but team2 scored more runs.
+    - Win probability strongly favors one team (>0.7 or <0.3) but the margin
+      is in the wrong direction.
+    """
+    if win_probability is None:
+        return []
+
+    violations: List[str] = []
+
+    t1_bat_runs = sum(s.batting_runs for s in stats.values() if s.team_id == team1_id)
+    t2_bat_runs = sum(s.batting_runs for s in stats.values() if s.team_id == team2_id)
+    margin = t1_bat_runs - t2_bat_runs
+
+    team1_favored = win_probability > 0.5
+    strongly_favored = win_probability > 0.7 or win_probability < 0.3
+
+    if team1_favored and margin < 0 and strongly_favored:
+        violations.append(
+            f"win_coherence: team1 strongly favored (p={win_probability:.3f}) "
+            f"but team2 outscored team1 ({t2_bat_runs} vs {t1_bat_runs})"
+        )
+    elif not team1_favored and margin > 0 and strongly_favored:
+        violations.append(
+            f"win_coherence: team2 strongly favored (p={win_probability:.3f}) "
+            f"but team1 outscored team2 ({t1_bat_runs} vs {t2_bat_runs})"
+        )
+
+    return violations
+
+
 def adjustment_magnitude(
     before: Mapping[int, ReconciledPlayerStats],
     after: Mapping[int, ReconciledPlayerStats],

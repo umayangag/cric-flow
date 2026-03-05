@@ -57,6 +57,7 @@ from .models import (
     GenerateMatchResponse,
     HistoricalMatchBacktestRequest,
     WinFeatures,
+    WinFeaturesEnhanced,
     WinPrediction,
 )
 from .prediction_service import (
@@ -68,6 +69,7 @@ from .prediction_service import (
     run_bowling_prediction,
     run_extras_prediction,
     run_win_prediction,
+    run_win_prediction_enhanced,
     validate_predict_batch,
 )
 
@@ -526,6 +528,37 @@ async def predict_extras(features: List[ExtrasFeatures]):
 async def predict_win(features: List[WinFeatures]):
     validate_predict_batch(features, "win", MAX_PREDICT_BATCH_SIZE)
     return run_win_prediction(features)
+
+
+@app.post("/predict/win-enhanced", response_model=WinPrediction)
+async def predict_win_enhanced(request: WinFeaturesEnhanced):
+    """Enhanced win prediction using per-player features with on-the-fly aggregation.
+
+    Accepts per-player feature maps for both teams and computes distribution
+    statistics (mean, std, max, min, top3_mean) and derived matchup features
+    before running the win model.
+    """
+    match_context = {
+        "format_id": float(request.format_id),
+        "venue_id": float(request.venue_id),
+        "match_date_unix": float(request.match_date_unix),
+        "team1_opposition_id": float(request.team1_opposition_id),
+        "team2_opposition_id": float(request.team2_opposition_id),
+        "toss_winner_opposition_id": float(request.toss_winner_opposition_id),
+        "temp": float(request.temp),
+        "wind": float(request.wind),
+        "rain": float(request.rain),
+        "humidity": float(request.humidity),
+        "cloud": float(request.cloud),
+        "pressure": float(request.pressure),
+        "viscosity": float(request.viscosity),
+    }
+    return run_win_prediction_enhanced(
+        fmt=request.format or "",
+        match_context=match_context,
+        team1_player_features=request.team1_player_features,
+        team2_player_features=request.team2_player_features,
+    )
 
 
 # ---------------------------------------------------------------------------

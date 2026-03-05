@@ -2,6 +2,7 @@ package exportqueries
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -9,9 +10,10 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// WinTrainingRows returns match-level rows for win prediction: format_id, venue_id, team1_opposition_id, team2_opposition_id, toss_winner_opposition_id, team1_wins (0/1),
-// plus weather and team-level bat/bowl consistency and form sums (team1 = batting inn 1, team2 = bowling inn 1).
-// team1_wins = 1 if outcome_winner_opposition_id == team1 else 0.
+// WinTrainingRows returns match-level rows for win prediction with enhanced per-player feature
+// distribution statistics: for each of 8 feature groups (team1/team2 x bat/bowl x consistency/form),
+// the export includes sum, mean, std, max, min, top3_mean, and count.
+// team1 = batting in inning 1, team2 = bowling in inning 1.
 func WinTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, error) {
 	return winTrainingRowsImpl(ctx, cutoff, nil)
 }
@@ -26,8 +28,6 @@ func WinTrainingRowsWithFormat(ctx context.Context, format string, cutoff time.T
 }
 
 func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
-	// team1 = batting in inning 1, team2 = bowling in inning 1. Uses CTEs to avoid correlated
-	// subqueries: pre-aggregate per match/team via CTEs, then join once.
 	q := `WITH matches_filtered AS (
 		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id,
 			mi.batting_team_opposition_id AS team1_opposition_id,
@@ -45,10 +45,12 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
 	),
+	-- Per-player feature values (one row per player per match)
 	t1_bat AS (SELECT bd.match_id, bd.player_id, m.format_id, m.match_date FROM batting_data bd JOIN matches_filtered m ON m.match_id = bd.match_id WHERE bd.inning_number = 1),
 	t1_bowl AS (SELECT bw.match_id, bw.player_id, m.format_id, m.match_date FROM bowling_data bw JOIN matches_filtered m ON m.match_id = bw.match_id WHERE bw.inning_number = 2),
 	t2_bat AS (SELECT bd.match_id, bd.player_id, m.format_id, m.match_date FROM batting_data bd JOIN matches_filtered m ON m.match_id = bd.match_id WHERE bd.inning_number = 2),
 	t2_bowl AS (SELECT bw.match_id, bw.player_id, m.format_id, m.match_date FROM bowling_data bw JOIN matches_filtered m ON m.match_id = bw.match_id WHERE bw.inning_number = 1),
+	-- Per-player snapshot values via DISTINCT ON (latest as_of_date per player+format+match)
 	t1_bat_cons AS (
 		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, p.match_id) p.match_id, fcs.batting_value AS v
 		FROM t1_bat p
@@ -97,25 +99,43 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		JOIN feature_form_snapshots ff ON ff.player_id = p.player_id AND ff.format_id = p.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= p.match_date
 		ORDER BY ff.player_id, ff.format_id, p.match_id, ff.as_of_date DESC
 	),
-	agg_t1_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t1_bat_cons GROUP BY match_id),
-	agg_t1_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t1_bowl_cons GROUP BY match_id),
-	agg_t2_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bat_cons GROUP BY match_id),
-	agg_t2_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bowl_cons GROUP BY match_id),
-	agg_t1_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t1_bat_form GROUP BY match_id),
-	agg_t1_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t1_bowl_form GROUP BY match_id),
-	agg_t2_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bat_form GROUP BY match_id),
-	agg_t2_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM t2_bowl_form GROUP BY match_id)
+	-- Distribution statistics per feature group (sum, mean, std, max, min, count)
+	agg_t1_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bat_cons GROUP BY match_id),
+	agg_t1_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bowl_cons GROUP BY match_id),
+	agg_t2_bat_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bat_cons GROUP BY match_id),
+	agg_t2_bowl_cons AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bowl_cons GROUP BY match_id),
+	agg_t1_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bat_form GROUP BY match_id),
+	agg_t1_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t1_bowl_form GROUP BY match_id),
+	agg_t2_bat_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bat_form GROUP BY match_id),
+	agg_t2_bowl_form AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM t2_bowl_form GROUP BY match_id),
+	-- Top-3 player mean per feature group (quality of the best players)
+	top3_t1_bat_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bat_cons) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t1_bowl_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bowl_cons) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t2_bat_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bat_cons) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t2_bowl_cons AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bowl_cons) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t1_bat_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bat_form) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t1_bowl_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t1_bowl_form) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t2_bat_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bat_form) sub WHERE rn <= 3 GROUP BY match_id),
+	top3_t2_bowl_form AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM t2_bowl_form) sub WHERE rn <= 3 GROUP BY match_id)
 	SELECT m.match_id, m.format_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
-		COALESCE(a1.s, 0) AS team1_bat_consistency_sum,
-		COALESCE(a2.s, 0) AS team1_bowl_consistency_sum,
-		COALESCE(a3.s, 0) AS team2_bat_consistency_sum,
-		COALESCE(a4.s, 0) AS team2_bowl_consistency_sum,
-		COALESCE(a5.s, 0) AS team1_bat_form_sum,
-		COALESCE(a6.s, 0) AS team1_bowl_form_sum,
-		COALESCE(a7.s, 0) AS team2_bat_form_sum,
-		COALESCE(a8.s, 0) AS team2_bowl_form_sum
+		-- team1 batting consistency distribution
+		COALESCE(a1.s, 0), COALESCE(a1.mean_v, 0), COALESCE(a1.std_v, 0), COALESCE(a1.max_v, 0), COALESCE(a1.min_v, 0), COALESCE(t3a1.top3_mean, 0), COALESCE(a1.cnt, 0),
+		-- team1 bowling consistency distribution
+		COALESCE(a2.s, 0), COALESCE(a2.mean_v, 0), COALESCE(a2.std_v, 0), COALESCE(a2.max_v, 0), COALESCE(a2.min_v, 0), COALESCE(t3a2.top3_mean, 0), COALESCE(a2.cnt, 0),
+		-- team2 batting consistency distribution
+		COALESCE(a3.s, 0), COALESCE(a3.mean_v, 0), COALESCE(a3.std_v, 0), COALESCE(a3.max_v, 0), COALESCE(a3.min_v, 0), COALESCE(t3a3.top3_mean, 0), COALESCE(a3.cnt, 0),
+		-- team2 bowling consistency distribution
+		COALESCE(a4.s, 0), COALESCE(a4.mean_v, 0), COALESCE(a4.std_v, 0), COALESCE(a4.max_v, 0), COALESCE(a4.min_v, 0), COALESCE(t3a4.top3_mean, 0), COALESCE(a4.cnt, 0),
+		-- team1 batting form distribution
+		COALESCE(a5.s, 0), COALESCE(a5.mean_v, 0), COALESCE(a5.std_v, 0), COALESCE(a5.max_v, 0), COALESCE(a5.min_v, 0), COALESCE(t3a5.top3_mean, 0), COALESCE(a5.cnt, 0),
+		-- team1 bowling form distribution
+		COALESCE(a6.s, 0), COALESCE(a6.mean_v, 0), COALESCE(a6.std_v, 0), COALESCE(a6.max_v, 0), COALESCE(a6.min_v, 0), COALESCE(t3a6.top3_mean, 0), COALESCE(a6.cnt, 0),
+		-- team2 batting form distribution
+		COALESCE(a7.s, 0), COALESCE(a7.mean_v, 0), COALESCE(a7.std_v, 0), COALESCE(a7.max_v, 0), COALESCE(a7.min_v, 0), COALESCE(t3a7.top3_mean, 0), COALESCE(a7.cnt, 0),
+		-- team2 bowling form distribution
+		COALESCE(a8.s, 0), COALESCE(a8.mean_v, 0), COALESCE(a8.std_v, 0), COALESCE(a8.max_v, 0), COALESCE(a8.min_v, 0), COALESCE(t3a8.top3_mean, 0), COALESCE(a8.cnt, 0)
 	FROM matches_filtered m
 	LEFT JOIN agg_t1_bat_cons a1 ON a1.match_id = m.match_id
 	LEFT JOIN agg_t1_bowl_cons a2 ON a2.match_id = m.match_id
@@ -125,6 +145,14 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	LEFT JOIN agg_t1_bowl_form a6 ON a6.match_id = m.match_id
 	LEFT JOIN agg_t2_bat_form a7 ON a7.match_id = m.match_id
 	LEFT JOIN agg_t2_bowl_form a8 ON a8.match_id = m.match_id
+	LEFT JOIN top3_t1_bat_cons t3a1 ON t3a1.match_id = m.match_id
+	LEFT JOIN top3_t1_bowl_cons t3a2 ON t3a2.match_id = m.match_id
+	LEFT JOIN top3_t2_bat_cons t3a3 ON t3a3.match_id = m.match_id
+	LEFT JOIN top3_t2_bowl_cons t3a4 ON t3a4.match_id = m.match_id
+	LEFT JOIN top3_t1_bat_form t3a5 ON t3a5.match_id = m.match_id
+	LEFT JOIN top3_t1_bowl_form t3a6 ON t3a6.match_id = m.match_id
+	LEFT JOIN top3_t2_bat_form t3a7 ON t3a7.match_id = m.match_id
+	LEFT JOIN top3_t2_bowl_form t3a8 ON t3a8.match_id = m.match_id
 	ORDER BY m.match_date ASC, m.match_id`
 	args := []any{cutoff}
 	if formatIDs != nil {
@@ -141,57 +169,116 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
-		"match_date", "match_date_unix",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"team1_bat_consistency_sum", "team1_bowl_consistency_sum", "team2_bat_consistency_sum", "team2_bowl_consistency_sum",
-		"team1_bat_form_sum", "team1_bowl_form_sum", "team2_bat_form_sum", "team2_bowl_form_sum",
-	}
+	headers := winEnhancedHeaders()
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {
-		var matchID, formatID, venueID, team1, team2, tossWinner int64
-		var team1Wins int
-		var formatCode string
-		var matchDate time.Time
-		var temp, wind, rain, humidity, cloud, pressure, viscosity int
-		var t1BatCons, t1BowlCons, t2BatCons, t2BowlCons float64
-		var t1BatForm, t1BowlForm, t2BatForm, t2BowlForm float64
-		if err := rows.Scan(&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
-			&matchDate,
-			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
-			&t1BatCons, &t1BowlCons, &t2BatCons, &t2BowlCons,
-			&t1BatForm, &t1BowlForm, &t2BatForm, &t2BowlForm); err != nil {
+		row, err := scanWinEnhancedRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, []string{
-			strconv.FormatInt(matchID, 10),
-			strconv.FormatInt(formatID, 10),
-			strconv.FormatInt(venueID, 10),
-			strconv.FormatInt(team1, 10),
-			strconv.FormatInt(team2, 10),
-			strconv.FormatInt(tossWinner, 10),
-			strconv.Itoa(team1Wins),
-			formatCode,
-			matchDate.Format("2006-01-02"),
-			strconv.FormatInt(matchDate.Unix(), 10),
-			strconv.Itoa(
-				temp,
-			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
-			strconv.FormatFloat(
-				t1BatCons,
-				'f',
-				-1,
-				64,
-			), strconv.FormatFloat(t1BowlCons, 'f', -1, 64), strconv.FormatFloat(t2BatCons, 'f', -1, 64), strconv.FormatFloat(t2BowlCons, 'f', -1, 64),
-			strconv.FormatFloat(
-				t1BatForm,
-				'f',
-				-1,
-				64,
-			), strconv.FormatFloat(t1BowlForm, 'f', -1, 64), strconv.FormatFloat(t2BatForm, 'f', -1, 64), strconv.FormatFloat(t2BowlForm, 'f', -1, 64),
-		})
+		out = append(out, row)
 	}
 	return out, rows.Err()
+}
+
+// featureDistStats holds distribution statistics for one feature group (e.g., team1 batting consistency).
+type featureDistStats struct {
+	sum      float64
+	mean     float64
+	std      float64
+	max      float64
+	min      float64
+	top3Mean float64
+	count    int64
+}
+
+func (f featureDistStats) toStrings() []string {
+	return []string{
+		strconv.FormatFloat(f.sum, 'f', -1, 64),
+		strconv.FormatFloat(f.mean, 'f', -1, 64),
+		strconv.FormatFloat(f.std, 'f', -1, 64),
+		strconv.FormatFloat(f.max, 'f', -1, 64),
+		strconv.FormatFloat(f.min, 'f', -1, 64),
+		strconv.FormatFloat(f.top3Mean, 'f', -1, 64),
+		strconv.FormatInt(f.count, 10),
+	}
+}
+
+// winFeatureGroupNames lists the 8 feature groups in export order.
+var winFeatureGroupNames = []string{
+	"team1_bat_consistency",
+	"team1_bowl_consistency",
+	"team2_bat_consistency",
+	"team2_bowl_consistency",
+	"team1_bat_form",
+	"team1_bowl_form",
+	"team2_bat_form",
+	"team2_bowl_form",
+}
+
+// winDistStatSuffixes lists the distribution stat suffixes in export order.
+var winDistStatSuffixes = []string{"_sum", "_mean", "_std", "_max", "_min", "_top3_mean", "_count"}
+
+func winEnhancedHeaders() []string {
+	base := []string{
+		"match_id", "format_id", "venue_id", "team1_opposition_id", "team2_opposition_id", "toss_winner_opposition_id", "team1_wins", "format_code",
+		"match_date", "match_date_unix",
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+	}
+	for _, group := range winFeatureGroupNames {
+		for _, suffix := range winDistStatSuffixes {
+			base = append(base, group+suffix)
+		}
+	}
+	return base
+}
+
+func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, error) {
+	var matchID, formatID, venueID, team1, team2, tossWinner int64
+	var team1Wins int
+	var formatCode string
+	var matchDate time.Time
+	var temp, wind, rain, humidity, cloud, pressure, viscosity int
+
+	var groups [8]featureDistStats
+
+	dest := []any{
+		&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
+		&matchDate,
+		&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
+	}
+	for i := range groups {
+		dest = append(dest,
+			&groups[i].sum, &groups[i].mean, &groups[i].std,
+			&groups[i].max, &groups[i].min, &groups[i].top3Mean, &groups[i].count,
+		)
+	}
+	if err := rows.Scan(dest...); err != nil {
+		return nil, err
+	}
+	for i := range groups {
+		if math.IsNaN(groups[i].std) {
+			groups[i].std = 0
+		}
+	}
+
+	row := []string{
+		strconv.FormatInt(matchID, 10),
+		strconv.FormatInt(formatID, 10),
+		strconv.FormatInt(venueID, 10),
+		strconv.FormatInt(team1, 10),
+		strconv.FormatInt(team2, 10),
+		strconv.FormatInt(tossWinner, 10),
+		strconv.Itoa(team1Wins),
+		formatCode,
+		matchDate.Format("2006-01-02"),
+		strconv.FormatInt(matchDate.Unix(), 10),
+		strconv.Itoa(temp), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity),
+		strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
+	}
+	for i := range groups {
+		row = append(row, groups[i].toStrings()...)
+	}
+	return row, nil
 }

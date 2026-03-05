@@ -1,13 +1,14 @@
 """
-Train win model (match-level team1_wins 0/1) from go-app training-data API or CSV.
+Train win model (match-level team1_wins 0/1) from go-app CSV export.
 
-Fetches GET {GO_APP_URL}/api/backtest/training-data?format=all&cutoff=..., extracts win
-headers/rows, groups by format_code, trains one classifier per format, saves
-win_model_<FMT>.joblib to artifacts dir.
+Uses enhanced feature set with per-player distribution statistics (mean, std,
+max, min, top3_mean, count) and derived features (matchup ratios, bowling depth).
+Trains a GradientBoosting classifier per format with walk-forward cross-validation.
 
 Usage:
-  GO_APP_URL=http://localhost:8080 python -m ml.train_win --cutoff 2024-12-01T00:00:00Z
+  python -m ml.train_win                             # CSV from GO_APP_OUTPUT_DIR
   python -m ml.train_win --csv path/to/win_export.csv
+  GO_APP_URL=http://localhost:8080 python -m ml.train_win --cutoff 2024-12-01T00:00:00Z
 """
 
 from __future__ import annotations
@@ -25,7 +26,9 @@ from typing import Optional
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+from sklearn.model_selection import TimeSeriesSplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,35 +40,14 @@ from ml.config import (
     get_training_params,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.win_features import (
+    DERIVED_FEATURE_COLS,
+    WIN_ENHANCED_FEATURE_COLS,
+    WIN_TARGET_COL,
+    compute_derived_features,
+)
 
 logger = logging.getLogger(__name__)
-
-# Same feature families as batting/bowling/fielding: format, venue, teams, toss, weather, and
-# team-level aggregates of player consistency/form (team1 = batting inn 1, team2 = bowling inn 1).
-WIN_FEATURE_COLS = [
-    "format_id",
-    "venue_id",
-    "match_date_unix",
-    "team1_opposition_id",
-    "team2_opposition_id",
-    "toss_winner_opposition_id",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "team1_bat_consistency_sum",
-    "team1_bowl_consistency_sum",
-    "team2_bat_consistency_sum",
-    "team2_bowl_consistency_sum",
-    "team1_bat_form_sum",
-    "team1_bowl_form_sum",
-    "team2_bat_form_sum",
-    "team2_bowl_form_sum",
-]
-WIN_TARGET_COL = "team1_wins"
 
 
 def _concat_weights_win(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
@@ -107,19 +89,42 @@ def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
     return data.get("win") or {"headers": [], "rows": []}
 
 
+def _add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute derived features (matchup ratios, depth, spreads) row by row and add as columns."""
+    derived_rows = []
+    for _, row in df.iterrows():
+        derived_rows.append(compute_derived_features(row.to_dict()))
+    derived_df = pd.DataFrame(derived_rows, index=df.index)
+    return pd.concat([df, derived_df], axis=1)
+
+
+def _available_feature_cols(df: pd.DataFrame) -> list[str]:
+    """Return the subset of WIN_ENHANCED_FEATURE_COLS present in df (handles old exports gracefully)."""
+    return [c for c in WIN_ENHANCED_FEATURE_COLS if c in df.columns]
+
+
 def rows_to_xy_by_format(
     headers: list, rows: list[list]
-) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
-    """Build X, Y, weights per format_code. Returns dict format_code -> (X, Y, sample_weight). Y is integer 0/1."""
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]]:
+    """Build X, Y, weights, feature_names per format_code.
+
+    Returns dict format_code -> (X, Y, sample_weight, feature_cols).
+    """
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    for c in WIN_FEATURE_COLS + [WIN_TARGET_COL]:
+    all_possible = list(set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date", "format_code", "match_date_unix"})
+    for c in all_possible:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    for c in WIN_FEATURE_COLS:
-        if c in df.columns:
-            df[c] = df[c].fillna(0.0)
+
+    if any(c not in df.columns for c in DERIVED_FEATURE_COLS):
+        df = _add_derived_features(df)
+
+    feature_cols = _available_feature_cols(df)
+    for c in feature_cols:
+        df[c] = df[c].fillna(0.0)
+
     pipe_cfg = get_pipeline_common_config()
     halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)
 
@@ -129,59 +134,156 @@ def rows_to_xy_by_format(
         return compute_time_decay_weights(g["match_date"], halflife_years=halflife)
 
     if "format_code" not in df.columns:
-        df = df.dropna(subset=[c for c in WIN_FEATURE_COLS if c in df.columns] + [WIN_TARGET_COL])
+        df = df.dropna(subset=[c for c in feature_cols if c in df.columns] + [WIN_TARGET_COL])
         if df.empty:
             return {}
-        X = df[[c for c in WIN_FEATURE_COLS if c in df.columns]].astype(float).values
+        X = df[feature_cols].astype(float).values
         Y = df[WIN_TARGET_COL].astype(int).values
         w = _weights(df)
-        return {"_ALL_": (X, Y, w)}
+        return {"_ALL_": (X, Y, w, feature_cols)}
+
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
-        g = g.dropna(subset=[c for c in WIN_FEATURE_COLS if c in g.columns] + [WIN_TARGET_COL])
+        g = g.dropna(subset=[c for c in feature_cols if c in g.columns] + [WIN_TARGET_COL])
         if g.empty or len(g) < 10:
             continue
-        X = g[[c for c in WIN_FEATURE_COLS if c in g.columns]].astype(float).values
+        X = g[feature_cols].astype(float).values
         Y = g[WIN_TARGET_COL].astype(int).values
         w = _weights(g)
-        out[fmt] = (X, Y, w)
+        out[fmt] = (X, Y, w, feature_cols)
     return out
 
 
+def _walk_forward_cv(
+    X: np.ndarray,
+    Y: np.ndarray,
+    sample_weight: Optional[np.ndarray],
+    params: dict,
+    n_splits: int = 5,
+) -> dict:
+    """Run walk-forward (time series) cross-validation and return summary metrics."""
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    accuracies, briers, log_losses_list = [], [], []
+
+    for train_idx, test_idx in tscv.split(X):
+        X_train, X_test = X[train_idx], X[test_idx]
+        Y_train, Y_test = Y[train_idx], Y[test_idx]
+        w_train = sample_weight[train_idx] if sample_weight is not None else None
+
+        model = GradientBoostingClassifier(
+            n_estimators=params.get("n_estimators", 200),
+            max_depth=params.get("max_depth", 4),
+            learning_rate=params.get("learning_rate", 0.1),
+            subsample=params.get("subsample", 0.8),
+            random_state=params.get("random_state", 42),
+        )
+        if w_train is not None:
+            model.fit(X_train, Y_train, sample_weight=w_train)
+        else:
+            model.fit(X_train, Y_train)
+
+        proba = model.predict_proba(X_test)
+        preds = model.predict(X_test)
+        accuracies.append(accuracy_score(Y_test, preds))
+
+        if proba.shape[1] == 2:
+            briers.append(brier_score_loss(Y_test, proba[:, 1]))
+            log_losses_list.append(log_loss(Y_test, proba[:, 1], labels=[0, 1]))
+
+    return {
+        "cv_accuracy_mean": float(np.mean(accuracies)),
+        "cv_accuracy_std": float(np.std(accuracies)),
+        "cv_brier_mean": float(np.mean(briers)) if briers else None,
+        "cv_log_loss_mean": float(np.mean(log_losses_list)) if log_losses_list else None,
+        "n_splits": n_splits,
+        "per_fold_accuracy": [round(a, 4) for a in accuracies],
+    }
+
+
+def _get_gb_params(format_code: str) -> dict:
+    """Get GradientBoosting parameters from config, with sensible defaults."""
+    base_params = get_training_params("win", format_code)
+    return {
+        "n_estimators": base_params.get("n_estimators", 200),
+        "max_depth": min(base_params.get("max_depth", 4), 6),
+        "learning_rate": base_params.get("learning_rate", 0.1),
+        "subsample": base_params.get("subsample", 0.8),
+        "random_state": base_params.get("random_state", 42),
+        "joblib_compress": base_params.get("joblib_compress", 3),
+    }
+
+
 def train_and_save(
-    X: np.ndarray, Y: np.ndarray, out_dir: str, format_code: str, sample_weight: Optional[np.ndarray] = None
+    X: np.ndarray,
+    Y: np.ndarray,
+    out_dir: str,
+    format_code: str,
+    feature_cols: list[str],
+    sample_weight: Optional[np.ndarray] = None,
 ) -> None:
-    """Train win classifier and save model for format_code (no scaler; artifacts loader expects model only).
-    Time-decay sample weights when match_date available."""
-    params = get_training_params("win", format_code)
-    model = RandomForestClassifier(
+    """Train GradientBoosting win classifier, run walk-forward CV, save model + metadata."""
+    params = _get_gb_params(format_code)
+
+    cv_metrics = _walk_forward_cv(X, Y, sample_weight, params)
+    logger.info(
+        "train_win.walk_forward_cv format=%s cv_accuracy=%.4f±%.4f cv_brier=%s folds=%s",
+        format_code,
+        cv_metrics["cv_accuracy_mean"],
+        cv_metrics["cv_accuracy_std"],
+        cv_metrics.get("cv_brier_mean"),
+        cv_metrics["per_fold_accuracy"],
+    )
+
+    model = GradientBoostingClassifier(
         n_estimators=params["n_estimators"],
         max_depth=params["max_depth"],
+        learning_rate=params["learning_rate"],
+        subsample=params["subsample"],
         random_state=params["random_state"],
-        n_jobs=params.get("n_jobs", -1),
     )
     if sample_weight is not None:
         model.fit(X, Y, sample_weight=sample_weight)
     else:
         model.fit(X, Y)
+
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     code = format_code.replace(" ", "_")
+
     joblib.dump(model, os.path.join(out_dir, f"win_model_{code}.joblib"), compress=compress)
+
+    importance = dict(zip(feature_cols, model.feature_importances_.tolist()))
+    sorted_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+    metadata = {
+        "format_code": format_code,
+        "model_type": "GradientBoostingClassifier",
+        "n_samples": int(X.shape[0]),
+        "n_features": int(X.shape[1]),
+        "feature_cols": feature_cols,
+        "params": {k: v for k, v in params.items() if k != "joblib_compress"},
+        "cv_metrics": cv_metrics,
+        "feature_importance_top20": dict(list(sorted_importance.items())[:20]),
+    }
+    with open(os.path.join(out_dir, f"win_model_{code}_metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
 
 
 def train_and_save_legacy(
-    X: np.ndarray, Y: np.ndarray, out_dir: str, sample_weight: Optional[np.ndarray] = None
+    X: np.ndarray,
+    Y: np.ndarray,
+    out_dir: str,
+    feature_cols: list[str],
+    sample_weight: Optional[np.ndarray] = None,
 ) -> None:
-    """Train one unified win model on all data and save as legacy (win_model.joblib).
-    Time-decay sample weights when match_date available."""
-    params = get_training_params("win", None)
-    model = RandomForestClassifier(
+    """Train one unified GradientBoosting win model on all data and save as legacy (win_model.joblib)."""
+    params = _get_gb_params("_ALL_")
+    model = GradientBoostingClassifier(
         n_estimators=params["n_estimators"],
         max_depth=params["max_depth"],
+        learning_rate=params["learning_rate"],
+        subsample=params["subsample"],
         random_state=params["random_state"],
-        n_jobs=params.get("n_jobs", -1),
     )
     if sample_weight is not None:
         model.fit(X, Y, sample_weight=sample_weight)
@@ -190,13 +292,28 @@ def train_and_save_legacy(
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
     joblib.dump(model, os.path.join(out_dir, "win_model.joblib"), compress=compress)
+
+    importance = dict(zip(feature_cols, model.feature_importances_.tolist()))
+    sorted_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+    metadata = {
+        "format_code": "_ALL_",
+        "model_type": "GradientBoostingClassifier",
+        "n_samples": int(X.shape[0]),
+        "n_features": int(X.shape[1]),
+        "feature_cols": feature_cols,
+        "params": {k: v for k, v in params.items() if k != "joblib_compress"},
+        "feature_importance_top20": dict(list(sorted_importance.items())[:20]),
+    }
+    with open(os.path.join(out_dir, "win_model_metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
     logger.info("train_win.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
 def main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(description="Train win model from go-app export CSV (preferred) or training-data API")
+    ap = argparse.ArgumentParser(description="Train enhanced win model from go-app export CSV (preferred) or training-data API")
     ap.add_argument("--cutoff", default="", help="RFC3339 cutoff (required for API fallback)")
     ap.add_argument(
         "--csv",
@@ -241,17 +358,19 @@ def main() -> None:
     if not by_format:
         logger.error("train_win.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y, w) in by_format.items():
-        logger.info("pipeline: train_win processing format=%s n=%s", fmt, X.shape[0])
-        train_and_save(X, Y, out_dir, fmt, sample_weight=w)
+
+    feature_cols: list[str] = []
+    for fmt, (X, Y, w, fc) in by_format.items():
+        feature_cols = fc
+        logger.info("pipeline: train_win processing format=%s n=%s features=%s", fmt, X.shape[0], X.shape[1])
+        train_and_save(X, Y, out_dir, fmt, fc, sample_weight=w)
         logger.info("train_win.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
-    # Unified (overall) model: train on all data combined for legacy/fallback
-    all_X = np.vstack([X for _, (X, _, _) in by_format.items()])
-    all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_format.items()])
-    all_weights = _concat_weights_win([w for _, (_, _, w) in by_format.items()])
+    all_X = np.vstack([X for _, (X, _, _, _) in by_format.items()])
+    all_Y = np.concatenate([Y.ravel() for _, (_, Y, _, _) in by_format.items()])
+    all_weights = _concat_weights_win([w for _, (_, _, w, _) in by_format.items()])
     if all_X.shape[0] >= 10:
-        train_and_save_legacy(all_X, all_Y, out_dir, sample_weight=all_weights)
+        train_and_save_legacy(all_X, all_Y, out_dir, feature_cols, sample_weight=all_weights)
 
 
 if __name__ == "__main__":

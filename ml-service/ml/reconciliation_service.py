@@ -97,18 +97,72 @@ def _sum_preserving_round(values: Dict[int, float], target: float) -> Dict[int, 
     return result
 
 
+def _win_conditioned_innings_targets(
+    pref: MatchReconciliationInputs,
+    win_probability: float,
+) -> tuple[float | None, float | None]:
+    """Derive innings run targets from win probability and existing preferred totals.
+
+    When both innings have preferred runs and a win probability is provided,
+    the targets are adjusted so that the margin is consistent with the win
+    probability. A win_probability > 0.5 means team1 (batting inn 1) is favored,
+    so inn1 runs should be higher than inn2 runs.
+
+    Returns (inn1_target_runs, inn2_target_runs).
+    """
+    innings_by_number = {i.inning_number: i for i in pref.innings}
+    inn1 = innings_by_number.get(1)
+    inn2 = innings_by_number.get(2)
+    if inn1 is None or inn2 is None:
+        return None, None
+    if inn1.preferred_runs is None or inn2.preferred_runs is None:
+        return inn1.preferred_runs, inn2.preferred_runs
+
+    total = inn1.preferred_runs + inn2.preferred_runs
+    if total <= 0:
+        return inn1.preferred_runs, inn2.preferred_runs
+
+    # Convert win probability to expected margin: ranges from -total/2 to +total/2.
+    # At p=0.5 -> margin=0, at p=1.0 -> margin=total/2 (team1 wins by half total).
+    # Uses a simple linear mapping, clipped to keep both totals non-negative.
+    margin_fraction = (win_probability - 0.5) * 2.0
+    max_margin = total * 0.4
+    implied_margin = margin_fraction * max_margin
+    inn1_target = max(0.0, (total + implied_margin) / 2.0)
+    inn2_target = max(0.0, (total - implied_margin) / 2.0)
+
+    return inn1_target, inn2_target
+
+
 def reconcile_match_players(
     pref: MatchReconciliationInputs,
     team1_id: int,
     team2_id: int,
+    win_probability: float | None = None,
 ) -> Mapping[int, ReconciledPlayerStats]:
     """Reconcile per-player stats for a two-innings limited-overs match.
+
+    When ``win_probability`` is provided, innings run targets are adjusted to
+    be consistent with the predicted outcome: a higher team1 win probability
+    shifts runs toward innings 1 (team1 batting) and away from innings 2.
 
     Returns:
         Mapping from player_id to integer stats (runs, balls, wickets) that:
         - Respect innings-level runs and wickets targets (from innings model).
         - Stay close to original model outputs in a weighted least-squares sense.
     """
+    if win_probability is None and pref.win is not None:
+        win_probability = pref.win.team1_win_probability
+
+    if win_probability is not None:
+        inn1_target, inn2_target = _win_conditioned_innings_targets(pref, win_probability)
+        if inn1_target is not None and inn2_target is not None:
+            innings_by_number = {i.inning_number: i for i in pref.innings}
+            if 1 in innings_by_number:
+                innings_by_number[1].preferred_runs = inn1_target
+            if 2 in innings_by_number:
+                innings_by_number[2].preferred_runs = inn2_target
+
     cfg = get_reconciliation_config()
     builder = ProblemBuilder(
         runs_weight=cfg.get("runs_weight", 1.0),

@@ -64,9 +64,17 @@ except ImportError:
     EXTRAS_FEATURE_COLS = []
 
 try:
-    from ml.train_win import WIN_FEATURE_COLS
+    from ml.win_features import (
+        WIN_ENHANCED_FEATURE_COLS,
+        aggregate_team_features_from_player_maps,
+        build_feature_vector,
+        compute_derived_features,
+    )
 except ImportError:
-    WIN_FEATURE_COLS = []
+    WIN_ENHANCED_FEATURE_COLS = []
+    aggregate_team_features_from_player_maps = None  # type: ignore[assignment]
+    build_feature_vector = None  # type: ignore[assignment]
+    compute_derived_features = None  # type: ignore[assignment]
 
 logger = get_struct_logger()
 
@@ -747,11 +755,20 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
 
 
 def win_feature_vector(f: WinFeatures) -> np.ndarray:
-    """Build feature vector in WIN_FEATURE_COLS order (exclude 'format' key)."""
-    if not WIN_FEATURE_COLS:
+    """Build feature vector for the enhanced win model from a WinFeatures instance.
+
+    When the enhanced feature module is available, pads the scalar WinFeatures
+    fields into the full WIN_ENHANCED_FEATURE_COLS vector (distribution stats
+    default to 0, derived features computed from what's available).
+    Falls back to simple scalar vector if enhanced module is not loaded.
+    """
+    if not WIN_ENHANCED_FEATURE_COLS:
         return np.zeros(0)
     d = f.model_dump()
-    return np.array([float(d.get(c, 0)) for c in WIN_FEATURE_COLS], dtype=float)
+    if compute_derived_features is not None:
+        derived = compute_derived_features(d)
+        d.update(derived)
+    return np.array([float(d.get(c, 0)) for c in WIN_ENHANCED_FEATURE_COLS], dtype=float)
 
 
 def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPrediction]:
@@ -788,9 +805,8 @@ def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPredicti
         )
 
 
-def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
-    """Execute win prediction pipeline and return typed results."""
-    fmt = (features[0].format or "").strip().upper()
+def _resolve_win_model(fmt: str):
+    """Resolve win model by format with legacy fallback. Raises HTTPException if missing."""
     model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
     if not model:
         available = [k for k in WIN_MODELS.keys() if k != "_LEGACY_"]
@@ -804,22 +820,78 @@ def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
                 available=available,
             ),
         )
+    return model
+
+
+def _predict_win_proba(model, X: np.ndarray) -> List[float]:
+    """Run model.predict_proba and extract team1 win probability."""
+    proba = model.predict_proba(X)
+    if proba.shape[1] > 1:
+        p_team1 = proba[:, 1]
+    else:
+        p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
+    return [float(p) for p in p_team1]
+
+
+def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
+    """Execute win prediction from WinFeatures (backward-compatible scalar path)."""
+    fmt = (features[0].format or "").strip().upper()
+    model = _resolve_win_model(fmt)
     X = np.array([win_feature_vector(f) for f in features], dtype=float)
     if X.size == 0:
         raise HTTPException(
             status_code=500,
-            detail=error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_FEATURE_COLS not available"),
+            detail=error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_ENHANCED_FEATURE_COLS not available"),
         )
     try:
-        proba = model.predict_proba(X)
-        if proba.shape[1] > 1:
-            p_team1 = proba[:, 1]
-        else:
-            p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
-        return [WinPrediction(team1_win_probability=float(p)) for p in p_team1]
+        probas = _predict_win_proba(model, X)
+        return [WinPrediction(team1_win_probability=p) for p in probas]
     except Exception as exc:
         logger.exception("predict.win.error", error=str(exc))
         raise HTTPException(
             status_code=500,
             detail=error_payload(code="PREDICT_FAILED", message="Win prediction failed", hint="See server logs"),
+        )
+
+
+def run_win_prediction_enhanced(
+    fmt: str,
+    match_context: Dict[str, float],
+    team1_player_features: Dict[str, Dict[str, float]],
+    team2_player_features: Dict[str, Dict[str, float]],
+) -> WinPrediction:
+    """Execute win prediction using per-player features with on-the-fly aggregation.
+
+    This is the primary path for the win-first architecture: the Go-app passes
+    all per-player features, and the ML service computes distribution statistics
+    and derived features before feeding to the model.
+    """
+    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="ENHANCED_WIN_NOT_AVAILABLE",
+                message="ml.win_features module not loaded",
+                hint="Ensure ml-service has the win_features module installed.",
+            ),
+        )
+
+    fmt_upper = (fmt or "").strip().upper()
+    model = _resolve_win_model(fmt_upper)
+
+    t1_feats = {int(k): v for k, v in team1_player_features.items()}
+    t2_feats = {int(k): v for k, v in team2_player_features.items()}
+
+    feature_dict = aggregate_team_features_from_player_maps(t1_feats, t2_feats, match_context)
+    feature_vec = build_feature_vector(feature_dict)
+    X = np.array([feature_vec], dtype=float)
+
+    try:
+        probas = _predict_win_proba(model, X)
+        return WinPrediction(team1_win_probability=probas[0])
+    except Exception as exc:
+        logger.exception("predict.win_enhanced.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(code="PREDICT_FAILED", message="Enhanced win prediction failed", hint="See server logs"),
         )

@@ -309,6 +309,41 @@ class WinFeatures(BaseModel):
         return v.strip().upper()
 
 
+class WinFeaturesEnhanced(BaseModel):
+    """Enhanced win prediction request: match context + per-player feature maps.
+
+    The ML service aggregates per-player features into distribution statistics
+    (mean, std, max, min, top3_mean) and computes derived matchup features.
+    """
+
+    format_id: int = Field(default=0, ge=0)
+    venue_id: int = Field(default=0, ge=0)
+    match_date_unix: float = Field(default=0.0, ge=0)
+    team1_opposition_id: int = Field(default=0, ge=0)
+    team2_opposition_id: int = Field(default=0, ge=0)
+    toss_winner_opposition_id: int = Field(default=0, ge=0)
+    temp: int = Field(default=0)
+    wind: int = Field(default=0, ge=0)
+    rain: int = Field(default=0, ge=0)
+    humidity: int = Field(default=0, ge=0)
+    cloud: int = Field(default=0, ge=0)
+    pressure: int = Field(default=0, ge=0)
+    viscosity: int = Field(default=0, ge=0, le=2)
+    team1_player_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="Per-player feature maps for team1: {player_id: {feature_name: value}}"
+    )
+    team2_player_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="Per-player feature maps for team2: {player_id: {feature_name: value}}"
+    )
+    format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+
 class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
 
