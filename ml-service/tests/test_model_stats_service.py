@@ -1,6 +1,7 @@
 """Tests for model_stats_service: dynamic model-kind discovery."""
 
 import os
+from pathlib import Path
 from typing import Optional, Tuple
 
 import pytest
@@ -62,8 +63,8 @@ class TestParseModelFilename:
 class TestGetModelArtifactStats:
     """get_model_artifact_stats returns correct size (including scaler) and metadata."""
 
-    def test_model_with_scaler(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_model_with_scaler(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "batting_model_ODI.joblib").write_bytes(b"m" * 100)
         (p / "batting_scaler_ODI.joblib").write_bytes(b"s" * 50)
         entries = os.listdir(str(p))
@@ -74,8 +75,8 @@ class TestGetModelArtifactStats:
         assert rec["match_format"] == "ODI"
         assert rec["size_bytes"] == 150
 
-    def test_model_without_scaler(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_model_without_scaler(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "extras_model_T20.joblib").write_bytes(b"m" * 200)
         entries = os.listdir(str(p))
         rec = get_model_artifact_stats(str(p), entries, "extras", "T20", "extras_model_T20.joblib")
@@ -84,8 +85,8 @@ class TestGetModelArtifactStats:
         assert rec["model_name"] == "Extras"
         assert rec["size_bytes"] == 200
 
-    def test_innings_model_included(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_innings_model_included(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "innings_model_ODI.joblib").write_bytes(b"m" * 80)
         (p / "innings_scaler_ODI.joblib").write_bytes(b"s" * 40)
         entries = os.listdir(str(p))
@@ -95,8 +96,8 @@ class TestGetModelArtifactStats:
         assert rec["model_name"] == "Innings"
         assert rec["size_bytes"] == 120
 
-    def test_batting_share_display_name(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_batting_share_display_name(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "batting_share_model_T20.joblib").write_bytes(b"m" * 50)
         entries = os.listdir(str(p))
         rec = get_model_artifact_stats(str(p), entries, "batting_share", "T20", "batting_share_model_T20.joblib")
@@ -104,8 +105,8 @@ class TestGetModelArtifactStats:
         assert rec["model_kind"] == "batting_share"
         assert rec["model_name"] == "Batting Share"
 
-    def test_unified_model_format(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_unified_model_format(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "innings_model.joblib").write_bytes(b"m" * 60)
         entries = os.listdir(str(p))
         rec = get_model_artifact_stats(str(p), entries, "innings", None, "innings_model.joblib")
@@ -116,8 +117,8 @@ class TestGetModelArtifactStats:
 class TestBuildModelStats:
     """build_model_stats should discover all model kinds dynamically."""
 
-    def test_discovers_all_model_kinds(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_discovers_all_model_kinds(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "batting_model_ODI.joblib").write_bytes(b"x" * 10)
         (p / "bowling_model_T20.joblib").write_bytes(b"x" * 10)
         (p / "innings_model_ODI.joblib").write_bytes(b"x" * 10)
@@ -136,8 +137,8 @@ class TestBuildModelStats:
         assert ("extras", "Unified") in names
         assert ("win", "T20") in names
 
-    def test_ignores_non_model_files(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_ignores_non_model_files(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "batting_scaler_ODI.joblib").write_bytes(b"x" * 10)
         (p / "tuning_report_batting_ODI.json").write_text("{}")
         (p / "README.md").write_text("hello")
@@ -145,8 +146,8 @@ class TestBuildModelStats:
         result = build_model_stats(str(p))
         assert result["models"] == []
 
-    def test_sorted_output(self, tmp_path: object) -> None:
-        p = tmp_path  # type: ignore[assignment]
+    def test_sorted_output(self, tmp_path: Path) -> None:
+        p = tmp_path
         (p / "win_model.joblib").write_bytes(b"x")
         (p / "batting_model.joblib").write_bytes(b"x")
         (p / "innings_model.joblib").write_bytes(b"x")
