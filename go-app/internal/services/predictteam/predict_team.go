@@ -155,6 +155,20 @@ type PlayerPred struct {
 	RunOuts float64
 }
 
+// updatePlayerStatsFromReconciled overwrites Runs, Wickets, Economy, Catches, RunOuts on players
+// with values from reconciledPlayers when present. Used to apply reconciled scorecard to both teams.
+func updatePlayerStatsFromReconciled(players []SelectedPlayer, reconciledPlayers map[int64]PlayerPred) {
+	for i := range players {
+		if pr, ok := reconciledPlayers[players[i].PlayerID]; ok {
+			players[i].Runs = pr.Runs
+			players[i].Wickets = pr.Wickets
+			players[i].Economy = pr.Economy
+			players[i].Catches = pr.Catches
+			players[i].RunOuts = pr.RunOuts
+		}
+	}
+}
+
 // predictIntermediates holds pool, predictions, and context from the PredictTeams pipeline
 // so callers (e.g. PredictTeamsWithSimulation) can reuse them without re-querying DB or ML.
 type predictIntermediates struct {
@@ -518,24 +532,8 @@ func predictTeamsWithIntermediates(
 			if input.UseReconciledScorecard {
 				result.ScorecardSummary = &reconciledSummary
 				// Overwrite per-player stats with reconciled values so the response reflects the reconciled scorecard.
-				for i := range result.Team1 {
-					if pr, ok := reconciledPlayers[result.Team1[i].PlayerID]; ok {
-						result.Team1[i].Runs = pr.Runs
-						result.Team1[i].Wickets = pr.Wickets
-						result.Team1[i].Economy = pr.Economy
-						result.Team1[i].Catches = pr.Catches
-						result.Team1[i].RunOuts = pr.RunOuts
-					}
-				}
-				for i := range result.Team2 {
-					if pr, ok := reconciledPlayers[result.Team2[i].PlayerID]; ok {
-						result.Team2[i].Runs = pr.Runs
-						result.Team2[i].Wickets = pr.Wickets
-						result.Team2[i].Economy = pr.Economy
-						result.Team2[i].Catches = pr.Catches
-						result.Team2[i].RunOuts = pr.RunOuts
-					}
-				}
+				updatePlayerStatsFromReconciled(result.Team1, reconciledPlayers)
+				updatePlayerStatsFromReconciled(result.Team2, reconciledPlayers)
 			}
 		} else {
 			slog.WarnContext(ctx, "reconciled generate-match failed, skipping reconciled scorecard", slog.Any("err", errGen))

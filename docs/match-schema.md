@@ -20,7 +20,7 @@ Logical fields (matching `BALL_COLS` from `ml.ball_by_ball_loader`):
 
 - **Identifiers**
   - `match_id: int`
-  - `innings: int` — 1, 2 (or higher in multi‑innings formats)
+  - `innings: int` — 1, 2 (or higher in multi-innings formats)
   - `over: int`
   - `ball: int`
   - `ball_seq: int` — monotonically increasing sequence within an innings
@@ -52,7 +52,7 @@ Logical fields (matching `BALL_COLS` from `ml.ball_by_ball_loader`):
 Derived properties (from `InningsState` implementation):
 
 - `total_runs: int` — \(\sum_b \mathrm{runs\_total}_b\)
-- `total_wickets: int` — number of balls with `player_out_id != None`, capped at 10
+- `total_wickets: int` — number of balls with `player_out_id is not None`, capped at 10
 - `legal_balls: int` — count of balls with `is_legal = True`
 - `overs_bowled: (int, int)` — `(completed_overs, balls_in_current_over)` from `legal_balls`
 - `extras_total: int` — \(\sum_b \mathrm{runs\_extras}_b\)
