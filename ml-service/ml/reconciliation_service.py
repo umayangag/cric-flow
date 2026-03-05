@@ -19,6 +19,7 @@ import numpy as np
 
 from app.models import MatchReconciliationInputs
 
+from .config import get_reconciliation_config
 from .reconciliation_core import ProblemBuilder, VariableKind
 from .reconciliation_solver import solve_reconciliation_problem
 
@@ -108,7 +109,12 @@ def reconcile_match_players(
         - Respect innings-level runs and wickets targets (from innings model).
         - Stay close to original model outputs in a weighted least-squares sense.
     """
-    builder = ProblemBuilder()
+    cfg = get_reconciliation_config()
+    builder = ProblemBuilder(
+        runs_weight=cfg.get("runs_weight", 1.0),
+        wickets_weight=cfg.get("wickets_weight", 1.0),
+        soft_favor_top_order_balls=cfg.get("soft_favor_top_order_balls", 0.0),
+    )
     problem = builder.build_from_match(pref, team1_id=team1_id, team2_id=team2_id)
     x_cont = solve_reconciliation_problem(problem)
 

@@ -323,7 +323,10 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	// Optional reconciled scorecard generator: when client requests reconciled or both scorecards, call ML generate-match.
 	var reconciledGen predictteam.GenerateMatchFunc
 	if input.UseReconciledScorecard || input.IncludeBothScorecards {
-		client := NewBacktestMLClient()
+		client := a.backtestMLClient
+		if client == nil {
+			client = NewBacktestMLClient()
+		}
 		reconciledGen = newReconciledGenerator(client)
 	}
 	if body.Simulate != nil && *body.Simulate {

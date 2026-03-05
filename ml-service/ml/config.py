@@ -481,7 +481,66 @@ def get_prediction_defaults() -> Dict[str, Any]:
                 # Skip invalid entries but keep others.
                 continue
 
+    default_bowling_deliveries = pd_def.get("default_bowling_deliveries", 24.0)
+    try:
+        default_bowling_deliveries = float(default_bowling_deliveries)
+    except (TypeError, ValueError):
+        default_bowling_deliveries = 24.0
+
     return {
         "economy": float(pd_def.get("economy", 6.0)),
         "bowling_deliveries_by_format": bowling_by_format,
+        "default_bowling_deliveries": default_bowling_deliveries,
     }
+
+
+def get_reconciliation_config() -> Dict[str, Any]:
+    """
+    Load reconciliation weights from ml.reconciliation.
+
+    Returns:
+        Dict with: runs_weight, wickets_weight, soft_favor_top_order_balls.
+        All values are floats with sensible defaults when not configured.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    recon = (ml.get("reconciliation") if isinstance(ml, dict) else None) or {}
+    runs_weight = recon.get("runs_weight", 1.0)
+    wickets_weight = recon.get("wickets_weight", 1.0)
+    soft_favor_top_order_balls = recon.get("soft_favor_top_order_balls", 0.0)
+    try:
+        runs_weight = float(runs_weight)
+    except (TypeError, ValueError):
+        runs_weight = 1.0
+    try:
+        wickets_weight = float(wickets_weight)
+    except (TypeError, ValueError):
+        wickets_weight = 1.0
+    try:
+        soft_favor_top_order_balls = float(soft_favor_top_order_balls)
+    except (TypeError, ValueError):
+        soft_favor_top_order_balls = 0.0
+    return {
+        "runs_weight": runs_weight,
+        "wickets_weight": wickets_weight,
+        "soft_favor_top_order_balls": soft_favor_top_order_balls,
+    }
+
+
+def get_win_coherence_config() -> Dict[str, Any]:
+    """
+    Load win coherence configuration from ml.win_coherence.
+
+    Returns:
+        Dict with: scale (float), controlling logistic steepness used by
+        win_probability_coherence_from_margin.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    wc = (ml.get("win_coherence") if isinstance(ml, dict) else None) or {}
+    scale = wc.get("scale", 25.0)
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 25.0
+    return {"scale": scale}

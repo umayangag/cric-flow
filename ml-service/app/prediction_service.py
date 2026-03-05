@@ -50,10 +50,11 @@ from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
 
 try:
-    from ml.config import get_prediction_defaults
+    from ml.config import get_prediction_defaults, get_win_coherence_config
     from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
 except ImportError:
     get_prediction_defaults = None  # type: ignore[assignment]
+    get_win_coherence_config = None  # type: ignore[assignment]
     apply_constraint_reconciliation_from_backtest_preds = None  # type: ignore[assignment]
 
 try:
@@ -530,7 +531,16 @@ def generate_match(
     try:
         from ml.win_coherence_metrics import win_probability_coherence_from_margin
 
-        coh = win_probability_coherence_from_margin(p_team1, margin, scale=25.0)
+        scale = 25.0
+        if get_win_coherence_config is not None:
+            try:
+                wc_cfg = get_win_coherence_config()
+                scale = float(wc_cfg.get("scale", scale))
+            except Exception:
+                # Fall back to hardcoded default if config is missing or invalid.
+                scale = 25.0
+
+        coh = win_probability_coherence_from_margin(p_team1, margin, scale=scale)
         logger.info(
             "win_coherence.metrics",
             format=(fmt or "").strip().upper(),

@@ -43,7 +43,10 @@ def _default_bowling_deliveries_for_format(format_code: Optional[str]) -> float:
     defaults = get_prediction_defaults()
     mapping = defaults.get("bowling_deliveries_by_format") or {}
     fmt_key = (format_code or "").upper()
-    base = 24.0  # 4 overs, suitable for T20 as a pragmatic fallback
+    try:
+        base = float(defaults.get("default_bowling_deliveries", 24.0))
+    except (TypeError, ValueError):
+        base = 24.0  # 4 overs, suitable for T20 as a pragmatic fallback
     if not fmt_key or not isinstance(mapping, dict):
         return base
     try:
