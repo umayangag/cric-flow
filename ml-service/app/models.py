@@ -441,9 +441,7 @@ class BatchPredictItem(BaseModel):
     """One item in a batch prediction request — same fields as BacktestPredictRequest but for player predictions only."""
 
     cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
-    player_ids: List[int] = Field(
-        ..., min_length=1, max_length=100, description="Player IDs to predict for"
-    )
+    player_ids: List[int] = Field(..., min_length=1, max_length=100, description="Player IDs to predict for")
     format: str = Field(..., description="Format code (e.g. T20, ODI)")
     features: Dict[str, Dict[str, float]] = Field(
         default_factory=dict,

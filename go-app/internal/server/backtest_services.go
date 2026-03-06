@@ -288,7 +288,11 @@ func computePlayerMetricsFallback(
 	_ = g.Wait()
 }
 
-func computeMAEFromPreds(squad []int64, preds map[int64]playerPredictions, acts map[int64]playerActuals) (float64, bool) {
+func computeMAEFromPreds(
+	squad []int64,
+	preds map[int64]playerPredictions,
+	acts map[int64]playerActuals,
+) (float64, bool) {
 	var totalAbs, cnt float64
 	for _, pid := range squad {
 		pPred, okp := preds[pid]
