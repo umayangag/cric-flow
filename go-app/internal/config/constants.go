@@ -85,10 +85,10 @@ const (
 
 // Backtest list/holdout and accuracy-trend defaults and caps.
 const (
-	DefaultBacktestListDefaultLimit        = 50
-	DefaultBacktestListMaxLimit            = 500
-	DefaultBacktestAccuracyTrendLimit      = 100
-	DefaultBacktestRecentMigrations        = 100
+	DefaultBacktestListDefaultLimit         = 50
+	DefaultBacktestListMaxLimit             = 500
+	DefaultBacktestAccuracyTrendLimit       = 100
+	DefaultBacktestRecentMigrations         = 100
 	DefaultBacktestAccuracyTrendConcurrency = 8
 )
 

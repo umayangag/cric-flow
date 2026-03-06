@@ -505,7 +505,13 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		concurrency = config.DefaultBacktestAccuracyTrendConcurrency
 	}
 	results, summary, progressive := computeAccuracyTrendForCandidates(
-		r.Context(), candidates, params.IncludePlayer, params.IncludeTeam, params.Cache, params.UseUnifiedModel, concurrency,
+		r.Context(),
+		candidates,
+		params.IncludePlayer,
+		params.IncludeTeam,
+		params.Cache,
+		params.UseUnifiedModel,
+		concurrency,
 	)
 
 	resp := accuracyTrendResponse{
