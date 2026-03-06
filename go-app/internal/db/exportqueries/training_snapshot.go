@@ -520,11 +520,11 @@ func getPrecomputedFeaturesForMatch(
 	for rows.Next() {
 		var pid int64
 		var bat, bowl features.RawStats
-		if err := rows.Scan(&pid,
-			&bat.MeanW3, &bat.MeanW5, &bat.MeanW10, &bat.MeanW20, &bat.StdW5, &bat.StdW10, &bat.MaxW10, &bat.MinW10, &bat.MedianW10,
-			&bat.Last1, &bat.Last2, &bat.Last3, &bat.CareerMean, &bat.CareerCount, &bat.PctZeroW10, &bat.TrendW5, &bat.DaysSinceLast, &bat.InningsInLast90D,
-			&bowl.MeanW3, &bowl.MeanW5, &bowl.MeanW10, &bowl.MeanW20, &bowl.StdW5, &bowl.StdW10, &bowl.MaxW10, &bowl.MinW10, &bowl.MedianW10,
-			&bowl.Last1, &bowl.Last2, &bowl.Last3, &bowl.CareerMean, &bowl.CareerCount, &bowl.PctZeroW10, &bowl.TrendW5, &bowl.DaysSinceLast, &bowl.InningsInLast90D); err != nil {
+		dest := make([]any, 0, 1+18+18)
+		dest = append(dest, &pid)
+		dest = append(dest, bat.ScanDest()...)
+		dest = append(dest, bowl.ScanDest()...)
+		if err := rows.Scan(dest...); err != nil {
 			rows.Close()
 			return nil, err
 		}

@@ -57,21 +57,11 @@ func UpsertFeatureRawStatsSnapshot(
 		return errors.New("db pool not initialized")
 	}
 	query := "INSERT INTO feature_raw_stats_snapshots(" + upsertRawStatsInsertColumns + ") VALUES(" + upsertRawStatsValues + ") ON CONFLICT (player_id, as_of_date, format_id, scope, scope_id) DO UPDATE SET " + upsertRawStatsOnConflict
-	_, err := Pool.Exec(
-		ctx,
-		query,
-		playerID, asOf, formatID, scope, scopeID,
-		bat.MeanW3, bat.MeanW5, bat.MeanW10, bat.MeanW20,
-		bat.StdW5, bat.StdW10, bat.MaxW10, bat.MinW10, bat.MedianW10,
-		bat.Last1, bat.Last2, bat.Last3,
-		bat.CareerMean, bat.CareerCount, bat.PctZeroW10, bat.TrendW5,
-		bat.DaysSinceLast, bat.InningsInLast90D,
-		bowl.MeanW3, bowl.MeanW5, bowl.MeanW10, bowl.MeanW20,
-		bowl.StdW5, bowl.StdW10, bowl.MaxW10, bowl.MinW10, bowl.MedianW10,
-		bowl.Last1, bowl.Last2, bowl.Last3,
-		bowl.CareerMean, bowl.CareerCount, bowl.PctZeroW10, bowl.TrendW5,
-		bowl.DaysSinceLast, bowl.InningsInLast90D,
-		sourceVersion,
-	)
+	args := make([]any, 0, 5+18+18+1)
+	args = append(args, playerID, asOf, formatID, scope, scopeID)
+	args = append(args, bat.Values()...)
+	args = append(args, bowl.Values()...)
+	args = append(args, sourceVersion)
+	_, err := Pool.Exec(ctx, query, args...)
 	return err
 }

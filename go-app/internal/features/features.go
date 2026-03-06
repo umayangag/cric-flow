@@ -126,6 +126,24 @@ type RawStats struct {
 	InningsInLast90D                 int
 }
 
+// ScanDest returns a slice of pointers to the struct fields, in the order they appear in the database schema.
+// Used by db/exportqueries for rows.Scan so field order stays co-located with the struct.
+func (rs *RawStats) ScanDest() []any {
+	return []any{
+		&rs.MeanW3, &rs.MeanW5, &rs.MeanW10, &rs.MeanW20, &rs.StdW5, &rs.StdW10, &rs.MaxW10, &rs.MinW10, &rs.MedianW10,
+		&rs.Last1, &rs.Last2, &rs.Last3, &rs.CareerMean, &rs.CareerCount, &rs.PctZeroW10, &rs.TrendW5, &rs.DaysSinceLast, &rs.InningsInLast90D,
+	}
+}
+
+// Values returns a slice of the struct's field values, in schema order.
+// Used by db for Exec so arguments stay in sync with RawStats.
+func (rs *RawStats) Values() []any {
+	return []any{
+		rs.MeanW3, rs.MeanW5, rs.MeanW10, rs.MeanW20, rs.StdW5, rs.StdW10, rs.MaxW10, rs.MinW10, rs.MedianW10,
+		rs.Last1, rs.Last2, rs.Last3, rs.CareerMean, rs.CareerCount, rs.PctZeroW10, rs.TrendW5, rs.DaysSinceLast, rs.InningsInLast90D,
+	}
+}
+
 // WindowedStats computes multi-scale summary statistics from innings (assumed sorted by date ascending).
 // asOf is used for days_since_last and innings_in_last_90d. Returns zero-valued RawStats when inn is empty.
 func WindowedStats(inn []Innings, asOf time.Time) RawStats {
