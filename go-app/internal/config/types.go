@@ -121,9 +121,10 @@ type Config struct {
 		ListDefaultLimit          int                `json:"list_default_limit"`           // default limit for matches-after/holdout (0 = 50)
 		ListMaxLimit              int                `json:"list_max_limit"`               // max limit (0 = 500)
 		AccuracyTrendDefaultLimit int                `json:"accuracy_trend_default_limit"` // default accuracy-trend limit (0 = 100)
-		AccuracyTrendMaxLimit     int                `json:"accuracy_trend_max_limit"`     // max (0 = 500)
-		AccuracyTrendConcurrency  int                `json:"accuracy_trend_concurrency"`   // max concurrent workers for accuracy-trend computations (0 = use default)
-		Job                       *BacktestJobConfig `json:"job"`                          // job cleanup/duration; nil = use defaults
+		AccuracyTrendMaxLimit     int                `json:"accuracy_trend_max_limit"`           // max (0 = 500)
+		AccuracyTrendConcurrency  int                `json:"accuracy_trend_concurrency"`         // max concurrent workers for accuracy-trend computations (0 = use default)
+		ExportContributionsConcurrency int           `json:"export_contributions_concurrency"`   // max concurrent workers for export-contributions jobs (0 = use default)
+		Job                       *BacktestJobConfig `json:"job"`                                // job cleanup/duration; nil = use defaults
 	} `json:"backtest"`
 	Ops       OpsConfig        `json:"ops"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants

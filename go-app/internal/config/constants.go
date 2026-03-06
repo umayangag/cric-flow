@@ -90,6 +90,7 @@ const (
 	DefaultBacktestAccuracyTrendLimit       = 100
 	DefaultBacktestRecentMigrations         = 100
 	DefaultBacktestAccuracyTrendConcurrency = 8
+	DefaultBacktestExportContributionsConcurrency = 8
 )
 
 // Backtest job cleanup and duration (export-contributions and eval jobs).

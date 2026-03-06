@@ -272,6 +272,13 @@ func BacktestAccuracyTrendConcurrency(cfg *Config) int {
 	return DefaultBacktestAccuracyTrendConcurrency
 }
 
+func BacktestExportContributionsConcurrency(cfg *Config) int {
+	if cfg != nil && cfg.Backtest.ExportContributionsConcurrency > 0 {
+		return cfg.Backtest.ExportContributionsConcurrency
+	}
+	return DefaultBacktestExportContributionsConcurrency
+}
+
 func BacktestJobCleanupAgeHours(cfg *Config) int {
 	if cfg != nil && cfg.Backtest.Job != nil && cfg.Backtest.Job.CleanupAgeHours > 0 {
 		return cfg.Backtest.Job.CleanupAgeHours

@@ -18,10 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	contributionsCSVFilenamePrefix = "backtest_contributions"
-	exportContributionsConcurrency = 8 // limit concurrent doEvaluateWork calls per export job
-)
+const contributionsCSVFilenamePrefix = "backtest_contributions"
 
 // contributionRow is one row for the combination meta-model CSV.
 // Types contributionRow and exportContributionsRequest are defined as aliases in backtest_types.go
@@ -112,11 +109,13 @@ func runExportContributionsWork(
 	body exportContributionsRequest,
 ) (path string, rows int, err error) {
 	format := strings.TrimSpace(strings.ToUpper(body.Format))
+	cfg := config.Load()
+	concurrency := config.BacktestExportContributionsConcurrency(cfg)
 
 	// Phase 1: Prep all matches in parallel (DB only, no ML).
 	preps := make([]exportContribsMatchPrep, len(body.MatchIDs))
 	g1, gCtx1 := errgroup.WithContext(ctx)
-	g1.SetLimit(exportContributionsConcurrency)
+	g1.SetLimit(concurrency)
 	for i, mid := range body.MatchIDs {
 		i, mid := i, mid
 		g1.Go(func() error {
@@ -178,7 +177,6 @@ func runExportContributionsWork(
 		return "", 0, err
 	}
 
-	cfg := config.Load()
 	batDiv, wicketDiv, econBase, fieldDiv := config.EffectiveScoreNormParams(cfg, format)
 	if batDiv <= 0 {
 		batDiv = config.DefaultScoreNormBatDivisor
@@ -219,6 +217,8 @@ func exportContribsBatchPredict(
 	if len(batchInputs) == 0 {
 		return nil
 	}
+	cfg := config.Load()
+	concurrency := config.BacktestExportContributionsConcurrency(cfg)
 	batchResults, batchErr := mlBacktestPredictBatchFunc(ctx, batchInputs)
 	if batchErr != nil {
 		slog.Warn("batch predict unavailable for export, falling back to per-match calls", slog.Any("err", batchErr))
@@ -229,7 +229,7 @@ func exportContribsBatchPredict(
 	var allPlayers []BacktestPlayerResult
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(exportContributionsConcurrency)
+	g.SetLimit(concurrency)
 	for bi, vi := range validIndices {
 		bi, vi := bi, vi
 		g.Go(func() error {
@@ -258,12 +258,14 @@ func exportContribsFallback(
 	body exportContributionsRequest,
 	format string,
 ) []BacktestPlayerResult {
+	cfg := config.Load()
+	concurrency := config.BacktestExportContributionsConcurrency(cfg)
 	team1 := strings.TrimSpace(body.Team1)
 	team2 := strings.TrimSpace(body.Team2)
 	var allPlayers []BacktestPlayerResult
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(exportContributionsConcurrency)
+	g.SetLimit(concurrency)
 	for _, mid := range body.MatchIDs {
 		mid := mid
 		g.Go(func() error {
