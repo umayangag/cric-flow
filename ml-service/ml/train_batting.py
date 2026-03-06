@@ -35,27 +35,55 @@ BAT_SEQ_COLS = [
     "bat_after_k_dots_boundary_p_k2",
 ]
 
-FEATURE_COLS = [
-    "batting_consistency",
-    "batting_form",
-    "batting_form_short",
-    "batting_form_long",
-    "batting_momentum",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "inning",
-    "batting_session",
-    "toss",
-    "batting_venue",
-    "batting_opposition",
-    "season_id",
-    "match_date_unix",
-] + BAT_SEQ_COLS
+# Raw windowed stats (v2 contract) — ML learns optimal form/consistency from these.
+BAT_RAW_STAT_COLS = [
+    "batting_mean_w3",
+    "batting_mean_w5",
+    "batting_mean_w10",
+    "batting_mean_w20",
+    "batting_std_w5",
+    "batting_std_w10",
+    "batting_max_w10",
+    "batting_min_w10",
+    "batting_median_w10",
+    "batting_last_1",
+    "batting_last_2",
+    "batting_last_3",
+    "batting_career_mean",
+    "batting_career_count",
+    "batting_pct_zero_w10",
+    "batting_trend_w5",
+    "batting_days_since_last",
+    "batting_innings_in_last_90d",
+]
+
+FEATURE_COLS = (
+    [
+        "batting_consistency",
+        "batting_form",
+        "batting_form_short",
+        "batting_form_long",
+        "batting_momentum",
+    ]
+    + BAT_RAW_STAT_COLS
+    + [
+        "temp",
+        "wind",
+        "rain",
+        "humidity",
+        "cloud",
+        "pressure",
+        "viscosity",
+        "inning",
+        "batting_session",
+        "toss",
+        "batting_venue",
+        "batting_opposition",
+        "season_id",
+        "match_date_unix",
+    ]
+    + BAT_SEQ_COLS
+)
 
 TARGET_COLS = [
     "runs",
@@ -92,14 +120,20 @@ def _batting_col_map() -> Dict[str, str]:
         "batting_form_short": "batting_form_short",
         "batting_form_long": "batting_form_long",
         "batting_momentum": "batting_momentum",
-        "runs": "runs",
-        "balls": "balls",
-        "fours": "fours",
-        "sixes": "sixes",
-        "batting_position": "batting_position",
-        "strike_rate": "strike_rate",
-        "innings_runs": "innings_runs",
     }
+    for c in BAT_RAW_STAT_COLS:
+        m[c] = c
+    m.update(
+        {
+            "runs": "runs",
+            "balls": "balls",
+            "fours": "fours",
+            "sixes": "sixes",
+            "batting_position": "batting_position",
+            "strike_rate": "strike_rate",
+            "innings_runs": "innings_runs",
+        }
+    )
     for c in BAT_SEQ_COLS:
         m[c] = c
     return m

@@ -13,7 +13,7 @@ func TestDefaultContract_NonEmptyAndNoDuplicates(t *testing.T) {
 	require.NotEmpty(t, c.Batting, "batting features required")
 	require.NotEmpty(t, c.Bowling, "bowling features required")
 	require.NotEmpty(t, c.Fielding, "fielding features required")
-	require.Equal(t, "1", c.Version, "default contract version")
+	require.Equal(t, "2", c.Version, "default contract version")
 
 	for _, name := range []string{"Batting", "Bowling", "Fielding"} {
 		var list []string
@@ -61,14 +61,14 @@ func TestLoadContract_WithVersionInJSON(t *testing.T) {
 	c, err := loadContract(abs)
 	require.NoError(t, err)
 	require.NotNil(t, c)
-	require.Equal(t, "1", c.Version)
+	require.Equal(t, "2", c.Version)
 	require.Equal(t, len(defaultContract.Batting), len(c.Batting))
 	require.Equal(t, len(defaultContract.Bowling), len(c.Bowling))
 	require.Equal(t, len(defaultContract.Fielding), len(c.Fielding))
 }
 
 func TestContractVersion_ReturnsVersionFromContract(t *testing.T) {
-	// Default or cached contract should have version "1"
+	// Default or cached contract should have version "2" (v2 adds raw windowed stat features)
 	v := ContractVersion()
 	require.NotEmpty(t, v)
 }

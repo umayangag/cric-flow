@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,7 @@ type battingSnapshotAtCutoff struct {
 	consistency float64
 	venue       float64
 	opposition  float64
+	raw         features.RawStats // v2: multi-scale windowed stats for ML to learn form/consistency
 }
 
 type bowlingSnapshotAtCutoff struct {
@@ -66,6 +68,7 @@ type bowlingSnapshotAtCutoff struct {
 	venue       float64
 	opposition  float64
 	careerAvg   float64 // simple mean of all historical bowling values (wickets per innings)
+	raw         features.RawStats // v2: multi-scale windowed stats
 }
 
 type fieldingSnapshotAtCutoff struct {
@@ -79,6 +82,18 @@ func toInnings(in []db.InnVal) []features.Innings {
 		out = append(out, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 	}
 	return out
+}
+
+// rawStatsToExportStrings returns 18 export values in contract order (mean_w3 through innings_in_last_90d).
+func rawStatsToExportStrings(r features.RawStats) []string {
+	f := func(x float64) string { return strconv.FormatFloat(x, 'g', -1, 64) }
+	return []string{
+		f(r.MeanW3), f(r.MeanW5), f(r.MeanW10), f(r.MeanW20),
+		f(r.StdW5), f(r.StdW10), f(r.MaxW10), f(r.MinW10), f(r.MedianW10),
+		f(r.Last1), f(r.Last2), f(r.Last3),
+		f(r.CareerMean), strconv.Itoa(r.CareerCount), f(r.PctZeroW10), f(r.TrendW5),
+		f(r.DaysSinceLast), strconv.Itoa(r.InningsInLast90D),
+	}
 }
 
 // computeBattingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
@@ -195,6 +210,7 @@ func computeBattingSnapshotFromHistories(
 		}
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
+	out.raw = features.WindowedStats(inn, asOf)
 	return out
 }
 
@@ -346,6 +362,7 @@ func computeBowlingSnapshotFromHistories(
 		}
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
+	out.raw = features.WindowedStats(inn, asOf)
 	return out
 }
 
@@ -494,6 +511,84 @@ func getPrecomputedFeaturesForMatch(
 			}
 		}
 	}
+
+	// 5) Overall raw windowed stats (scope=overall) for v2 contract
+	rows, err = db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (player_id) player_id,
+			batting_mean_w3, batting_mean_w5, batting_mean_w10, batting_mean_w20,
+			batting_std_w5, batting_std_w10, batting_max_w10, batting_min_w10, batting_median_w10,
+			batting_last_1, batting_last_2, batting_last_3,
+			batting_career_mean, batting_career_count, batting_pct_zero_w10, batting_trend_w5,
+			batting_days_since_last, batting_innings_in_last_90d,
+			bowling_mean_w3, bowling_mean_w5, bowling_mean_w10, bowling_mean_w20,
+			bowling_std_w5, bowling_std_w10, bowling_max_w10, bowling_min_w10, bowling_median_w10,
+			bowling_last_1, bowling_last_2, bowling_last_3,
+			bowling_career_mean, bowling_career_count, bowling_pct_zero_w10, bowling_trend_w5,
+			bowling_days_since_last, bowling_innings_in_last_90d
+		FROM feature_raw_stats_snapshots
+		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
+		ORDER BY player_id, as_of_date DESC
+	`, playerIDs, formatID, cutoffDate)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var pid int64
+		var bm3, bm5, bm10, bm20, bs5, bs10, bmax10, bmin10, bmed10 float64
+		var bl1, bl2, bl3, bcarM float64
+		var bcarC, binn90 int
+		var bpct0, btr5, bdays float64
+		var om3, om5, om10, om20, os5, os10, omax10, omin10, omed10 float64
+		var ol1, ol2, ol3, ocarM float64
+		var ocarC, oinn90 int
+		var opct0, otr5, odays float64
+		if err := rows.Scan(&pid,
+			&bm3, &bm5, &bm10, &bm20, &bs5, &bs10, &bmax10, &bmin10, &bmed10,
+			&bl1, &bl2, &bl3, &bcarM, &bcarC, &bpct0, &btr5, &bdays, &binn90,
+			&om3, &om5, &om10, &om20, &os5, &os10, &omax10, &omin10, &omed10,
+			&ol1, &ol2, &ol3, &ocarM, &ocarC, &opct0, &otr5, &odays, &oinn90); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		m := out[pid]
+		m["batting_mean_w3"] = bm3
+		m["batting_mean_w5"] = bm5
+		m["batting_mean_w10"] = bm10
+		m["batting_mean_w20"] = bm20
+		m["batting_std_w5"] = bs5
+		m["batting_std_w10"] = bs10
+		m["batting_max_w10"] = bmax10
+		m["batting_min_w10"] = bmin10
+		m["batting_median_w10"] = bmed10
+		m["batting_last_1"] = bl1
+		m["batting_last_2"] = bl2
+		m["batting_last_3"] = bl3
+		m["batting_career_mean"] = bcarM
+		m["batting_career_count"] = float64(bcarC)
+		m["batting_pct_zero_w10"] = bpct0
+		m["batting_trend_w5"] = btr5
+		m["batting_days_since_last"] = bdays
+		m["batting_innings_in_last_90d"] = float64(binn90)
+		m["bowling_mean_w3"] = om3
+		m["bowling_mean_w5"] = om5
+		m["bowling_mean_w10"] = om10
+		m["bowling_mean_w20"] = om20
+		m["bowling_std_w5"] = os5
+		m["bowling_std_w10"] = os10
+		m["bowling_max_w10"] = omax10
+		m["bowling_min_w10"] = omin10
+		m["bowling_median_w10"] = omed10
+		m["bowling_last_1"] = ol1
+		m["bowling_last_2"] = ol2
+		m["bowling_last_3"] = ol3
+		m["bowling_career_mean"] = ocarM
+		m["bowling_career_count"] = float64(ocarC)
+		m["bowling_pct_zero_w10"] = opct0
+		m["bowling_trend_w5"] = otr5
+		m["bowling_days_since_last"] = odays
+		m["bowling_innings_in_last_90d"] = float64(oinn90)
+	}
+	rows.Close()
 
 	return out, nil
 }
@@ -661,6 +756,9 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"opposition_batting_strength": oppBatStr,
 			"opposition_bowling_strength": oppBowlStr,
 			"match_date_unix":             float64(cutoff.Unix()),
+		}
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = get(k)
 		}
 		ensureContractKeysSkipSequence(feats)
 		out[pid] = feats

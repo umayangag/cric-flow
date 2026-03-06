@@ -115,6 +115,29 @@ Use this when setting up a new format, after major data changes, or when you wan
 
 ---
 
+## Feature contract v2 (raw windowed stats)
+
+**Contract version:** `configs/feature_vectors.json` and go-app use version **"2"**. Batting and bowling include **18 raw windowed stats** per type (e.g. `batting_mean_w3`, `batting_std_w10`, `batting_last_1`, …) alongside the existing formula features (form, form_short, form_long, momentum, consistency). These are computed in Go (`features.WindowedStats`) and stored in `feature_raw_stats_snapshots`; export and prediction emit them so the ML model can learn optimal combinations instead of fixed EWM/CV formulas.
+
+**Comparing feature sets:** To evaluate (a) old-only, (b) new-only, (c) combined:
+
+1. **Export** with v2 (current export already includes both formula and raw stats).
+2. **Old-only:** Temporarily restrict `FEATURE_COLS` in `ml/train_batting.py` / `ml/train_bowling.py` to the 5 formula + env/context columns (no raw stat names), then train and record metrics.
+3. **New-only:** Restrict to raw stat names + env/context (no form/consistency/momentum), train and record metrics.
+4. **Combined:** Use current `FEATURE_COLS` (formula + raw + env), train and record metrics.
+
+Use **walk-forward** and **feature importance** (e.g. from `TrainingPipeline.extract_feature_importance` or auto-tune report) to compare and to identify low-signal raw stats.
+
+**After evaluation:** If new (or combined) features improve accuracy:
+
+- **Deprecate** old form/consistency/momentum from the feature contract and from export/prediction (remove from `feature_vectors.json` and Go contract).
+- **Prune** raw stats with very low importance if needed to reduce dimensionality (especially for the win model).
+- **Clean up** Go precompute: stop computing and storing the old form/consistency snapshots once no consumer uses them; optionally simplify `WindowedStats` to only the windows/stats that matter.
+
+Until then, both formula and raw stats remain in the contract and in precompute for phased rollout.
+
+---
+
 ## Precompute and feature parameters
 
 Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.consistency_last_n`, `form_window_n`, `momentum_last_n`, etc.) control how form, consistency, and venue/opposition features are computed. They are used in **precompute** and in the export/training-data path (`GetFeatureExtractionParams()`). Changing them changes the feature space, so you must **re-precompute → re-export → re-train** (or re-auto-tune). There is no joint optimization of precompute params and model params in one run; treat precompute-param tuning as a separate, slower loop (e.g. change config → precompute → export → train/eval → compare metrics). See **config-and-data.md** for the full list of `features.*` keys.

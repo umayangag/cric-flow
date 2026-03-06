@@ -701,6 +701,11 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	headers := []string{
 		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
@@ -732,18 +737,20 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			windowN,
 			momentumN,
 		)
+		rawStrs := rawStatsToExportStrings(snap.raw)
 		row := []string{
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(
-				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+		}
+		row = append(row, rawStrs...)
+		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.matchDate.Format("2006-01-02"),
-		}
+		)
 		out = append(out, row)
 	}
 	return out, nil
@@ -806,6 +813,11 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		headers := []string{
 			"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
 			"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+			"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+			"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+			"batting_last_1", "batting_last_2", "batting_last_3",
+			"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+			"batting_days_since_last", "batting_innings_in_last_90d",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
@@ -894,6 +906,11 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 	headers := []string{
 		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
@@ -923,18 +940,20 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			windowN,
 			momentumN,
 		)
+		rawStrs := rawStatsToExportStrings(snap.raw)
 		row := []string{
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(
-				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+		}
+		row = append(row, rawStrs...)
+		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
 			r.seasonID, r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.matchDate.Format("2006-01-02"),
-		}
+		)
 		out = append(out, row)
 	}
 	return out, nil

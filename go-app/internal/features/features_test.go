@@ -152,3 +152,41 @@ func TestSortAndClip(t *testing.T) {
 		t.Fatalf("expected 0 due to strict before cutoff, got %d", len(out2))
 	}
 }
+
+func TestWindowedStats(t *testing.T) {
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	asOf := base.Add(24 * time.Hour)
+	mk := func(vals ...float64) []Innings {
+		out := make([]Innings, 0, len(vals))
+		for i, v := range vals {
+			out = append(out, Innings{Date: base.Add(time.Duration(i) * 24 * time.Hour), Value: v})
+		}
+		return out
+	}
+	t.Run("empty", func(t *testing.T) {
+		r := WindowedStats(nil, asOf)
+		if r.CareerCount != 0 || r.Last1 != 0 || r.MeanW5 != 0 {
+			t.Fatalf("empty innings should yield zero RawStats: %+v", r)
+		}
+	})
+	t.Run("typical", func(t *testing.T) {
+		inn := mk(10, 20, 30, 40, 50) // last=50, last2=40, last3=30; mean_w5=30, career_mean=30
+		r := WindowedStats(inn, asOf)
+		if r.CareerCount != 5 {
+			t.Fatalf("CareerCount want 5 got %d", r.CareerCount)
+		}
+		if !feq(r.Last1, 50, 1e-9) || !feq(r.Last2, 40, 1e-9) || !feq(r.Last3, 30, 1e-9) {
+			t.Fatalf("Last1/2/3 got %v %v %v", r.Last1, r.Last2, r.Last3)
+		}
+		if !feq(r.CareerMean, 30, 1e-9) {
+			t.Fatalf("CareerMean want 30 got %v", r.CareerMean)
+		}
+		if !feq(r.MeanW5, 30, 1e-9) {
+			t.Fatalf("MeanW5 want 30 got %v", r.MeanW5)
+		}
+		// trend_w5 = (50-10)/4 = 10
+		if !feq(r.TrendW5, 10, 1e-9) {
+			t.Fatalf("TrendW5 want 10 got %v", r.TrendW5)
+		}
+	})
+}

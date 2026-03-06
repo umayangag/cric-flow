@@ -162,6 +162,18 @@ func (Runner) RunReplay(
 						)
 						return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
 					}
+					batRaw := features.WindowedStats(batInn, asOf)
+					bowlRaw := features.WindowedStats(bowlInn, asOf)
+					if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batRaw, bowlRaw, "v1"); err != nil {
+						slog.Error(
+							"precompute-features(replay): upsert raw stats overall failed",
+							slog.Int64("player_id", pid),
+							slog.Int64("match_id", m.MatchID),
+							slog.String("format", formatCode),
+							slog.Any("err", err),
+						)
+						return fmt.Errorf("upsert raw stats overall pid=%d: %w", pid, err)
+					}
 
 					// opposition specific form
 					if m.OppositionID != 0 {
@@ -215,6 +227,18 @@ func (Runner) RunReplay(
 								slog.Any("err", err),
 							)
 							return fmt.Errorf("upsert form opposition pid=%d opp=%d: %w", pid, oppID, err)
+						}
+						oppBatRaw := features.WindowedStats(oppBatInn, asOf)
+						oppBowlRaw := features.WindowedStats(oppBowlInn, asOf)
+						if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatRaw, oppBowlRaw, "v1"); err != nil {
+							slog.Error(
+								"precompute-features(replay): upsert raw stats opposition failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("opposition_id", oppID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("upsert raw stats opposition pid=%d opp=%d: %w", pid, oppID, err)
 						}
 					}
 
@@ -270,6 +294,18 @@ func (Runner) RunReplay(
 								slog.Any("err", err),
 							)
 							return fmt.Errorf("upsert form venue pid=%d venue=%d: %w", pid, venueID, err)
+						}
+						venBatRaw := features.WindowedStats(venBatInn, asOf)
+						venBowlRaw := features.WindowedStats(venBowlInn, asOf)
+						if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID, venBatRaw, venBowlRaw, "v1"); err != nil {
+							slog.Error(
+								"precompute-features(replay): upsert raw stats venue failed",
+								slog.Int64("player_id", pid),
+								slog.Int64("venue_id", venueID),
+								slog.String("format", formatCode),
+								slog.Any("err", err),
+							)
+							return fmt.Errorf("upsert raw stats venue pid=%d venue=%d: %w", pid, venueID, err)
 						}
 					}
 					return nil
@@ -423,6 +459,17 @@ func (Runner) RunPointInTime(
 					slog.Any("err", err),
 				)
 				return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
+			}
+			batRaw := features.WindowedStats(batInn, asOf)
+			bowlRaw := features.WindowedStats(bowlInn, asOf)
+			if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batRaw, bowlRaw, "v1"); err != nil {
+				slog.Error(
+					"precompute-features(as-of): upsert raw stats overall failed",
+					slog.Int64("player_id", pid),
+					slog.String("format", formatCode),
+					slog.Any("err", err),
+				)
+				return fmt.Errorf("upsert raw stats overall pid=%d: %w", pid, err)
 			}
 			p := atomic.AddInt64(&processed, 1)
 			if p%1000 == 0 {

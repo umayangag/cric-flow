@@ -35,26 +35,54 @@ BOWL_SEQ_COLS = [
     "bowl_over_ball6_wkt_rate",
 ]
 
-FEATURE_COLS = [
-    "bowling_consistency",
-    "bowling_form",
-    "bowling_momentum",
-    "bowling_career_avg",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "inning",
-    "bowling_session",
-    "toss",
-    "bowling_venue",
-    "bowling_opposition",
-    "season_id",
-    "match_date_unix",
-] + BOWL_SEQ_COLS
+# Raw windowed stats (v2 contract) — ML learns optimal form/consistency from these.
+BOWL_RAW_STAT_COLS = [
+    "bowling_mean_w3",
+    "bowling_mean_w5",
+    "bowling_mean_w10",
+    "bowling_mean_w20",
+    "bowling_std_w5",
+    "bowling_std_w10",
+    "bowling_max_w10",
+    "bowling_min_w10",
+    "bowling_median_w10",
+    "bowling_last_1",
+    "bowling_last_2",
+    "bowling_last_3",
+    "bowling_career_mean",
+    "bowling_career_count",
+    "bowling_pct_zero_w10",
+    "bowling_trend_w5",
+    "bowling_days_since_last",
+    "bowling_innings_in_last_90d",
+]
+
+FEATURE_COLS = (
+    [
+        "bowling_consistency",
+        "bowling_form",
+        "bowling_momentum",
+        "bowling_career_avg",
+    ]
+    + BOWL_RAW_STAT_COLS
+    + [
+        "temp",
+        "wind",
+        "rain",
+        "humidity",
+        "cloud",
+        "pressure",
+        "viscosity",
+        "inning",
+        "bowling_session",
+        "toss",
+        "bowling_venue",
+        "bowling_opposition",
+        "season_id",
+        "match_date_unix",
+    ]
+    + BOWL_SEQ_COLS
+)
 
 TARGET_COLS = [
     "runs",
@@ -88,13 +116,19 @@ def _bowling_col_map() -> Dict[str, str]:
         "bowling_form": "bowling_form",
         "bowling_momentum": "bowling_momentum",
         "bowling_career_avg": "bowling_career_avg",
-        "runs": "runs",
-        "balls": "balls",
-        "wickets": "wickets",
-        "econ": "econ",
-        "innings_runs": "innings_runs",
-        "innings_wickets": "innings_wickets",
     }
+    for c in BOWL_RAW_STAT_COLS:
+        m[c] = c
+    m.update(
+        {
+            "runs": "runs",
+            "balls": "balls",
+            "wickets": "wickets",
+            "econ": "econ",
+            "innings_runs": "innings_runs",
+            "innings_wickets": "innings_wickets",
+        }
+    )
     for c in BOWL_SEQ_COLS:
         m[c] = c
     return m

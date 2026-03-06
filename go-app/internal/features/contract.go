@@ -27,10 +27,16 @@ var (
 )
 
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
+// Version "2" adds raw windowed stat features (batting_*_w*, bowling_*_w*, etc.) alongside formula-derived form/consistency.
 var defaultContract = contract{
-	Version: "1",
+	Version: "2",
 	Batting: []string{
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
 		"batting_inning", "batting_session", "toss", "venue", "opposition", "season", "match_date_unix",
 		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
@@ -38,6 +44,11 @@ var defaultContract = contract{
 	},
 	Bowling: []string{
 		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity",
 		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season", "match_date_unix",
 		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
@@ -132,4 +143,21 @@ func FieldingFeatureNames() []string {
 // Used for compatibility checks and observability.
 func ContractVersion() string {
 	return getContract().Version
+}
+
+// RawStatsFeatureNames returns the canonical list of raw windowed stat feature names (v2 contract).
+// Order: batting (18) then bowling (18). Used by export and prediction to fill/expect these keys.
+func RawStatsFeatureNames() []string {
+	return []string{
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
+	}
 }
