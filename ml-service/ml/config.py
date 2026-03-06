@@ -508,6 +508,7 @@ def get_reconciliation_config() -> Dict[str, Any]:
     runs_weight = recon.get("runs_weight", 1.0)
     wickets_weight = recon.get("wickets_weight", 1.0)
     soft_favor_top_order_balls = recon.get("soft_favor_top_order_balls", 0.0)
+    max_margin_fraction = recon.get("max_margin_fraction", 0.4)
     try:
         runs_weight = float(runs_weight)
     except (TypeError, ValueError):
@@ -520,10 +521,15 @@ def get_reconciliation_config() -> Dict[str, Any]:
         soft_favor_top_order_balls = float(soft_favor_top_order_balls)
     except (TypeError, ValueError):
         soft_favor_top_order_balls = 0.0
+    try:
+        max_margin_fraction = float(max_margin_fraction)
+    except (TypeError, ValueError):
+        max_margin_fraction = 0.4
     return {
         "runs_weight": runs_weight,
         "wickets_weight": wickets_weight,
         "soft_favor_top_order_balls": soft_favor_top_order_balls,
+        "max_margin_fraction": max_margin_fraction,
     }
 
 

@@ -248,7 +248,8 @@
     "reconciliation": {
       "runs_weight": 1.0,
       "wickets_weight": 1.0,
-      "soft_favor_top_order_balls": 0.0
+      "soft_favor_top_order_balls": 0.0,
+      "max_margin_fraction": 0.4
     },
     "win_coherence": {
       "scale": 25.0

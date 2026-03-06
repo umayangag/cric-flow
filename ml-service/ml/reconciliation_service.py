@@ -23,10 +23,23 @@ from .config import get_reconciliation_config
 from .reconciliation_core import ProblemBuilder, VariableKind
 from .reconciliation_solver import solve_reconciliation_problem
 
-# Maximum fraction of total runs that the win-probability margin can shift
-# between innings. At 0.4, a p=1.0 prediction moves ±40% of the total to
-# the winning side's innings. Kept conservative so both innings stay plausible.
-_MAX_MARGIN_FRACTION = 0.4
+def _get_max_margin_fraction() -> float:
+    """
+    Maximum fraction of total runs that the win-probability margin can shift
+    between innings.
+
+    At 0.4, a p=1.0 prediction moves ±40% of the total to the winning side's
+    innings. Kept conservative so both innings stay plausible.
+
+    Value is loaded from ml.reconciliation.max_margin_fraction when present in
+    config; falls back to 0.4 otherwise.
+    """
+    cfg = get_reconciliation_config()
+    raw = cfg.get("max_margin_fraction", 0.4)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.4
 
 
 @dataclass
@@ -131,7 +144,7 @@ def _win_conditioned_innings_targets(
     # At p=0.5 -> margin=0, at p=1.0 -> margin=total/2 (team1 wins by half total).
     # Uses a simple linear mapping, clipped to keep both totals non-negative.
     margin_fraction = (win_probability - 0.5) * 2.0
-    max_margin = total * _MAX_MARGIN_FRACTION
+    max_margin = total * _get_max_margin_fraction()
     implied_margin = margin_fraction * max_margin
     inn1_target = max(0.0, (total + implied_margin) / 2.0)
     inn2_target = max(0.0, (total - implied_margin) / 2.0)

@@ -485,7 +485,7 @@ func predictTeamsWithIntermediates(
 			sel1, sel2, err = selectTeamsByWinProbability(
 				ctx, enhanced, tsPool1, tsPool2, constraints,
 				pool1, pool2, weights,
-				format, formatID, venueIDVal, opp1IDVal, opp2IDVal, float64(cutoff.Unix()), input.Weather, allFeats,
+				format, formatID, venueIDVal, opp1IDVal, opp2IDVal, float64(input.MatchDate.Unix()), input.Weather, allFeats,
 			)
 			if err != nil {
 				slog.WarnContext(ctx, "win-prob selection failed, falling back to standard", slog.Any("err", err))
