@@ -738,7 +738,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := make([]string, 0, 11+len(rawStrs)+20)
+		row := make([]string, 0, len(headers))
 		row = append(row,
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
 			floatToExport(
@@ -944,7 +944,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := make([]string, 0, 11+len(rawStrs)+20)
+		row := make([]string, 0, len(headers))
 		row = append(row,
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
 			floatToExport(

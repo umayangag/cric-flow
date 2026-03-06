@@ -437,7 +437,7 @@ func upsertFormConsistencyAndRawStatsForScope(
 	batCons, nCbat := features.Consistency(batInn, lastN)
 	bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
 	if err := db.UpsertFeatureFormSnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
-		batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+		batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, features.ContractVersion()); err != nil {
 		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
 		if matchID != 0 {
 			attrs = append(attrs, slog.Int64("match_id", matchID))
@@ -446,7 +446,7 @@ func upsertFormConsistencyAndRawStatsForScope(
 		return fmt.Errorf("upsert form %s pid=%d: %w", scope, playerID, err)
 	}
 	if err := db.UpsertFeatureConsistencySnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
-		batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
+		batCons, bowlCons, lastN, nCbat, nCbowl, features.ContractVersion()); err != nil {
 		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
 		if matchID != 0 {
 			attrs = append(attrs, slog.Int64("match_id", matchID))
@@ -456,7 +456,7 @@ func upsertFormConsistencyAndRawStatsForScope(
 	}
 	batRaw := features.WindowedStats(batInn, asOf)
 	bowlRaw := features.WindowedStats(bowlInn, asOf)
-	if err := db.UpsertFeatureRawStatsSnapshot(ctx, playerID, asOf, formatID, scope, scopeID, batRaw, bowlRaw, "v1"); err != nil {
+	if err := db.UpsertFeatureRawStatsSnapshot(ctx, playerID, asOf, formatID, scope, scopeID, batRaw, bowlRaw, features.ContractVersion()); err != nil {
 		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
 		if matchID != 0 {
 			attrs = append(attrs, slog.Int64("match_id", matchID))

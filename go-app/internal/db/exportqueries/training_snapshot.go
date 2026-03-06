@@ -534,59 +534,59 @@ func getPrecomputedFeaturesForMatch(
 	}
 	for rows.Next() {
 		var pid int64
-		var bm3, bm5, bm10, bm20, bs5, bs10, bmax10, bmin10, bmed10 float64
-		var bl1, bl2, bl3, bcarM float64
-		var bcarC, binn90 int
-		var bpct0, btr5, bdays float64
-		var om3, om5, om10, om20, os5, os10, omax10, omin10, omed10 float64
-		var ol1, ol2, ol3, ocarM float64
-		var ocarC, oinn90 int
-		var opct0, otr5, odays float64
+		var batMeanW3, batMeanW5, batMeanW10, batMeanW20, batStdW5, batStdW10, batMaxW10, batMinW10, batMedianW10 float64
+		var batLast1, batLast2, batLast3, batCareerMean float64
+		var batCareerCount, batInningsInLast90d int
+		var batPctZeroW10, batTrendW5, batDaysSinceLast float64
+		var bowlMeanW3, bowlMeanW5, bowlMeanW10, bowlMeanW20, bowlStdW5, bowlStdW10, bowlMaxW10, bowlMinW10, bowlMedianW10 float64
+		var bowlLast1, bowlLast2, bowlLast3, bowlCareerMean float64
+		var bowlCareerCount, bowlInningsInLast90d int
+		var bowlPctZeroW10, bowlTrendW5, bowlDaysSinceLast float64
 		if err := rows.Scan(&pid,
-			&bm3, &bm5, &bm10, &bm20, &bs5, &bs10, &bmax10, &bmin10, &bmed10,
-			&bl1, &bl2, &bl3, &bcarM, &bcarC, &bpct0, &btr5, &bdays, &binn90,
-			&om3, &om5, &om10, &om20, &os5, &os10, &omax10, &omin10, &omed10,
-			&ol1, &ol2, &ol3, &ocarM, &ocarC, &opct0, &otr5, &odays, &oinn90); err != nil {
+			&batMeanW3, &batMeanW5, &batMeanW10, &batMeanW20, &batStdW5, &batStdW10, &batMaxW10, &batMinW10, &batMedianW10,
+			&batLast1, &batLast2, &batLast3, &batCareerMean, &batCareerCount, &batPctZeroW10, &batTrendW5, &batDaysSinceLast, &batInningsInLast90d,
+			&bowlMeanW3, &bowlMeanW5, &bowlMeanW10, &bowlMeanW20, &bowlStdW5, &bowlStdW10, &bowlMaxW10, &bowlMinW10, &bowlMedianW10,
+			&bowlLast1, &bowlLast2, &bowlLast3, &bowlCareerMean, &bowlCareerCount, &bowlPctZeroW10, &bowlTrendW5, &bowlDaysSinceLast, &bowlInningsInLast90d); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		m := out[pid]
-		m["batting_mean_w3"] = bm3
-		m["batting_mean_w5"] = bm5
-		m["batting_mean_w10"] = bm10
-		m["batting_mean_w20"] = bm20
-		m["batting_std_w5"] = bs5
-		m["batting_std_w10"] = bs10
-		m["batting_max_w10"] = bmax10
-		m["batting_min_w10"] = bmin10
-		m["batting_median_w10"] = bmed10
-		m["batting_last_1"] = bl1
-		m["batting_last_2"] = bl2
-		m["batting_last_3"] = bl3
-		m["batting_career_mean"] = bcarM
-		m["batting_career_count"] = float64(bcarC)
-		m["batting_pct_zero_w10"] = bpct0
-		m["batting_trend_w5"] = btr5
-		m["batting_days_since_last"] = bdays
-		m["batting_innings_in_last_90d"] = float64(binn90)
-		m["bowling_mean_w3"] = om3
-		m["bowling_mean_w5"] = om5
-		m["bowling_mean_w10"] = om10
-		m["bowling_mean_w20"] = om20
-		m["bowling_std_w5"] = os5
-		m["bowling_std_w10"] = os10
-		m["bowling_max_w10"] = omax10
-		m["bowling_min_w10"] = omin10
-		m["bowling_median_w10"] = omed10
-		m["bowling_last_1"] = ol1
-		m["bowling_last_2"] = ol2
-		m["bowling_last_3"] = ol3
-		m["bowling_career_mean"] = ocarM
-		m["bowling_career_count"] = float64(ocarC)
-		m["bowling_pct_zero_w10"] = opct0
-		m["bowling_trend_w5"] = otr5
-		m["bowling_days_since_last"] = odays
-		m["bowling_innings_in_last_90d"] = float64(oinn90)
+		m["batting_mean_w3"] = batMeanW3
+		m["batting_mean_w5"] = batMeanW5
+		m["batting_mean_w10"] = batMeanW10
+		m["batting_mean_w20"] = batMeanW20
+		m["batting_std_w5"] = batStdW5
+		m["batting_std_w10"] = batStdW10
+		m["batting_max_w10"] = batMaxW10
+		m["batting_min_w10"] = batMinW10
+		m["batting_median_w10"] = batMedianW10
+		m["batting_last_1"] = batLast1
+		m["batting_last_2"] = batLast2
+		m["batting_last_3"] = batLast3
+		m["batting_career_mean"] = batCareerMean
+		m["batting_career_count"] = float64(batCareerCount)
+		m["batting_pct_zero_w10"] = batPctZeroW10
+		m["batting_trend_w5"] = batTrendW5
+		m["batting_days_since_last"] = batDaysSinceLast
+		m["batting_innings_in_last_90d"] = float64(batInningsInLast90d)
+		m["bowling_mean_w3"] = bowlMeanW3
+		m["bowling_mean_w5"] = bowlMeanW5
+		m["bowling_mean_w10"] = bowlMeanW10
+		m["bowling_mean_w20"] = bowlMeanW20
+		m["bowling_std_w5"] = bowlStdW5
+		m["bowling_std_w10"] = bowlStdW10
+		m["bowling_max_w10"] = bowlMaxW10
+		m["bowling_min_w10"] = bowlMinW10
+		m["bowling_median_w10"] = bowlMedianW10
+		m["bowling_last_1"] = bowlLast1
+		m["bowling_last_2"] = bowlLast2
+		m["bowling_last_3"] = bowlLast3
+		m["bowling_career_mean"] = bowlCareerMean
+		m["bowling_career_count"] = float64(bowlCareerCount)
+		m["bowling_pct_zero_w10"] = bowlPctZeroW10
+		m["bowling_trend_w5"] = bowlTrendW5
+		m["bowling_days_since_last"] = bowlDaysSinceLast
+		m["bowling_innings_in_last_90d"] = float64(bowlInningsInLast90d)
 	}
 	rows.Close()
 
