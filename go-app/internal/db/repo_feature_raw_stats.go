@@ -3,12 +3,16 @@ package db
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
+
+// safeSQLIdentifier matches names that are safe to use as column names (no SQL injection).
+var safeSQLIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 var (
 	upsertRawStatsInsertColumns string
@@ -21,6 +25,11 @@ func init() {
 	const wantRaw = 36
 	if len(names) != wantRaw {
 		panic("features.RawStatsFeatureNames() must return 18 batting + 18 bowling; got " + strconv.Itoa(len(names)))
+	}
+	for i, n := range names {
+		if !safeSQLIdentifier.MatchString(n) {
+			panic("features.RawStatsFeatureNames()[" + strconv.Itoa(i) + "] invalid column name (SQL injection risk): " + n)
+		}
 	}
 	// INSERT columns: fixed prefix + raw stat names + source_version
 	upsertRawStatsInsertColumns = "player_id, as_of_date, format_id, scope, scope_id, " + strings.Join(names, ", ") + ", source_version"

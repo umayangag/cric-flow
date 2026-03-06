@@ -414,6 +414,17 @@ func logSeqCalcTrigger(formatCode, mode string) {
 	)
 }
 
+// logSnapshotUpsertError logs a failed snapshot upsert and returns an error. Used by
+// upsertFormConsistencyAndRawStatsForScope to avoid duplicating error-handling logic.
+func logSnapshotUpsertError(scope string, playerID int64, snapshotKind string, err error, mode string, formatCode string, matchID int64) error {
+	attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+	if matchID != 0 {
+		attrs = append(attrs, slog.Int64("match_id", matchID))
+	}
+	slog.Error("precompute-features("+mode+"): upsert "+snapshotKind+" failed", attrs...)
+	return fmt.Errorf("upsert %s %s pid=%d: %w", snapshotKind, scope, playerID, err)
+}
+
 // upsertFormConsistencyAndRawStatsForScope computes EWM, Consistency, and WindowedStats from the given
 // bat/bowl innings (already sorted, clipped, and optionally window-limited by the caller) and upserts
 // form, consistency, and raw stats snapshots for the given scope. mode is "replay" or "as-of" for logging;
@@ -438,31 +449,16 @@ func upsertFormConsistencyAndRawStatsForScope(
 	bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
 	if err := db.UpsertFeatureFormSnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
 		batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, features.ContractVersion()); err != nil {
-		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
-		if matchID != 0 {
-			attrs = append(attrs, slog.Int64("match_id", matchID))
-		}
-		slog.Error("precompute-features("+mode+"): upsert form failed", attrs...)
-		return fmt.Errorf("upsert form %s pid=%d: %w", scope, playerID, err)
+		return logSnapshotUpsertError(scope, playerID, "form", err, mode, formatCode, matchID)
 	}
 	if err := db.UpsertFeatureConsistencySnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
 		batCons, bowlCons, lastN, nCbat, nCbowl, features.ContractVersion()); err != nil {
-		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
-		if matchID != 0 {
-			attrs = append(attrs, slog.Int64("match_id", matchID))
-		}
-		slog.Error("precompute-features("+mode+"): upsert consistency failed", attrs...)
-		return fmt.Errorf("upsert consistency %s pid=%d: %w", scope, playerID, err)
+		return logSnapshotUpsertError(scope, playerID, "consistency", err, mode, formatCode, matchID)
 	}
 	batRaw := features.WindowedStats(batInn, asOf)
 	bowlRaw := features.WindowedStats(bowlInn, asOf)
 	if err := db.UpsertFeatureRawStatsSnapshot(ctx, playerID, asOf, formatID, scope, scopeID, batRaw, bowlRaw, features.ContractVersion()); err != nil {
-		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
-		if matchID != 0 {
-			attrs = append(attrs, slog.Int64("match_id", matchID))
-		}
-		slog.Error("precompute-features("+mode+"): upsert raw stats failed", attrs...)
-		return fmt.Errorf("upsert raw stats %s pid=%d: %w", scope, playerID, err)
+		return logSnapshotUpsertError(scope, playerID, "raw stats", err, mode, formatCode, matchID)
 	}
 	return nil
 }
