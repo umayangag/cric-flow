@@ -188,7 +188,7 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		COALESCE(s.id, 0) AS season,
 		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
@@ -284,7 +284,7 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		s.id AS season_id,
 		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
@@ -403,7 +403,7 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
@@ -640,7 +640,7 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
