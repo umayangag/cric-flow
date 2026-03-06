@@ -1,7 +1,7 @@
 // Package precompute orchestrates precompute phases and maintains in-memory
-// status for long-running feature computations. Pipeline precompute uses the
-// snapshot tables (feature_form_snapshots, feature_consistency_snapshots) via
-// the precompute-features runner; the legacy _fmt tables are no longer used.
+// status for long-running feature computations. Pipeline precompute populates
+// feature_raw_stats_snapshots (and optionally sequence tables) via the
+// precompute-features runner.
 package precompute
 
 import (
@@ -39,8 +39,7 @@ type RunOpts struct {
 }
 
 // Run orchestrates precompute for the given season and list of format codes.
-// It populates feature_form_snapshots and feature_consistency_snapshots (and
-// triggers sequence features) per format. If formats is empty, computes for all formats.
+// It populates feature_raw_stats_snapshots (and optionally sequence features) per format. If formats is empty, computes for all formats.
 // Multiple formats run in parallel, sharing the resource-aware concurrency limit (80%
 // of available memory/CPU from config/env); each format gets an equal share of workers.
 // Season is ignored; the snapshot runner replays all matches chronologically.

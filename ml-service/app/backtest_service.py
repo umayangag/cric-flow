@@ -17,7 +17,9 @@ from .models import (
     BacktestMetrics,
     BacktestPlayerPred,
     BattingFeatures,
+    BATTING_RAW_STAT_KEYS,
     BowlingFeatures,
+    BOWLING_RAW_STAT_KEYS,
     HistoricalMatchBacktestRequest,
     HistoricalMatchBacktestResponse,
     MatchComparison,
@@ -113,13 +115,10 @@ def build_batting_features_from_map(
     match_date_unix = (
         _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
     )
-    bat_form = max(0.0, _get_required_float(d, "batting_form"))
-    base = dict(
-        batting_consistency=max(0.0, _get_required_float(d, "batting_consistency")),
-        batting_form=bat_form,
-        batting_form_short=max(0.0, _float(d, "batting_form_short", bat_form)),
-        batting_form_long=max(0.0, _float(d, "batting_form_long", bat_form)),
-        batting_momentum=_float(d, "batting_momentum", 0.0),
+    base = {}
+    for k in BATTING_RAW_STAT_KEYS:
+        base[k] = max(0.0, _float(d, k, 0.0))
+    base.update(
         batting_temp=_get_required_int(d, "batting_temp"),
         batting_wind=_get_required_int(d, "batting_wind"),
         batting_rain=_get_required_int(d, "batting_rain"),
@@ -213,14 +212,10 @@ def build_bowling_features_from_map(
     match_date_unix = (
         _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
     )
-    bowl_form = max(0.0, _get_required_float(d, "bowling_form"))
-    base = dict(
-        bowling_consistency=max(0.0, _get_required_float(d, "bowling_consistency")),
-        bowling_form=bowl_form,
-        bowling_form_short=max(0.0, _float(d, "bowling_form_short", bowl_form)),
-        bowling_form_long=max(0.0, _float(d, "bowling_form_long", bowl_form)),
-        bowling_momentum=_float(d, "bowling_momentum", 0.0),
-        bowling_career_avg=max(0.0, _float(d, "bowling_career_avg", bowl_form)),
+    base = {}
+    for k in BOWLING_RAW_STAT_KEYS:
+        base[k] = max(0.0, _float(d, k, 0.0))
+    base.update(
         bowling_temp=_get_required_int(d, "bowling_temp"),
         bowling_wind=_get_required_int(d, "bowling_wind"),
         bowling_rain=_get_required_int(d, "bowling_rain"),

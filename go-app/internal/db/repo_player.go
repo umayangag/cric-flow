@@ -13,7 +13,7 @@ type Player struct {
 	IsRetired      int16
 }
 
-// PlayerConsistency holds consistency values for a player/format (from feature_consistency_snapshots or legacy).
+// PlayerConsistency holds consistency values for a player/format (from feature_raw_stats_snapshots std_w10).
 type PlayerConsistency struct {
 	PlayerID           int64
 	SeasonID           int64
@@ -82,10 +82,10 @@ func GetPlayerConsistency(
 		return nil, err
 	}
 
-	// Read from feature_consistency_snapshots (latest per player/format); seasonID kept for API compatibility.
+	// Read from feature_raw_stats_snapshots (std_w10 as consistency; latest per player/format); seasonID kept for API compatibility.
 	row := Pool.QueryRow(ctx, `
-		SELECT $1::bigint, $2::bigint, $3::bigint, batting_value::real, bowling_value::real
-		FROM feature_consistency_snapshots
+		SELECT $1::bigint, $2::bigint, $3::bigint, batting_std_w10::real, bowling_std_w10::real
+		FROM feature_raw_stats_snapshots
 		WHERE player_id = $1 AND format_id = $3 AND scope = 'overall' AND scope_id IS NULL
 		ORDER BY as_of_date DESC
 		LIMIT 1

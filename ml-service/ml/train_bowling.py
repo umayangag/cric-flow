@@ -64,13 +64,7 @@ BOWL_SEQ_COLS = [
 ]
 
 FEATURE_COLS = (
-    [
-        "bowling_consistency",
-        "bowling_form",
-        "bowling_momentum",
-        "bowling_career_avg",
-    ]
-    + BOWL_RAW_STAT_COLS
+    BOWL_RAW_STAT_COLS
     + [
         "temp",
         "wind",
@@ -118,10 +112,6 @@ def _bowling_col_map() -> Dict[str, str]:
         "bowling_opposition": "bowling_opposition",
         "season_id": "season_id",
         "match_date_unix": "match_date_unix",
-        "bowling_consistency": "bowling_consistency",
-        "bowling_form": "bowling_form",
-        "bowling_momentum": "bowling_momentum",
-        "bowling_career_avg": "bowling_career_avg",
     }
     m.update({c: c for c in BOWL_RAW_STAT_COLS})
     m.update(
@@ -142,10 +132,6 @@ def _bowling_col_map() -> Dict[str, str]:
 def _prepare_bowling_df(df: pd.DataFrame, spec: ModelSpec) -> pd.DataFrame:
     """Normalize column names and fill missing columns for bowling data."""
     df = df.rename(columns=_bowling_col_map())
-    if "bowling_momentum" not in df.columns:
-        df["bowling_momentum"] = 0.0
-    if "bowling_career_avg" not in df.columns:
-        df["bowling_career_avg"] = df["bowling_form"] if "bowling_form" in df.columns else 0.0
     # Normalize toss: CSV/API may have "bat"/"field" strings; model expects 0/1
     if "toss" in df.columns and df["toss"].dtype == object:
         df["toss"] = df["toss"].astype(str).str.strip().str.lower().map(lambda x: 1.0 if x == "bat" else 0.0)

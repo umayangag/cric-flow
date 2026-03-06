@@ -10,8 +10,8 @@ Config example (ml-service/config.json):
   "ml": {
     "feature_transforms": {
       "batting": {
-        "add_interactions": [["batting_form", "venue"], ["batting_consistency", "batting_form"]],
-        "add_log1p": ["batting_form"]
+        "add_interactions": [["batting_mean_w5", "venue"], ["batting_std_w10", "batting_mean_w5"]],
+        "add_log1p": ["batting_mean_w5"]
       },
       "bowling": { "add_interactions": [], "add_log1p": [] },
       "fielding": { "add_interactions": [], "add_log1p": [] }

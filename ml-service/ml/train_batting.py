@@ -64,14 +64,7 @@ BAT_SEQ_COLS = [
 ]
 
 FEATURE_COLS = (
-    [
-        "batting_consistency",
-        "batting_form",
-        "batting_form_short",
-        "batting_form_long",
-        "batting_momentum",
-    ]
-    + BAT_RAW_STAT_COLS
+    BAT_RAW_STAT_COLS
     + [
         "temp",
         "wind",
@@ -121,11 +114,6 @@ def _batting_col_map() -> Dict[str, str]:
         "batting_opposition": "batting_opposition",
         "season_id": "season_id",
         "match_date_unix": "match_date_unix",
-        "batting_consistency": "batting_consistency",
-        "batting_form": "batting_form",
-        "batting_form_short": "batting_form_short",
-        "batting_form_long": "batting_form_long",
-        "batting_momentum": "batting_momentum",
     }
     m.update({c: c for c in BAT_RAW_STAT_COLS})
     m.update(
@@ -147,11 +135,6 @@ def _batting_col_map() -> Dict[str, str]:
 def _prepare_batting_df(df: pd.DataFrame, spec: ModelSpec) -> pd.DataFrame:
     """Normalize column names and fill missing columns for batting data."""
     df = df.rename(columns=_batting_col_map())
-    for col in ("batting_form_short", "batting_form_long"):
-        if col not in df.columns and "batting_form" in df.columns:
-            df[col] = df["batting_form"]
-    if "batting_momentum" not in df.columns:
-        df["batting_momentum"] = 0.0
     # seq cols are handled by TrainingPipeline.prepare_dataframe
     return df
 

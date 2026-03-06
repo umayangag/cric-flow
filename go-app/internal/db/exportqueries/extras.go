@@ -53,32 +53,32 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		JOIN matches_filtered m ON m.match_id = bw.match_id
 	),
 	bat_consistency AS (
-		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id)
-			bp.match_id, fcs.batting_value AS v
+		SELECT DISTINCT ON (r.player_id, r.format_id, bp.match_id)
+			bp.match_id, r.batting_std_w10 AS v
 		FROM bat_players bp
-		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
-		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, fcs.as_of_date DESC
+		JOIN feature_raw_stats_snapshots r ON r.player_id = bp.player_id AND r.format_id = bp.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= bp.match_date
+		ORDER BY r.player_id, r.format_id, bp.match_id, r.as_of_date DESC
 	),
 	bowl_consistency AS (
-		SELECT DISTINCT ON (fcs.player_id, fcs.format_id, bp.match_id)
-			bp.match_id, fcs.bowling_value AS v
+		SELECT DISTINCT ON (r.player_id, r.format_id, bp.match_id)
+			bp.match_id, r.bowling_std_w10 AS v
 		FROM bowl_players bp
-		JOIN feature_consistency_snapshots fcs ON fcs.player_id = bp.player_id AND fcs.format_id = bp.format_id AND fcs.scope = 'overall' AND fcs.scope_id IS NULL AND fcs.as_of_date <= bp.match_date
-		ORDER BY fcs.player_id, fcs.format_id, bp.match_id, fcs.as_of_date DESC
+		JOIN feature_raw_stats_snapshots r ON r.player_id = bp.player_id AND r.format_id = bp.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= bp.match_date
+		ORDER BY r.player_id, r.format_id, bp.match_id, r.as_of_date DESC
 	),
 	bat_form AS (
-		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id)
-			bp.match_id, ff.batting_value AS v
+		SELECT DISTINCT ON (r.player_id, r.format_id, bp.match_id)
+			bp.match_id, r.batting_mean_w5 AS v
 		FROM bat_players bp
-		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
-		ORDER BY ff.player_id, ff.format_id, bp.match_id, ff.as_of_date DESC
+		JOIN feature_raw_stats_snapshots r ON r.player_id = bp.player_id AND r.format_id = bp.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= bp.match_date
+		ORDER BY r.player_id, r.format_id, bp.match_id, r.as_of_date DESC
 	),
 	bowl_form AS (
-		SELECT DISTINCT ON (ff.player_id, ff.format_id, bp.match_id)
-			bp.match_id, ff.bowling_value AS v
+		SELECT DISTINCT ON (r.player_id, r.format_id, bp.match_id)
+			bp.match_id, r.bowling_mean_w5 AS v
 		FROM bowl_players bp
-		JOIN feature_form_snapshots ff ON ff.player_id = bp.player_id AND ff.format_id = bp.format_id AND ff.scope = 'overall' AND ff.scope_id IS NULL AND ff.as_of_date <= bp.match_date
-		ORDER BY ff.player_id, ff.format_id, bp.match_id, ff.as_of_date DESC
+		JOIN feature_raw_stats_snapshots r ON r.player_id = bp.player_id AND r.format_id = bp.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= bp.match_date
+		ORDER BY r.player_id, r.format_id, bp.match_id, r.as_of_date DESC
 	),
 	bat_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_consistency GROUP BY match_id),
 	bowl_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_consistency GROUP BY match_id),

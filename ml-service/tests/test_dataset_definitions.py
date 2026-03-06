@@ -23,13 +23,15 @@ def test_player_columns_non_empty():
 
 
 def test_input_output_batting_columns():
-    assert "batting_consistency" in input_batting_columns
+    assert "batting_mean_w5" in input_batting_columns
+    assert "batting_std_w10" in input_batting_columns
     assert "runs_scored" in output_batting_columns
     assert "strike_rate" in derived_batting_columns
 
 
 def test_input_output_bowling_columns():
-    assert "bowling_consistency" in input_bowling_columns
+    assert "bowling_mean_w5" in input_bowling_columns
+    assert "bowling_std_w10" in input_bowling_columns
     assert "runs_conceded" in output_bowling_columns
     assert "econ" in derived_bowling_columns
 

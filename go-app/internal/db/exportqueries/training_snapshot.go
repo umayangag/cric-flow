@@ -369,10 +369,9 @@ func computeBowlingSnapshotFromHistories(
 	return out
 }
 
-// getPrecomputedFeaturesForMatch reads form, consistency, venue, and opposition from the precomputed
-// snapshot tables (feature_form_snapshots, feature_consistency_snapshots) populated by the precompute
-// cmd tool per format. Returns a map of playerID -> feature name -> value; only keys present in the
-// snapshots are set (so callers can fall back to on-the-fly computation for missing keys).
+// getPrecomputedFeaturesForMatch reads raw windowed stats and venue/opposition from
+// feature_raw_stats_snapshots (populated by the precompute cmd per format). Returns a map of
+// playerID -> feature name -> value. Venue and opposition use mean_w5 as the scalar for display/context.
 func getPrecomputedFeaturesForMatch(
 	ctx context.Context,
 	cutoff time.Time,
@@ -390,55 +389,11 @@ func getPrecomputedFeaturesForMatch(
 		out[pid] = make(map[string]float64)
 	}
 
-	// 1) Overall form (scope=overall, scope_id NULL)
-	rows, err := db.Pool.Query(ctx, `
-		SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
-		FROM feature_form_snapshots
-		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
-		ORDER BY player_id, as_of_date DESC
-	`, playerIDs, formatID, cutoffDate)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var pid int64
-		var batVal, bowlVal float64
-		if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		out[pid]["batting_form"] = batVal
-		out[pid]["bowling_form"] = bowlVal
-	}
-	rows.Close()
-
-	// 2) Overall consistency
-	rows, err = db.Pool.Query(ctx, `
-		SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
-		FROM feature_consistency_snapshots
-		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
-		ORDER BY player_id, as_of_date DESC
-	`, playerIDs, formatID, cutoffDate)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var pid int64
-		var batVal, bowlVal float64
-		if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		out[pid]["batting_consistency"] = batVal
-		out[pid]["bowling_consistency"] = bowlVal
-	}
-	rows.Close()
-
-	// 3) Venue form (when match has a venue)
+	// 1) Venue scope (when match has a venue): use mean_w5 as venue effect
 	if venueID != nil && *venueID != 0 {
-		rows, err = db.Pool.Query(ctx, `
-			SELECT DISTINCT ON (player_id) player_id, batting_value, bowling_value
-			FROM feature_form_snapshots
+		rows, err := db.Pool.Query(ctx, `
+			SELECT DISTINCT ON (player_id) player_id, batting_mean_w5, bowling_mean_w5
+			FROM feature_raw_stats_snapshots
 			WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'venue' AND scope_id = $3 AND as_of_date <= $4
 			ORDER BY player_id, as_of_date DESC
 		`, playerIDs, formatID, *venueID, cutoffDate)
@@ -447,19 +402,19 @@ func getPrecomputedFeaturesForMatch(
 		}
 		for rows.Next() {
 			var pid int64
-			var batVal, bowlVal float64
-			if err := rows.Scan(&pid, &batVal, &bowlVal); err != nil {
+			var batVenue, bowlVenue float64
+			if err := rows.Scan(&pid, &batVenue, &bowlVenue); err != nil {
 				rows.Close()
 				return nil, err
 			}
-			out[pid]["batting_venue"] = batVal
-			out[pid]["bowling_venue"] = bowlVal
-			out[pid]["venue"] = batVal
+			out[pid]["batting_venue"] = batVenue
+			out[pid]["bowling_venue"] = bowlVenue
+			out[pid]["venue"] = batVenue
 		}
 		rows.Close()
 	}
 
-	// 4) Opposition form: (player_id, scope_id) pairs for batting and bowling opposition
+	// 2) Opposition scope: (player_id, scope_id) pairs; use mean_w5 as opposition effect
 	var oppPids, oppScopeIDs []int64
 	for _, pid := range playerIDs {
 		opps := playerOpps[pid]
@@ -473,9 +428,9 @@ func getPrecomputedFeaturesForMatch(
 		}
 	}
 	if len(oppPids) > 0 {
-		rows, err = db.Pool.Query(ctx, `
-			SELECT DISTINCT ON (f.player_id, f.scope_id) f.player_id, f.scope_id, f.batting_value, f.bowling_value
-			FROM feature_form_snapshots f
+		rows, err := db.Pool.Query(ctx, `
+			SELECT DISTINCT ON (f.player_id, f.scope_id) f.player_id, f.scope_id, f.batting_mean_w5, f.bowling_mean_w5
+			FROM feature_raw_stats_snapshots f
 			INNER JOIN unnest($3::bigint[], $4::bigint[]) AS pairs(pid, sid) ON f.player_id = pairs.pid AND f.scope_id = pairs.sid
 			WHERE f.format_id = $1 AND f.scope = 'opposition' AND f.as_of_date <= $2
 			ORDER BY f.player_id, f.scope_id, f.as_of_date DESC
@@ -515,8 +470,8 @@ func getPrecomputedFeaturesForMatch(
 		}
 	}
 
-	// 5) Overall raw windowed stats (scope=overall) for v2 contract
-	rows, err = db.Pool.Query(ctx, rawStatsSnapshotQuery, playerIDs, formatID, cutoffDate)
+	// 3) Overall raw windowed stats (scope=overall) for v2 contract
+	rows, err := db.Pool.Query(ctx, rawStatsSnapshotQuery, playerIDs, formatID, cutoffDate)
 	if err != nil {
 		return nil, err
 	}
@@ -579,10 +534,8 @@ const rawStatsSnapshotQuery = `
 		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
 		ORDER BY player_id, as_of_date DESC`
 
-// requiredPrecomputedKeysBase are the feature keys required for form/consistency (match and no-match contexts both use these).
-var requiredPrecomputedKeysBase = []string{
-	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
-}
+// requiredPrecomputedKeysBase is empty; raw stats replace form/consistency and are optional for new/debut players (filled with 0).
+var requiredPrecomputedKeysBase = []string{}
 
 // WeatherOverride optionally overrides weather feature values (otherwise 0) for future-match prediction.
 type WeatherOverride struct {
@@ -613,11 +566,11 @@ func computeOppositionStrength(
 	var sumBat, sumBowl float64
 	var nBat, nBowl int
 	for _, pc := range precomp {
-		if b, ok := pc["batting_form"]; ok {
+		if b, ok := pc["batting_mean_w5"]; ok {
 			sumBat += b
 			nBat++
 		}
-		if b, ok := pc["bowling_form"]; ok {
+		if b, ok := pc["bowling_mean_w5"]; ok {
 			sumBowl += b
 			nBowl++
 		}
@@ -699,32 +652,13 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			}
 			return 0
 		}
-		getOrDefault := func(k string, d float64) float64 {
-			if v, ok := pc[k]; ok {
-				return v
-			}
-			return d
-		}
 		wt, wh, ww, wr, wc, wp := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 		if weather != nil {
 			wt, wh, ww, wr, wc, wp = weather.Temp, weather.Humidity, weather.Wind, weather.Rain, weather.Cloud, weather.Pressure
 		}
-		batForm := get("batting_form")
-		bowlForm := get("bowling_form")
 		feats := map[string]float64{
-			"batting_form":        batForm,
-			"batting_form_short":  getOrDefault("batting_form_short", batForm),
-			"batting_form_long":   getOrDefault("batting_form_long", batForm),
-			"batting_momentum":    get("batting_momentum"),
-			"batting_consistency": get("batting_consistency"),
 			"batting_venue":       get("batting_venue"),
 			"batting_opposition":  get("batting_opposition"),
-			"bowling_form":        bowlForm,
-			"bowling_form_short":  getOrDefault("bowling_form_short", bowlForm),
-			"bowling_form_long":   getOrDefault("bowling_form_long", bowlForm),
-			"bowling_momentum":    get("bowling_momentum"),
-			"bowling_career_avg":  getOrDefault("bowling_career_avg", bowlForm),
-			"bowling_consistency": get("bowling_consistency"),
 			"bowling_venue":       get("bowling_venue"),
 			"bowling_opposition":  get("bowling_opposition"),
 			"venue":               get("venue"),
@@ -812,33 +746,14 @@ func ComputeFeaturesAtCutoffNoMatch(
 		if pc == nil {
 			pc = make(map[string]float64)
 		}
-		batForm := pc["batting_form"]
-		bowlForm := pc["bowling_form"]
 		feats := map[string]float64{
-			"batting_form":        batForm,
-			"batting_form_short":  batForm,
-			"batting_form_long":   batForm,
-			"batting_momentum":    0,
-			"batting_consistency": pc["batting_consistency"],
-			"bowling_form":        bowlForm,
-			"bowling_form_short":  bowlForm,
-			"bowling_form_long":   bowlForm,
-			"bowling_momentum":    0,
-			"bowling_career_avg":  bowlForm,
-			"bowling_consistency": pc["bowling_consistency"],
-			"batting_venue":       0,
-			"batting_opposition":  0,
-			"bowling_venue":       0,
-			"bowling_opposition":  0,
-			"venue":               0,
-			"opposition":          0,
-			"season":              0,
-			"batting_temp":        0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"batting_venue": 0, "batting_opposition": 0, "bowling_venue": 0, "bowling_opposition": 0,
+			"venue": 0, "opposition": 0, "season": 0,
+			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
 		}
-		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = pc[k]
 		}
@@ -946,22 +861,9 @@ func ComputeFeaturesAtCutoffForMatch(
 		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
 			season = float64(*mctx.SeasonID)
 		}
-		batForm := pc["batting_form"]
-		bowlForm := pc["bowling_form"]
 		feats := map[string]float64{
-			"batting_form":        batForm,
-			"batting_form_short":  batForm,
-			"batting_form_long":   batForm,
-			"batting_momentum":    0,
-			"batting_consistency": pc["batting_consistency"],
 			"batting_venue":       batVenue,
 			"batting_opposition":  batOpp,
-			"bowling_form":        bowlForm,
-			"bowling_form_short":  bowlForm,
-			"bowling_form_long":   bowlForm,
-			"bowling_momentum":    0,
-			"bowling_career_avg":  bowlForm,
-			"bowling_consistency": pc["bowling_consistency"],
 			"bowling_venue":       bowlVenue,
 			"bowling_opposition":  bowlOpp,
 			"venue":               venue,
@@ -972,7 +874,6 @@ func ComputeFeaturesAtCutoffForMatch(
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
 		}
-		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = pc[k]
 		}

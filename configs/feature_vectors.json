@@ -1,11 +1,6 @@
 {
   "version": "2",
   "batting": [
-    "batting_consistency",
-    "batting_form",
-    "batting_form_short",
-    "batting_form_long",
-    "batting_momentum",
     "batting_mean_w3",
     "batting_mean_w5",
     "batting_mean_w10",
@@ -48,10 +43,6 @@
     "bat_after_k_dots_boundary_p_k2"
   ],
   "bowling": [
-    "bowling_consistency",
-    "bowling_form",
-    "bowling_momentum",
-    "bowling_career_avg",
     "bowling_mean_w3",
     "bowling_mean_w5",
     "bowling_mean_w10",

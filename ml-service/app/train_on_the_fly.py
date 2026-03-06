@@ -164,11 +164,6 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
 
     def _batting_preprocess(df: pd.DataFrame) -> pd.DataFrame:
         feature_cols = _batting_feature_cols()
-        for col in ("batting_form_short", "batting_form_long"):
-            if col not in df.columns and "batting_form" in df.columns:
-                df = df.assign(**{col: df["batting_form"]})
-        if "batting_momentum" not in df.columns:
-            df = df.assign(batting_momentum=0.0)
         for col in feature_cols:
             if col not in df.columns:
                 legacy = BATTING_LEGACY_ALIAS.get(col)
@@ -199,8 +194,6 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
         feature_cols = _bowling_feature_cols()
         if "bowling_session" in df.columns:
             df = df.assign(bowling_session=pd.to_numeric(df["bowling_session"], errors="coerce").fillna(0))
-        if "bowling_momentum" not in df.columns:
-            df = df.assign(bowling_momentum=0.0)
         for col in feature_cols:
             if col not in df.columns:
                 legacy = BOWLING_LEGACY_ALIAS.get(col)

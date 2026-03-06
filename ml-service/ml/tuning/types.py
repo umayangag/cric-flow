@@ -85,14 +85,7 @@ except (ImportError, RuntimeError):  # noqa: S110 (allow broad except for option
     ]
 
 BATTING_FEATURE_COLS = (
-    [
-        "batting_consistency",
-        "batting_form",
-        "batting_form_short",
-        "batting_form_long",
-        "batting_momentum",
-    ]
-    + BAT_RAW_STAT_COLS
+    BAT_RAW_STAT_COLS
     + [
         "temp",
         "wind",
@@ -114,13 +107,7 @@ BATTING_FEATURE_COLS = (
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 
 BOWLING_FEATURE_COLS = (
-    [
-        "bowling_consistency",
-        "bowling_form",
-        "bowling_momentum",
-        "bowling_career_avg",
-    ]
-    + BOWL_RAW_STAT_COLS
+    BOWL_RAW_STAT_COLS
     + [
         "temp",
         "wind",

@@ -55,11 +55,6 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
-    for col in ("batting_form_short", "batting_form_long"):
-        if col not in df.columns and "batting_form" in df.columns:
-            df[col] = df["batting_form"]
-    if "batting_momentum" not in df.columns:
-        df["batting_momentum"] = 0.0
     for col in BAT_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -96,10 +91,6 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
-    if "bowling_momentum" not in df.columns:
-        df["bowling_momentum"] = 0.0
-    if "bowling_career_avg" not in df.columns:
-        df["bowling_career_avg"] = df["bowling_form"] if "bowling_form" in df.columns else 0.0
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
