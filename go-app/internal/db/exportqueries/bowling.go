@@ -807,7 +807,11 @@ func bowlingHoldoutHeaders() []string {
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 		"match_date",
 	}
-	return append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
+	headers := make([]string, 0, len(baseHeaders)+len(rawStatsHeaders)+len(envContextHeaders))
+	headers = append(headers, baseHeaders...)
+	headers = append(headers, rawStatsHeaders...)
+	headers = append(headers, envContextHeaders...)
+	return headers
 }
 
 // bowlingHoldoutRowsImpl returns bowling export-shaped rows for the given match IDs with features at cutoff.

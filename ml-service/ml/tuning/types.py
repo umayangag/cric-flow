@@ -41,7 +41,7 @@ try:
 
     BAT_RAW_STAT_COLS = get_raw_stat_feature_names("batting")
     BOWL_RAW_STAT_COLS = get_raw_stat_feature_names("bowling")
-except Exception:  # noqa: S110 (allow broad except for optional app dependency at import)
+except (ImportError, RuntimeError):  # noqa: S110 (allow broad except for optional app dependency at import)
     # Fallback when app not available; must match Go contract.
     BAT_RAW_STAT_COLS = [
         "batting_mean_w3",

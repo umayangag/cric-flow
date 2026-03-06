@@ -27,7 +27,7 @@ try:
     from app.feature_config import get_raw_stat_feature_names
 
     BOWL_RAW_STAT_COLS = get_raw_stat_feature_names("bowling")
-except Exception:  # noqa: S110 (allow broad except for optional app dependency at import)
+except (ImportError, RuntimeError):  # noqa: S110 (allow broad except for optional app dependency at import)
     # Fallback when app not available (e.g. some test envs); must match Go contract.
     BOWL_RAW_STAT_COLS = [
         "bowling_mean_w3",

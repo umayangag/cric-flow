@@ -145,11 +145,35 @@ func ContractVersion() string {
 	return getContract().Version
 }
 
+// numRawStatsPerCategory is the number of raw windowed stat features per discipline (batting, bowling).
+const numRawStatsPerCategory = 18
+
+// battingRawStatOffset is the index in contract.Batting where raw stats start (after formula features).
+const battingRawStatOffset = 5
+
+// bowlingRawStatOffset is the index in contract.Bowling where raw stats start (after formula features).
+const bowlingRawStatOffset = 4
+
 // RawStatsFeatureNames returns the canonical list of raw windowed stat feature names (v2 contract).
-// Order: batting (18) then bowling (18). Used by export and prediction to fill/expect these keys.
-// When adding a new raw stat to the contract (defaultContract or configs/feature_vectors.json),
-// this slice must be updated to match so export, training, and prediction stay in sync.
+// Derived from the loaded contract (defaultContract or configs/feature_vectors.json) so export,
+// training, and prediction stay in sync without duplicating the list.
+// Order: batting (18) then bowling (18).
 func RawStatsFeatureNames() []string {
+	c := getContract()
+	batting := c.Batting
+	bowling := c.Bowling
+	if len(batting) < battingRawStatOffset+numRawStatsPerCategory || len(bowling) < bowlingRawStatOffset+numRawStatsPerCategory {
+		// Fallback if contract is truncated; should not happen with defaultContract.
+		return rawStatsFeatureNamesFallback()
+	}
+	out := make([]string, 0, numRawStatsPerCategory*2)
+	out = append(out, batting[battingRawStatOffset:battingRawStatOffset+numRawStatsPerCategory]...)
+	out = append(out, bowling[bowlingRawStatOffset:bowlingRawStatOffset+numRawStatsPerCategory]...)
+	return out
+}
+
+// rawStatsFeatureNamesFallback returns the default v2 raw stat names when contract slices are too short.
+func rawStatsFeatureNamesFallback() []string {
 	return []string{
 		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
 		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
@@ -163,8 +187,6 @@ func RawStatsFeatureNames() []string {
 		"bowling_days_since_last", "bowling_innings_in_last_90d",
 	}
 }
-
-const numRawStatsPerCategory = 18
 
 // RawStatsFeatureNamesBatting returns the batting raw stat feature names (first 18 of RawStatsFeatureNames).
 // Used by batting export to build CSV headers dynamically so they stay in sync with the contract.

@@ -6,7 +6,7 @@ try:
 
     _batting_raw_stat_columns = get_raw_stat_feature_names("batting")
     _bowling_raw_stat_columns = get_raw_stat_feature_names("bowling")
-except Exception:  # noqa: S110 (config may be missing in some test envs)
+except (ImportError, RuntimeError):  # noqa: S110 (config may be missing in some test envs)
     _batting_raw_stat_columns = [
         "batting_mean_w3",
         "batting_mean_w5",
