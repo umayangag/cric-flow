@@ -127,8 +127,7 @@ def _batting_col_map() -> Dict[str, str]:
         "batting_form_long": "batting_form_long",
         "batting_momentum": "batting_momentum",
     }
-    for c in BAT_RAW_STAT_COLS:
-        m[c] = c
+    m.update({c: c for c in BAT_RAW_STAT_COLS})
     m.update(
         {
             "runs": "runs",

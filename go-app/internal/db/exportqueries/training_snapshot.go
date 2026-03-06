@@ -86,14 +86,17 @@ func toInnings(in []db.InnVal) []features.Innings {
 
 // rawStatsToExportStrings returns 18 export values in contract order (mean_w3 through innings_in_last_90d).
 func rawStatsToExportStrings(r features.RawStats) []string {
-	f := func(x float64) string { return strconv.FormatFloat(x, 'g', -1, 64) }
-	return []string{
-		f(r.MeanW3), f(r.MeanW5), f(r.MeanW10), f(r.MeanW20),
-		f(r.StdW5), f(r.StdW10), f(r.MaxW10), f(r.MinW10), f(r.MedianW10),
-		f(r.Last1), f(r.Last2), f(r.Last3),
-		f(r.CareerMean), strconv.Itoa(r.CareerCount), f(r.PctZeroW10), f(r.TrendW5),
-		f(r.DaysSinceLast), strconv.Itoa(r.InningsInLast90D),
+	values := r.Values()
+	strs := make([]string, len(values))
+	for i, val := range values {
+		switch v := val.(type) {
+		case float64:
+			strs[i] = strconv.FormatFloat(v, 'g', -1, 64)
+		case int:
+			strs[i] = strconv.Itoa(v)
+		}
 	}
+	return strs
 }
 
 // computeBattingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.

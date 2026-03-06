@@ -123,8 +123,7 @@ def _bowling_col_map() -> Dict[str, str]:
         "bowling_momentum": "bowling_momentum",
         "bowling_career_avg": "bowling_career_avg",
     }
-    for c in BOWL_RAW_STAT_COLS:
-        m[c] = c
+    m.update({c: c for c in BOWL_RAW_STAT_COLS})
     m.update(
         {
             "runs": "runs",

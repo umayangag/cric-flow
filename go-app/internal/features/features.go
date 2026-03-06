@@ -251,6 +251,7 @@ func mean(v []float64) float64 {
 	return s / float64(len(v))
 }
 
+// std calculates the population standard deviation (divides by n).
 func std(v []float64, mean float64) float64 {
 	if len(v) < 2 {
 		return 0
