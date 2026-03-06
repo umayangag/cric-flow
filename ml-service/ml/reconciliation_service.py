@@ -23,6 +23,7 @@ from .config import get_reconciliation_config
 from .reconciliation_core import ProblemBuilder, VariableKind
 from .reconciliation_solver import solve_reconciliation_problem
 
+
 def _get_max_margin_fraction() -> float:
     """
     Maximum fraction of total runs that the win-probability margin can shift
