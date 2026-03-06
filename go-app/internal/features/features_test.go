@@ -152,3 +152,91 @@ func TestSortAndClip(t *testing.T) {
 		t.Fatalf("expected 0 due to strict before cutoff, got %d", len(out2))
 	}
 }
+
+func TestWindowedStats(t *testing.T) {
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	asOf := base.Add(24 * time.Hour)
+	mk := func(vals ...float64) []Innings {
+		out := make([]Innings, 0, len(vals))
+		for i, v := range vals {
+			out = append(out, Innings{Date: base.Add(time.Duration(i) * 24 * time.Hour), Value: v})
+		}
+		return out
+	}
+	t.Run("empty", func(t *testing.T) {
+		r := WindowedStats(nil, asOf)
+		if r.CareerCount != 0 || r.Last1 != 0 || r.MeanW5 != 0 {
+			t.Fatalf("empty innings should yield zero RawStats: %+v", r)
+		}
+	})
+	t.Run("typical", func(t *testing.T) {
+		inn := mk(10, 20, 30, 40, 50)        // last=50, last2=40, last3=30; mean_w5=30, career_mean=30
+		asOf := base.Add(5 * 24 * time.Hour) // after last inning so DaysSinceLast is positive
+		r := WindowedStats(inn, asOf)
+		if r.CareerCount != 5 {
+			t.Fatalf("CareerCount want 5 got %d", r.CareerCount)
+		}
+		if !feq(r.Last1, 50, 1e-9) || !feq(r.Last2, 40, 1e-9) || !feq(r.Last3, 30, 1e-9) {
+			t.Fatalf("Last1/2/3 got %v %v %v", r.Last1, r.Last2, r.Last3)
+		}
+		if !feq(r.CareerMean, 30, 1e-9) {
+			t.Fatalf("CareerMean want 30 got %v", r.CareerMean)
+		}
+		if !feq(r.MeanW5, 30, 1e-9) {
+			t.Fatalf("MeanW5 want 30 got %v", r.MeanW5)
+		}
+		// trend_w5 = (50-10)/4 = 10
+		if !feq(r.TrendW5, 10, 1e-9) {
+			t.Fatalf("TrendW5 want 10 got %v", r.TrendW5)
+		}
+		// StdW5, StdW10: population variance of [10,20,30,40,50] = 200, std = sqrt(200)
+		if !feq(r.StdW5, math.Sqrt(200), 1e-9) || !feq(r.StdW10, math.Sqrt(200), 1e-9) {
+			t.Fatalf("StdW5/StdW10 got %v %v", r.StdW5, r.StdW10)
+		}
+		if !feq(r.MinW10, 10, 1e-9) || !feq(r.MaxW10, 50, 1e-9) || !feq(r.MedianW10, 30, 1e-9) {
+			t.Fatalf("MinW10/MaxW10/MedianW10 got %v %v %v", r.MinW10, r.MaxW10, r.MedianW10)
+		}
+		if !feq(r.PctZeroW10, 0, 1e-9) {
+			t.Fatalf("PctZeroW10 want 0 got %v", r.PctZeroW10)
+		}
+		// asOf is base+5d, last inning is base+4d; DaysSinceLast = 1
+		if !feq(r.DaysSinceLast, 1, 1e-9) {
+			t.Fatalf("DaysSinceLast want 1 got %v", r.DaysSinceLast)
+		}
+		if r.InningsInLast90D != 5 {
+			t.Fatalf("InningsInLast90D want 5 got %d", r.InningsInLast90D)
+		}
+	})
+	t.Run("n_less_than_3", func(t *testing.T) {
+		inn := mk(10, 20)
+		r := WindowedStats(inn, asOf)
+		if r.CareerCount != 2 || !feq(r.Last1, 20, 1e-9) || !feq(r.Last2, 10, 1e-9) || r.Last3 != 0 {
+			t.Fatalf("n=2: CareerCount=2 Last1=20 Last2=10 Last3=0 got %+v", r)
+		}
+		// Window of 2: MeanW3=15, StdW5=StdW10=std(10,20)=5
+		if !feq(r.MeanW3, 15, 1e-9) || !feq(r.StdW5, 5, 1e-9) || !feq(r.StdW10, 5, 1e-9) {
+			t.Fatalf("n=2: MeanW3=15 StdW5=StdW10=5 got MeanW3=%v StdW5=%v StdW10=%v", r.MeanW3, r.StdW5, r.StdW10)
+		}
+	})
+	t.Run("n_less_than_5", func(t *testing.T) {
+		inn := mk(5, 15, 25, 35)
+		r := WindowedStats(inn, asOf)
+		if r.CareerCount != 4 || !feq(r.MeanW5, 20, 1e-9) {
+			t.Fatalf("n=4: CareerCount=4 MeanW5=20 got %d %v", r.CareerCount, r.MeanW5)
+		}
+		// MeanW10 = mean of all 4 = 20; StdW10 = std(5,15,25,35) = sqrt(125)
+		if !feq(r.MeanW10, 20, 1e-9) || !feq(r.StdW10, math.Sqrt(125), 1e-9) {
+			t.Fatalf("n=4: MeanW10=20 StdW10=sqrt(125) got %v %v", r.MeanW10, r.StdW10)
+		}
+	})
+	t.Run("n_less_than_10_with_zeros", func(t *testing.T) {
+		inn := mk(0, 10, 0, 20, 30)
+		r := WindowedStats(inn, asOf)
+		if !feq(r.PctZeroW10, 2.0/5.0, 1e-9) {
+			t.Fatalf("PctZeroW10 want 0.4 got %v", r.PctZeroW10)
+		}
+		if !feq(r.MinW10, 0, 1e-9) || !feq(r.MaxW10, 30, 1e-9) {
+			t.Fatalf("MinW10=0 MaxW10=30 got %v %v", r.MinW10, r.MaxW10)
+		}
+	})
+}

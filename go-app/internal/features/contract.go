@@ -27,10 +27,16 @@ var (
 )
 
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
+// Version "2" adds raw windowed stat features (batting_*_w*, bowling_*_w*, etc.) alongside formula-derived form/consistency.
 var defaultContract = contract{
-	Version: "1",
+	Version: "2",
 	Batting: []string{
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
 		"batting_inning", "batting_session", "toss", "venue", "opposition", "season", "match_date_unix",
 		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
@@ -38,6 +44,11 @@ var defaultContract = contract{
 	},
 	Bowling: []string{
 		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity",
 		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season", "match_date_unix",
 		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
@@ -132,4 +143,83 @@ func FieldingFeatureNames() []string {
 // Used for compatibility checks and observability.
 func ContractVersion() string {
 	return getContract().Version
+}
+
+// numRawStatsPerCategory is the number of raw windowed stat features per discipline (batting, bowling).
+// Used for fallback and for Batting/Bowling split of RawStatsFeatureNames result.
+const numRawStatsPerCategory = 18
+
+// Raw stats block in configs/feature_vectors.json is located by start/end marker names (not fixed offsets).
+// Aligns with ml-service/app/feature_config.py (_RAW_START = "mean_w3", _RAW_END = "innings_in_last_90d").
+const (
+	battingRawStart = "batting_mean_w3"
+	battingRawEnd   = "batting_innings_in_last_90d"
+	bowlingRawStart = "bowling_mean_w3"
+	bowlingRawEnd   = "bowling_innings_in_last_90d"
+)
+
+// findRawStatsBlock returns the slice of names from startMarker through endMarker (inclusive).
+// Returns (nil, false) if either marker is missing or end is before start.
+func findRawStatsBlock(names []string, startMarker, endMarker string) ([]string, bool) {
+	var start, end int
+	for i, n := range names {
+		if n == startMarker {
+			start = i
+		}
+		if n == endMarker {
+			end = i
+			break
+		}
+	}
+	if end < start {
+		return nil, false
+	}
+	return names[start : end+1], true
+}
+
+// RawStatsFeatureNames returns the canonical list of raw windowed stat feature names (v2 contract).
+// Derived from the loaded contract (defaultContract or configs/feature_vectors.json) by finding the
+// raw stats block via start/end markers, so reordering or extra features in the JSON do not break
+// the subset. Order: batting (18) then bowling (18).
+func RawStatsFeatureNames() []string {
+	c := getContract()
+	batting, okBat := findRawStatsBlock(c.Batting, battingRawStart, battingRawEnd)
+	bowling, okBowl := findRawStatsBlock(c.Bowling, bowlingRawStart, bowlingRawEnd)
+	if !okBat || !okBowl || len(batting) != numRawStatsPerCategory || len(bowling) != numRawStatsPerCategory {
+		return rawStatsFeatureNamesFallback()
+	}
+	out := make([]string, 0, numRawStatsPerCategory*2)
+	out = append(out, batting...)
+	out = append(out, bowling...)
+	return out
+}
+
+// rawStatsFeatureNamesFallback returns the default v2 raw stat names when contract slices are too short.
+func rawStatsFeatureNamesFallback() []string {
+	return []string{
+		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+		"batting_last_1", "batting_last_2", "batting_last_3",
+		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+		"batting_days_since_last", "batting_innings_in_last_90d",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
+	}
+}
+
+// RawStatsFeatureNamesBatting returns the batting raw stat feature names (first 18 of RawStatsFeatureNames).
+// Used by batting export to build CSV headers dynamically so they stay in sync with the contract.
+func RawStatsFeatureNamesBatting() []string {
+	all := RawStatsFeatureNames()
+	return all[:numRawStatsPerCategory]
+}
+
+// RawStatsFeatureNamesBowling returns the bowling raw stat feature names (last 18 of RawStatsFeatureNames).
+// Used by bowling export to build CSV headers dynamically so they stay in sync with the contract.
+func RawStatsFeatureNamesBowling() []string {
+	all := RawStatsFeatureNames()
+	return all[numRawStatsPerCategory:]
 }

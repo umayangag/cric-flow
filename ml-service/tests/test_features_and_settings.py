@@ -31,13 +31,10 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         season=2024,
     )
     bat_vec = features_mod.batting_feature_vector(bat)
-    # 18 base + seq (0 when absent)
-    assert bat_vec[:18] == [
-        1.1,
-        2.2,
-        2.0,
-        1.8,
-        0.5,
+    # v2: 5 formula + 18 raw stats (0 when absent) + env/context; then seq (0 when absent)
+    assert bat_vec[:5] == [1.1, 2.2, 2.0, 1.8, 0.5]
+    assert bat_vec[5:23] == [0.0] * 18  # raw windowed stats
+    assert bat_vec[23:36] == [
         30,
         5,
         0,
@@ -52,8 +49,7 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         8.5,
         2024,
     ]
-    # All remaining seq feature cols default to 0.0 when absent.
-    assert bat_vec[18:] == [0.0] * (len(bat_vec) - 18)
+    assert bat_vec[36:] == [0.0] * (len(bat_vec) - 36)
 
     bowl = SimpleNamespace(
         bowling_consistency=1.1,
@@ -75,12 +71,10 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         season=2024,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
-    # 17 base + seq (0 when absent): consistency, form, momentum, career_avg, temp..viscosity, inning, session, toss, venue, opp, season
-    assert bowl_vec[:17] == [
-        1.1,
-        2.2,
-        0.5,
-        1.5,  # bowling_career_avg
+    # v2: 4 formula + 18 raw stats (0 when absent) + env/context; then seq (0 when absent)
+    assert bowl_vec[:4] == [1.1, 2.2, 0.5, 1.5]  # consistency, form, momentum, career_avg
+    assert bowl_vec[4:22] == [0.0] * 18  # raw windowed stats
+    assert bowl_vec[22:35] == [
         30,
         5,
         0,
@@ -95,8 +89,7 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         8.5,
         2024,
     ]
-    # All remaining seq feature cols default to 0.0 when absent.
-    assert bowl_vec[17:] == [0.0] * (len(bowl_vec) - 17)
+    assert bowl_vec[35:] == [0.0] * (len(bowl_vec) - 35)
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,7 @@ type battingSnapshotAtCutoff struct {
 	consistency float64
 	venue       float64
 	opposition  float64
+	raw         features.RawStats // v2: multi-scale windowed stats for ML to learn form/consistency
 }
 
 type bowlingSnapshotAtCutoff struct {
@@ -65,7 +67,8 @@ type bowlingSnapshotAtCutoff struct {
 	consistency float64
 	venue       float64
 	opposition  float64
-	careerAvg   float64 // simple mean of all historical bowling values (wickets per innings)
+	careerAvg   float64           // simple mean of all historical bowling values (wickets per innings)
+	raw         features.RawStats // v2: multi-scale windowed stats
 }
 
 type fieldingSnapshotAtCutoff struct {
@@ -79,6 +82,21 @@ func toInnings(in []db.InnVal) []features.Innings {
 		out = append(out, features.Innings{Date: iv.MatchDate, Value: iv.Value})
 	}
 	return out
+}
+
+// rawStatsToExportStrings returns 18 export values in contract order (mean_w3 through innings_in_last_90d).
+func rawStatsToExportStrings(r features.RawStats) []string {
+	values := r.Values()
+	strs := make([]string, len(values))
+	for i, val := range values {
+		switch v := val.(type) {
+		case float64:
+			strs[i] = strconv.FormatFloat(v, 'g', -1, 64)
+		case int:
+			strs[i] = strconv.Itoa(v)
+		}
+	}
+	return strs
 }
 
 // computeBattingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
@@ -195,6 +213,7 @@ func computeBattingSnapshotFromHistories(
 		}
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
+	out.raw = features.WindowedStats(inn, asOf)
 	return out
 }
 
@@ -346,6 +365,7 @@ func computeBowlingSnapshotFromHistories(
 		}
 		out.opposition, _ = features.EWM(oppInn, alpha)
 	}
+	out.raw = features.WindowedStats(inn, asOf)
 	return out
 }
 
@@ -495,16 +515,72 @@ func getPrecomputedFeaturesForMatch(
 		}
 	}
 
+	// 5) Overall raw windowed stats (scope=overall) for v2 contract
+	rows, err = db.Pool.Query(ctx, rawStatsSnapshotQuery, playerIDs, formatID, cutoffDate)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var pid int64
+		var bat, bowl features.RawStats
+		dest := make([]any, 0, 1+18+18)
+		dest = append(dest, &pid)
+		dest = append(dest, bat.ScanDest()...)
+		dest = append(dest, bowl.ScanDest()...)
+		if err := rows.Scan(dest...); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		m := out[pid]
+		putRawStatsIntoMap(m, "batting_", bat)
+		putRawStatsIntoMap(m, "bowling_", bowl)
+	}
+	rows.Close()
+
 	return out, nil
 }
 
-// requiredPrecomputedKeysForMatchAll are always required when using match context.
-var requiredPrecomputedKeysForMatchAll = []string{
-	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
+// putRawStatsIntoMap writes RawStats fields into the feature map with the given prefix (e.g. "batting_", "bowling_").
+func putRawStatsIntoMap(m map[string]float64, prefix string, r features.RawStats) {
+	m[prefix+"mean_w3"] = r.MeanW3
+	m[prefix+"mean_w5"] = r.MeanW5
+	m[prefix+"mean_w10"] = r.MeanW10
+	m[prefix+"mean_w20"] = r.MeanW20
+	m[prefix+"std_w5"] = r.StdW5
+	m[prefix+"std_w10"] = r.StdW10
+	m[prefix+"max_w10"] = r.MaxW10
+	m[prefix+"min_w10"] = r.MinW10
+	m[prefix+"median_w10"] = r.MedianW10
+	m[prefix+"last_1"] = r.Last1
+	m[prefix+"last_2"] = r.Last2
+	m[prefix+"last_3"] = r.Last3
+	m[prefix+"career_mean"] = r.CareerMean
+	m[prefix+"career_count"] = float64(r.CareerCount)
+	m[prefix+"pct_zero_w10"] = r.PctZeroW10
+	m[prefix+"trend_w5"] = r.TrendW5
+	m[prefix+"days_since_last"] = r.DaysSinceLast
+	m[prefix+"innings_in_last_90d"] = float64(r.InningsInLast90D)
 }
 
-// requiredPrecomputedKeysNoMatch are the feature keys required when no match context (overall form/consistency only).
-var requiredPrecomputedKeysNoMatch = []string{
+// rawStatsSnapshotQuery is the SELECT for overall raw windowed stats (v2 contract). Kept as constant for clarity.
+const rawStatsSnapshotQuery = `
+		SELECT DISTINCT ON (player_id) player_id,
+			batting_mean_w3, batting_mean_w5, batting_mean_w10, batting_mean_w20,
+			batting_std_w5, batting_std_w10, batting_max_w10, batting_min_w10, batting_median_w10,
+			batting_last_1, batting_last_2, batting_last_3,
+			batting_career_mean, batting_career_count, batting_pct_zero_w10, batting_trend_w5,
+			batting_days_since_last, batting_innings_in_last_90d,
+			bowling_mean_w3, bowling_mean_w5, bowling_mean_w10, bowling_mean_w20,
+			bowling_std_w5, bowling_std_w10, bowling_max_w10, bowling_min_w10, bowling_median_w10,
+			bowling_last_1, bowling_last_2, bowling_last_3,
+			bowling_career_mean, bowling_career_count, bowling_pct_zero_w10, bowling_trend_w5,
+			bowling_days_since_last, bowling_innings_in_last_90d
+		FROM feature_raw_stats_snapshots
+		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
+		ORDER BY player_id, as_of_date DESC`
+
+// requiredPrecomputedKeysBase are the feature keys required for form/consistency (match and no-match contexts both use these).
+var requiredPrecomputedKeysBase = []string{
 	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
 }
 
@@ -662,6 +738,9 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"opposition_bowling_strength": oppBowlStr,
 			"match_date_unix":             float64(cutoff.Unix()),
 		}
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = get(k)
+		}
 		ensureContractKeysSkipSequence(feats)
 		out[pid] = feats
 	}
@@ -708,7 +787,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 	}
 	// When precomputed features are missing (e.g. debut players), fill with 0 to avoid pipeline failure.
 	// Monitor warning frequency; high rates may warrant improving the precompute process to cover more players.
-	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysNoMatch); len(m) > 0 {
+	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysBase); len(m) > 0 {
 		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
 			slog.String("format", format),
 			slog.String("missing", strings.Join(m, "; ")),
@@ -720,7 +799,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 				precomp[pid] = make(map[string]float64)
 				continue
 			}
-			for _, k := range requiredPrecomputedKeysNoMatch {
+			for _, k := range requiredPrecomputedKeysBase {
 				if _, ok := pc[k]; !ok {
 					pc[k] = 0
 				}
@@ -759,6 +838,10 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
 		}
+		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = pc[k]
+		}
 		ensureContractKeys(feats)
 		out[pid] = feats
 	}
@@ -793,7 +876,7 @@ func ComputeFeaturesAtCutoffForMatch(
 	if precomp == nil {
 		precomp = make(map[int64]map[string]float64)
 	}
-	requiredMatch := append([]string(nil), requiredPrecomputedKeysForMatchAll...)
+	requiredMatch := append([]string(nil), requiredPrecomputedKeysBase...)
 	if mctx.VenueID != nil && *mctx.VenueID != 0 {
 		requiredMatch = append(requiredMatch, "batting_venue", "bowling_venue", "venue")
 	}
@@ -888,6 +971,10 @@ func ComputeFeaturesAtCutoffForMatch(
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
+		}
+		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = pc[k]
 		}
 		ensureContractKeys(feats)
 		out[pid] = feats

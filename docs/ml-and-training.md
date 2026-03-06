@@ -39,7 +39,7 @@ At prediction time, to use the trained extras or win model, callers must supply 
 ## Data normalization and best practices
 
 - **No future leakage:** Training uses only matches with `match_date < cutoff`. Same cutoff logic for export and for feature computation at prediction.
-- **Same feature computation:** go-app uses identical logic for export rows and for feature map at prediction (`ComputeFeaturesAtCutoffForMatch`). Form = EWM, consistency = coefficient of variation, venue/opposition = EWM at scope.
+- **Same feature computation:** go-app uses identical logic for export rows and for feature map at prediction (`ComputeFeaturesAtCutoffForMatch`). Form = EWM, consistency = coefficient of variation, venue/opposition = EWM at scope. The v2 contract includes raw windowed stats (e.g. batting_mean_w3, bowling_std_w10) from `feature_raw_stats_snapshots` (overall scope); export and prediction both populate these from precomputed snapshots when available.
 - **Feature order:** Training and prediction use the same order from `configs/feature_vectors.json` (batting, bowling, fielding). ML builds the vector from this config at prediction.
 - **Input normalization (X):** `StandardScaler` fitted only on training data; same scaler saved and used at prediction. No test/future data in fit.
 - **Targets (Y):** Kept in raw units (no scaling) for interpretability and to avoid inverse transform.
@@ -112,6 +112,29 @@ When you need to discover or refresh best algorithm and hyperparameters:
 Use this when setting up a new format, after major data changes, or when you want to re-run algorithm screening or Optuna fine-tuning.
 
 **Summary:** Train = produce artifacts from current params (config + DB). Auto-tune = discover and persist params (and optionally artifacts). Avoid running train with defaults and then auto-tune for the same models; choose one of the two modes above.
+
+---
+
+## Feature contract v2 (raw windowed stats)
+
+**Contract version:** `configs/feature_vectors.json` and go-app use version **"2"**. Batting and bowling include **18 raw windowed stats** per type (e.g. `batting_mean_w3`, `batting_std_w10`, `batting_last_1`, …) alongside the existing formula features (form, form_short, form_long, momentum, consistency). These are computed in Go (`features.WindowedStats`) and stored in `feature_raw_stats_snapshots`; export and prediction emit them so the ML model can learn optimal combinations instead of fixed EWM/CV formulas.
+
+**Comparing feature sets:** To evaluate (a) old-only, (b) new-only, (c) combined:
+
+1. **Export** with v2 (current export already includes both formula and raw stats).
+2. **Old-only:** Temporarily restrict `FEATURE_COLS` in `ml/train_batting.py` / `ml/train_bowling.py` to the 5 formula + env/context columns (no raw stat names), then train and record metrics.
+3. **New-only:** Restrict to raw stat names + env/context (no form/consistency/momentum), train and record metrics.
+4. **Combined:** Use current `FEATURE_COLS` (formula + raw + env), train and record metrics.
+
+Use **walk-forward** and **feature importance** (e.g. from `TrainingPipeline.extract_feature_importance` or auto-tune report) to compare and to identify low-signal raw stats.
+
+**After evaluation:** If new (or combined) features improve accuracy:
+
+- **Deprecate** old form/consistency/momentum from the feature contract and from export/prediction (remove from `feature_vectors.json` and Go contract).
+- **Prune** raw stats with very low importance if needed to reduce dimensionality (especially for the win model).
+- **Clean up** Go precompute: stop computing and storing the old form/consistency snapshots once no consumer uses them; optionally simplify `WindowedStats` to only the windows/stats that matter.
+
+Until then, both formula and raw stats remain in the contract and in precompute for phased rollout.
 
 ---
 
