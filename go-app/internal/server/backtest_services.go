@@ -11,8 +11,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const accuracyTrendConcurrency = 8
-
 type accuracyTrendCandidatePrep struct {
 	cutoff  time.Time
 	squad   []int64
@@ -116,16 +114,17 @@ func computeAccuracyTrendForCandidates(
 	includeTeam bool,
 	cacheMode string,
 	useUnifiedModel bool,
+	concurrency int,
 ) ([]accuracyTrendItem, map[string]float64, []map[string]float64) {
 	results := make([]accuracyTrendItem, len(candidates))
 
 	if includePlayer {
-		computePlayerMetricsBatch(ctx, candidates, results, useUnifiedModel)
+		computePlayerMetricsBatch(ctx, candidates, results, useUnifiedModel, concurrency)
 	}
 
 	if includeTeam {
 		g, gCtx := errgroup.WithContext(ctx)
-		g.SetLimit(accuracyTrendConcurrency)
+		g.SetLimit(concurrency)
 		for i, m := range candidates {
 			i, m := i, m
 			g.Go(func() error {
@@ -187,11 +186,12 @@ func computePlayerMetricsBatch(
 	candidates []backtestCandidate,
 	results []accuracyTrendItem,
 	useUnifiedModel bool,
+	concurrency int,
 ) {
 	preps := make([]accuracyTrendCandidatePrep, len(candidates))
 
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(accuracyTrendConcurrency)
+	g.SetLimit(concurrency)
 	for i, m := range candidates {
 		i, m := i, m
 		g.Go(func() error {
@@ -238,7 +238,7 @@ func computePlayerMetricsBatch(
 	batchResults, err := mlBacktestPredictBatchFunc(ctx, batchInputs)
 	if err != nil {
 		slog.Warn("batch predict unavailable, falling back to per-candidate calls", slog.Any("err", err))
-		computePlayerMetricsFallback(ctx, candidates, preps, results)
+		computePlayerMetricsFallback(ctx, candidates, preps, results, concurrency)
 		return
 	}
 
@@ -260,9 +260,10 @@ func computePlayerMetricsFallback(
 	candidates []backtestCandidate,
 	preps []accuracyTrendCandidatePrep,
 	results []accuracyTrendItem,
+	concurrency int,
 ) {
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(accuracyTrendConcurrency)
+	g.SetLimit(concurrency)
 	for i := range candidates {
 		i := i
 		p := preps[i]

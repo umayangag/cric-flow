@@ -265,6 +265,13 @@ func BacktestAccuracyTrendMaxLimit(cfg *Config) int {
 	return DefaultBacktestListMaxLimit
 }
 
+func BacktestAccuracyTrendConcurrency(cfg *Config) int {
+	if cfg != nil && cfg.Backtest.AccuracyTrendConcurrency > 0 {
+		return cfg.Backtest.AccuracyTrendConcurrency
+	}
+	return DefaultBacktestAccuracyTrendConcurrency
+}
+
 func BacktestJobCleanupAgeHours(cfg *Config) int {
 	if cfg != nil && cfg.Backtest.Job != nil && cfg.Backtest.Job.CleanupAgeHours > 0 {
 		return cfg.Backtest.Job.CleanupAgeHours

@@ -33,7 +33,7 @@ type fakeSelector struct {
 func (f fakeSelector) SelectTeam(
 	_ context.Context,
 	_ int64,
-	_, _ string,
+	_ string,
 	_ selection.Options,
 ) (selection.Result, error) {
 	return f.res, f.err
@@ -158,7 +158,7 @@ type capturingSelector struct {
 func (c *capturingSelector) SelectTeam(
 	_ context.Context,
 	_ int64,
-	_, _ string,
+	_ string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	c.lastFromDB = true

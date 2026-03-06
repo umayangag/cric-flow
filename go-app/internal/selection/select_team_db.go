@@ -33,7 +33,6 @@ func SelectTeam(
 	ctx context.Context,
 	matchID int64,
 	format string,
-	_ string,
 	opts Options,
 ) (Result, error) {
 	if opts.TeamSize <= 0 {

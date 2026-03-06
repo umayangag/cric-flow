@@ -37,7 +37,7 @@ func (r Runner) Run(ctx context.Context, opts Options, out io.Writer) error {
 				return fmt.Errorf("db connect failed: %w", err)
 			}
 		}
-		res, err = r.Selector.SelectTeam(ctx, opts.MatchID, opts.Format, opts.Season, selection.Options{
+		res, err = r.Selector.SelectTeam(ctx, opts.MatchID, opts.Format, selection.Options{
 			TeamSize:      opts.TeamSize,
 			MinBowlers:    opts.MinBowlers,
 			RequireKeeper: opts.RequireKeeper,
