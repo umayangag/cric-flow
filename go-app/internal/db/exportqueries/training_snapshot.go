@@ -593,13 +593,8 @@ func getPrecomputedFeaturesForMatch(
 	return out, nil
 }
 
-// requiredPrecomputedKeysForMatchAll are always required when using match context.
-var requiredPrecomputedKeysForMatchAll = []string{
-	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
-}
-
-// requiredPrecomputedKeysNoMatch are the feature keys required when no match context (overall form/consistency only).
-var requiredPrecomputedKeysNoMatch = []string{
+// requiredPrecomputedKeysBase are the feature keys required for form/consistency (match and no-match contexts both use these).
+var requiredPrecomputedKeysBase = []string{
 	"batting_form", "batting_consistency", "bowling_form", "bowling_consistency",
 }
 
@@ -806,7 +801,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 	}
 	// When precomputed features are missing (e.g. debut players), fill with 0 to avoid pipeline failure.
 	// Monitor warning frequency; high rates may warrant improving the precompute process to cover more players.
-	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysNoMatch); len(m) > 0 {
+	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysBase); len(m) > 0 {
 		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
 			slog.String("format", format),
 			slog.String("missing", strings.Join(m, "; ")),
@@ -818,7 +813,7 @@ func ComputeFeaturesAtCutoffNoMatch(
 				precomp[pid] = make(map[string]float64)
 				continue
 			}
-			for _, k := range requiredPrecomputedKeysNoMatch {
+			for _, k := range requiredPrecomputedKeysBase {
 				if _, ok := pc[k]; !ok {
 					pc[k] = 0
 				}
@@ -857,6 +852,10 @@ func ComputeFeaturesAtCutoffNoMatch(
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
 		}
+		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = pc[k]
+		}
 		ensureContractKeys(feats)
 		out[pid] = feats
 	}
@@ -891,7 +890,7 @@ func ComputeFeaturesAtCutoffForMatch(
 	if precomp == nil {
 		precomp = make(map[int64]map[string]float64)
 	}
-	requiredMatch := append([]string(nil), requiredPrecomputedKeysForMatchAll...)
+	requiredMatch := append([]string(nil), requiredPrecomputedKeysBase...)
 	if mctx.VenueID != nil && *mctx.VenueID != 0 {
 		requiredMatch = append(requiredMatch, "batting_venue", "bowling_venue", "venue")
 	}
@@ -986,6 +985,10 @@ func ComputeFeaturesAtCutoffForMatch(
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
 			"match_date_unix": float64(cutoff.Unix()),
+		}
+		// Copy raw windowed stats from precomp so training export and prediction stay aligned with ComputeFeaturesAtCutoffForFutureMatch.
+		for _, k := range features.RawStatsFeatureNames() {
+			feats[k] = pc[k]
 		}
 		ensureContractKeys(feats)
 		out[pid] = feats

@@ -134,45 +134,8 @@ func (Runner) RunReplay(
 							bowlInn = bowlInn[len(bowlInn)-windowN:]
 						}
 					}
-
-					batForm, effNbat := features.EWM(batInn, alpha)
-					bowlForm, effNbowl := features.EWM(bowlInn, alpha)
-					batCons, nCbat := features.Consistency(batInn, lastN)
-					bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
-
-					if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil,
-						batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
-						slog.Error(
-							"precompute-features(replay): upsert form overall failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
-					}
-					if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil,
-						batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
-						slog.Error(
-							"precompute-features(replay): upsert consistency overall failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
-					}
-					batRaw := features.WindowedStats(batInn, asOf)
-					bowlRaw := features.WindowedStats(bowlInn, asOf)
-					if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batRaw, bowlRaw, "v1"); err != nil {
-						slog.Error(
-							"precompute-features(replay): upsert raw stats overall failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("upsert raw stats overall pid=%d: %w", pid, err)
+					if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+						return err
 					}
 
 					// opposition specific form
@@ -214,31 +177,8 @@ func (Runner) RunReplay(
 								oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
 							}
 						}
-						oppBatForm, nOppBat := features.EWM(oppBatInn, alpha)
-						oppBowlForm, nOppBowl := features.EWM(oppBowlInn, alpha)
-						if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID,
-							oppBatForm, oppBowlForm, alpha, nOppBat, nOppBowl, nOppBat+nOppBowl, "v1"); err != nil {
-							slog.Error(
-								"precompute-features(replay): upsert form opposition failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("opposition_id", oppID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("upsert form opposition pid=%d opp=%d: %w", pid, oppID, err)
-						}
-						oppBatRaw := features.WindowedStats(oppBatInn, asOf)
-						oppBowlRaw := features.WindowedStats(oppBowlInn, asOf)
-						if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatRaw, oppBowlRaw, "v1"); err != nil {
-							slog.Error(
-								"precompute-features(replay): upsert raw stats opposition failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("opposition_id", oppID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("upsert raw stats opposition pid=%d opp=%d: %w", pid, oppID, err)
+						if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatInn, oppBowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+							return err
 						}
 					}
 
@@ -281,31 +221,8 @@ func (Runner) RunReplay(
 								venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
 							}
 						}
-						venBatForm, nVenBat := features.EWM(venBatInn, alpha)
-						venBowlForm, nVenBowl := features.EWM(venBowlInn, alpha)
-						if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID,
-							venBatForm, venBowlForm, alpha, nVenBat, nVenBowl, nVenBat+nVenBowl, "v1"); err != nil {
-							slog.Error(
-								"precompute-features(replay): upsert form venue failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("venue_id", venueID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("upsert form venue pid=%d venue=%d: %w", pid, venueID, err)
-						}
-						venBatRaw := features.WindowedStats(venBatInn, asOf)
-						venBowlRaw := features.WindowedStats(venBowlInn, asOf)
-						if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "venue", &venueID, venBatRaw, venBowlRaw, "v1"); err != nil {
-							slog.Error(
-								"precompute-features(replay): upsert raw stats venue failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("venue_id", venueID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("upsert raw stats venue pid=%d venue=%d: %w", pid, venueID, err)
+						if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "venue", &venueID, venBatInn, venBowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+							return err
 						}
 					}
 					return nil
@@ -438,38 +355,8 @@ func (Runner) RunPointInTime(
 					bowlInn = bowlInn[len(bowlInn)-windowN:]
 				}
 			}
-			batForm, effNbat := features.EWM(batInn, alpha)
-			bowlForm, effNbowl := features.EWM(bowlInn, alpha)
-			batCons, nCbat := features.Consistency(batInn, lastN)
-			bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
-			if err := db.UpsertFeatureFormSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
-				slog.Error(
-					"precompute-features(as-of): upsert form overall failed",
-					slog.Int64("player_id", pid),
-					slog.String("format", formatCode),
-					slog.Any("err", err),
-				)
-				return fmt.Errorf("upsert form overall pid=%d: %w", pid, err)
-			}
-			if err := db.UpsertFeatureConsistencySnapshot(pCtx, pid, asOf, formatID, "overall", nil, batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
-				slog.Error(
-					"precompute-features(as-of): upsert consistency overall failed",
-					slog.Int64("player_id", pid),
-					slog.String("format", formatCode),
-					slog.Any("err", err),
-				)
-				return fmt.Errorf("upsert consistency overall pid=%d: %w", pid, err)
-			}
-			batRaw := features.WindowedStats(batInn, asOf)
-			bowlRaw := features.WindowedStats(bowlInn, asOf)
-			if err := db.UpsertFeatureRawStatsSnapshot(pCtx, pid, asOf, formatID, "overall", nil, batRaw, bowlRaw, "v1"); err != nil {
-				slog.Error(
-					"precompute-features(as-of): upsert raw stats overall failed",
-					slog.Int64("player_id", pid),
-					slog.String("format", formatCode),
-					slog.Any("err", err),
-				)
-				return fmt.Errorf("upsert raw stats overall pid=%d: %w", pid, err)
+			if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, alpha, lastN, "as-of", 0, formatCode); err != nil {
+				return err
 			}
 			p := atomic.AddInt64(&processed, 1)
 			if p%1000 == 0 {
@@ -525,6 +412,59 @@ func logSeqCalcTrigger(formatCode, mode string) {
 		slog.String("format", formatCode),
 		slog.Int("seqcalc_concurrency", seqcalcLimit),
 	)
+}
+
+// upsertFormConsistencyAndRawStatsForScope computes EWM, Consistency, and WindowedStats from the given
+// bat/bowl innings (already sorted, clipped, and optionally window-limited by the caller) and upserts
+// form, consistency, and raw stats snapshots for the given scope. mode is "replay" or "as-of" for logging;
+// matchID should be 0 for point-in-time runs.
+func upsertFormConsistencyAndRawStatsForScope(
+	ctx context.Context,
+	playerID int64,
+	asOf time.Time,
+	formatID int64,
+	scope string,
+	scopeID *int64,
+	batInn, bowlInn []features.Innings,
+	alpha float64,
+	lastN int,
+	mode string,
+	matchID int64,
+	formatCode string,
+) error {
+	batForm, effNbat := features.EWM(batInn, alpha)
+	bowlForm, effNbowl := features.EWM(bowlInn, alpha)
+	batCons, nCbat := features.Consistency(batInn, lastN)
+	bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
+	if err := db.UpsertFeatureFormSnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
+		batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, "v1"); err != nil {
+		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+		if matchID != 0 {
+			attrs = append(attrs, slog.Int64("match_id", matchID))
+		}
+		slog.Error("precompute-features("+mode+"): upsert form failed", attrs...)
+		return fmt.Errorf("upsert form %s pid=%d: %w", scope, playerID, err)
+	}
+	if err := db.UpsertFeatureConsistencySnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
+		batCons, bowlCons, lastN, nCbat, nCbowl, "v1"); err != nil {
+		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+		if matchID != 0 {
+			attrs = append(attrs, slog.Int64("match_id", matchID))
+		}
+		slog.Error("precompute-features("+mode+"): upsert consistency failed", attrs...)
+		return fmt.Errorf("upsert consistency %s pid=%d: %w", scope, playerID, err)
+	}
+	batRaw := features.WindowedStats(batInn, asOf)
+	bowlRaw := features.WindowedStats(bowlInn, asOf)
+	if err := db.UpsertFeatureRawStatsSnapshot(ctx, playerID, asOf, formatID, scope, scopeID, batRaw, bowlRaw, "v1"); err != nil {
+		attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+		if matchID != 0 {
+			attrs = append(attrs, slog.Int64("match_id", matchID))
+		}
+		slog.Error("precompute-features("+mode+"): upsert raw stats failed", attrs...)
+		return fmt.Errorf("upsert raw stats %s pid=%d: %w", scope, playerID, err)
+	}
+	return nil
 }
 
 func toFeatureInnings(in []db.InnVal) []features.Innings {

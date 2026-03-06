@@ -9,6 +9,9 @@ import (
 )
 
 // UpsertFeatureRawStatsSnapshot inserts or updates a raw windowed stats snapshot row for the given scope.
+// Column order in the INSERT must match features.RawStats field order and the migration
+// feature_raw_stats_snapshots table; when adding or reordering raw stat columns, update both the
+// migration and this call in lockstep.
 func UpsertFeatureRawStatsSnapshot(
 	ctx context.Context,
 	playerID int64,

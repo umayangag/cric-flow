@@ -39,7 +39,7 @@ At prediction time, to use the trained extras or win model, callers must supply 
 ## Data normalization and best practices
 
 - **No future leakage:** Training uses only matches with `match_date < cutoff`. Same cutoff logic for export and for feature computation at prediction.
-- **Same feature computation:** go-app uses identical logic for export rows and for feature map at prediction (`ComputeFeaturesAtCutoffForMatch`). Form = EWM, consistency = coefficient of variation, venue/opposition = EWM at scope.
+- **Same feature computation:** go-app uses identical logic for export rows and for feature map at prediction (`ComputeFeaturesAtCutoffForMatch`). Form = EWM, consistency = coefficient of variation, venue/opposition = EWM at scope. The v2 contract includes raw windowed stats (e.g. batting_mean_w3, bowling_std_w10) from `feature_raw_stats_snapshots` (overall scope); export and prediction both populate these from precomputed snapshots when available.
 - **Feature order:** Training and prediction use the same order from `configs/feature_vectors.json` (batting, bowling, fielding). ML builds the vector from this config at prediction.
 - **Input normalization (X):** `StandardScaler` fitted only on training data; same scaler saved and used at prediction. No test/future data in fit.
 - **Targets (Y):** Kept in raw units (no scaling) for interpretability and to avoid inverse transform.

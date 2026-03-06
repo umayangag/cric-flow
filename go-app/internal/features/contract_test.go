@@ -72,3 +72,37 @@ func TestContractVersion_ReturnsVersionFromContract(t *testing.T) {
 	v := ContractVersion()
 	require.NotEmpty(t, v)
 }
+
+// TestRawStatsFeatureNames_MatchesContractSubset ensures RawStatsFeatureNames() stays in sync with
+// the batting/bowling contract: the first 18 names must appear in BattingFeatureNames() in the same
+// order, and the last 18 must appear in BowlingFeatureNames() in the same order.
+func TestRawStatsFeatureNames_MatchesContractSubset(t *testing.T) {
+	raw := RawStatsFeatureNames()
+	require.Len(t, raw, 36, "RawStatsFeatureNames must have 18 batting + 18 bowling")
+	batRaw := raw[:18]
+	bowlRaw := raw[18:]
+
+	batAll := BattingFeatureNames()
+	bowlAll := BowlingFeatureNames()
+
+	// Subsequence: batRaw must appear in batAll in order (filter batAll to batRaw set, must equal batRaw).
+	batFiltered := filterToSubset(batAll, batRaw)
+	require.Equal(t, batRaw, batFiltered, "BattingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()")
+
+	bowlFiltered := filterToSubset(bowlAll, bowlRaw)
+	require.Equal(t, bowlRaw, bowlFiltered, "BowlingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()")
+}
+
+func filterToSubset(all, subset []string) []string {
+	set := make(map[string]struct{})
+	for _, s := range subset {
+		set[s] = struct{}{}
+	}
+	var out []string
+	for _, a := range all {
+		if _, ok := set[a]; ok {
+			out = append(out, a)
+		}
+	}
+	return out
+}

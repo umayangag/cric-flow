@@ -147,6 +147,8 @@ func ContractVersion() string {
 
 // RawStatsFeatureNames returns the canonical list of raw windowed stat feature names (v2 contract).
 // Order: batting (18) then bowling (18). Used by export and prediction to fill/expect these keys.
+// When adding a new raw stat to the contract (defaultContract or configs/feature_vectors.json),
+// this slice must be updated to match so export, training, and prediction stay in sync.
 func RawStatsFeatureNames() []string {
 	return []string{
 		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
