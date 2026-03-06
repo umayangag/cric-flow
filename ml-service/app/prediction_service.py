@@ -425,7 +425,9 @@ def _assemble_player_predictions(
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
         vals_bat = list(row_bat) + [0.0] * max(0, 5 - len(row_bat))
-        vals_bowl = list(row_bowl) + [0.0] * max(0, 3 - len(row_bowl))
+        vals_bowl = list(row_bowl) + [0.0] * max(
+            0, 3 - len(row_bowl)
+        )  # runs or runs_share, balls, wickets or wickets_share
 
         if use_share and team1_ids and team2_ids and (inn1_runs > 0 or inn2_runs > 0):
             runs_share_bat = float(max(0.0, min(1.0, vals_bat[0])))

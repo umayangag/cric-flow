@@ -244,8 +244,8 @@ func computePlayerMetricsBatch(
 
 	for j, preds := range batchResults {
 		idx := batchIndexMap[j]
-		mae := computeMAEFromPreds(preps[idx].squad, preds, preps[idx].actuals)
-		if mae >= 0 {
+		mae, ok := computeMAEFromPreds(preps[idx].squad, preds, preps[idx].actuals)
+		if ok {
 			if results[idx].Metrics == nil {
 				results[idx].Metrics = map[string]float64{}
 			}
@@ -275,8 +275,8 @@ func computePlayerMetricsFallback(
 			if err != nil {
 				return nil
 			}
-			mae := computeMAEFromPreds(p.squad, preds, p.actuals)
-			if mae >= 0 {
+			mae, ok := computeMAEFromPreds(p.squad, preds, p.actuals)
+			if ok {
 				if results[i].Metrics == nil {
 					results[i].Metrics = map[string]float64{}
 				}
@@ -288,7 +288,7 @@ func computePlayerMetricsFallback(
 	_ = g.Wait()
 }
 
-func computeMAEFromPreds(squad []int64, preds map[int64]playerPredictions, acts map[int64]playerActuals) float64 {
+func computeMAEFromPreds(squad []int64, preds map[int64]playerPredictions, acts map[int64]playerActuals) (float64, bool) {
 	var totalAbs, cnt float64
 	for _, pid := range squad {
 		pPred, okp := preds[pid]
@@ -300,7 +300,7 @@ func computeMAEFromPreds(squad []int64, preds map[int64]playerPredictions, acts 
 		cnt++
 	}
 	if cnt > 0 {
-		return totalAbs / cnt
+		return totalAbs / cnt, true
 	}
-	return -1
+	return 0, false
 }
