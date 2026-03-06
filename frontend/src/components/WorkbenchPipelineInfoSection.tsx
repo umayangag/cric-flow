@@ -53,9 +53,7 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
           <strong>What:</strong> Compute raw windowed statistics (mean, std, etc. over recent
           windows) and (when enabled) sequence features per player/format, as-of each snapshot date.
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-            <li>
-              Reads: batting_data, bowling_data, fielding_data, match, match_inning.
-            </li>
+            <li>Reads: batting_data, bowling_data, fielding_data, match, match_inning.</li>
             <li>
               Writes: <code>feature_raw_stats_snapshots</code> (and optionally sequence tables).
               Snapshots are keyed by player_id, format_id, as_of_date, scope (overall / venue /

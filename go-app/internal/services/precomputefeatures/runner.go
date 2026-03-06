@@ -36,8 +36,8 @@ func (Runner) RunReplay(
 	ctx context.Context,
 	formatCode string,
 	formatID int64,
-	alpha float64,
-	lastN int,
+	_ float64, // alpha (reserved for future EWM tuning)
+	_ int, // lastN (reserved for future last-N window)
 	windowN int,
 	concurrencyLimit int,
 ) error {
@@ -284,8 +284,8 @@ func (Runner) RunPointInTime(
 	formatCode string,
 	formatID int64,
 	asOf time.Time,
-	alpha float64,
-	lastN int,
+	_ float64, // alpha (reserved for future EWM tuning)
+	_ int, // lastN (reserved for future last-N window)
 	windowN int,
 	concurrencyLimit int,
 ) error {
@@ -416,8 +416,21 @@ func logSeqCalcTrigger(formatCode, mode string) {
 
 // logSnapshotUpsertError logs a failed snapshot upsert and returns an error. Used by
 // upsertRawStatsForScope to avoid duplicating error-handling logic.
-func logSnapshotUpsertError(scope string, playerID int64, snapshotKind string, err error, mode string, formatCode string, matchID int64) error {
-	attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+func logSnapshotUpsertError(
+	scope string,
+	playerID int64,
+	snapshotKind string,
+	err error,
+	mode string,
+	formatCode string,
+	matchID int64,
+) error {
+	attrs := []any{
+		slog.Int64("player_id", playerID),
+		slog.String("scope", scope),
+		slog.String("format", formatCode),
+		slog.Any("err", err),
+	}
 	if matchID != 0 {
 		attrs = append(attrs, slog.Int64("match_id", matchID))
 	}

@@ -63,18 +63,18 @@ def test_bowl_seq_cols_non_empty():
 
 
 def test_batting_feature_cols_contains_required():
-    """BATTING_FEATURE_COLS includes base features and sequence cols."""
-    assert "batting_consistency" in BATTING_FEATURE_COLS
-    assert "batting_form" in BATTING_FEATURE_COLS
+    """BATTING_FEATURE_COLS includes raw stat features, context, and sequence cols."""
+    assert "batting_mean_w3" in BATTING_FEATURE_COLS
+    assert "batting_mean_w5" in BATTING_FEATURE_COLS
     assert "temp" in BATTING_FEATURE_COLS
     for c in BAT_SEQ_COLS:
         assert c in BATTING_FEATURE_COLS
 
 
 def test_bowling_feature_cols_contains_required():
-    """BOWLING_FEATURE_COLS includes base features and sequence cols."""
-    assert "bowling_consistency" in BOWLING_FEATURE_COLS
-    assert "bowling_form" in BOWLING_FEATURE_COLS
+    """BOWLING_FEATURE_COLS includes raw stat features, context, and sequence cols."""
+    assert "bowling_mean_w3" in BOWLING_FEATURE_COLS
+    assert "bowling_mean_w5" in BOWLING_FEATURE_COLS
     for c in BOWL_SEQ_COLS:
         assert c in BOWLING_FEATURE_COLS
 
@@ -368,7 +368,6 @@ def test_load_bowling_csv_minimal(tmp_path):
     df = pd.DataFrame({c: [1.0] * 5 for c in base_cols})
     for c in BOWL_SEQ_COLS:
         df[c] = 0.0
-    df["bowling_career_avg"] = df["bowling_form"]
     df["runs"] = [20, 30, 40, 50, 60]
     df["balls"] = [24, 24, 24, 24, 24]
     df["wickets"] = [1, 2, 0, 1, 2]

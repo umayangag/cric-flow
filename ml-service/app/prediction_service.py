@@ -844,13 +844,9 @@ def generate_match(
         except ImportError:
             build_win_features_standardized = None
         if build_win_features_standardized is not None:
-            t1_bat_cons, t1_bowl_cons = _sum_team_feature(
-                features_map, team1_ids, "batting_std_w10", "bowling_std_w10"
-            )
+            t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_std_w10", "bowling_std_w10")
             t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_mean_w5", "bowling_mean_w5")
-            t2_bat_cons, t2_bowl_cons = _sum_team_feature(
-                features_map, team2_ids, "batting_std_w10", "bowling_std_w10"
-            )
+            t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_std_w10", "bowling_std_w10")
             t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_mean_w5", "bowling_mean_w5")
             wf = build_win_features_standardized(
                 format_code=fmt,

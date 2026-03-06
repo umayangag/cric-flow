@@ -13,13 +13,13 @@ except Exception:
 from app.logging import get_struct_logger
 
 from .models import (
+    BATTING_RAW_STAT_KEYS,
+    BOWLING_RAW_STAT_KEYS,
     BacktestMatchAgg,
     BacktestMetrics,
     BacktestPlayerPred,
     BattingFeatures,
-    BATTING_RAW_STAT_KEYS,
     BowlingFeatures,
-    BOWLING_RAW_STAT_KEYS,
     HistoricalMatchBacktestRequest,
     HistoricalMatchBacktestResponse,
     MatchComparison,

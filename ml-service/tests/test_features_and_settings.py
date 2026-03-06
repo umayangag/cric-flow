@@ -85,7 +85,26 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         match_date_unix=0.0,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
-    assert bowl_vec[:18] == [0.8, 1.0, 1.1, 1.05, 0.2, 0.3, 1.5, 0.5, 1.0, 1.2, 1.0, 0.9, 1.05, 40.0, 0.0, 0.02, 5.0, 8.0]
+    assert bowl_vec[:18] == [
+        0.8,
+        1.0,
+        1.1,
+        1.05,
+        0.2,
+        0.3,
+        1.5,
+        0.5,
+        1.0,
+        1.2,
+        1.0,
+        0.9,
+        1.05,
+        40.0,
+        0.0,
+        0.02,
+        5.0,
+        8.0,
+    ]
     assert bowl_vec[18:31] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024]
     assert bowl_vec[31:] == [0.0] * (len(bowl_vec) - 31)
 

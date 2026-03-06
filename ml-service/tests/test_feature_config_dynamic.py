@@ -3,43 +3,20 @@ import json
 from pathlib import Path
 
 
+def _default_config_path() -> Path:
+    """Path to repo configs/feature_vectors.json (v2 raw stat schema)."""
+    return Path(__file__).resolve().parent.parent.parent / "configs" / "feature_vectors.json"
+
+
 def write_temp_config(tmp_path: Path):
-    data = {
-        "batting": [
-            "batting_form",
-            "batting_consistency",
-            "batting_temp",
-            "batting_wind",
-            "batting_rain",
-            "batting_humidity",
-            "batting_cloud",
-            "batting_pressure",
-            "batting_viscosity",
-            "batting_inning",
-            "batting_session",
-            "toss",
-            "venue",
-            "opposition",
-            "season",
-        ],
-        "bowling": [
-            "bowling_form",
-            "bowling_consistency",
-            "bowling_temp",
-            "bowling_wind",
-            "bowling_rain",
-            "bowling_humidity",
-            "bowling_cloud",
-            "bowling_pressure",
-            "bowling_viscosity",
-            "batting_inning",
-            "bowling_session",
-            "toss",
-            "bowling_venue",
-            "bowling_opposition",
-            "season",
-        ],
-    }
+    """Copy repo config and swap first two names for batting and bowling to test order."""
+    path = _default_config_path()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    batting = list(data["batting"])
+    bowling = list(data["bowling"])
+    batting[0], batting[1] = batting[1], batting[0]
+    bowling[0], bowling[1] = bowling[1], bowling[0]
+    data = {"batting": batting, "bowling": bowling}
     p = tmp_path / "feature_vectors.json"
     p.write_text(json.dumps(data), encoding="utf-8")
     return p, data
@@ -55,49 +32,66 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     m = importlib.import_module("app.main")
     importlib.reload(m)
 
-    # Build BattingFeatures with sentinel distinct values per attribute
-    bat_kwargs = {
-        "batting_consistency": 1.1,
-        "batting_form": 2.2,
-        "batting_temp": 3,
-        "batting_wind": 4,
-        "batting_rain": 5,
-        "batting_humidity": 6,
-        "batting_cloud": 7,
-        "batting_pressure": 8,
-        "batting_viscosity": 1,
-        "batting_inning": 1,
-        "batting_session": 2,
-        "toss": 1,
-        "venue": 10.0,
-        "opposition": 11.0,
-        "season": 2024,
-        "player_name": "P",
-        "format": "ODI",
+    # Sentinel values: first config slot = 2.2, second = 1.1, then 3, 4, 5, ...
+    # Constrained int fields must stay within model bounds (e.g. viscosity le=1, inning le=2).
+    def kwargs_for_order(names, int_keys=None, clamp_int=None):
+        int_keys = set(int_keys or ())
+        clamp_int = clamp_int or {}
+        out = {}
+        for i, name in enumerate(names):
+            if i == 0:
+                out[name] = 2.2
+            elif i == 1:
+                out[name] = 1.1
+            else:
+                val = (i + 1) if name in int_keys else float(i + 1)
+                if name in clamp_int:
+                    lo, hi = clamp_int[name]
+                    val = lo if val < lo else (hi if val > hi else int(val))
+                out[name] = val
+        return out
+
+    # BattingFeatures int fields and their valid ranges (from app.models)
+    bat_int = {
+        "batting_temp",
+        "batting_wind",
+        "batting_rain",
+        "batting_humidity",
+        "batting_cloud",
+        "batting_pressure",
+        "batting_viscosity",
+        "batting_inning",
+        "batting_session",
+        "toss",
+        "season",
     }
+    bat_clamp = {"batting_viscosity": (0, 1), "batting_inning": (1, 2), "batting_session": (1, 3), "toss": (0, 1)}
+    bat_kwargs = kwargs_for_order(cfg["batting"], bat_int, bat_clamp)
+    bat_kwargs["player_name"] = "P"
+    bat_kwargs["format"] = "ODI"
     bf = m.BattingFeatures(**bat_kwargs)
     vec = m.batting_feature_vector(bf)
-    assert vec == [bat_kwargs[name] for name in cfg["batting"]]
+    expected_bat = [float(bat_kwargs[n]) for n in cfg["batting"]]
+    assert vec == expected_bat, (vec, expected_bat)
 
-    bowl_kwargs = {
-        "bowling_consistency": 1.1,
-        "bowling_form": 2.2,
-        "bowling_temp": 3,
-        "bowling_wind": 4,
-        "bowling_rain": 5,
-        "bowling_humidity": 6,
-        "bowling_cloud": 7,
-        "bowling_pressure": 8,
-        "bowling_viscosity": 1,
-        "batting_inning": 1,
-        "bowling_session": 2,
-        "toss": 1,
-        "bowling_venue": 10.0,
-        "bowling_opposition": 11.0,
-        "season": 2024,
-        "player_name": "P",
-        "format": "ODI",
+    bowl_int = {
+        "bowling_temp",
+        "bowling_wind",
+        "bowling_rain",
+        "bowling_humidity",
+        "bowling_cloud",
+        "bowling_pressure",
+        "bowling_viscosity",
+        "batting_inning",
+        "bowling_session",
+        "toss",
+        "season",
     }
+    bowl_clamp = {"bowling_viscosity": (0, 1), "batting_inning": (1, 2), "bowling_session": (1, 3), "toss": (0, 1)}
+    bowl_kwargs = kwargs_for_order(cfg["bowling"], bowl_int, bowl_clamp)
+    bowl_kwargs["player_name"] = "P"
+    bowl_kwargs["format"] = "ODI"
     bwf = m.BowlingFeatures(**bowl_kwargs)
     vec2 = m.bowling_feature_vector(bwf)
-    assert vec2 == [bowl_kwargs[name] for name in cfg["bowling"]]
+    expected_bowl = [float(bowl_kwargs[n]) for n in cfg["bowling"]]
+    assert vec2 == expected_bowl, (vec2, expected_bowl)
