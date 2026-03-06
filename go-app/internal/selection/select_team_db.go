@@ -197,13 +197,36 @@ func selectWithConstraints(scored []scoredPlayer, teamSize, minBowlers int, requ
 				if !cand.IsKeeper {
 					continue
 				}
+				swapped := false
+				// Prefer swapping out a pure batter (non-keeper, non-bowler) if available.
 				for j := len(selected) - 1; j >= 0; j-- {
 					if !selected[j].IsKeeper && !selected[j].IsBowler {
 						selected[j] = cand
+						swapped = true
 						break
 					}
 				}
-				break
+				if swapped {
+					break
+				}
+
+				// If no pure batter is available, consider swapping out a bowler while
+				// still respecting the minimum bowler constraint.
+				for j := len(selected) - 1; j >= 0; j-- {
+					if !selected[j].IsKeeper && selected[j].IsBowler && bowlerCount > minBowlers {
+						// Adjust bowler count based on whether the incoming keeper also bowls.
+						bowlerCount--
+						if cand.IsBowler {
+							bowlerCount++
+						}
+						selected[j] = cand
+						swapped = true
+						break
+					}
+				}
+				if swapped {
+					break
+				}
 			}
 		}
 	}
