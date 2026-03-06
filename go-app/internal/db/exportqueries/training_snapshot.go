@@ -67,7 +67,7 @@ type bowlingSnapshotAtCutoff struct {
 	consistency float64
 	venue       float64
 	opposition  float64
-	careerAvg   float64 // simple mean of all historical bowling values (wickets per innings)
+	careerAvg   float64           // simple mean of all historical bowling values (wickets per innings)
 	raw         features.RawStats // v2: multi-scale windowed stats
 }
 

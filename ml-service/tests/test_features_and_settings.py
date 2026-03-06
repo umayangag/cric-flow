@@ -35,7 +35,19 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     assert bat_vec[:5] == [1.1, 2.2, 2.0, 1.8, 0.5]
     assert bat_vec[5:23] == [0.0] * 18  # raw windowed stats
     assert bat_vec[23:36] == [
-        30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024,
+        30,
+        5,
+        0,
+        60,
+        10,
+        1000,
+        1,
+        2,
+        3,
+        1,
+        7.5,
+        8.5,
+        2024,
     ]
     assert bat_vec[36:] == [0.0] * (len(bat_vec) - 36)
 
@@ -63,7 +75,19 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     assert bowl_vec[:4] == [1.1, 2.2, 0.5, 1.5]  # consistency, form, momentum, career_avg
     assert bowl_vec[4:22] == [0.0] * 18  # raw windowed stats
     assert bowl_vec[22:35] == [
-        30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024,
+        30,
+        5,
+        0,
+        60,
+        10,
+        1000,
+        1,
+        2,
+        3,
+        1,
+        7.5,
+        8.5,
+        2024,
     ]
     assert bowl_vec[35:] == [0.0] * (len(bowl_vec) - 35)
 

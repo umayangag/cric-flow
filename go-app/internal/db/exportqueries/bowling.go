@@ -716,10 +716,13 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := []string{
+		row := make([]string, 0, 9+len(rawStrs)+21)
+		row = append(row,
 			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
-			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
-		}
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
+		)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
@@ -924,10 +927,13 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := []string{
+		row := make([]string, 0, 9+len(rawStrs)+21)
+		row = append(row,
 			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
-			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
-		}
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
+		)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,

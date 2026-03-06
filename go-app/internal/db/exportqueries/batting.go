@@ -738,10 +738,13 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := []string{
+		row := make([]string, 0, 11+len(rawStrs)+20)
+		row = append(row,
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
-		}
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+		)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
@@ -941,10 +944,13 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			momentumN,
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
-		row := []string{
+		row := make([]string, 0, 11+len(rawStrs)+20)
+		row = append(row,
 			r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos,
-			floatToExport(snap.consistency), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
-		}
+			floatToExport(
+				snap.consistency,
+			), floatToExport(snap.form), floatToExport(snap.formShort), floatToExport(snap.formLong), floatToExport(snap.momentum),
+		)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,

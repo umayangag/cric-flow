@@ -114,16 +114,16 @@ func SortAndClip(inn []Innings, cutoff time.Time) []Innings {
 // Used instead of formula-derived form/consistency so the ML model can learn optimal weightings.
 // All fields are 0 when there is no data for that window.
 type RawStats struct {
-	MeanW3, MeanW5, MeanW10, MeanW20     float64
-	StdW5, StdW10                        float64
-	MaxW10, MinW10, MedianW10             float64
-	Last1, Last2, Last3                   float64
-	CareerMean                            float64
-	CareerCount                           int
-	PctZeroW10                            float64
-	TrendW5                               float64
-	DaysSinceLast                         float64
-	InningsInLast90D                      int
+	MeanW3, MeanW5, MeanW10, MeanW20 float64
+	StdW5, StdW10                    float64
+	MaxW10, MinW10, MedianW10        float64
+	Last1, Last2, Last3              float64
+	CareerMean                       float64
+	CareerCount                      int
+	PctZeroW10                       float64
+	TrendW5                          float64
+	DaysSinceLast                    float64
+	InningsInLast90D                 int
 }
 
 // WindowedStats computes multi-scale summary statistics from innings (assumed sorted by date ascending).
