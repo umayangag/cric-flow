@@ -146,29 +146,51 @@ func ContractVersion() string {
 }
 
 // numRawStatsPerCategory is the number of raw windowed stat features per discipline (batting, bowling).
+// Used for fallback and for Batting/Bowling split of RawStatsFeatureNames result.
 const numRawStatsPerCategory = 18
 
-// battingRawStatOffset is the index in contract.Batting where raw stats start (after formula features).
-const battingRawStatOffset = 5
+// Raw stats block in configs/feature_vectors.json is located by start/end marker names (not fixed offsets).
+// Aligns with ml-service/app/feature_config.py (_RAW_START = "mean_w3", _RAW_END = "innings_in_last_90d").
+const (
+	battingRawStart = "batting_mean_w3"
+	battingRawEnd   = "batting_innings_in_last_90d"
+	bowlingRawStart = "bowling_mean_w3"
+	bowlingRawEnd   = "bowling_innings_in_last_90d"
+)
 
-// bowlingRawStatOffset is the index in contract.Bowling where raw stats start (after formula features).
-const bowlingRawStatOffset = 4
+// findRawStatsBlock returns the slice of names from startMarker through endMarker (inclusive).
+// Returns (nil, false) if either marker is missing or end is before start.
+func findRawStatsBlock(names []string, startMarker, endMarker string) ([]string, bool) {
+	var start, end int
+	for i, n := range names {
+		if n == startMarker {
+			start = i
+		}
+		if n == endMarker {
+			end = i
+			break
+		}
+	}
+	if end < start {
+		return nil, false
+	}
+	return names[start : end+1], true
+}
 
 // RawStatsFeatureNames returns the canonical list of raw windowed stat feature names (v2 contract).
-// Derived from the loaded contract (defaultContract or configs/feature_vectors.json) so export,
-// training, and prediction stay in sync without duplicating the list.
-// Order: batting (18) then bowling (18).
+// Derived from the loaded contract (defaultContract or configs/feature_vectors.json) by finding the
+// raw stats block via start/end markers, so reordering or extra features in the JSON do not break
+// the subset. Order: batting (18) then bowling (18).
 func RawStatsFeatureNames() []string {
 	c := getContract()
-	batting := c.Batting
-	bowling := c.Bowling
-	if len(batting) < battingRawStatOffset+numRawStatsPerCategory || len(bowling) < bowlingRawStatOffset+numRawStatsPerCategory {
-		// Fallback if contract is truncated; should not happen with defaultContract.
+	batting, okBat := findRawStatsBlock(c.Batting, battingRawStart, battingRawEnd)
+	bowling, okBowl := findRawStatsBlock(c.Bowling, bowlingRawStart, bowlingRawEnd)
+	if !okBat || !okBowl || len(batting) != numRawStatsPerCategory || len(bowling) != numRawStatsPerCategory {
 		return rawStatsFeatureNamesFallback()
 	}
 	out := make([]string, 0, numRawStatsPerCategory*2)
-	out = append(out, batting[battingRawStatOffset:battingRawStatOffset+numRawStatsPerCategory]...)
-	out = append(out, bowling[bowlingRawStatOffset:bowlingRawStatOffset+numRawStatsPerCategory]...)
+	out = append(out, batting...)
+	out = append(out, bowling...)
 	return out
 }
 

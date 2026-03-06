@@ -577,8 +577,7 @@ const rawStatsSnapshotQuery = `
 			bowling_days_since_last, bowling_innings_in_last_90d
 		FROM feature_raw_stats_snapshots
 		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
-		ORDER BY player_id, as_of_date DESC
-`
+		ORDER BY player_id, as_of_date DESC`
 
 // requiredPrecomputedKeysBase are the feature keys required for form/consistency (match and no-match contexts both use these).
 var requiredPrecomputedKeysBase = []string{
