@@ -30,3 +30,23 @@ def test_win_probability_coherence_from_margin_reports_abs_diff():
     assert 0.0 <= metrics["p_model_team1"] <= 1.0
     assert 0.0 <= metrics["p_implied_team1"] <= 1.0
     assert metrics["abs_diff"] == abs(metrics["p_model_team1"] - metrics["p_implied_team1"])
+
+
+def test_implied_win_probability_negative_scale_falls_back():
+    """scale <= 0 falls back to default 25.0."""
+    p = implied_win_probability_from_margin(10.0, scale=-5.0)
+    p_default = implied_win_probability_from_margin(10.0, scale=25.0)
+    assert abs(p - p_default) < 1e-9
+
+
+def test_implied_win_probability_invalid_scale_falls_back():
+    """Non-numeric scale falls back to 25.0."""
+    p = implied_win_probability_from_margin(10.0, scale="bad")  # type: ignore[arg-type]
+    p_default = implied_win_probability_from_margin(10.0, scale=25.0)
+    assert abs(p - p_default) < 1e-9
+
+
+def test_win_probability_coherence_invalid_model_prob_falls_back():
+    """Non-numeric p_model_team1 falls back to 0.5."""
+    metrics = win_probability_coherence_from_margin(p_model_team1="bad", margin=0.0)  # type: ignore[arg-type]
+    assert metrics["p_model_team1"] == 0.5

@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // BacktestMLClient is a tiny HTTP client to call the ml-service backtest endpoint.
@@ -144,6 +147,77 @@ type mlWinFeatures struct {
 	Format                  string  `json:"format,omitempty"`
 }
 
+// mlWinFeaturesEnhanced matches the ML service WinFeaturesEnhanced request body
+// for POST /predict/win-enhanced. Sends per-player feature maps for on-the-fly aggregation.
+type mlWinFeaturesEnhanced struct {
+	FormatID               int                           `json:"format_id"`
+	VenueID                int                           `json:"venue_id"`
+	MatchDateUnix          float64                       `json:"match_date_unix"`
+	Team1OppositionID      int                           `json:"team1_opposition_id"`
+	Team2OppositionID      int                           `json:"team2_opposition_id"`
+	TossWinnerOppositionID int                           `json:"toss_winner_opposition_id"`
+	Temp                   int                           `json:"temp"`
+	Wind                   int                           `json:"wind"`
+	Rain                   int                           `json:"rain"`
+	Humidity               int                           `json:"humidity"`
+	Cloud                  int                           `json:"cloud"`
+	Pressure               int                           `json:"pressure"`
+	Viscosity              int                           `json:"viscosity"`
+	Team1PlayerFeatures    map[string]map[string]float64 `json:"team1_player_features"`
+	Team2PlayerFeatures    map[string]map[string]float64 `json:"team2_player_features"`
+	Format                 string                        `json:"format,omitempty"`
+}
+
+// mlTeamOptPoolPlayer is a single player in the optimization pool (JSON wire DTO).
+type mlTeamOptPoolPlayer struct {
+	PlayerID   int64              `json:"player_id"`
+	Name       string             `json:"name"`
+	IsBowler   bool               `json:"is_bowler"`
+	IsKeeper   bool               `json:"is_keeper"`
+	BatScore   float64            `json:"bat_score"`
+	BowlScore  float64            `json:"bowl_score"`
+	FieldScore float64            `json:"field_score"`
+	Features   map[string]float64 `json:"features"`
+}
+
+type mlTeamOptWeights struct {
+	Bat         float64 `json:"bat"`
+	Bowl        float64 `json:"bowl"`
+	Field       float64 `json:"field"`
+	KeeperBonus float64 `json:"keeper_bonus"`
+}
+
+type mlTeamOptConstraints struct {
+	Size          int  `json:"size"`
+	MinBowlers    int  `json:"min_bowlers"`
+	RequireKeeper bool `json:"require_keeper"`
+}
+
+// mlTeamOptRequest is the JSON body for POST /optimize/team-selection.
+type mlTeamOptRequest struct {
+	Pool             []mlTeamOptPoolPlayer         `json:"pool"`
+	OpponentFeatures map[string]map[string]float64 `json:"opponent_features"`
+	MatchContext     map[string]float64            `json:"match_context"`
+	Constraints      mlTeamOptConstraints          `json:"constraints"`
+	Weights          mlTeamOptWeights              `json:"weights"`
+	TeamIsTeam1      bool                          `json:"team_is_team1"`
+	Format           string                        `json:"format,omitempty"`
+	MaxIterations    int                           `json:"max_iterations"`
+	MaxEvals         int                           `json:"max_evals"`
+}
+
+type mlTeamOptSelectedPlayer struct {
+	PlayerID int64  `json:"player_id"`
+	Name     string `json:"name"`
+}
+
+type mlTeamOptResponse struct {
+	Selected       []mlTeamOptSelectedPlayer `json:"selected"`
+	WinProbability float64                   `json:"win_probability"`
+	IterationsUsed int                       `json:"iterations_used"`
+	EvalsPerformed int                       `json:"evals_performed"`
+}
+
 // mlWinPrediction matches ML service WinPrediction (POST /predict/win response element).
 type mlWinPrediction struct {
 	Team1WinProbability float64 `json:"team1_win_probability"`
@@ -159,7 +233,8 @@ type mlErrorDetail struct {
 // logMLNon2xx reads the response body, logs status and body for debugging, and returns an error
 // that includes status and a short message extracted from the body if present.
 func logMLNon2xx(resp *http.Response, endpoint string) error {
-	body, err := io.ReadAll(resp.Body)
+	const maxResponseBody = 1 << 20 // 1 MiB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		slog.Error("ml service non-2xx: failed to read response body",
 			slog.String("endpoint", endpoint),
@@ -367,6 +442,118 @@ func (c *BacktestMLClient) predictPlayers(
 	return res, nil
 }
 
+// ---------------------------------------------------------------------------
+// Batch prediction (POST /ml/backtest/predict-batch)
+// ---------------------------------------------------------------------------
+
+type mlBatchPredictItem struct {
+	CutoffDate     string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids"`
+	Format         string                        `json:"format"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+}
+
+type mlBatchPredictRequest struct {
+	Requests []mlBatchPredictItem `json:"requests"`
+}
+
+type mlBatchPredictResultItem struct {
+	Players []mlBacktestPlayerPred `json:"players"`
+}
+
+type mlBatchPredictResponse struct {
+	Results []mlBatchPredictResultItem `json:"results"`
+}
+
+// BatchPredictPlayersInput holds the inputs for one item in a batch prediction.
+type BatchPredictPlayersInput struct {
+	Cutoff         time.Time
+	Format         string
+	PlayerIDs      []int64
+	Features       map[int64]map[string]float64
+	UseLatestModel bool
+}
+
+// PredictPlayersBatch sends multiple prediction requests to the ML service
+// in a single HTTP call, returning one result map per input item.
+func (c *BacktestMLClient) PredictPlayersBatch(
+	ctx context.Context,
+	inputs []BatchPredictPlayersInput,
+) ([]map[int64]backtest.PlayerPredictions, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+
+	items := make([]mlBatchPredictItem, 0, len(inputs))
+	for _, in := range inputs {
+		item := mlBatchPredictItem{
+			CutoffDate:     in.Cutoff.Format(time.RFC3339),
+			PlayerIDs:      in.PlayerIDs,
+			Format:         strings.TrimSpace(in.Format),
+			UseLatestModel: in.UseLatestModel,
+		}
+		if len(in.Features) > 0 {
+			item.Features = make(map[string]map[string]float64, len(in.Features))
+			for pid, m := range in.Features {
+				item.Features[strconv.FormatInt(pid, 10)] = m
+			}
+		}
+		items = append(items, item)
+	}
+
+	payload, _ := json.Marshal(mlBatchPredictRequest{Requests: items})
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		c.BaseURL+"/ml/backtest/predict-batch",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, logMLNon2xx(resp, "ml batch predict")
+	}
+	var out mlBatchPredictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if len(out.Results) != len(inputs) {
+		return nil, fmt.Errorf("batch predict: got %d results, expected %d", len(out.Results), len(inputs))
+	}
+	results := make([]map[int64]backtest.PlayerPredictions, len(out.Results))
+	for i, result := range out.Results {
+		m := make(map[int64]backtest.PlayerPredictions, len(result.Players))
+		for _, p := range result.Players {
+			pp := backtest.PlayerPredictions{
+				Runs:    p.Runs,
+				Wickets: p.Wickets,
+				Economy: p.Economy,
+				Catches: p.Catches,
+				RunOuts: p.RunOuts,
+			}
+			if p.Balls != nil {
+				pp.Balls = *p.Balls
+			}
+			if p.Fours != nil {
+				pp.Fours = *p.Fours
+			}
+			if p.Sixes != nil {
+				pp.Sixes = *p.Sixes
+			}
+			m[p.PlayerID] = pp
+		}
+		results[i] = m
+	}
+	return results, nil
+}
+
 // GenerateMatch calls the ml-service /api/ml/generate-match endpoint to get a reconciled
 // per-player projection, innings totals, and win probability for a future match.
 // playerIDs must include all players in the match (typically both XIs).
@@ -513,6 +700,122 @@ func (c *BacktestMLClient) PredictMatchWin(ctx context.Context, features mlWinFe
 		return 0, errors.New("predict/win: empty response")
 	}
 	return out[0].Team1WinProbability, nil
+}
+
+// PredictMatchWinEnhanced calls POST /predict/win-enhanced with per-player feature maps.
+// Returns team1 (batting first) win probability.
+func (c *BacktestMLClient) PredictMatchWinEnhanced(
+	ctx context.Context,
+	features mlWinFeaturesEnhanced,
+) (float64, error) {
+	payload, err := json.Marshal(features)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.BaseURL+"/predict/win-enhanced",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, logMLNon2xx(resp, "predict/win-enhanced")
+	}
+	var out mlWinPrediction
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.Team1WinProbability, nil
+}
+
+// OptimizeTeamSelection calls POST /optimize/team-selection to run server-side
+// hill-climb team optimisation with batch model inference.
+func (c *BacktestMLClient) OptimizeTeamSelection(
+	ctx context.Context,
+	req predictteam.TeamOptimizationRequest,
+) (*predictteam.TeamOptimizationResult, error) {
+	mlPool := make([]mlTeamOptPoolPlayer, len(req.Pool))
+	for i, p := range req.Pool {
+		mlPool[i] = mlTeamOptPoolPlayer{
+			PlayerID:   p.PlayerID,
+			Name:       p.Name,
+			IsBowler:   p.IsBowler,
+			IsKeeper:   p.IsKeeper,
+			BatScore:   p.BatScore,
+			BowlScore:  p.BowlScore,
+			FieldScore: p.FieldScore,
+			Features:   p.Features,
+		}
+	}
+	oppFeats := make(map[string]map[string]float64, len(req.OpponentFeatures))
+	for pid, feats := range req.OpponentFeatures {
+		oppFeats[strconv.FormatInt(pid, 10)] = feats
+	}
+	mlReq := mlTeamOptRequest{
+		Pool:             mlPool,
+		OpponentFeatures: oppFeats,
+		MatchContext:     req.MatchContext,
+		Constraints: mlTeamOptConstraints{
+			Size:          req.Constraints.Size,
+			MinBowlers:    req.Constraints.MinBowlers,
+			RequireKeeper: req.Constraints.RequireKeeper,
+		},
+		Weights: mlTeamOptWeights{
+			Bat:         req.Weights.Bat,
+			Bowl:        req.Weights.Bowl,
+			Field:       req.Weights.Field,
+			KeeperBonus: req.Weights.KeeperBonus,
+		},
+		TeamIsTeam1:   req.TeamIsTeam1,
+		Format:        req.Format,
+		MaxIterations: req.MaxIterations,
+		MaxEvals:      req.MaxEvals,
+	}
+
+	payload, err := json.Marshal(mlReq)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		c.BaseURL+"/optimize/team-selection",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, logMLNon2xx(resp, "optimize/team-selection")
+	}
+	var out mlTeamOptResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	selected := make([]predictteam.TeamOptSelectedPlayer, len(out.Selected))
+	for i, s := range out.Selected {
+		selected[i] = predictteam.TeamOptSelectedPlayer{PlayerID: s.PlayerID, Name: s.Name}
+	}
+	return &predictteam.TeamOptimizationResult{
+		Selected:       selected,
+		WinProbability: out.WinProbability,
+		IterationsUsed: out.IterationsUsed,
+		EvalsPerformed: out.EvalsPerformed,
+	}, nil
 }
 
 // historicalMatchBacktest calls the ML service to evaluate a specific, already-played match.

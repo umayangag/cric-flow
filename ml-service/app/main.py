@@ -13,6 +13,7 @@ Domain logic lives in dedicated modules:
 import asyncio
 import functools
 import hmac
+import math
 import os
 import sys
 import threading
@@ -47,6 +48,9 @@ from .models import (
     BacktestMatchResponse,
     BacktestPlayersResponse,
     BacktestPredictRequest,
+    BatchPredictRequest,
+    BatchPredictResponse,
+    BatchPredictResultItem,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
@@ -56,18 +60,25 @@ from .models import (
     GenerateMatchRequest,
     GenerateMatchResponse,
     HistoricalMatchBacktestRequest,
+    TeamOptimizationRequest,
+    TeamOptimizationResponse,
+    TeamOptimizationSelectedPlayer,
     WinFeatures,
+    WinFeaturesEnhanced,
     WinPrediction,
 )
 from .prediction_service import (
     GenerateMatchSettings,
     generate_match,
+    predict_players_batch,
     predict_players_with_features,
     round_datetime_to_granularity,
     run_batting_prediction,
     run_bowling_prediction,
     run_extras_prediction,
+    run_team_optimization,
     run_win_prediction,
+    run_win_prediction_enhanced,
     validate_predict_batch,
 )
 
@@ -451,6 +462,41 @@ def backtest_predict(req: BacktestPredictRequest):
     )
 
 
+@app.post("/ml/backtest/predict-batch", response_model=BatchPredictResponse)
+def backtest_predict_batch(req: BatchPredictRequest):
+    """Batch prediction: run multiple player-prediction sets in a single HTTP call.
+
+    Each item is equivalent to a POST /ml/backtest/predict with player_ids.
+    Models are loaded once and shared across all items in the batch.
+    """
+    logger.info("backtest_predict_batch.start", batch_size=len(req.requests))
+    try:
+        all_results = predict_players_batch(
+            items=req.requests,
+            models_dir=MODELS_DIR,
+            enable_train_on_the_fly=_settings.enable_train_on_the_fly,
+            go_app_url=_settings.go_app_url,
+            go_app_api_key=_settings.go_app_api_key or None,
+            train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
+        )
+    except ValueError as e:
+        logger.exception("backtest_predict_batch.failed", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=error_payload(code="BATCH_PREDICT_FAILED", message=str(e)),
+        ) from e
+    except Exception as e:
+        logger.exception("backtest_predict_batch.error", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=error_payload(code="BATCH_PREDICT_FAILED", message="Batch prediction failed"),
+        ) from e
+    logger.info("backtest_predict_batch.success", batch_size=len(req.requests))
+    return BatchPredictResponse(
+        results=[BatchPredictResultItem(players=preds) for preds in all_results],
+    )
+
+
 @app.post("/api/ml/generate-match", response_model=GenerateMatchResponse)
 def api_generate_match(req: GenerateMatchRequest):
     """Generate a reconciled match: per-player stats, innings totals, and win probability (§5.1.1)."""
@@ -526,6 +572,111 @@ async def predict_extras(features: List[ExtrasFeatures]):
 async def predict_win(features: List[WinFeatures]):
     validate_predict_batch(features, "win", MAX_PREDICT_BATCH_SIZE)
     return run_win_prediction(features)
+
+
+@app.post("/predict/win-enhanced", response_model=WinPrediction)
+async def predict_win_enhanced(request: WinFeaturesEnhanced):
+    """Enhanced win prediction using per-player features with on-the-fly aggregation.
+
+    Accepts per-player feature maps for both teams and computes distribution
+    statistics (mean, std, max, min, top3_mean) and derived matchup features
+    before running the win model.
+    """
+    return run_win_prediction_enhanced(
+        fmt=request.format or "",
+        match_context=request.to_match_context_dict(),
+        team1_player_features=request.team1_player_features,
+        team2_player_features=request.team2_player_features,
+    )
+
+
+@app.post("/optimize/team-selection", response_model=TeamOptimizationResponse)
+async def optimize_team_selection(request: TeamOptimizationRequest):
+    """Server-side team selection optimisation via hill-climb with batch inference.
+
+    Replaces hundreds of ``POST /predict/win-enhanced`` calls with a single
+    request.  The ML service runs the full greedy-seed + hill-climb loop
+    internally using vectorised ``model.predict_proba`` batches.
+    """
+    from ml.team_optimizer import PoolPlayer, ScoreWeights, SelectionConstraints
+
+    def _validated_player_id(k: str) -> int:
+        if not k.isdigit() or len(k) > 20:
+            raise HTTPException(
+                status_code=400,
+                detail=_error_payload(code="INVALID_PLAYER_ID", message=f"Invalid player ID key: {k!r}"),
+            )
+        return int(k)
+
+    def _reject_non_finite(features: Dict[str, float], context: str) -> None:
+        for name, val in features.items():
+            if not math.isfinite(val):
+                raise HTTPException(
+                    status_code=400,
+                    detail=_error_payload(
+                        code="NON_FINITE_FEATURE",
+                        message=f"Non-finite value in {context}: {name}={val!r}",
+                    ),
+                )
+
+    for p in request.pool:
+        _reject_non_finite(p.features, f"pool player {p.player_id}")
+
+    pool = [
+        PoolPlayer(
+            player_id=p.player_id,
+            name=p.name,
+            is_bowler=p.is_bowler,
+            is_keeper=p.is_keeper,
+            bat_score=p.bat_score,
+            bowl_score=p.bowl_score,
+            field_score=p.field_score,
+            features=p.features,
+        )
+        for p in request.pool
+    ]
+    opponent_features = {_validated_player_id(k): v for k, v in request.opponent_features.items()}
+
+    for pid, feats in opponent_features.items():
+        _reject_non_finite(feats, f"opponent player {pid}")
+
+    try:
+        result = run_team_optimization(
+            fmt=request.format or "",
+            pool=pool,
+            opponent_features=opponent_features,
+            match_context=request.match_context,
+            constraints=SelectionConstraints(
+                size=request.constraints.size,
+                min_bowlers=request.constraints.min_bowlers,
+                require_keeper=request.constraints.require_keeper,
+            ),
+            weights=ScoreWeights(
+                bat=request.weights.bat,
+                bowl=request.weights.bowl,
+                field=request.weights.field,
+                keeper_bonus=request.weights.keeper_bonus,
+            ),
+            team_is_team1=request.team_is_team1,
+            max_iterations=request.max_iterations,
+            max_evals=request.max_evals,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_error_payload(
+                code="OPTIMIZATION_CONSTRAINT_ERROR",
+                message=str(exc),
+                hint="Check pool composition satisfies constraints (keeper, bowlers, size).",
+            ),
+        ) from exc
+
+    return TeamOptimizationResponse(
+        selected=[TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected],
+        win_probability=result.win_probability,
+        iterations_used=result.iterations_used,
+        evals_performed=result.evals_performed,
+    )
 
 
 # ---------------------------------------------------------------------------

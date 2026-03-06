@@ -265,6 +265,20 @@ func BacktestAccuracyTrendMaxLimit(cfg *Config) int {
 	return DefaultBacktestListMaxLimit
 }
 
+func BacktestAccuracyTrendConcurrency(cfg *Config) int {
+	if cfg != nil && cfg.Backtest.AccuracyTrendConcurrency > 0 {
+		return cfg.Backtest.AccuracyTrendConcurrency
+	}
+	return DefaultBacktestAccuracyTrendConcurrency
+}
+
+func BacktestExportContributionsConcurrency(cfg *Config) int {
+	if cfg != nil && cfg.Backtest.ExportContributionsConcurrency > 0 {
+		return cfg.Backtest.ExportContributionsConcurrency
+	}
+	return DefaultBacktestExportContributionsConcurrency
+}
+
 func BacktestJobCleanupAgeHours(cfg *Config) int {
 	if cfg != nil && cfg.Backtest.Job != nil && cfg.Backtest.Job.CleanupAgeHours > 0 {
 		return cfg.Backtest.Job.CleanupAgeHours
@@ -350,6 +364,22 @@ func SelectionMaxPoolSizeForFullEnum(cfg *Config) int {
 		return cfg.Selection.MaxPoolSizeForFullEnum
 	}
 	return DefaultSelectionMaxPoolSizeForFullEnum
+}
+
+// SelectionMaxWinProbSwapIterations returns the hill-climb outer-loop cap for win-probability selection.
+func SelectionMaxWinProbSwapIterations(cfg *Config) int {
+	if cfg != nil && cfg.Selection.MaxWinProbSwapIterations > 0 {
+		return cfg.Selection.MaxWinProbSwapIterations
+	}
+	return DefaultSelectionMaxWinProbSwapIterations
+}
+
+// SelectionMaxWinProbEvalBudget returns the total ML evaluation call budget per team for win-probability hill-climb.
+func SelectionMaxWinProbEvalBudget(cfg *Config) int {
+	if cfg != nil && cfg.Selection.MaxWinProbEvalBudget > 0 {
+		return cfg.Selection.MaxWinProbEvalBudget
+	}
+	return DefaultSelectionMaxWinProbEvalBudget
 }
 
 // Resource limits (used by resources package). 0 in config = use default constant.

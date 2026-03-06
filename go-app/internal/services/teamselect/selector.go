@@ -11,7 +11,7 @@ type Selector interface {
 	SelectTeam(
 		ctx context.Context,
 		matchID int64,
-		format, season string,
+		format string,
 		opts selection.Options,
 	) (selection.Result, error)
 	SelectTeamFromCSV(
@@ -31,10 +31,10 @@ func NewSelectionAdapter() Selector { return selectionAdapter{} }
 func (selectionAdapter) SelectTeam(
 	ctx context.Context,
 	matchID int64,
-	format, season string,
+	format string,
 	opts selection.Options,
 ) (selection.Result, error) {
-	return selection.SelectTeam(ctx, matchID, format, season, opts)
+	return selection.SelectTeam(ctx, matchID, format, opts)
 }
 
 func (selectionAdapter) SelectTeamFromCSV(

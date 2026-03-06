@@ -194,3 +194,30 @@ def test_extract_feature_importance_from_estimator_no_names_uses_default():
     assert "feature_0" in out
     assert "feature_1" in out
     assert "feature_2" in out
+
+
+def test_extract_feature_importance_single_estimator_with_importances():
+    """Covers branch where estimator has feature_importances_ but no estimators_."""
+    from sklearn.tree import DecisionTreeRegressor
+
+    est = DecisionTreeRegressor(random_state=0)
+    est.fit(np.random.rand(20, 4), np.random.rand(20))
+    out = extract_feature_importance_from_estimator(est, ["a", "b", "c", "d"])
+    assert out is not None
+    assert len(out) == 4
+
+
+def test_extract_feature_importance_no_importances_returns_none():
+    """Covers return None when estimator lacks feature_importances_."""
+    from sklearn.linear_model import LinearRegression
+
+    est = LinearRegression()
+    est.fit(np.random.rand(10, 3), np.random.rand(10))
+    assert extract_feature_importance_from_estimator(est, ["a", "b", "c"]) is None
+
+
+def test_extract_feature_importance_max_features_zero_returns_none():
+    """Covers return None when max_features=0."""
+    est = RandomForestRegressor(n_estimators=5, random_state=42)
+    est.fit(np.random.rand(20, 3), np.random.rand(20))
+    assert extract_feature_importance_from_estimator(est, ["a", "b", "c"], max_features=0) is None

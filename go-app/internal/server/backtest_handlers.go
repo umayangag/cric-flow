@@ -499,8 +499,19 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Compute metrics and aggregates via helper
+	cfg := config.Load()
+	concurrency := config.BacktestAccuracyTrendConcurrency(cfg)
+	if concurrency <= 0 {
+		concurrency = config.DefaultBacktestAccuracyTrendConcurrency
+	}
 	results, summary, progressive := computeAccuracyTrendForCandidates(
-		r.Context(), candidates, params.IncludePlayer, params.IncludeTeam, params.Cache, params.UseUnifiedModel,
+		r.Context(),
+		candidates,
+		params.IncludePlayer,
+		params.IncludeTeam,
+		params.Cache,
+		params.UseUnifiedModel,
+		concurrency,
 	)
 
 	resp := accuracyTrendResponse{

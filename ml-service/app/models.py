@@ -309,8 +309,171 @@ class WinFeatures(BaseModel):
         return v.strip().upper()
 
 
+class WinFeaturesEnhanced(BaseModel):
+    """Enhanced win prediction request: match context + per-player feature maps.
+
+    The ML service aggregates per-player features into distribution statistics
+    (mean, std, max, min, top3_mean) and computes derived matchup features.
+    """
+
+    format_id: int = Field(default=0, ge=0)
+    venue_id: int = Field(default=0, ge=0)
+    match_date_unix: float = Field(default=0.0, ge=0)
+    team1_opposition_id: int = Field(default=0, ge=0)
+    team2_opposition_id: int = Field(default=0, ge=0)
+    toss_winner_opposition_id: int = Field(default=0, ge=0)
+    temp: int = Field(default=0)
+    wind: int = Field(default=0, ge=0)
+    rain: int = Field(default=0, ge=0)
+    humidity: int = Field(default=0, ge=0)
+    cloud: int = Field(default=0, ge=0)
+    pressure: int = Field(default=0, ge=0)
+    viscosity: int = Field(default=0, ge=0, le=2)
+    team1_player_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="Per-player feature maps for team1: {player_id: {feature_name: value}}"
+    )
+    team2_player_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="Per-player feature maps for team2: {player_id: {feature_name: value}}"
+    )
+    format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+    def to_match_context_dict(self) -> Dict[str, float]:
+        """Extract the MATCH_CONTEXT_COLS subset as a float dict for the aggregation pipeline."""
+        return {
+            "format_id": float(self.format_id),
+            "venue_id": float(self.venue_id),
+            "match_date_unix": float(self.match_date_unix),
+            "team1_opposition_id": float(self.team1_opposition_id),
+            "team2_opposition_id": float(self.team2_opposition_id),
+            "toss_winner_opposition_id": float(self.toss_winner_opposition_id),
+            "temp": float(self.temp),
+            "wind": float(self.wind),
+            "rain": float(self.rain),
+            "humidity": float(self.humidity),
+            "cloud": float(self.cloud),
+            "pressure": float(self.pressure),
+            "viscosity": float(self.viscosity),
+        }
+
+
 class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
+
+
+# -------------------- Team selection optimisation models --------------------
+
+
+class TeamOptimizationPoolPlayer(BaseModel):
+    player_id: int
+    name: str
+    is_bowler: bool
+    is_keeper: bool
+    bat_score: float
+    bowl_score: float
+    field_score: float = 0.0
+    features: Dict[str, float]
+
+
+class TeamOptimizationWeights(BaseModel):
+    bat: float = 0.45
+    bowl: float = 0.40
+    field: float = 0.10
+    keeper_bonus: float = 0.02
+
+
+class TeamOptimizationConstraints(BaseModel):
+    size: int = Field(default=11, ge=1)
+    min_bowlers: int = Field(default=5, ge=0)
+    require_keeper: bool = True
+
+
+class TeamOptimizationRequest(BaseModel):
+    """Request for server-side team selection optimisation.
+
+    Sends the full player pool, opponent features, and match context in a single
+    call so the ML service can run hill-climb optimisation with direct model
+    access and batch inference — eliminating per-candidate HTTP round-trips.
+    """
+
+    pool: List[TeamOptimizationPoolPlayer] = Field(..., min_length=1)
+    opponent_features: Dict[str, Dict[str, float]] = Field(
+        ..., description="{player_id: {feature_name: value}} for the fixed opponent team"
+    )
+    match_context: Dict[str, float] = Field(
+        ..., description="MATCH_CONTEXT_COLS values (format_id, venue_id, opposition IDs, weather, etc.)"
+    )
+    constraints: TeamOptimizationConstraints = Field(default_factory=TeamOptimizationConstraints)
+    weights: TeamOptimizationWeights = Field(default_factory=TeamOptimizationWeights)
+    team_is_team1: bool = Field(default=True, description="Whether the pool represents team1 (batting first) or team2")
+    format: Optional[str] = Field(default=None, description="Format code for per-format model selection")
+    max_iterations: int = Field(default=50, ge=1, le=200)
+    max_evals: int = Field(default=500, ge=1, le=5000)
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        return v.strip().upper()
+
+
+class TeamOptimizationSelectedPlayer(BaseModel):
+    player_id: int
+    name: str
+
+
+class TeamOptimizationResponse(BaseModel):
+    selected: List[TeamOptimizationSelectedPlayer]
+    win_probability: float = Field(..., ge=0, le=1)
+    iterations_used: int
+    evals_performed: int
+
+
+# -------------------- Batch prediction models --------------------
+
+
+class BatchPredictItem(BaseModel):
+    """One item in a batch prediction request — same fields as BacktestPredictRequest but for player predictions only."""
+
+    cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
+    player_ids: List[int] = Field(..., min_length=1, max_length=100, description="Player IDs to predict for")
+    format: str = Field(..., description="Format code (e.g. T20, ODI)")
+    features: Dict[str, Dict[str, float]] = Field(
+        default_factory=dict,
+        description="Per-player features (player_id as str -> feature name -> value)",
+    )
+    use_latest_model: bool = Field(default=False, description="Use latest model when True")
+    match_context: Optional[MatchContext] = Field(default=None, description="Match context for reconciliation")
+
+    @field_validator("player_ids")
+    def _player_ids_positive(cls, v: List[int]):
+        for pid in v:
+            if pid <= 0:
+                raise ValueError("player_ids must be positive integers")
+        return v
+
+
+class BatchPredictRequest(BaseModel):
+    """Request for POST /ml/backtest/predict-batch — multiple prediction sets in one call."""
+
+    requests: List[BatchPredictItem] = Field(..., min_length=1, max_length=500)
+
+
+class BatchPredictResultItem(BaseModel):
+    """One result in a batch prediction response."""
+
+    players: List[BacktestPlayerPred]
+
+
+class BatchPredictResponse(BaseModel):
+    """Response for POST /ml/backtest/predict-batch — one result per request item."""
+
+    results: List[BatchPredictResultItem]
 
 
 # -------------------- Historical match backtest models --------------------

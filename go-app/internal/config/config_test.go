@@ -345,11 +345,6 @@ func TestPipelinePrecomputeETASecondsPerFmt(t *testing.T) {
 }
 
 func TestConfigServerAndResourcesHelpers(t *testing.T) {
-	require.Equal(t, DefaultServerReadinessTimeoutSec, ServerReadinessTimeoutSec(nil))
-	require.Equal(t, DefaultPrecomputeMBPerWorker, ResourcesPrecomputeMBPerWorker(nil))
-	require.Equal(t, DefaultSelectionMaxPoolSizeForFullEnum, SelectionMaxPoolSizeForFullEnum(nil))
-	require.Equal(t, DefaultPipelineReplayMatchPageSize, PipelineReplayMatchPageSize(nil))
-
 	cfg := &Config{}
 	cfg.Server.ReadinessTimeoutSec = 5
 	require.Equal(t, 5, ServerReadinessTimeoutSec(cfg))
@@ -359,6 +354,12 @@ func TestConfigServerAndResourcesHelpers(t *testing.T) {
 
 	cfg.Selection.MaxPoolSizeForFullEnum = 20
 	require.Equal(t, 20, SelectionMaxPoolSizeForFullEnum(cfg))
+
+	cfg.Selection.MaxWinProbSwapIterations = 30
+	require.Equal(t, 30, SelectionMaxWinProbSwapIterations(cfg))
+
+	cfg.Selection.MaxWinProbEvalBudget = 200
+	require.Equal(t, 200, SelectionMaxWinProbEvalBudget(cfg))
 
 	cfg.Pipeline.ReplayMatchPageSize = 250
 	require.Equal(t, 250, PipelineReplayMatchPageSize(cfg))
@@ -640,6 +641,54 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			ServerHTTPIdleTimeoutSec,
 			25,
 		},
+		{
+			"BacktestExportContributionsJobMaxDurationHr nil",
+			nil,
+			BacktestExportContributionsJobMaxDurationHr,
+			DefaultExportContributionsJobMaxDurHr,
+		},
+		{"BacktestEvalJobMaxDurationHr nil", nil, BacktestEvalJobMaxDurationHr, DefaultEvalJobMaxDurationHr},
+		{"BacktestEvalJobConcurrencyMin nil", nil, BacktestEvalJobConcurrencyMin, DefaultEvalJobConcurrencyMin},
+		{"BacktestEvalJobConcurrencyMax nil", nil, BacktestEvalJobConcurrencyMax, DefaultEvalJobConcurrencyMax},
+		{"OpsMigrationsPageCap nil", nil, OpsMigrationsPageCap, DefaultOpsMigrationsPageCap},
+		{"OpsRecentMigrationsCount nil", nil, OpsRecentMigrationsCount, DefaultBacktestRecentMigrations},
+		{"ResourcesImportMBPerWorker nil", nil, ResourcesImportMBPerWorker, DefaultImportMBPerWorker},
+		{"ResourcesExportMBPerWorker nil", nil, ResourcesExportMBPerWorker, DefaultExportMBPerWorker},
+		{"ResourcesFieldingMBPerWorker nil", nil, ResourcesFieldingMBPerWorker, DefaultFieldingMBPerWorker},
+		{
+			"ResourcesMemoryUsageFractionPercent nil",
+			nil,
+			ResourcesMemoryUsageFractionPercent,
+			DefaultMemoryUsageFractionPercent,
+		},
+		{
+			"ResourcesSeqCalcLowMemoryLimitGiB nil",
+			nil,
+			ResourcesSeqCalcLowMemoryLimitGiB,
+			DefaultSeqCalcLowMemoryLimitGiB,
+		},
+		{
+			"ResourcesPrecomputeConcurrencyWhenNoLimit nil",
+			nil,
+			ResourcesPrecomputeConcurrencyWhenNoLimit,
+			DefaultPrecomputeConcurrencyWhenNoLimit,
+		},
+		{"ServerReadinessTimeoutSec nil", nil, ServerReadinessTimeoutSec, DefaultServerReadinessTimeoutSec},
+		{"ResourcesPrecomputeMBPerWorker nil", nil, ResourcesPrecomputeMBPerWorker, DefaultPrecomputeMBPerWorker},
+		{
+			"SelectionMaxPoolSizeForFullEnum nil",
+			nil,
+			SelectionMaxPoolSizeForFullEnum,
+			DefaultSelectionMaxPoolSizeForFullEnum,
+		},
+		{
+			"SelectionMaxWinProbSwapIterations nil",
+			nil,
+			SelectionMaxWinProbSwapIterations,
+			DefaultSelectionMaxWinProbSwapIterations,
+		},
+		{"SelectionMaxWinProbEvalBudget nil", nil, SelectionMaxWinProbEvalBudget, DefaultSelectionMaxWinProbEvalBudget},
+		{"PipelineReplayMatchPageSize nil", nil, PipelineReplayMatchPageSize, DefaultPipelineReplayMatchPageSize},
 	}
 
 	for _, tt := range tests {

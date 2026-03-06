@@ -4,6 +4,7 @@ from ml.consistency_checker import (
     InningsTargets,
     adjustment_magnitude,
     check_reconciled_scorecard_consistency,
+    check_win_coherence,
 )
 from ml.reconciliation_service import ReconciledPlayerStats
 
@@ -79,3 +80,70 @@ def test_adjustment_magnitude():
     assert mag["mean_abs_delta_wickets"] == 0.0
     assert mag["total_before_runs"] == 60
     assert mag["total_before_wickets"] == 3
+
+
+def test_check_win_coherence_no_probability_returns_empty():
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=100, batting_balls=60, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+    }
+    assert check_win_coherence(stats, team1_id=100, team2_id=200, win_probability=None) == []
+
+
+def test_check_win_coherence_consistent_margin_no_violation():
+    """Team1 scored more and is favored — should be coherent."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=200, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=200, batting_runs=150, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+    }
+    violations = check_win_coherence(stats, team1_id=100, team2_id=200, win_probability=0.8)
+    assert violations == []
+
+
+def test_check_win_coherence_strongly_favored_wrong_margin_flags_violation():
+    """Team1 strongly favored (p=0.85) but team2 outscored — should flag."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=100, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=200, batting_runs=200, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+    }
+    violations = check_win_coherence(stats, team1_id=100, team2_id=200, win_probability=0.85)
+    assert len(violations) > 0
+    assert "win_coherence" in violations[0]
+
+
+def test_check_win_coherence_team2_strongly_favored_wrong_margin():
+    """Team2 strongly favored (p=0.15) but team1 outscored — should flag."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=250, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=200, batting_runs=150, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+    }
+    violations = check_win_coherence(stats, team1_id=100, team2_id=200, win_probability=0.15)
+    assert len(violations) > 0
+    assert "win_coherence" in violations[0]
+
+
+def test_check_win_coherence_mild_probability_no_violation():
+    """When probability is between 0.3 and 0.7, no strong coherence violation is expected."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=100, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=200, batting_runs=200, batting_balls=120, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+    }
+    violations = check_win_coherence(stats, team1_id=100, team2_id=200, win_probability=0.55)
+    assert violations == []

@@ -85,10 +85,12 @@ const (
 
 // Backtest list/holdout and accuracy-trend defaults and caps.
 const (
-	DefaultBacktestListDefaultLimit   = 50
-	DefaultBacktestListMaxLimit       = 500
-	DefaultBacktestAccuracyTrendLimit = 100
-	DefaultBacktestRecentMigrations   = 100
+	DefaultBacktestListDefaultLimit               = 50
+	DefaultBacktestListMaxLimit                   = 500
+	DefaultBacktestAccuracyTrendLimit             = 100
+	DefaultBacktestRecentMigrations               = 100
+	DefaultBacktestAccuracyTrendConcurrency       = 8
+	DefaultBacktestExportContributionsConcurrency = 8
 )
 
 // Backtest job cleanup and duration (export-contributions and eval jobs).
@@ -126,3 +128,9 @@ const (
 
 // Selection: max pool size for full enumeration; above this use greedy + hill-climb.
 const DefaultSelectionMaxPoolSizeForFullEnum = 18
+
+// Win-probability hill-climb: outer-loop iteration cap and total ML evaluation budget per team.
+const (
+	DefaultSelectionMaxWinProbSwapIterations = 50
+	DefaultSelectionMaxWinProbEvalBudget     = 500
+)

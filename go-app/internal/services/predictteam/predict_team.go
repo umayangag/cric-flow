@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -122,6 +123,84 @@ type MLPredictor interface {
 	// PredictMatchWin returns team1 (batting first) win probability in [0,1].
 	// When the win model is not loaded or request fails, returns an error and the caller should use winner-from-totals.
 	PredictMatchWin(ctx context.Context, w WinFeatures) (team1WinProbability float64, err error)
+}
+
+// EnhancedWinPredictor is an optional extension of MLPredictor that supports
+// win prediction using per-player feature maps (the win-first architecture).
+// Implementations that support this provide richer signal to the win model.
+type EnhancedWinPredictor interface {
+	PredictMatchWinEnhanced(
+		ctx context.Context,
+		features WinFeaturesEnhanced,
+	) (team1WinProbability float64, err error)
+}
+
+// TeamSelectionOptimizer is an optional extension of EnhancedWinPredictor that
+// supports server-side team selection optimisation.  The ML service runs the
+// full hill-climb loop internally with batch model inference, replacing hundreds
+// of per-candidate HTTP calls with a single request.
+type TeamSelectionOptimizer interface {
+	OptimizeTeamSelection(ctx context.Context, req TeamOptimizationRequest) (*TeamOptimizationResult, error)
+}
+
+// TeamOptimizationRequest is the Go-side payload for POST /optimize/team-selection.
+type TeamOptimizationRequest struct {
+	Pool             []TeamOptPoolPlayer
+	OpponentFeatures map[int64]map[string]float64
+	MatchContext     map[string]float64
+	Constraints      teamselect.Constraints
+	Weights          teamselect.ScoreWeights
+	TeamIsTeam1      bool
+	Format           string
+	MaxIterations    int
+	MaxEvals         int
+}
+
+// TeamOptPoolPlayer carries per-player data needed for server-side optimisation.
+type TeamOptPoolPlayer struct {
+	PlayerID   int64
+	Name       string
+	IsBowler   bool
+	IsKeeper   bool
+	BatScore   float64
+	BowlScore  float64
+	FieldScore float64
+	Features   map[string]float64
+}
+
+// TeamOptimizationResult is the Go-side response from POST /optimize/team-selection.
+type TeamOptimizationResult struct {
+	Selected       []TeamOptSelectedPlayer
+	WinProbability float64
+	IterationsUsed int
+	EvalsPerformed int
+}
+
+// TeamOptSelectedPlayer identifies a player in the optimised team.
+type TeamOptSelectedPlayer struct {
+	PlayerID int64
+	Name     string
+}
+
+// WinFeaturesEnhanced holds match context plus per-player feature maps for
+// the enhanced win model that uses distribution statistics over player features.
+type WinFeaturesEnhanced struct {
+	FormatID               int
+	VenueID                int
+	MatchDateUnix          float64
+	Team1OppositionID      int
+	Team2OppositionID      int
+	TossWinnerOppositionID int
+	Temp                   int
+	Wind                   int
+	Rain                   int
+	Humidity               int
+	Cloud                  int
+	Pressure               int
+	Viscosity              int
+	Team1PlayerFeatures    map[int64]map[string]float64
+	Team2PlayerFeatures    map[int64]map[string]float64
+	Format                 string
 }
 
 // WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, toss, weather, team consistency/form sums).
@@ -398,15 +477,43 @@ func predictTeamsWithIntermediates(
 		RequireKeeper: input.RequireKeeper,
 	}
 	useOptimizer := cfg != nil && cfg.Selection.UseOptimizer
-	sel1, err := selectTeam(tsPool1, weights, constraints, useOptimizer)
-	if err != nil {
-		slog.Error("predictteam.PredictTeams team1 select failed", slog.String("team1", team1), slog.Any("err", err))
-		return nil, nil, fmt.Errorf("team1 select: %w", err)
+	useWinProbSelection := cfg != nil && cfg.Selection.UseWinProbabilitySelection
+
+	var sel1, sel2 []teamselect.Player
+	if useWinProbSelection {
+		if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
+			sel1, sel2, err = selectTeamsByWinProbability(
+				ctx, enhanced, tsPool1, tsPool2, constraints,
+				pool1, pool2, weights,
+				format, formatID, venueIDVal, opp1IDVal, opp2IDVal, float64(input.MatchDate.Unix()), input.Weather, allFeats,
+			)
+			if err != nil {
+				slog.WarnContext(ctx, "win-prob selection failed, falling back to standard", slog.Any("err", err))
+				sel1, sel2 = nil, nil
+			}
+		}
 	}
-	sel2, err := selectTeam(tsPool2, weights, constraints, useOptimizer)
-	if err != nil {
-		slog.Error("predictteam.PredictTeams team2 select failed", slog.String("team2", team2), slog.Any("err", err))
-		return nil, nil, fmt.Errorf("team2 select: %w", err)
+	if sel1 == nil {
+		sel1, err = selectTeam(tsPool1, weights, constraints, useOptimizer)
+		if err != nil {
+			slog.Error(
+				"predictteam.PredictTeams team1 select failed",
+				slog.String("team1", team1),
+				slog.Any("err", err),
+			)
+			return nil, nil, fmt.Errorf("team1 select: %w", err)
+		}
+	}
+	if sel2 == nil {
+		sel2, err = selectTeam(tsPool2, weights, constraints, useOptimizer)
+		if err != nil {
+			slog.Error(
+				"predictteam.PredictTeams team2 select failed",
+				slog.String("team2", team2),
+				slog.Any("err", err),
+			)
+			return nil, nil, fmt.Errorf("team2 select: %w", err)
+		}
 	}
 
 	// Map selected names back to player IDs and predictions
@@ -476,6 +583,7 @@ func predictTeamsWithIntermediates(
 		venueIDVal,
 		opp1IDVal,
 		opp2IDVal,
+		float64(cutoff.Unix()),
 		input.Weather,
 		nameToID1,
 		nameToID2,
@@ -650,75 +758,50 @@ func rescaleTeamPredictionsToWinProbability(
 	}
 }
 
-// getMatchWinProbability builds match-level win features from selected XIs and allFeats, calls the win model, and returns team1 win probability.
-// Returns error when the win model is not loaded or the request fails; caller then keeps winner-from-totals.
+// getMatchWinProbability calls the win model with per-player features (enhanced path)
+// or falls back to scalar sums (legacy path). Returns team1 win probability.
+// Returns error when the win model is not loaded or the request fails.
 func getMatchWinProbability(
 	ctx context.Context,
 	predictor MLPredictor,
 	format string,
 	formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
 	weather *WeatherInput,
 	nameToID1, nameToID2 map[string]int64,
 	sel1, sel2 []teamselect.Player,
 	allFeats map[int64]map[string]float64,
 ) (float64, error) {
-	sumBatConsistency := func(ids []int64) float64 {
-		s := 0.0
-		for _, pid := range ids {
-			if m := allFeats[pid]; m != nil {
-				s += m["batting_consistency"]
-			}
+	ids1 := selectedPlayerIDs(sel1, nameToID1)
+	ids2 := selectedPlayerIDs(sel2, nameToID2)
+	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
+
+	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
+		t1Feats := extractPlayerFeatures(ids1, allFeats)
+		t2Feats := extractPlayerFeatures(ids2, allFeats)
+		feats := buildEnhancedWinFeatures(
+			formatID,
+			venueIDVal,
+			opp2IDVal,
+			opp1IDVal,
+			matchDateUnix,
+			temp,
+			wind,
+			rain,
+			humidity,
+			cloud,
+			pressure,
+			t1Feats,
+			t2Feats,
+			format,
+		)
+		p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
+		if err == nil {
+			return p, nil
 		}
-		return s
+		slog.WarnContext(ctx, "enhanced win prediction failed, falling back to legacy", slog.Any("err", err))
 	}
-	sumBowlConsistency := func(ids []int64) float64 {
-		s := 0.0
-		for _, pid := range ids {
-			if m := allFeats[pid]; m != nil {
-				s += m["bowling_consistency"]
-			}
-		}
-		return s
-	}
-	sumBatForm := func(ids []int64) float64 {
-		s := 0.0
-		for _, pid := range ids {
-			if m := allFeats[pid]; m != nil {
-				s += m["batting_form"]
-			}
-		}
-		return s
-	}
-	sumBowlForm := func(ids []int64) float64 {
-		s := 0.0
-		for _, pid := range ids {
-			if m := allFeats[pid]; m != nil {
-				s += m["bowling_form"]
-			}
-		}
-		return s
-	}
-	ids1 := make([]int64, 0, len(sel1))
-	for _, p := range sel1 {
-		if id, ok := nameToID1[p.Name]; ok {
-			ids1 = append(ids1, id)
-		}
-	}
-	ids2 := make([]int64, 0, len(sel2))
-	for _, p := range sel2 {
-		if id, ok := nameToID2[p.Name]; ok {
-			ids2 = append(ids2, id)
-		}
-	}
-	temp, wind, rain, humidity, cloud, pressure := 0, 0, 0, 0, 0, 0
-	if weather != nil {
-		temp = int(weather.Temp)
-		wind = int(weather.Wind)
-		rain = int(weather.Rain)
-		humidity = int(weather.Humidity)
-		cloud = int(weather.Cloud)
-		pressure = int(weather.Pressure)
-	}
+
 	w := WinFeatures{
 		FormatID:                int(formatID),
 		VenueID:                 int(venueIDVal),
@@ -732,17 +815,86 @@ func getMatchWinProbability(
 		Cloud:                   cloud,
 		Pressure:                pressure,
 		Viscosity:               0,
-		Team1BatConsistencySum:  sumBatConsistency(ids1),
-		Team1BowlConsistencySum: sumBowlConsistency(ids1),
-		Team2BatConsistencySum:  sumBatConsistency(ids2),
-		Team2BowlConsistencySum: sumBowlConsistency(ids2),
-		Team1BatFormSum:         sumBatForm(ids1),
-		Team1BowlFormSum:        sumBowlForm(ids1),
-		Team2BatFormSum:         sumBatForm(ids2),
-		Team2BowlFormSum:        sumBowlForm(ids2),
+		Team1BatConsistencySum:  sumFeature(ids1, allFeats, "batting_consistency"),
+		Team1BowlConsistencySum: sumFeature(ids1, allFeats, "bowling_consistency"),
+		Team2BatConsistencySum:  sumFeature(ids2, allFeats, "batting_consistency"),
+		Team2BowlConsistencySum: sumFeature(ids2, allFeats, "bowling_consistency"),
+		Team1BatFormSum:         sumFeature(ids1, allFeats, "batting_form"),
+		Team1BowlFormSum:        sumFeature(ids1, allFeats, "bowling_form"),
+		Team2BatFormSum:         sumFeature(ids2, allFeats, "batting_form"),
+		Team2BowlFormSum:        sumFeature(ids2, allFeats, "bowling_form"),
 		Format:                  strings.TrimSpace(strings.ToUpper(format)),
 	}
 	return predictor.PredictMatchWin(ctx, w)
+}
+
+func selectedPlayerIDs(sel []teamselect.Player, nameToID map[string]int64) []int64 {
+	ids := make([]int64, 0, len(sel))
+	for _, p := range sel {
+		if id, ok := nameToID[p.Name]; ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func extractWeather(w *WeatherInput) (temp, wind, rain, humidity, cloud, pressure int) {
+	if w != nil {
+		temp = int(w.Temp)
+		wind = int(w.Wind)
+		rain = int(w.Rain)
+		humidity = int(w.Humidity)
+		cloud = int(w.Cloud)
+		pressure = int(w.Pressure)
+	}
+	return
+}
+
+func sumFeature(ids []int64, allFeats map[int64]map[string]float64, key string) float64 {
+	s := 0.0
+	for _, pid := range ids {
+		if m := allFeats[pid]; m != nil {
+			s += m[key]
+		}
+	}
+	return s
+}
+
+func extractPlayerFeatures(ids []int64, allFeats map[int64]map[string]float64) map[int64]map[string]float64 {
+	out := make(map[int64]map[string]float64, len(ids))
+	for _, pid := range ids {
+		if m := allFeats[pid]; m != nil {
+			out[pid] = m
+		}
+	}
+	return out
+}
+
+func buildEnhancedWinFeatures(
+	formatID, venueIDVal, team1OppID, team2OppID int64,
+	matchDateUnix float64,
+	temp, wind, rain, humidity, cloud, pressure int,
+	t1Feats, t2Feats map[int64]map[string]float64,
+	format string,
+) WinFeaturesEnhanced {
+	return WinFeaturesEnhanced{
+		FormatID:               int(formatID),
+		VenueID:                int(venueIDVal),
+		MatchDateUnix:          matchDateUnix,
+		Team1OppositionID:      int(team1OppID),
+		Team2OppositionID:      int(team2OppID),
+		TossWinnerOppositionID: 0,
+		Temp:                   temp,
+		Wind:                   wind,
+		Rain:                   rain,
+		Humidity:               humidity,
+		Cloud:                  cloud,
+		Pressure:               pressure,
+		Viscosity:              0,
+		Team1PlayerFeatures:    t1Feats,
+		Team2PlayerFeatures:    t2Feats,
+		Format:                 strings.TrimSpace(strings.ToUpper(format)),
+	}
 }
 
 // getExtrasForMatch returns predicted extras per innings (same for both innings from format/venue average).
@@ -877,4 +1029,287 @@ func enrichFieldingFromHistory(
 			preds[pid] = p
 		}
 	}
+}
+
+// selectTeamsByWinProbability uses the enhanced win model to drive team selection
+// via hill-climb optimization for both teams.
+//
+// When the predictor also implements TeamSelectionOptimizer, the entire
+// hill-climb loop is offloaded to the ML service in a single HTTP call per team
+// (batch model inference, zero per-candidate round-trips).  Falls back to the
+// original per-call approach if the optimisation endpoint is unavailable.
+func selectTeamsByWinProbability(
+	ctx context.Context,
+	enhanced EnhancedWinPredictor,
+	tsPool1, tsPool2 []teamselect.Player,
+	constraints teamselect.Constraints,
+	pool1, pool2 []db.PlayerPoolRow,
+	weights teamselect.ScoreWeights,
+	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
+	weather *WeatherInput,
+	allFeats map[int64]map[string]float64,
+) ([]teamselect.Player, []teamselect.Player, error) {
+	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
+		sel1, sel2, err := tryServerSideTeamOptimization(
+			ctx, optimizer, tsPool1, tsPool2, constraints, pool1, pool2, weights,
+			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, matchDateUnix, weather, allFeats,
+		)
+		if err == nil {
+			return sel1, sel2, nil
+		}
+		slog.WarnContext(ctx, "server-side team optimization unavailable, falling back to per-call hill-climb",
+			slog.Any("err", err))
+	}
+
+	return selectTeamsByWinProbabilityPerCall(
+		ctx, enhanced, tsPool1, tsPool2, constraints, pool1, pool2, weights,
+		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, matchDateUnix, weather, allFeats,
+	)
+}
+
+// tryServerSideTeamOptimization offloads the full hill-climb loop to the ML
+// service via POST /optimize/team-selection, one call per team.
+func tryServerSideTeamOptimization(
+	ctx context.Context,
+	optimizer TeamSelectionOptimizer,
+	tsPool1, tsPool2 []teamselect.Player,
+	constraints teamselect.Constraints,
+	pool1, pool2 []db.PlayerPoolRow,
+	weights teamselect.ScoreWeights,
+	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
+	weather *WeatherInput,
+	allFeats map[int64]map[string]float64,
+) ([]teamselect.Player, []teamselect.Player, error) {
+	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
+	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
+	nameToID1 := buildNameToIDMap(pool1)
+	nameToID2 := buildNameToIDMap(pool2)
+
+	cfg := config.Load()
+	maxIter := config.SelectionMaxWinProbSwapIterations(cfg)
+	maxEvals := config.SelectionMaxWinProbEvalBudget(cfg)
+
+	buildMatchContext := func() map[string]float64 {
+		// Match context is constant: team1_opposition_id is always team2's ID and vice versa.
+		// The TeamIsTeam1 flag in the request body tells the optimizer which team is being optimized.
+		t1OppID, t2OppID := opp2IDVal, opp1IDVal
+		return map[string]float64{
+			"format_id":                 float64(formatID),
+			"venue_id":                  float64(venueIDVal),
+			"match_date_unix":           matchDateUnix,
+			"team1_opposition_id":       float64(t1OppID),
+			"team2_opposition_id":       float64(t2OppID),
+			"toss_winner_opposition_id": 0,
+			"temp":                      float64(temp),
+			"wind":                      float64(wind),
+			"rain":                      float64(rain),
+			"humidity":                  float64(humidity),
+			"cloud":                     float64(cloud),
+			"pressure":                  float64(pressure),
+			"viscosity":                 0,
+		}
+	}
+
+	pool1Opt := buildOptPoolPlayers(tsPool1, nameToID1, allFeats)
+	pool2Opt := buildOptPoolPlayers(tsPool2, nameToID2, allFeats)
+	opp2Feats := collectPlayerFeatures(nameToID2, allFeats)
+	opp1Feats := collectPlayerFeatures(nameToID1, allFeats)
+
+	result1, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
+		Pool:             pool1Opt,
+		OpponentFeatures: opp2Feats,
+		MatchContext:     buildMatchContext(),
+		Constraints:      constraints,
+		Weights:          weights,
+		TeamIsTeam1:      true,
+		Format:           fmtUpper,
+		MaxIterations:    maxIter,
+		MaxEvals:         maxEvals,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("optimize team1: %w", err)
+	}
+
+	result2, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
+		Pool:             pool2Opt,
+		OpponentFeatures: opp1Feats,
+		MatchContext:     buildMatchContext(),
+		Constraints:      constraints,
+		Weights:          weights,
+		TeamIsTeam1:      false,
+		Format:           fmtUpper,
+		MaxIterations:    maxIter,
+		MaxEvals:         maxEvals,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("optimize team2: %w", err)
+	}
+
+	sel1 := optimizationResultToPlayers(result1, tsPool1)
+	sel2 := optimizationResultToPlayers(result2, tsPool2)
+	return sel1, sel2, nil
+}
+
+// buildOptPoolPlayers merges teamselect.Player data (roles, scores) with player
+// IDs and features for the optimisation request.
+func buildOptPoolPlayers(
+	tsPool []teamselect.Player,
+	nameToID map[string]int64,
+	allFeats map[int64]map[string]float64,
+) []TeamOptPoolPlayer {
+	out := make([]TeamOptPoolPlayer, 0, len(tsPool))
+	for _, p := range tsPool {
+		pid, ok := nameToID[p.Name]
+		if !ok {
+			continue
+		}
+		feats := allFeats[pid]
+		if feats == nil {
+			feats = map[string]float64{}
+		}
+		out = append(out, TeamOptPoolPlayer{
+			PlayerID:   pid,
+			Name:       p.Name,
+			IsBowler:   p.IsBowler,
+			IsKeeper:   p.IsKeeper,
+			BatScore:   p.BatScore,
+			BowlScore:  p.BowlScore,
+			FieldScore: p.FieldScore,
+			Features:   feats,
+		})
+	}
+	return out
+}
+
+// collectPlayerFeatures gathers features for all players in nameToID.
+func collectPlayerFeatures(
+	nameToID map[string]int64,
+	allFeats map[int64]map[string]float64,
+) map[int64]map[string]float64 {
+	out := make(map[int64]map[string]float64, len(nameToID))
+	for _, pid := range nameToID {
+		if m := allFeats[pid]; m != nil {
+			out[pid] = m
+		}
+	}
+	return out
+}
+
+// optimizationResultToPlayers converts the optimisation result back to
+// teamselect.Player values from the original pool, preserving all fields.
+func optimizationResultToPlayers(
+	result *TeamOptimizationResult,
+	pool []teamselect.Player,
+) []teamselect.Player {
+	nameSet := make(map[string]bool, len(result.Selected))
+	for _, s := range result.Selected {
+		nameSet[s.Name] = true
+	}
+	out := make([]teamselect.Player, 0, len(result.Selected))
+	for _, p := range pool {
+		if nameSet[p.Name] {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// selectTeamsByWinProbabilityPerCall is the original per-HTTP-call hill-climb
+// approach, used as a fallback when server-side optimisation is unavailable.
+func selectTeamsByWinProbabilityPerCall(
+	ctx context.Context,
+	enhanced EnhancedWinPredictor,
+	tsPool1, tsPool2 []teamselect.Player,
+	constraints teamselect.Constraints,
+	pool1, pool2 []db.PlayerPoolRow,
+	weights teamselect.ScoreWeights,
+	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
+	matchDateUnix float64,
+	weather *WeatherInput,
+	allFeats map[int64]map[string]float64,
+) ([]teamselect.Player, []teamselect.Player, error) {
+	nameToID1 := buildNameToIDMap(pool1)
+	nameToID2 := buildNameToIDMap(pool2)
+	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
+	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
+
+	buildEvalFunc := func(
+		nameToID map[string]int64,
+		opponentNameToID map[string]int64,
+		teamIsTeam1 bool,
+	) teamselect.WinProbEvalFunc {
+		return func(candidateNames []string) (float64, error) {
+			candidateIDs := make([]int64, 0, len(candidateNames))
+			for _, name := range candidateNames {
+				if id, ok := nameToID[name]; ok {
+					candidateIDs = append(candidateIDs, id)
+				}
+			}
+			candidateFeats := extractPlayerFeatures(candidateIDs, allFeats)
+			opponentIDs := make([]int64, 0, len(opponentNameToID))
+			for _, id := range opponentNameToID {
+				opponentIDs = append(opponentIDs, id)
+			}
+			opponentFeats := extractPlayerFeatures(opponentIDs, allFeats)
+
+			var t1Feats, t2Feats map[int64]map[string]float64
+			var team1OppID, team2OppID int64
+			if teamIsTeam1 {
+				team1OppID, team2OppID = opp2IDVal, opp1IDVal
+				t1Feats, t2Feats = candidateFeats, opponentFeats
+			} else {
+				team1OppID, team2OppID = opp1IDVal, opp2IDVal
+				t1Feats, t2Feats = opponentFeats, candidateFeats
+			}
+			feats := buildEnhancedWinFeatures(
+				formatID,
+				venueIDVal,
+				team1OppID,
+				team2OppID,
+				matchDateUnix,
+				temp,
+				wind,
+				rain,
+				humidity,
+				cloud,
+				pressure,
+				t1Feats,
+				t2Feats,
+				fmtUpper,
+			)
+			p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
+			if err != nil {
+				return 0, err
+			}
+			if teamIsTeam1 {
+				return p, nil
+			}
+			return 1 - p, nil
+		}
+	}
+
+	evalFunc1 := buildEvalFunc(nameToID1, nameToID2, true)
+	sel1, err := teamselect.SelectByWinProbability(tsPool1, weights, constraints, evalFunc1)
+	if err != nil {
+		return nil, nil, fmt.Errorf("win-prob select team1: %w", err)
+	}
+
+	evalFunc2 := buildEvalFunc(nameToID2, nameToID1, false)
+	sel2, err := teamselect.SelectByWinProbability(tsPool2, weights, constraints, evalFunc2)
+	if err != nil {
+		return nil, nil, fmt.Errorf("win-prob select team2: %w", err)
+	}
+
+	return sel1, sel2, nil
+}
+
+func buildNameToIDMap(pool []db.PlayerPoolRow) map[string]int64 {
+	m := make(map[string]int64, len(pool))
+	for _, p := range pool {
+		m[p.PlayerName] = p.PlayerID
+	}
+	return m
 }

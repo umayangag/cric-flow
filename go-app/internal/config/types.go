@@ -117,24 +117,29 @@ type Config struct {
 		Simulation                     *SimulationParams `json:"simulation"`                         // CVs for runs/wickets/economy sampling
 	} `json:"predictor"`
 	Backtest struct {
-		ExportMaxMatchIDs         int                `json:"export_max_match_ids"`         // max match_ids per export-contributions request (0 = use default)
-		ListDefaultLimit          int                `json:"list_default_limit"`           // default limit for matches-after/holdout (0 = 50)
-		ListMaxLimit              int                `json:"list_max_limit"`               // max limit (0 = 500)
-		AccuracyTrendDefaultLimit int                `json:"accuracy_trend_default_limit"` // default accuracy-trend limit (0 = 100)
-		AccuracyTrendMaxLimit     int                `json:"accuracy_trend_max_limit"`     // max (0 = 500)
-		Job                       *BacktestJobConfig `json:"job"`                          // job cleanup/duration; nil = use defaults
+		ExportMaxMatchIDs              int                `json:"export_max_match_ids"`             // max match_ids per export-contributions request (0 = use default)
+		ListDefaultLimit               int                `json:"list_default_limit"`               // default limit for matches-after/holdout (0 = 50)
+		ListMaxLimit                   int                `json:"list_max_limit"`                   // max limit (0 = 500)
+		AccuracyTrendDefaultLimit      int                `json:"accuracy_trend_default_limit"`     // default accuracy-trend limit (0 = 100)
+		AccuracyTrendMaxLimit          int                `json:"accuracy_trend_max_limit"`         // max (0 = 500)
+		AccuracyTrendConcurrency       int                `json:"accuracy_trend_concurrency"`       // max concurrent workers for accuracy-trend computations (0 = use default)
+		ExportContributionsConcurrency int                `json:"export_contributions_concurrency"` // max concurrent workers for export-contributions jobs (0 = use default)
+		Job                            *BacktestJobConfig `json:"job"`                              // job cleanup/duration; nil = use defaults
 	} `json:"backtest"`
 	Ops       OpsConfig        `json:"ops"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants
 	Selection struct {
-		DefaultPoolCSV         string                     `json:"default_pool_csv"`
-		MaxPoolSizeForFullEnum int                        `json:"max_pool_size_for_full_enum"` // above this use greedy+hill-climb (0 = 18)
-		RequireKeeper          bool                       `json:"require_keeper"`
-		ScoreWeights           *ScoreWeights              `json:"score_weights"`
-		ScoreNormalization     map[string]ScoreNormParams `json:"score_normalization"`
-		ScoreWeightsByFormat   map[string]ScoreWeights    `json:"score_weights_by_format"`
-		MetaModelPath          string                     `json:"meta_model_path"` // JSON from ml.train_combination_meta
-		UseOptimizer           bool                       `json:"use_optimizer"`   // when true, select XI by maximizing total score over valid combinations
+		DefaultPoolCSV             string                     `json:"default_pool_csv"`
+		MaxPoolSizeForFullEnum     int                        `json:"max_pool_size_for_full_enum"` // above this use greedy+hill-climb (0 = 18)
+		RequireKeeper              bool                       `json:"require_keeper"`
+		ScoreWeights               *ScoreWeights              `json:"score_weights"`
+		ScoreNormalization         map[string]ScoreNormParams `json:"score_normalization"`
+		ScoreWeightsByFormat       map[string]ScoreWeights    `json:"score_weights_by_format"`
+		MetaModelPath              string                     `json:"meta_model_path"`               // JSON from ml.train_combination_meta
+		UseOptimizer               bool                       `json:"use_optimizer"`                 // when true, select XI by maximizing total score over valid combinations
+		UseWinProbabilitySelection bool                       `json:"use_win_probability_selection"` // when true, select XI by maximizing win probability via hill-climb
+		MaxWinProbSwapIterations   int                        `json:"max_win_prob_swap_iterations"`  // hill-climb outer-loop cap for win-prob selection (0 = 50)
+		MaxWinProbEvalBudget       int                        `json:"max_win_prob_eval_budget"`      // total ML eval calls allowed per team in win-prob hill-climb (0 = 500)
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {

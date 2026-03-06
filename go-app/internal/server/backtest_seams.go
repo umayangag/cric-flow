@@ -59,6 +59,18 @@ var (
 	mlPredictMatchWinFunc = func(_ context.Context, _ predictteam.WinFeatures) (float64, error) {
 		return 0, sql.ErrNoRows
 	}
+	// PredictMatchWinEnhanced: enhanced win model (POST /predict/win-enhanced) using per-player features.
+	mlPredictMatchWinEnhancedFunc = func(_ context.Context, _ predictteam.WinFeaturesEnhanced) (float64, error) {
+		return 0, sql.ErrNoRows
+	}
+	// OptimizeTeamSelection: server-side team selection optimisation (POST /optimize/team-selection).
+	mlOptimizeTeamSelectionFunc = func(_ context.Context, _ predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
+		return nil, sql.ErrNoRows
+	}
+	// Batch prediction: multiple predict-player calls in a single HTTP request.
+	mlBacktestPredictBatchFunc = func(_ context.Context, _ []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
+		return nil, sql.ErrNoRows
+	}
 )
 
 // dashboard accuracy-trend seams (overridable in tests)

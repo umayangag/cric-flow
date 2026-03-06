@@ -7,9 +7,14 @@ Extracted from app.main to keep route handlers thin. Contains:
 - Match-level and player-level prediction orchestration
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ml.team_optimizer import OptimizationResult, PoolPlayer, ScoreWeights, SelectionConstraints
 
 import numpy as np
 from fastapi import HTTPException
@@ -36,6 +41,7 @@ from .features import batting_feature_vector, bowling_feature_vector, fielding_f
 from .logging import get_struct_logger
 from .models import (
     BacktestPlayerPred,
+    BatchPredictItem,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
@@ -64,9 +70,17 @@ except ImportError:
     EXTRAS_FEATURE_COLS = []
 
 try:
-    from ml.train_win import WIN_FEATURE_COLS
+    from ml.win_features import (
+        WIN_ENHANCED_FEATURE_COLS,
+        aggregate_team_features_from_player_maps,
+        build_feature_vector,
+        compute_derived_features,
+    )
 except ImportError:
-    WIN_FEATURE_COLS = []
+    WIN_ENHANCED_FEATURE_COLS = []
+    aggregate_team_features_from_player_maps = None  # type: ignore[assignment]
+    build_feature_vector = None  # type: ignore[assignment]
+    compute_derived_features = None  # type: ignore[assignment]
 
 logger = get_struct_logger()
 
@@ -178,27 +192,41 @@ _TEAM1_ID = 1
 _TEAM2_ID = 2
 
 
-def predict_players_with_features(
-    cutoff: datetime,
-    player_ids: List[int],
+# ---------------------------------------------------------------------------
+# Shared helpers for predict_players_with_features & predict_players_batch
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ResolvedModels:
+    """Resolved batting/bowling model pairs for a prediction item."""
+
+    scaler_bat: Any
+    model_bat: Any
+    scaler_bowl: Any
+    model_bowl: Any
+    use_share: bool
+    fmt_upper: str
+
+
+def _resolve_prediction_model_pairs(
     fmt: str,
-    features_map: Dict[str, Dict[str, float]],
     models_dir: str,
     enable_train_on_the_fly: bool,
     go_app_url: str,
     go_app_api_key: Optional[str],
     train_latest_cache_granularity: str,
-    use_latest_model: bool = False,
-    match_context: Optional[MatchContext] = None,
-) -> List[BacktestPlayerPred]:
-    """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
-
-    When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
-    """
+    cutoff: datetime,
+    use_latest_model: bool,
+    player_count: int,
+    *,
+    has_match_context: bool,
+) -> _ResolvedModels:
+    """Resolve batting/bowling model pairs for a format, with train-on-the-fly fallback."""
     fmt_upper = (fmt or "").strip().upper()
     use_share = (
         use_share_models_config()
-        and match_context is not None
+        and has_match_context
         and ((INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")) is not None
     )
     if use_share:
@@ -246,21 +274,39 @@ def predict_players_with_features(
             fmt=fmt_upper,
             cutoff_iso=cutoff_iso,
             go_app_url=go_app_url,
-            player_count=len(player_ids),
+            player_count=player_count,
         )
         bat_pair, bowl_pair = train_on_the_fly_cached(go_app_url, fmt_upper, cutoff_iso, go_app_api_key)
 
     scaler_bat, model_bat = bat_pair
     scaler_bowl, model_bowl = bowl_pair
+    return _ResolvedModels(
+        scaler_bat=scaler_bat,
+        model_bat=model_bat,
+        scaler_bowl=scaler_bowl,
+        model_bowl=model_bowl,
+        use_share=use_share,
+        fmt_upper=fmt_upper,
+    )
 
-    bat_features: List[BattingFeatures] = []
-    bowl_features: List[BowlingFeatures] = []
-    for pid in player_ids:
-        fm = features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-        bat_features.append(build_batting_features_from_map(pid, cutoff, fmt_upper, fm))
-        bowl_features.append(build_bowling_features_from_map(pid, cutoff, fmt_upper, fm))
 
-    # Feature order must match training (configs/feature_vectors.json). Apply feature_transforms if in metadata.
+def _build_batting_feature_matrix(
+    player_ids: List[int],
+    cutoff: datetime,
+    fmt_upper: str,
+    features_map: Dict[str, Dict[str, float]],
+    models_dir: str,
+) -> np.ndarray:
+    """Build unscaled batting feature matrix for a list of players."""
+    bat_features = [
+        build_batting_features_from_map(
+            pid,
+            cutoff,
+            fmt_upper,
+            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+        )
+        for pid in player_ids
+    ]
     try:
         from ml.feature_transforms import build_extended_vector_from_features, load_transform_config_from_metadata
 
@@ -275,20 +321,36 @@ def predict_players_with_features(
                 base_vals = batting_feature_vector(f)
                 ext = build_extended_vector_from_features(base_vals, base_names, fm_for_interactions, bat_transform)
                 bat_vecs.append(ext)
-            X_bat = np.array(bat_vecs, dtype=float)
-        else:
-            X_bat = np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
+            return np.array(bat_vecs, dtype=float)
+        return np.array([batting_feature_vector(f) for f in bat_features], dtype=float)
     except Exception as e:
         logger.exception("predict.feature_transform.failed", error=str(e))
         raise HTTPException(
             status_code=500,
             detail="Feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
         ) from e
-    if scaler_bat is not None:
-        X_bat = scaler_bat.transform(X_bat)
-    Y_bat = model_bat.predict(X_bat)
 
+
+def _build_bowling_feature_matrix(
+    player_ids: List[int],
+    cutoff: datetime,
+    fmt_upper: str,
+    features_map: Dict[str, Dict[str, float]],
+    models_dir: str,
+) -> np.ndarray:
+    """Build unscaled bowling feature matrix for a list of players."""
+    bowl_features = [
+        build_bowling_features_from_map(
+            pid,
+            cutoff,
+            fmt_upper,
+            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+        )
+        for pid in player_ids
+    ]
     try:
+        from ml.feature_transforms import build_extended_vector_from_features, load_transform_config_from_metadata
+
         bowl_transform = load_transform_config_from_metadata(models_dir, "bowling", fmt_upper)
         base_names_bowl = get_feature_names("bowling")
         if bowl_transform.get("add_interactions") or bowl_transform.get("add_log1p"):
@@ -302,20 +364,51 @@ def predict_players_with_features(
                     base_vals, base_names_bowl, fm_for_interactions, bowl_transform
                 )
                 bowl_vecs.append(ext)
-            X_bowl = np.array(bowl_vecs, dtype=float)
-        else:
-            X_bowl = np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
+            return np.array(bowl_vecs, dtype=float)
+        return np.array([bowling_feature_vector(f) for f in bowl_features], dtype=float)
     except Exception as e:
         logger.exception("predict.bowling_feature_transform.failed", error=str(e))
         raise HTTPException(
             status_code=500,
             detail="Bowling feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
         ) from e
-    if scaler_bowl is not None:
-        X_bowl = scaler_bowl.transform(X_bowl)
-    Y_bowl = model_bowl.predict(X_bowl)
 
-    # Phase 3 share path: predict innings first when use_share so we can multiply shares
+
+def _build_fielding_feature_matrix(
+    player_ids: List[int],
+    cutoff: datetime,
+    fmt_upper: str,
+    features_map: Dict[str, Dict[str, float]],
+) -> np.ndarray:
+    """Build unscaled fielding feature matrix for a list of players."""
+    field_features_list = [
+        build_fielding_features_from_map(
+            int(pid),
+            cutoff,
+            fmt_upper,
+            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+        )
+        for pid in player_ids
+    ]
+    return np.array([fielding_feature_vector(f) for f in field_features_list], dtype=float)
+
+
+def _assemble_player_predictions(
+    Y_bat: np.ndarray,
+    Y_bowl: np.ndarray,
+    player_ids: List[int],
+    use_share: bool,
+    match_context: Optional[MatchContext],
+    cutoff: datetime,
+    fmt_upper: str,
+    features_map: Dict[str, Dict[str, float]],
+    *,
+    Y_fld: Optional[np.ndarray] = None,
+) -> List[BacktestPlayerPred]:
+    """Convert raw model outputs into BacktestPlayerPred list.
+
+    Handles share-model conversion, fielding merge, and hybrid reconciliation.
+    """
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
     if use_share and match_context is not None:
         match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
@@ -372,20 +465,7 @@ def predict_players_with_features(
             )
         )
 
-    # Fielding: if we have fielding artifacts, predict catches/run_outs and merge into player preds
-    field_pair = (FIELD_MODELS.get(fmt_upper) if fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
-    if field_pair is not None:
-        scaler_fld, model_fld = field_pair
-        field_features_list = [
-            build_fielding_features_from_map(
-                int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
-            )
-            for pid in player_ids
-        ]
-        X_fld = np.array([fielding_feature_vector(f) for f in field_features_list], dtype=float)
-        if scaler_fld is not None:
-            X_fld = scaler_fld.transform(X_fld)
-        Y_fld = model_fld.predict(X_fld)
+    if Y_fld is not None:
         out_new: List[BacktestPlayerPred] = []
         for i, pred in enumerate(out):
             row_fld = np.atleast_1d(Y_fld[i]).ravel()
@@ -407,7 +487,6 @@ def predict_players_with_features(
             )
         out = out_new
 
-    # Hybrid reconciliation: when match_context and innings model are available, run inference-time reconciliation
     if match_context is not None and not use_share:
         match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
         predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
@@ -469,6 +548,222 @@ def predict_players_with_features(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Public prediction functions
+# ---------------------------------------------------------------------------
+
+
+def predict_players_with_features(
+    cutoff: datetime,
+    player_ids: List[int],
+    fmt: str,
+    features_map: Dict[str, Dict[str, float]],
+    models_dir: str,
+    enable_train_on_the_fly: bool,
+    go_app_url: str,
+    go_app_api_key: Optional[str],
+    train_latest_cache_granularity: str,
+    use_latest_model: bool = False,
+    match_context: Optional[MatchContext] = None,
+) -> List[BacktestPlayerPred]:
+    """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
+
+    When no pre-trained artifacts are loaded for the format, trains on the fly from go-app training data.
+    """
+    resolved = _resolve_prediction_model_pairs(
+        fmt,
+        models_dir,
+        enable_train_on_the_fly,
+        go_app_url,
+        go_app_api_key,
+        train_latest_cache_granularity,
+        cutoff,
+        use_latest_model,
+        len(player_ids),
+        has_match_context=match_context is not None,
+    )
+
+    X_bat = _build_batting_feature_matrix(player_ids, cutoff, resolved.fmt_upper, features_map, models_dir)
+    if resolved.scaler_bat is not None:
+        X_bat = resolved.scaler_bat.transform(X_bat)
+    Y_bat = resolved.model_bat.predict(X_bat)
+
+    X_bowl = _build_bowling_feature_matrix(player_ids, cutoff, resolved.fmt_upper, features_map, models_dir)
+    if resolved.scaler_bowl is not None:
+        X_bowl = resolved.scaler_bowl.transform(X_bowl)
+    Y_bowl = resolved.model_bowl.predict(X_bowl)
+
+    Y_fld = None
+    field_pair = (FIELD_MODELS.get(resolved.fmt_upper) if resolved.fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
+    if field_pair is not None:
+        scaler_fld, model_fld = field_pair
+        X_fld = _build_fielding_feature_matrix(player_ids, cutoff, resolved.fmt_upper, features_map)
+        if scaler_fld is not None:
+            X_fld = scaler_fld.transform(X_fld)
+        Y_fld = model_fld.predict(X_fld)
+
+    return _assemble_player_predictions(
+        Y_bat,
+        Y_bowl,
+        player_ids,
+        resolved.use_share,
+        match_context,
+        cutoff,
+        resolved.fmt_upper,
+        features_map,
+        Y_fld=Y_fld,
+    )
+
+
+def predict_players_batch(
+    items: List[BatchPredictItem],
+    models_dir: str,
+    enable_train_on_the_fly: bool,
+    go_app_url: str,
+    go_app_api_key: Optional[str],
+    train_latest_cache_granularity: str,
+) -> "List[List[BacktestPlayerPred]]":
+    """Run predictions for all items, aggregating feature matrices for efficient batched model.predict() calls.
+
+    Groups items that share the same model into a single feature matrix, performs one
+    model.predict() call per group, then partitions results back to individual items
+    for per-item post-processing (share-model conversion, reconciliation, etc.).
+    """
+    if not items:
+        return []
+
+    # Phase 1: Resolve models and build unscaled feature matrices per item.
+    resolved_list: List[_ResolvedModels] = []
+    X_bat_list: List[np.ndarray] = []
+    X_bowl_list: List[np.ndarray] = []
+    for item in items:
+        resolved = _resolve_prediction_model_pairs(
+            item.format or "",
+            models_dir,
+            enable_train_on_the_fly,
+            go_app_url,
+            go_app_api_key,
+            train_latest_cache_granularity,
+            item.cutoff_date,
+            item.use_latest_model,
+            len(item.player_ids),
+            has_match_context=item.match_context is not None,
+        )
+        resolved_list.append(resolved)
+        X_bat_list.append(
+            _build_batting_feature_matrix(
+                item.player_ids,
+                item.cutoff_date,
+                resolved.fmt_upper,
+                item.features or {},
+                models_dir,
+            )
+        )
+        X_bowl_list.append(
+            _build_bowling_feature_matrix(
+                item.player_ids,
+                item.cutoff_date,
+                resolved.fmt_upper,
+                item.features or {},
+                models_dir,
+            )
+        )
+
+    # Phase 2: Group items by model identity, concatenate features, predict once per group.
+    n_items = len(items)
+    Y_bat_per_item: List[Optional[np.ndarray]] = [None] * n_items
+    Y_bowl_per_item: List[Optional[np.ndarray]] = [None] * n_items
+    Y_fld_per_item: List[Optional[np.ndarray]] = [None] * n_items
+
+    def _batched_scale_and_predict(
+        model_key_fn,
+        X_list: List[np.ndarray],
+        scaler_fn,
+        model_fn,
+        Y_per_item: List[Optional[np.ndarray]],
+    ) -> None:
+        """Group items by model identity, concatenate, scale, predict, partition."""
+        groups: Dict[int, List[int]] = {}
+        for idx in range(n_items):
+            groups.setdefault(model_key_fn(idx), []).append(idx)
+        for _key, indices in groups.items():
+            sample_idx = indices[0]
+            X_all = np.concatenate([X_list[i] for i in indices])
+            scaler = scaler_fn(sample_idx)
+            if scaler is not None:
+                X_all = scaler.transform(X_all)
+            Y_all = model_fn(sample_idx).predict(X_all)
+            offset = 0
+            for idx in indices:
+                n_rows = X_list[idx].shape[0]
+                Y_per_item[idx] = Y_all[offset : offset + n_rows]
+                offset += n_rows
+
+    _batched_scale_and_predict(
+        lambda idx: id(resolved_list[idx].model_bat),
+        X_bat_list,
+        lambda idx: resolved_list[idx].scaler_bat,
+        lambda idx: resolved_list[idx].model_bat,
+        Y_bat_per_item,
+    )
+    _batched_scale_and_predict(
+        lambda idx: id(resolved_list[idx].model_bowl),
+        X_bowl_list,
+        lambda idx: resolved_list[idx].scaler_bowl,
+        lambda idx: resolved_list[idx].model_bowl,
+        Y_bowl_per_item,
+    )
+
+    # Fielding: build features per item, then batch predict across items sharing the same model.
+    X_fld_list: List[Optional[np.ndarray]] = [None] * n_items
+    fld_pairs: List[Optional[Tuple[Any, Any]]] = [None] * n_items
+    for idx in range(n_items):
+        fmt_upper = resolved_list[idx].fmt_upper
+        field_pair = (FIELD_MODELS.get(fmt_upper) if fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
+        if field_pair is not None:
+            fld_pairs[idx] = field_pair
+            X_fld_list[idx] = _build_fielding_feature_matrix(
+                items[idx].player_ids,
+                items[idx].cutoff_date,
+                fmt_upper,
+                items[idx].features or {},
+            )
+
+    fld_groups: Dict[int, List[int]] = {}
+    for idx in range(n_items):
+        if fld_pairs[idx] is not None:
+            _scaler_fld, model_fld = fld_pairs[idx]  # type: ignore[misc]
+            fld_groups.setdefault(id(model_fld), []).append(idx)
+    for _key, indices in fld_groups.items():
+        scaler_fld, model_fld = fld_pairs[indices[0]]  # type: ignore[misc]
+        X_all = np.concatenate([X_fld_list[i] for i in indices])  # type: ignore[arg-type]
+        if scaler_fld is not None:
+            X_all = scaler_fld.transform(X_all)
+        Y_all = model_fld.predict(X_all)
+        offset = 0
+        for idx in indices:
+            n_rows = X_fld_list[idx].shape[0]  # type: ignore[union-attr]
+            Y_fld_per_item[idx] = Y_all[offset : offset + n_rows]
+            offset += n_rows
+
+    # Phase 3: Post-process per item (share-model conversion, reconciliation, etc.).
+    results: List[List[BacktestPlayerPred]] = []
+    for idx in range(n_items):
+        preds = _assemble_player_predictions(
+            Y_bat_per_item[idx],  # type: ignore[arg-type]
+            Y_bowl_per_item[idx],  # type: ignore[arg-type]
+            items[idx].player_ids,
+            resolved_list[idx].use_share,
+            items[idx].match_context,
+            items[idx].cutoff_date,
+            resolved_list[idx].fmt_upper,
+            items[idx].features or {},
+            Y_fld=Y_fld_per_item[idx],
+        )
+        results.append(preds)
+    return results
+
+
 def generate_match(
     cutoff: datetime,
     player_ids: List[int],
@@ -508,40 +803,74 @@ def generate_match(
         InningsSummary(inning_number=1, runs=team1_runs, wickets=float(inn1_wickets)),
         InningsSummary(inning_number=2, runs=team2_runs, wickets=float(inn2_wickets)),
     ]
-    try:
-        from ml.win_features_from_reconciled import build_win_features_standardized
-    except ImportError:
-        build_win_features_standardized = None
     p_team1 = 0.5
-    if build_win_features_standardized is not None:
-        t1_bat_cons, t1_bowl_cons = _sum_team_feature(
-            features_map, team1_ids, "batting_consistency", "bowling_consistency"
-        )
-        t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
-        t2_bat_cons, t2_bowl_cons = _sum_team_feature(
-            features_map, team2_ids, "batting_consistency", "bowling_consistency"
-        )
-        t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
-        wf = build_win_features_standardized(
-            format_code=fmt,
-            format_id=int(match_context.format_id),
-            venue_id=int(match_context.venue_id),
-            season_id=int(match_context.season_id),
-            team1_opposition_id=int(match_context.team1_opposition_id),
-            team2_opposition_id=int(match_context.team2_opposition_id),
+    if aggregate_team_features_from_player_maps is not None and features_map:
+        t1_feats = {pid: features_map.get(pid, {}) for pid in team1_ids if pid in features_map}
+        t2_feats = {pid: features_map.get(pid, {}) for pid in team2_ids if pid in features_map}
+        from .models import WinFeaturesEnhanced
+
+        match_ctx_for_win = WinFeaturesEnhanced(
+            format_id=match_context.format_id,
+            venue_id=match_context.venue_id,
+            match_date_unix=0.0,
+            team1_opposition_id=match_context.team1_opposition_id,
+            team2_opposition_id=match_context.team2_opposition_id,
             toss_winner_opposition_id=0,
-            team1_bat_consistency_sum=t1_bat_cons,
-            team1_bowl_consistency_sum=t1_bowl_cons,
-            team2_bat_consistency_sum=t2_bat_cons,
-            team2_bowl_consistency_sum=t2_bowl_cons,
-            team1_bat_form_sum=t1_bat_form,
-            team1_bowl_form_sum=t1_bowl_form,
-            team2_bat_form_sum=t2_bat_form,
-            team2_bowl_form_sum=t2_bowl_form,
-        )
-        win_preds = run_win_prediction([wf])
-        if win_preds:
-            p_team1 = win_preds[0].team1_win_probability
+            temp=match_context.temp,
+            wind=match_context.wind,
+            rain=match_context.rain,
+            humidity=match_context.humidity,
+            cloud=match_context.cloud,
+            pressure=match_context.pressure,
+            viscosity=match_context.viscosity,
+            team1_player_features={},
+            team2_player_features={},
+        ).to_match_context_dict()
+        try:
+            result = run_win_prediction_enhanced(
+                fmt=(fmt or "").strip().upper(),
+                match_context=match_ctx_for_win,
+                team1_player_features={str(k): v for k, v in t1_feats.items()},
+                team2_player_features={str(k): v for k, v in t2_feats.items()},
+            )
+            p_team1 = result.team1_win_probability
+        except Exception:
+            logger.warning("generate_match.enhanced_win_failed, falling back to legacy")
+            p_team1 = 0.5
+    if p_team1 == 0.5:
+        try:
+            from ml.win_features_from_reconciled import build_win_features_standardized
+        except ImportError:
+            build_win_features_standardized = None
+        if build_win_features_standardized is not None:
+            t1_bat_cons, t1_bowl_cons = _sum_team_feature(
+                features_map, team1_ids, "batting_consistency", "bowling_consistency"
+            )
+            t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
+            t2_bat_cons, t2_bowl_cons = _sum_team_feature(
+                features_map, team2_ids, "batting_consistency", "bowling_consistency"
+            )
+            t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
+            wf = build_win_features_standardized(
+                format_code=fmt,
+                format_id=int(match_context.format_id),
+                venue_id=int(match_context.venue_id),
+                season_id=int(match_context.season_id),
+                team1_opposition_id=int(match_context.team1_opposition_id),
+                team2_opposition_id=int(match_context.team2_opposition_id),
+                toss_winner_opposition_id=0,
+                team1_bat_consistency_sum=t1_bat_cons,
+                team1_bowl_consistency_sum=t1_bowl_cons,
+                team2_bat_consistency_sum=t2_bat_cons,
+                team2_bowl_consistency_sum=t2_bowl_cons,
+                team1_bat_form_sum=t1_bat_form,
+                team1_bowl_form_sum=t1_bowl_form,
+                team2_bat_form_sum=t2_bat_form,
+                team2_bowl_form_sum=t2_bowl_form,
+            )
+            win_preds = run_win_prediction([wf])
+            if win_preds:
+                p_team1 = win_preds[0].team1_win_probability
     margin = team1_runs - team2_runs
     try:
         from ml.win_coherence_metrics import win_probability_coherence_from_margin
@@ -747,11 +1076,20 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
 
 
 def win_feature_vector(f: WinFeatures) -> np.ndarray:
-    """Build feature vector in WIN_FEATURE_COLS order (exclude 'format' key)."""
-    if not WIN_FEATURE_COLS:
+    """Build feature vector for the enhanced win model from a WinFeatures instance.
+
+    When the enhanced feature module is available, pads the scalar WinFeatures
+    fields into the full WIN_ENHANCED_FEATURE_COLS vector (distribution stats
+    default to 0, derived features computed from what's available).
+    Falls back to simple scalar vector if enhanced module is not loaded.
+    """
+    if not WIN_ENHANCED_FEATURE_COLS:
         return np.zeros(0)
     d = f.model_dump()
-    return np.array([float(d.get(c, 0)) for c in WIN_FEATURE_COLS], dtype=float)
+    if compute_derived_features is not None:
+        derived = compute_derived_features(d)
+        d.update(derived)
+    return np.array([float(d.get(c, 0)) for c in WIN_ENHANCED_FEATURE_COLS], dtype=float)
 
 
 def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPrediction]:
@@ -788,9 +1126,8 @@ def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPredicti
         )
 
 
-def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
-    """Execute win prediction pipeline and return typed results."""
-    fmt = (features[0].format or "").strip().upper()
+def _resolve_win_model(fmt: str):
+    """Resolve win model by format with legacy fallback. Raises HTTPException if missing."""
     model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
     if not model:
         available = [k for k in WIN_MODELS.keys() if k != "_LEGACY_"]
@@ -804,22 +1141,133 @@ def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
                 available=available,
             ),
         )
+    return model
+
+
+def _predict_win_proba(model, X: np.ndarray) -> List[float]:
+    """Run model.predict_proba and extract team1 win probability."""
+    proba = model.predict_proba(X)
+    if proba.shape[1] > 1:
+        p_team1 = proba[:, 1]
+    else:
+        p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
+    return [float(p) for p in p_team1]
+
+
+def run_win_prediction(features: List[WinFeatures]) -> List[WinPrediction]:
+    """Execute win prediction from WinFeatures (backward-compatible scalar path)."""
+    fmt = (features[0].format or "").strip().upper()
+    model = _resolve_win_model(fmt)
     X = np.array([win_feature_vector(f) for f in features], dtype=float)
     if X.size == 0:
         raise HTTPException(
             status_code=500,
-            detail=error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_FEATURE_COLS not available"),
+            detail=error_payload(code="FEATURE_ORDER_EMPTY", message="WIN_ENHANCED_FEATURE_COLS not available"),
         )
     try:
-        proba = model.predict_proba(X)
-        if proba.shape[1] > 1:
-            p_team1 = proba[:, 1]
-        else:
-            p_team1 = proba.ravel() if model.classes_[0] == 1 else 1.0 - proba.ravel()
-        return [WinPrediction(team1_win_probability=float(p)) for p in p_team1]
+        probas = _predict_win_proba(model, X)
+        return [WinPrediction(team1_win_probability=p) for p in probas]
     except Exception as exc:
         logger.exception("predict.win.error", error=str(exc))
         raise HTTPException(
             status_code=500,
             detail=error_payload(code="PREDICT_FAILED", message="Win prediction failed", hint="See server logs"),
         )
+
+
+def run_win_prediction_enhanced(
+    fmt: str,
+    match_context: Dict[str, float],
+    team1_player_features: Dict[str, Dict[str, float]],
+    team2_player_features: Dict[str, Dict[str, float]],
+) -> WinPrediction:
+    """Execute win prediction using per-player features with on-the-fly aggregation.
+
+    This is the primary path for the win-first architecture: the Go-app passes
+    all per-player features, and the ML service computes distribution statistics
+    and derived features before feeding to the model.
+    """
+    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="ENHANCED_WIN_NOT_AVAILABLE",
+                message="ml.win_features module not loaded",
+                hint="Ensure ml-service has the win_features module installed.",
+            ),
+        )
+
+    fmt_upper = (fmt or "").strip().upper()
+    model = _resolve_win_model(fmt_upper)
+
+    def _validated_player_id(k: str) -> int:
+        if not k.isdigit() or len(k) > 20:
+            raise HTTPException(
+                status_code=400,
+                detail=error_payload(code="INVALID_PLAYER_ID", message=f"Invalid player ID key: {k!r}"),
+            )
+        return int(k)
+
+    t1_feats = {_validated_player_id(k): v for k, v in team1_player_features.items()}
+    t2_feats = {_validated_player_id(k): v for k, v in team2_player_features.items()}
+
+    feature_dict = aggregate_team_features_from_player_maps(t1_feats, t2_feats, match_context)
+    feature_vec = build_feature_vector(feature_dict)
+    X = np.array([feature_vec], dtype=float)
+
+    try:
+        probas = _predict_win_proba(model, X)
+        return WinPrediction(team1_win_probability=probas[0])
+    except Exception as exc:
+        logger.exception("predict.win_enhanced.error", error=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="PREDICT_FAILED", message="Enhanced win prediction failed", hint="See server logs"
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Team selection optimisation (server-side hill-climb)
+# ---------------------------------------------------------------------------
+
+
+def run_team_optimization(
+    fmt: str,
+    pool: "List[PoolPlayer]",
+    opponent_features: Dict[int, Dict[str, float]],
+    match_context: Dict[str, float],
+    constraints: "SelectionConstraints",
+    weights: "ScoreWeights",
+    team_is_team1: bool,
+    max_iterations: int,
+    max_evals: int,
+) -> "OptimizationResult":
+    """Resolve the win model by format and delegate to the team optimizer."""
+    from ml.team_optimizer import optimize_team_by_win_probability
+
+    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
+        raise HTTPException(
+            status_code=500,
+            detail=error_payload(
+                code="ENHANCED_WIN_NOT_AVAILABLE",
+                message="ml.win_features module not loaded",
+                hint="Ensure ml-service has the win_features module installed.",
+            ),
+        )
+
+    fmt_upper = (fmt or "").strip().upper()
+    model = _resolve_win_model(fmt_upper)
+
+    return optimize_team_by_win_probability(
+        pool=pool,
+        opponent_features=opponent_features,
+        match_context=match_context,
+        constraints=constraints,
+        weights=weights,
+        team_is_team1=team_is_team1,
+        model=model,
+        max_iterations=max_iterations,
+        max_evals=max_evals,
+    )

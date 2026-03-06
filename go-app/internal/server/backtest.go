@@ -258,6 +258,49 @@ func init() {
 		}
 		return mlClient.PredictMatchWin(ctx, mw)
 	}
+	mlPredictMatchWinEnhancedFunc = func(ctx context.Context, w predictteam.WinFeaturesEnhanced) (float64, error) {
+		if mlClient == nil {
+			return 0, errors.New("ml client not initialized")
+		}
+		t1Feats := make(map[string]map[string]float64, len(w.Team1PlayerFeatures))
+		for pid, feats := range w.Team1PlayerFeatures {
+			t1Feats[strconv.FormatInt(pid, 10)] = feats
+		}
+		t2Feats := make(map[string]map[string]float64, len(w.Team2PlayerFeatures))
+		for pid, feats := range w.Team2PlayerFeatures {
+			t2Feats[strconv.FormatInt(pid, 10)] = feats
+		}
+		return mlClient.PredictMatchWinEnhanced(ctx, mlWinFeaturesEnhanced{
+			FormatID:               w.FormatID,
+			VenueID:                w.VenueID,
+			MatchDateUnix:          w.MatchDateUnix,
+			Team1OppositionID:      w.Team1OppositionID,
+			Team2OppositionID:      w.Team2OppositionID,
+			TossWinnerOppositionID: w.TossWinnerOppositionID,
+			Temp:                   w.Temp,
+			Wind:                   w.Wind,
+			Rain:                   w.Rain,
+			Humidity:               w.Humidity,
+			Cloud:                  w.Cloud,
+			Pressure:               w.Pressure,
+			Viscosity:              w.Viscosity,
+			Team1PlayerFeatures:    t1Feats,
+			Team2PlayerFeatures:    t2Feats,
+			Format:                 w.Format,
+		})
+	}
+	mlOptimizeTeamSelectionFunc = func(ctx context.Context, req predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
+		if mlClient == nil {
+			return nil, errors.New("ml client not initialized")
+		}
+		return mlClient.OptimizeTeamSelection(ctx, req)
+	}
+	mlBacktestPredictBatchFunc = func(ctx context.Context, inputs []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
+		if mlClient == nil {
+			return nil, errors.New("ml client not initialized")
+		}
+		return mlClient.PredictPlayersBatch(ctx, inputs)
+	}
 	getBacktestMatchAggregatesActualsFunc = func(ctx context.Context, matchID int64) (matchAggregates, error) {
 		ma, err := db.GetMatchAggregates(ctx, matchID)
 		if err != nil {

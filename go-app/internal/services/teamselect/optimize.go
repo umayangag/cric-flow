@@ -175,14 +175,67 @@ func selectOptimizedEnum(pool []Player, w ScoreWeights, c Constraints) ([]Player
 	return out, nil
 }
 
-// selectOptimizedHillClimb starts with greedy Select then improves by swapping one out, one in.
-func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
-	team, err := Select(pool, w, c)
+// hillClimbScoreFunc scores a candidate XI. Returns (score, error).
+// score-based selectors return (score, nil); win-probability selectors may return errors.
+type hillClimbScoreFunc func(candidate []Player) (float64, error)
+
+// hillClimbSwap performs iterative single-swap hill climbing on team vs rest,
+// using scoreFunc to evaluate candidates and respecting constraints.
+// maxIter caps total passes (0 = unlimited, stop when no improvement).
+// maxEvals caps total scoreFunc calls across all iterations (0 = unlimited).
+// This budget prevents excessive external calls when scoreFunc is an HTTP round-trip.
+func hillClimbSwap(team, rest []Player, c Constraints, scoreFunc hillClimbScoreFunc, maxIter, maxEvals int) []Player {
+	currentScore, err := scoreFunc(team)
 	if err != nil {
-		return nil, err
+		return team
 	}
-	// Build set of indices in team (by name match since we don't have indices)
-	inTeam := make(map[string]bool)
+	evalCount := 1
+
+	for iter := 0; maxIter == 0 || iter < maxIter; iter++ {
+		improved := false
+		budgetExhausted := false
+		for i := range team {
+			for j := range rest {
+				if maxEvals > 0 && evalCount >= maxEvals {
+					budgetExhausted = true
+					break
+				}
+				newTeam := make([]Player, len(team))
+				copy(newTeam, team)
+				newTeam[i] = rest[j]
+				if !satisfiesConstraints(newTeam, c) {
+					continue
+				}
+				s, err := scoreFunc(newTeam)
+				evalCount++
+				if err != nil {
+					continue
+				}
+				if s > currentScore {
+					newRest := make([]Player, len(rest))
+					copy(newRest, rest)
+					newRest[j] = team[i]
+					team = newTeam
+					rest = newRest
+					currentScore = s
+					improved = true
+					break
+				}
+			}
+			if improved || budgetExhausted {
+				break
+			}
+		}
+		if !improved || budgetExhausted {
+			break
+		}
+	}
+	return team
+}
+
+// splitTeamAndRest partitions pool into selected team and remaining players.
+func splitTeamAndRest(pool, team []Player) []Player {
+	inTeam := make(map[string]bool, len(team))
 	for _, p := range team {
 		inTeam[p.Name] = true
 	}
@@ -192,44 +245,71 @@ func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]P
 			rest = append(rest, p)
 		}
 	}
+	return rest
+}
 
-	totalScore := func(xi []Player) float64 {
+// selectOptimizedHillClimb starts with greedy Select then improves by swapping one out, one in.
+func selectOptimizedHillClimb(pool []Player, w ScoreWeights, c Constraints) ([]Player, error) {
+	team, err := Select(pool, w, c)
+	if err != nil {
+		return nil, err
+	}
+	rest := splitTeamAndRest(pool, team)
+
+	scoreFunc := func(xi []Player) (float64, error) {
 		s := 0.0
 		for _, p := range xi {
 			s += ScorePlayer(p, w)
 		}
-		return s
+		return s, nil
+	}
+	team = hillClimbSwap(team, rest, c, scoreFunc, 0, 0)
+	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
+	return team, nil
+}
+
+// WinProbEvalFunc evaluates the win probability for a candidate XI.
+// Returns team1 win probability in [0,1] or an error.
+type WinProbEvalFunc func(candidateNames []string) (float64, error)
+
+// winProbSwapIterations returns the configured hill-climb iteration cap for win-probability selection.
+func winProbSwapIterations() int {
+	return config.SelectionMaxWinProbSwapIterations(config.Load())
+}
+
+// winProbEvalBudget returns the configured ML evaluation call budget for win-probability selection.
+func winProbEvalBudget() int {
+	return config.SelectionMaxWinProbEvalBudget(config.Load())
+}
+
+// SelectByWinProbability selects a team that maximizes win probability using
+// hill-climb optimization. Starts from a greedy seed (ScorePlayer-based),
+// then iteratively swaps players to improve the win probability.
+// Both the iteration count and total ML evaluation calls are capped via config
+// to prevent excessive load on the prediction service.
+func SelectByWinProbability(pool []Player, w ScoreWeights, c Constraints, evalFunc WinProbEvalFunc) ([]Player, error) {
+	if c.Size < 1 {
+		return nil, errors.New("invalid size")
+	}
+	if len(pool) < c.Size {
+		return nil, errors.New("insufficient pool size")
 	}
 
-	improved := true
-	for improved {
-		improved = false
-		currentScore := totalScore(team)
-		for i := 0; i < len(team); i++ {
-			for j := 0; j < len(rest); j++ {
-				// Try swapping team[i] with rest[j]
-				newTeam := make([]Player, len(team))
-				copy(newTeam, team)
-				newTeam[i] = rest[j]
-				newRest := make([]Player, len(rest))
-				copy(newRest, rest)
-				newRest[j] = team[i]
-				if !satisfiesConstraints(newTeam, c) {
-					continue
-				}
-				if totalScore(newTeam) > currentScore {
-					team = newTeam
-					rest = newRest
-					currentScore = totalScore(team)
-					improved = true
-					break
-				}
-			}
-			if improved {
-				break
-			}
-		}
+	team, err := Select(pool, w, c)
+	if err != nil {
+		return nil, err
 	}
+	rest := splitTeamAndRest(pool, team)
+
+	scoreFunc := func(xi []Player) (float64, error) {
+		names := make([]string, len(xi))
+		for i, p := range xi {
+			names[i] = p.Name
+		}
+		return evalFunc(names)
+	}
+
+	team = hillClimbSwap(team, rest, c, scoreFunc, winProbSwapIterations(), winProbEvalBudget())
 	sort.Slice(team, func(i, j int) bool { return team[i].Name < team[j].Name })
 	return team, nil
 }

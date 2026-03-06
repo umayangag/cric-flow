@@ -1,6 +1,7 @@
 package teamselect_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -112,5 +113,93 @@ func TestSelectTopK_InvalidK(t *testing.T) {
 	_, err := ts.SelectTopK(pool, w, ts.Constraints{Size: 11, MinBowlers: 5}, 0)
 	if err == nil {
 		t.Fatalf("expected error for k=0")
+	}
+}
+
+func TestSelectByWinProbability_UsesEvalFunc(t *testing.T) {
+	t.Parallel()
+	pool := []ts.Player{
+		{Name: "A", BatScore: 0.2, IsBowler: true, IsKeeper: true},
+		{Name: "B", BatScore: 0.8, IsBowler: true},
+		{Name: "C", BatScore: 0.6, IsBowler: true},
+	}
+	w := ts.DefaultWeights()
+	c := ts.Constraints{Size: 2, MinBowlers: 1, RequireKeeper: true}
+
+	evalFunc := func(names []string) (float64, error) {
+		for _, n := range names {
+			if n == "B" {
+				return 0.9, nil
+			}
+		}
+		return 0.1, nil
+	}
+
+	sel, err := ts.SelectByWinProbability(pool, w, c, evalFunc)
+	if err != nil {
+		t.Fatalf("SelectByWinProbability: %v", err)
+	}
+	if len(sel) != 2 {
+		t.Fatalf("want 2 selected, got %d", len(sel))
+	}
+	hasB := false
+	for _, p := range sel {
+		if p.Name == "B" {
+			hasB = true
+		}
+	}
+	if !hasB {
+		t.Errorf("expected player B (high win prob) in selected XI, got %v", sel)
+	}
+}
+
+func TestSelectByWinProbability_Errors(t *testing.T) {
+	t.Parallel()
+	w := ts.DefaultWeights()
+	pool := mkPool()
+	noop := func(_ []string) (float64, error) { return 0.5, nil }
+
+	tests := []struct {
+		name   string
+		pool   []ts.Player
+		c      ts.Constraints
+		errStr string
+	}{
+		{"invalid size", pool, ts.Constraints{Size: 0, MinBowlers: 5}, "invalid size"},
+		{"insufficient pool", pool[:3], ts.Constraints{Size: 11, MinBowlers: 2}, "insufficient pool"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ts.SelectByWinProbability(tt.pool, w, tt.c, noop)
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.errStr)
+			}
+			if !strings.Contains(err.Error(), tt.errStr) {
+				t.Fatalf("err %q does not contain %q", err.Error(), tt.errStr)
+			}
+		})
+	}
+}
+
+func TestSelectByWinProbability_FallsBackOnEvalError(t *testing.T) {
+	t.Parallel()
+	pool := []ts.Player{
+		{Name: "A", BatScore: 0.9, IsBowler: true, IsKeeper: true},
+		{Name: "B", BatScore: 0.5, IsBowler: true},
+		{Name: "C", BatScore: 0.3, IsBowler: true},
+	}
+	w := ts.DefaultWeights()
+	c := ts.Constraints{Size: 2, MinBowlers: 1, RequireKeeper: true}
+
+	evalFunc := func(_ []string) (float64, error) {
+		return 0, errors.New("eval error")
+	}
+	// Should not panic; falls back to greedy seed
+	sel, err := ts.SelectByWinProbability(pool, w, c, evalFunc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sel) != 2 {
+		t.Fatalf("want 2 selected, got %d", len(sel))
 	}
 }
