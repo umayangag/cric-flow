@@ -54,7 +54,7 @@ _bowling_raw_stat_columns = [
 input_batting_columns = [
     "batting_consistency",
     "batting_form",
-    *[c for c in _batting_raw_stat_columns],  # v2
+    *_batting_raw_stat_columns,  # v2
     "batting_temp",
     "batting_wind",
     "batting_rain",
@@ -88,7 +88,7 @@ derived_batting_columns = ["batting_contribution", "strike_rate"]
 input_bowling_columns = [
     "bowling_consistency",
     "bowling_form",
-    *[c for c in _bowling_raw_stat_columns],  # v2
+    *_bowling_raw_stat_columns,  # v2
     "bowling_temp",
     "bowling_wind",
     "bowling_rain",

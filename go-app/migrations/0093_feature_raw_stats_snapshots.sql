@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS feature_raw_stats_snapshots (
     bowling_days_since_last DOUBLE PRECISION NOT NULL DEFAULT 0,
     bowling_innings_in_last_90d INT NOT NULL DEFAULT 0,
 
-    source_version TEXT NOT NULL DEFAULT 'v1',
+    source_version TEXT NOT NULL DEFAULT 'v2',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE(player_id, as_of_date, format_id, scope, scope_id)

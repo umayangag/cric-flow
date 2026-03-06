@@ -513,7 +513,54 @@ func getPrecomputedFeaturesForMatch(
 	}
 
 	// 5) Overall raw windowed stats (scope=overall) for v2 contract
-	rows, err = db.Pool.Query(ctx, `
+	rows, err = db.Pool.Query(ctx, rawStatsSnapshotQuery, playerIDs, formatID, cutoffDate)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var pid int64
+		var bat, bowl features.RawStats
+		if err := rows.Scan(&pid,
+			&bat.MeanW3, &bat.MeanW5, &bat.MeanW10, &bat.MeanW20, &bat.StdW5, &bat.StdW10, &bat.MaxW10, &bat.MinW10, &bat.MedianW10,
+			&bat.Last1, &bat.Last2, &bat.Last3, &bat.CareerMean, &bat.CareerCount, &bat.PctZeroW10, &bat.TrendW5, &bat.DaysSinceLast, &bat.InningsInLast90D,
+			&bowl.MeanW3, &bowl.MeanW5, &bowl.MeanW10, &bowl.MeanW20, &bowl.StdW5, &bowl.StdW10, &bowl.MaxW10, &bowl.MinW10, &bowl.MedianW10,
+			&bowl.Last1, &bowl.Last2, &bowl.Last3, &bowl.CareerMean, &bowl.CareerCount, &bowl.PctZeroW10, &bowl.TrendW5, &bowl.DaysSinceLast, &bowl.InningsInLast90D); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		m := out[pid]
+		putRawStatsIntoMap(m, "batting_", bat)
+		putRawStatsIntoMap(m, "bowling_", bowl)
+	}
+	rows.Close()
+
+	return out, nil
+}
+
+// putRawStatsIntoMap writes RawStats fields into the feature map with the given prefix (e.g. "batting_", "bowling_").
+func putRawStatsIntoMap(m map[string]float64, prefix string, r features.RawStats) {
+	m[prefix+"mean_w3"] = r.MeanW3
+	m[prefix+"mean_w5"] = r.MeanW5
+	m[prefix+"mean_w10"] = r.MeanW10
+	m[prefix+"mean_w20"] = r.MeanW20
+	m[prefix+"std_w5"] = r.StdW5
+	m[prefix+"std_w10"] = r.StdW10
+	m[prefix+"max_w10"] = r.MaxW10
+	m[prefix+"min_w10"] = r.MinW10
+	m[prefix+"median_w10"] = r.MedianW10
+	m[prefix+"last_1"] = r.Last1
+	m[prefix+"last_2"] = r.Last2
+	m[prefix+"last_3"] = r.Last3
+	m[prefix+"career_mean"] = r.CareerMean
+	m[prefix+"career_count"] = float64(r.CareerCount)
+	m[prefix+"pct_zero_w10"] = r.PctZeroW10
+	m[prefix+"trend_w5"] = r.TrendW5
+	m[prefix+"days_since_last"] = r.DaysSinceLast
+	m[prefix+"innings_in_last_90d"] = float64(r.InningsInLast90D)
+}
+
+// rawStatsSnapshotQuery is the SELECT for overall raw windowed stats (v2 contract). Kept as constant for clarity.
+const rawStatsSnapshotQuery = `
 		SELECT DISTINCT ON (player_id) player_id,
 			batting_mean_w3, batting_mean_w5, batting_mean_w10, batting_mean_w20,
 			batting_std_w5, batting_std_w10, batting_max_w10, batting_min_w10, batting_median_w10,
@@ -528,70 +575,7 @@ func getPrecomputedFeaturesForMatch(
 		FROM feature_raw_stats_snapshots
 		WHERE player_id = ANY($1::bigint[]) AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL AND as_of_date <= $3
 		ORDER BY player_id, as_of_date DESC
-	`, playerIDs, formatID, cutoffDate)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var pid int64
-		var batMeanW3, batMeanW5, batMeanW10, batMeanW20, batStdW5, batStdW10, batMaxW10, batMinW10, batMedianW10 float64
-		var batLast1, batLast2, batLast3, batCareerMean float64
-		var batCareerCount, batInningsInLast90d int
-		var batPctZeroW10, batTrendW5, batDaysSinceLast float64
-		var bowlMeanW3, bowlMeanW5, bowlMeanW10, bowlMeanW20, bowlStdW5, bowlStdW10, bowlMaxW10, bowlMinW10, bowlMedianW10 float64
-		var bowlLast1, bowlLast2, bowlLast3, bowlCareerMean float64
-		var bowlCareerCount, bowlInningsInLast90d int
-		var bowlPctZeroW10, bowlTrendW5, bowlDaysSinceLast float64
-		if err := rows.Scan(&pid,
-			&batMeanW3, &batMeanW5, &batMeanW10, &batMeanW20, &batStdW5, &batStdW10, &batMaxW10, &batMinW10, &batMedianW10,
-			&batLast1, &batLast2, &batLast3, &batCareerMean, &batCareerCount, &batPctZeroW10, &batTrendW5, &batDaysSinceLast, &batInningsInLast90d,
-			&bowlMeanW3, &bowlMeanW5, &bowlMeanW10, &bowlMeanW20, &bowlStdW5, &bowlStdW10, &bowlMaxW10, &bowlMinW10, &bowlMedianW10,
-			&bowlLast1, &bowlLast2, &bowlLast3, &bowlCareerMean, &bowlCareerCount, &bowlPctZeroW10, &bowlTrendW5, &bowlDaysSinceLast, &bowlInningsInLast90d); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		m := out[pid]
-		m["batting_mean_w3"] = batMeanW3
-		m["batting_mean_w5"] = batMeanW5
-		m["batting_mean_w10"] = batMeanW10
-		m["batting_mean_w20"] = batMeanW20
-		m["batting_std_w5"] = batStdW5
-		m["batting_std_w10"] = batStdW10
-		m["batting_max_w10"] = batMaxW10
-		m["batting_min_w10"] = batMinW10
-		m["batting_median_w10"] = batMedianW10
-		m["batting_last_1"] = batLast1
-		m["batting_last_2"] = batLast2
-		m["batting_last_3"] = batLast3
-		m["batting_career_mean"] = batCareerMean
-		m["batting_career_count"] = float64(batCareerCount)
-		m["batting_pct_zero_w10"] = batPctZeroW10
-		m["batting_trend_w5"] = batTrendW5
-		m["batting_days_since_last"] = batDaysSinceLast
-		m["batting_innings_in_last_90d"] = float64(batInningsInLast90d)
-		m["bowling_mean_w3"] = bowlMeanW3
-		m["bowling_mean_w5"] = bowlMeanW5
-		m["bowling_mean_w10"] = bowlMeanW10
-		m["bowling_mean_w20"] = bowlMeanW20
-		m["bowling_std_w5"] = bowlStdW5
-		m["bowling_std_w10"] = bowlStdW10
-		m["bowling_max_w10"] = bowlMaxW10
-		m["bowling_min_w10"] = bowlMinW10
-		m["bowling_median_w10"] = bowlMedianW10
-		m["bowling_last_1"] = bowlLast1
-		m["bowling_last_2"] = bowlLast2
-		m["bowling_last_3"] = bowlLast3
-		m["bowling_career_mean"] = bowlCareerMean
-		m["bowling_career_count"] = float64(bowlCareerCount)
-		m["bowling_pct_zero_w10"] = bowlPctZeroW10
-		m["bowling_trend_w5"] = bowlTrendW5
-		m["bowling_days_since_last"] = bowlDaysSinceLast
-		m["bowling_innings_in_last_90d"] = float64(bowlInningsInLast90d)
-	}
-	rows.Close()
-
-	return out, nil
-}
+`
 
 // requiredPrecomputedKeysBase are the feature keys required for form/consistency (match and no-match contexts both use these).
 var requiredPrecomputedKeysBase = []string{
