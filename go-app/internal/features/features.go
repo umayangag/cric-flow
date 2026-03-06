@@ -156,7 +156,8 @@ func WindowedStats(inn []Innings, asOf time.Time) RawStats {
 	}
 	out.CareerMean = sum / float64(n)
 
-	// Days since last and innings in last 90 days
+	// Days since last and innings in last 90 days.
+	// DaysSinceLast is fractional days (e.g. 2.5 = 2 days 12 hours); ML can use as-is or round if whole days are preferred.
 	lastDate := inn[n-1].Date
 	out.DaysSinceLast = asOf.Sub(lastDate).Hours() / 24
 	const days90 = 90 * 24

@@ -22,6 +22,21 @@ from .training_pipeline import ModelSpec, TrainingPipeline
 
 logger = logging.getLogger(__name__)
 
+# Raw windowed stats (v2) from configs/feature_vectors.json (single source of truth).
+try:
+    from app.feature_config import get_raw_stat_feature_names
+
+    BAT_RAW_STAT_COLS = get_raw_stat_feature_names("batting")
+except Exception:  # noqa: S110 (allow broad except for optional app dependency at import)
+    # Fallback when app not available (e.g. some test envs); must match Go contract.
+    BAT_RAW_STAT_COLS = [
+        "batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
+        "batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
+        "batting_last_1", "batting_last_2", "batting_last_3",
+        "batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
+        "batting_days_since_last", "batting_innings_in_last_90d",
+    ]
+
 # ── Column definitions ───────────────────────────────────────────────────
 
 BAT_SEQ_COLS = [
@@ -33,28 +48,6 @@ BAT_SEQ_COLS = [
     "bat_set_sr_13_30",
     "bat_react_after_dot_sr",
     "bat_after_k_dots_boundary_p_k2",
-]
-
-# Raw windowed stats (v2 contract) — ML learns optimal form/consistency from these.
-BAT_RAW_STAT_COLS = [
-    "batting_mean_w3",
-    "batting_mean_w5",
-    "batting_mean_w10",
-    "batting_mean_w20",
-    "batting_std_w5",
-    "batting_std_w10",
-    "batting_max_w10",
-    "batting_min_w10",
-    "batting_median_w10",
-    "batting_last_1",
-    "batting_last_2",
-    "batting_last_3",
-    "batting_career_mean",
-    "batting_career_count",
-    "batting_pct_zero_w10",
-    "batting_trend_w5",
-    "batting_days_since_last",
-    "batting_innings_in_last_90d",
 ]
 
 FEATURE_COLS = (

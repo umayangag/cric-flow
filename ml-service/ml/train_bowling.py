@@ -22,6 +22,21 @@ from .training_pipeline import ModelSpec, TrainingPipeline
 
 logger = logging.getLogger(__name__)
 
+# Raw windowed stats (v2) from configs/feature_vectors.json (single source of truth).
+try:
+    from app.feature_config import get_raw_stat_feature_names
+
+    BOWL_RAW_STAT_COLS = get_raw_stat_feature_names("bowling")
+except Exception:  # noqa: S110 (allow broad except for optional app dependency at import)
+    # Fallback when app not available (e.g. some test envs); must match Go contract.
+    BOWL_RAW_STAT_COLS = [
+        "bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+        "bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+        "bowling_last_1", "bowling_last_2", "bowling_last_3",
+        "bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+        "bowling_days_since_last", "bowling_innings_in_last_90d",
+    ]
+
 # ── Column definitions ───────────────────────────────────────────────────
 
 BOWL_SEQ_COLS = [
@@ -33,28 +48,6 @@ BOWL_SEQ_COLS = [
     "bowl_spell_first_over_wkt_rate",
     "bowl_over_ball1_wkt_rate",
     "bowl_over_ball6_wkt_rate",
-]
-
-# Raw windowed stats (v2 contract) — ML learns optimal form/consistency from these.
-BOWL_RAW_STAT_COLS = [
-    "bowling_mean_w3",
-    "bowling_mean_w5",
-    "bowling_mean_w10",
-    "bowling_mean_w20",
-    "bowling_std_w5",
-    "bowling_std_w10",
-    "bowling_max_w10",
-    "bowling_min_w10",
-    "bowling_median_w10",
-    "bowling_last_1",
-    "bowling_last_2",
-    "bowling_last_3",
-    "bowling_career_mean",
-    "bowling_career_count",
-    "bowling_pct_zero_w10",
-    "bowling_trend_w5",
-    "bowling_days_since_last",
-    "bowling_innings_in_last_90d",
 ]
 
 FEATURE_COLS = (

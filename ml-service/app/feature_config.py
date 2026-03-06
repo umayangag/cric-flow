@@ -71,3 +71,48 @@ def get_feature_names(kind: str) -> List[str]:
         raise FeatureConfigError(msg)
 
     return names
+
+
+# Canonical raw windowed stat names (v2): contiguous block in config from *_mean_w3 to *_innings_in_last_90d.
+_RAW_START = "mean_w3"
+_RAW_END = "innings_in_last_90d"
+
+
+def _raw_stat_prefix(kind: str) -> str:
+    if kind == "batting":
+        return "batting_"
+    if kind == "bowling":
+        return "bowling_"
+    raise ValueError(f"unknown feature kind for raw stats: {kind}")
+
+
+@lru_cache(maxsize=None)
+def get_raw_stat_feature_names(kind: str) -> List[str]:
+    """Return raw windowed stat feature names from configs/feature_vectors.json.
+
+    Derives the list by taking the contiguous block from <kind>_mean_w3 through
+    <kind>_innings_in_last_90d in the config, so a single source of truth is kept.
+    """
+    kind = kind.lower().strip()
+    prefix = _raw_stat_prefix(kind)
+    start_marker = prefix + _RAW_START
+    end_marker = prefix + _RAW_END
+
+    names = get_feature_names(kind)
+    try:
+        i = names.index(start_marker)
+        j = names.index(end_marker)
+    except ValueError as e:
+        msg = (
+            f"Raw stat markers {start_marker!r} / {end_marker!r} not found in {kind} list from config. "
+            "Ensure configs/feature_vectors.json has the v2 raw windowed stat block."
+        )
+        logger.error(msg)
+        raise FeatureConfigError(msg) from e
+
+    if j < i:
+        msg = f"Raw stat block for {kind}: {end_marker!r} must appear after {start_marker!r} in config."
+        logger.error(msg)
+        raise FeatureConfigError(msg)
+
+    return names[i : j + 1]

@@ -9,6 +9,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
+	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
 
 // BattingUnifiedRows returns CSV-shaped rows for the unified batting export.
@@ -813,19 +814,18 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 // battingHoldoutRowsImpl returns batting export-shaped rows for the given match IDs with features computed at cutoff.
 func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
-		headers := []string{
+		baseHeaders := []string{
 			"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
 			"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
-			"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
-			"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
-			"batting_last_1", "batting_last_2", "batting_last_3",
-			"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
-			"batting_days_since_last", "batting_innings_in_last_90d",
+		}
+		rawStatsHeaders := features.RawStatsFeatureNamesBatting()
+		envContextHeaders := []string{
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 			"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 			"match_date",
 		}
+		headers := append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
 		return [][]string{headers}, nil
 	}
 	q, args := battingHoldoutRawQuery(matchIDs)
@@ -906,19 +906,18 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
-	headers := []string{
+	baseHeaders := []string{
 		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
 		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
-		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
-		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
-		"batting_last_1", "batting_last_2", "batting_last_3",
-		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
-		"batting_days_since_last", "batting_innings_in_last_90d",
+	}
+	rawStatsHeaders := features.RawStatsFeatureNamesBatting()
+	envContextHeaders := []string{
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"match_date",
 	}
+	headers := append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {
