@@ -19,34 +19,51 @@ var winFeatureCTENames = []string{
 }
 
 func buildWinAggAndTop3CTEs() string {
-	var parts []string
+	parts := make([]string, 0, len(winFeatureCTENames)+len(winFeatureCTENames))
 	for _, name := range winFeatureCTENames {
-		parts = append(parts,
-			fmt.Sprintf("agg_%s AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM %s GROUP BY match_id)", name, name),
+		parts = append(
+			parts,
+			fmt.Sprintf(
+				"agg_%s AS (SELECT match_id, COALESCE(SUM(v), 0) AS s, COALESCE(AVG(v), 0) AS mean_v, COALESCE(STDDEV_POP(v), 0) AS std_v, COALESCE(MAX(v), 0) AS max_v, COALESCE(MIN(v), 0) AS min_v, COUNT(*) AS cnt FROM %s GROUP BY match_id)",
+				name,
+				name,
+			),
 		)
 	}
 	for _, name := range winFeatureCTENames {
-		parts = append(parts,
-			fmt.Sprintf("top3_%s AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM %s) sub WHERE rn <= 3 GROUP BY match_id)", name, name),
+		parts = append(
+			parts,
+			fmt.Sprintf(
+				"top3_%s AS (SELECT match_id, COALESCE(AVG(v), 0) AS top3_mean FROM (SELECT match_id, v, ROW_NUMBER() OVER (PARTITION BY match_id ORDER BY v DESC) AS rn FROM %s) sub WHERE rn <= 3 GROUP BY match_id)",
+				name,
+				name,
+			),
 		)
 	}
 	return strings.Join(parts, ",\n\t")
 }
 
 func buildWinFeatureSelectColumns() string {
-	var cols []string
+	cols := make([]string, 0, len(winFeatureCTENames))
 	for i, name := range winFeatureCTENames {
 		n := i + 1
 		cols = append(cols, fmt.Sprintf(
 			"COALESCE(a%d.s, 0), COALESCE(a%d.mean_v, 0), COALESCE(a%d.std_v, 0), COALESCE(a%d.max_v, 0), COALESCE(a%d.min_v, 0), COALESCE(t3a%d.top3_mean, 0), COALESCE(a%d.cnt, 0) -- %s",
-			n, n, n, n, n, n, n, name,
+			n,
+			n,
+			n,
+			n,
+			n,
+			n,
+			n,
+			name,
 		))
 	}
 	return strings.Join(cols, ",\n\t\t")
 }
 
 func buildWinFeatureJoins() string {
-	var joins []string
+	joins := make([]string, 0, len(winFeatureCTENames)+len(winFeatureCTENames))
 	for i, name := range winFeatureCTENames {
 		n := i + 1
 		joins = append(joins,

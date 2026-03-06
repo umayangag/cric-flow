@@ -37,11 +37,11 @@ type fakeSelector struct {
 func (f *fakeSelector) SelectTeam(
 	_ context.Context,
 	matchID int64,
-	format, season string,
+	format string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	f.calledDB++
-	f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = matchID, format, season, opts
+	f.lastMatch, f.lastFormat, f.lastOpts = matchID, format, opts
 	return f.res, f.err
 }
 

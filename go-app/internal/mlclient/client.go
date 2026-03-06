@@ -3,8 +3,10 @@ package mlclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
@@ -46,6 +48,8 @@ func (c *Client) postJSON(ctx context.Context, path string, in any, out any) err
 }
 
 // PredictBatting sends batting feature rows to the mlCleint service and returns predictions.
+//
+// Deprecated: Use PredictPlayers which calls the unified /ml/backtest/predict endpoint.
 func (c *Client) PredictBatting(
 	ctx context.Context,
 	feats []models.BattingFeatures,
@@ -58,6 +62,8 @@ func (c *Client) PredictBatting(
 }
 
 // PredictBowling sends bowling feature rows to the mlCleint service and returns predictions.
+//
+// Deprecated: Use PredictPlayers which calls the unified /ml/backtest/predict endpoint.
 func (c *Client) PredictBowling(
 	ctx context.Context,
 	feats []models.BowlingFeatures,
@@ -67,4 +73,93 @@ func (c *Client) PredictBowling(
 		return nil, err
 	}
 	return preds, nil
+}
+
+// UnifiedPlayerPrediction holds per-player predictions from the unified endpoint.
+type UnifiedPlayerPrediction struct {
+	Runs    float64
+	Balls   float64
+	Fours   float64
+	Sixes   float64
+	Wickets float64
+	Economy float64
+	Catches float64
+	RunOuts float64
+}
+
+type unifiedPredictRequest struct {
+	CutoffDate     string                        `json:"cutoff_date"`
+	PlayerIDs      []int64                       `json:"player_ids,omitempty"`
+	Format         string                        `json:"format,omitempty"`
+	Features       map[string]map[string]float64 `json:"features,omitempty"`
+	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+}
+
+type unifiedPlayerPredResponse struct {
+	PlayerID int64    `json:"player_id"`
+	Runs     float64  `json:"runs,omitempty"`
+	Balls    *float64 `json:"balls,omitempty"`
+	Fours    *float64 `json:"fours,omitempty"`
+	Sixes    *float64 `json:"sixes,omitempty"`
+	Wickets  float64  `json:"wickets,omitempty"`
+	Economy  float64  `json:"economy,omitempty"`
+	Catches  float64  `json:"catches,omitempty"`
+	RunOuts  float64  `json:"run_outs,omitempty"`
+}
+
+type unifiedPlayersResponse struct {
+	Players []unifiedPlayerPredResponse `json:"players"`
+}
+
+// PredictPlayers calls the unified /ml/backtest/predict endpoint for batting,
+// bowling, and fielding predictions in a single HTTP call.
+func (c *Client) PredictPlayers(
+	ctx context.Context,
+	cutoff time.Time,
+	format string,
+	playerIDs []int64,
+	features map[int64]map[string]float64,
+) (map[int64]UnifiedPlayerPrediction, error) {
+	var featsStr map[string]map[string]float64
+	if len(features) > 0 {
+		featsStr = make(map[string]map[string]float64, len(features))
+		for pid, m := range features {
+			featsStr[strconv.FormatInt(pid, 10)] = m
+		}
+	}
+
+	req := unifiedPredictRequest{
+		CutoffDate:     cutoff.Format(time.RFC3339),
+		PlayerIDs:      playerIDs,
+		Format:         format,
+		Features:       featsStr,
+		UseLatestModel: true,
+	}
+
+	var resp unifiedPlayersResponse
+	if err := c.postJSON(ctx, "/ml/backtest/predict", req, &resp); err != nil {
+		return nil, fmt.Errorf("predict players: %w", err)
+	}
+
+	out := make(map[int64]UnifiedPlayerPrediction, len(resp.Players))
+	for _, p := range resp.Players {
+		pred := UnifiedPlayerPrediction{
+			Runs:    p.Runs,
+			Wickets: p.Wickets,
+			Economy: p.Economy,
+			Catches: p.Catches,
+			RunOuts: p.RunOuts,
+		}
+		if p.Balls != nil {
+			pred.Balls = *p.Balls
+		}
+		if p.Fours != nil {
+			pred.Fours = *p.Fours
+		}
+		if p.Sixes != nil {
+			pred.Sixes = *p.Sixes
+		}
+		out[p.PlayerID] = pred
+	}
+	return out, nil
 }

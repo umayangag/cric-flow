@@ -48,6 +48,9 @@ from .models import (
     BacktestMatchResponse,
     BacktestPlayersResponse,
     BacktestPredictRequest,
+    BatchPredictRequest,
+    BatchPredictResponse,
+    BatchPredictResultItem,
     BattingFeatures,
     BattingPrediction,
     BowlingFeatures,
@@ -67,6 +70,7 @@ from .models import (
 from .prediction_service import (
     GenerateMatchSettings,
     generate_match,
+    predict_players_batch,
     predict_players_with_features,
     round_datetime_to_granularity,
     run_batting_prediction,
@@ -455,6 +459,41 @@ def backtest_predict(req: BacktestPredictRequest):
             message="provide either player_ids or teams",
             hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
         ),
+    )
+
+
+@app.post("/ml/backtest/predict-batch", response_model=BatchPredictResponse)
+def backtest_predict_batch(req: BatchPredictRequest):
+    """Batch prediction: run multiple player-prediction sets in a single HTTP call.
+
+    Each item is equivalent to a POST /ml/backtest/predict with player_ids.
+    Models are loaded once and shared across all items in the batch.
+    """
+    logger.info("backtest_predict_batch.start", batch_size=len(req.requests))
+    try:
+        all_results = predict_players_batch(
+            items=req.requests,
+            models_dir=MODELS_DIR,
+            enable_train_on_the_fly=_settings.enable_train_on_the_fly,
+            go_app_url=_settings.go_app_url,
+            go_app_api_key=_settings.go_app_api_key or None,
+            train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
+        )
+    except ValueError as e:
+        logger.exception("backtest_predict_batch.failed", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=error_payload(code="BATCH_PREDICT_FAILED", message=str(e)),
+        ) from e
+    except Exception as e:
+        logger.exception("backtest_predict_batch.error", error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=error_payload(code="BATCH_PREDICT_FAILED", message="Batch prediction failed"),
+        ) from e
+    logger.info("backtest_predict_batch.success", batch_size=len(req.requests))
+    return BatchPredictResponse(
+        results=[BatchPredictResultItem(players=preds) for preds in all_results],
     )
 
 

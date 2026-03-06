@@ -4,290 +4,211 @@ package selection
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
-	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 )
 
-// SelectTeam builds the player pool from DB, constructs features, calls mlCleint service
-// for batting/bowling predictions, merges/fills attributes, calls the win model,
-// applies constraints, and returns the selected XI and team win probability.
+type scoredPlayer struct {
+	Name     string
+	IsBowler bool
+	IsKeeper bool
+	Score    float64
+	Pred     mlclient.UnifiedPlayerPrediction
+}
+
+// SelectTeam builds the player pool from DB, computes features via the standard
+// feature pipeline, calls the unified ML endpoint for batting/bowling/fielding
+// predictions in a single HTTP call, scores players, applies constraints, and
+// returns the selected XI.
 func SelectTeam(
 	ctx context.Context,
 	matchID int64,
 	format string,
-	season string,
 	opts Options,
 ) (Result, error) {
 	if opts.TeamSize <= 0 {
 		opts.TeamSize = 11
 	}
 	cfg := config.Load()
-	// Fetch match context
+
 	mc, err := db.GetMatchContext(ctx, matchID)
 	if err != nil {
 		return Result{}, fmt.Errorf("get match context: %w", err)
 	}
-	// Resolve IDs
+
 	fmtCode := strings.ToUpper(strings.TrimSpace(format))
-	fmtID, err := db.GetOrCreateMatchFormat(ctx, fmtCode)
-	if err != nil {
-		return Result{}, fmt.Errorf("format id: %w", err)
-	}
-	// Previous season for form
-	prevSeasonName := prevSeasonName(season)
-	prevSeasonID, err := db.GetOrCreateSeason(ctx, prevSeasonName)
-	if err != nil {
-		return Result{}, fmt.Errorf("prev season id: %w", err)
-	}
-	// Player pool
-	pool, err := db.ListPlayerPoolConsistency(ctx, season, fmtCode)
+
+	pool, err := db.ListPlayerPoolConsistency(ctx, "", fmtCode)
 	if err != nil {
 		return Result{}, fmt.Errorf("list player pool: %w", err)
 	}
 	if len(pool) == 0 {
-		return Result{}, fmt.Errorf("no eligible players for season=%s format=%s", season, fmtCode)
+		return Result{}, fmt.Errorf("no eligible players for format=%s", fmtCode)
 	}
 
-	// Build features
-	w := cfg.Weather.Mocks
-	batSess := encodeSession(int(nz64(mc.Session)))
-	bowlSess := encodeSession(int(nz64(mc.Session)))
-	batInning := int(nz64(mc.Inning))
-	if batInning <= 0 {
-		batInning = 1
-	}
-	toss := int(nz64(mc.Toss))
-	visc := encodeViscosity(w.Viscosity)
-	seasonNum := parseSeasonInt(season)
-	venueID := int64(nz64(mc.VenueID))
-	oppoID := int64(nz64(mc.OppositionID))
-
-	batFeats := make([]models.BattingFeatures, 0, len(pool))
-	bowlFeats := make([]models.BowlingFeatures, 0, len(pool))
-	isBowler := make([]bool, 0, len(pool))
-	isKeeper := make([]bool, 0, len(pool))
-	playerNames := make([]string, 0, len(pool))
-
+	playerIDs := make([]int64, 0, len(pool))
 	for _, p := range pool {
-		// Per-player aggregates
-		batForm, bowlForm, _ := db.GetPlayerFormFmt(ctx, p.PlayerID, prevSeasonID, fmtID)
-		batVenue, bowlVenue, _ := db.GetPlayerVenueEffectFmt(ctx, p.PlayerID, venueID, fmtID)
-		batOpp, bowlOpp, _ := db.GetPlayerOppositionEffectFmt(ctx, p.PlayerID, oppoID, fmtID)
+		playerIDs = append(playerIDs, p.PlayerID)
+	}
 
-		bf := models.BattingFeatures{
-			BattingConsistency: f32(p.BattingConsistency.Float64),
-			BattingForm:        f32(batForm),
-			BattingTemp:        w.Temp,
-			BattingWind:        w.Wind,
-			BattingRain:        w.Rain,
-			BattingHumidity:    w.Humidity,
-			BattingCloud:       w.Cloud,
-			BattingPressure:    w.Pressure,
-			BattingViscosity:   visc,
-			BattingInning:      batInning,
-			BattingSession:     batSess,
-			Toss:               toss,
-			Venue:              f32(batVenue),
-			Opposition:         f32(batOpp),
-			Season:             seasonNum,
-			PlayerName:         p.PlayerName,
-			Format:             fmtCode,
-		}
-		batFeats = append(batFeats, bf)
+	venueID := nz64(mc.VenueID)
+	oppoID := nz64(mc.OppositionID)
+	var venuePtr *int64
+	if venueID != 0 {
+		venuePtr = &venueID
+	}
+	var seasonPtr *int64
+	if sid := nz64(mc.SeasonID); sid != 0 {
+		seasonPtr = &sid
+	}
 
-		bow := models.BowlingFeatures{
-			BowlingConsistency: f32(p.BowlingConsistency.Float64),
-			BowlingForm:        f32(bowlForm),
-			BowlingTemp:        w.Temp,
-			BowlingWind:        w.Wind,
-			BowlingRain:        w.Rain,
-			BowlingHumidity:    w.Humidity,
-			BowlingCloud:       w.Cloud,
-			BowlingPressure:    w.Pressure,
-			BowlingViscosity:   visc,
-			BattingInning:      batInning,
-			BowlingSession:     bowlSess,
-			Toss:               toss,
-			BowlingVenue:       f32(bowlVenue),
-			BowlingOpposition:  f32(bowlOpp),
-			Season:             seasonNum,
-			PlayerName:         p.PlayerName,
-			Format:             fmtCode,
-		}
-		bowlFeats = append(bowlFeats, bow)
-		isBowler = append(isBowler, p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0)
-		isKeeper = append(isKeeper, p.IsWicketKeeper == 1)
-		playerNames = append(playerNames, p.PlayerName)
+	cutoff := time.Now().Truncate(24 * time.Hour)
+
+	features, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
+		ctx, cutoff, fmtCode, venuePtr, oppoID, seasonPtr, playerIDs, nil, nil,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("compute features: %w", err)
 	}
 
 	cli := mlclient.New()
-	batPreds, err := cli.PredictBatting(ctx, batFeats)
+	preds, err := cli.PredictPlayers(ctx, cutoff, fmtCode, playerIDs, features)
 	if err != nil {
-		return Result{}, fmt.Errorf("predict batting: %w", err)
-	}
-	bowlPreds, err := cli.PredictBowling(ctx, bowlFeats)
-	if err != nil {
-		return Result{}, fmt.Errorf("predict bowling: %w", err)
-	}
-	if len(batPreds) != len(pool) || len(bowlPreds) != len(pool) {
-		return Result{}, fmt.Errorf(
-			"prediction size mismatch: bat=%d bowl=%d pool=%d",
-			len(batPreds),
-			len(bowlPreds),
-			len(pool),
-		)
+		return Result{}, fmt.Errorf("predict players: %w", err)
 	}
 
-	players := make([]predictor.PlayerPrediction, 0, len(pool))
-	for i := range pool {
-		bp := batPreds[i]
-		wp := bowlPreds[i]
-		pp := predictor.PlayerPrediction{
-			PlayerName:      playerNames[i],
-			RunsScored:      float64(bp.RunsScored),
-			BallsFaced:      float64(bp.BallsFaced),
-			FoursScored:     float64(bp.FoursScored),
-			SixesScored:     float64(bp.SixesScored),
-			BattingPosition: float64(bp.BattingPosition),
-			StrikeRate:      float64(bp.StrikeRate),
-			RunsConceded:    float64(wp.RunsConceded),
-			Deliveries:      float64(wp.Deliveries),
-			WicketsTaken:    float64(wp.WicketsTaken),
-			Econ:            float64(wp.Econ),
+	batDiv, wickDiv, econBase, fieldDiv := config.EffectiveScoreNormParams(cfg, fmtCode)
+	batW, bowlW, fieldW, keeperW := config.EffectiveScoreWeightsForFormat(cfg, fmtCode)
+
+	scored := make([]scoredPlayer, 0, len(pool))
+	for _, p := range pool {
+		pr := preds[p.PlayerID]
+		isBowler := p.BowlingConsistency.Valid && p.BowlingConsistency.Float64 > 0
+		batScore := math.Min(1, pr.Runs/batDiv)
+		bowlScore := 0.0
+		if isBowler {
+			wickPart := math.Min(1, pr.Wickets/wickDiv)
+			econPart := math.Max(0, 1-(pr.Economy/econBase))
+			bowlScore = (wickPart + econPart) / 2
 		}
-		// If player is not a bowler, zero out bowling predictions to mirror prototype fill_missing
-		if !isBowler[i] {
-			pp.RunsConceded = 0
-			pp.Deliveries = 0
-			pp.WicketsTaken = 0
-			pp.Econ = 0
+		fieldScore := math.Min(1, (pr.Catches+pr.RunOuts*1.5)/fieldDiv)
+
+		s := batW*batScore + bowlW*bowlScore + fieldW*fieldScore
+		if p.IsWicketKeeper == 1 {
+			s += keeperW
 		}
-		players = append(players, pp)
+
+		scored = append(scored, scoredPlayer{
+			Name:     p.PlayerName,
+			IsBowler: isBowler,
+			IsKeeper: p.IsWicketKeeper == 1,
+			Score:    s,
+			Pred:     pr,
+		})
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].Score != scored[j].Score {
+			return scored[i].Score > scored[j].Score
+		}
+		return scored[i].Name < scored[j].Name
+	})
+
+	selected := selectWithConstraints(scored, opts.TeamSize, opts.MinBowlers, opts.RequireKeeper)
+
+	result := make([]predictor.PlayerPrediction, 0, len(selected))
+	for _, s := range selected {
+		result = append(result, predictor.PlayerPrediction{
+			PlayerName:         s.Name,
+			RunsScored:         s.Pred.Runs,
+			BallsFaced:         s.Pred.Balls,
+			FoursScored:        s.Pred.Fours,
+			SixesScored:        s.Pred.Sixes,
+			WicketsTaken:       s.Pred.Wickets,
+			Econ:               s.Pred.Economy,
+			WinningProbability: s.Score,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].WinningProbability > result[j].WinningProbability
+	})
+
+	avgScore := 0.0
+	for _, p := range result {
+		avgScore += p.WinningProbability
+	}
+	if len(result) > 0 {
+		avgScore /= float64(len(result))
 	}
 
-	// Call win predictor
-	winPlayers, err := cli.PredictWin(ctx, players)
-	if err != nil {
-		return Result{}, fmt.Errorf("predict win: %w", err)
-	}
-	// Sort by per-player probability desc
-	sort.Slice(
-		winPlayers,
-		func(i, j int) bool { return winPlayers[i].WinningProbability > winPlayers[j].WinningProbability },
-	)
+	return Result{Players: result, TeamWinProbability: avgScore}, nil
+}
 
-	// Enforce MinBowlers and optional RequireKeeper
-	selected := make([]predictor.PlayerPrediction, 0, opts.TeamSize)
-	bowlCount := 0
-	keeperCount := 0
-	for i := 0; i < len(winPlayers) && len(selected) < opts.TeamSize; i++ {
-		p := winPlayers[i]
-		selected = append(selected, p)
-		if p.Deliveries > 0 || p.Econ > 0 {
-			bowlCount++
-		}
-		if isKeeper[i] { // aligned by order of pool/winPlayers
-			keeperCount++
+// selectWithConstraints picks teamSize players from the pre-sorted scored list,
+// ensuring MinBowlers and optionally at least one keeper via swap-ins.
+func selectWithConstraints(scored []scoredPlayer, teamSize, minBowlers int, requireKeeper bool) []scoredPlayer {
+	if len(scored) < teamSize {
+		teamSize = len(scored)
+	}
+	selected := make([]scoredPlayer, teamSize)
+	copy(selected, scored[:teamSize])
+	remaining := scored[teamSize:]
+
+	bowlerCount := 0
+	for _, p := range selected {
+		if p.IsBowler {
+			bowlerCount++
 		}
 	}
-	// Try to satisfy bowlers
-	if bowlCount < opts.MinBowlers {
-		for i := opts.TeamSize; i < len(winPlayers) && bowlCount < opts.MinBowlers; i++ {
-			cand := winPlayers[i]
-			if !(cand.Deliveries > 0 || cand.Econ > 0) {
-				continue
-			}
-			// Replace lowest-ranked non-bowler
-			replaced := false
-			for j := len(selected) - 1; j >= 0; j-- {
-				if !(selected[j].Deliveries > 0 || selected[j].Econ > 0) {
-					selected[j] = cand
-					bowlCount++
-					replaced = true
-					break
-				}
-			}
-			if !replaced {
+	for _, cand := range remaining {
+		if bowlerCount >= minBowlers {
+			break
+		}
+		if !cand.IsBowler {
+			continue
+		}
+		for j := len(selected) - 1; j >= 0; j-- {
+			if !selected[j].IsBowler {
+				selected[j] = cand
+				bowlerCount++
 				break
 			}
 		}
 	}
-	// Try to ensure at least one keeper if requested
-	if opts.RequireKeeper {
-		// Determine keeper presence in selected using original pool order mapping
-		present := false
-		for i := range selected {
-			// find index of player in original winPlayers slice
-			// since we aligned by order initially, we can map by name (assumed unique enough for our dataset)
-			name := selected[i].PlayerName
-			for k := range pool {
-				if pool[k].PlayerName == name && isKeeper[k] {
-					present = true
-					break
-				}
-			}
-			if present {
+
+	if requireKeeper {
+		hasKeeper := false
+		for _, p := range selected {
+			if p.IsKeeper {
+				hasKeeper = true
 				break
 			}
 		}
-		if !present {
-			for i := opts.TeamSize; i < len(winPlayers); i++ {
-				cand := winPlayers[i]
-				// is this candidate a keeper?
-				candIsKeeper := false
-				for k := range pool {
-					if pool[k].PlayerName == cand.PlayerName && isKeeper[k] {
-						candIsKeeper = true
-						break
-					}
-				}
-				if !candIsKeeper {
+		if !hasKeeper {
+			for _, cand := range remaining {
+				if !cand.IsKeeper {
 					continue
 				}
-				// replace lowest-ranked non-keeper
-				replaced := false
 				for j := len(selected) - 1; j >= 0; j-- {
-					curIsKeeper := false
-					for k := range pool {
-						if pool[k].PlayerName == selected[j].PlayerName && isKeeper[k] {
-							curIsKeeper = true
-							break
-						}
-					}
-					if !curIsKeeper {
+					if !selected[j].IsKeeper && !selected[j].IsBowler {
 						selected[j] = cand
-						replaced = true
-						// keeperCount = 1
 						break
 					}
 				}
-				if replaced {
-					break
-				}
+				break
 			}
 		}
 	}
 
-	// Compute team average probability
-	sum := 0.0
-	for _, p := range selected {
-		sum += p.WinningProbability
-	}
-	avg := 0.0
-	if len(selected) > 0 {
-		avg = sum / float64(len(selected))
-	}
-	// Keep selected sorted
-	sort.Slice(selected, func(i, j int) bool { return selected[i].WinningProbability > selected[j].WinningProbability })
-
-	return Result{Players: selected, TeamWinProbability: avg}, nil
+	return selected
 }
 
 func nz64(v struct {
