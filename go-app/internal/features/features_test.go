@@ -170,7 +170,8 @@ func TestWindowedStats(t *testing.T) {
 		}
 	})
 	t.Run("typical", func(t *testing.T) {
-		inn := mk(10, 20, 30, 40, 50) // last=50, last2=40, last3=30; mean_w5=30, career_mean=30
+		inn := mk(10, 20, 30, 40, 50)        // last=50, last2=40, last3=30; mean_w5=30, career_mean=30
+		asOf := base.Add(5 * 24 * time.Hour) // after last inning so DaysSinceLast is positive
 		r := WindowedStats(inn, asOf)
 		if r.CareerCount != 5 {
 			t.Fatalf("CareerCount want 5 got %d", r.CareerCount)
@@ -198,9 +199,9 @@ func TestWindowedStats(t *testing.T) {
 		if !feq(r.PctZeroW10, 0, 1e-9) {
 			t.Fatalf("PctZeroW10 want 0 got %v", r.PctZeroW10)
 		}
-		// asOf is base+24h, last inning is base+96h (4 days later), so DaysSinceLast = -3
-		if !feq(r.DaysSinceLast, -3, 1e-9) {
-			t.Fatalf("DaysSinceLast want -3 got %v", r.DaysSinceLast)
+		// asOf is base+5d, last inning is base+4d; DaysSinceLast = 1
+		if !feq(r.DaysSinceLast, 1, 1e-9) {
+			t.Fatalf("DaysSinceLast want 1 got %v", r.DaysSinceLast)
 		}
 		if r.InningsInLast90D != 5 {
 			t.Fatalf("InningsInLast90D want 5 got %d", r.InningsInLast90D)

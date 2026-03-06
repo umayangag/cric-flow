@@ -164,16 +164,18 @@ func RawStatsFeatureNames() []string {
 	}
 }
 
+const numRawStatsPerCategory = 18
+
 // RawStatsFeatureNamesBatting returns the batting raw stat feature names (first 18 of RawStatsFeatureNames).
 // Used by batting export to build CSV headers dynamically so they stay in sync with the contract.
 func RawStatsFeatureNamesBatting() []string {
 	all := RawStatsFeatureNames()
-	return all[:18]
+	return all[:numRawStatsPerCategory]
 }
 
 // RawStatsFeatureNamesBowling returns the bowling raw stat feature names (last 18 of RawStatsFeatureNames).
 // Used by bowling export to build CSV headers dynamically so they stay in sync with the contract.
 func RawStatsFeatureNamesBowling() []string {
 	all := RawStatsFeatureNames()
-	return all[18:]
+	return all[numRawStatsPerCategory:]
 }

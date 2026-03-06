@@ -24,9 +24,9 @@ func init() {
 	}
 	// INSERT columns: fixed prefix + raw stat names + source_version
 	upsertRawStatsInsertColumns = "player_id, as_of_date, format_id, scope, scope_id, " + strings.Join(names, ", ") + ", source_version"
-	// VALUES placeholders $1..$42 (5 fixed + 36 raw + 1 source_version)
-	placeholders := make([]string, 42)
-	for i := 1; i <= 42; i++ {
+	numPlaceholders := 5 + wantRaw + 1
+	placeholders := make([]string, numPlaceholders)
+	for i := 1; i <= numPlaceholders; i++ {
 		placeholders[i-1] = "$" + strconv.Itoa(i)
 	}
 	upsertRawStatsValues = strings.Join(placeholders, ",")

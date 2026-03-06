@@ -811,22 +811,26 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	return q, []any{matchIDs}
 }
 
+// battingHoldoutHeaders returns the CSV header row for batting holdout export (base + raw stats + env context).
+func battingHoldoutHeaders() []string {
+	baseHeaders := []string{
+		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
+		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
+	}
+	rawStatsHeaders := features.RawStatsFeatureNamesBatting()
+	envContextHeaders := []string{
+		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
+		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
+		"match_date",
+	}
+	return append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
+}
+
 // battingHoldoutRowsImpl returns batting export-shaped rows for the given match IDs with features computed at cutoff.
 func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
-		baseHeaders := []string{
-			"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
-			"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
-		}
-		rawStatsHeaders := features.RawStatsFeatureNamesBatting()
-		envContextHeaders := []string{
-			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-			"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
-			"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-			"match_date",
-		}
-		headers := append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
-		return [][]string{headers}, nil
+		return [][]string{battingHoldoutHeaders()}, nil
 	}
 	q, args := battingHoldoutRawQuery(matchIDs)
 	rows, err := db.Pool.Query(ctx, q, args...)
@@ -906,18 +910,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
-	baseHeaders := []string{
-		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
-		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
-	}
-	rawStatsHeaders := features.RawStatsFeatureNamesBatting()
-	envContextHeaders := []string{
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
-		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-		"match_date",
-	}
-	headers := append(append(append([]string{}, baseHeaders...), rawStatsHeaders...), envContextHeaders...)
+	headers := battingHoldoutHeaders()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {
