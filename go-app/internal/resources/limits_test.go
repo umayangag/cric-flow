@@ -115,10 +115,12 @@ func TestConcurrencyLimit_KindImport(t *testing.T) {
 // TestGetLimit_ReturnsPositive ensures GetLimit returns at least 1 for each kind (covers GetLimit and config callback path).
 func TestGetLimit_ReturnsPositive(t *testing.T) {
 	for _, kind := range []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding} {
-		got := GetLimit(kind)
-		if got < 1 {
-			t.Errorf("GetLimit(%q) = %d, want >= 1", kind, got)
-		}
+		t.Run(string(kind), func(t *testing.T) {
+			got := GetLimit(kind)
+			if got < 1 {
+				t.Errorf("GetLimit(%q) = %d, want >= 1", kind, got)
+			}
+		})
 	}
 }
 
