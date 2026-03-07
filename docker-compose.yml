@@ -42,7 +42,7 @@ services:
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
       # Pipeline concurrency (workers). For multiple formats, precompute uses a global worker pool. Seqcalc also runs calculators in parallel.
-      # Set in .env to override (e.g. PRECOMPUTE_CONCURRENCY=16 or SEQCALC_CONCURRENCY=2).
+      # Set in .env to override (e.g. PRECOMPUTE_CONCURRENCY=24 or SEQCALC_CONCURRENCY=4).
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-24}
       IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
       EXPORT_CONCURRENCY: ${EXPORT_CONCURRENCY:-}

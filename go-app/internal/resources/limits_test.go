@@ -131,11 +131,11 @@ func TestMemoryBasedLimit(t *testing.T) {
 		memLimit int64 // in bytes
 		want     int
 	}{
-		// 2GiB * 100% / per-worker MB: precompute uses default 450 → 2048/450≈4; seqcalc capped at 1 for ≤2GB
+		// 2GiB * default frac (95%) / per-worker MB: precompute uses default 450 → 2048*0.95/450≈4; seqcalc capped at 1 for ≤2GB
 		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 4},
-		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 13},
+		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 12},
 		{"seqcalc 2GiB", KindSeqCalc, 2 * 1024 * 1024 * 1024, 1},
-		// 512MiB * 100% / 450 MiB < 1 → 1
+		// 512MiB * 95% / 450 MiB < 1 → 1
 		{"precompute 512MiB", KindPrecompute, 512 * 1024 * 1024, 1},
 		{"no limit", KindPrecompute, 0, 0},
 	}
