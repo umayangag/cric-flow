@@ -22,15 +22,7 @@ func TestRawStatsFeatureNames_FallbackWhenContractTooShort(t *testing.T) {
 		"fielding": []
 	}`), 0o600))
 
-	prev := os.Getenv("FEATURE_VECTORS_PATH")
-	os.Setenv("FEATURE_VECTORS_PATH", path)
-	defer func() {
-		if prev == "" {
-			os.Unsetenv("FEATURE_VECTORS_PATH")
-		} else {
-			os.Setenv("FEATURE_VECTORS_PATH", prev)
-		}
-	}()
+	t.Setenv("FEATURE_VECTORS_PATH", path)
 
 	// Clear cache so getContract() loads our file (cache key is path)
 	contractMu.Lock()
