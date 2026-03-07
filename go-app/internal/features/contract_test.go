@@ -87,10 +87,20 @@ func TestRawStatsFeatureNames_MatchesContractSubset(t *testing.T) {
 
 	// Subsequence: batRaw must appear in batAll in order (filter batAll to batRaw set, must equal batRaw).
 	batFiltered := filterToSubset(batAll, batRaw)
-	require.Equal(t, batRaw, batFiltered, "BattingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()")
+	require.Equal(
+		t,
+		batRaw,
+		batFiltered,
+		"BattingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()",
+	)
 
 	bowlFiltered := filterToSubset(bowlAll, bowlRaw)
-	require.Equal(t, bowlRaw, bowlFiltered, "BowlingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()")
+	require.Equal(
+		t,
+		bowlRaw,
+		bowlFiltered,
+		"BowlingFeatureNames() must contain raw stat names in same order as RawStatsFeatureNames()",
+	)
 }
 
 func filterToSubset(all, subset []string) []string {

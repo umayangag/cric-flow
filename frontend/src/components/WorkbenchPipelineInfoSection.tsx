@@ -50,18 +50,14 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
           2. Precompute (precompute-features)
         </Typography>
         <Typography variant="body2" color="text.secondary" component="div">
-          <strong>What:</strong> Compute form, consistency, venue/opposition effects, and (when
-          enabled) sequence features per player/format, as-of each snapshot date.
+          <strong>What:</strong> Compute raw windowed statistics (mean, std, etc. over recent
+          windows) and (when enabled) sequence features per player/format, as-of each snapshot date.
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
+            <li>Reads: batting_data, bowling_data, fielding_data, match, match_inning.</li>
             <li>
-              Reads: batting_data, bowling_data, fielding_data, match, match_inning; uses{' '}
-              <code>features.ewm_alpha</code>, <code>consistency_last_n</code>,{' '}
-              <code>momentum_last_n</code>, etc. from go-app config.
-            </li>
-            <li>
-              Writes: <code>feature_form_snapshots</code>,{' '}
-              <code>feature_consistency_snapshots</code> (and optionally sequence tables). Snapshots
-              are keyed by player_id, format_id, as_of_date, scope (overall / venue / opposition).
+              Writes: <code>feature_raw_stats_snapshots</code> (and optionally sequence tables).
+              Snapshots are keyed by player_id, format_id, as_of_date, scope (overall / venue /
+              opposition).
             </li>
             <li>
               Fielding: EWM of historical catches/run_outs per player; used when no ML fielding

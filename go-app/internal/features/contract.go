@@ -27,11 +27,10 @@ var (
 )
 
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
-// Version "2" adds raw windowed stat features (batting_*_w*, bowling_*_w*, etc.) alongside formula-derived form/consistency.
+// Version "2" uses raw windowed stat features only; form/consistency formula features were removed.
 var defaultContract = contract{
 	Version: "2",
 	Batting: []string{
-		"batting_consistency", "batting_form", "batting_form_short", "batting_form_long", "batting_momentum",
 		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
 		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
 		"batting_last_1", "batting_last_2", "batting_last_3",
@@ -43,7 +42,6 @@ var defaultContract = contract{
 		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
 	},
 	Bowling: []string{
-		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
 		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
 		"bowling_last_1", "bowling_last_2", "bowling_last_3",

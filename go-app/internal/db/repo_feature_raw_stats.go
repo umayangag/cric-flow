@@ -28,11 +28,18 @@ func init() {
 	}
 	for i, n := range names {
 		if !safeSQLIdentifier.MatchString(n) {
-			panic("features.RawStatsFeatureNames()[" + strconv.Itoa(i) + "] invalid column name (SQL injection risk): " + n)
+			panic(
+				"features.RawStatsFeatureNames()[" + strconv.Itoa(
+					i,
+				) + "] invalid column name (SQL injection risk): " + n,
+			)
 		}
 	}
 	// INSERT columns: fixed prefix + raw stat names + source_version
-	upsertRawStatsInsertColumns = "player_id, as_of_date, format_id, scope, scope_id, " + strings.Join(names, ", ") + ", source_version"
+	upsertRawStatsInsertColumns = "player_id, as_of_date, format_id, scope, scope_id, " + strings.Join(
+		names,
+		", ",
+	) + ", source_version"
 	numPlaceholders := 5 + wantRaw + 1
 	placeholders := make([]string, numPlaceholders)
 	for i := 1; i <= numPlaceholders; i++ {

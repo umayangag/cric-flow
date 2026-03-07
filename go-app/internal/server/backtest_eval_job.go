@@ -188,10 +188,10 @@ func evalJobCleanup() {
 
 // startEvaluateJob starts doEvaluateWork in a goroutine and returns the job ID immediately.
 // The job state is updated with progress and final result or error.
-// Uses a long-lived context (not the request context) so the job is not cancelled when the HTTP
-// request ends, and has a generous deadline so it can run for hours without exceeding it.
+// Uses a context derived from the request via WithoutCancel so the job is not cancelled when the
+// HTTP request ends, with a generous deadline so it can run for hours without exceeding it.
 func startEvaluateJob(
-	_ context.Context,
+	ctx context.Context,
 	format, team1, team2, matchID string,
 	useUnifiedModel, useLatestModel bool,
 ) (string, error) {
@@ -232,9 +232,9 @@ func startEvaluateJob(
 			slog.Bool("use_unified_model", useUnifiedModel),
 			slog.Bool("use_latest_model", useLatestModel),
 		)
-		// Not the request context (cancelled when we return 202). Use a long deadline so the job
-		// can run for hours (e.g. ML train-on-the-fly) without exceeding it.
-		jobCtx, cancel := context.WithTimeout(context.Background(), evalJobMaxDuration())
+		// Detach from request context so job is not cancelled when we return 202; use a long
+		// deadline so the job can run for hours (e.g. ML train-on-the-fly) without exceeding it.
+		jobCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), evalJobMaxDuration())
 		defer cancel()
 		progress := func(step, message string) {
 			job.appendStep(step, message)

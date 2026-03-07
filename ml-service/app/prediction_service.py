@@ -139,10 +139,11 @@ def predict_match_innings(
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
 
-    t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_consistency", "bowling_consistency")
-    t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
-    t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_consistency", "bowling_consistency")
-    t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
+    # v2: consistency = std_w10, form = mean_w5 (from feature_raw_stats_snapshots)
+    t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_std_w10", "bowling_std_w10")
+    t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_mean_w5", "bowling_mean_w5")
+    t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_std_w10", "bowling_std_w10")
+    t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_mean_w5", "bowling_mean_w5")
     inn1_runs, inn1_wkts = predict_innings(
         scaler_inn,
         model_inn,
@@ -843,14 +844,10 @@ def generate_match(
         except ImportError:
             build_win_features_standardized = None
         if build_win_features_standardized is not None:
-            t1_bat_cons, t1_bowl_cons = _sum_team_feature(
-                features_map, team1_ids, "batting_consistency", "bowling_consistency"
-            )
-            t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_form", "bowling_form")
-            t2_bat_cons, t2_bowl_cons = _sum_team_feature(
-                features_map, team2_ids, "batting_consistency", "bowling_consistency"
-            )
-            t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_form", "bowling_form")
+            t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_std_w10", "bowling_std_w10")
+            t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_mean_w5", "bowling_mean_w5")
+            t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_std_w10", "bowling_std_w10")
+            t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_mean_w5", "bowling_mean_w5")
             wf = build_win_features_standardized(
                 format_code=fmt,
                 format_id=int(match_context.format_id),

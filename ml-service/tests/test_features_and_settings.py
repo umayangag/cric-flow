@@ -10,12 +10,26 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     features_mod = importlib.import_module("app.features")
     importlib.reload(features_mod)
 
+    # v2 contract: 18 raw stats first, then env/context, then seq (0 when absent)
     bat = SimpleNamespace(
-        batting_consistency=1.1,
-        batting_form=2.2,
-        batting_form_short=2.0,
-        batting_form_long=1.8,
-        batting_momentum=0.5,
+        batting_mean_w3=0.5,
+        batting_mean_w5=1.0,
+        batting_mean_w10=1.2,
+        batting_mean_w20=1.1,
+        batting_std_w5=0.3,
+        batting_std_w10=0.4,
+        batting_max_w10=2.0,
+        batting_min_w10=0.0,
+        batting_median_w10=1.0,
+        batting_last_1=1.5,
+        batting_last_2=1.2,
+        batting_last_3=1.0,
+        batting_career_mean=1.1,
+        batting_career_count=50.0,
+        batting_pct_zero_w10=0.1,
+        batting_trend_w5=0.05,
+        batting_days_since_last=7.0,
+        batting_innings_in_last_90d=10.0,
         batting_temp=30,
         batting_wind=5,
         batting_rain=0,
@@ -29,33 +43,32 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         venue=7.5,
         opposition=8.5,
         season=2024,
+        match_date_unix=0.0,
     )
     bat_vec = features_mod.batting_feature_vector(bat)
-    # v2: 5 formula + 18 raw stats (0 when absent) + env/context; then seq (0 when absent)
-    assert bat_vec[:5] == [1.1, 2.2, 2.0, 1.8, 0.5]
-    assert bat_vec[5:23] == [0.0] * 18  # raw windowed stats
-    assert bat_vec[23:36] == [
-        30,
-        5,
-        0,
-        60,
-        10,
-        1000,
-        1,
-        2,
-        3,
-        1,
-        7.5,
-        8.5,
-        2024,
-    ]
-    assert bat_vec[36:] == [0.0] * (len(bat_vec) - 36)
+    assert bat_vec[:18] == [0.5, 1.0, 1.2, 1.1, 0.3, 0.4, 2.0, 0.0, 1.0, 1.5, 1.2, 1.0, 1.1, 50.0, 0.1, 0.05, 7.0, 10.0]
+    assert bat_vec[18:31] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024]
+    assert bat_vec[31:] == [0.0] * (len(bat_vec) - 31)  # match_date_unix + seq
 
     bowl = SimpleNamespace(
-        bowling_consistency=1.1,
-        bowling_form=2.2,
-        bowling_momentum=0.5,
-        bowling_career_avg=1.5,
+        bowling_mean_w3=0.8,
+        bowling_mean_w5=1.0,
+        bowling_mean_w10=1.1,
+        bowling_mean_w20=1.05,
+        bowling_std_w5=0.2,
+        bowling_std_w10=0.3,
+        bowling_max_w10=1.5,
+        bowling_min_w10=0.5,
+        bowling_median_w10=1.0,
+        bowling_last_1=1.2,
+        bowling_last_2=1.0,
+        bowling_last_3=0.9,
+        bowling_career_mean=1.05,
+        bowling_career_count=40.0,
+        bowling_pct_zero_w10=0.0,
+        bowling_trend_w5=0.02,
+        bowling_days_since_last=5.0,
+        bowling_innings_in_last_90d=8.0,
         bowling_temp=30,
         bowling_wind=5,
         bowling_rain=0,
@@ -69,27 +82,31 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         bowling_venue=7.5,
         bowling_opposition=8.5,
         season=2024,
+        match_date_unix=0.0,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
-    # v2: 4 formula + 18 raw stats (0 when absent) + env/context; then seq (0 when absent)
-    assert bowl_vec[:4] == [1.1, 2.2, 0.5, 1.5]  # consistency, form, momentum, career_avg
-    assert bowl_vec[4:22] == [0.0] * 18  # raw windowed stats
-    assert bowl_vec[22:35] == [
-        30,
-        5,
-        0,
-        60,
-        10,
-        1000,
-        1,
-        2,
-        3,
-        1,
-        7.5,
-        8.5,
-        2024,
+    assert bowl_vec[:18] == [
+        0.8,
+        1.0,
+        1.1,
+        1.05,
+        0.2,
+        0.3,
+        1.5,
+        0.5,
+        1.0,
+        1.2,
+        1.0,
+        0.9,
+        1.05,
+        40.0,
+        0.0,
+        0.02,
+        5.0,
+        8.0,
     ]
-    assert bowl_vec[35:] == [0.0] * (len(bowl_vec) - 35)
+    assert bowl_vec[18:31] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024]
+    assert bowl_vec[31:] == [0.0] * (len(bowl_vec) - 31)
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):
@@ -118,11 +135,8 @@ def test_feature_value_via_batting_vector_with_none_and_bad_types(tmp_path):
     importlib.reload(features_mod)
 
     bat = SimpleNamespace(
-        batting_consistency=1.0,
-        batting_form=2.0,
-        batting_form_short=2.0,
-        batting_form_long=1.8,
-        batting_momentum=0.0,
+        batting_mean_w5=1.0,
+        batting_std_w10=0.3,
         batting_temp=25,
         batting_wind=0,
         batting_rain=0,

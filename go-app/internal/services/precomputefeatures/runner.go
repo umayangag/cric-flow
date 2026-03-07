@@ -36,8 +36,8 @@ func (Runner) RunReplay(
 	ctx context.Context,
 	formatCode string,
 	formatID int64,
-	alpha float64,
-	lastN int,
+	_ float64, // alpha (reserved for future EWM tuning)
+	_ int, // lastN (reserved for future last-N window)
 	windowN int,
 	concurrencyLimit int,
 ) error {
@@ -134,7 +134,7 @@ func (Runner) RunReplay(
 							bowlInn = bowlInn[len(bowlInn)-windowN:]
 						}
 					}
-					if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+					if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, "replay", m.MatchID, formatCode); err != nil {
 						return err
 					}
 
@@ -177,7 +177,7 @@ func (Runner) RunReplay(
 								oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
 							}
 						}
-						if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatInn, oppBowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+						if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatInn, oppBowlInn, "replay", m.MatchID, formatCode); err != nil {
 							return err
 						}
 					}
@@ -221,7 +221,7 @@ func (Runner) RunReplay(
 								venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
 							}
 						}
-						if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "venue", &venueID, venBatInn, venBowlInn, alpha, lastN, "replay", m.MatchID, formatCode); err != nil {
+						if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "venue", &venueID, venBatInn, venBowlInn, "replay", m.MatchID, formatCode); err != nil {
 							return err
 						}
 					}
@@ -284,8 +284,8 @@ func (Runner) RunPointInTime(
 	formatCode string,
 	formatID int64,
 	asOf time.Time,
-	alpha float64,
-	lastN int,
+	_ float64, // alpha (reserved for future EWM tuning)
+	_ int, // lastN (reserved for future last-N window)
 	windowN int,
 	concurrencyLimit int,
 ) error {
@@ -355,7 +355,7 @@ func (Runner) RunPointInTime(
 					bowlInn = bowlInn[len(bowlInn)-windowN:]
 				}
 			}
-			if err := upsertFormConsistencyAndRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, alpha, lastN, "as-of", 0, formatCode); err != nil {
+			if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, "as-of", 0, formatCode); err != nil {
 				return err
 			}
 			p := atomic.AddInt64(&processed, 1)
@@ -415,9 +415,22 @@ func logSeqCalcTrigger(formatCode, mode string) {
 }
 
 // logSnapshotUpsertError logs a failed snapshot upsert and returns an error. Used by
-// upsertFormConsistencyAndRawStatsForScope to avoid duplicating error-handling logic.
-func logSnapshotUpsertError(scope string, playerID int64, snapshotKind string, err error, mode string, formatCode string, matchID int64) error {
-	attrs := []any{slog.Int64("player_id", playerID), slog.String("scope", scope), slog.String("format", formatCode), slog.Any("err", err)}
+// upsertRawStatsForScope to avoid duplicating error-handling logic.
+func logSnapshotUpsertError(
+	scope string,
+	playerID int64,
+	snapshotKind string,
+	err error,
+	mode string,
+	formatCode string,
+	matchID int64,
+) error {
+	attrs := []any{
+		slog.Int64("player_id", playerID),
+		slog.String("scope", scope),
+		slog.String("format", formatCode),
+		slog.Any("err", err),
+	}
 	if matchID != 0 {
 		attrs = append(attrs, slog.Int64("match_id", matchID))
 	}
@@ -425,11 +438,10 @@ func logSnapshotUpsertError(scope string, playerID int64, snapshotKind string, e
 	return fmt.Errorf("upsert %s %s pid=%d: %w", snapshotKind, scope, playerID, err)
 }
 
-// upsertFormConsistencyAndRawStatsForScope computes EWM, Consistency, and WindowedStats from the given
-// bat/bowl innings (already sorted, clipped, and optionally window-limited by the caller) and upserts
-// form, consistency, and raw stats snapshots for the given scope. mode is "replay" or "as-of" for logging;
-// matchID should be 0 for point-in-time runs.
-func upsertFormConsistencyAndRawStatsForScope(
+// upsertRawStatsForScope computes WindowedStats from the given bat/bowl innings and upserts
+// raw stats snapshots for the given scope. Form/consistency snapshots are no longer written;
+// raw stats replace them for ML. mode is "replay" or "as-of" for logging; matchID should be 0 for point-in-time runs.
+func upsertRawStatsForScope(
 	ctx context.Context,
 	playerID int64,
 	asOf time.Time,
@@ -437,24 +449,10 @@ func upsertFormConsistencyAndRawStatsForScope(
 	scope string,
 	scopeID *int64,
 	batInn, bowlInn []features.Innings,
-	alpha float64,
-	lastN int,
 	mode string,
 	matchID int64,
 	formatCode string,
 ) error {
-	batForm, effNbat := features.EWM(batInn, alpha)
-	bowlForm, effNbowl := features.EWM(bowlInn, alpha)
-	batCons, nCbat := features.Consistency(batInn, lastN)
-	bowlCons, nCbowl := features.Consistency(bowlInn, lastN)
-	if err := db.UpsertFeatureFormSnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
-		batForm, bowlForm, alpha, effNbat, effNbowl, effNbat+effNbowl, features.ContractVersion()); err != nil {
-		return logSnapshotUpsertError(scope, playerID, "form", err, mode, formatCode, matchID)
-	}
-	if err := db.UpsertFeatureConsistencySnapshot(ctx, playerID, asOf, formatID, scope, scopeID,
-		batCons, bowlCons, lastN, nCbat, nCbowl, features.ContractVersion()); err != nil {
-		return logSnapshotUpsertError(scope, playerID, "consistency", err, mode, formatCode, matchID)
-	}
 	batRaw := features.WindowedStats(batInn, asOf)
 	bowlRaw := features.WindowedStats(bowlInn, asOf)
 	if err := db.UpsertFeatureRawStatsSnapshot(ctx, playerID, asOf, formatID, scope, scopeID, batRaw, bowlRaw, features.ContractVersion()); err != nil {

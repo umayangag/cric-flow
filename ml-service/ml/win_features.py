@@ -41,16 +41,16 @@ _DIST_STAT_KEYS = ["sum", "mean", "std", "max", "min", "top3_mean", "count"]
 
 # Maps each export feature group to (player-level feature key, team number).
 # team number is 1 or 2; used at inference time to look up the correct team's
-# player feature maps.
+# player feature maps. v2: use raw stat keys (std_w10 = consistency, mean_w5 = form).
 _GROUP_TO_PLAYER_KEY: List[Tuple[str, str, int]] = [
-    ("team1_bat_consistency", "batting_consistency", 1),
-    ("team1_bowl_consistency", "bowling_consistency", 1),
-    ("team2_bat_consistency", "batting_consistency", 2),
-    ("team2_bowl_consistency", "bowling_consistency", 2),
-    ("team1_bat_form", "batting_form", 1),
-    ("team1_bowl_form", "bowling_form", 1),
-    ("team2_bat_form", "batting_form", 2),
-    ("team2_bowl_form", "bowling_form", 2),
+    ("team1_bat_consistency", "batting_std_w10", 1),
+    ("team1_bowl_consistency", "bowling_std_w10", 1),
+    ("team2_bat_consistency", "batting_std_w10", 2),
+    ("team2_bowl_consistency", "bowling_std_w10", 2),
+    ("team1_bat_form", "batting_mean_w5", 1),
+    ("team1_bowl_form", "bowling_mean_w5", 1),
+    ("team2_bat_form", "batting_mean_w5", 2),
+    ("team2_bowl_form", "bowling_mean_w5", 2),
 ]
 
 MATCH_CONTEXT_COLS = [

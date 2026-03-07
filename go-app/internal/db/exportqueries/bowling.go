@@ -11,21 +11,16 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
 
+// bowlingRawStatsLateralSelect is the SELECT list for overall raw stats from feature_raw_stats_snapshots (18 bowling columns).
+const bowlingRawStatsLateralSelect = `bowling_mean_w3, bowling_mean_w5, bowling_mean_w10, bowling_mean_w20,
+		bowling_std_w5, bowling_std_w10, bowling_max_w10, bowling_min_w10, bowling_median_w10,
+		bowling_last_1, bowling_last_2, bowling_last_3,
+		bowling_career_mean, bowling_career_count, bowling_pct_zero_w10, bowling_trend_w5,
+		bowling_days_since_last, bowling_innings_in_last_90d`
+
 // BowlingUnifiedRows returns CSV-shaped rows for the unified bowling export.
-// Mirrors legacy exportBowlingUnified: base bowling row + per-format as-of features and fielding.
+// Base bowling row + fielding; form/consistency as-of columns were removed in favor of raw stats (per-format export).
 func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
-	cache := db.GetGlobalCache()
-	// Resolve known format ids similar to legacy
-	ids := make([]any, 0, 4)
-	codes := []string{"TEST", "ODI", "T20I", "T20"}
-	for _, code := range codes {
-		id, err := cache.GetFormatID(ctx, code)
-		if err != nil || id <= 0 {
-			ids = append(ids, int64(0))
-			continue
-		}
-		ids = append(ids, id)
-	}
 	q := `
 	SELECT 
 	  bw.overs, bw.balls, bw.maidens, bw.runs, bw.wickets, bw.dots, bw.fours, bw.sixes, bw.econ, bw.wides, bw.no_balls,
@@ -46,28 +41,8 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  COALESCE(fd.run_outs,0) AS run_outs,
 	  COALESCE(fd.stumpings,0) AS stumpings,
 	  COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
-	  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
-	   -- TEST
-	   tf.bowl_form   AS bowl_form_TEST_asof,
-	   tc.bowl_consistency AS bowl_consistency_TEST_asof,
-	   tvo.bowl_value AS bowl_vs_opp_TEST_asof,
-	   tvv.bowl_value AS bowl_at_venue_TEST_asof,
-	   -- ODI
-	   of.bowl_form   AS bowl_form_ODI_asof,
-	   oc.bowl_consistency AS bowl_consistency_ODI_asof,
-	   ovo.bowl_value AS bowl_vs_opp_ODI_asof,
-	   ovv.bowl_value AS bowl_at_venue_ODI_asof,
-	   -- T20I
-	   iif.bowl_form   AS bowl_form_T20I_asof,
-	   iic.bowl_consistency AS bowl_consistency_T20I_asof,
-	   iivo.bowl_value AS bowl_vs_opp_T20I_asof,
-	   iivv.bowl_value AS bowl_at_venue_T20I_asof,
-	   -- T20
-	   t20f.bowl_form   AS bowl_form_T20_asof,
-	   t20c.bowl_consistency AS bowl_consistency_T20_asof,
-	   t20vo.bowl_value AS bowl_vs_opp_T20_asof,
-	   t20vv.bowl_value AS bowl_at_venue_T20_asof
-	 FROM bowling_data bw
+	  (COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
+	FROM bowling_data bw
 		JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
 		JOIN match m ON m.match_id = bw.match_id
 		LEFT JOIN match_format mf ON mf.id = m.format_id
@@ -76,75 +51,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		LEFT JOIN (
 		  SELECT * FROM weather_data WHERE session='bowling'
 		) w ON w.match_id = bw.match_id
-		LEFT JOIN fielding_data fd ON fd.match_id = bw.match_id AND fd.player_id = bw.player_id
-		-- TEST laterals
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) tf ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) tc ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) tvo ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $1 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE
-		-- ODI laterals
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) of ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) oc ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) ovo ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $2 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) ovv ON TRUE
-		-- T20I laterals
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) iif ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) iic ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) iivo ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $3 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) iivv ON TRUE
-		-- T20 laterals
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_form, n_samples_bowl FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) t20f ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) t20c ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) t20vo ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowl_value, n_samples_bowl AS n_samples FROM feature_form_snapshots
-		  WHERE player_id=bw.player_id AND format_id = $4 AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date ORDER BY as_of_date DESC LIMIT 1
-		) t20vv ON TRUE`
+		LEFT JOIN fielding_data fd ON fd.match_id = bw.match_id AND fd.player_id = bw.player_id`
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
 	if IsSeqEnabled(ctx) {
 		seqFields, seqJoins := BuildBowlingSeqFragments(ctx)
@@ -152,7 +59,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 			q = fmt.Sprintf("SELECT base.*, %s FROM (%s) base %s", strings.Join(seqFields, ", "), q, seqJoins)
 		}
 	}
-	rows, err := db.Pool.Query(ctx, q, ids...)
+	rows, err := db.Pool.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -162,10 +69,6 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "season_id", "match_date_unix", "player_name", "format_code",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-		"bowl_form_TEST_asof", "bowl_consistency_TEST_asof", "bowl_vs_opp_TEST_asof", "bowl_at_venue_TEST_asof",
-		"bowl_form_ODI_asof", "bowl_consistency_ODI_asof", "bowl_vs_opp_ODI_asof", "bowl_at_venue_ODI_asof",
-		"bowl_form_T20I_asof", "bowl_consistency_T20I_asof", "bowl_vs_opp_T20I_asof", "bowl_at_venue_T20I_asof",
-		"bowl_form_T20_asof", "bowl_consistency_T20_asof", "bowl_vs_opp_T20_asof", "bowl_at_venue_T20_asof",
 	}
 	finalHeaders := AppendSeqIfEnabled(ctx, baseHeaders, BowlingSeqHeaders())
 	out := make([][]string, 0, 2048)
@@ -184,58 +87,42 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 }
 
 // BowlingLegacyRows returns CSV-shaped rows for the legacy (combined) bowling export.
-// It mirrors the SELECT and header order from cmd/export-dataset:exportBowling.
+// Uses raw windowed stats from feature_raw_stats_snapshots (no form/consistency).
 func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
-	const q = `SELECT  
-		b.runs,
-		b.balls,
-		b.wickets,
-		tc.bowling_consistency,
-		tf.bowling_form,
+	q := `SELECT  
+		b.runs, b.balls, b.wickets,
+		COALESCE(raw.bowling_mean_w3, 0), COALESCE(raw.bowling_mean_w5, 0), COALESCE(raw.bowling_mean_w10, 0), COALESCE(raw.bowling_mean_w20, 0),
+		COALESCE(raw.bowling_std_w5, 0), COALESCE(raw.bowling_std_w10, 0), COALESCE(raw.bowling_max_w10, 0), COALESCE(raw.bowling_min_w10, 0), COALESCE(raw.bowling_median_w10, 0),
+		COALESCE(raw.bowling_last_1, 0), COALESCE(raw.bowling_last_2, 0), COALESCE(raw.bowling_last_3, 0),
+		COALESCE(raw.bowling_career_mean, 0), COALESCE(raw.bowling_career_count, 0), COALESCE(raw.bowling_pct_zero_w10, 0), COALESCE(raw.bowling_trend_w5, 0),
+		COALESCE(raw.bowling_days_since_last, 0), COALESCE(raw.bowling_innings_in_last_90d, 0),
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity,
-		mi.inning_number,
-		NULL,
+		mi.inning_number, NULL,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		tvv.bowling_venue,
-		tvo.bowling_opposition,
+		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
+		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
 		s.id AS season_id,
 		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
-		LEFT JOIN (
-			SELECT * FROM weather_data WHERE session = 'bowling'
-		) w ON b.match_id = w.match_id
+		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
-		LEFT JOIN venue v ON v.id = m.venue_id
-		LEFT JOIN opposition o ON o.id = mi.batting_team_opposition_id
 		LEFT JOIN season s ON s.id = m.season_id
-		-- Latest overall bowling form as-of match date (per-format)
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_form
-		  FROM feature_form_snapshots
+		  SELECT ` + bowlingRawStatsLateralSelect + `
+		  FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tf ON TRUE
-		-- Latest overall bowling consistency as-of match date (per-format)
+		) raw ON TRUE
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_consistency
-		  FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
-		  ORDER BY as_of_date DESC LIMIT 1
-		) tc ON TRUE
-		-- Latest bowling form vs opposition as-of match date (per-format)
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_opposition
-		  FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
-		-- Latest bowling form at venue as-of match date (per-format)
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_venue
-		  FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE`
@@ -247,7 +134,12 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 	defer rows.Close()
 
 	headers := []string{
-		"runs", "balls", "wickets", "bowling_consistency", "bowling_form",
+		"runs", "balls", "wickets",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "match_date_unix", "player_name",
 	}
@@ -276,78 +168,63 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 	}
 	formatID := id
 	q := `SELECT  
-		COALESCE(tc.bowling_consistency, 0) AS bowling_consistency,
-		COALESCE(tf.bowling_form, 0) AS bowling_form,
+		COALESCE(raw.bowling_mean_w3, 0), COALESCE(raw.bowling_mean_w5, 0), COALESCE(raw.bowling_mean_w10, 0), COALESCE(raw.bowling_mean_w20, 0),
+		COALESCE(raw.bowling_std_w5, 0), COALESCE(raw.bowling_std_w10, 0), COALESCE(raw.bowling_max_w10, 0), COALESCE(raw.bowling_min_w10, 0), COALESCE(raw.bowling_median_w10, 0),
+		COALESCE(raw.bowling_last_1, 0), COALESCE(raw.bowling_last_2, 0), COALESCE(raw.bowling_last_3, 0),
+		COALESCE(raw.bowling_career_mean, 0), COALESCE(raw.bowling_career_count, 0), COALESCE(raw.bowling_pct_zero_w10, 0), COALESCE(raw.bowling_trend_w5, 0),
+		COALESCE(raw.bowling_days_since_last, 0), COALESCE(raw.bowling_innings_in_last_90d, 0),
 		COALESCE(w.temp, 0) AS bowling_temp,
 		COALESCE(w.wind, 0) AS bowling_wind,
 		COALESCE(w.rain, 0) AS bowling_rain,
 		COALESCE(w.humidity, 0) AS bowling_humidity,
 		COALESCE(w.cloud, 0) AS bowling_cloud,
 		COALESCE(w.pressure, 0) AS bowling_pressure,
-		CASE 
-			WHEN w.viscosity IS NULL THEN 0
-			WHEN lower(w.viscosity) = 'humid' THEN 1
-			ELSE 0
-		END AS bowling_viscosity,
+		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 ELSE 0 END AS bowling_viscosity,
 		COALESCE(mi.inning_number, 1) AS batting_inning,
 		0 AS bowling_session,
-		CASE 
-			WHEN m.toss_decision IS NULL THEN 0
-			WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1
-			ELSE 0
-		END AS toss,
-		COALESCE(tvv.bowling_venue, 0) AS bowling_venue,
-		COALESCE(tvo.bowling_opposition, 0) AS bowling_opposition,
+		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
+		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
+		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
 		COALESCE(s.id, 0) AS season,
 		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
-		COALESCE(fd.catches,0) AS catches,
-		COALESCE(fd.run_outs,0) AS run_outs,
-		COALESCE(fd.stumpings,0) AS stumpings,
-		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
-		LEFT JOIN (
-			SELECT * FROM weather_data WHERE session = 'bowling'
-		) w ON b.match_id = w.match_id
+		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
 		LEFT JOIN season s ON s.id = m.season_id
-		-- Latest overall bowling form and consistency as-of match date (per-format)
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_form
-		  FROM feature_form_snapshots
+		  SELECT ` + bowlingRawStatsLateralSelect + `
+		  FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tf ON TRUE
+		) raw ON TRUE
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_consistency
-		  FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
-		  ORDER BY as_of_date DESC LIMIT 1
-		) tc ON TRUE
-		-- Latest bowling form vs opposition and at venue
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_opposition
-		  FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_venue
-		  FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id WHERE m.format_id = $1`
+		) tvv ON TRUE
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id
+		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	headers := []string{
-		"bowling_consistency",
-		"bowling_form",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"bowling_temp",
 		"bowling_wind",
 		"bowling_rain",
@@ -393,54 +270,45 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	}
 	formatID := id
 	q := `SELECT  
-		b.runs,
-		b.balls,
-		b.wickets,
-		tc.bowling_consistency,
-		tf.bowling_form,
+		b.runs, b.balls, b.wickets,
+		COALESCE(raw.bowling_mean_w3, 0), COALESCE(raw.bowling_mean_w5, 0), COALESCE(raw.bowling_mean_w10, 0), COALESCE(raw.bowling_mean_w20, 0),
+		COALESCE(raw.bowling_std_w5, 0), COALESCE(raw.bowling_std_w10, 0), COALESCE(raw.bowling_max_w10, 0), COALESCE(raw.bowling_min_w10, 0), COALESCE(raw.bowling_median_w10, 0),
+		COALESCE(raw.bowling_last_1, 0), COALESCE(raw.bowling_last_2, 0), COALESCE(raw.bowling_last_3, 0),
+		COALESCE(raw.bowling_career_mean, 0), COALESCE(raw.bowling_career_count, 0), COALESCE(raw.bowling_pct_zero_w10, 0), COALESCE(raw.bowling_trend_w5, 0),
+		COALESCE(raw.bowling_days_since_last, 0), COALESCE(raw.bowling_innings_in_last_90d, 0),
 		w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity,
-		mi.inning_number,
-		NULL,
+		mi.inning_number, NULL,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		tvv.bowling_venue,
-		tvo.bowling_opposition,
+		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
+		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
 		s.id AS season_id,
 		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
-		COALESCE(fd.catches,0) AS catches,
-		COALESCE(fd.run_outs,0) AS run_outs,
-		COALESCE(fd.stumpings,0) AS stumpings,
-		COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
-		LEFT JOIN (
-			SELECT * FROM weather_data WHERE session = 'bowling'
-		) w ON b.match_id = w.match_id
+		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
 		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_form, n_samples_bowl FROM feature_form_snapshots
+		  SELECT ` + bowlingRawStatsLateralSelect + `
+		  FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tf ON TRUE
+		) raw ON TRUE
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_consistency, n_samples_bowl FROM feature_consistency_snapshots
-		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='overall' AND scope_id IS NULL AND as_of_date <= m.match_date
-		  ORDER BY as_of_date DESC LIMIT 1
-		) tc ON TRUE
-		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_opposition, n_samples_bowl AS n_samples FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='opposition' AND scope_id = mi.batting_team_opposition_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvo ON TRUE
 		LEFT JOIN LATERAL (
-		  SELECT bowling_value AS bowling_venue, n_samples_bowl AS n_samples FROM feature_form_snapshots
+		  SELECT bowling_mean_w5 FROM feature_raw_stats_snapshots
 		  WHERE player_id=b.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
-		) tvv ON TRUE 
-		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id 
+		) tvv ON TRUE
+		LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.player_id = b.player_id
 		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -448,11 +316,12 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 	}
 	defer rows.Close()
 	headers := []string{
-		"runs",
-		"balls",
-		"wickets",
-		"bowling_consistency",
-		"bowling_form",
+		"runs", "balls", "wickets",
+		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
+		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
+		"bowling_last_1", "bowling_last_2", "bowling_last_3",
+		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
+		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"temp",
 		"wind",
 		"rain",
@@ -534,7 +403,7 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
@@ -679,7 +548,6 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	}
 	headers := []string{
 		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
 		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
 		"bowling_last_1", "bowling_last_2", "bowling_last_3",
@@ -718,12 +586,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
 		row := make([]string, 0, len(headers))
-		row = append(row,
-			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
-			floatToExport(
-				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
-		)
+		row = append(row, r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
@@ -777,7 +640,7 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
-		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0), COALESCE(fd.runouts_direct_hits,0),
+		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
 		mf.code AS format_code
 	FROM bowling_data b
@@ -798,7 +661,6 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 func bowlingHoldoutHeaders() []string {
 	baseHeaders := []string{
 		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-		"bowling_consistency", "bowling_form", "bowling_momentum", "bowling_career_avg",
 	}
 	rawStatsHeaders := features.RawStatsFeatureNamesBowling()
 	envContextHeaders := []string{
@@ -924,12 +786,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		)
 		rawStrs := rawStatsToExportStrings(snap.raw)
 		row := make([]string, 0, len(headers))
-		row = append(row,
-			r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets,
-			floatToExport(
-				snap.consistency,
-			), floatToExport(snap.form), floatToExport(snap.momentum), floatToExport(snap.careerAvg),
-		)
+		row = append(row, r.runs, r.balls, r.wickets, r.inningsRuns, r.inningsWickets)
 		row = append(row, rawStrs...)
 		row = append(row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,

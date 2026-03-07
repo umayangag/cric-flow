@@ -23,9 +23,9 @@ import pandas as pd
 # Minimal required feature presence (training schema includes outputs; inference excludes them).
 # These lists are used for NaN checks and presence validation in addition to header checks.
 BATTING_REQUIRED_FEATURES = [
-    # Weather + context + player dims
-    "batting_consistency",
-    "batting_form",
+    # Raw stats (v2) + weather + context
+    "batting_mean_w5",
+    "batting_std_w10",
     "temp",
     "wind",
     "rain",
@@ -48,8 +48,8 @@ BATTING_REQUIRED_FEATURES = [
 ]
 
 BOWLING_REQUIRED_FEATURES = [
-    "bowling_consistency",
-    "bowling_form",
+    "bowling_mean_w5",
+    "bowling_std_w10",
     "temp",
     "wind",
     "rain",
@@ -76,10 +76,11 @@ BATTING_OUTPUTS = ["runs", "balls", "fours", "sixes", "batting_position"]
 # Bowling often has econ computed later; only enforce the core three at the front
 BOWLING_OUTPUTS = ["runs", "balls", "wickets"]
 
-# Inference required features (strict header names)
+# Inference required features (strict header names; v2 raw stats)
 BATTING_INFER_HEADERS = [
-    "batting_consistency",
-    "batting_form",
+    "batting_mean_w3",
+    "batting_mean_w5",
+    "batting_std_w10",
     "batting_temp",
     "batting_wind",
     "batting_rain",
@@ -102,8 +103,9 @@ BATTING_INFER_HEADERS = [
     "fielding_involvements",
 ]
 BOWLING_INFER_HEADERS = [
-    "bowling_consistency",
-    "bowling_form",
+    "bowling_mean_w3",
+    "bowling_mean_w5",
+    "bowling_std_w10",
     "bowling_temp",
     "bowling_wind",
     "bowling_rain",

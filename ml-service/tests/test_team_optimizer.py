@@ -148,9 +148,10 @@ class TestGreedySelect:
 
 class TestPrecomputeFixedTeamStats:
     def test_produces_expected_keys(self) -> None:
+        # Win model v2 uses raw stat keys: batting_std_w10 (consistency), batting_mean_w5 (form), etc.
         features = {
-            1: {"batting_consistency": 0.8, "bowling_consistency": 0.5, "batting_form": 0.9, "bowling_form": 0.4},
-            2: {"batting_consistency": 0.6, "bowling_consistency": 0.7, "batting_form": 0.7, "bowling_form": 0.6},
+            1: {"batting_std_w10": 0.6, "bowling_std_w10": 0.5, "batting_mean_w5": 0.9, "bowling_mean_w5": 0.4},
+            2: {"batting_std_w10": 0.8, "bowling_std_w10": 0.7, "batting_mean_w5": 0.7, "bowling_mean_w5": 0.6},
         }
         stats = _precompute_fixed_team_stats(features, team_number=2)
         assert "team2_bat_consistency_mean" in stats

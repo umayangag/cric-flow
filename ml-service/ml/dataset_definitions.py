@@ -53,14 +53,12 @@ player_columns = [
     "player_name",
     "is_wicket_keeper",
     "is_retired",
-    "batting_consistency",
+    "batting_consistency",  # from raw_stats std_w10 (display)
     "bowling_consistency",
 ]
 
 input_batting_columns = [
-    "batting_consistency",
-    "batting_form",
-    *_batting_raw_stat_columns,  # v2
+    *_batting_raw_stat_columns,
     "batting_temp",
     "batting_wind",
     "batting_rain",
@@ -92,9 +90,7 @@ output_batting_columns = [
 ]
 derived_batting_columns = ["batting_contribution", "strike_rate"]
 input_bowling_columns = [
-    "bowling_consistency",
-    "bowling_form",
-    *_bowling_raw_stat_columns,  # v2
+    *_bowling_raw_stat_columns,
     "bowling_temp",
     "bowling_wind",
     "bowling_rain",
