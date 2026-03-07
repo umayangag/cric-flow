@@ -84,11 +84,21 @@ func TestReplayMatchPageSize(t *testing.T) {
 }
 
 func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
-	ctx := context.Background()
 	r := NewRunner()
-	err := r.RunReplayGlobalPool(ctx, nil, 0, 10)
-	require.NoError(t, err)
+	ctx := context.Background()
 
-	err = r.RunReplayGlobalPool(ctx, []FormatJob{}, 0, 5)
-	require.NoError(t, err)
+	tests := []struct {
+		name string
+		jobs []FormatJob
+	}{
+		{"nil jobs", nil},
+		{"empty jobs", []FormatJob{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := r.RunReplayGlobalPool(ctx, tt.jobs, 0, 10)
+			require.NoError(t, err)
+		})
+	}
 }
