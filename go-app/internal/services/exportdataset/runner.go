@@ -167,6 +167,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 			resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
 			// When formats are requested (e.g. SplitByFormat), also write per-format CSVs
 			// so per-format training (train_batting --all-formats, train_bowling --all-formats) has inputs.
+			// Use a new errgroup; reusing g after Wait() would panic.
+			g, _ = errgroup.WithContext(ctx)
+			g.SetLimit(exportLimit)
 			slog.Info("pipeline: export-dataset exporting per-format CSVs", slog.Any("formats", formats))
 			for _, f := range formats {
 				if f == "" || !safeFormatForFilename(f) {

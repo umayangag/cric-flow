@@ -514,6 +514,30 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			BacktestAccuracyTrendMaxLimit,
 			200,
 		},
+		{
+			"BacktestAccuracyTrendConcurrency nil",
+			nil,
+			BacktestAccuracyTrendConcurrency,
+			DefaultBacktestAccuracyTrendConcurrency,
+		},
+		{
+			"BacktestAccuracyTrendConcurrency set",
+			func() *Config { c := &Config{}; c.Backtest.AccuracyTrendConcurrency = 4; return c }(),
+			BacktestAccuracyTrendConcurrency,
+			4,
+		},
+		{
+			"BacktestExportContributionsConcurrency nil",
+			nil,
+			BacktestExportContributionsConcurrency,
+			DefaultBacktestExportContributionsConcurrency,
+		},
+		{
+			"BacktestExportContributionsConcurrency set",
+			func() *Config { c := &Config{}; c.Backtest.ExportContributionsConcurrency = 6; return c }(),
+			BacktestExportContributionsConcurrency,
+			6,
+		},
 		{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
 		{
 			"ResourcesSeqCalcMBPerWorker set",

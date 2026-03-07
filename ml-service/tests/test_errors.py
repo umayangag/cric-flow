@@ -75,3 +75,52 @@ def test_error_detail_model():
     e2 = ErrorDetail(code="A", message="B", hint="H", available_formats=["T20"])
     assert e2.hint == "H"
     assert e2.available_formats == ["T20"]
+
+
+def test_error_payload_table_driven():
+    """Table-driven tests for error_payload code/message/hint/available combinations."""
+    cases = [
+        {"code": "X", "message": "Y", "hint": None, "available": None},
+        {"code": "INVALID_FORMAT", "message": "Bad format", "hint": "Use T20 or ODI", "available": None},
+        {"code": "ERR", "message": "msg", "hint": None, "available": []},
+        {"code": "ERR", "message": "msg", "hint": None, "available": ["T20", "ODI"]},
+        {"code": "ERR", "message": "msg", "hint": None, "available": ["_LEGACY_"]},
+    ]
+    for c in cases:
+        p = error_payload(c["code"], c["message"], hint=c["hint"], available=c["available"])
+        assert p["code"] == c["code"]
+        assert p["message"] == c["message"]
+        if c["hint"] is not None:
+            assert p["hint"] == c["hint"]
+        else:
+            assert "hint" not in p or p.get("hint") is None
+        if c["available"] is not None:
+            expected = sorted(x for x in c["available"] if x != "_LEGACY_")
+            assert p.get("available_formats") == expected
+        else:
+            assert "available_formats" not in p
+
+
+def test_error_detail_model_table_driven():
+    """Table-driven tests for ErrorDetail model field combinations."""
+    cases = [
+        ({"code": "X", "message": "Y"}, {"code": "X", "message": "Y", "hint": None, "available_formats": None}),
+        (
+            {"code": "A", "message": "B", "hint": "H"},
+            {"code": "A", "message": "B", "hint": "H", "available_formats": None},
+        ),
+        (
+            {"code": "C", "message": "D", "available_formats": ["T20", "ODI"]},
+            {"code": "C", "message": "D", "hint": None, "available_formats": ["T20", "ODI"]},
+        ),
+        (
+            {"code": "E", "message": "F", "hint": "h", "available_formats": ["TEST"]},
+            {"code": "E", "message": "F", "hint": "h", "available_formats": ["TEST"]},
+        ),
+    ]
+    for kwargs, expected in cases:
+        e = ErrorDetail(**kwargs)
+        assert e.code == expected["code"]
+        assert e.message == expected["message"]
+        assert e.hint == expected["hint"]
+        assert e.available_formats == expected["available_formats"]
