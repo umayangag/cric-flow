@@ -174,10 +174,10 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 
 // battingRawStatsLateralSelect is the SELECT list for overall raw stats from feature_raw_stats_snapshots (18 batting columns).
 const battingRawStatsLateralSelect = `batting_mean_w3, batting_mean_w5, batting_mean_w10, batting_mean_w20,
-		batting_std_w5, batting_std_w10, batting_max_w10, batting_min_w10, batting_median_w10,
-		batting_last_1, batting_last_2, batting_last_3,
-		batting_career_mean, batting_career_count, batting_pct_zero_w10, batting_trend_w5,
-		batting_days_since_last, batting_innings_in_last_90d`
+	batting_std_w5, batting_std_w10, batting_max_w10, batting_min_w10, batting_median_w10,
+	batting_last_1, batting_last_2, batting_last_3,
+	batting_career_mean, batting_career_count, batting_pct_zero_w10, batting_trend_w5,
+	batting_days_since_last, batting_innings_in_last_90d`
 
 // BattingInferenceRows returns CSV-shaped rows for the batting inference export filtered by format.
 // Uses raw windowed stats from feature_raw_stats_snapshots (no form/consistency).
