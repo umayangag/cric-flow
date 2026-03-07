@@ -40,31 +40,21 @@ done < <(printf '%s' "$STAGED_FILES_NUL")
 
 echo "[pre-commit] optimized check on modified files..."
 
-# Helper function to process file categories
-# Usage: process_category "Category Name" "output_array_name" "pattern"
-process_category() {
-    local category="$1"
-    local -n files_arr_ref=$2 # Use nameref to modify array in caller's scope
-    local pattern="$3"
-    
-    files_arr_ref=() # Clear the array
-
+# Output NUL-separated list of staged files matching the given regex (Bash 3.2–compatible; no nameref)
+get_staged_matching() {
+    local pattern="$1"
     for f in "${STAGED_FILES[@]:-}"; do
         if [[ "$f" =~ $pattern ]]; then
-            files_arr_ref+=("$f")
+            printf '%s\0' "$f"
         fi
     done
-
-    if [ ${#files_arr_ref[@]} -gt 0 ]; then
-        echo "[$category] Processing ${#files_arr_ref[@]} files..."
-        return 0 # Found files
-    fi
-    return 1 # No files found
 }
 
 # --- Go App ---
 GO_FILES_ARR=()
-if process_category "go-app" GO_FILES_ARR "^go-app/.*\.go$"; then
+while IFS= read -r -d '' f; do GO_FILES_ARR+=("$f"); done < <(get_staged_matching "^go-app/.*\.go$")
+if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
+    echo "[go-app] Processing ${#GO_FILES_ARR[@]} files..."
     # Ensure tools are in PATH (match Makefile behavior)
     GOBIN="$(go env GOPATH)/bin"
     export PATH="${GOBIN}:$PATH"
@@ -108,7 +98,9 @@ fi
 
 # --- Python (ml-service) ---
 PY_FILES_ARR=()
-if process_category "ml-service" PY_FILES_ARR "^ml-service/.*\.py$"; then
+while IFS= read -r -d '' f; do PY_FILES_ARR+=("$f"); done < <(get_staged_matching "^ml-service/.*\.py$")
+if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
+    echo "[ml-service] Processing ${#PY_FILES_ARR[@]} files..."
     VENV="ml-service/.venv"
     BIN="$VENV/bin"
 
@@ -129,7 +121,9 @@ fi
 
 # --- Frontend ---
 FE_FILES_ARR=()
-if process_category "frontend" FE_FILES_ARR "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$"; then
+while IFS= read -r -d '' f; do FE_FILES_ARR+=("$f"); done < <(get_staged_matching "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$")
+if [ ${#FE_FILES_ARR[@]} -gt 0 ]; then
+    echo "[frontend] Processing ${#FE_FILES_ARR[@]} files..."
     if [ ! -d "frontend/node_modules" ]; then
         echo "[frontend] node_modules not found. Skipping (run 'make -C frontend install' to fix)."
     else
