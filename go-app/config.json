@@ -84,7 +84,7 @@
     "export_concurrency": 0
   },
   "resources": {
-    "memory_usage_fraction_percent": 95
+    "memory_usage_fraction_percent": 85
   },
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
