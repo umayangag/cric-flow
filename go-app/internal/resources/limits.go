@@ -1,6 +1,9 @@
 // Package resources provides resource-aware concurrency limits for pipelines
 // (precompute, import, export, seqcalc) to avoid OOM while using available CPU/memory.
-// Use more workers when resources are available; use fewer when memory or CPU is limited.
+// Limits are derived from the system when config pipeline.*_concurrency is 0: memory limit
+// (GOMEMLIMIT or cgroup), MB-per-worker (from observations or config fallback), and
+// memory_usage_fraction_percent yield worker count; when no memory limit is detected,
+// NumCPU is used. Set pipeline.*_concurrency > 0 only to override derivation.
 package resources
 
 import (
@@ -136,7 +139,7 @@ func memoryBasedLimit(kind Kind) int {
 	if frac <= 0 {
 		frac = config.DefaultMemoryUsageFractionPercent
 	}
-	// Use up to frac% of limit for workers; rest for runtime, DB, and spikes.
+	// Use frac% of limit for workers (100 = use full limit; lower values reserve headroom for runtime/DB).
 	usable := (limitBytes * int64(frac)) / 100
 	n := int(usable / perWorkerBytes)
 	if n < 1 {

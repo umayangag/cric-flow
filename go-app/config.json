@@ -78,6 +78,14 @@
     "simulation_top_k_per_team": 50,
     "simulation_num_samples_per_matchup": 500
   },
+  "pipeline": {
+    "precompute_concurrency": 0,
+    "seqcalc_concurrency": 0,
+    "export_concurrency": 0
+  },
+  "resources": {
+    "memory_usage_fraction_percent": 100
+  },
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
     "require_keeper": false,
