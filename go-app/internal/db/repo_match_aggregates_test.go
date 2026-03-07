@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestBuildMatchAggregates_TableDriven ensures the helper constructs the
@@ -10,8 +12,8 @@ import (
 // used by GetMatchAggregates: score -> Runs, wickets -> Wickets, extras -> Extras).
 func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 	tests := []struct {
-		name   string
-		runs   float64
+		name    string
+		runs    float64
 		wickets float64
 		extras  float64
 		winner  string
@@ -25,18 +27,10 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
-			if got.Runs != tt.runs {
-				t.Errorf("Runs = %v, want %v", got.Runs, tt.runs)
-			}
-			if got.Wickets != tt.wickets {
-				t.Errorf("Wickets = %v, want %v", got.Wickets, tt.wickets)
-			}
-			if got.Extras != tt.extras {
-				t.Errorf("Extras = %v, want %v", got.Extras, tt.extras)
-			}
-			if got.WinnerTeamCode != tt.winner {
-				t.Errorf("WinnerTeamCode = %q, want %q", got.WinnerTeamCode, tt.winner)
-			}
+			require.Equal(t, tt.runs, got.Runs)
+			require.Equal(t, tt.wickets, got.Wickets)
+			require.Equal(t, tt.extras, got.Extras)
+			require.Equal(t, tt.winner, got.WinnerTeamCode)
 		})
 	}
 }
