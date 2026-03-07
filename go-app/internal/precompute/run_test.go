@@ -13,6 +13,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/mocks"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	pfcmd "github.com/umayangag/cric-flow/go-app/internal/services/precomputefeatures"
 )
 
 // stubRunner implements replayRunner for tests.
@@ -29,6 +30,13 @@ type stubRunnerCall struct {
 
 func (s *stubRunner) RunReplay(_ context.Context, code string, formatID int64, _ float64, _, _, _ int) error {
 	s.calls = append(s.calls, stubRunnerCall{Code: code, FormatID: formatID})
+	return s.err
+}
+
+func (s *stubRunner) RunReplayGlobalPool(_ context.Context, jobs []pfcmd.FormatJob, _, _ int) error {
+	for _, j := range jobs {
+		s.calls = append(s.calls, stubRunnerCall{Code: j.Code, FormatID: j.FormatID})
+	}
 	return s.err
 }
 

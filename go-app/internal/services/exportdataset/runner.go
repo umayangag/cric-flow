@@ -16,6 +16,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
+	"github.com/umayangag/cric-flow/go-app/internal/resources"
 )
 
 // Runner orchestrates the export-dataset workflow behind interfaces for testability.
@@ -123,8 +124,10 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 		// "context canceled" in all in-flight exports).
 		parentCtx := ctx
 		formats := ResolveFormats(opts, config.Load())
-
-		var g errgroup.Group
+		exportLimit := resources.GetLimit(resources.KindExport)
+		g, _ := errgroup.WithContext(ctx)
+		g.SetLimit(exportLimit)
+		slog.Info("pipeline: export-dataset concurrency from resources", slog.Int("concurrency", exportLimit))
 
 		if opts.Unified {
 			slog.Info("pipeline: export-dataset exporting unified CSVs", slog.String("out_dir", opts.OutDir))
@@ -161,8 +164,12 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 				slog.Error("exportdataset.Runner.Run unified export failed", slog.Any("err", err))
 				return err
 			}
+			resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
 			// When formats are requested (e.g. SplitByFormat), also write per-format CSVs
 			// so per-format training (train_batting --all-formats, train_bowling --all-formats) has inputs.
+			// Use a new errgroup; reusing g after Wait() would panic.
+			g, _ = errgroup.WithContext(ctx)
+			g.SetLimit(exportLimit)
 			slog.Info("pipeline: export-dataset exporting per-format CSVs", slog.Any("formats", formats))
 			for _, f := range formats {
 				if f == "" || !safeFormatForFilename(f) {
@@ -183,12 +190,13 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 						func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 					)
 				})
-				r.addPerFormatExportGoroutines(parentCtx, &g, opts.OutDir, f)
+				r.addPerFormatExportGoroutines(parentCtx, g, opts.OutDir, f)
 			}
 			if err := g.Wait(); err != nil {
 				slog.Error("exportdataset.Runner.Run per-format export failed", slog.Any("err", err))
 				return err
 			}
+			resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
 			return nil
 		}
 
@@ -251,12 +259,13 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 					func(w io.Writer) error { return r.Bow.ExportFormat(parentCtx, f, w) },
 				)
 			})
-			r.addPerFormatExportGoroutines(parentCtx, &g, opts.OutDir, f)
+			r.addPerFormatExportGoroutines(parentCtx, g, opts.OutDir, f)
 		}
 		if err := g.Wait(); err != nil {
 			slog.Error("exportdataset.Runner.Run format export failed", slog.Any("err", err))
 			return err
 		}
+		resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
 		return nil
 	}
 	return nil

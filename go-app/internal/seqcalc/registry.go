@@ -120,6 +120,95 @@ func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error
 	return runConcurrent(ctx, calcs, params, dry, limit)
 }
 
+// seqcalcWorkItem is one (params, calculator) unit for the multi-format pool.
+type seqcalcWorkItem struct {
+	params Params
+	calc   Calculator
+}
+
+// RunMultiFormat runs all calculators for all params (e.g. one Params per format) using a single
+// shared worker pool. When one format has fewer calculators or finishes early, workers take
+// (format, calculator) work from others instead of sitting idle.
+func RunMultiFormat(ctx context.Context, calcs []Calculator, paramsList []Params, dry bool, limit int) error {
+	if len(paramsList) == 0 || len(calcs) == 0 {
+		return nil
+	}
+	if limit < 1 {
+		limit = seqcalcConcurrency()
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	totalWork := len(paramsList) * len(calcs)
+	slog.Info("seqcalc: starting multi-format run",
+		slog.Int("formats", len(paramsList)),
+		slog.Int("calculators", len(calcs)),
+		slog.Int("work_items", totalWork),
+		slog.Int("concurrency", limit),
+	)
+	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at start (multi-format)",
+		slog.Int("concurrency", limit),
+	)
+
+	workCh := make(chan seqcalcWorkItem, totalWork)
+	for _, p := range paramsList {
+		for _, c := range calcs {
+			workCh <- seqcalcWorkItem{params: p, calc: c}
+		}
+	}
+	close(workCh)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	for i := 0; i < limit; i++ {
+		g.Go(func() error {
+			for item := range workCh {
+				if gCtx.Err() != nil {
+					return nil
+				}
+				name := item.calc.Name()
+				slog.Info(
+					"seqcalc.calculator.start",
+					slog.String("calculator", string(name)),
+					slog.String("format", item.params.FormatCode),
+				)
+				err := item.calc.Compute(gCtx, item.params, dry)
+				if err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						slog.Error("seqcalc.calculator.cancelled_or_timeout",
+							slog.String("calculator", string(name)),
+							slog.String("format", item.params.FormatCode),
+							slog.Any("err", err),
+						)
+					} else {
+						slog.Error("seqcalc.calculator.failed",
+							slog.String("calculator", string(name)),
+							slog.String("format", item.params.FormatCode),
+							slog.Any("err", err),
+						)
+					}
+					return err
+				}
+				slog.Info(
+					"seqcalc.calculator.done",
+					slog.String("calculator", string(name)),
+					slog.String("format", item.params.FormatCode),
+				)
+			}
+			return nil
+		})
+	}
+	err := g.Wait()
+	resources.LogMemoryAndGoroutines(
+		"seqcalc: memory and goroutines at end (multi-format)",
+		slog.Int("concurrency", limit),
+	)
+	resources.RecordWorkerMemorySample(resources.KindSeqCalc, limit)
+	if err != nil {
+		slog.Error("seqcalc.run.multi_format_finished_with_error", slog.Any("err", err))
+	}
+	return err
+}
+
 func runSequential(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
 	for _, calc := range calcs {
 		if err := ctx.Err(); err != nil {

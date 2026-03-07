@@ -117,3 +117,18 @@ func TestSetupFromEnv_LOG_COLOR_AddsANSI(t *testing.T) {
 	require.Contains(t, out, "warn-yellow")
 	require.Contains(t, out, "info-plain")
 }
+
+// TestLogger_WithAttrsAndWithGroup exercises the handler's WithAttrs and WithGroup (slog calls them when using With/WithGroup).
+func TestLogger_WithAttrsAndWithGroup(t *testing.T) {
+	require.NoError(t, os.Setenv("LOG_FORMAT", "json"))
+	require.NoError(t, os.Setenv("LOG_LEVEL", "info"))
+	t.Cleanup(func() { _ = os.Unsetenv("LOG_FORMAT"); _ = os.Unsetenv("LOG_LEVEL") })
+
+	out := captureStdout(func() {
+		logger.SetupFromEnv()
+		slog.Default().With("attr", "value").Info("with-attrs")
+		slog.Default().WithGroup("group").Info("with-group")
+	})
+	require.Contains(t, out, "with-attrs")
+	require.Contains(t, out, "with-group")
+}

@@ -8,6 +8,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestRawStatsFeatureNames_FallbackWhenContractTooShort ensures RawStatsFeatureNames uses
+// rawStatsFeatureNamesFallback when the contract has too few raw stat names, and that
+// RawStatsFeatureNamesBatting/Bowling return the correct slices.
+func TestRawStatsFeatureNames_FallbackWhenContractTooShort(t *testing.T) {
+	// Contract with only start/end markers so raw block length is 2 (< 18)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "short_contract.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+		"version": "2",
+		"batting": ["batting_mean_w3", "batting_innings_in_last_90d"],
+		"bowling": ["bowling_mean_w3", "bowling_innings_in_last_90d"],
+		"fielding": []
+	}`), 0o600))
+
+	t.Setenv("FEATURE_VECTORS_PATH", path)
+
+	// Clear cache so getContract() loads our file (cache key is path)
+	contractMu.Lock()
+	oldCache, oldPath := contractCache, contractPath
+	contractCache, contractPath = nil, ""
+	contractMu.Unlock()
+	t.Cleanup(func() {
+		contractMu.Lock()
+		contractCache, contractPath = oldCache, oldPath
+		contractMu.Unlock()
+	})
+
+	raw := RawStatsFeatureNames()
+	require.Len(t, raw, 36, "fallback must return 18 batting + 18 bowling")
+	require.Equal(t, "batting_mean_w3", raw[0])
+	require.Equal(t, "bowling_innings_in_last_90d", raw[35])
+
+	bat := RawStatsFeatureNamesBatting()
+	bowl := RawStatsFeatureNamesBowling()
+	require.Len(t, bat, 18)
+	require.Len(t, bowl, 18)
+	require.Equal(t, raw[:18], bat)
+	require.Equal(t, raw[18:], bowl)
+}
+
 func TestDefaultContract_NonEmptyAndNoDuplicates(t *testing.T) {
 	c := &defaultContract
 	require.NotEmpty(t, c.Batting, "batting features required")

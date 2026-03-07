@@ -17,6 +17,20 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
 )
 
+// replayWorkItem is one unit of work for the global pool: process one player in one match for one format.
+type replayWorkItem struct {
+	FormatCode string
+	FormatID   int64
+	Match      db.MatchLite
+	PlayerID   int64
+}
+
+// FormatJob identifies a format for global-pool replay (code + format ID).
+type FormatJob struct {
+	Code     string
+	FormatID int64
+}
+
 // Runner executes precompute-features workflows.
 // It is stateless and delegates to internal/db package helpers for queries and persistence.
 type Runner struct{}
@@ -77,7 +91,6 @@ func (Runner) RunReplay(
 				slog.Int("matches_in_page", len(matches)))
 		}
 		for _, m := range matches {
-			asOf := m.MatchDate
 			players, err := db.ListPlayersInMatch(ctx, m.MatchID)
 			if err != nil {
 				slog.Error(
@@ -95,137 +108,7 @@ func (Runner) RunReplay(
 			for _, pid := range players {
 				pid := pid // capture
 				g.Go(func() error {
-					if err := pCtx.Err(); err != nil {
-						return nil
-					}
-					// Base histories strictly before match date
-					batHist, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, nil)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): batting history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("batting history pid=%d: %w", pid, err)
-					}
-					bowlHist, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, nil)
-					if err != nil {
-						slog.Error(
-							"precompute-features(replay): bowling history failed",
-							slog.Int64("player_id", pid),
-							slog.Int64("match_id", m.MatchID),
-							slog.String("format", formatCode),
-							slog.Any("err", err),
-						)
-						return fmt.Errorf("bowling history pid=%d: %w", pid, err)
-					}
-
-					batInn := toFeatureInnings(batHist)
-					bowlInn := toFeatureInnings(bowlHist)
-					batInn = features.SortAndClip(batInn, asOf)
-					bowlInn = features.SortAndClip(bowlInn, asOf)
-					if windowN > 0 {
-						if len(batInn) > windowN {
-							batInn = batInn[len(batInn)-windowN:]
-						}
-						if len(bowlInn) > windowN {
-							bowlInn = bowlInn[len(bowlInn)-windowN:]
-						}
-					}
-					if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "overall", nil, batInn, bowlInn, "replay", m.MatchID, formatCode); err != nil {
-						return err
-					}
-
-					// opposition specific form
-					if m.OppositionID != 0 {
-						oppID := m.OppositionID
-						oppBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
-						if err != nil {
-							slog.Error(
-								"precompute-features(replay): opposition batting history failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("opposition_id", oppID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", pid, oppID, err)
-						}
-						oppBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, &oppID, nil)
-						if err != nil {
-							slog.Error(
-								"precompute-features(replay): opposition bowling history failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("opposition_id", oppID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", pid, oppID, err)
-						}
-						oppBatInn := toFeatureInnings(oppBat)
-						oppBowlInn := toFeatureInnings(oppBowl)
-						oppBatInn = features.SortAndClip(oppBatInn, asOf)
-						oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
-						if windowN > 0 {
-							if len(oppBatInn) > windowN {
-								oppBatInn = oppBatInn[len(oppBatInn)-windowN:]
-							}
-							if len(oppBowlInn) > windowN {
-								oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
-							}
-						}
-						if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "opposition", &oppID, oppBatInn, oppBowlInn, "replay", m.MatchID, formatCode); err != nil {
-							return err
-						}
-					}
-
-					// venue specific form
-					if m.VenueID != 0 {
-						venueID := m.VenueID
-						venBat, err := db.ListBattingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
-						if err != nil {
-							slog.Error(
-								"precompute-features(replay): venue batting history failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("venue_id", venueID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("venue batting history pid=%d venue=%d: %w", pid, venueID, err)
-						}
-						venBowl, err := db.ListBowlingBefore(pCtx, pid, asOf, formatID, nil, &venueID)
-						if err != nil {
-							slog.Error(
-								"precompute-features(replay): venue bowling history failed",
-								slog.Int64("player_id", pid),
-								slog.Int64("venue_id", venueID),
-								slog.Int64("match_id", m.MatchID),
-								slog.String("format", formatCode),
-								slog.Any("err", err),
-							)
-							return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", pid, venueID, err)
-						}
-						venBatInn := toFeatureInnings(venBat)
-						venBowlInn := toFeatureInnings(venBowl)
-						venBatInn = features.SortAndClip(venBatInn, asOf)
-						venBowlInn = features.SortAndClip(venBowlInn, asOf)
-						if windowN > 0 {
-							if len(venBatInn) > windowN {
-								venBatInn = venBatInn[len(venBatInn)-windowN:]
-							}
-							if len(venBowlInn) > windowN {
-								venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
-							}
-						}
-						if err := upsertRawStatsForScope(pCtx, pid, asOf, formatID, "venue", &venueID, venBatInn, venBowlInn, "replay", m.MatchID, formatCode); err != nil {
-							return err
-						}
-					}
-					return nil
+					return processOnePlayerReplay(pCtx, formatCode, formatID, m, pid, windowN)
 				})
 			}
 
@@ -274,6 +157,108 @@ func (Runner) RunReplay(
 	}
 
 	slog.Info("done (replay)", slog.Int64("matches", totalMatches), slog.String("format", formatCode))
+	return nil
+}
+
+// RunReplayGlobalPool runs replay for multiple formats using a single shared worker pool.
+// Work items (format, match, player) are produced by one producer per format and consumed by totalLimit workers,
+// so when one format has no work left, workers take tasks from others instead of sitting idle.
+func (Runner) RunReplayGlobalPool(ctx context.Context, jobs []FormatJob, windowN, totalLimit int) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	if totalLimit < 1 {
+		totalLimit = 1
+	}
+	pageSize := replayMatchPageSize()
+	slog.Info("precompute-features(replay-global-pool)",
+		slog.Int("formats", len(jobs)),
+		slog.Int("concurrency", totalLimit),
+		slog.Int("match_page_size", pageSize),
+	)
+	resources.LogMemoryAndGoroutines("precompute-features(replay-global-pool): at start")
+
+	workCh := make(chan *replayWorkItem, totalLimit*2)
+	gProducers, prodCtx := errgroup.WithContext(ctx)
+	for _, job := range jobs {
+		job := job
+		gProducers.Go(func() error {
+			var after *db.MatchLite
+			for {
+				if prodCtx.Err() != nil {
+					return nil
+				}
+				matches, err := db.ListMatchesByFormatDatePage(prodCtx, job.FormatID, nil, nil, pageSize, after)
+				if err != nil {
+					slog.Error("precompute-features(replay-global-pool): list matches failed",
+						slog.String("format", job.Code), slog.Int64("format_id", job.FormatID), slog.Any("err", err))
+					return fmt.Errorf("list matches %s: %w", job.Code, err)
+				}
+				if len(matches) == 0 {
+					return nil
+				}
+				for _, m := range matches {
+					if prodCtx.Err() != nil {
+						return nil
+					}
+					players, err := db.ListPlayersInMatch(prodCtx, m.MatchID)
+					if err != nil {
+						slog.Error("precompute-features(replay-global-pool): list players failed",
+							slog.Int64("match_id", m.MatchID), slog.String("format", job.Code), slog.Any("err", err))
+						return fmt.Errorf("list players match %d: %w", m.MatchID, err)
+					}
+					for _, pid := range players {
+						item := &replayWorkItem{FormatCode: job.Code, FormatID: job.FormatID, Match: m, PlayerID: pid}
+						select {
+						case workCh <- item:
+						case <-prodCtx.Done():
+							return nil
+						}
+					}
+				}
+				after = &matches[len(matches)-1]
+			}
+		})
+	}
+	var producerErr error
+	go func() {
+		producerErr = gProducers.Wait()
+		close(workCh)
+	}()
+
+	gWorkers, workCtx := errgroup.WithContext(prodCtx)
+	for i := 0; i < totalLimit; i++ {
+		gWorkers.Go(func() error {
+			for item := range workCh {
+				if workCtx.Err() != nil {
+					return nil
+				}
+				if err := processOnePlayerReplay(workCtx, item.FormatCode, item.FormatID, item.Match, item.PlayerID, windowN); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	workerErr := gWorkers.Wait()
+	if producerErr != nil {
+		slog.Error("precompute-features(replay-global-pool): producer error", slog.Any("err", producerErr))
+		return producerErr
+	}
+	if workerErr != nil {
+		slog.Error("precompute-features(replay-global-pool): worker error", slog.Any("err", workerErr))
+		return workerErr
+	}
+
+	resources.RecordWorkerMemorySample(resources.KindPrecompute, totalLimit)
+	runtime.GC()
+	resources.LogMemoryAndGoroutines("precompute-features(replay-global-pool): after GC, before seqcalc")
+
+	if err := triggerSeqCalcMultiFormat(ctx, jobs, time.Time{}); err != nil {
+		slog.Error("precompute-features(replay-global-pool): sequence calculations failed", slog.Any("err", err))
+		return err
+	}
+	slog.Info("precompute-features(replay-global-pool): done", slog.Int("formats", len(jobs)))
 	return nil
 }
 
@@ -494,6 +479,123 @@ func triggerSeqCalc(ctx context.Context, formatCode string, asOf time.Time) erro
 	if err := seqcalc.Run(ctxNoDeadline, calcs, seqcalc.Params{FormatCode: formatCode, AsOf: asOf}, false); err != nil {
 		slog.Error("precompute-features: seqcalc run failed", slog.String("format", formatCode), slog.Any("err", err))
 		return fmt.Errorf("seqcalc run: %w", err)
+	}
+	return nil
+}
+
+// triggerSeqCalcMultiFormat runs sequence calculators for multiple formats using a single shared worker pool.
+func triggerSeqCalcMultiFormat(ctx context.Context, jobs []FormatJob, asOf time.Time) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	ctxNoDeadline, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+
+	reg := seqcalc.NewDefaultRegistry()
+	calcs, err := reg.ResolveTargets("all")
+	if err != nil {
+		slog.Error("precompute-features: resolve seqcalc targets failed (multi-format)", slog.Any("err", err))
+		return fmt.Errorf("resolve seqcalc targets: %w", err)
+	}
+	paramsList := make([]seqcalc.Params, 0, len(jobs))
+	for _, j := range jobs {
+		paramsList = append(paramsList, seqcalc.Params{FormatCode: j.Code, AsOf: asOf})
+	}
+	limit := resources.GetLimit(resources.KindSeqCalc)
+	if limit < 1 {
+		limit = 1
+	}
+	logSeqCalcTrigger(jobs[0].Code, "replay") // log once with first format for observability
+	if err := seqcalc.RunMultiFormat(ctxNoDeadline, calcs, paramsList, false, limit); err != nil {
+		return fmt.Errorf("seqcalc multi-format run: %w", err)
+	}
+	return nil
+}
+
+// processOnePlayerReplay loads history, computes raw stats, and upserts for one player in one match (overall, opposition, venue scopes).
+func processOnePlayerReplay(
+	ctx context.Context,
+	formatCode string,
+	formatID int64,
+	m db.MatchLite,
+	playerID int64,
+	windowN int,
+) error {
+	if err := ctx.Err(); err != nil {
+		return nil
+	}
+
+	type replayScope struct {
+		name         string
+		oppositionID *int64
+		venueID      *int64
+		scopeID      *int64
+	}
+
+	scopes := []replayScope{
+		{name: "overall"},
+	}
+	if m.OppositionID != 0 {
+		oppID := m.OppositionID
+		scopes = append(scopes, replayScope{name: "opposition", oppositionID: &oppID, scopeID: &oppID})
+	}
+	if m.VenueID != 0 {
+		venueID := m.VenueID
+		scopes = append(scopes, replayScope{name: "venue", venueID: &venueID, scopeID: &venueID})
+	}
+
+	asOf := m.MatchDate
+	for _, scope := range scopes {
+		batHist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, scope.oppositionID, scope.venueID)
+		if err != nil {
+			slog.Error(
+				"precompute-features(replay): batting history failed",
+				slog.String(
+					"scope",
+					scope.name,
+				),
+				slog.Int64("player_id", playerID),
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
+			)
+			return fmt.Errorf("%s batting history pid=%d: %w", scope.name, playerID, err)
+		}
+		bowlHist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, scope.oppositionID, scope.venueID)
+		if err != nil {
+			slog.Error(
+				"precompute-features(replay): bowling history failed",
+				slog.String(
+					"scope",
+					scope.name,
+				),
+				slog.Int64("player_id", playerID),
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
+			)
+			return fmt.Errorf("%s bowling history pid=%d: %w", scope.name, playerID, err)
+		}
+
+		batInn := toFeatureInnings(batHist)
+		bowlInn := toFeatureInnings(bowlHist)
+		batInn = features.SortAndClip(batInn, asOf)
+		bowlInn = features.SortAndClip(bowlInn, asOf)
+		if windowN > 0 {
+			if len(batInn) > windowN {
+				batInn = batInn[len(batInn)-windowN:]
+			}
+			if len(bowlInn) > windowN {
+				bowlInn = bowlInn[len(bowlInn)-windowN:]
+			}
+		}
+		if err := upsertRawStatsForScope(ctx, playerID, asOf, formatID, scope.name, scope.scopeID, batInn, bowlInn, "replay", m.MatchID, formatCode); err != nil {
+			return err
+		}
 	}
 	return nil
 }

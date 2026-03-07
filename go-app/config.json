@@ -73,10 +73,18 @@
   },
   "predictor": {
     "team_size": 11,
-    "default_extras": 14.26,
+    "default_extras": 0,
     "max_total_samples": 100000,
     "simulation_top_k_per_team": 50,
     "simulation_num_samples_per_matchup": 500
+  },
+  "pipeline": {
+    "precompute_concurrency": 0,
+    "seqcalc_concurrency": 0,
+    "export_concurrency": 0
+  },
+  "resources": {
+    "memory_usage_fraction_percent": 95
   },
   "selection": {
     "default_pool_csv": "../ml-service/ml/pool.csv",
