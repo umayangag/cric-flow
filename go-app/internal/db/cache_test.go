@@ -103,6 +103,7 @@ func TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization(t *testin
 
 // TestGetGlobalCache_Singleton verifies that GetGlobalCache returns the same instance each time.
 func TestGetGlobalCache_Singleton(t *testing.T) {
+	t.Parallel()
 	c1 := GetGlobalCache()
 	c2 := GetGlobalCache()
 	require.Same(t, c1, c2)

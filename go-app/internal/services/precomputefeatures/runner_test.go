@@ -84,6 +84,7 @@ func TestReplayMatchPageSize(t *testing.T) {
 }
 
 func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
+	t.Parallel()
 	r := NewRunner()
 	ctx := context.Background()
 
@@ -97,6 +98,7 @@ func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := r.RunReplayGlobalPool(ctx, tt.jobs, 0, 10)
 			require.NoError(t, err)
 		})

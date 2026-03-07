@@ -11,6 +11,7 @@ import (
 // struct with expected field assignments for various inputs (mapping semantics
 // used by GetMatchAggregates: score -> Runs, wickets -> Wickets, extras -> Extras).
 func TestBuildMatchAggregates_TableDriven(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		runs    float64
@@ -26,6 +27,7 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
 			require.Equal(t, MatchAggregates{
 				Runs:           tt.runs,
