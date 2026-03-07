@@ -73,7 +73,7 @@
   },
   "predictor": {
     "team_size": 11,
-    "default_extras": 14.26,
+    "default_extras": 0,
     "max_total_samples": 100000,
     "simulation_top_k_per_team": 50,
     "simulation_num_samples_per_matchup": 500

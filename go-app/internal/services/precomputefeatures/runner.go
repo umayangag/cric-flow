@@ -554,7 +554,14 @@ func processOnePlayerReplay(
 		if err != nil {
 			slog.Error(
 				"precompute-features(replay): batting history failed",
-				slog.String("scope", scope.name), slog.Int64("player_id", playerID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err),
+				slog.String(
+					"scope",
+					scope.name,
+				),
+				slog.Int64("player_id", playerID),
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
 			)
 			return fmt.Errorf("%s batting history pid=%d: %w", scope.name, playerID, err)
 		}
@@ -562,7 +569,14 @@ func processOnePlayerReplay(
 		if err != nil {
 			slog.Error(
 				"precompute-features(replay): bowling history failed",
-				slog.String("scope", scope.name), slog.Int64("player_id", playerID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err),
+				slog.String(
+					"scope",
+					scope.name,
+				),
+				slog.Int64("player_id", playerID),
+				slog.Int64("match_id", m.MatchID),
+				slog.String("format", formatCode),
+				slog.Any("err", err),
 			)
 			return fmt.Errorf("%s bowling history pid=%d: %w", scope.name, playerID, err)
 		}
