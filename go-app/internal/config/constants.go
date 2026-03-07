@@ -115,11 +115,14 @@ const DefaultPipelineReplayMatchPageSize = 500
 
 // Resources: memory per worker (MB), fraction of limit for workers (percent), seqcalc low-memory threshold (GiB), default precompute concurrency when no limit.
 const (
-	DefaultPrecomputeMBPerWorker      = 450
-	DefaultImportMBPerWorker          = 150
-	DefaultExportMBPerWorker          = 100
-	DefaultSeqCalcMBPerWorker         = 500
-	DefaultFieldingMBPerWorker        = 100
+	DefaultPrecomputeMBPerWorker = 450
+	DefaultImportMBPerWorker     = 150
+	DefaultExportMBPerWorker     = 100
+	DefaultSeqCalcMBPerWorker    = 500
+	DefaultFieldingMBPerWorker   = 100
+	// DefaultMemoryUsageFractionPercent: fraction of container memory used for workers (rest for Go runtime, DB, spikes).
+	// Set to 95 based on observed stable usage in production; leave headroom via resource limits rather than this cap.
+	// Using a lower value (e.g. 90) would reduce throughput without material safety gain when resource limits are set.
 	DefaultMemoryUsageFractionPercent = 95
 	DefaultSeqCalcLowMemoryLimitGiB   = 2
 	// 0 = use NumCPU() when no memory limit (optimum resources); set > 0 to cap precompute concurrency.

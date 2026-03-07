@@ -26,9 +26,14 @@ func TestRawStatsFeatureNames_FallbackWhenContractTooShort(t *testing.T) {
 
 	// Clear cache so getContract() loads our file (cache key is path)
 	contractMu.Lock()
-	contractCache = nil
-	contractPath = ""
+	oldCache, oldPath := contractCache, contractPath
+	contractCache, contractPath = nil, ""
 	contractMu.Unlock()
+	t.Cleanup(func() {
+		contractMu.Lock()
+		contractCache, contractPath = oldCache, oldPath
+		contractMu.Unlock()
+	})
 
 	raw := RawStatsFeatureNames()
 	require.Len(t, raw, 36, "fallback must return 18 batting + 18 bowling")
