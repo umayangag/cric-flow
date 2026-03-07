@@ -5,22 +5,39 @@ import (
 	"testing"
 )
 
-// TestBuildMatchAggregates_SimpleMapping ensures the helper constructs the
-// struct with expected field assignments. This locks the mapping semantics
-// used by GetMatchAggregates (score -> Runs, wickets -> Wickets, extras -> Extras).
-func TestBuildMatchAggregates_SimpleMapping(t *testing.T) {
-	got := buildMatchAggregates(150, 7, 10, "IND")
-	if got.Runs != 150 {
-		t.Fatalf("Runs = %v, want 150", got.Runs)
+// TestBuildMatchAggregates_TableDriven ensures the helper constructs the
+// struct with expected field assignments for various inputs (mapping semantics
+// used by GetMatchAggregates: score -> Runs, wickets -> Wickets, extras -> Extras).
+func TestBuildMatchAggregates_TableDriven(t *testing.T) {
+	tests := []struct {
+		name   string
+		runs   float64
+		wickets float64
+		extras  float64
+		winner  string
+	}{
+		{"simple mapping", 150, 7, 10, "IND"},
+		{"zeros", 0, 0, 0, ""},
+		{"empty winner", 200, 10, 5, ""},
+		{"fractional runs", 99.5, 3, 2, "AUS"},
+		{"large values", 500, 20, 25, "PAK"},
 	}
-	if got.Wickets != 7 {
-		t.Fatalf("Wickets = %v, want 7", got.Wickets)
-	}
-	if got.Extras != 10 {
-		t.Fatalf("Extras = %v, want 10", got.Extras)
-	}
-	if got.WinnerTeamCode != "IND" {
-		t.Fatalf("WinnerTeamCode = %q, want IND", got.WinnerTeamCode)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
+			if got.Runs != tt.runs {
+				t.Errorf("Runs = %v, want %v", got.Runs, tt.runs)
+			}
+			if got.Wickets != tt.wickets {
+				t.Errorf("Wickets = %v, want %v", got.Wickets, tt.wickets)
+			}
+			if got.Extras != tt.extras {
+				t.Errorf("Extras = %v, want %v", got.Extras, tt.extras)
+			}
+			if got.WinnerTeamCode != tt.winner {
+				t.Errorf("WinnerTeamCode = %q, want %q", got.WinnerTeamCode, tt.winner)
+			}
+		})
 	}
 }
 
