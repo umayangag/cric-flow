@@ -27,10 +27,12 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
-			require.Equal(t, tt.runs, got.Runs)
-			require.Equal(t, tt.wickets, got.Wickets)
-			require.Equal(t, tt.extras, got.Extras)
-			require.Equal(t, tt.winner, got.WinnerTeamCode)
+			require.Equal(t, MatchAggregates{
+				Runs:           tt.runs,
+				Wickets:        tt.wickets,
+				Extras:         tt.extras,
+				WinnerTeamCode: tt.winner,
+			}, got)
 		})
 	}
 }
