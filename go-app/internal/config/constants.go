@@ -120,7 +120,7 @@ const (
 	DefaultExportMBPerWorker          = 100
 	DefaultSeqCalcMBPerWorker         = 500
 	DefaultFieldingMBPerWorker        = 100
-	DefaultMemoryUsageFractionPercent = 100
+	DefaultMemoryUsageFractionPercent = 95
 	DefaultSeqCalcLowMemoryLimitGiB   = 2
 	// 0 = use NumCPU() when no memory limit (optimum resources); set > 0 to cap precompute concurrency.
 	DefaultPrecomputeConcurrencyWhenNoLimit = 0

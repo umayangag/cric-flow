@@ -525,125 +525,58 @@ func processOnePlayerReplay(
 	if err := ctx.Err(); err != nil {
 		return nil
 	}
-	asOf := m.MatchDate
-	batHist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, nil, nil)
-	if err != nil {
-		slog.Error(
-			"precompute-features(replay): batting history failed",
-			slog.Int64("player_id", playerID),
-			slog.Int64("match_id", m.MatchID),
-			slog.String("format", formatCode),
-			slog.Any("err", err),
-		)
-		return fmt.Errorf("batting history pid=%d: %w", playerID, err)
+
+	type replayScope struct {
+		name         string
+		oppositionID *int64
+		venueID      *int64
+		scopeID      *int64
 	}
-	bowlHist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, nil)
-	if err != nil {
-		slog.Error(
-			"precompute-features(replay): bowling history failed",
-			slog.Int64("player_id", playerID),
-			slog.Int64("match_id", m.MatchID),
-			slog.String("format", formatCode),
-			slog.Any("err", err),
-		)
-		return fmt.Errorf("bowling history pid=%d: %w", playerID, err)
-	}
-	batInn := toFeatureInnings(batHist)
-	bowlInn := toFeatureInnings(bowlHist)
-	batInn = features.SortAndClip(batInn, asOf)
-	bowlInn = features.SortAndClip(bowlInn, asOf)
-	if windowN > 0 {
-		if len(batInn) > windowN {
-			batInn = batInn[len(batInn)-windowN:]
-		}
-		if len(bowlInn) > windowN {
-			bowlInn = bowlInn[len(bowlInn)-windowN:]
-		}
-	}
-	if err := upsertRawStatsForScope(ctx, playerID, asOf, formatID, "overall", nil, batInn, bowlInn, "replay", m.MatchID, formatCode); err != nil {
-		return err
+
+	scopes := []replayScope{
+		{name: "overall"},
 	}
 	if m.OppositionID != 0 {
 		oppID := m.OppositionID
-		oppBat, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, &oppID, nil)
-		if err != nil {
-			slog.Error(
-				"precompute-features(replay): opposition batting history failed",
-				slog.Int64("player_id", playerID),
-				slog.Int64("opposition_id", oppID),
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
-			)
-			return fmt.Errorf("opposition batting history pid=%d opp=%d: %w", playerID, oppID, err)
-		}
-		oppBowl, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, &oppID, nil)
-		if err != nil {
-			slog.Error(
-				"precompute-features(replay): opposition bowling history failed",
-				slog.Int64("player_id", playerID),
-				slog.Int64("opposition_id", oppID),
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
-			)
-			return fmt.Errorf("opposition bowling history pid=%d opp=%d: %w", playerID, oppID, err)
-		}
-		oppBatInn := toFeatureInnings(oppBat)
-		oppBowlInn := toFeatureInnings(oppBowl)
-		oppBatInn = features.SortAndClip(oppBatInn, asOf)
-		oppBowlInn = features.SortAndClip(oppBowlInn, asOf)
-		if windowN > 0 {
-			if len(oppBatInn) > windowN {
-				oppBatInn = oppBatInn[len(oppBatInn)-windowN:]
-			}
-			if len(oppBowlInn) > windowN {
-				oppBowlInn = oppBowlInn[len(oppBowlInn)-windowN:]
-			}
-		}
-		if err := upsertRawStatsForScope(ctx, playerID, asOf, formatID, "opposition", &oppID, oppBatInn, oppBowlInn, "replay", m.MatchID, formatCode); err != nil {
-			return err
-		}
+		scopes = append(scopes, replayScope{name: "opposition", oppositionID: &oppID, scopeID: &oppID})
 	}
 	if m.VenueID != 0 {
 		venueID := m.VenueID
-		venBat, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, nil, &venueID)
+		scopes = append(scopes, replayScope{name: "venue", venueID: &venueID, scopeID: &venueID})
+	}
+
+	asOf := m.MatchDate
+	for _, scope := range scopes {
+		batHist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, scope.oppositionID, scope.venueID)
 		if err != nil {
 			slog.Error(
-				"precompute-features(replay): venue batting history failed",
-				slog.Int64("player_id", playerID),
-				slog.Int64("venue_id", venueID),
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
+				"precompute-features(replay): batting history failed",
+				slog.String("scope", scope.name), slog.Int64("player_id", playerID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err),
 			)
-			return fmt.Errorf("venue batting history pid=%d venue=%d: %w", playerID, venueID, err)
+			return fmt.Errorf("%s batting history pid=%d: %w", scope.name, playerID, err)
 		}
-		venBowl, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, &venueID)
+		bowlHist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, scope.oppositionID, scope.venueID)
 		if err != nil {
 			slog.Error(
-				"precompute-features(replay): venue bowling history failed",
-				slog.Int64("player_id", playerID),
-				slog.Int64("venue_id", venueID),
-				slog.Int64("match_id", m.MatchID),
-				slog.String("format", formatCode),
-				slog.Any("err", err),
+				"precompute-features(replay): bowling history failed",
+				slog.String("scope", scope.name), slog.Int64("player_id", playerID), slog.Int64("match_id", m.MatchID), slog.String("format", formatCode), slog.Any("err", err),
 			)
-			return fmt.Errorf("venue bowling history pid=%d venue=%d: %w", playerID, venueID, err)
+			return fmt.Errorf("%s bowling history pid=%d: %w", scope.name, playerID, err)
 		}
-		venBatInn := toFeatureInnings(venBat)
-		venBowlInn := toFeatureInnings(venBowl)
-		venBatInn = features.SortAndClip(venBatInn, asOf)
-		venBowlInn = features.SortAndClip(venBowlInn, asOf)
+
+		batInn := toFeatureInnings(batHist)
+		bowlInn := toFeatureInnings(bowlHist)
+		batInn = features.SortAndClip(batInn, asOf)
+		bowlInn = features.SortAndClip(bowlInn, asOf)
 		if windowN > 0 {
-			if len(venBatInn) > windowN {
-				venBatInn = venBatInn[len(venBatInn)-windowN:]
+			if len(batInn) > windowN {
+				batInn = batInn[len(batInn)-windowN:]
 			}
-			if len(venBowlInn) > windowN {
-				venBowlInn = venBowlInn[len(venBowlInn)-windowN:]
+			if len(bowlInn) > windowN {
+				bowlInn = bowlInn[len(bowlInn)-windowN:]
 			}
 		}
-		if err := upsertRawStatsForScope(ctx, playerID, asOf, formatID, "venue", &venueID, venBatInn, venBowlInn, "replay", m.MatchID, formatCode); err != nil {
+		if err := upsertRawStatsForScope(ctx, playerID, asOf, formatID, scope.name, scope.scopeID, batInn, bowlInn, "replay", m.MatchID, formatCode); err != nil {
 			return err
 		}
 	}
