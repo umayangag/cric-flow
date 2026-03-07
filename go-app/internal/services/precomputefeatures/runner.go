@@ -230,6 +230,9 @@ func (Runner) RunReplayGlobalPool(ctx context.Context, jobs []FormatJob, windowN
 	for i := 0; i < totalLimit; i++ {
 		gWorkers.Go(func() error {
 			for item := range workCh {
+				if workCtx.Err() != nil {
+					return nil
+				}
 				if err := processOnePlayerReplay(workCtx, item.FormatCode, item.FormatID, item.Match, item.PlayerID, windowN); err != nil {
 					return err
 				}

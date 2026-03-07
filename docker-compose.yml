@@ -41,7 +41,7 @@ services:
       # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
-      # Pipeline concurrency (workers). Precompute total split across formats (e.g. 24/4 = 6 per format). Seqcalc runs calculators in parallel.
+      # Pipeline concurrency (workers). For multiple formats, precompute uses a global worker pool. Seqcalc also runs calculators in parallel.
       # Set in .env to override (e.g. PRECOMPUTE_CONCURRENCY=16 or SEQCALC_CONCURRENCY=2).
       PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-24}
       IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
