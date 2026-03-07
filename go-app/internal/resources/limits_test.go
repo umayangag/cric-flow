@@ -3,6 +3,8 @@ package resources
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseGOMEMLIMIT(t *testing.T) {
@@ -117,9 +119,7 @@ func TestGetLimit_ReturnsPositive(t *testing.T) {
 	for _, kind := range []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding} {
 		t.Run(string(kind), func(t *testing.T) {
 			got := GetLimit(kind)
-			if got < 1 {
-				t.Errorf("GetLimit(%q) = %d, want >= 1", kind, got)
-			}
+			require.GreaterOrEqual(t, got, 1, "GetLimit(%q) should be >= 1", kind)
 		})
 	}
 }
