@@ -53,9 +53,9 @@ func TestResolveConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
+		name      string
 		requested int
-		wantMin  int // when requested <= 0 we only assert >= 1
+		wantMin   int // when requested <= 0 we only assert >= 1
 		wantExact int // when > 0 we assert exact value; 0 means use wantMin only
 	}{
 		{"positive one", 1, 1, 1},

@@ -89,7 +89,14 @@ func TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization(t *testin
 		t.Run(tt.name, func(t *testing.T) {
 			ids, err := cache.GetFormatIDsForTrainingBucket(ctx, tt.format)
 			require.NoError(t, err)
-			require.Len(t, ids, tt.wantNumFormats, "format %q should yield %d format ID(s)", tt.format, tt.wantNumFormats)
+			require.Len(
+				t,
+				ids,
+				tt.wantNumFormats,
+				"format %q should yield %d format ID(s)",
+				tt.format,
+				tt.wantNumFormats,
+			)
 		})
 	}
 }
