@@ -50,11 +50,17 @@ process_category() {
     done
 }
 
+# Fill FILES_ARR with staged files matching pattern. Returns 0 if at least one file, 1 otherwise.
+fill_category_array() {
+    local pattern="$1"
+    FILES_ARR=()
+    while IFS= read -r -d '' f; do FILES_ARR+=("$f"); done < <(process_category "$pattern")
+    [ ${#FILES_ARR[@]} -gt 0 ]
+}
+
 # --- Go App ---
-GO_FILES_ARR=()
-while IFS= read -r -d '' f; do GO_FILES_ARR+=("$f"); done < <(process_category '^go-app/.*\.go$')
-if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
-    echo "[go-app] Processing ${#GO_FILES_ARR[@]} files..."
+if fill_category_array '^go-app/.*\.go$'; then
+    echo "[go-app] Processing ${#FILES_ARR[@]} files..."
     # Ensure tools are in PATH (match Makefile behavior)
     GOBIN="$(go env GOPATH)/bin"
     export PATH="${GOBIN}:$PATH"
@@ -70,11 +76,11 @@ if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
     fi
 
     # Format
-    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 gofumpt -w
-    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 golines -w -m 120
+    printf '%s\0' "${FILES_ARR[@]}" | xargs -0 gofumpt -w
+    printf '%s\0' "${FILES_ARR[@]}" | xargs -0 golines -w -m 120
 
     # Stage changes
-    printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
+    printf '%s\0' "${FILES_ARR[@]}" | xargs -0 git add
 
     # Lint (golangci-lint)
     if command -v golangci-lint >/dev/null 2>&1; then
@@ -82,12 +88,12 @@ if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
         if [ -f "$CONFIG" ]; then
              echo "[go-app] Linting (and fixing) modified packages..."
              # Run on packages (directories) to ensure typechecking works
-             mapfile -t GO_DIRS_ARR < <(printf '%s\n' "${GO_FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
+             mapfile -t GO_DIRS_ARR < <(printf '%s\n' "${FILES_ARR[@]}" | xargs -n1 dirname | sort -u)
              # shellcheck disable=SC2086
              golangci-lint run --fix -c "$CONFIG" -- "${GO_DIRS_ARR[@]}"
 
              # Stage changes (re-stage modified files)
-             printf '%s\0' "${GO_FILES_ARR[@]}" | xargs -0 git add
+             printf '%s\0' "${FILES_ARR[@]}" | xargs -0 git add
         else
              echo "[go-app] No .golangci.yml found, skipping lint."
         fi
@@ -97,10 +103,8 @@ if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
 fi
 
 # --- Python (ml-service) ---
-PY_FILES_ARR=()
-while IFS= read -r -d '' f; do PY_FILES_ARR+=("$f"); done < <(process_category '^ml-service/.*\.py$')
-if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
-    echo "[ml-service] Processing ${#PY_FILES_ARR[@]} files..."
+if fill_category_array '^ml-service/.*\.py$'; then
+    echo "[ml-service] Processing ${#FILES_ARR[@]} files..."
     VENV="ml-service/.venv"
     BIN="$VENV/bin"
 
@@ -108,28 +112,26 @@ if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
         echo "[ml-service] Virtualenv not found at $VENV. Skipping (run 'make init-py' to fix)."
     else
         # Format and lint: ruff
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" format --line-length 120
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
+        printf '%s\0' "${FILES_ARR[@]}" | xargs -0 "$BIN/ruff" format --line-length 120
+        printf '%s\0' "${FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check --fix
 
         # Stage changes
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 git add
+        printf '%s\0' "${FILES_ARR[@]}" | xargs -0 git add
 
         # Check only (gates)
-        printf '%s\0' "${PY_FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check
+        printf '%s\0' "${FILES_ARR[@]}" | xargs -0 "$BIN/ruff" check
     fi
 fi
 
 # --- Frontend ---
-FE_FILES_ARR=()
-while IFS= read -r -d '' f; do FE_FILES_ARR+=("$f"); done < <(process_category '^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$')
-if [ ${#FE_FILES_ARR[@]} -gt 0 ]; then
-    echo "[frontend] Processing ${#FE_FILES_ARR[@]} files..."
+if fill_category_array '^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$'; then
+    echo "[frontend] Processing ${#FILES_ARR[@]} files..."
     if [ ! -d "frontend/node_modules" ]; then
         echo "[frontend] node_modules not found. Skipping (run 'make -C frontend install' to fix)."
     else
         # Build relative list (strip leading frontend/)
         REL_FILES_ARR=()
-        for f in "${FE_FILES_ARR[@]}"; do
+        for f in "${FILES_ARR[@]}"; do
           REL_FILES_ARR+=("${f#frontend/}")
         done
 

@@ -151,7 +151,7 @@ def rows_to_xy_by_format(
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feature_cols)}
 
-    min_rows = pipe_cfg.get("min_rows_for_training", 10)
+    min_rows = pipe_cfg["min_rows_for_training"]
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
