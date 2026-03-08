@@ -151,15 +151,17 @@ def rows_to_xy_by_format(
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feature_cols)}
 
+    min_rows = pipe_cfg.get("min_rows_for_training", 10)
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in feature_cols if c in g.columns] + [WIN_TARGET_COL])
-        if g.empty or len(g) < 10:
+        if g.empty or len(g) < min_rows:
             logger.warning(
-                "train_win.format_skipped format=%s rows=%s reason=insufficient_rows min_required=10",
+                "train_win.format_skipped format=%s rows=%s reason=insufficient_rows min_required=%s",
                 fmt,
                 len(g),
+                min_rows,
             )
             continue
         X = g[feature_cols].astype(float).values
