@@ -385,10 +385,12 @@ def main() -> None:
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
         if not by_format and (args.go_app_url and args.cutoff):
+            min_rows = get_pipeline_common_config()["min_rows_for_training"]
             logger.warning(
-                "train_win.csv_insufficient path=%s total_rows=%s falling_back_to_api hint=CSV had no format with >=10 rows; re-run export-dataset for a fresh CSV",
+                "train_win.csv_insufficient path=%s total_rows=%s falling_back_to_api hint=CSV had no format with >=%s rows; re-run export-dataset for a fresh CSV",
                 csv_path,
                 csv_total_rows,
+                min_rows,
             )
     else:
         if not args.go_app_url or not args.cutoff:
