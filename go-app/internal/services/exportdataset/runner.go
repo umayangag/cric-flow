@@ -153,11 +153,15 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 				g.Go(func() error {
 					filename := fmt.Sprintf("%s_encoded_all.csv", e.name)
 					slog.Info("pipeline: export-dataset exporting " + filename)
-					return r.writeUsing(
+					err := r.writeUsing(
 						opts.OutDir,
 						filename,
 						func(w io.Writer) error { return e.exporter.ExportUnified(parentCtx, w) },
 					)
+					if err != nil {
+						return fmt.Errorf("%s: %w", e.name, err)
+					}
+					return nil
 				})
 			}
 			if err := g.Wait(); err != nil {
