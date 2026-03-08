@@ -118,6 +118,7 @@ func TestConcurrencyLimit_KindImport(t *testing.T) {
 func TestGetLimit_ReturnsPositive(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding} {
+		kind := kind // capture range variable
 		t.Run(string(kind), func(t *testing.T) {
 			t.Parallel()
 			got := GetLimit(kind)

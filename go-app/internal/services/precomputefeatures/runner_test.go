@@ -99,6 +99,7 @@ func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			err := r.RunReplayGlobalPool(ctx, tt.jobs, 0, 10)

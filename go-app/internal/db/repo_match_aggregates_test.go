@@ -26,6 +26,7 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 		{"large values", 500, 20, 25, "PAK"},
 	}
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
