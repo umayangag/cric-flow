@@ -41,8 +41,7 @@ func buildWinAggAndTop3CTEs() string {
 		)
 	}
 	// Join with comma between CTEs; do not add trailing comma (would cause "syntax error at or near SELECT").
-	s := strings.Join(parts, ",\n\t")
-	return strings.TrimSuffix(s, ",\n\t")
+	return strings.Join(parts, ",\n\t")
 }
 
 func buildWinFeatureSelectColumns() string {
@@ -171,6 +170,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	` + buildWinAggAndTop3CTEs() + `
+	/* main */
 	SELECT m.match_id, m.format_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
