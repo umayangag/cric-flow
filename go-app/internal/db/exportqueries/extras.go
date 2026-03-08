@@ -40,7 +40,7 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 		LEFT JOIN match_format mf ON m.format_id = mf.id
 LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
-		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
+		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, m.match_date, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
 	),
 	bat_players AS (
 		SELECT bd.match_id, bd.player_id, m.format_id, m.match_date

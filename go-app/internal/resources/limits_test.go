@@ -3,6 +3,8 @@ package resources
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseGOMEMLIMIT(t *testing.T) {
@@ -112,6 +114,19 @@ func TestConcurrencyLimit_KindImport(t *testing.T) {
 	}
 }
 
+// TestGetLimit_ReturnsPositive ensures GetLimit returns at least 1 for each kind (covers GetLimit and config callback path).
+func TestGetLimit_ReturnsPositive(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding} {
+		kind := kind // capture range variable
+		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
+			got := GetLimit(kind)
+			require.GreaterOrEqual(t, got, 1, "GetLimit(%q) should be >= 1", kind)
+		})
+	}
+}
+
 func TestClampToCeiling(t *testing.T) {
 	if clampToCeiling(0, 10) != 1 {
 		t.Error("clampToCeiling(0,10) should floor to 1")
@@ -131,11 +146,11 @@ func TestMemoryBasedLimit(t *testing.T) {
 		memLimit int64 // in bytes
 		want     int
 	}{
-		// 2GiB * default frac (95%) / per-worker MB: precompute uses default 450 → 2048*0.95/450≈4; seqcalc capped at 1 for ≤2GB
-		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 4},
-		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 12},
+		// 2GiB * default frac (85%) / per-worker MB: precompute uses default 450 → 2048*0.85/450≈3; seqcalc capped at 1 for ≤2GB
+		{"precompute 2GiB", KindPrecompute, 2 * 1024 * 1024 * 1024, 3},
+		{"import 2GiB", KindImport, 2 * 1024 * 1024 * 1024, 11},
 		{"seqcalc 2GiB", KindSeqCalc, 2 * 1024 * 1024 * 1024, 1},
-		// 512MiB * 95% / 450 MiB < 1 → 1
+		// 512MiB * 85% / 450 MiB < 1 → 1
 		{"precompute 512MiB", KindPrecompute, 512 * 1024 * 1024, 1},
 		{"no limit", KindPrecompute, 0, 0},
 	}

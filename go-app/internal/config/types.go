@@ -43,7 +43,7 @@ type ResourcesConfig struct {
 	ExportMBPerWorker                int `json:"export_mb_per_worker"`                 // default 100
 	SeqCalcMBPerWorker               int `json:"seqcalc_mb_per_worker"`                // default 500
 	FieldingMBPerWorker              int `json:"fielding_mb_per_worker"`               // default 100
-	MemoryUsageFractionPercent       int `json:"memory_usage_fraction_percent"`        // percent of limit for workers (default 95)
+	MemoryUsageFractionPercent       int `json:"memory_usage_fraction_percent"`        // percent of limit for workers (default 85)
 	SeqCalcLowMemoryLimitGiB         int `json:"seqcalc_low_memory_limit_gib"`         // cap seqcalc concurrency to 1 below this (default 2)
 	PrecomputeConcurrencyWhenNoLimit int `json:"precompute_concurrency_when_no_limit"` // 0 = auto (NumCPU); set >0 to cap (default 0)
 }

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
+DEFAULT_MIN_ROWS_FOR_TRAINING = 10
 
 _cached: Optional[Dict[str, Any]] = None
 
@@ -458,10 +459,18 @@ def get_pipeline_common_config() -> Dict[str, Any]:
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     gp = (ml.get("generalized_pipeline") if isinstance(ml, dict) else None) or {}
+    min_rows = gp.get("min_rows_for_training", DEFAULT_MIN_ROWS_FOR_TRAINING)
+    try:
+        min_rows = int(min_rows)
+    except (TypeError, ValueError):
+        min_rows = DEFAULT_MIN_ROWS_FOR_TRAINING
+    min_rows = max(1, min_rows)
+
     return {
         "use_robust_scaler": bool(gp.get("use_robust_scaler", True)),
         "time_decay_halflife_years": float(gp.get("time_decay_halflife_years", 2.0)),
         "delta_threshold": float(gp.get("delta_threshold", 0.08)),
+        "min_rows_for_training": min_rows,
     }
 
 

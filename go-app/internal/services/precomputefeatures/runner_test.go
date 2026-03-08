@@ -1,6 +1,7 @@
 package precomputefeatures
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -51,20 +52,58 @@ func TestToFeatureInnings(t *testing.T) {
 func TestResolveConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
-	t.Run("positive requested uses value", func(t *testing.T) {
-		require.Equal(t, 5, resolveConcurrencyLimit(5))
-		require.Equal(t, 1, resolveConcurrencyLimit(1))
-		require.Equal(t, 100, resolveConcurrencyLimit(100))
-	})
-
-	t.Run("zero or negative uses resource limit and ensures at least 1", func(t *testing.T) {
-		got := resolveConcurrencyLimit(0)
-		require.GreaterOrEqual(t, got, 1, "resolveConcurrencyLimit(0) should return >= 1")
-	})
+	tests := []struct {
+		name      string
+		requested int
+		wantMin   int // when requested <= 0 we only assert >= 1
+		wantExact int // when > 0 we assert exact value; 0 means use wantMin only
+	}{
+		{"positive one", 1, 1, 1},
+		{"positive five", 5, 5, 5},
+		{"positive hundred", 100, 100, 100},
+		{"zero uses resource limit and at least 1", 0, 1, 0},
+		{"negative uses resource limit and at least 1", -1, 1, 0},
+		{"large positive", 1000, 1000, 1000},
+	}
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolveConcurrencyLimit(tt.requested)
+			if tt.wantExact != 0 {
+				require.Equal(t, tt.wantExact, got)
+			} else {
+				require.GreaterOrEqual(t, got, tt.wantMin)
+			}
+		})
+	}
 }
 
 func TestReplayMatchPageSize(t *testing.T) {
 	// replayMatchPageSize returns config value or default; ensure it returns a positive int
 	got := replayMatchPageSize()
 	require.Greater(t, got, 0, "replayMatchPageSize should return positive value")
+}
+
+func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
+	t.Parallel()
+	r := NewRunner()
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		jobs []FormatJob
+	}{
+		{"nil jobs", nil},
+		{"empty jobs", []FormatJob{}},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := r.RunReplayGlobalPool(ctx, tt.jobs, 0, 10)
+			require.NoError(t, err)
+		})
+	}
 }

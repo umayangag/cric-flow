@@ -416,9 +416,11 @@ def test_get_pipeline_common_config():
     assert "use_robust_scaler" in cfg
     assert "time_decay_halflife_years" in cfg
     assert "delta_threshold" in cfg
+    assert "min_rows_for_training" in cfg
     assert isinstance(cfg["use_robust_scaler"], bool)
     assert cfg["time_decay_halflife_years"] == 2.0
     assert cfg["delta_threshold"] == 0.08
+    assert cfg["min_rows_for_training"] == 10
 
 
 def test_training_required_keys_constant():

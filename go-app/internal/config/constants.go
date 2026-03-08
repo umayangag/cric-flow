@@ -121,9 +121,9 @@ const (
 	DefaultSeqCalcMBPerWorker    = 500
 	DefaultFieldingMBPerWorker   = 100
 	// DefaultMemoryUsageFractionPercent: fraction of container memory used for workers (rest for Go runtime, DB, spikes).
-	// Set to 95 based on observed stable usage in production; leave headroom via resource limits rather than this cap.
-	// Using a lower value (e.g. 90) would reduce throughput without material safety gain when resource limits are set.
-	DefaultMemoryUsageFractionPercent = 95
+	// Set to 85 to provide more headroom for the Go runtime and database, especially in memory-constrained environments.
+	// A lower value may slightly reduce throughput but increases stability by reducing OOM risk.
+	DefaultMemoryUsageFractionPercent = 85
 	DefaultSeqCalcLowMemoryLimitGiB   = 2
 	// 0 = use NumCPU() when no memory limit (optimum resources); set > 0 to cap precompute concurrency.
 	DefaultPrecomputeConcurrencyWhenNoLimit = 0
