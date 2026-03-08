@@ -40,19 +40,13 @@ done < <(printf '%s' "$STAGED_FILES_NUL")
 
 echo "[pre-commit] optimized check on modified files..."
 
-# Output NUL-separated list of staged files matching the given regex (Bash 3.2–compatible; no nameref)
-get_staged_matching() {
-    local pattern="$1"
-    for f in "${STAGED_FILES[@]:-}"; do
-        if [[ "$f" =~ $pattern ]]; then
-            printf '%s\0' "$f"
-        fi
-    done
-}
-
 # --- Go App ---
 GO_FILES_ARR=()
-while IFS= read -r -d '' f; do GO_FILES_ARR+=("$f"); done < <(get_staged_matching "^go-app/.*\.go$")
+for f in "${STAGED_FILES[@]:-}"; do
+    if [[ "$f" =~ ^go-app/.*\.go$ ]]; then
+        GO_FILES_ARR+=("$f")
+    fi
+done
 if [ ${#GO_FILES_ARR[@]} -gt 0 ]; then
     echo "[go-app] Processing ${#GO_FILES_ARR[@]} files..."
     # Ensure tools are in PATH (match Makefile behavior)
@@ -98,7 +92,11 @@ fi
 
 # --- Python (ml-service) ---
 PY_FILES_ARR=()
-while IFS= read -r -d '' f; do PY_FILES_ARR+=("$f"); done < <(get_staged_matching "^ml-service/.*\.py$")
+for f in "${STAGED_FILES[@]:-}"; do
+    if [[ "$f" =~ ^ml-service/.*\.py$ ]]; then
+        PY_FILES_ARR+=("$f")
+    fi
+done
 if [ ${#PY_FILES_ARR[@]} -gt 0 ]; then
     echo "[ml-service] Processing ${#PY_FILES_ARR[@]} files..."
     VENV="ml-service/.venv"
@@ -121,7 +119,11 @@ fi
 
 # --- Frontend ---
 FE_FILES_ARR=()
-while IFS= read -r -d '' f; do FE_FILES_ARR+=("$f"); done < <(get_staged_matching "^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$")
+for f in "${STAGED_FILES[@]:-}"; do
+    if [[ "$f" =~ ^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$ ]]; then
+        FE_FILES_ARR+=("$f")
+    fi
+done
 if [ ${#FE_FILES_ARR[@]} -gt 0 ]; then
     echo "[frontend] Processing ${#FE_FILES_ARR[@]} files..."
     if [ ! -d "frontend/node_modules" ]; then
