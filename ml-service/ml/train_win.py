@@ -117,10 +117,13 @@ def rows_to_xy_by_format(
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    all_possible = list(
-        set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date", "format_code", "match_date_unix"}
-    )
-    for c in all_possible:
+    # Only convert truly numeric columns; leave format_code and match_date as-is for grouping and time weights.
+    _numeric_set = (set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date_unix"}) - {
+        "format_code",
+        "match_date",
+    }
+    numeric_cols = list(_numeric_set)
+    for c in numeric_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -153,6 +156,11 @@ def rows_to_xy_by_format(
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in feature_cols if c in g.columns] + [WIN_TARGET_COL])
         if g.empty or len(g) < 10:
+            logger.warning(
+                "train_win.format_skipped format=%s rows=%s reason=insufficient_rows min_required=10",
+                fmt,
+                len(g),
+            )
             continue
         X = g[feature_cols].astype(float).values
         Y = g[WIN_TARGET_COL].astype(int).values
@@ -359,12 +367,27 @@ def main() -> None:
     default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR") or default_go_app_export_dir()
     csv_path = args.csv or os.path.join(default_csv_dir, "win_encoded_all.csv")
 
+    by_format = {}
     if os.path.isfile(csv_path):
         logger.info("train_win.loading_csv path=%s (prefer CSV over API)", csv_path)
         df = pd.read_csv(csv_path)
+        csv_total_rows = len(df)
+        csv_formats = df["format_code"].unique().tolist() if "format_code" in df.columns else []
+        logger.info(
+            "train_win.csv_loaded path=%s total_rows=%s formats=%s",
+            csv_path,
+            csv_total_rows,
+            csv_formats,
+        )
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
+        if not by_format and (args.go_app_url and args.cutoff):
+            logger.warning(
+                "train_win.csv_insufficient path=%s total_rows=%s falling_back_to_api hint=CSV had no format with >=10 rows; re-run export-dataset for a fresh CSV",
+                csv_path,
+                csv_total_rows,
+            )
     else:
         if not args.go_app_url or not args.cutoff:
             logger.error(
@@ -376,6 +399,13 @@ def main() -> None:
             "train_win.csv_not_found path=%s falling_back_to_api hint=Run export-dataset first for faster training",
             csv_path,
         )
+
+    if not by_format:
+        if not args.go_app_url or not args.cutoff:
+            logger.error(
+                "train_win.no_data hint=empty or insufficient rows; no API fallback available (missing --go-app-url or --cutoff)"
+            )
+            sys.exit(1)
         logger.info("train_win.fetching_api go_app_url=%s cutoff=%s", args.go_app_url, args.cutoff)
         try:
             win = fetch_win_data(args.go_app_url, args.cutoff, args.api_key or None)
@@ -383,11 +413,14 @@ def main() -> None:
             logger.error("train_win.fetch_failed error=%s", e)
             sys.exit(1)
         headers = win.get("headers") or []
-        rows = win.get("rows") or []
-        by_format = rows_to_xy_by_format(headers, rows)
+        api_rows = win.get("rows") or []
+        logger.info("train_win.api_loaded total_rows=%s", len(api_rows))
+        by_format = rows_to_xy_by_format(headers, api_rows)
 
     if not by_format:
-        logger.error("train_win.no_data hint=empty or insufficient rows")
+        logger.error(
+            "train_win.no_data hint=empty or insufficient rows after both CSV and API; check that feature_raw_stats_snapshots is populated and export-dataset has been run"
+        )
         sys.exit(1)
 
     feature_cols: list[str] = []
