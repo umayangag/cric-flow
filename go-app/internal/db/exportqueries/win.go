@@ -40,7 +40,9 @@ func buildWinAggAndTop3CTEs() string {
 			),
 		)
 	}
-	return strings.Join(parts, ",\n\t")
+	// Join with comma between CTEs; do not add trailing comma (would cause "syntax error at or near SELECT").
+	s := strings.Join(parts, ",\n\t")
+	return strings.TrimSuffix(s, ",\n\t")
 }
 
 func buildWinFeatureSelectColumns() string {
