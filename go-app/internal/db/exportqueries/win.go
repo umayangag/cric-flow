@@ -49,7 +49,7 @@ func buildWinFeatureSelectColumns() string {
 	for i, name := range winFeatureCTENames {
 		n := i + 1
 		cols = append(cols, fmt.Sprintf(
-			"COALESCE(a%d.s, 0), COALESCE(a%d.mean_v, 0), COALESCE(a%d.std_v, 0), COALESCE(a%d.max_v, 0), COALESCE(a%d.min_v, 0), COALESCE(t3a%d.top3_mean, 0), COALESCE(a%d.cnt, 0) -- %s",
+			"COALESCE(a%d.s, 0), COALESCE(a%d.mean_v, 0), COALESCE(a%d.std_v, 0), COALESCE(a%d.max_v, 0), COALESCE(a%d.min_v, 0), COALESCE(t3a%d.top3_mean, 0), COALESCE(a%d.cnt, 0) /* %s */",
 			n,
 			n,
 			n,
