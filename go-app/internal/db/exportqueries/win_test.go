@@ -27,7 +27,9 @@ func TestWinQueryStructure(t *testing.T) {
 func TestBuildWinAggAndTop3CTEs_ContainsAllFeatureCTEs(t *testing.T) {
 	ctes := buildWinAggAndTop3CTEs()
 	for _, name := range winFeatureCTENames {
+		name := name // capture range variable
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			require.Contains(t, ctes, "agg_"+name, "CTEs must include agg_%s", name)
 			require.Contains(t, ctes, "top3_"+name, "CTEs must include top3_%s", name)
 		})
@@ -55,8 +57,10 @@ func TestBuildWinFeatureSelectColumns_ContainsAllFeatureColumns(t *testing.T) {
 func TestBuildWinFeatureJoins_ContainsAllFeatureJoins(t *testing.T) {
 	joins := buildWinFeatureJoins()
 	for i, name := range winFeatureCTENames {
+		i, name := i, name // capture range variables
 		n := i + 1
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			require.Contains(t, joins, fmt.Sprintf("LEFT JOIN agg_%s a%d ON a%d.match_id = m.match_id", name, n, n))
 			require.Contains(t, joins, fmt.Sprintf("LEFT JOIN top3_%s t3a%d ON t3a%d.match_id = m.match_id", name, n, n))
 		})

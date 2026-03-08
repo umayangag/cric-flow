@@ -152,7 +152,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 				e := exp
 				g.Go(func() error {
 					filename := fmt.Sprintf("%s_encoded_all.csv", e.name)
-					slog.Info("pipeline: export-dataset exporting " + filename)
+					slog.Info("pipeline: export-dataset exporting", slog.String("file", filename))
 					err := r.writeUsing(
 						opts.OutDir,
 						filename,
