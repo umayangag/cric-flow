@@ -119,6 +119,14 @@
 "add_interactions": [],
 "add_log1p": []
 }
+},
+"mlqa": {
+"overfitting_delta_threshold": 0.08,
+"stability_fold_std_threshold": 0.065,
+"bias_dip_low": 0.8,
+"bias_dip_high": 1.25,
+"sensitivity_top_weight_threshold": 0.7
+}
 }
 },
 "team_prediction": {
