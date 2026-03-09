@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { api } from '../api';
 import type { HealthResponse } from '../types';
 import Paper from '@mui/material/Paper';
@@ -10,8 +10,10 @@ import Divider from '@mui/material/Divider';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
+import { usePolling } from '../hooks/usePolling';
 
 const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
+const HEALTH_REFRESH_MS = 60000;
 
 const ARTIFACT_LABELS: Record<(typeof MODEL_TYPES)[number], string> = {
   batting: 'bat',
@@ -61,9 +63,8 @@ const HealthTab: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  // Initial load + periodic refresh while the tab is mounted.
+  usePolling(load, HEALTH_REFRESH_MS, true);
 
   const apiState = useMemo(() => {
     if (!apiHealth) return 'pending' as const;

@@ -65,6 +65,8 @@ export interface UseEvaluateDbReturn {
   resetOutputs: () => void;
   handleLoadCandidates: () => Promise<void>;
   handleEvaluateSelectedMatch: () => Promise<void>;
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
 }
 
 export function useEvaluateDb(): UseEvaluateDbReturn {
@@ -185,6 +187,8 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [evaluationSteps, setEvaluationSteps] = useState<EvaluationStep[]>([]);
+  const [jobUseUnifiedModel, setJobUseUnifiedModel] = useState<boolean | null>(null);
+  const [jobUseLatestModel, setJobUseLatestModel] = useState<boolean | null>(null);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -204,6 +208,8 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setStatusMessage('');
     setError(null);
     setCurrentJobId(null);
+    setJobUseUnifiedModel(null);
+    setJobUseLatestModel(null);
     try {
       localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
     } catch {
@@ -232,7 +238,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     }
     if (!data.job_id) return;
 
-    api
+        api
       .getEvaluateStatus(data.job_id)
       .then((status) => {
         if (cancelled) return;
@@ -241,6 +247,12 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setTeam1(data.team1);
         setTeam2(data.team2);
         setSelectedMatchId(data.match_id);
+        setJobUseUnifiedModel(
+          typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
+        );
+        setJobUseLatestModel(
+          typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
+        );
         setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
         if (status.status === 'running') {
           setEvaluating(true);
@@ -279,6 +291,12 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     try {
       const status = await api.getEvaluateStatus(currentJobId);
       setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+      setJobUseUnifiedModel(
+        typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
+      );
+      setJobUseLatestModel(
+        typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
+      );
       if (status.status === 'done') {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);
@@ -400,6 +418,8 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
+      setJobUseUnifiedModel(predictionModel === 'unified');
+      setJobUseLatestModel(useLatestModel);
       setStatusMessage(
         'Evaluation in progress. You can refresh the page; progress will be restored.',
       );
@@ -441,5 +461,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     resetOutputs,
     handleLoadCandidates,
     handleEvaluateSelectedMatch,
+    jobUseUnifiedModel,
+    jobUseLatestModel,
   };
 }

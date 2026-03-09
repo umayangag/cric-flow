@@ -25,6 +25,19 @@ const MLModelStatsTab: React.FC = () => {
     fetchStats();
   }, [fetchStats]);
 
+  // Refresh model stats automatically when a pipeline step completes (e.g. training/auto-tune),
+  // but only while this tab is mounted.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = () => {
+      void fetchStats();
+    };
+    window.addEventListener('cric:pipeline-completed', handler as EventListener);
+    return () => {
+      window.removeEventListener('cric:pipeline-completed', handler as EventListener);
+    };
+  }, [fetchStats]);
+
   return <MLModelStatsSection data={data} error={error} loading={loading} onRefresh={fetchStats} />;
 };
 

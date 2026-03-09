@@ -186,7 +186,7 @@ const UpcomingMatchTab: React.FC = () => {
           {result.scorecard_summary && (
             <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Scorecard summary (winner from win model when available)
+                Scorecard summary
               </Typography>
               <Stack direction="row" spacing={3} flexWrap="wrap">
                 <Typography variant="body2">
@@ -206,6 +206,35 @@ const UpcomingMatchTab: React.FC = () => {
                   <Typography variant="body2">
                     <strong>Win probability ({team1}):</strong>{' '}
                     {(result.scorecard_summary.team1_win_probability * 100).toFixed(1)}%
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+          )}
+          {result.scorecard_summary_reconciled && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
+              <Typography variant="subtitle2" color="primary.dark" gutterBottom>
+                Reconciled scorecard summary (aligned with win model)
+              </Typography>
+              <Stack direction="row" spacing={3} flexWrap="wrap">
+                <Typography variant="body2">
+                  <strong>Innings 1 ({team1}):</strong>{' '}
+                  {result.scorecard_summary_reconciled.innings1_total.toFixed(0)} runs
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Innings 2 ({team2}):</strong>{' '}
+                  {result.scorecard_summary_reconciled.innings2_total.toFixed(0)} runs
+                </Typography>
+                {result.scorecard_summary_reconciled.predicted_winner && (
+                  <Typography variant="body2">
+                    <strong>Predicted winner:</strong>{' '}
+                    {result.scorecard_summary_reconciled.predicted_winner}
+                  </Typography>
+                )}
+                {result.scorecard_summary_reconciled.team1_win_probability != null && (
+                  <Typography variant="body2">
+                    <strong>Win probability ({team1}):</strong>{' '}
+                    {(result.scorecard_summary_reconciled.team1_win_probability * 100).toFixed(1)}%
                   </Typography>
                 )}
               </Stack>

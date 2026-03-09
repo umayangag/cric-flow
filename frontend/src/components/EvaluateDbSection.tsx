@@ -77,6 +77,10 @@ export interface EvaluateDbSectionProps {
   evaluating: boolean;
   evaluationSteps: EvaluationStep[];
 
+  // Evaluate job mode (from backend flags)
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
+
   // Derived
   canLoad: boolean;
   canEvaluate: boolean;
@@ -112,6 +116,8 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   currentJobId,
   evaluating,
   evaluationSteps,
+  jobUseUnifiedModel,
+  jobUseLatestModel,
   canLoad,
   canEvaluate,
   onResetOutputs,
@@ -216,6 +222,22 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
+        {(jobUseUnifiedModel !== null || jobUseLatestModel !== null) && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Mode:{' '}
+            {jobUseUnifiedModel === null
+              ? '—'
+              : jobUseUnifiedModel
+              ? 'Unified (all-formats) model'
+              : 'Format-specific model'}
+            {' · '}
+            {jobUseLatestModel === null
+              ? '—'
+              : jobUseLatestModel
+              ? 'Latest model'
+              : 'Strict temporal cutoff'}
+          </Typography>
+        )}
       </Paper>
     )}
 
@@ -375,6 +397,22 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
+        {(jobUseUnifiedModel !== null || jobUseLatestModel !== null) && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Evaluated with{' '}
+            {jobUseUnifiedModel === null
+              ? '—'
+              : jobUseUnifiedModel
+              ? 'unified (all-formats) model'
+              : 'format-specific model'}
+            {' · '}
+            {jobUseLatestModel === null
+              ? '—'
+              : jobUseLatestModel
+              ? 'latest model'
+              : 'strict temporal cutoff'}
+          </Typography>
+        )}
         <EvaluationResults result={evaluationResult} />
       </Box>
     )}

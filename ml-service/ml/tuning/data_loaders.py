@@ -155,7 +155,7 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, T
     return by_format
 
 
-def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, ...]]:
     if _train_win is None:
         logger.error("auto_tune.load_win_csv.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win CSV")
@@ -271,7 +271,7 @@ def load_innings_from_api(
 
 def load_win_from_api(
     go_app_url: str, cutoff: str, api_key: Optional[str], format_filter: Optional[str] = None
-) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, ...]]:
     if _train_win is None:
         logger.error("auto_tune.load_win_from_api.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win API")

@@ -28,12 +28,13 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
       subtitle="All model types, per-format vs unified artifacts, features, outputs, and how they connect."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        The pipeline trains <strong>six model types</strong>: <strong>batting</strong>,{' '}
-        <strong>bowling</strong>, <strong>fielding</strong> (player-level),
-        <strong> extras</strong> and <strong>win</strong> (match-level), and optionally{' '}
-        <strong>combination meta</strong> (weights for team selection). All share the same feature
-        families (context, form, consistency, venue, opposition, weather). Match-level models use
-        aggregates of player features so team composition influences extras and win probability.
+        The pipeline trains <strong>five core model types</strong>: <strong>batting</strong>,{' '}
+        <strong>bowling</strong>, <strong>fielding</strong> (player-level), and{' '}
+        <strong>extras</strong> and <strong>win</strong> (match-level). In addition, an optional{' '}
+        <strong>combination meta</strong> model learns weights for team selection. All share the
+        same feature families (context, form, consistency, venue, opposition, weather). Match-level
+        models use aggregates of player features so team composition influences extras and win
+        probability.
       </Typography>
 
       {/* Per-format vs unified (legacy) */}

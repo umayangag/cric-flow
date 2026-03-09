@@ -362,8 +362,8 @@ def main() -> None:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                                all_X = np.vstack([X for _, (X, Y, *_) in by_f.items()])
+                                all_Y = np.concatenate([Y.ravel() for _, (X, Y, *_) in by_f.items()])
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_win_data unified empty")
                                     continue
