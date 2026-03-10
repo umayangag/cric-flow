@@ -30,8 +30,8 @@ import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
 
-/** Renders job mode line (unified/format model · latest/strict) when at least one flag is non-null. */
-function JobModeLine({
+/** Reusable display of job mode (unified/format model · latest/strict) when at least one flag is non-null. */
+function JobModeDisplay({
   jobUseUnifiedModel,
   jobUseLatestModel,
   prefix,
@@ -253,7 +253,7 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
-        <JobModeLine
+        <JobModeDisplay
           jobUseUnifiedModel={jobUseUnifiedModel}
           jobUseLatestModel={jobUseLatestModel}
           prefix="Mode: "
@@ -418,7 +418,7 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
-        <JobModeLine
+        <JobModeDisplay
           jobUseUnifiedModel={jobUseUnifiedModel}
           jobUseLatestModel={jobUseLatestModel}
           prefix="Evaluated with "

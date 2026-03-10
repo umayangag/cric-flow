@@ -420,8 +420,10 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
-      setJobUseUnifiedModel(predictionModel === 'unified');
-      setJobUseLatestModel(useLatestModel);
+      applyJobModeFromStatus({
+        use_unified_model: predictionModel === 'unified',
+        use_latest_model: useLatestModel,
+      });
       setStatusMessage(
         'Evaluation in progress. You can refresh the page; progress will be restored.',
       );
@@ -429,7 +431,15 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
     }
-  }, [format, team1, team2, selectedMatchId, predictionModel, useLatestModel]);
+  }, [
+    format,
+    team1,
+    team2,
+    selectedMatchId,
+    predictionModel,
+    useLatestModel,
+    applyJobModeFromStatus,
+  ]);
 
   return {
     format,

@@ -18,8 +18,56 @@ import {
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import TeamTable from './TeamTable';
 import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
+import type { PredictScorecardSummary } from '../types';
 
 const filter = createFilterOptions<string>();
+
+function ScorecardSummaryDisplay({
+  title,
+  summaryData,
+  team1,
+  team2,
+  titleColor,
+  sx,
+}: {
+  title: string;
+  summaryData: PredictScorecardSummary;
+  team1: string;
+  team2: string;
+  titleColor?: string;
+  sx?: object;
+}) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2, ...sx }}>
+      <Typography
+        variant="subtitle2"
+        {...(titleColor ? { sx: { color: titleColor } } : { color: 'text.secondary' })}
+        gutterBottom
+      >
+        {title}
+      </Typography>
+      <Stack direction="row" spacing={3} flexWrap="wrap">
+        <Typography variant="body2">
+          <strong>Innings 1 ({team1}):</strong> {summaryData.innings1_total.toFixed(0)} runs
+        </Typography>
+        <Typography variant="body2">
+          <strong>Innings 2 ({team2}):</strong> {summaryData.innings2_total.toFixed(0)} runs
+        </Typography>
+        {summaryData.predicted_winner && (
+          <Typography variant="body2">
+            <strong>Predicted winner:</strong> {summaryData.predicted_winner}
+          </Typography>
+        )}
+        {summaryData.team1_win_probability != null && (
+          <Typography variant="body2">
+            <strong>Win probability ({team1}):</strong>{' '}
+            {(summaryData.team1_win_probability * 100).toFixed(1)}%
+          </Typography>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
 
 function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
   const filtered = filter(options, params);
@@ -184,61 +232,23 @@ const UpcomingMatchTab: React.FC = () => {
       {result && (
         <Box sx={{ mt: 3 }}>
           {result.scorecard_summary && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Scorecard summary
-              </Typography>
-              <Stack direction="row" spacing={3} flexWrap="wrap">
-                <Typography variant="body2">
-                  <strong>Innings 1 ({team1}):</strong>{' '}
-                  {result.scorecard_summary.innings1_total.toFixed(0)} runs
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Innings 2 ({team2}):</strong>{' '}
-                  {result.scorecard_summary.innings2_total.toFixed(0)} runs
-                </Typography>
-                {result.scorecard_summary.predicted_winner && (
-                  <Typography variant="body2">
-                    <strong>Predicted winner:</strong> {result.scorecard_summary.predicted_winner}
-                  </Typography>
-                )}
-                {result.scorecard_summary.team1_win_probability != null && (
-                  <Typography variant="body2">
-                    <strong>Win probability ({team1}):</strong>{' '}
-                    {(result.scorecard_summary.team1_win_probability * 100).toFixed(1)}%
-                  </Typography>
-                )}
-              </Stack>
-            </Paper>
+            <ScorecardSummaryDisplay
+              title="Scorecard summary"
+              summaryData={result.scorecard_summary}
+              team1={team1}
+              team2={team2}
+              sx={{ bgcolor: 'grey.50' }}
+            />
           )}
           {result.scorecard_summary_reconciled && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
-              <Typography variant="subtitle2" color="primary.dark" gutterBottom>
-                Reconciled scorecard summary (aligned with win model)
-              </Typography>
-              <Stack direction="row" spacing={3} flexWrap="wrap">
-                <Typography variant="body2">
-                  <strong>Innings 1 ({team1}):</strong>{' '}
-                  {result.scorecard_summary_reconciled.innings1_total.toFixed(0)} runs
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Innings 2 ({team2}):</strong>{' '}
-                  {result.scorecard_summary_reconciled.innings2_total.toFixed(0)} runs
-                </Typography>
-                {result.scorecard_summary_reconciled.predicted_winner && (
-                  <Typography variant="body2">
-                    <strong>Predicted winner:</strong>{' '}
-                    {result.scorecard_summary_reconciled.predicted_winner}
-                  </Typography>
-                )}
-                {result.scorecard_summary_reconciled.team1_win_probability != null && (
-                  <Typography variant="body2">
-                    <strong>Win probability ({team1}):</strong>{' '}
-                    {(result.scorecard_summary_reconciled.team1_win_probability * 100).toFixed(1)}%
-                  </Typography>
-                )}
-              </Stack>
-            </Paper>
+            <ScorecardSummaryDisplay
+              title="Reconciled scorecard summary (aligned with win model)"
+              summaryData={result.scorecard_summary_reconciled}
+              team1={team1}
+              team2={team2}
+              titleColor="primary.dark"
+              sx={{ bgcolor: 'primary.50' }}
+            />
           )}
           {result.simulation && (
             <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>

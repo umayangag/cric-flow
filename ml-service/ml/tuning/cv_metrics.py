@@ -378,6 +378,7 @@ def compute_mlqa_overfitting_stability(
         delta_thresh = mlqa["overfitting_delta_threshold"]
         std_thresh = mlqa["stability_fold_std_threshold"]
     except Exception:
+        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
         delta_thresh = 0.08
         std_thresh = 0.065
     pipe_fit = clone(pipe)
@@ -391,6 +392,47 @@ def compute_mlqa_overfitting_stability(
     stability_ok = fold_std <= std_thresh
     violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
     return (overfitting_ok and stability_ok, delta, fold_std, violation)
+
+
+def compute_mlqa_penalized_score(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    scoring: str,
+    mean_score: float,
+    fold_std: float,
+) -> Tuple[bool, float, float]:
+    """Compute MLQA pass, violation, and penalized score from existing CV mean and fold std.
+
+    Used by Optuna objectives to avoid duplicating MLQA logic and to avoid running
+    cross_val_score twice. Caller must have already run cross_val_score to get mean_score
+    and fold_std. Returns (pass_audit, violation, penalized_score) where penalized_score
+    is mean_score if pass_audit else mean_score - violation. On config or fit error
+    returns (False, inf, -inf).
+    """
+    from sklearn.base import clone
+    from sklearn.metrics import get_scorer
+
+    try:
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+    except Exception:
+        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
+        delta_thresh = 0.08
+        std_thresh = 0.065
+    try:
+        pipe_fit = clone(pipe)
+        pipe_fit.fit(X, y)
+        scorer = get_scorer(scoring)
+        train_score_val = scorer(pipe_fit, X, y)
+        delta = abs(float(train_score_val) - mean_score)
+        pass_audit = delta <= delta_thresh and fold_std <= std_thresh
+        violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+        penalized = mean_score if pass_audit else mean_score - violation
+        return (pass_audit, violation, penalized)
+    except Exception:
+        return (False, float("inf"), float("-inf"))
 
 
 def _compute_mlqa_audit(

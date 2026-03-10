@@ -20,7 +20,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import get_mlqa_config, get_training_params, get_tuning_config
+from ml.config import get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -28,6 +28,7 @@ from ml.tuning.cv_metrics import (
     _effective_n_jobs,
     _get_cv_object,
     compute_mlqa_overfitting_stability,
+    compute_mlqa_penalized_score,
 )
 from ml.tuning.search_space import (
     _build_pipeline,
@@ -267,25 +268,11 @@ def _run_search_two_phase_single_regression(
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
-        try:
-            from sklearn.base import clone
-            from sklearn.metrics import get_scorer
-
-            mlqa = get_mlqa_config()
-            delta_thresh = mlqa["overfitting_delta_threshold"]
-            std_thresh = mlqa["stability_fold_std_threshold"]
-            pipe_fit = clone(pipe)
-            pipe_fit.fit(X, y)
-            scorer = get_scorer(scoring)
-            train_score_val = scorer(pipe_fit, X, y)
-            delta = abs(float(train_score_val) - mean_score)
-            pass_audit = delta <= delta_thresh and fold_std <= std_thresh
-            violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
-        except Exception:
-            pass_audit = False
-            violation = float("inf")
+        pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
+            pipe, X, y, scoring, mean_score, fold_std
+        )
         trial.set_user_attr("mean_cv_score", mean_score)
-        return mean_score if pass_audit else mean_score - violation
+        return penalized_score
 
     n_phase2 = min(n_iter, PHASE2_TRIALS)
 
@@ -849,27 +836,11 @@ def _run_search_two_phase(
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
-        # Prefer trials that pass MLQA (overfitting + stability) so auto-tune aims for audit pass.
-        try:
-            from sklearn.base import clone
-            from sklearn.metrics import get_scorer
-
-            mlqa = get_mlqa_config()
-            delta_thresh = mlqa["overfitting_delta_threshold"]
-            std_thresh = mlqa["stability_fold_std_threshold"]
-            pipe_fit = clone(pipe)
-            pipe_fit.fit(X, Y)
-            scorer = get_scorer(scoring)
-            train_score_val = scorer(pipe_fit, X, Y)
-            delta = abs(float(train_score_val) - mean_score)
-            pass_audit = delta <= delta_thresh and fold_std <= std_thresh
-            violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
-        except Exception:
-            pass_audit = False
-            violation = float("inf")
+        _pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
+            pipe, X, Y, scoring, mean_score, fold_std
+        )
         trial.set_user_attr("mean_cv_score", mean_score)
-        # Maximize score; when failing audit, subtract violation so we prefer lowest overfitting + fold σ.
-        return mean_score if pass_audit else mean_score - violation
+        return penalized_score
 
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
