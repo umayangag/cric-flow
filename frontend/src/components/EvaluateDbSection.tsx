@@ -228,14 +228,14 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
             {jobUseUnifiedModel === null
               ? '—'
               : jobUseUnifiedModel
-              ? 'Unified (all-formats) model'
-              : 'Format-specific model'}
+                ? 'Unified (all-formats) model'
+                : 'Format-specific model'}
             {' · '}
             {jobUseLatestModel === null
               ? '—'
               : jobUseLatestModel
-              ? 'Latest model'
-              : 'Strict temporal cutoff'}
+                ? 'Latest model'
+                : 'Strict temporal cutoff'}
           </Typography>
         )}
       </Paper>
@@ -403,14 +403,14 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
             {jobUseUnifiedModel === null
               ? '—'
               : jobUseUnifiedModel
-              ? 'unified (all-formats) model'
-              : 'format-specific model'}
+                ? 'unified (all-formats) model'
+                : 'format-specific model'}
             {' · '}
             {jobUseLatestModel === null
               ? '—'
               : jobUseLatestModel
-              ? 'latest model'
-              : 'strict temporal cutoff'}
+                ? 'latest model'
+                : 'strict temporal cutoff'}
           </Typography>
         )}
         <EvaluationResults result={evaluationResult} />

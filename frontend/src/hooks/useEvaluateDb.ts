@@ -238,7 +238,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     }
     if (!data.job_id) return;
 
-        api
+    api
       .getEvaluateStatus(data.job_id)
       .then((status) => {
         if (cancelled) return;

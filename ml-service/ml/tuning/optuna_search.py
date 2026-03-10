@@ -181,11 +181,9 @@ def _run_search_two_phase_single_regression(
             results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
         # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best score.
         enriched_single: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
-        for (key, name, score, params, pipe) in results:
+        for key, name, score, params, pipe in results:
             try:
-                pass_audit, _, _, violation = compute_mlqa_overfitting_stability(
-                    pipe, X, y, cv, scoring, score
-                )
+                pass_audit, _, _, violation = compute_mlqa_overfitting_stability(pipe, X, y, cv, scoring, score)
             except Exception as e:
                 logger.debug("auto_tune.phase1_mlqa_skip algorithm=%s error=%s", key, e)
                 pass_audit = False
@@ -318,9 +316,7 @@ def _run_search_two_phase_single_regression(
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
-        best_score = float(
-            study.best_trial.user_attrs.get("mean_cv_score", study.best_value)
-        )
+        best_score = float(study.best_trial.user_attrs.get("mean_cv_score", study.best_value))
         alg = p.get("algorithm", best_key)
         if alg == "rf":
             est = RandomForestRegressor(
@@ -713,7 +709,7 @@ def _run_search_two_phase(
             results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
         # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best CV score.
         enriched: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
-        for (key, name, score, params, pipe) in results:
+        for key, name, score, params, pipe in results:
             try:
                 pass_audit, _delta, _fold_std, violation = compute_mlqa_overfitting_stability(
                     pipe, X, Y, cv, scoring, score
@@ -890,9 +886,7 @@ def _run_search_two_phase(
     if study.best_trial:
         params = study.best_params
         # Use actual CV mean for report, not the composite score (which may be penalized).
-        best_score = float(
-            study.best_trial.user_attrs.get("mean_cv_score", study.best_value)
-        )
+        best_score = float(study.best_trial.user_attrs.get("mean_cv_score", study.best_value))
         alg = params.get("algorithm", best_key)
         if alg == "rf":
             est = RandomForestRegressor(
