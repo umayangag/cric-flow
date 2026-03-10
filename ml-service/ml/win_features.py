@@ -15,10 +15,36 @@ Two entry points:
 
 from __future__ import annotations
 
+import json
 import math
-from typing import Dict, List, Mapping, Sequence, Tuple
+import os
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+
+
+def _load_format_codes() -> List[str]:
+    """Read ml.formats from config.json (or ML_SERVICE_CONFIG) for one-hot encoding.
+
+    Falls back to a sensible default list when config is missing or invalid.
+    """
+    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        fmts = data.get("ml", {}).get("formats") or []
+        out = [str(x).strip().upper() for x in fmts if isinstance(x, (str, int)) and str(x).strip()]
+        if out:
+            return out
+    except Exception:
+        pass
+    # Fallback ordering is stable to keep column order deterministic
+    return ["TEST", "ODI", "T20", "T20I"]
+
+
+_FORMAT_CODES: List[str] = _load_format_codes()
+_FORMAT_ONE_HOT_COLS: List[str] = [f"format_is_{code}" for code in _FORMAT_CODES] + ["format_is_OTHER"]
+
 
 # ---------------------------------------------------------------------------
 # Feature group / column definitions (must match Go-app win export headers)
@@ -53,8 +79,9 @@ _GROUP_TO_PLAYER_KEY: List[Tuple[str, str, int]] = [
     ("team2_bowl_form", "bowling_mean_w5", 2),
 ]
 
-MATCH_CONTEXT_COLS = [
-    "format_id",
+# Base match context columns (before categorical expansion of format).
+MATCH_CONTEXT_BASE_COLS = [
+    "format_id",  # kept for compatibility but excluded from model features
     "venue_id",
     "match_date_unix",
     "team1_opposition_id",
@@ -68,6 +95,11 @@ MATCH_CONTEXT_COLS = [
     "pressure",
     "viscosity",
 ]
+
+# Full context column list including one-hot encoded format indicators. This is
+# the superset used when aggregating from player maps and when building team
+# optimisation batches.
+MATCH_CONTEXT_COLS: List[str] = MATCH_CONTEXT_BASE_COLS + list(_FORMAT_ONE_HOT_COLS)
 
 _DIST_FEATURE_COLS: List[str] = [grp + sfx for grp in _FEATURE_GROUPS for sfx in _DIST_SUFFIXES]
 
@@ -87,7 +119,24 @@ DERIVED_FEATURE_COLS = [
     "team2_bowl_form_spread",
 ]
 
-WIN_ENHANCED_FEATURE_COLS: List[str] = MATCH_CONTEXT_COLS + _DIST_FEATURE_COLS + DERIVED_FEATURE_COLS
+
+def _format_one_hot_from_code(format_code: Optional[str]) -> Dict[str, float]:
+    """Build one-hot mapping for format code over _FORMAT_ONE_HOT_COLS."""
+    out = {col: 0.0 for col in _FORMAT_ONE_HOT_COLS}
+    if not format_code:
+        out["format_is_OTHER"] = 1.0
+        return out
+    fmt = str(format_code).strip().upper()
+    col = f"format_is_{fmt}"
+    if col in out:
+        out[col] = 1.0
+    else:
+        out["format_is_OTHER"] = 1.0
+    return out
+
+
+_MATCH_CONTEXT_FEATURE_COLS: List[str] = [c for c in MATCH_CONTEXT_COLS if c != "format_id"]
+WIN_ENHANCED_FEATURE_COLS: List[str] = _MATCH_CONTEXT_FEATURE_COLS + _DIST_FEATURE_COLS + DERIVED_FEATURE_COLS
 
 WIN_TARGET_COL = "team1_wins"
 
@@ -171,6 +220,7 @@ def aggregate_team_features_from_player_maps(
     team1_features: Mapping[int, Mapping[str, float]],
     team2_features: Mapping[int, Mapping[str, float]],
     match_context: Mapping[str, float],
+    format_code: Optional[str] = None,
 ) -> Dict[str, float]:
     """Build the full enhanced win feature vector from per-player feature maps.
 
@@ -184,8 +234,15 @@ def aggregate_team_features_from_player_maps(
     """
     team_by_number = {1: team1_features, 2: team2_features}
     result: Dict[str, float] = {}
-    for k in MATCH_CONTEXT_COLS:
+
+    # Base context columns copied directly
+    for k in MATCH_CONTEXT_BASE_COLS:
         result[k] = float(match_context.get(k, 0.0))
+
+    # One-hot encoded format columns
+    one_hot = _format_one_hot_from_code(format_code)
+    for k, v in one_hot.items():
+        result[k] = float(v)
 
     for group_name, player_key, team_num in _GROUP_TO_PLAYER_KEY:
         team_feats = team_by_number[team_num]
