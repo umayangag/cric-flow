@@ -11,7 +11,7 @@ import (
 // InningsTrainingRows returns innings-level rows for the innings model (runs, wickets per innings).
 // One row per (match_id, inning_number). Used for hybrid reconciliation: innings model predicts
 // innings_runs and innings_wickets; player predictions are rescaled to match.
-// Features: format_id, venue_id, season_id, inning_number, opposition_id (batting team's opposition),
+// Features: format_code (categorical), venue_id, season_id, inning_number, opposition_id (batting team's opposition),
 // weather, bat_consistency_sum (batting team), bowl_consistency_sum (bowling team), bat_form_sum, bowl_form_sum.
 func InningsTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, error) {
 	return inningsTrainingRowsImpl(ctx, cutoff, nil)
@@ -27,8 +27,8 @@ func InningsTrainingRowsWithFormat(ctx context.Context, format string, cutoff ti
 }
 
 func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int64) ([][]string, error) {
-	// Per innings: match_id, inning_number, innings_runs, innings_wickets, format_id, venue_id, season_id,
-	// opposition_id (batting team's opposition = bowling team), weather, bat/bowl consistency and form sums.
+	// Per innings: match_id, inning_number, innings_runs, innings_wickets, venue_id, season_id,
+	// opposition_id (batting team's opposition = bowling team), format_code, weather, bat/bowl consistency and form sums.
 	whereClause := "m.match_date < $1"
 	args := []any{cutoff}
 	if formatIDs != nil {
@@ -102,7 +102,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	bowl_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'consistency' GROUP BY match_id, inning_number),
 	bat_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number),
 	bowl_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number)
-	SELECT i.match_id, i.inning_number, i.innings_runs, i.innings_wickets, i.format_id, i.venue_id, i.season_id, i.opposition_id, i.format_code,
+	SELECT i.match_id, i.inning_number, i.innings_runs, i.innings_wickets, i.venue_id, i.season_id, i.opposition_id, i.format_code,
 		i.match_date,
 		i.temp, i.wind, i.rain, i.humidity, i.cloud, i.pressure, i.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
@@ -121,7 +121,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	}
 	defer rows.Close()
 	headers := []string{
-		"match_id", "inning_number", "innings_runs", "innings_wickets", "format_id", "venue_id", "season_id", "opposition_id", "format_code",
+		"match_id", "inning_number", "innings_runs", "innings_wickets", "venue_id", "season_id", "opposition_id", "format_code",
 		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
@@ -129,12 +129,12 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	out := make([][]string, 0, 512)
 	out = append(out, headers)
 	for rows.Next() {
-		var matchID, inningNum, inningsRuns, inningsWickets, formatID, venueID, seasonID, oppositionID int64
+		var matchID, inningNum, inningsRuns, inningsWickets, venueID, seasonID, oppositionID int64
 		var formatCode string
 		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
-		if err := rows.Scan(&matchID, &inningNum, &inningsRuns, &inningsWickets, &formatID, &venueID, &seasonID, &oppositionID, &formatCode,
+		if err := rows.Scan(&matchID, &inningNum, &inningsRuns, &inningsWickets, &venueID, &seasonID, &oppositionID, &formatCode,
 			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
@@ -145,7 +145,6 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			strconv.FormatInt(inningNum, 10),
 			strconv.FormatInt(inningsRuns, 10),
 			strconv.FormatInt(inningsWickets, 10),
-			strconv.FormatInt(formatID, 10),
 			strconv.FormatInt(venueID, 10),
 			strconv.FormatInt(seasonID, 10),
 			strconv.FormatInt(oppositionID, 10),
