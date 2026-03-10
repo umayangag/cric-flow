@@ -42,15 +42,18 @@ from ml.config import (
 )
 from ml.pipeline_common import compute_time_decay_weights
 from ml.utils import make_base_estimator
+from ml.win_features import _FORMAT_CODES as WIN_FORMAT_CODES  # reuse configured formats for one-hot
 
 logger = logging.getLogger(__name__)
 
 # Minimum number of samples to train the innings model per format
 MIN_SAMPLES_FOR_FORMAT = 10
 
-# Feature columns for innings model (innings-level: format, venue, season, inning_number, opposition, weather, team sums)
+# Format as categorical one-hot (same convention as win/extras)
+INNINGS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES] + ["format_is_OTHER"]
+
+# Feature columns for innings model: venue, season, inning_number, opposition, weather, team sums, then format one-hot
 INNINGS_FEATURE_COLS = [
-    "format_id",
     "venue_id",
     "season_id",
     "match_date_unix",
@@ -67,7 +70,7 @@ INNINGS_FEATURE_COLS = [
     "bowl_consistency_sum",
     "bat_form_sum",
     "bowl_form_sum",
-]
+] + INNINGS_FORMAT_ONE_HOT_COLS
 INNINGS_TARGET_COLS = ["innings_runs", "innings_wickets"]
 
 
@@ -121,6 +124,20 @@ def rows_to_xy_by_format(
     for c in INNINGS_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
+
+    # Add format one-hot from format_code (or default to OTHER when format_code missing)
+    fmt_series = (
+        df["format_code"].astype(str).str.strip().str.upper()
+        if "format_code" in df.columns
+        else pd.Series(["OTHER"] * len(df), index=df.index)
+    )
+    for col in INNINGS_FORMAT_ONE_HOT_COLS:
+        if col == "format_is_OTHER":
+            df[col] = (fmt_series.isin(WIN_FORMAT_CODES) == False).astype(float)
+        else:
+            code = col.replace("format_is_", "")
+            df[col] = (fmt_series == code).astype(float)
+
     pipe_cfg = get_pipeline_common_config()
     halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)
 

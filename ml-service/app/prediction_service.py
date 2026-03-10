@@ -152,7 +152,6 @@ def predict_match_innings(
         bowl_consistency_sum=t2_bowl_cons,
         bat_form_sum=t1_bat_form,
         bowl_form_sum=t2_bowl_form,
-        format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
         match_date_unix=match_date_unix,
@@ -164,6 +163,7 @@ def predict_match_innings(
         cloud=match_context.cloud,
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
+        format_code=fmt_upper,
     )
     inn2_runs, inn2_wkts = predict_innings(
         scaler_inn,
@@ -173,7 +173,6 @@ def predict_match_innings(
         bowl_consistency_sum=t1_bowl_cons,
         bat_form_sum=t2_bat_form,
         bowl_form_sum=t1_bowl_form,
-        format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
         match_date_unix=match_date_unix,
@@ -185,6 +184,7 @@ def predict_match_innings(
         cloud=match_context.cloud,
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
+        format_code=fmt_upper,
     )
     return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
 
