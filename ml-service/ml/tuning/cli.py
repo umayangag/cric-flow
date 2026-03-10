@@ -243,6 +243,9 @@ def main() -> None:
                 )
                 env = os.environ.copy()
                 env["AUTO_TUNE_N_JOBS"] = "1"
+                _config_path = os.path.join(_ML_ROOT, "config.json")
+                if os.path.isfile(_config_path):
+                    env["ML_SERVICE_CONFIG"] = _config_path
                 failed = 0
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = {

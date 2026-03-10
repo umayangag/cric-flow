@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.metrics import (
@@ -354,6 +354,43 @@ def _extract_feature_importance(
     """
     est = pipe.named_steps.get("est") if pipe else None
     return extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
+
+
+def compute_mlqa_overfitting_stability(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    scoring: str,
+    val_score: float,
+) -> Tuple[bool, float, float, float]:
+    """Compute overfitting delta, CV fold std, and combined violation; return pass and metrics.
+
+    Used by auto-tune to rank candidates: prefer pass, then lowest violation (closest to pass),
+    then best CV score. violation = how much over threshold (delta + sigma excess).
+    Returns: (passes, delta, fold_std, violation).
+    """
+    from sklearn.base import clone
+    from sklearn.metrics import get_scorer
+
+    try:
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+    except Exception:
+        delta_thresh = 0.08
+        std_thresh = 0.065
+    pipe_fit = clone(pipe)
+    pipe_fit.fit(X, y)
+    scorer = get_scorer(scoring)
+    train_score_val = scorer(pipe_fit, X, y)
+    delta = abs(float(train_score_val) - float(val_score))
+    fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
+    fold_std = float(np.std(fold_scores))
+    overfitting_ok = delta <= delta_thresh
+    stability_ok = fold_std <= std_thresh
+    violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+    return (overfitting_ok and stability_ok, delta, fold_std, violation)
 
 
 def _compute_mlqa_audit(

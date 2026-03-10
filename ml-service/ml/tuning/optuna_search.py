@@ -20,13 +20,14 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import get_training_params, get_tuning_config
+from ml.config import get_mlqa_config, get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
     _compute_metrics_regression,
     _effective_n_jobs,
     _get_cv_object,
+    compute_mlqa_overfitting_stability,
 )
 from ml.tuning.search_space import (
     _build_pipeline,
@@ -178,9 +179,25 @@ def _run_search_two_phase_single_regression(
                 best_score=float(search.best_score_),
             )
             results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-        results.sort(key=lambda r: r[2], reverse=True)
-        best_key, best_name, best_score, best_params, best_pipe = results[0]
-        winners = [r[0] for r in results[:2]]
+        # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best score.
+        enriched_single: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
+        for (key, name, score, params, pipe) in results:
+            try:
+                pass_audit, _, _, violation = compute_mlqa_overfitting_stability(
+                    pipe, X, y, cv, scoring, score
+                )
+            except Exception as e:
+                logger.debug("auto_tune.phase1_mlqa_skip algorithm=%s error=%s", key, e)
+                pass_audit = False
+                violation = float("inf")
+            enriched_single.append((pass_audit, violation, score, key, name, params, pipe))
+        enriched_single.sort(key=lambda x: (not x[0], x[1], -x[2]))
+        best_key = enriched_single[0][3]
+        best_name = enriched_single[0][4]
+        best_score = enriched_single[0][2]
+        best_params = enriched_single[0][5]
+        best_pipe = enriched_single[0][6]
+        winners = [enriched_single[0][3]] + ([enriched_single[1][3]] if len(enriched_single) > 1 else [])
     if not _HAS_OPTUNA:
         config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
         report = {
@@ -250,7 +267,27 @@ def _run_search_two_phase_single_regression(
             )
         pipe = _build_pipeline_single_regression(est)
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs)
-        return float(scores.mean())
+        mean_score = float(scores.mean())
+        fold_std = float(np.std(scores))
+        try:
+            from sklearn.base import clone
+            from sklearn.metrics import get_scorer
+
+            mlqa = get_mlqa_config()
+            delta_thresh = mlqa["overfitting_delta_threshold"]
+            std_thresh = mlqa["stability_fold_std_threshold"]
+            pipe_fit = clone(pipe)
+            pipe_fit.fit(X, y)
+            scorer = get_scorer(scoring)
+            train_score_val = scorer(pipe_fit, X, y)
+            delta = abs(float(train_score_val) - mean_score)
+            pass_audit = delta <= delta_thresh and fold_std <= std_thresh
+            violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+        except Exception:
+            pass_audit = False
+            violation = float("inf")
+        trial.set_user_attr("mean_cv_score", mean_score)
+        return mean_score if pass_audit else mean_score - violation
 
     n_phase2 = min(n_iter, PHASE2_TRIALS)
 
@@ -281,6 +318,9 @@ def _run_search_two_phase_single_regression(
     study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
+        best_score = float(
+            study.best_trial.user_attrs.get("mean_cv_score", study.best_value)
+        )
         alg = p.get("algorithm", best_key)
         if alg == "rf":
             est = RandomForestRegressor(
@@ -323,7 +363,6 @@ def _run_search_two_phase_single_regression(
             )
         best_pipe = _build_pipeline_single_regression(est)
         best_pipe.fit(X, y)
-        best_score = float(study.best_value)
         best_params = {"est__" + k: v for k, v in p.items()}
     config_snippet = {k.replace("est__", ""): v for k, v in best_params.items()}
     report = {
@@ -588,6 +627,7 @@ def _run_search_two_phase(
 
     # Skip Phase 1 when single algorithm (prior fine-tune): go straight to Optuna
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
+    enriched: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
     if len(candidates) == 1 and _HAS_OPTUNA:
         key, name, base_est, param_dist = candidates[0]
         _progress.write_progress(
@@ -671,9 +711,25 @@ def _run_search_two_phase(
                 activity="screening_done",
             )
             results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
-        results.sort(key=lambda r: r[2], reverse=True)
-        best_key, best_name, best_score, best_params, best_pipe = results[0]
-        winners = [r[0] for r in results[:2]]
+        # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best CV score.
+        enriched: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
+        for (key, name, score, params, pipe) in results:
+            try:
+                pass_audit, _delta, _fold_std, violation = compute_mlqa_overfitting_stability(
+                    pipe, X, Y, cv, scoring, score
+                )
+            except Exception as e:
+                logger.debug("auto_tune.phase1_mlqa_skip algorithm=%s error=%s", key, e)
+                pass_audit = False
+                violation = float("inf")
+            enriched.append((pass_audit, violation, score, key, name, params, pipe))
+        enriched.sort(key=lambda x: (not x[0], x[1], -x[2]))  # pass first, then lowest violation, then score
+        best_key = enriched[0][3]
+        best_name = enriched[0][4]
+        best_score = enriched[0][2]
+        best_params = enriched[0][5]
+        best_pipe = enriched[0][6]
+        winners = [enriched[0][3]] + ([enriched[1][3]] if len(enriched) > 1 else [])
 
     if not _HAS_OPTUNA or len(winners) == 0:
         config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
@@ -795,7 +851,29 @@ def _run_search_two_phase(
             est = RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=random_state)
         pipe = _build_pipeline(est)
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
-        return float(scores.mean())
+        mean_score = float(scores.mean())
+        fold_std = float(np.std(scores))
+        # Prefer trials that pass MLQA (overfitting + stability) so auto-tune aims for audit pass.
+        try:
+            from sklearn.base import clone
+            from sklearn.metrics import get_scorer
+
+            mlqa = get_mlqa_config()
+            delta_thresh = mlqa["overfitting_delta_threshold"]
+            std_thresh = mlqa["stability_fold_std_threshold"]
+            pipe_fit = clone(pipe)
+            pipe_fit.fit(X, Y)
+            scorer = get_scorer(scoring)
+            train_score_val = scorer(pipe_fit, X, Y)
+            delta = abs(float(train_score_val) - mean_score)
+            pass_audit = delta <= delta_thresh and fold_std <= std_thresh
+            violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+        except Exception:
+            pass_audit = False
+            violation = float("inf")
+        trial.set_user_attr("mean_cv_score", mean_score)
+        # Maximize score; when failing audit, subtract violation so we prefer lowest overfitting + fold σ.
+        return mean_score if pass_audit else mean_score - violation
 
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
@@ -811,6 +889,10 @@ def _run_search_two_phase(
 
     if study.best_trial:
         params = study.best_params
+        # Use actual CV mean for report, not the composite score (which may be penalized).
+        best_score = float(
+            study.best_trial.user_attrs.get("mean_cv_score", study.best_value)
+        )
         alg = params.get("algorithm", best_key)
         if alg == "rf":
             est = RandomForestRegressor(
@@ -879,10 +961,10 @@ def _run_search_two_phase(
             )
         best_pipe = _build_pipeline(est)
         best_pipe.fit(X, Y)
-        best_score = float(study.best_value)
         best_params = {"est__estimator__" + k: v for k, v in params.items()}
     else:
-        best_params = results[0][3]
+        # Keep Phase 1 choice when no Optuna best: MLQA-best (lowest violation) if we ranked, else score-best.
+        best_params = enriched[0][5] if enriched else results[0][3]
 
     config_snippet = {
         k.replace("est__estimator__", ""): v for k, v in best_params.items() if k.startswith("est__estimator__")
