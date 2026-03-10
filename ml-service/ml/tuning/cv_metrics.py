@@ -363,6 +363,7 @@ def compute_mlqa_overfitting_stability(
     cv: Any,
     scoring: str,
     val_score: float,
+    fold_std_override: Optional[float] = None,
 ) -> Tuple[bool, float, float, float]:
     """Compute overfitting delta, CV fold std, and combined violation; return pass and metrics.
 
@@ -386,8 +387,11 @@ def compute_mlqa_overfitting_stability(
     scorer = get_scorer(scoring)
     train_score_val = scorer(pipe_fit, X, y)
     delta = abs(float(train_score_val) - float(val_score))
-    fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
-    fold_std = float(np.std(fold_scores))
+    if fold_std_override is not None:
+        fold_std = float(fold_std_override)
+    else:
+        fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
+        fold_std = float(np.std(fold_scores))
     overfitting_ok = delta <= delta_thresh
     stability_ok = fold_std <= std_thresh
     violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)

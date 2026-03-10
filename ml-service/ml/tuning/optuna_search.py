@@ -179,12 +179,15 @@ def _run_search_two_phase_single_regression(
                 hyperparams=params_display,
                 best_score=float(search.best_score_),
             )
-            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+            std_test_score = float(search.cv_results_["std_test_score"][search.best_index_])
+            results.append((key, name, float(search.best_score_), std_test_score, best_params, search.best_estimator_))
         # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best score.
         enriched_single: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
-        for key, name, score, params, pipe in results:
+        for key, name, score, fold_std, params, pipe in results:
             try:
-                pass_audit, _, _, violation = compute_mlqa_overfitting_stability(pipe, X, y, cv, scoring, score)
+                pass_audit, _, _, violation = compute_mlqa_overfitting_stability(
+                    pipe, X, y, cv, scoring, score, fold_std_override=fold_std
+                )
             except Exception as e:
                 logger.debug("auto_tune.phase1_mlqa_skip algorithm=%s error=%s", key, e)
                 pass_audit = False
@@ -693,13 +696,14 @@ def _run_search_two_phase(
                 algorithms_requested=algorithms_requested,
                 activity="screening_done",
             )
-            results.append((key, name, float(search.best_score_), best_params, search.best_estimator_))
+            std_test_score = float(search.cv_results_["std_test_score"][search.best_index_])
+            results.append((key, name, float(search.best_score_), std_test_score, best_params, search.best_estimator_))
         # Rank by: pass first, then lowest violation (lowest overfitting + fold σ), then best CV score.
         enriched: List[Tuple[bool, float, float, str, str, Dict[str, Any], Pipeline]] = []
-        for key, name, score, params, pipe in results:
+        for key, name, score, fold_std, params, pipe in results:
             try:
                 pass_audit, _delta, _fold_std, violation = compute_mlqa_overfitting_stability(
-                    pipe, X, Y, cv, scoring, score
+                    pipe, X, Y, cv, scoring, score, fold_std_override=fold_std
                 )
             except Exception as e:
                 logger.debug("auto_tune.phase1_mlqa_skip algorithm=%s error=%s", key, e)
