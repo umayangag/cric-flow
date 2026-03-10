@@ -29,12 +29,12 @@ const MLModelStatsTab: React.FC = () => {
   // but only while this tab is mounted.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const handler = () => {
+    const handler = (_event: Event) => {
       void fetchStats();
     };
-    window.addEventListener('cric:pipeline-completed', handler as EventListener);
+    window.addEventListener('cric:pipeline-completed', handler);
     return () => {
-      window.removeEventListener('cric:pipeline-completed', handler as EventListener);
+      window.removeEventListener('cric:pipeline-completed', handler);
     };
   }, [fetchStats]);
 

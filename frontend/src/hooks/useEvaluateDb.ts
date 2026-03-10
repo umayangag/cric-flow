@@ -190,6 +190,18 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   const [jobUseUnifiedModel, setJobUseUnifiedModel] = useState<boolean | null>(null);
   const [jobUseLatestModel, setJobUseLatestModel] = useState<boolean | null>(null);
 
+  const applyJobModeFromStatus = useCallback(
+    (status: { use_unified_model?: boolean; use_latest_model?: boolean }) => {
+      setJobUseUnifiedModel(
+        typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
+      );
+      setJobUseLatestModel(
+        typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
+      );
+    },
+    [],
+  );
+
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
     [format, team1, team2, loading],
@@ -247,12 +259,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setTeam1(data.team1);
         setTeam2(data.team2);
         setSelectedMatchId(data.match_id);
-        setJobUseUnifiedModel(
-          typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
-        );
-        setJobUseLatestModel(
-          typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
-        );
+        applyJobModeFromStatus(status);
         setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
         if (status.status === 'running') {
           setEvaluating(true);
@@ -283,7 +290,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyJobModeFromStatus]);
 
   // Poll evaluate status while job is running
   const pollEvaluateStatus = useCallback(async () => {
@@ -291,12 +298,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     try {
       const status = await api.getEvaluateStatus(currentJobId);
       setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
-      setJobUseUnifiedModel(
-        typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
-      );
-      setJobUseLatestModel(
-        typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
-      );
+      applyJobModeFromStatus(status);
       if (status.status === 'done') {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);
@@ -331,7 +333,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         /* ignore */
       }
     }
-  }, [currentJobId, evaluating]);
+  }, [currentJobId, evaluating, applyJobModeFromStatus]);
 
   usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
 

@@ -30,6 +30,37 @@ import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
 
+/** Renders job mode line (unified/format model · latest/strict) when at least one flag is non-null. */
+function JobModeLine({
+  jobUseUnifiedModel,
+  jobUseLatestModel,
+  prefix,
+  sx,
+}: {
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
+  prefix: string;
+  sx?: object;
+}) {
+  if (jobUseUnifiedModel === null && jobUseLatestModel === null) return null;
+  return (
+    <Typography variant="body2" color="text.secondary" sx={sx}>
+      {prefix}
+      {jobUseUnifiedModel === null
+        ? '—'
+        : jobUseUnifiedModel
+          ? 'Unified (all-formats) model'
+          : 'Format-specific model'}
+      {' · '}
+      {jobUseLatestModel === null
+        ? '—'
+        : jobUseLatestModel
+          ? 'Latest model'
+          : 'Strict temporal cutoff'}
+    </Typography>
+  );
+}
+
 /** Shared filter for Team 1/Team 2 Autocomplete: show all when empty, require ≥3 chars when typing. */
 function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
   const filtered = filter(options, params);
@@ -222,22 +253,12 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
-        {(jobUseUnifiedModel !== null || jobUseLatestModel !== null) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Mode:{' '}
-            {jobUseUnifiedModel === null
-              ? '—'
-              : jobUseUnifiedModel
-                ? 'Unified (all-formats) model'
-                : 'Format-specific model'}
-            {' · '}
-            {jobUseLatestModel === null
-              ? '—'
-              : jobUseLatestModel
-                ? 'Latest model'
-                : 'Strict temporal cutoff'}
-          </Typography>
-        )}
+        <JobModeLine
+          jobUseUnifiedModel={jobUseUnifiedModel}
+          jobUseLatestModel={jobUseLatestModel}
+          prefix="Mode: "
+          sx={{ mt: 0.5 }}
+        />
       </Paper>
     )}
 
@@ -397,22 +418,12 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
-        {(jobUseUnifiedModel !== null || jobUseLatestModel !== null) && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Evaluated with{' '}
-            {jobUseUnifiedModel === null
-              ? '—'
-              : jobUseUnifiedModel
-                ? 'unified (all-formats) model'
-                : 'format-specific model'}
-            {' · '}
-            {jobUseLatestModel === null
-              ? '—'
-              : jobUseLatestModel
-                ? 'latest model'
-                : 'strict temporal cutoff'}
-          </Typography>
-        )}
+        <JobModeLine
+          jobUseUnifiedModel={jobUseUnifiedModel}
+          jobUseLatestModel={jobUseLatestModel}
+          prefix="Evaluated with "
+          sx={{ mb: 1 }}
+        />
         <EvaluationResults result={evaluationResult} />
       </Box>
     )}
