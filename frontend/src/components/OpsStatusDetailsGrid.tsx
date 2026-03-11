@@ -6,14 +6,19 @@ import StatusPill from './common/StatusPill';
 import SectionCard from './common/SectionCard';
 import OpsStatusDataGrid from './OpsStatusDataGrid';
 import JsonCollapse from './common/JsonCollapse';
-import { FORMATS, asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
-import type { FormatCode, OpsStatus } from '../utils/opsStatusHelpers';
+import { useCanonicalFormats } from '../hooks/useCanonicalFormats';
+import { asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
+import type { OpsStatus } from '../utils/opsStatusHelpers';
 
 interface OpsStatusDetailsGridProps {
   data: OpsStatus;
 }
 
-const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => (
+const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => {
+  const { formats, loading: formatsLoading, error: formatsError } = useCanonicalFormats();
+  const formatList = formats.length > 0 ? formats : Object.keys(getFormats((data as { db_freshness?: unknown })?.db_freshness));
+
+  return (
   <>
     {/* Two blocks per row below Database */}
     <Grid container spacing={2} alignItems="stretch">
@@ -45,9 +50,11 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
                 <Typography variant="body2" sx={{ opacity: 0.7 }}>
                   Not available
                 </Typography>
+              ) : formatsError ? (
+                <Typography variant="body2" color="error">{formatsError}</Typography>
               ) : (
                 <Stack spacing={1}>
-                  {FORMATS.map((f: FormatCode) => {
+                  {formatList.map((f) => {
                     const row = asObj(fm[f]);
                     const st = readStatus(row.status);
                     const latest =
@@ -99,6 +106,7 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
           const overallSt = readStatus(overallObj.status);
           const overallLast30 = readNumber(overallObj.matches_last_30d);
           const fm = getFormats(comp);
+          const completenessFormatList = formats.length > 0 ? formats : Object.keys(fm);
           return (
             <SectionCard
               title="DB Data Completeness"
@@ -120,9 +128,11 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
                 <Typography variant="body2" sx={{ opacity: 0.7 }}>
                   Not available
                 </Typography>
+              ) : formatsError ? (
+                <Typography variant="body2" color="error">{formatsError}</Typography>
               ) : (
                 <Stack spacing={1}>
-                  {FORMATS.map((f: FormatCode) => {
+                  {completenessFormatList.map((f) => {
                     const row = asObj(fm[f]);
                     const st = readStatus(row.status);
                     const last30 = readNumber(row.matches_last_30d);
@@ -157,10 +167,11 @@ const OpsStatusDetailsGrid: React.FC<OpsStatusDetailsGridProps> = ({ data }) => 
       </Grid>
     </Grid>
 
-    <OpsStatusDataGrid data={data} />
+    <OpsStatusDataGrid data={data} formats={formats} formatsLoading={formatsLoading} formatsError={formatsError} />
 
     <JsonCollapse data={data} summary="Show raw JSON payload" />
   </>
-);
+  );
+};
 
 export default OpsStatusDetailsGrid;

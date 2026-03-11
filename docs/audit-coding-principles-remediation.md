@@ -124,7 +124,8 @@
 
 ## 5. Quick reference
 
-- **Coding principles:** [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc)
+- **Coding principles:** [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) (includes OOP guidelines)
+- **OOP audit:** [audit-oop.md](audit-oop.md)
 - **Architecture & ML:** [.cursor/rules/architect-ml-expert.mdc](../.cursor/rules/architect-ml-expert.mdc)
 - **Unit tests:** [.cursor/rules/unit-tests.mdc](../.cursor/rules/unit-tests.mdc)
 - **Check workflow:** `.cursor/skills/run-check-all-incremental/SKILL.md`

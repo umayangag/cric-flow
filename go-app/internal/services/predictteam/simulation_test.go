@@ -4,23 +4,19 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
 func TestMeanStd(t *testing.T) {
 	t.Parallel()
 	mean, std := meanStd([]float64{10, 20, 30})
-	if mean != 20 {
-		t.Errorf("mean = %v, want 20", mean)
-	}
+	require.Equal(t, 20.0, mean, "mean")
 	// Population std: sqrt(((10-20)^2 + 0 + (30-20)^2)/3) = sqrt(200/3) ≈ 8.165
-	if std < 8 || std > 8.2 {
-		t.Errorf("std = %v, want ~8.165", std)
-	}
+	require.InDelta(t, 8.165, std, 0.2, "std")
 	mean, std = meanStd(nil)
-	if mean != 0 || std != 0 {
-		t.Errorf("nil: mean=%v std=%v", mean, std)
-	}
+	require.Equal(t, 0.0, mean, "nil mean")
+	require.Equal(t, 0.0, std, "nil std")
 }
 
 func TestPercentiles(t *testing.T) {
@@ -31,15 +27,9 @@ func TestPercentiles(t *testing.T) {
 		x[i] = float64(i)
 	}
 	p10, p50, p90 := percentiles(x, 10, 50, 90)
-	if p10 < 8 || p10 > 11 {
-		t.Errorf("p10 = %v, want ~9", p10)
-	}
-	if p50 < 48 || p50 > 51 {
-		t.Errorf("p50 = %v, want ~49", p50)
-	}
-	if p90 < 88 || p90 > 92 {
-		t.Errorf("p90 = %v, want ~89", p90)
-	}
+	require.InDelta(t, 9, p10, 2, "p10")
+	require.InDelta(t, 49, p50, 2, "p50")
+	require.InDelta(t, 89, p90, 2, "p90")
 }
 
 func TestRunSimulation(t *testing.T) {
@@ -61,19 +51,12 @@ func TestRunSimulation(t *testing.T) {
 		Seed:                 42,
 	}
 	res := runSimulation(topK1, topK2, nameToPred1, nameToPred2, 2, 2, "T1", "T2", opts)
-	if res.NumSamples != 200 {
-		t.Errorf("NumSamples = %v, want 200", res.NumSamples)
-	}
-	if res.NumMatchups != 1 {
-		t.Errorf("NumMatchups = %v, want 1", res.NumMatchups)
-	}
+	require.Equal(t, 200, res.NumSamples, "NumSamples")
+	require.Equal(t, 1, res.NumMatchups, "NumMatchups")
 	sum := res.WinProbabilityTeam1 + res.WinProbabilityTeam2 + res.DrawProbability
-	if sum < 0.99 || sum > 1.01 {
-		t.Errorf("win1+win2+draw = %v, want ~1", sum)
-	}
-	if res.Innings1TotalMean <= 0 || res.Innings2TotalMean <= 0 {
-		t.Errorf("innings means should be positive: %v, %v", res.Innings1TotalMean, res.Innings2TotalMean)
-	}
+	require.InDelta(t, 1.0, sum, 0.01, "win1+win2+draw")
+	require.Greater(t, res.Innings1TotalMean, 0.0, "innings1 mean positive")
+	require.Greater(t, res.Innings2TotalMean, 0.0, "innings2 mean positive")
 }
 
 func TestSampleRuns(t *testing.T) {
@@ -82,11 +65,7 @@ func TestSampleRuns(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	for i := 0; i < 100; i++ {
 		x := sampleRuns(30, 0.35, rng)
-		if x < 0 {
-			t.Errorf("sampleRuns(30, 0.35) = %v (negative)", x)
-		}
+		require.GreaterOrEqual(t, x, 0.0, "sampleRuns(30, 0.35) non-negative")
 	}
-	if sampleRuns(0, 0.35, rng) != 0 {
-		t.Error("sampleRuns(0) should be 0")
-	}
+	require.Equal(t, 0.0, sampleRuns(0, 0.35, rng), "sampleRuns(0) should be 0")
 }

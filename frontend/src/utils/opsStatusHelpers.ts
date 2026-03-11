@@ -1,5 +1,5 @@
-export const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
-export type FormatCode = (typeof FORMATS)[number];
+/** Format code (e.g. TEST, ODI, T20, T20I). Canonical list is fetched from API via useCanonicalFormats(). */
+export type FormatCode = string;
 
 export function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -18,13 +19,13 @@ func TestParseArgs_EnvDefaults(t *testing.T) {
 	t.Setenv("TEAM_SELECT_POOL", "/tmp/p.csv")
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	got, err := svc.ParseArgs(fs, []string{})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if got.MatchID != 42 || got.Format != "T20I" || got.Season != "2020" || got.TeamSize != 7 || got.MinBowlers != 2 ||
-		!got.RequireKeeper ||
-		got.FromDB ||
-		got.PoolPath != "/tmp/p.csv" {
-		t.Fatalf("unexpected parse via env: %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(42), got.MatchID)
+	require.Equal(t, "T20I", got.Format)
+	require.Equal(t, "2020", got.Season)
+	require.Equal(t, 7, got.TeamSize)
+	require.Equal(t, 2, got.MinBowlers)
+	require.True(t, got.RequireKeeper)
+	require.False(t, got.FromDB)
+	require.Equal(t, "/tmp/p.csv", got.PoolPath)
 }

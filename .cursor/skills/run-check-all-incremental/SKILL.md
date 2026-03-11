@@ -14,6 +14,7 @@ Achieve the same outcome as `make check-all` (all lints, format checks, and test
 1. **frontend**
 2. **go-app**
 3. **ml-service**
+4. **frontend-backend-sync** (ensures frontend FORMATS and model metadata match go-app and ml-service)
 
 Do not run the next component until the current one passes all its steps.
 
@@ -54,6 +55,14 @@ From repo root. Use `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service
 | coverage| `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service coverage` |
 | cov-gate| `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service coverage-check` |
 
+### 4. Frontend–backend sync
+
+From repo root. Ensures frontend `FORMATS` (e.g. in `utils/opsStatusHelpers.ts`) and `defaultModelFeatures.ts` match go-app and ml-service.
+
+| Step | Command |
+|------|--------|
+| sync | `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make frontend-backend-sync-check` |
+
 ## Workflow
 
 1. Start with **frontend**. Run steps in order (lint → format:check → typecheck → build → test). If a step fails:
@@ -62,7 +71,8 @@ From repo root. Use `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service
    - When the step passes, continue with the next step.
 2. When all frontend steps pass, switch to **go-app**. Run vet → fmt-check → lint → coverage. On failure: fix, re-run only the failed step (or the whole go-app sequence once if unsure), then continue.
 3. Then **ml-service**: lint-check → fmt-check → coverage → coverage-check. Same rule: fix, re-run only what failed.
-4. When all three components have passed all their steps, all checks are done. You can optionally run `make check-all` once to confirm.
+4. Then run **frontend-backend-sync-check** (see step 4 table above). On failure: update frontend `FORMATS` in `utils/opsStatusHelpers.ts` and/or `constants/defaultModelFeatures.ts` to match go-app (`internal/formats`) and ml-service (`app/model_metadata.py`), then re-run only the sync step.
+5. When all four (frontend, go-app, ml-service, sync) have passed, all checks are done. You can optionally run `make check-all` once to confirm.
 
 ## Warning handling
 
@@ -116,5 +126,6 @@ Use these only when you are sure the component is already passing and you want a
 - Frontend: `make frontend-check`
 - Go-app: `make go-app-check`
 - ML: `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make ml-service-check` (from root; or run from root `make ml-service-check` which uses `ML_VENV_BIN`)
+- Sync: `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make frontend-backend-sync-check`
 
 For fixing and iterating, prefer the **per-step commands** in the tables above so you re-run only what failed.

@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -11,9 +12,7 @@ type assertFn func(t *testing.T, got float64)
 
 func assertFloatNear(want float64) assertFn {
 	return func(t *testing.T, got float64) {
-		if math.Abs(got-want) > 1e-9 {
-			t.Fatalf("want %.6f got %.6f", want, got)
-		}
+		require.InDelta(t, want, got, 1e-9, "score")
 	}
 }
 
@@ -69,20 +68,15 @@ func TestScorePlayer_Table(t *testing.T) {
 func TestDefaultWeights(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	if w.Bat != 0.45 || w.Bowl != 0.40 || w.Field != 0.10 || w.KeeperBonus != 0.02 {
-		t.Fatalf(
-			"DefaultWeights: got Bat=%.2f Bowl=%.2f Field=%.2f KeeperBonus=%.2f",
-			w.Bat,
-			w.Bowl,
-			w.Field,
-			w.KeeperBonus,
-		)
-	}
+	require.Equal(t, 0.45, w.Bat)
+	require.Equal(t, 0.40, w.Bowl)
+	require.Equal(t, 0.10, w.Field)
+	require.Equal(t, 0.02, w.KeeperBonus)
 }
 
 func TestNormalizeBatScore(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		runs       float64
 		batDivisor float64
@@ -92,19 +86,18 @@ func TestNormalizeBatScore(t *testing.T) {
 		{"over cap", 120, 100, 1.0},
 		{"zero runs", 0, 100, 0},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ts.NormalizeBatScore(tt.runs, tt.batDivisor)
-			if math.Abs(got-tt.want) > 1e-9 {
-				t.Fatalf("NormalizeBatScore(%v,%v)=%v want %v", tt.runs, tt.batDivisor, got, tt.want)
-			}
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := ts.NormalizeBatScore(tc.runs, tc.batDivisor)
+			require.InDelta(t, tc.want, got, 1e-9)
 		})
 	}
 }
 
 func TestNormalizeBowlScore(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		name            string
 		wickets         float64
 		economy         float64
@@ -116,22 +109,21 @@ func TestNormalizeBowlScore(t *testing.T) {
 		{"wickets capped", 8, 7, 6, 10, 1.0, 0.3},
 		{"economy at base", 3, 10, 6, 10, 0.5, 0},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ts.NormalizeBowlScore(tt.wickets, tt.economy, tt.wicketDivisor, tt.econBase)
-			wickPart := math.Min(1, tt.wickets/tt.wicketDivisor)
-			econPart := math.Max(0, 1-(tt.economy/tt.econBase))
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := ts.NormalizeBowlScore(tc.wickets, tc.economy, tc.wicketDivisor, tc.econBase)
+			wickPart := math.Min(1, tc.wickets/tc.wicketDivisor)
+			econPart := math.Max(0, 1-(tc.economy/tc.econBase))
 			want := (wickPart + econPart) / 2
-			if math.Abs(got-want) > 1e-9 {
-				t.Fatalf("NormalizeBowlScore=%v want %v", got, want)
-			}
+			require.InDelta(t, want, got, 1e-9)
 		})
 	}
 }
 
 func TestNormalizeFieldScore(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		name         string
 		catches      float64
 		runOuts      float64
@@ -140,14 +132,13 @@ func TestNormalizeFieldScore(t *testing.T) {
 		{"under cap", 2, 1, 10},
 		{"over cap", 5, 3, 4},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ts.NormalizeFieldScore(tt.catches, tt.runOuts, tt.fieldDivisor)
-			raw := (tt.catches + tt.runOuts*1.5) / tt.fieldDivisor
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := ts.NormalizeFieldScore(tc.catches, tc.runOuts, tc.fieldDivisor)
+			raw := (tc.catches + tc.runOuts*1.5) / tc.fieldDivisor
 			want := math.Min(1, raw)
-			if math.Abs(got-want) > 1e-9 {
-				t.Fatalf("NormalizeFieldScore=%v want %v", got, want)
-			}
+			require.InDelta(t, want, got, 1e-9)
 		})
 	}
 }

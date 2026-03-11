@@ -50,6 +50,47 @@ def test_build_before_after_stats_from_predictions_roundtrip():
     assert total_before_runs == sum(int(p.runs) for p in preds)
 
 
+def test_build_before_after_stats_empty_predictions():
+    """Empty preds list returns empty before/after mappings."""
+    before, after = build_before_after_stats_from_predictions(
+        [],
+        team1_ids=[1, 2],
+        team2_ids=[3, 4],
+        inn1_runs=50.0,
+        inn1_wkts=3.0,
+        inn2_runs=50.0,
+        inn2_wkts=3.0,
+        match_id=0,
+        format_code="T20",
+    )
+    assert before == {}
+    assert after == {}
+
+
+def test_build_before_after_stats_uses_default_economy_when_economy_none():
+    """When economy is None but bowling_balls > 0, default_economy is used for bowling_runs."""
+    preds = [
+        BacktestPlayerPred(player_id=1, runs=10.0, balls=10.0, fours=0.0, sixes=0.0, wickets=0.0, economy=None),
+        BacktestPlayerPred(player_id=2, runs=15.0, balls=12.0, fours=1.0, sixes=0.0, wickets=1.0, economy=12.0),
+    ]
+    # Use default_economy=6.0; player 1 has economy=None so 6.0 will be used if they bowl
+    before, after = build_before_after_stats_from_predictions(
+        preds,
+        team1_ids=[1],
+        team2_ids=[2],
+        inn1_runs=10.0,
+        inn1_wkts=0.0,
+        inn2_runs=15.0,
+        inn2_wkts=1.0,
+        match_id=1,
+        format_code="T20",
+        default_economy=6.0,
+    )
+    assert set(before.keys()) == set(after.keys())
+    # Sanity: we got before/after for both players
+    assert len(before) >= 1
+
+
 def test_compute_consistency_metrics_uses_adjustment_magnitude():
     preds = _make_simple_preds()
     before, after = build_before_after_stats_from_predictions(

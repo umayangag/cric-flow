@@ -12,7 +12,7 @@ import (
 // used by GetMatchAggregates: score -> Runs, wickets -> Wickets, extras -> Extras).
 func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		runs    float64
 		wickets float64
@@ -25,7 +25,7 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 		{"fractional runs", 99.5, 3, 2, "AUS"},
 		{"large values", 500, 20, 25, "PAK"},
 	}
-	for _, tt := range tests {
+	for _, tt := range testCases {
 		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -47,10 +47,6 @@ func TestGetAverageExtrasForFormat_PoolNil(t *testing.T) {
 	Pool = nil
 
 	avg, err := GetAverageExtrasForFormat(context.TODO(), 1, nil)
-	if err == nil {
-		t.Fatalf("expected error when pool is nil, got avg=%v", avg)
-	}
-	if avg != 0 {
-		t.Fatalf("expected 0 on error, got %v", avg)
-	}
+	require.Error(t, err, "expected error when pool is nil")
+	require.Equal(t, float64(0), avg, "expected 0 on error")
 }

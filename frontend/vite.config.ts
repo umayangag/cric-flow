@@ -29,9 +29,9 @@ export default defineConfig({
       ],
       // Soft gate: fail if coverage drops below this (raise over time)
       lines: 59,
-      functions: 51,
+      functions: 57,
       statements: 59,
-      branches: 66,
+      branches: 70,
     },
   },
 });

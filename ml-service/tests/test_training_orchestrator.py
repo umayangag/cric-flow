@@ -41,6 +41,27 @@ def test_export_csvs_available_true_when_matching_csv(tmp_path, monkeypatch) -> 
     assert training_orchestrator.export_csvs_available("bowling_encoded_") is False
 
 
+def test_export_csvs_available_listdir_oserror_returns_false(tmp_path, monkeypatch) -> None:
+    """When listdir raises OSError, export_csvs_available returns False."""
+    from unittest.mock import patch
+
+    monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
+    with patch("os.listdir", side_effect=OSError(2, "No such file")):
+        assert training_orchestrator.export_csvs_available("batting_encoded_") is False
+
+
+def test_export_csvs_available_empty_dir_returns_false(tmp_path, monkeypatch) -> None:
+    """When dir exists but has no matching CSV, returns False."""
+    monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
+    assert training_orchestrator.export_csvs_available("batting_encoded_") is False
+
+
+def test_unified_batting_csv_available_empty_dir_returns_false(tmp_path, monkeypatch) -> None:
+    """When export dir exists but has no batting CSV files, returns False."""
+    monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
+    assert training_orchestrator.unified_batting_csv_available() is False
+
+
 def test_unified_csv_available_helpers_use_env_dir(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
     (tmp_path / "batting_encoded_all.csv").write_text("x\n", encoding="utf-8")

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
@@ -25,65 +26,48 @@ func (f *fakeRepo2) LoadPool(context.Context, int64, string, string) ([]db.PoolP
 
 func TestLoadFromCSV_EmptyAndHeaderErrors(t *testing.T) {
 	t.Parallel()
-	// empty
-	if _, err := ts.LoadFromCSV(strings.NewReader("")); err == nil {
-		t.Fatalf("want error for empty csv")
-	}
-	// unexpected header
+	_, err := ts.LoadFromCSV(strings.NewReader(""))
+	require.Error(t, err, "want error for empty csv")
 	badHeader := "a,b,c\n1,2,3\n"
-	if _, err := ts.LoadFromCSV(strings.NewReader(badHeader)); err == nil {
-		t.Fatalf("want error for unexpected header")
-	}
-	// too few columns
+	_, err = ts.LoadFromCSV(strings.NewReader(badHeader))
+	require.Error(t, err, "want error for unexpected header")
 	fewCols := "name,is_bowler,is_keeper,bat_score,bowl_score\nA,1\n"
-	if _, err := ts.LoadFromCSV(strings.NewReader(fewCols)); err == nil {
-		t.Fatalf("want error for too few columns")
-	}
-	// bad bat_score
+	_, err = ts.LoadFromCSV(strings.NewReader(fewCols))
+	require.Error(t, err, "want error for too few columns")
 	badBat := "name,is_bowler,is_keeper,bat_score,bowl_score\nA,0,0,abc,0.1\n"
-	if _, err := ts.LoadFromCSV(strings.NewReader(badBat)); err == nil {
-		t.Fatalf("want error for bad bat_score")
-	}
+	_, err = ts.LoadFromCSV(strings.NewReader(badBat))
+	require.Error(t, err, "want error for bad bat_score")
 }
 
 func TestLoadFromDB_InvalidArgsAndSuccess(t *testing.T) {
 	t.Parallel()
-	// nil repo
-	if _, err := ts.LoadFromDB(context.Background(), nil, 1, "T20", "2019"); err == nil {
-		t.Fatalf("want error for nil repo")
-	}
-	// invalid args
+	_, err := ts.LoadFromDB(context.Background(), nil, 1, "T20", "2019")
+	require.Error(t, err, "want error for nil repo")
 	repo := &fakeRepo2{}
-	if _, err := ts.LoadFromDB(context.Background(), repo, 0, "T20", "2019"); err == nil {
-		t.Fatalf("want error for invalid match id")
-	}
-	if _, err := ts.LoadFromDB(context.Background(), repo, 1, "", "2019"); err == nil {
-		t.Fatalf("want error for empty format")
-	}
-	if _, err := ts.LoadFromDB(context.Background(), repo, 1, "T20", ""); err == nil {
-		t.Fatalf("want error for empty season")
-	}
-	// success maps DTOs to Player
+	_, err = ts.LoadFromDB(context.Background(), repo, 0, "T20", "2019")
+	require.Error(t, err, "want error for invalid match id")
+	_, err = ts.LoadFromDB(context.Background(), repo, 1, "", "2019")
+	require.Error(t, err, "want error for empty format")
+	_, err = ts.LoadFromDB(context.Background(), repo, 1, "T20", "")
+	require.Error(t, err, "want error for empty season")
 	repo.players = []db.PoolPlayer{
 		{Name: "A", IsBowler: true, BatScore: 0.3, BowlScore: 0.7},
 		{Name: "K", IsKeeper: true, BatScore: 0.5, BowlScore: 0.2},
 	}
 	ps, err := ts.LoadFromDB(context.Background(), repo, 1, "T20", "2019")
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if len(ps) != 2 || ps[0].Name != "A" || !ps[0].IsBowler || !ps[1].IsKeeper {
-		t.Fatalf("unexpected players: %#v", ps)
-	}
+	require.NoError(t, err)
+	require.Len(t, ps, 2)
+	require.Equal(t, "A", ps[0].Name)
+	require.True(t, ps[0].IsBowler)
+	require.True(t, ps[1].IsKeeper)
 }
 
 func TestSelect_NoKeeperAvailable(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
 	pool := []ts.Player{{Name: "A", BatScore: 0.9}, {Name: "B", BatScore: 0.8}}
-	if _, err := ts.Select(pool, w, ts.Constraints{Size: 1, RequireKeeper: true}); err == nil {
-		t.Fatalf("want error when keeper required but none available")
-	}
+	_, err := ts.Select(pool, w, ts.Constraints{Size: 1, RequireKeeper: true})
+	require.Error(t, err, "want error when keeper required but none available")
 }
 
 func TestSelect_BowlerReplacementFallback(t *testing.T) {
@@ -96,12 +80,8 @@ func TestSelect_BowlerReplacementFallback(t *testing.T) {
 		{Name: "C", BowlScore: 0.9, IsBowler: true},
 	}
 	team, err := ts.Select(pool, w, ts.Constraints{Size: 2, MinBowlers: 1})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if countBowl(team) < 1 {
-		t.Fatalf("want at least 1 bowler, got %#v", team)
-	}
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, countBowl(team), 1, "want at least 1 bowler")
 }
 
 func countBowl(ps []ts.Player) int {
@@ -117,7 +97,6 @@ func countBowl(ps []ts.Player) int {
 func TestLoadFromDB_ErrorPropagation(t *testing.T) {
 	t.Parallel()
 	repo := &fakeRepo2{err: errors.New("boom")}
-	if _, err := ts.LoadFromDB(context.Background(), repo, 1, "ODI", "2019"); err == nil {
-		t.Fatalf("want error propagated from repo")
-	}
+	_, err := ts.LoadFromDB(context.Background(), repo, 1, "ODI", "2019")
+	require.Error(t, err, "want error propagated from repo")
 }

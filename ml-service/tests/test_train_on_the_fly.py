@@ -17,6 +17,7 @@ from app.train_on_the_fly import (
     _train_bowling_in_memory,
     fetch_training_data,
     train_on_the_fly,
+    train_on_the_fly_cached,
 )
 
 
@@ -363,3 +364,31 @@ def test_train_on_the_fly_all_nan_batting_raises():
         with pytest.raises(ValueError) as excinfo:
             train_on_the_fly("http://goapp", "T20", "2024-10-30T00:00:00Z")
     assert "Insufficient batting" in str(excinfo.value)
+
+
+def test_train_on_the_fly_cached_disk_miss_calls_train(tmp_path, monkeypatch):
+    """When ML_TRAIN_CACHE_DIR is set but disk cache miss, train_on_the_fly is called."""
+    monkeypatch.setenv("ML_TRAIN_CACHE_DIR", str(tmp_path))
+    data = {
+        "batting": {"headers": _batting_headers(), "rows": [_one_batting_row()]},
+        "bowling": {"headers": _bowling_headers(), "rows": [_one_bowling_row()]},
+    }
+    with patch("app.train_on_the_fly.fetch_training_data", return_value=data):
+        bat_pair, bowl_pair = train_on_the_fly_cached("http://goapp", "ODI", "2024-01-01T00:00:00Z")
+    assert bat_pair[0] is not None
+    assert bat_pair[1] is not None
+    assert bowl_pair[0] is not None
+    assert bowl_pair[1] is not None
+
+
+def test_get_training_params_returns_dict():
+    """_get_training_params returns a dict with expected keys (used by train-on-the-fly)."""
+    from app.train_on_the_fly import _get_training_params
+
+    bat = _get_training_params("batting")
+    bowl = _get_training_params("bowling")
+    assert isinstance(bat, dict)
+    assert isinstance(bowl, dict)
+    assert "n_estimators" in bat
+    assert "estimator" in bat
+    assert "n_estimators" in bowl

@@ -171,6 +171,42 @@ def test_build_batting_scorecard_basic():
     assert total_bat_runs == sum(b.runs_batter for b in inn.balls)
 
 
+def test_build_batting_scorecard_sixes_counted():
+    """A ball with runs_batter=6 and runs_extras=0 increments sixes."""
+    balls = [
+        BallEvent(
+            match_id=1,
+            innings=1,
+            over=1,
+            ball=1,
+            ball_seq=1,
+            is_legal=True,
+            phase="powerplay",
+            striker_id=1,
+            non_striker_id=2,
+            bowler_id=101,
+            runs_batter=6,
+            runs_extras=0,
+            runs_total=6,
+            extras_kind=None,
+            wicket_kind=None,
+            player_out_id=None,
+        ),
+    ]
+    inn = InningsState(
+        match_id=1,
+        innings_number=1,
+        batting_team_id=10,
+        bowling_team_id=20,
+        target_runs=None,
+        balls_per_innings=120,
+        balls=balls,
+    )
+    lines = build_batting_scorecard(inn)
+    assert lines[1].sixes == 1
+    assert lines[1].runs == 6
+
+
 def test_build_bowling_scorecard_basic():
     inn = _make_simple_innings()
     lines = build_bowling_scorecard(inn)
@@ -221,3 +257,121 @@ def test_match_level_aggregation():
     assert total_bat_runs == sum(b.runs_batter for b in inn.balls)
     assert total_bowl_runs == 6
     assert sum(l.legal_balls for l in bowl_map.values()) == inn.legal_balls
+
+
+def test_bowling_line_overs_and_balls_property():
+    """BowlingLine.overs_and_balls returns (completed_overs, balls_in_current_over)."""
+    line = BowlingLine(player_id=101, runs_conceded=0, legal_balls=13, wickets=0)
+    overs, balls = line.overs_and_balls
+    assert overs == 2
+    assert balls == 1
+
+
+def test_wicket_counts_run_out_and_retired_not_credited_to_bowler():
+    """Run out and retired dismissals are not credited to the bowler."""
+    from ml.match_aggregates import _wicket_counts_for_bowler
+
+    ball_run_out = BallEvent(
+        match_id=1,
+        innings=1,
+        over=1,
+        ball=1,
+        ball_seq=1,
+        is_legal=True,
+        phase="powerplay",
+        striker_id=1,
+        non_striker_id=2,
+        bowler_id=101,
+        runs_batter=0,
+        runs_extras=0,
+        runs_total=0,
+        extras_kind=None,
+        wicket_kind="run_out",
+        player_out_id=1,
+    )
+    assert _wicket_counts_for_bowler(ball_run_out) == 0
+
+    ball_retired = BallEvent(
+        match_id=1,
+        innings=1,
+        over=1,
+        ball=2,
+        ball_seq=2,
+        is_legal=True,
+        phase="powerplay",
+        striker_id=1,
+        non_striker_id=2,
+        bowler_id=101,
+        runs_batter=0,
+        runs_extras=0,
+        runs_total=0,
+        extras_kind=None,
+        wicket_kind="retired",
+        player_out_id=1,
+    )
+    assert _wicket_counts_for_bowler(ball_retired) == 0
+
+
+def test_wicket_counts_none_kind_returns_zero():
+    """When wicket_kind is None, bowler gets 0 credit."""
+    from ml.match_aggregates import _wicket_counts_for_bowler
+
+    ball = BallEvent(
+        match_id=1,
+        innings=1,
+        over=1,
+        ball=1,
+        ball_seq=1,
+        is_legal=True,
+        phase="powerplay",
+        striker_id=1,
+        non_striker_id=2,
+        bowler_id=101,
+        runs_batter=0,
+        runs_extras=0,
+        runs_total=0,
+        extras_kind=None,
+        wicket_kind=None,
+        player_out_id=None,
+    )
+    assert _wicket_counts_for_bowler(ball) == 0
+
+
+def test_aggregate_match_batting_two_innings_same_player():
+    """When same player bats in two innings, stats are summed."""
+    inn1 = _make_simple_innings()
+    inn2 = _make_simple_innings()
+    inn2.innings_number = 2
+    match = MatchState(
+        match_id=1,
+        format_code="T20",
+        venue_id=1,
+        season_id=2024,
+        outcome_winner_team_id=None,
+        innings_list=[inn1, inn2],
+    )
+    bat_map = aggregate_match_batting(match)
+    assert set(bat_map.keys()) == {1, 2}
+    assert bat_map[1].runs == 2
+    assert bat_map[1].balls_faced == 4
+    assert bat_map[2].fours == 2
+    assert bat_map[2].dismissed is True
+
+
+def test_aggregate_match_bowling_two_innings_same_bowler():
+    """When same bowler bowls in two innings, stats are summed."""
+    inn1 = _make_simple_innings()
+    inn2 = _make_simple_innings()
+    inn2.innings_number = 2
+    match = MatchState(
+        match_id=1,
+        format_code="T20",
+        venue_id=1,
+        season_id=2024,
+        outcome_winner_team_id=None,
+        innings_list=[inn1, inn2],
+    )
+    bowl_map = aggregate_match_bowling(match)
+    assert set(bowl_map.keys()) == {101}
+    assert bowl_map[101].legal_balls == 10
+    assert bowl_map[101].wickets == 2

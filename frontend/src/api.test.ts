@@ -98,4 +98,137 @@ describe('frontend api client (DB-backed)', () => {
     expect(url).toContain('team=IND');
     vi.unstubAllGlobals();
   });
+
+  it('accuracyTrend fetches with optional filters', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = { points: [], metrics: [] };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    await api.accuracyTrend({
+      format: 'T20',
+      start_date: '2024-01-01',
+      end_date: '2024-12-31',
+      team1: 'IND',
+      team2: 'AUS',
+      order: 'asc',
+      limit: 50,
+      cache: 'read',
+      metrics: 'runs_mae',
+      use_unified_model: true,
+    });
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/api/backtest/accuracy-trend');
+    expect(url).toContain('format=T20');
+    expect(url).toContain('start_date=2024-01-01');
+    expect(url).toContain('end_date=2024-12-31');
+    expect(url).toContain('team1=IND');
+    expect(url).toContain('team2=AUS');
+    expect(url).toContain('order=asc');
+    expect(url).toContain('limit=50');
+    expect(url).toContain('cache=read');
+    expect(url).toContain('metrics=runs_mae');
+    expect(url).toContain('use_unified_model=1');
+    vi.unstubAllGlobals();
+  });
+
+  it('evaluateStart POSTs and returns job_id', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ job_id: 'job-123' }),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.evaluateStart('T20', 'IND', 'AUS', 789, {
+      use_unified_model: true,
+      use_latest_model: true,
+    });
+
+    expect(result).toEqual({ job_id: 'job-123' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/backtest/evaluate-start'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('match_id=789');
+    expect(url).toContain('use_unified_model=1');
+    expect(url).toContain('use_latest_model=1');
+    vi.unstubAllGlobals();
+  });
+
+  it('getEvaluateStatus fetches with job_id', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = { status: 'done', result: {} };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.getEvaluateStatus('job-456');
+    expect(result).toEqual(payload);
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/api/backtest/evaluate-status');
+    expect(url).toContain('job_id=job-456');
+    vi.unstubAllGlobals();
+  });
+
+  it('predictTeamSelection POSTs params and returns selection', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = {
+      team1: [
+        {
+          player_id: 1,
+          player_name: 'A',
+          runs: 20,
+          wickets: 0,
+          economy: 7,
+          catches: 0,
+          run_outs: 0,
+        },
+      ],
+      team2: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.predictTeamSelection({
+      format: 'T20',
+      team1: 'IND',
+      team2: 'AUS',
+      match_date: '2024-06-15',
+      simulate: true,
+      simulation_top_k: 3,
+    });
+
+    expect(result).toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/predict/team-selection'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"format":"T20"'),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('searchVenues returns empty array when query has fewer than 3 characters', async () => {
+    const result = await api.searchVenues('ab');
+    expect(result).toEqual([]);
+  });
+
+  it('searchVenues fetches when query has 3+ characters', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ["Lord's", 'MCG'],
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+    const result = await api.searchVenues('lord');
+    expect(result).toEqual(["Lord's", 'MCG']);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/options/venues'),
+      expect.any(Object),
+    );
+    vi.unstubAllGlobals();
+  });
 });

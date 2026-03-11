@@ -1,0 +1,72 @@
+# Ensures frontend FORMATS and model metadata (defaultModelFeatures) stay in sync with go-app and ml-service.
+name: Frontend–Backend Sync
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/src/constants/defaultModelFeatures.ts'
+      - 'frontend/src/utils/opsStatusHelpers.ts'
+      - 'frontend/scripts/export-canonical.ts'
+      - 'go-app/internal/formats/**'
+      - 'go-app/cmd/print_canonical/**'
+      - 'ml-service/app/model_metadata.py'
+      - 'ml-service/app/feature_config.py'
+      - 'ml-service/ml/train_extras.py'
+      - 'ml-service/ml/win_features.py'
+      - 'scripts/check-frontend-backend-sync.mjs'
+      - '.github/workflows/frontend-backend-sync-ci.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'frontend/src/constants/defaultModelFeatures.ts'
+      - 'frontend/src/utils/opsStatusHelpers.ts'
+      - 'frontend/scripts/export-canonical.ts'
+      - 'go-app/internal/formats/**'
+      - 'go-app/cmd/print_canonical/**'
+      - 'ml-service/app/model_metadata.py'
+      - 'ml-service/app/feature_config.py'
+      - 'ml-service/ml/train_extras.py'
+      - 'ml-service/ml/win_features.py'
+      - 'scripts/check-frontend-backend-sync.mjs'
+      - '.github/workflows/frontend-backend-sync-ci.yml'
+
+jobs:
+  sync-check:
+    if: github.event.pull_request.draft == false
+    name: Frontend vs go-app & ml-service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Set up Python (ml-service)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Create ml-service venv and install deps
+        run: make -C ml-service ci-setup
+
+      - name: Frontend–backend sync check
+        run: make frontend-backend-sync-check

@@ -38,6 +38,16 @@ When modifying or adding code in this repository, follow these principles so tha
 - Prefer solutions that are maintainable, observable, and safe in production over purely academic or “perfect” designs.
 - Consider failure modes, logging, and operational impact when adding or changing behavior.
 
+### Object-oriented design (OOP)
+- **Encapsulation:** Hide implementation details behind clear, minimal APIs. Avoid exposing mutable internals or leaking abstraction boundaries. Prefer small, well-defined types and modules.
+- **Interfaces over concrete types for dependencies:** Depend on interfaces (Go), protocols/ABCs (Python), or interfaces/types (TypeScript) for external dependencies (DB, HTTP, ML client, logger) so implementations can be swapped and tests can inject mocks.
+- **Composition over inheritance:** Prefer composing small types and functions over deep inheritance hierarchies. Use inheritance only when there is a clear “is-a” relationship and shared behavior; otherwise use composition or delegation.
+- **Single responsibility for types:** Each type or class should have one clear responsibility. Use structs/dataclasses for data bundles and interfaces/protocols for behavior contracts.
+- **Language-appropriate OOP:**
+  - **Go:** Prefer small interfaces (one or few methods); “accept interfaces, return structs.” Use interfaces for dependencies (logger, repo, client) so tests can inject fakes.
+  - **Python:** Use `dataclass` or Pydantic for data; use `Protocol` or small ABCs for behavior contracts when you need pluggable implementations. Avoid deep class hierarchies; prefer composition and module-level functions where they are clearer.
+  - **TypeScript/React:** Use interfaces for component props and API shapes; prefer composition (hooks, small components) over class inheritance. Keep React components presentational where possible and push logic into hooks or pure functions.
+
 ---
 
 ## Structural preferences

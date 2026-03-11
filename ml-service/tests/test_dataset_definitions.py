@@ -1,7 +1,10 @@
 """Unit tests for ml.dataset_definitions."""
 
+import importlib
+
 import numpy as np
 
+from ml import dataset_definitions as dd_mod
 from ml.dataset_definitions import (
     all_batting_columns,
     all_bowling_columns,
@@ -53,3 +56,17 @@ def test_all_bowling_columns_concatenation():
 def test_match_summary_columns():
     assert "total_score" in match_summary_columns
     assert "result" in match_summary_columns
+
+
+def test_dataset_definitions_fallback_when_feature_config_raises():
+    """When get_raw_stat_feature_names raises at import time, fallback columns are used."""
+    from unittest.mock import patch
+
+    with patch("app.feature_config.get_raw_stat_feature_names", side_effect=ImportError("config missing")):
+        importlib.reload(dd_mod)
+    assert hasattr(dd_mod, "input_batting_columns")
+    assert "batting_mean_w3" in dd_mod.input_batting_columns
+    assert "batting_innings_in_last_90d" in dd_mod.input_batting_columns
+    assert "bowling_mean_w3" in dd_mod.input_bowling_columns
+    # Restore so other tests see normal config
+    importlib.reload(dd_mod)

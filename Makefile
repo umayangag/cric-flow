@@ -18,7 +18,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
-.PHONY: check-all frontend-check go-app-check ml-service-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
+.PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -476,8 +476,13 @@ frontend-stop:
 # --- Unified Quality Checks ---
 
 # Run all quality checks for all components
-check-all: frontend-check go-app-check ml-service-check
+check-all: frontend-check go-app-check ml-service-check frontend-backend-sync-check
 	@echo "All quality checks passed!"
+
+# Ensure frontend FORMATS and default model features match go-app and ml-service (run after component checks)
+frontend-backend-sync-check: frontend-install
+	@echo "[sync] Checking frontend aligns with go-app and ml-service..."
+	PATH="$(ML_VENV_BIN):$$PATH" node scripts/check-frontend-backend-sync.mjs
 
 frontend-check: frontend-install
 	@echo "[frontend] Running lint, fmt check, typecheck, build and tests..."
