@@ -621,6 +621,26 @@ def _add_final_report_details(
     report["mlqa_audit"] = _compute_mlqa_audit(
         report, pipe, X, y, cv, scoring, task_type, _mlqa_feature_names(model_kind)
     )
-    fi = _extract_feature_importance(pipe, _mlqa_feature_names(model_kind), X.shape[1])
+    feature_names = _mlqa_feature_names(model_kind)
+    n_features = X.shape[1]
+    fi = _extract_feature_importance(pipe, feature_names, n_features)
     if fi:
         report["feature_importance"] = fi
+    else:
+        # For MLP and other models without feature_importances_, use SHAP
+        try:
+            from ml.shap_explanations import compute_shap_importance
+
+            shap_fi = compute_shap_importance(
+                pipe,
+                X,
+                feature_names=feature_names,
+                task_type=task_type,
+                max_background=100,
+                max_eval=300,
+            )
+            if shap_fi:
+                report["feature_importance"] = shap_fi
+                report["explainer"] = "shap"
+        except Exception as e:
+            logger.debug("SHAP importance skipped: %s", e)
