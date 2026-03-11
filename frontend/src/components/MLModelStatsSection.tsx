@@ -66,7 +66,7 @@ export function MLModelStatsSection({
                 train-batting, train-bowling).
               </Typography>
             ) : (
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560 }}>
+              <TableContainer component={Paper} variant="outlined">
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
