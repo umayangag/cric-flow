@@ -1,13 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import HealthTab from './components/HealthTab';
-import EvaluateDbTab from './components/EvaluateDbTab';
-import OpsStatusTab from './components/OpsStatusTab';
-import MLModelStatsTab from './components/MLModelStatsTab';
-import UpcomingMatchTab from './components/UpcomingMatchTab';
-import WorkbenchTab from './components/WorkbenchTab';
-import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+
+const HealthTab = lazy(() => import('./components/HealthTab'));
+const EvaluateDbTab = lazy(() => import('./components/EvaluateDbTab'));
+const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
+const MLModelStatsTab = lazy(() => import('./components/MLModelStatsTab'));
+const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
+const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
+const Login = lazy(() => import('./pages/Login'));
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
@@ -15,7 +18,6 @@ import Container from '@mui/material/Container';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Paper from '@mui/material/Paper';
-import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Fade from '@mui/material/Fade';
 import Button from '@mui/material/Button';
@@ -177,59 +179,67 @@ const AppContent: React.FC = () => {
         {/* Content Card */}
         <Fade in timeout={240}>
           <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/health" replace />} />
-              <Route path="/login" element={<Login />} />
-              <Route
-                path="/health"
-                element={
-                  <ProtectedRoute>
-                    <HealthTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/ops"
-                element={
-                  <ProtectedRoute>
-                    <OpsStatusTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/ml-model-stats"
-                element={
-                  <ProtectedRoute>
-                    <MLModelStatsTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/evaluate"
-                element={
-                  <ProtectedRoute>
-                    <EvaluateDbTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/upcoming"
-                element={
-                  <ProtectedRoute>
-                    <UpcomingMatchTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/workbench"
-                element={
-                  <ProtectedRoute>
-                    <WorkbenchTab />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="*" element={<Navigate to="/health" replace />} />
-            </Routes>
+            <Suspense
+              fallback={
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/health" replace />} />
+                <Route path="/login" element={<Login />} />
+                <Route
+                  path="/health"
+                  element={
+                    <ProtectedRoute>
+                      <HealthTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ops"
+                  element={
+                    <ProtectedRoute>
+                      <OpsStatusTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ml-model-stats"
+                  element={
+                    <ProtectedRoute>
+                      <MLModelStatsTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/evaluate"
+                  element={
+                    <ProtectedRoute>
+                      <EvaluateDbTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/upcoming"
+                  element={
+                    <ProtectedRoute>
+                      <UpcomingMatchTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/workbench"
+                  element={
+                    <ProtectedRoute>
+                      <WorkbenchTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/health" replace />} />
+              </Routes>
+            </Suspense>
           </Paper>
         </Fade>
       </Container>

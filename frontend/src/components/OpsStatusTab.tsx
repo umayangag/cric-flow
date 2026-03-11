@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { api } from '../api';
+import { useApiCall } from '../hooks/useApiCall';
 import { usePolling } from '../hooks/usePolling';
 import { OpsStatusSection } from './OpsStatusSection';
 import type { OpsStatus } from './OpsStatusSection';
@@ -9,25 +10,13 @@ export type { OpsStatus };
 const REFRESH_MS = 15000;
 
 const OpsStatusTab: React.FC = () => {
-  const [data, setData] = useState<OpsStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await api.opsStatus();
-      setData(res);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch /ops/status');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchStatus = useCallback(() => api.opsStatus(), []);
+  const { data, error, loading, refetch } = useApiCall(fetchStatus, {
+    defaultErrorMessage: 'Failed to fetch /ops/status',
+  });
 
   // Initial load + auto-refresh while the tab is mounted.
-  usePolling(fetchStatus, REFRESH_MS, true);
+  usePolling(refetch, REFRESH_MS, true);
 
   const lastUpdated = useMemo(() => {
     if (!data?.timestamp) return '';
@@ -45,7 +34,7 @@ const OpsStatusTab: React.FC = () => {
       error={error}
       loading={loading}
       lastUpdated={lastUpdated}
-      onRefresh={fetchStatus}
+      onRefresh={refetch}
     />
   );
 };

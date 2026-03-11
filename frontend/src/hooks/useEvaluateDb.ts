@@ -1,18 +1,9 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { getStoredEvalJob, setStoredEvalJob, clearStoredEvalJob } from '../lib/evaluateDbStorage';
+import { useBacktestFormOptions } from './useBacktestFormOptions';
 import { usePolling } from './usePolling';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
-
-const EVAL_JOB_STORAGE_KEY = 'cric_info_eval_job';
-
-type StoredEvalJob = {
-  job_id: string;
-  match_id: number;
-  format: string;
-  team1: string;
-  team2: string;
-  started_at: string;
-};
 
 export type EvaluationStep = { step: string; message: string };
 
@@ -70,102 +61,32 @@ export interface UseEvaluateDbReturn {
 }
 
 export function useEvaluateDb(): UseEvaluateDbReturn {
-  // Inputs for new backtest flow
-  const [format, setFormat] = useState<string>('');
-  const [team1, setTeam1] = useState<string>('');
-  const [team2, setTeam2] = useState<string>('');
+  const formOptions = useBacktestFormOptions();
+  const {
+    format,
+    setFormat,
+    team1,
+    setTeam1,
+    team2,
+    setTeam2,
+    availableFormats,
+    availableTeam1s,
+    availableTeam2s,
+    optionsError,
+    setOptionsError,
+  } = formOptions;
 
-  // Options
-  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
-  const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
-  const [availableTeam2s, setAvailableTeam2s] = useState<string[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    const fetchData = async () => {
-      try {
-        const f = await api.getFormats();
-        if (active) {
-          setAvailableFormats(f);
-        }
-      } catch (e) {
-        if (active) {
-          setError(`Failed to load form options: ${e instanceof Error ? e.message : String(e)}`);
-          console.error('Failed to fetch options', e);
-        }
-      }
-    };
-    fetchData();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Fetch Team 1 when format changes
-  useEffect(() => {
-    if (!format) {
-      setAvailableTeam1s([]);
-      setTeam1('');
-      return;
-    }
-    let active = true;
-    api
-      .getTeamsByFormat(format)
-      .then((teams) => {
-        if (active) {
-          setAvailableTeam1s(teams);
-          setTeam1((currentTeam1) =>
-            currentTeam1 && !teams.includes(currentTeam1) ? '' : currentTeam1,
-          );
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(`Failed to fetch teams: ${err.message}`);
-        }
-      });
-    return () => {
-      active = false;
-    };
-    // team1 excluded: only used to validate/clear selection via functional updater;
-    // API call depends only on format.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format]);
-
-  // Fetch Team 2 when Team 1 or format changes
-  useEffect(() => {
-    if (!format || !team1) {
-      setAvailableTeam2s([]);
-      setTeam2('');
-      return;
-    }
-    let active = true;
-    api
-      .getOpponents(format, team1)
-      .then((opps) => {
-        if (active) {
-          setAvailableTeam2s(opps);
-          setTeam2((currentTeam2) =>
-            currentTeam2 && !opps.includes(currentTeam2) ? '' : currentTeam2,
-          );
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(`Failed to fetch opponents: ${err.message}`);
-        }
-      });
-    return () => {
-      active = false;
-    };
-    // team2 excluded: only used to validate/clear selection via functional updater;
-    // API call depends only on format+team1.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, team1]);
-
-  // UI state
+  // UI state (action errors; options load errors come from formOptions.optionsError)
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = optionsError ?? actionError;
+  const setError = useCallback(
+    (v: string | null) => {
+      setActionError(v);
+      if (v === null) setOptionsError(null);
+    },
+    [setOptionsError],
+  );
   const [statusMessage, setStatusMessage] = useState<string>('');
 
   // Prediction model for evaluate: format-specific or unified (legacy)
@@ -222,33 +143,14 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setCurrentJobId(null);
     setJobUseUnifiedModel(null);
     setJobUseLatestModel(null);
-    try {
-      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+    clearStoredEvalJob();
+  }, [setError]);
 
   // Restore evaluation job on mount (e.g. after refresh) — poll if still running
   useEffect(() => {
     let cancelled = false;
-    let stored: string | null = null;
-    try {
-      if (typeof localStorage?.getItem === 'function') {
-        stored = localStorage.getItem(EVAL_JOB_STORAGE_KEY);
-      }
-    } catch {
-      /* ignore (e.g. test env) */
-    }
-    if (!stored) return;
-    let data: StoredEvalJob;
-    try {
-      data = JSON.parse(stored) as StoredEvalJob;
-    } catch {
-      localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-      return;
-    }
-    if (!data.job_id) return;
+    const data = getStoredEvalJob();
+    if (!data) return;
 
     api
       .getEvaluateStatus(data.job_id)
@@ -285,12 +187,12 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       })
       .catch(() => {
         if (cancelled) return;
-        localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
+        clearStoredEvalJob();
       });
     return () => {
       cancelled = true;
     };
-  }, [applyJobModeFromStatus]);
+  }, [applyJobModeFromStatus, setFormat, setTeam1, setTeam2, setSelectedMatchId, setError]);
 
   // Poll evaluate status while job is running
   const pollEvaluateStatus = useCallback(async () => {
@@ -303,20 +205,12 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);
         setStatusMessage('Evaluation complete.');
-        try {
-          localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-        } catch {
-          /* ignore */
-        }
+        clearStoredEvalJob();
       } else if (status.status === 'error') {
         setEvaluating(false);
         setError(status.error ?? 'Unknown error');
         setStatusMessage('');
-        try {
-          localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-        } catch {
-          /* ignore */
-        }
+        clearStoredEvalJob();
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -327,13 +221,9 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setError(msg || 'Failed to fetch evaluation status.');
       }
       setStatusMessage('');
-      try {
-        localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
-      } catch {
-        /* ignore */
-      }
+      clearStoredEvalJob();
     }
-  }, [currentJobId, evaluating, applyJobModeFromStatus]);
+  }, [currentJobId, evaluating, applyJobModeFromStatus, setError]);
 
   usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
 
@@ -387,7 +277,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     } finally {
       setLoading(false);
     }
-  }, [format, team1, team2]);
+  }, [format, team1, team2, setError]);
 
   const handleEvaluateSelectedMatch = useCallback(async () => {
     if (selectedMatchId == null) return;
@@ -404,19 +294,14 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
           use_latest_model: useLatestModel,
         },
       );
-      const stored: StoredEvalJob = {
+      setStoredEvalJob({
         job_id,
         match_id: selectedMatchId,
         format: format.trim(),
         team1: team1.trim(),
         team2: team2.trim(),
         started_at: new Date().toISOString(),
-      };
-      try {
-        localStorage.setItem(EVAL_JOB_STORAGE_KEY, JSON.stringify(stored));
-      } catch {
-        /* ignore */
-      }
+      });
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
@@ -439,6 +324,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     predictionModel,
     useLatestModel,
     applyJobModeFromStatus,
+    setError,
   ]);
 
   return {

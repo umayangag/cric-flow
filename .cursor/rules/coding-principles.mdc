@@ -66,4 +66,5 @@ When modifying or adding code in this repository, follow these principles so tha
 ## Before submitting changes
 
 - Ensure lint, format, typecheck, and tests pass for the components you changed (frontend, go-app, ml-service as applicable).
+- **Go-app coverage:** Run `make -C go-app coverage` then `make -C go-app coverage-check` from repo root (or use `make go-app-check`); do not run `coverage-check` without a prior `coverage` run in go-app.
 - Ensure new or modified code adheres to the principles above and to any component-specific rules (e.g. `.cursor/rules/architect-ml-expert.mdc` for architecture and ML).

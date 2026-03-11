@@ -3,6 +3,8 @@
 **Date:** 2025-03-11  
 **Scope:** Full codebase (frontend, go-app, ml-service) vs. [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) and [architect-ml-expert](../.cursor/rules/architect-ml-expert.mdc).
 
+**Implementation status (single PR):** P0, P1 (Go-app, Frontend, ML-service), P2, and P3 are implemented on the same branch: docs + go-app server split; useBacktestFormOptions + evaluateDbStorage + useEvaluateDb refactor; useApiCall + MLModelStatsTab/OpsStatusTab; React.lazy route code-splitting; SUPPRESSIONS.md; app/prediction_settings.py extraction from prediction_service.
+
 ---
 
 ## 1. Executive summary
