@@ -23,6 +23,14 @@ import {
 import type { AccuracyTrendItem, AccuracyTrendResponse } from '../types';
 import SectionCard from './common/SectionCard';
 
+const formatMetricValue = (key: string, value: number | undefined): string => {
+  if (value == null || Number.isNaN(value)) return '—';
+  if (key.toLowerCase().includes('accuracy') || key.toLowerCase().endsWith('_acc')) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  return value.toFixed(2);
+};
+
 type PredictionModel = 'format' | 'unified';
 
 type Props = {
@@ -62,6 +70,40 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
   onChangeLimit,
   onLoad,
 }) => {
+  const metricKeys = React.useMemo<string[]>(() => {
+    if (!trendData?.results?.length) {
+      return [];
+    }
+
+    const preferredOrder = [
+      'player_runs_mae',
+      'player_runs_rmse',
+      'player_runs_r2',
+      'player_wickets_mae',
+      'player_economy_mae',
+      'team_runs_mae',
+      'team_wickets_mae',
+      'team_extras_mae',
+      'team_winner_accuracy',
+    ];
+
+    const all = new Set<string>();
+    trendData.results.forEach((row) => {
+      Object.keys(row.metrics || {}).forEach((k) => all.add(k));
+    });
+
+    const ordered: string[] = [];
+    preferredOrder.forEach((k) => {
+      if (all.has(k)) {
+        ordered.push(k);
+        all.delete(k);
+      }
+    });
+
+    const remaining = Array.from(all).sort();
+    return [...ordered, ...remaining];
+  }, [trendData]);
+
   return (
     <SectionCard
       title="Accuracy trend"
@@ -178,9 +220,9 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
                   <TableCell>Format</TableCell>
                   <TableCell>Team1</TableCell>
                   <TableCell>Team2</TableCell>
-                  <TableCell>player_runs_mae</TableCell>
-                  <TableCell>team_runs_mae</TableCell>
-                  <TableCell>team_winner_accuracy</TableCell>
+                  {metricKeys.map((k) => (
+                    <TableCell key={k}>{k}</TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -191,21 +233,11 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
                     <TableCell>{row.format}</TableCell>
                     <TableCell>{row.team1}</TableCell>
                     <TableCell>{row.team2}</TableCell>
-                    <TableCell>
-                      {row.metrics.player_runs_mae != null
-                        ? row.metrics.player_runs_mae.toFixed(2)
-                        : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {row.metrics.team_runs_mae != null
-                        ? row.metrics.team_runs_mae.toFixed(2)
-                        : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {row.metrics.team_winner_accuracy != null
-                        ? `${(row.metrics.team_winner_accuracy * 100).toFixed(1)}%`
-                        : '—'}
-                    </TableCell>
+                    {metricKeys.map((k) => (
+                      <TableCell key={k}>
+                        {formatMetricValue(k, row.metrics[k] as number | undefined)}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))}
               </TableBody>

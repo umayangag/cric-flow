@@ -258,7 +258,8 @@ def _batch_evaluate_candidates(
 
     # Match context columns are constant across all candidates.
     for col in MATCH_CONTEXT_COLS:
-        feature_matrix[:, _COL_INDEX[col]] = float(match_context.get(col, 0.0))
+        if col in _COL_INDEX:
+            feature_matrix[:, _COL_INDEX[col]] = float(match_context.get(col, 0.0))
 
     # Opponent-side distribution stats are constant.
     for col_name, val in opponent_stats.items():
@@ -321,15 +322,20 @@ def _evaluate_single_team(
     match_context: Mapping[str, float],
     team_is_team1: bool,
     model,
+    format_code: str,
 ) -> float:
     """Win probability of a single team composition (used for initial seed score)."""
     team_feats: Dict[int, Dict[str, float]] = {p.player_id: dict(p.features) for p in team}
     opp_feats = dict(opponent_features)
 
     if team_is_team1:
-        feature_dict = aggregate_team_features_from_player_maps(team_feats, opp_feats, match_context)
+        feature_dict = aggregate_team_features_from_player_maps(
+            team_feats, opp_feats, match_context, format_code=format_code
+        )
     else:
-        feature_dict = aggregate_team_features_from_player_maps(opp_feats, team_feats, match_context)
+        feature_dict = aggregate_team_features_from_player_maps(
+            opp_feats, team_feats, match_context, format_code=format_code
+        )
 
     vec = build_feature_vector(feature_dict)
     X = np.array([vec], dtype=np.float64)
@@ -359,6 +365,7 @@ def optimize_team_by_win_probability(
     model,
     max_iterations: int = 50,
     max_evals: int = 500,
+    format_code: str = "",
 ) -> OptimizationResult:
     """Hill-climb team optimisation with vectorised batch model inference.
 
@@ -376,7 +383,12 @@ def optimize_team_by_win_probability(
     opponent_team_number = 2 if team_is_team1 else 1
     opponent_stats = _precompute_fixed_team_stats(opponent_features, opponent_team_number)
 
-    current_prob = _evaluate_single_team(seed, opponent_features, match_context, team_is_team1, model)
+    # Extend match context with format one-hot columns using the shared aggregation helper.
+    context_extended = aggregate_team_features_from_player_maps({}, {}, match_context, format_code=format_code or "")
+
+    current_prob = _evaluate_single_team(
+        seed, opponent_features, context_extended, team_is_team1, model, format_code or ""
+    )
     eval_count = 1
     iterations_used = 0
 
@@ -405,7 +417,7 @@ def optimize_team_by_win_probability(
 
             candidates = [rest[j] for j in valid_indices]
             probas = _batch_evaluate_candidates(
-                seed, i, candidates, opponent_stats, match_context, team_is_team1, model
+                seed, i, candidates, opponent_stats, context_extended, team_is_team1, model
             )
             eval_count += len(candidates)
 

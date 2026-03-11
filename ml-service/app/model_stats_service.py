@@ -12,6 +12,8 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from ml.config import get_mlqa_config
+
 from .logging import get_struct_logger
 
 logger = get_struct_logger()
@@ -114,6 +116,148 @@ def flatten_metrics_for_display(metrics: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Recompute MLQA audit using current thresholds and stored metrics.
+
+    This avoids re-running tuning: it interprets the existing delta/std/fairness
+    metrics under the latest ml.mlqa config. Falls back to the original audit
+    when metrics are missing or config cannot be loaded.
+    """
+    original = report.get("mlqa_audit")
+    if not isinstance(original, dict):
+        return None
+
+    checks = original.get("checks") or {}
+    over = checks.get("overfitting") or {}
+    stab = checks.get("stability") or {}
+
+    delta = over.get("delta")
+    fold_std = stab.get("cv_std")
+    cv_fold_scores = stab.get("cv_fold_scores")
+
+    fairness = report.get("fairness_metrics") or {}
+    dip = fairness.get("disparate_impact_ratio")
+
+    feature_importance = report.get("feature_importance") or {}
+
+    if delta is None and fold_std is None and dip is None and not feature_importance:
+        # Not enough structured metrics to safely recompute; keep existing audit.
+        return original
+
+    try:
+        mlqa_cfg = get_mlqa_config()
+    except Exception as e:  # pragma: no cover - defensive, config is tested elsewhere
+        logger.debug("model_stats.mlqa_config_failed", error=str(e))
+        return original
+
+    delta_thresh = float(mlqa_cfg.get("overfitting_delta_threshold", 0.08))
+    std_thresh = float(mlqa_cfg.get("stability_fold_std_threshold", 0.05))
+    dip_low = float(mlqa_cfg.get("bias_dip_low", 0.8))
+    dip_high = float(mlqa_cfg.get("bias_dip_high", 1.25))
+    top_weight_thresh = float(mlqa_cfg.get("sensitivity_top_weight_threshold", 0.70))
+
+    findings: List[str] = []
+    status_flags: List[str] = []
+    bias_report = original.get("bias_report", "No protected groups defined; fairness audit skipped.")
+
+    # 1. Overfitting: train–validation delta vs threshold
+    overfitting_risk = False
+    if delta is not None:
+        delta_f = float(delta)
+        overfitting_risk = delta_f > delta_thresh
+        if overfitting_risk:
+            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta_f:.4f} (>{delta_thresh}).")
+            status_flags.append("overfitting")
+        else:
+            findings.append(f"Overfitting check OK: Δ = {delta_f:.4f} ≤ {delta_thresh}.")
+
+    # 2. Stability: CV fold std vs threshold
+    unstable = False
+    if fold_std is not None:
+        fold_std_f = float(fold_std)
+        unstable = fold_std_f > std_thresh
+        if unstable:
+            findings.append(f"Unstable: CV fold σ = {fold_std_f:.4f} (>{std_thresh}).")
+            status_flags.append("unstable")
+        else:
+            findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f}.")
+
+    # 3. Bias & Fairness: disparate impact ratio
+    if dip is not None:
+        dip_f = float(dip)
+        biased = dip_f < dip_low or dip_f > dip_high
+        if biased:
+            findings.append(f"Biased Model: disparate_impact_ratio = {dip_f:.4f} outside [{dip_low}, {dip_high}].")
+            status_flags.append("biased")
+            bias_report = "Model shows disparate impact; review protected group treatment before deployment."
+        else:
+            findings.append(f"Fairness OK: disparate_impact_ratio = {dip_f:.4f} in [{dip_low}, {dip_high}].")
+            bias_report = "Model treats subgroups equitably within defined fairness bounds."
+
+    # 4. Sensitivity: top feature weight from feature_importance dict (if present)
+    if isinstance(feature_importance, dict) and feature_importance:
+        try:
+            # Use absolute importance values to guard against negative importances.
+            items = list(feature_importance.items())
+            # Sort by descending importance
+            items.sort(key=lambda kv: abs(float(kv[1])), reverse=True)
+            total = sum(abs(float(v)) for _, v in items)
+            if total > 0:
+                top_name, top_val = items[0]
+                top_weight = abs(float(top_val)) / total
+                if top_weight > top_weight_thresh:
+                    findings.append(
+                        f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}%."
+                    )
+                    status_flags.append("sensitivity")
+                else:
+                    findings.append(
+                        f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%."
+                    )
+        except Exception:
+            # Do not fail model-stats if feature importance is malformed; just skip sensitivity.
+            pass
+
+    # Aggregate status and verdict using the same rules as cv_metrics._compute_mlqa_audit
+    if status_flags:
+        audit_status = "FAIL" if any(f in ("overfitting", "unstable", "biased") for f in status_flags) else "WARNING"
+    else:
+        audit_status = "PASS"
+    if audit_status == "FAIL":
+        final_verdict = "Rollback & Re-tune"
+    else:
+        final_verdict = "Proceed to Deployment"
+
+    # Build updated checks block.
+    new_checks: Dict[str, Any] = {}
+    if delta is not None:
+        new_checks["overfitting"] = {
+            "delta": float(delta),
+            "flagged": overfitting_risk,
+        }
+    if fold_std is not None or cv_fold_scores is not None:
+        stab_block: Dict[str, Any] = {}
+        if fold_std is not None:
+            stab_block["cv_std"] = float(fold_std)
+            stab_block["flagged"] = unstable
+        if cv_fold_scores is not None:
+            # Keep any existing scores for UI display.
+            stab_block["cv_fold_scores"] = cv_fold_scores
+        new_checks["stability"] = stab_block
+
+    # Preserve original findings as a fallback if we could not recompute anything.
+    if not findings and isinstance(original.get("key_findings"), list):
+        findings = list(original["key_findings"])
+
+    return {
+        "audit_status": audit_status,
+        "key_findings": findings,
+        "bias_report": bias_report,
+        "final_verdict": final_verdict,
+        "checks": new_checks or checks,
+    }
+
+
 def enrich_with_tuning_report(
     rec: Dict[str, Any],
     models_dir: str,
@@ -163,7 +307,9 @@ def enrich_with_tuning_report(
         feature_importance = report.get("feature_importance")
         if feature_importance and isinstance(feature_importance, dict):
             rec["feature_importance"] = feature_importance
-        mlqa = report.get("mlqa_audit")
+        # Re-interpret stored MLQA metrics under the current thresholds so that
+        # existing models reflect updated audit config without re-running tuning.
+        mlqa = _recompute_mlqa_audit_from_report(report)
         if mlqa and isinstance(mlqa, dict):
             rec["mlqa_audit"] = mlqa
         # Set accuracy_display from metrics (preferred) or fallback for neg_mean_absolute_error

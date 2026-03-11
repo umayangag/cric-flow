@@ -44,7 +44,10 @@ export type PredictSimulationResult = {
 export type PredictTeamSelectionResponse = {
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
+  /** Baseline scorecard summary from per-innings models. */
   scorecard_summary?: PredictScorecardSummary;
+  /** Reconciled scorecard summary aligned with win-model probabilities (when available). */
+  scorecard_summary_reconciled?: PredictScorecardSummary;
   /** Present when simulate=true; win probs and innings distributions from Monte Carlo. */
   simulation?: PredictSimulationResult;
 };
@@ -202,6 +205,10 @@ export type EvaluateStatusResponse = {
   format: string;
   team1: string;
   team2: string;
+  /** True when the unified (all-formats) model was used instead of the format-specific model. */
+  use_unified_model?: boolean;
+  /** True when the latest model was used (vs strict temporal cutoff). */
+  use_latest_model?: boolean;
   status: 'running' | 'done' | 'error';
   steps?: EvaluateJobStep[];
   result?: BacktestEvaluateResponse | null;

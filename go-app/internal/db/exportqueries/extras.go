@@ -9,7 +9,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// ExtrasTrainingRows returns match-level rows for extras prediction: format_id, venue_id, season_id, total_extras,
+// ExtrasTrainingRows returns match-level rows for extras prediction: format_code (categorical), venue_id, season_id, total_extras,
 // plus weather (temp, wind, rain, humidity, cloud, pressure, viscosity) and match-level bat/bowl consistency and form sums.
 // Used by the backtest training-data API and ML extras model.
 func ExtrasTrainingRows(ctx context.Context, cutoff time.Time) ([][]string, error) {
@@ -84,7 +84,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	bowl_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_consistency GROUP BY match_id),
 	bat_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_form GROUP BY match_id),
 	bowl_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id)
-	SELECT m.match_id, m.format_id, m.venue_id, m.season_id, m.total_extras, m.format_code,
+	SELECT m.match_id, m.venue_id, m.season_id, m.total_extras, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
@@ -113,7 +113,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	}
 	defer rows.Close()
 	headers := []string{
-		"match_id", "format_id", "venue_id", "season_id", "total_extras", "format_code",
+		"match_id", "venue_id", "season_id", "total_extras", "format_code",
 		"match_date", "match_date_unix",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
@@ -121,13 +121,13 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {
-		var matchID, formatID, venueID, seasonID int64
+		var matchID, venueID, seasonID int64
 		var totalExtras int
 		var formatCode string
 		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
-		if err := rows.Scan(&matchID, &formatID, &venueID, &seasonID, &totalExtras, &formatCode,
+		if err := rows.Scan(&matchID, &venueID, &seasonID, &totalExtras, &formatCode,
 			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
@@ -135,7 +135,6 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		}
 		out = append(out, []string{
 			strconv.FormatInt(matchID, 10),
-			strconv.FormatInt(formatID, 10),
 			strconv.FormatInt(venueID, 10),
 			strconv.FormatInt(seasonID, 10),
 			strconv.Itoa(totalExtras),

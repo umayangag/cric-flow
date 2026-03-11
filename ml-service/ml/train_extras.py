@@ -37,16 +37,18 @@ from ml.config import (
     get_training_params,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.win_features import _FORMAT_CODES as WIN_FORMAT_CODES  # reuse configured formats for one-hot encoding
 
 logger = logging.getLogger(__name__)
 
 # Minimum number of samples to train the unified (legacy) extras model
 MIN_SAMPLES_FOR_LEGACY = 10
 
-# Same feature families as batting/bowling/fielding: format, venue, season, weather, and match-level
-# aggregates of player consistency/form (all players who batted or bowled in the match).
+EXTRAS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES] + ["format_is_OTHER"]
+
+# Same feature families as batting/bowling/fielding: format (categorical one-hot),
+# venue, season, weather, and match-level aggregates of player consistency/form.
 EXTRAS_FEATURE_COLS = [
-    "format_id",
     "venue_id",
     "season_id",
     "match_date_unix",
@@ -61,7 +63,7 @@ EXTRAS_FEATURE_COLS = [
     "bowl_consistency_sum",
     "bat_form_sum",
     "bowl_form_sum",
-]
+] + EXTRAS_FORMAT_ONE_HOT_COLS
 EXTRAS_TARGET_COL = "total_extras"
 
 
@@ -117,6 +119,14 @@ def rows_to_xy_by_format(
     for c in EXTRAS_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
+
+    # One-hot encode format as categorical when format_code is available.
+    if "format_code" in df.columns:
+        fmt_series = df["format_code"].astype(str).str.strip().str.upper()
+        for code in WIN_FORMAT_CODES:
+            col_name = f"format_is_{code}"
+            df[col_name] = (fmt_series == code).astype(float)
+        df["format_is_OTHER"] = (~fmt_series.isin(list(WIN_FORMAT_CODES))).astype(float)
     pipe_cfg = get_pipeline_common_config()
     halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)
 

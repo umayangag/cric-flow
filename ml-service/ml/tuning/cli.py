@@ -243,6 +243,9 @@ def main() -> None:
                 )
                 env = os.environ.copy()
                 env["AUTO_TUNE_N_JOBS"] = "1"
+                _config_path = os.path.join(_ML_ROOT, "config.json")
+                if os.path.isfile(_config_path):
+                    env["ML_SERVICE_CONFIG"] = _config_path
                 failed = 0
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = {
@@ -362,8 +365,8 @@ def main() -> None:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                                all_X = np.vstack([X for _, (X, Y, *_) in by_f.items()])
+                                all_Y = np.concatenate([Y.ravel() for _, (X, Y, *_) in by_f.items()])
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_win_data unified empty")
                                     continue

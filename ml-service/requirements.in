@@ -17,3 +17,6 @@ python-dotenv
 # Auto-tune enhancements (optional: auto_tune works without these via fallback)
 pycaret
 autogluon
+
+# Model interpretability (SHAP for MLP and tree-based auto-tuned models)
+shap

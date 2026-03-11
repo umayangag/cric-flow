@@ -22,6 +22,7 @@ from ml.tuning.types import (
     _train_innings,
     _train_win,
 )
+from ml.win_features import _FORMAT_CODES as _WIN_FORMAT_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, T
     return by_format
 
 
-def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, ...]]:
     if _train_win is None:
         logger.error("auto_tune.load_win_csv.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win CSV")
@@ -242,6 +243,18 @@ def load_innings_from_api(
     for c in _train_innings.INNINGS_FEATURE_COLS:
         if c in df.columns:
             df[c] = df[c].fillna(0.0)
+    # Add format one-hot (same as train_innings.rows_to_xy_by_format)
+    fmt_series = (
+        df["format_code"].astype(str).str.strip().str.upper()
+        if "format_code" in df.columns
+        else pd.Series(["OTHER"] * len(df), index=df.index)
+    )
+    for col in _train_innings.INNINGS_FORMAT_ONE_HOT_COLS:
+        if col == "format_is_OTHER":
+            df[col] = (~fmt_series.isin(_WIN_FORMAT_CODES)).astype(float)
+        else:
+            code = col.replace("format_is_", "")
+            df[col] = (fmt_series == code).astype(float)
     feat_cols = [c for c in _train_innings.INNINGS_FEATURE_COLS if c in df.columns]
     out: Dict[str, Tuple[np.ndarray, np.ndarray, Any]] = {}
     if "format_code" not in df.columns:
@@ -271,7 +284,7 @@ def load_innings_from_api(
 
 def load_win_from_api(
     go_app_url: str, cutoff: str, api_key: Optional[str], format_filter: Optional[str] = None
-) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, ...]]:
     if _train_win is None:
         logger.error("auto_tune.load_win_from_api.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win API")

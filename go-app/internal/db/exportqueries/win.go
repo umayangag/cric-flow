@@ -124,54 +124,54 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	t1_bat_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_std_w10 AS v
 		FROM t1_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bowl_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_std_w10 AS v
 		FROM t1_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bat_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_std_w10 AS v
 		FROM t2_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bowl_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_std_w10 AS v
 		FROM t2_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bat_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_mean_w5 AS v
 		FROM t1_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bowl_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_mean_w5 AS v
 		FROM t1_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bat_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_mean_w5 AS v
 		FROM t2_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bowl_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_mean_w5 AS v
 		FROM t2_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	` + buildWinAggAndTop3CTEs() + `
 	/* main */
-	SELECT m.match_id, m.format_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
+	SELECT m.match_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		` + buildWinFeatureSelectColumns() + `
@@ -249,7 +249,6 @@ func winEnhancedHeaders() []string {
 	base = append(
 		base,
 		"match_id",
-		"format_id",
 		"venue_id",
 		"team1_opposition_id",
 		"team2_opposition_id",
@@ -275,7 +274,7 @@ func winEnhancedHeaders() []string {
 }
 
 func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, error) {
-	var matchID, formatID, venueID, team1, team2, tossWinner int64
+	var matchID, venueID, team1, team2, tossWinner int64
 	var team1Wins int
 	var formatCode string
 	var matchDate time.Time
@@ -285,7 +284,7 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 
 	dest := make([]any, 0, 16+7*len(groups))
 	dest = append(dest,
-		&matchID, &formatID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
+		&matchID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
 		&matchDate,
 		&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 	)
@@ -308,7 +307,6 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 
 	row := []string{
 		strconv.FormatInt(matchID, 10),
-		strconv.FormatInt(formatID, 10),
 		strconv.FormatInt(venueID, 10),
 		strconv.FormatInt(team1, 10),
 		strconv.FormatInt(team2, 10),

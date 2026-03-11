@@ -19,6 +19,7 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
+import type { SxProps } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { accentGradient } from '../theme';
@@ -29,6 +30,37 @@ import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
+
+/** Reusable display of job mode (unified/format model · latest/strict) when at least one flag is non-null. */
+function JobModeDisplay({
+  jobUseUnifiedModel,
+  jobUseLatestModel,
+  prefix,
+  sx,
+}: {
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
+  prefix: string;
+  sx?: SxProps;
+}) {
+  if (jobUseUnifiedModel === null && jobUseLatestModel === null) return null;
+  return (
+    <Typography variant="body2" color="text.secondary" sx={sx}>
+      {prefix}
+      {jobUseUnifiedModel === null
+        ? '—'
+        : jobUseUnifiedModel
+          ? 'Unified (all-formats) model'
+          : 'Format-specific model'}
+      {' · '}
+      {jobUseLatestModel === null
+        ? '—'
+        : jobUseLatestModel
+          ? 'Latest model'
+          : 'Strict temporal cutoff'}
+    </Typography>
+  );
+}
 
 /** Shared filter for Team 1/Team 2 Autocomplete: show all when empty, require ≥3 chars when typing. */
 function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
@@ -77,6 +109,10 @@ export interface EvaluateDbSectionProps {
   evaluating: boolean;
   evaluationSteps: EvaluationStep[];
 
+  // Evaluate job mode (from backend flags)
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
+
   // Derived
   canLoad: boolean;
   canEvaluate: boolean;
@@ -112,6 +148,8 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   currentJobId,
   evaluating,
   evaluationSteps,
+  jobUseUnifiedModel,
+  jobUseLatestModel,
   canLoad,
   canEvaluate,
   onResetOutputs,
@@ -216,6 +254,12 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
+        <JobModeDisplay
+          jobUseUnifiedModel={jobUseUnifiedModel}
+          jobUseLatestModel={jobUseLatestModel}
+          prefix="Mode: "
+          sx={{ mt: 0.5 }}
+        />
       </Paper>
     )}
 
@@ -375,6 +419,12 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
+        <JobModeDisplay
+          jobUseUnifiedModel={jobUseUnifiedModel}
+          jobUseLatestModel={jobUseLatestModel}
+          prefix="Evaluated with "
+          sx={{ mb: 1 }}
+        />
         <EvaluationResults result={evaluationResult} />
       </Box>
     )}

@@ -65,6 +65,8 @@ export interface UseEvaluateDbReturn {
   resetOutputs: () => void;
   handleLoadCandidates: () => Promise<void>;
   handleEvaluateSelectedMatch: () => Promise<void>;
+  jobUseUnifiedModel: boolean | null;
+  jobUseLatestModel: boolean | null;
 }
 
 export function useEvaluateDb(): UseEvaluateDbReturn {
@@ -185,6 +187,20 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [evaluationSteps, setEvaluationSteps] = useState<EvaluationStep[]>([]);
+  const [jobUseUnifiedModel, setJobUseUnifiedModel] = useState<boolean | null>(null);
+  const [jobUseLatestModel, setJobUseLatestModel] = useState<boolean | null>(null);
+
+  const applyJobModeFromStatus = useCallback(
+    (status: { use_unified_model?: boolean; use_latest_model?: boolean }) => {
+      setJobUseUnifiedModel(
+        typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
+      );
+      setJobUseLatestModel(
+        typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
+      );
+    },
+    [],
+  );
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -204,6 +220,8 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setStatusMessage('');
     setError(null);
     setCurrentJobId(null);
+    setJobUseUnifiedModel(null);
+    setJobUseLatestModel(null);
     try {
       localStorage.removeItem(EVAL_JOB_STORAGE_KEY);
     } catch {
@@ -241,6 +259,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setTeam1(data.team1);
         setTeam2(data.team2);
         setSelectedMatchId(data.match_id);
+        applyJobModeFromStatus(status);
         setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
         if (status.status === 'running') {
           setEvaluating(true);
@@ -271,7 +290,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyJobModeFromStatus]);
 
   // Poll evaluate status while job is running
   const pollEvaluateStatus = useCallback(async () => {
@@ -279,6 +298,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     try {
       const status = await api.getEvaluateStatus(currentJobId);
       setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
+      applyJobModeFromStatus(status);
       if (status.status === 'done') {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);
@@ -313,7 +333,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         /* ignore */
       }
     }
-  }, [currentJobId, evaluating]);
+  }, [currentJobId, evaluating, applyJobModeFromStatus]);
 
   usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
 
@@ -400,6 +420,10 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
+      applyJobModeFromStatus({
+        use_unified_model: predictionModel === 'unified',
+        use_latest_model: useLatestModel,
+      });
       setStatusMessage(
         'Evaluation in progress. You can refresh the page; progress will be restored.',
       );
@@ -407,7 +431,15 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
     }
-  }, [format, team1, team2, selectedMatchId, predictionModel, useLatestModel]);
+  }, [
+    format,
+    team1,
+    team2,
+    selectedMatchId,
+    predictionModel,
+    useLatestModel,
+    applyJobModeFromStatus,
+  ]);
 
   return {
     format,
@@ -441,5 +473,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     resetOutputs,
     handleLoadCandidates,
     handleEvaluateSelectedMatch,
+    jobUseUnifiedModel,
+    jobUseLatestModel,
   };
 }

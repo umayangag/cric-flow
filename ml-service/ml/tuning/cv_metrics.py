@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.metrics import (
@@ -356,6 +356,89 @@ def _extract_feature_importance(
     return extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
 
 
+def compute_mlqa_overfitting_stability(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    cv: Any,
+    scoring: str,
+    val_score: float,
+    fold_std_override: Optional[float] = None,
+) -> Tuple[bool, float, float, float]:
+    """Compute overfitting delta, CV fold std, and combined violation; return pass and metrics.
+
+    Used by auto-tune to rank candidates: prefer pass, then lowest violation (closest to pass),
+    then best CV score. violation = how much over threshold (delta + sigma excess).
+    Returns: (passes, delta, fold_std, violation).
+    """
+    from sklearn.base import clone
+    from sklearn.metrics import get_scorer
+
+    try:
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+    except Exception:
+        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
+        delta_thresh = 0.08
+        std_thresh = 0.065
+    pipe_fit = clone(pipe)
+    pipe_fit.fit(X, y)
+    scorer = get_scorer(scoring)
+    train_score_val = scorer(pipe_fit, X, y)
+    delta = abs(float(train_score_val) - float(val_score))
+    if fold_std_override is not None:
+        fold_std = float(fold_std_override)
+    else:
+        fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
+        fold_std = float(np.std(fold_scores))
+    overfitting_ok = delta <= delta_thresh
+    stability_ok = fold_std <= std_thresh
+    violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+    return (overfitting_ok and stability_ok, delta, fold_std, violation)
+
+
+def compute_mlqa_penalized_score(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    scoring: str,
+    mean_score: float,
+    fold_std: float,
+) -> Tuple[bool, float, float]:
+    """Compute MLQA pass, violation, and penalized score from existing CV mean and fold std.
+
+    Used by Optuna objectives to avoid duplicating MLQA logic and to avoid running
+    cross_val_score twice. Caller must have already run cross_val_score to get mean_score
+    and fold_std. Returns (pass_audit, violation, penalized_score) where penalized_score
+    is mean_score if pass_audit else mean_score - violation. On config or fit error
+    returns (False, inf, -inf).
+    """
+    from sklearn.base import clone
+    from sklearn.metrics import get_scorer
+
+    try:
+        mlqa = get_mlqa_config()
+        delta_thresh = mlqa["overfitting_delta_threshold"]
+        std_thresh = mlqa["stability_fold_std_threshold"]
+    except Exception:
+        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
+        delta_thresh = 0.08
+        std_thresh = 0.065
+    try:
+        pipe_fit = clone(pipe)
+        pipe_fit.fit(X, y)
+        scorer = get_scorer(scoring)
+        train_score_val = scorer(pipe_fit, X, y)
+        delta = abs(float(train_score_val) - mean_score)
+        pass_audit = delta <= delta_thresh and fold_std <= std_thresh
+        violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+        penalized = mean_score if pass_audit else mean_score - violation
+        return (pass_audit, violation, penalized)
+    except Exception:
+        return (False, float("inf"), float("-inf"))
+
+
 def _compute_mlqa_audit(
     report: Dict[str, Any],
     pipe: Pipeline,
@@ -538,6 +621,26 @@ def _add_final_report_details(
     report["mlqa_audit"] = _compute_mlqa_audit(
         report, pipe, X, y, cv, scoring, task_type, _mlqa_feature_names(model_kind)
     )
-    fi = _extract_feature_importance(pipe, _mlqa_feature_names(model_kind), X.shape[1])
+    feature_names = _mlqa_feature_names(model_kind)
+    n_features = X.shape[1]
+    fi = _extract_feature_importance(pipe, feature_names, n_features)
     if fi:
         report["feature_importance"] = fi
+    else:
+        # For MLP and other models without feature_importances_, use SHAP
+        try:
+            from ml.shap_explanations import compute_shap_importance
+
+            shap_fi = compute_shap_importance(
+                pipe,
+                X,
+                feature_names=feature_names,
+                task_type=task_type,
+                max_background=100,
+                max_eval=300,
+            )
+            if shap_fi:
+                report["feature_importance"] = shap_fi
+                report["explainer"] = "shap"
+        except Exception as e:
+            logger.debug("SHAP importance skipped: %s", e)

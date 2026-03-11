@@ -6,7 +6,7 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
   return (
     <SectionCard
       title="Internal process: from import to prediction"
-      subtitle="End-to-end pipeline: data import, precompute, export, training, and prediction."
+      subtitle="End-to-end pipeline: data import, precompute, export, training/auto-tune, and prediction."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         The system runs a strict sequence of steps. Each step depends on the previous; artifacts (DB
@@ -103,15 +103,17 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
         </Typography>
       </Paper>
 
-      {/* Step 4: Training */}
+      {/* Step 4: Training / Auto-tune */}
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-          4. Training (train-all)
+          4. Training (train-all) and auto-tune
         </Typography>
         <Typography variant="body2" color="text.secondary" component="div">
-          <strong>What:</strong> Train ML models (batting, bowling, fielding, extras, win) from the
-          exported CSVs or training-data API. Produces joblib artifacts (model + optional scaler)
-          per model type and format.
+          <strong>What:</strong> Train ML models (batting, bowling, fielding, extras, win, and
+          optionally innings) from the exported CSVs or training-data API. Produces joblib artifacts
+          (model + optional scaler) per model type and format. Auto-tune can search algorithms and
+          hyperparameters first, then normal training reuses the tuned params (single-train
+          principle).
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
             <li>
               Reads: CSVs from export_dir or <code>GET /api/backtest/training-data</code>. Uses
@@ -120,16 +122,22 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
             <li>
               Writes: <code>output/ml-service/</code> — e.g. <code>batting_model_T20.joblib</code>,{' '}
               <code>batting_scaler_T20.joblib</code>, <code>extras_model_ODI.joblib</code>,{' '}
-              <code>win_model.joblib</code>, etc.
+              <code>win_model.joblib</code>, <code>innings_model_T20.joblib</code>, etc.
             </li>
             <li>
               Optional: <code>train_combination_meta</code> — learns Ridge weights to combine
               batting/bowling/fielding scores for team selection. Output:{' '}
               <code>combination_meta.json</code>.
             </li>
+            <li>
+              Optional: <code>ml-auto-tune</code> — coarse-to-fine search over algorithms and
+              hyperparameters. Saves best params to the go-app DB and writes tuned artifacts; normal
+              training then uses those params.
+            </li>
           </Box>
           <strong>Commands:</strong> <code>make ml-train-all</code> (or Train from Ops → Pipeline).
-          Prerequisite: Export done.
+          For tuning, use <code>make ml-auto-tune MODEL=batting FORMAT=T20</code> (or trigger the
+          Auto-tune pipeline step). Prerequisite: Export done.
         </Typography>
       </Paper>
 
@@ -141,7 +149,7 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
         <Typography variant="body2" color="text.secondary" component="div">
           <strong>What:</strong> Load trained models and scalers, accept a match context (teams,
           venue, date, format, weather), and produce predictions (runs, wickets, extras, win
-          probability, team selection).
+          probability, team selection, and optionally Monte Carlo simulations over top XIs).
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
             <li>
               Reads: joblib artifacts from <code>output/ml-service/</code>; precomputed snapshots
@@ -154,7 +162,9 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
             </li>
             <li>
               go-app aggregates player predictions into match totals, applies combination meta
-              weights (if loaded), and returns the final scorecard + win probability.
+              weights (if loaded), and returns the final scorecard + win probability. When enabled,
+              it can also run Monte Carlo simulation for win probability and innings total
+              distributions.
             </li>
           </Box>
           <strong>Commands:</strong> Use the Upcoming Match tab or{' '}

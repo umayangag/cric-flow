@@ -8,32 +8,15 @@ raw batting/bowling predictions are rescaled so that:
 This ensures consistency: runs conceded by bowlers = runs scored by batsmen.
 """
 
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 
-from .models import BacktestPlayerPred
+# Single source of truth: match train_innings (venue, season, ..., format one-hot)
+from ml.train_innings import INNINGS_FEATURE_COLS
+from ml.win_features import _format_one_hot_from_code
 
-# Innings model feature columns (must match train_innings.INNINGS_FEATURE_COLS)
-INNINGS_FEATURE_COLS = [
-    "format_id",
-    "venue_id",
-    "season_id",
-    "match_date_unix",
-    "inning_number",
-    "opposition_id",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "bat_consistency_sum",
-    "bowl_consistency_sum",
-    "bat_form_sum",
-    "bowl_form_sum",
-]
+from .models import BacktestPlayerPred
 
 
 def build_innings_feature_vector(
@@ -42,7 +25,6 @@ def build_innings_feature_vector(
     bowl_consistency_sum: float,
     bat_form_sum: float,
     bowl_form_sum: float,
-    format_id: float = 0,
     venue_id: float = 0,
     season_id: float = 0,
     match_date_unix: float = 0.0,
@@ -54,30 +36,33 @@ def build_innings_feature_vector(
     cloud: int = 0,
     pressure: int = 0,
     viscosity: int = 0,
+    format_code: Optional[str] = None,
 ) -> np.ndarray:
-    """Build feature vector for innings model prediction."""
-    return np.array(
-        [
-            format_id,
-            venue_id,
-            season_id,
-            match_date_unix,
-            inning_number,
-            opposition_id,
-            temp,
-            wind,
-            rain,
-            humidity,
-            cloud,
-            pressure,
-            viscosity,
-            bat_consistency_sum,
-            bowl_consistency_sum,
-            bat_form_sum,
-            bowl_form_sum,
-        ],
-        dtype=float,
-    ).reshape(1, -1)
+    """Build feature vector for innings model prediction (order matches INNINGS_FEATURE_COLS)."""
+    one_hot = _format_one_hot_from_code(format_code)
+    # Order must match INNINGS_FEATURE_COLS: base cols then format one-hot
+    values = [
+        venue_id,
+        season_id,
+        match_date_unix,
+        inning_number,
+        opposition_id,
+        temp,
+        wind,
+        rain,
+        humidity,
+        cloud,
+        pressure,
+        viscosity,
+        bat_consistency_sum,
+        bowl_consistency_sum,
+        bat_form_sum,
+        bowl_form_sum,
+    ]
+    for col in INNINGS_FEATURE_COLS:
+        if col.startswith("format_is_"):
+            values.append(one_hot.get(col, 0.0))
+    return np.array(values, dtype=float).reshape(1, -1)
 
 
 def predict_innings(
@@ -88,7 +73,6 @@ def predict_innings(
     bowl_consistency_sum: float,
     bat_form_sum: float,
     bowl_form_sum: float,
-    format_id: float = 0,
     venue_id: float = 0,
     season_id: float = 0,
     match_date_unix: float = 0.0,
@@ -100,6 +84,7 @@ def predict_innings(
     cloud: int = 0,
     pressure: int = 0,
     viscosity: int = 0,
+    format_code: Optional[str] = None,
 ) -> Tuple[float, float]:
     """Predict innings_runs and innings_wickets for one innings."""
     X = build_innings_feature_vector(
@@ -108,7 +93,6 @@ def predict_innings(
         bowl_consistency_sum=bowl_consistency_sum,
         bat_form_sum=bat_form_sum,
         bowl_form_sum=bowl_form_sum,
-        format_id=format_id,
         venue_id=venue_id,
         season_id=season_id,
         match_date_unix=match_date_unix,
@@ -120,6 +104,7 @@ def predict_innings(
         cloud=cloud,
         pressure=pressure,
         viscosity=viscosity,
+        format_code=format_code,
     )
     if scaler is not None:
         X = scaler.transform(X)

@@ -49,6 +49,10 @@ def run_training_subprocess(
             cwd=root,
         )
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
+    # Force subprocess to load config from ml-service root so MLQA/tuning use the same config as the server.
+    config_path = os.path.join(root, "config.json")
+    if os.path.isfile(config_path):
+        env["ML_SERVICE_CONFIG"] = config_path
     if extra_env:
         env.update(extra_env)
     timeout_sec = get_training_subprocess_timeout_sec()

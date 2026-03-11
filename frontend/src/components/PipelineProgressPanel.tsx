@@ -113,6 +113,19 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
             if (wasRunningRef.current && p.running === false) {
               wasRunningRef.current = false;
               doRefresh();
+              // Notify other tabs (e.g. ML Model Stats) that a pipeline step has completed
+              // so they can refresh any model-dependent views while the user keeps them open.
+              try {
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                  window.dispatchEvent(
+                    new CustomEvent<PipelineProgressPayload>('cric:pipeline-completed', {
+                      detail: p,
+                    }),
+                  );
+                }
+              } catch {
+                // Ignore environments without window / CustomEvent
+              }
             } else if (p.running === true) {
               wasRunningRef.current = true;
             }

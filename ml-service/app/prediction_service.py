@@ -152,7 +152,6 @@ def predict_match_innings(
         bowl_consistency_sum=t2_bowl_cons,
         bat_form_sum=t1_bat_form,
         bowl_form_sum=t2_bowl_form,
-        format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
         match_date_unix=match_date_unix,
@@ -164,6 +163,7 @@ def predict_match_innings(
         cloud=match_context.cloud,
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
+        format_code=fmt_upper,
     )
     inn2_runs, inn2_wkts = predict_innings(
         scaler_inn,
@@ -173,7 +173,6 @@ def predict_match_innings(
         bowl_consistency_sum=t1_bowl_cons,
         bat_form_sum=t2_bat_form,
         bowl_form_sum=t1_bowl_form,
-        format_id=match_context.format_id,
         venue_id=match_context.venue_id,
         season_id=match_context.season_id,
         match_date_unix=match_date_unix,
@@ -185,6 +184,7 @@ def predict_match_innings(
         cloud=match_context.cloud,
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
+        format_code=fmt_upper,
     )
     return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
 
@@ -1069,6 +1069,17 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
     if not EXTRAS_FEATURE_COLS:
         return np.zeros(0)
     d = f.model_dump()
+    fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
+    try:
+        from ml.win_features import _format_one_hot_from_code  # type: ignore[attr-defined]
+
+        one_hot = _format_one_hot_from_code(fmt)
+        d.update(one_hot)
+    except Exception:
+        # Fall back to zeros for one-hot columns if helper is unavailable.
+        for col in EXTRAS_FEATURE_COLS:
+            if col.startswith("format_is_") and col not in d:
+                d[col] = 0.0
     return np.array([float(d.get(c, 0)) for c in EXTRAS_FEATURE_COLS], dtype=float)
 
 
@@ -1083,6 +1094,18 @@ def win_feature_vector(f: WinFeatures) -> np.ndarray:
     if not WIN_ENHANCED_FEATURE_COLS:
         return np.zeros(0)
     d = f.model_dump()
+    # Inject categorical format one-hot columns when available.
+    fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
+    try:
+        from ml.win_features import _format_one_hot_from_code  # type: ignore[attr-defined]
+
+        one_hot = _format_one_hot_from_code(fmt)
+        d.update(one_hot)
+    except Exception:
+        # If helper is unavailable for any reason, fall back to zeros for the one-hot columns.
+        for col in WIN_ENHANCED_FEATURE_COLS:
+            if col.startswith("format_is_") and col not in d:
+                d[col] = 0.0
     if compute_derived_features is not None:
         derived = compute_derived_features(d)
         d.update(derived)
@@ -1207,8 +1230,9 @@ def run_win_prediction_enhanced(
 
     t1_feats = {_validated_player_id(k): v for k, v in team1_player_features.items()}
     t2_feats = {_validated_player_id(k): v for k, v in team2_player_features.items()}
+    fmt_upper = (fmt or "").strip().upper()
 
-    feature_dict = aggregate_team_features_from_player_maps(t1_feats, t2_feats, match_context)
+    feature_dict = aggregate_team_features_from_player_maps(t1_feats, t2_feats, match_context, format_code=fmt_upper)
     feature_vec = build_feature_vector(feature_dict)
     X = np.array([feature_vec], dtype=float)
 
@@ -1265,6 +1289,7 @@ def run_team_optimization(
         weights=weights,
         team_is_team1=team_is_team1,
         model=model,
+        format_code=fmt_upper,
         max_iterations=max_iterations,
         max_evals=max_evals,
     )

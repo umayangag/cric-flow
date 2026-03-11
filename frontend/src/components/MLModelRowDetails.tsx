@@ -175,27 +175,6 @@ export const MLModelRowDetails: React.FC<MLModelRowDetailsProps> = ({ model }) =
           <TuningInsights metrics={metrics} mlqa={mlqa} />
         </Box>
       )}
-      {featureImportance && Object.keys(featureImportance).length > 0 && (
-        <Box sx={{ mt: 1 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Feature importance (top)
-          </Typography>
-          <Stack direction="row" flexWrap="wrap" spacing={0.5}>
-            {Object.entries(featureImportance)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 15)
-              .map(([name, imp]) => (
-                <Chip
-                  key={name}
-                  label={`${name}: ${(imp * 100).toFixed(1)}%`}
-                  size="small"
-                  variant="outlined"
-                  sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-                />
-              ))}
-          </Stack>
-        </Box>
-      )}
       {model.n_samples != null && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           n_samples: {model.n_samples}
@@ -253,6 +232,27 @@ export const MLModelRowDetails: React.FC<MLModelRowDetailsProps> = ({ model }) =
                   />
                 )}
               </Stack>
+            )}
+            {featureImportance && Object.keys(featureImportance).length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Feature importance (SHAP, top)
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" spacing={0.5}>
+                  {Object.entries(featureImportance)
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 15)
+                    .map(([name, imp]) => (
+                      <Chip
+                        key={name}
+                        label={`${name}: ${(imp * 100).toFixed(1)}%`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      />
+                    ))}
+                </Stack>
+              </Box>
             )}
           </Stack>
         </Box>
