@@ -7,7 +7,7 @@
 
 ## 1. Executive summary
 
-- **Automated checks:** Lint, format, typecheck, build, and tests **pass** for all three components when run per-component from repo root (frontend, go-app, ml-service). Go-app `coverage-check` passes when run from `go-app` (60.3% ≥ 60%); ensure it is always run after `make -C go-app coverage` so the correct profile is used.
+- **Automated checks:** Lint, format, typecheck, build, and tests **pass** for all three components when run per-component from repo root (frontend, go-app, ml-service). Go-app `coverage-check` passes (60.3% ≥ 60%) when run correctly (i.e., after `make coverage` in the same directory) to ensure the correct profile is used.
 - **Principles alignment:** The codebase is largely consistent with KISS, DRY, and separation of concerns. Main gaps are: **oversized files** (SRP/structural preference), **repeated fetch/loading/error patterns** in the frontend (DRY), **some API calls in components** (separation of concerns), **large bundle chunk** (guideline says prefer code-splitting over raising limit), and **scattered lint/test suppressions** (warnings-as-failure principle).
 - **Remediation:** Prioritized plan below: fix check reliability first, then tackle large files and DRY in frontend, then ML/go-app structure and suppressions.
 
