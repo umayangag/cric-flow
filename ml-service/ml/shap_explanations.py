@@ -12,7 +12,6 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)

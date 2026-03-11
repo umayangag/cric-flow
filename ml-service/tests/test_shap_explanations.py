@@ -40,7 +40,9 @@ def test_compute_shap_importance_mlp_classification_returns_dict():
     y = (X[:, 0] + X[:, 1] > 0).astype(int)
     pipe.fit(X, y)
     names = ["f0", "f1", "f2", "f3"]
-    out = compute_shap_importance(pipe, X, feature_names=names, task_type="classification", max_background=20, max_eval=25)
+    out = compute_shap_importance(
+        pipe, X, feature_names=names, task_type="classification", max_background=20, max_eval=25
+    )
     assert out is not None
     assert set(out.keys()) == set(names)
 
@@ -80,9 +82,7 @@ def test_add_final_report_details_with_mlp_uses_shap():
     pipe.fit(X, y)
     cv = KFold(n_splits=3, shuffle=True, random_state=42)
     report = {"best_cv_score": -0.4}
-    cv_metrics._add_final_report_details(
-        report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", "extras"
-    )
+    cv_metrics._add_final_report_details(report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", "extras")
     assert "mlqa_audit" in report
     assert "feature_importance" in report
     assert report.get("explainer") == "shap"

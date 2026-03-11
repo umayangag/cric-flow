@@ -15,6 +15,7 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
+import type { SxProps } from '@mui/material';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import TeamTable from './TeamTable';
 import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
@@ -35,7 +36,7 @@ function ScorecardSummaryDisplay({
   team1: string;
   team2: string;
   titleColor?: string;
-  sx?: object;
+  sx?: SxProps;
 }) {
   return (
     <Paper variant="outlined" sx={{ p: 2, mb: 2, ...sx }}>

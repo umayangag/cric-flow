@@ -19,6 +19,7 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
+import type { SxProps } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { accentGradient } from '../theme';
@@ -40,7 +41,7 @@ function JobModeDisplay({
   jobUseUnifiedModel: boolean | null;
   jobUseLatestModel: boolean | null;
   prefix: string;
-  sx?: object;
+  sx?: SxProps;
 }) {
   if (jobUseUnifiedModel === null && jobUseLatestModel === null) return null;
   return (

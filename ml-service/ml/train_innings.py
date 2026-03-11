@@ -133,7 +133,7 @@ def rows_to_xy_by_format(
     )
     for col in INNINGS_FORMAT_ONE_HOT_COLS:
         if col == "format_is_OTHER":
-            df[col] = (fmt_series.isin(WIN_FORMAT_CODES) == False).astype(float)
+            df[col] = (~fmt_series.isin(WIN_FORMAT_CODES)).astype(float)
         else:
             code = col.replace("format_is_", "")
             df[col] = (fmt_series == code).astype(float)
