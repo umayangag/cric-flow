@@ -13,7 +13,7 @@ import KeyValueList from './common/KeyValueList';
 import { usePolling } from '../hooks/usePolling';
 
 const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
-const HEALTH_REFRESH_MS = 60000;
+const HEALTH_REFRESH_MS = Number(import.meta.env.VITE_HEALTH_REFRESH_MS ?? 60000) || 60000;
 
 const ARTIFACT_LABELS: Record<(typeof MODEL_TYPES)[number], string> = {
   batting: 'bat',

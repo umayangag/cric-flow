@@ -175,7 +175,11 @@ export function MLModelStatsSection({
                 No models match the selected filters.
               </Typography>
             ) : (
-              <TableContainer component={Paper} variant="outlined">
+              <TableContainer
+                component={Paper}
+                variant="outlined"
+                sx={{ maxHeight: 560, overflowY: 'auto' }}
+              >
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
