@@ -124,49 +124,49 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	t1_bat_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_std_w10 AS v
 		FROM t1_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bowl_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_std_w10 AS v
 		FROM t1_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bat_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_std_w10 AS v
 		FROM t2_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bowl_cons AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_std_w10 AS v
 		FROM t2_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bat_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_mean_w5 AS v
 		FROM t1_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t1_bowl_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_mean_w5 AS v
 		FROM t1_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bat_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.batting_mean_w5 AS v
 		FROM t2_bat p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	t2_bowl_form AS (
 		SELECT DISTINCT ON (r.player_id, r.format_id, p.match_id) p.match_id, r.bowling_mean_w5 AS v
 		FROM t2_bowl p
-		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date <= p.match_date
+		JOIN feature_raw_stats_snapshots r ON r.player_id = p.player_id AND r.format_id = p.format_id AND r.scope = 'overall' AND r.scope_id IS NULL AND r.as_of_date < p.match_date
 		ORDER BY r.player_id, r.format_id, p.match_id, r.as_of_date DESC
 	),
 	` + buildWinAggAndTop3CTEs() + `

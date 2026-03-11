@@ -1143,6 +1143,7 @@ yellowbrick==1.5
     # via pycaret
 zipp==3.23.0
     # via importlib-metadata
+shap
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip
