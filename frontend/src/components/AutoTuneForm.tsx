@@ -8,6 +8,7 @@ import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import TextField from '@mui/material/TextField';
+import { useCanonicalFormats } from '../hooks/useCanonicalFormats';
 
 const AUTO_TUNE_MODELS = [
   { value: 'all', label: 'All' },
@@ -17,15 +18,6 @@ const AUTO_TUNE_MODELS = [
   { value: 'extras', label: 'Extras' },
   { value: 'win', label: 'Win' },
   { value: 'innings', label: 'Innings' },
-] as const;
-
-const AUTO_TUNE_FORMATS = [
-  { value: 'unified', label: 'Unified only' },
-  { value: '', label: 'All formats' },
-  { value: 'TEST', label: 'TEST' },
-  { value: 'ODI', label: 'ODI' },
-  { value: 'T20', label: 'T20' },
-  { value: 'T20I', label: 'T20I' },
 ] as const;
 
 export const AUTO_TUNE_ALGORITHMS = [
@@ -62,7 +54,15 @@ const AutoTuneForm: React.FC<AutoTuneFormProps> = ({
   onCutoffChange,
   algorithms,
   onAlgorithmsChange,
-}) => (
+}) => {
+  const { formats: canonicalFormats } = useCanonicalFormats();
+  const formatOptions = [
+    { value: 'unified', label: 'Unified only' },
+    { value: '', label: 'All formats' },
+    ...canonicalFormats.map((f) => ({ value: f, label: f })),
+  ];
+
+  return (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1.5 }}>
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
       <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -88,7 +88,7 @@ const AutoTuneForm: React.FC<AutoTuneFormProps> = ({
           label="Format"
           onChange={(e) => onFormatChange(e.target.value)}
         >
-          {AUTO_TUNE_FORMATS.map((o) => (
+          {formatOptions.map((o) => (
             <MenuItem key={o.value || 'all'} value={o.value}>
               {o.label}
             </MenuItem>
@@ -142,6 +142,7 @@ const AutoTuneForm: React.FC<AutoTuneFormProps> = ({
       </Box>
     </Box>
   </Box>
-);
+  );
+};
 
 export default AutoTuneForm;

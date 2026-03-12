@@ -6,6 +6,11 @@ import WorkbenchPipelineInfoSection from './WorkbenchPipelineInfoSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
 import { useWorkbench } from '../hooks/useWorkbench';
+import {
+  getTrainableModelKeys,
+  hasCombinationMeta,
+  getModelModes,
+} from '../utils/modelMetadata';
 
 const WorkbenchTab: React.FC = () => {
   const {
@@ -29,8 +34,14 @@ const WorkbenchTab: React.FC = () => {
     registryError,
     registry,
     handleRegistryFile,
-    effectiveModelFeatures,
+    modelMetadata,
+    modelMetadataLoading,
+    modelMetadataError,
   } = useWorkbench();
+
+  const trainableModelKeys = getTrainableModelKeys(modelMetadata);
+  const combinationMeta = hasCombinationMeta(modelMetadata);
+  const modelModes = getModelModes(modelMetadata);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -48,7 +59,10 @@ const WorkbenchTab: React.FC = () => {
         </Typography>
       </Alert>
 
-      <WorkbenchPipelineInfoSection />
+      <WorkbenchPipelineInfoSection
+        trainableModelKeys={trainableModelKeys.length > 0 ? trainableModelKeys : undefined}
+        hasCombinationMeta={combinationMeta}
+      />
 
       <WorkbenchAccuracyTrendSection
         format={format}
@@ -67,6 +81,7 @@ const WorkbenchTab: React.FC = () => {
         onChangeEndDate={setEndDate}
         onChangeLimit={(value) => setLimit(value)}
         onLoad={loadAccuracyTrend}
+        modelModes={modelModes.length > 0 ? modelModes : undefined}
       />
 
       <WorkbenchRegistrySection
@@ -76,7 +91,11 @@ const WorkbenchTab: React.FC = () => {
         onFileChange={handleRegistryFile}
       />
 
-      <WorkbenchModelFeaturesSection modelFeatures={effectiveModelFeatures} />
+      <WorkbenchModelFeaturesSection
+        modelMetadata={modelMetadata}
+        loading={modelMetadataLoading}
+        error={modelMetadataError}
+      />
 
       <SectionCard
         title="Commands & docs"

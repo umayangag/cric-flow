@@ -13,8 +13,7 @@
     "test:watch": "NODE_OPTIONS='--localstorage-file=./node_modules/.cache/vitest-localstorage' vitest --environment jsdom",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "format": "prettier -w .",
-    "format:check": "prettier -c .",
-    "export-canonical": "tsx scripts/export-canonical.ts"
+    "format:check": "prettier -c ."
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

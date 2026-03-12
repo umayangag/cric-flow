@@ -21,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { AccuracyTrendItem, AccuracyTrendResponse } from '../types';
+import type { ModelModeEntry } from '../types';
 import SectionCard from './common/SectionCard';
 
 const formatMetricValue = (key: string, value: number | undefined): string => {
@@ -50,6 +51,8 @@ type Props = {
   onChangeEndDate: (value: string) => void;
   onChangeLimit: (value: number) => void;
   onLoad: () => void;
+  /** From GET /api/ml/model-metadata model_modes; when set, Prediction model options use backend labels/descriptions. */
+  modelModes?: ModelModeEntry[];
 };
 
 const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
@@ -69,7 +72,19 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
   onChangeEndDate,
   onChangeLimit,
   onLoad,
+  modelModes,
 }) => {
+  const predictionModelOptions: { value: PredictionModel; label: string; title?: string }[] =
+    modelModes && modelModes.length >= 2
+      ? modelModes.map((m) => ({
+          value: (m.name === 'per_format' ? 'format' : 'unified') as PredictionModel,
+          label: m.name === 'per_format' ? 'Format-specific (model for selected format)' : 'Unified (all-formats / legacy model)',
+          title: m.description,
+        }))
+      : [
+          { value: 'format' as PredictionModel, label: 'Format-specific (model for selected format)' },
+          { value: 'unified' as PredictionModel, label: 'Unified (all-formats / legacy model)' },
+        ];
   const metricKeys = React.useMemo<string[]>(() => {
     if (!trendData?.results?.length) {
       return [];
@@ -147,8 +162,11 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
             label="Prediction model"
             onChange={(e) => onChangePredictionModel(e.target.value as PredictionModel)}
           >
-            <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
-            <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
+            {predictionModelOptions.map((opt) => (
+              <MenuItem key={opt.value} value={opt.value} title={opt.title}>
+                {opt.label}
+              </MenuItem>
+            ))}
           </Select>
         </FormControl>
         <TextField

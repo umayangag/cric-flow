@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
-import { DEFAULT_MODEL_FEATURES } from '../constants/defaultModelFeatures';
 import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
-  ModelMetadataResponse,
+  ModelMetadataApiResponse,
   WalkForwardRegistry,
 } from '../types';
 
@@ -32,7 +31,10 @@ export interface UseWorkbenchReturn {
   registryError: string | null;
   registry: WalkForwardRegistry | null;
   handleRegistryFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  effectiveModelFeatures: ModelMetadataResponse;
+  /** Full model metadata from GET /api/ml/model-metadata (model_modes + entries); null until loaded or on error. No fallback. */
+  modelMetadata: ModelMetadataApiResponse | null;
+  modelMetadataLoading: boolean;
+  modelMetadataError: string | null;
 }
 
 export function useWorkbench(): UseWorkbenchReturn {
@@ -50,7 +52,9 @@ export function useWorkbench(): UseWorkbenchReturn {
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<WalkForwardRegistry | null>(null);
 
-  const [modelFeatures, setModelFeatures] = useState<ModelMetadataResponse | null>(null);
+  const [modelMetadata, setModelMetadata] = useState<ModelMetadataApiResponse | null>(null);
+  const [modelMetadataLoading, setModelMetadataLoading] = useState(true);
+  const [modelMetadataError, setModelMetadataError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -67,12 +71,25 @@ export function useWorkbench(): UseWorkbenchReturn {
 
   useEffect(() => {
     let active = true;
+    setModelMetadataLoading(true);
+    setModelMetadataError(null);
     api
       .getModelMetadata()
       .then((data) => {
-        if (active) setModelFeatures(data);
+        if (active) {
+          setModelMetadata(data as ModelMetadataApiResponse);
+          setModelMetadataError(null);
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (active) {
+          setModelMetadata(null);
+          setModelMetadataError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (active) setModelMetadataLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -124,8 +141,6 @@ export function useWorkbench(): UseWorkbenchReturn {
     reader.readAsText(file);
   };
 
-  const effectiveModelFeatures: ModelMetadataResponse = modelFeatures ?? DEFAULT_MODEL_FEATURES;
-
   return {
     format,
     setFormat,
@@ -147,6 +162,8 @@ export function useWorkbench(): UseWorkbenchReturn {
     registryError,
     registry,
     handleRegistryFile,
-    effectiveModelFeatures,
+    modelMetadata,
+    modelMetadataLoading,
+    modelMetadataError,
   };
 }

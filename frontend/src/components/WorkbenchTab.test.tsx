@@ -52,12 +52,12 @@ describe('WorkbenchTab', () => {
     expect(screen.getByText(/from-backend/i)).toBeInTheDocument();
   });
 
-  it('falls back to DEFAULT_MODEL_FEATURES when metadata fetch fails', async () => {
+  it('shows error when ML service is down (model metadata fetch fails)', async () => {
     mockGetFormats.mockResolvedValue([]);
-    mockGetModelMetadata.mockRejectedValue(new Error('boom'));
+    mockGetModelMetadata.mockRejectedValue(new Error('Connection refused'));
     render(<WorkbenchTab />);
     await waitFor(() => expect(mockGetModelMetadata).toHaveBeenCalled());
-    // A known feature from DEFAULT_MODEL_FEATURES should be present in the UI (batting section).
-    expect(screen.getByText(/batting_consistency/i)).toBeInTheDocument();
+    expect(screen.getByText(/ML service unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/Connection refused/i)).toBeInTheDocument();
   });
 });

@@ -2,7 +2,23 @@ import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import SectionCard from './common/SectionCard';
 
-const WorkbenchPipelineInfoSection: React.FC = () => {
+export interface WorkbenchPipelineInfoSectionProps {
+  /** Model kinds for "Train (...)" in summary flow; from GET /api/ml/model-metadata. When undefined, show placeholder. */
+  trainableModelKeys?: string[];
+  /** Whether combination_meta exists so we show "[→ optional: train_combination_meta]". */
+  hasCombinationMeta?: boolean;
+}
+
+const WorkbenchPipelineInfoSection: React.FC<WorkbenchPipelineInfoSectionProps> = ({
+  trainableModelKeys,
+  hasCombinationMeta = false,
+}) => {
+  const trainLabel =
+    trainableModelKeys && trainableModelKeys.length > 0
+      ? `Train (${trainableModelKeys.join(', ')})`
+      : 'Train (model types from ML service)';
+  const optionalMeta = hasCombinationMeta ? ' [→ optional: train_combination_meta]' : '';
+
   return (
     <SectionCard
       title="Internal process: from import to prediction"
@@ -184,8 +200,7 @@ const WorkbenchPipelineInfoSection: React.FC = () => {
           component="div"
           sx={{ fontSize: '0.85rem' }}
         >
-          Import → Precompute → Export → Train (batting, bowling, fielding, extras, win) [→
-          optional: train_combination_meta] → Prediction
+          Import → Precompute → Export → {trainLabel}{optionalMeta} → Prediction
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           Ops Status → Pipeline shows each step as runnable only after the previous completed.

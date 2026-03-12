@@ -35,9 +35,8 @@ type Props = {
   type: MatrixType;
   title: string;
   data: PrecomputeData | ExportsData | ArtifactsData;
+  formats: string[];
 };
-
-const FORMATS = ['TEST', 'ODI', 'T20I', 'T20'] as const;
 
 const cellSx = (state: 'ok' | 'stale' | 'error' | 'neutral') => ({
   borderRadius: 2,
@@ -69,11 +68,11 @@ const cellSx = (state: 'ok' | 'stale' | 'error' | 'neutral') => ({
   }),
 });
 
-export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
+export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
   const renderPrecompute = () => (
     <Box sx={{ display: 'grid', gap: 1.5 }}>
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-        {FORMATS.map((f) => {
+        {formats.map((f) => {
           const st = (data as PrecomputeData)?.formats?.[f]?.status as string | undefined;
           const state =
             st === 'ok' ? 'ok' : st === 'stale' ? 'stale' : st === 'missing' ? 'error' : 'neutral';
@@ -137,7 +136,7 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
 
   const renderExports = () => (
     <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-      {FORMATS.map((f) => {
+      {formats.map((f) => {
         const files = (data as ExportsData)?.formats?.[f]?.files ?? [];
         const ok = hasAnyExists(files);
         const state = ok ? 'ok' : 'error';
@@ -261,7 +260,7 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data }) => {
     return (
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
         {renderUnifiedArtifactCell(artData)}
-        {FORMATS.map((f) => (
+        {formats.map((f) => (
           <React.Fragment key={f}>
             {renderArtifactCellWithKinds(f, artData?.formats?.[f], `artifacts-${f}`)}
           </React.Fragment>

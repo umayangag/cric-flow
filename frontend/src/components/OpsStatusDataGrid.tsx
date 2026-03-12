@@ -7,14 +7,19 @@ import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
 import OpsMatrix from './OpsMatrix';
-import { FORMATS, asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
-import type { FormatCode, ExportFile, OpsStatus } from '../utils/opsStatusHelpers';
+import { asObj, getFormats, readStatus, readNumber } from '../utils/opsStatusHelpers';
+import type { ExportFile, OpsStatus } from '../utils/opsStatusHelpers';
 
 interface OpsStatusDataGridProps {
   data: OpsStatus;
+  formats: string[];
+  formatsLoading?: boolean;
+  formatsError?: string | null;
 }
 
-const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
+const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data, formats, formatsLoading, formatsError }) => {
+  const formatList = formats.length > 0 ? formats : Object.keys(getFormats(data.precompute));
+  return (
   <>
     <Grid container spacing={2} alignItems="stretch">
       <Grid item xs={12} md={6}>
@@ -23,10 +28,10 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
           const fm = getFormats(pre);
           return (
             <SectionCard title="Precompute">
-              <OpsMatrix type="precompute" title="Precompute" data={pre} />
-              {Object.keys(fm).length > 0 && (
+              <OpsMatrix type="precompute" title="Precompute" data={pre} formats={formatList} />
+              {!formatsError && Object.keys(fm).length > 0 && (
                 <Stack spacing={0.75} sx={{ mt: 1 }}>
-                  {FORMATS.map((f: FormatCode) => {
+                  {formatList.map((f) => {
                     const row = asObj(fm[f]);
                     const st = readStatus(row.status);
                     return (
@@ -53,10 +58,10 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
           const fm = getFormats(exp);
           return (
             <SectionCard title="Exports">
-              <OpsMatrix type="exports" title="Exports" data={exp} />
-              {Object.keys(fm).length > 0 && (
+              <OpsMatrix type="exports" title="Exports" data={exp} formats={formatList} />
+              {!formatsError && Object.keys(fm).length > 0 && (
                 <Stack spacing={0.75} sx={{ mt: 1 }}>
-                  {FORMATS.map((f: FormatCode) => {
+                  {formatList.map((f) => {
                     const row = asObj(fm[f]);
                     const files = Array.isArray(row.files) ? (row.files as ExportFile[]) : [];
                     const allExist = files.length > 0 && files.every((x) => x.exists);
@@ -93,7 +98,7 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
               const fm = getFormats(art);
               let loaded = 0;
               let missing = 0;
-              FORMATS.forEach((f: FormatCode) => {
+              formatList.forEach((f) => {
                 const row = asObj(fm[f]);
                 const bat = asObj(row.batting);
                 const bowl = asObj(row.bowling);
@@ -108,7 +113,7 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
               ];
             })()}
           />
-          <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts ?? {}} />
+          <OpsMatrix type="artifacts" title="Artifacts" data={data.artifacts ?? {}} formats={formatList} />
         </SectionCard>
       </Grid>
       <Grid item xs={12} md={6}>
@@ -121,7 +126,7 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
             const overall = asObj((f as Record<string, unknown>).overall);
             const overallRows = readNumber(overall.rows);
             const fmtMap = getFormats(f);
-            const formatKeys = Object.keys(fmtMap).length > 0 ? FORMATS : [];
+            const formatKeys = Object.keys(fmtMap).length > 0 ? formatList : [];
             return (
               <Stack spacing={1.5}>
                 <SimpleStatTiles
@@ -140,12 +145,12 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
                     },
                   ]}
                 />
-                {formatKeys.length > 0 && (
+                {formatKeys.length > 0 && !formatsError && (
                   <Stack spacing={0.75}>
                     <Typography variant="caption" fontWeight={600} color="text.secondary">
                       Per format
                     </Typography>
-                    {FORMATS.map((fmt: FormatCode) => {
+                    {formatList.map((fmt) => {
                       const row = asObj((fmtMap as Record<string, unknown>)[fmt]);
                       const r = readNumber(row.rows);
                       return (
@@ -204,6 +209,7 @@ const OpsStatusDataGrid: React.FC<OpsStatusDataGridProps> = ({ data }) => (
       </Grid>
     </Grid>
   </>
-);
+  );
+};
 
 export default OpsStatusDataGrid;

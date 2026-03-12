@@ -479,9 +479,9 @@ frontend-stop:
 check-all: frontend-check go-app-check ml-service-check frontend-backend-sync-check
 	@echo "All quality checks passed!"
 
-# Ensure frontend FORMATS and default model features match go-app and ml-service (run after component checks)
-frontend-backend-sync-check: frontend-install
-	@echo "[sync] Checking frontend aligns with go-app and ml-service..."
+# Ensure go-app and ml-service expose canonical formats and model metadata (frontend fetches these dynamically)
+frontend-backend-sync-check:
+	@echo "[sync] Checking backend canonical formats and model metadata..."
 	PATH="$(ML_VENV_BIN):$$PATH" node scripts/check-frontend-backend-sync.mjs
 
 frontend-check: frontend-install

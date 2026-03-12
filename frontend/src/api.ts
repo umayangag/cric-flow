@@ -1,6 +1,6 @@
 import type {
   HealthResponse,
-  ModelMetadataResponse,
+  ModelMetadataApiResponse,
   ModelStatsResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
@@ -135,7 +135,7 @@ export const api = {
     return httpApi('/api/health/ml');
   },
   /** Model metadata (features, outputs, artifacts pattern) from ml-service for Workbench UI. */
-  getModelMetadata(): Promise<ModelMetadataResponse> {
+  getModelMetadata(): Promise<ModelMetadataApiResponse> {
     return httpApi('/api/ml/model-metadata');
   },
   /** Model stats (name, format, params, accuracy, size) from ml-service for ML Model Stats tab. */
