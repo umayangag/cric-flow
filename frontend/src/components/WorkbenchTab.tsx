@@ -6,11 +6,7 @@ import WorkbenchPipelineInfoSection from './WorkbenchPipelineInfoSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
 import { useWorkbench } from '../hooks/useWorkbench';
-import {
-  getTrainableModelKeys,
-  hasCombinationMeta,
-  getModelModes,
-} from '../utils/modelMetadata';
+import { getTrainableModelKeys, hasCombinationMeta, getModelModes } from '../utils/modelMetadata';
 
 const WorkbenchTab: React.FC = () => {
   const {

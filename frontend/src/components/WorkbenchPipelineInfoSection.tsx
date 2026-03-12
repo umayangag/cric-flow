@@ -200,7 +200,8 @@ const WorkbenchPipelineInfoSection: React.FC<WorkbenchPipelineInfoSectionProps> 
           component="div"
           sx={{ fontSize: '0.85rem' }}
         >
-          Import → Precompute → Export → {trainLabel}{optionalMeta} → Prediction
+          Import → Precompute → Export → {trainLabel}
+          {optionalMeta} → Prediction
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           Ops Status → Pipeline shows each step as runnable only after the previous completed.

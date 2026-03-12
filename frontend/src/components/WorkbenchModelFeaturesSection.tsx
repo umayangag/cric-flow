@@ -14,11 +14,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
-import {
-  getModelEntries,
-  getPlayerLevelKeys,
-  getMatchLevelKeys,
-} from '../utils/modelMetadata';
+import { getModelEntries, getPlayerLevelKeys, getMatchLevelKeys } from '../utils/modelMetadata';
 import type { ModelMetadataApiResponse } from '../types';
 
 export interface WorkbenchModelFeaturesSectionProps {
@@ -41,9 +37,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
         title="Model features & interconnection"
         subtitle="Loaded from ML service (GET /api/ml/model-metadata)."
       >
-        <Alert severity="error">
-          ML service unavailable: {error}
-        </Alert>
+        <Alert severity="error">ML service unavailable: {error}</Alert>
       </SectionCard>
     );
   }
@@ -78,13 +72,17 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
       subtitle="All model types, per-format vs unified artifacts, features, outputs, and how they connect."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        The pipeline trains <strong>player-level</strong> models ({playerKeys.join(', ')})
-        and <strong>match-level</strong> models ({matchKeys.join(', ')}).
+        The pipeline trains <strong>player-level</strong> models ({playerKeys.join(', ')}) and{' '}
+        <strong>match-level</strong> models ({matchKeys.join(', ')}).
         {modelEntries.combination_meta ? (
-          <> An optional <strong>combination meta</strong> model learns weights for team selection.</>
-        ) : null}
-        {' '}All share the same feature families (context, form, consistency, venue, opposition, weather).
-        Match-level models use aggregates of player features so team composition influences extras and win probability.
+          <>
+            {' '}
+            An optional <strong>combination meta</strong> model learns weights for team selection.
+          </>
+        ) : null}{' '}
+        All share the same feature families (context, form, consistency, venue, opposition,
+        weather). Match-level models use aggregates of player features so team composition
+        influences extras and win probability.
       </Typography>
 
       {/* Per-format vs unified (legacy) */}

@@ -18,7 +18,9 @@ function isModelEntry(v: unknown): v is ModelMetadataEntry {
 }
 
 /** Extract model-kind entries only (exclude model_modes). */
-export function getModelEntries(api: ModelMetadataApiResponse | null): Record<string, ModelMetadataEntry> {
+export function getModelEntries(
+  api: ModelMetadataApiResponse | null,
+): Record<string, ModelMetadataEntry> {
   if (!api) return {};
   const out: Record<string, ModelMetadataEntry> = {};
   for (const key of Object.keys(api)) {

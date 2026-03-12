@@ -31,7 +31,7 @@ func (h *OptionsHandler) HandleGetFormats(w http.ResponseWriter, r *http.Request
 
 // HandleGetCanonicalFormats returns the canonical format codes (TEST, ODI, T20, T20I) from the formats package.
 // Use this where the UI needs a stable list that matches backend semantics (e.g. ops status grids).
-func (h *OptionsHandler) HandleGetCanonicalFormats(w http.ResponseWriter, r *http.Request) {
+func (h *OptionsHandler) HandleGetCanonicalFormats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, formats.CanonicalCodes())
 }
 

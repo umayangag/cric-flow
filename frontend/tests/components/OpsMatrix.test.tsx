@@ -14,7 +14,9 @@ describe('OpsMatrix', () => {
         T20: { status: 'ok' },
       },
     };
-    render(<OpsMatrix type="precompute" title="Precompute" data={data} formats={CANONICAL_FORMATS} />);
+    render(
+      <OpsMatrix type="precompute" title="Precompute" data={data} formats={CANONICAL_FORMATS} />,
+    );
     expect(screen.getByTestId('precompute-TEST')).toBeInTheDocument();
     expect(screen.getByTestId('precompute-ODI')).toBeInTheDocument();
     expect(screen.getByTestId('precompute-T20I')).toBeInTheDocument();
@@ -51,7 +53,9 @@ describe('OpsMatrix', () => {
         },
       },
     };
-    render(<OpsMatrix type="artifacts" title="Artifacts" data={data} formats={CANONICAL_FORMATS} />);
+    render(
+      <OpsMatrix type="artifacts" title="Artifacts" data={data} formats={CANONICAL_FORMATS} />,
+    );
     expect(screen.getByTestId('artifacts-ODI')).toBeInTheDocument();
     // Should include the textual labels 'exists'/'missing'
     expect(screen.getByTestId('artifacts-ODI').textContent).toMatch(/exists/i);

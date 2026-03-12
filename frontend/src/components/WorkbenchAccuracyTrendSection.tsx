@@ -78,11 +78,17 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
     modelModes && modelModes.length >= 2
       ? modelModes.map((m) => ({
           value: (m.name === 'per_format' ? 'format' : 'unified') as PredictionModel,
-          label: m.name === 'per_format' ? 'Format-specific (model for selected format)' : 'Unified (all-formats / legacy model)',
+          label:
+            m.name === 'per_format'
+              ? 'Format-specific (model for selected format)'
+              : 'Unified (all-formats / legacy model)',
           title: m.description,
         }))
       : [
-          { value: 'format' as PredictionModel, label: 'Format-specific (model for selected format)' },
+          {
+            value: 'format' as PredictionModel,
+            label: 'Format-specific (model for selected format)',
+          },
           { value: 'unified' as PredictionModel, label: 'Unified (all-formats / legacy model)' },
         ];
   const metricKeys = React.useMemo<string[]>(() => {
