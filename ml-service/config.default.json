@@ -85,6 +85,33 @@
       "validation_method": "walk_forward",
       "timeseries_split_gap": 200,
       "timeseries_small_dataset_threshold": 5000,
+      "stability_focus_sample_size_low": 35000,
+      "stability_focus_sample_size_high": 80000,
+      "stability_violation_weight": 1.5,
+      "stability_focus_bounds": {
+        "min_samples_leaf_min": 8,
+        "min_samples_leaf_max": 24,
+        "learning_rate_max": 0.08,
+        "n_estimators_min": 200,
+        "mlp_alpha_min": 0.001,
+        "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64]]
+      },
+      "default_bounds": {
+        "min_samples_leaf_min": 4,
+        "min_samples_leaf_max": 24,
+        "learning_rate_max": 0.2,
+        "n_estimators_min": 50,
+        "mlp_alpha_min": 0.0001,
+        "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64], [256, 128, 64]]
+      },
+      "stability_seed_params": {
+        "rf": { "n_estimators": 200, "max_depth": 10, "min_samples_leaf": 12 },
+        "gb": { "n_estimators": 300, "max_depth": 4, "learning_rate": 0.02, "min_samples_leaf": 12 },
+        "quantile": { "n_estimators": 300, "max_depth": 4, "learning_rate": 0.01, "min_samples_leaf": 11 },
+        "et": { "n_estimators": 200, "max_depth": 10, "min_samples_leaf": 12 },
+        "hgb": { "max_iter": 200, "max_depth": 6, "learning_rate": 0.03, "min_samples_leaf": 12 },
+        "mlp": { "hidden_layer_sizes": [128, 64], "alpha": 0.05, "learning_rate_init": 0.04 }
+      },
       "search_space": {
         "rf": {
           "n_estimators": [

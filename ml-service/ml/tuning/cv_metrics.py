@@ -29,7 +29,13 @@ from sklearn.model_selection import (
 )
 from sklearn.pipeline import Pipeline
 
-from ml.config import get_mlqa_config
+from ml.config import (
+    DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH,
+    DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW,
+    DEFAULT_STABILITY_VIOLATION_WEIGHT,
+    get_mlqa_config,
+    get_tuning_config,
+)
 from ml.tuning.types import (
     BATTING_FEATURE_COLS,
     BOWLING_FEATURE_COLS,
@@ -398,6 +404,36 @@ def compute_mlqa_overfitting_stability(
     return (overfitting_ok and stability_ok, delta, fold_std, violation)
 
 
+def compute_stability_focus(
+    n_samples: int,
+    cv_splits: int,
+    validation_method: str,
+) -> Tuple[bool, float]:
+    """Determine if we should bias tuning toward stability from dataset/training parameters.
+
+    When n_samples is below stability_focus_sample_size_low (small data) or above
+    stability_focus_sample_size_high (large temporal data), CV fold variance tends to be
+    higher; returning focus=True and the configured stability_violation_weight lets the
+    tuner narrow search bounds and penalize stability violations more. Works for any
+    format and any algorithm.
+
+    Returns:
+        (stability_focus: bool, stability_violation_weight: float)
+    """
+    try:
+        tuning = get_tuning_config()
+        low = int(tuning.get("stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW))
+        high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
+        weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
+        weight = max(1.0, weight)
+    except Exception:
+        low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
+        high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
+        weight = DEFAULT_STABILITY_VIOLATION_WEIGHT
+    focus = n_samples < low or n_samples > high
+    return (focus, weight if focus else 1.0)
+
+
 def compute_mlqa_penalized_score(
     pipe: Pipeline,
     X: np.ndarray,
@@ -405,6 +441,7 @@ def compute_mlqa_penalized_score(
     scoring: str,
     mean_score: float,
     fold_std: float,
+    stability_violation_weight: Optional[float] = None,
 ) -> Tuple[bool, float, float]:
     """Compute MLQA pass, violation, and penalized score from existing CV mean and fold std.
 
@@ -413,6 +450,10 @@ def compute_mlqa_penalized_score(
     and fold_std. Returns (pass_audit, violation, penalized_score) where penalized_score
     is mean_score if pass_audit else mean_score - violation. On config or fit error
     returns (False, inf, -inf).
+
+    When stability_violation_weight is provided and > 1, the stability part of the
+    violation is weighted so that Optuna more strongly prefers trials with lower
+    CV fold std (data-driven stability focus, applies to all algorithms).
     """
     from sklearn.base import clone
     from sklearn.metrics import get_scorer
@@ -425,6 +466,9 @@ def compute_mlqa_penalized_score(
         logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
         delta_thresh = 0.08
         std_thresh = 0.065
+    stab_weight = 1.0
+    if stability_violation_weight is not None and stability_violation_weight > 1.0:
+        stab_weight = stability_violation_weight
     try:
         pipe_fit = clone(pipe)
         pipe_fit.fit(X, y)
@@ -432,7 +476,9 @@ def compute_mlqa_penalized_score(
         train_score_val = scorer(pipe_fit, X, y)
         delta = abs(float(train_score_val) - mean_score)
         pass_audit = delta <= delta_thresh and fold_std <= std_thresh
-        violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
+        delta_excess = max(0.0, delta - delta_thresh)
+        std_excess = max(0.0, fold_std - std_thresh)
+        violation = delta_excess + stab_weight * std_excess
         penalized = mean_score if pass_audit else mean_score - violation
         return (pass_audit, violation, penalized)
     except Exception:

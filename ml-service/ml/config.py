@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 # Precedence: flag/arg > env > config.json (merged over config.default.json) > config.default.json only.
 # Defaults when config is missing or invalid are defined below; same values are in config.default.json.
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
+# Used only when ml.tuning.stability_focus_sample_size_low/high are missing (see config.default.json).
+DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW = 35_000
+DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH = 80_000
+DEFAULT_STABILITY_VIOLATION_WEIGHT = 1.5
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
@@ -339,6 +343,30 @@ def get_tuning_config() -> Dict[str, Any]:
         validation_method = "walk_forward"
 
     stages = tuning.get("stages") or {}
+    # Data-driven stability focus: when n_samples is outside [low, high], bias search toward
+    # more stable configs (and optionally weight stability higher in the penalized objective).
+    stability_low = tuning.get("stability_focus_sample_size_low")
+    stability_high = tuning.get("stability_focus_sample_size_high")
+    if stability_low is None:
+        stability_low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
+    else:
+        stability_low = int(stability_low)
+    if stability_high is None:
+        stability_high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
+    else:
+        stability_high = int(stability_high)
+    stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
+    # Bounds for Phase 2 search: when n_samples triggers stability focus we use
+    # stability_focus_bounds (tighter); otherwise default_bounds. All values from config.
+    stability_focus_bounds = tuning.get("stability_focus_bounds")
+    if not isinstance(stability_focus_bounds, dict):
+        stability_focus_bounds = {}
+    default_bounds = tuning.get("default_bounds")
+    if not isinstance(default_bounds, dict):
+        default_bounds = {}
+    stability_seed_params = tuning.get("stability_seed_params")
+    if not isinstance(stability_seed_params, dict):
+        stability_seed_params = {}
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -351,6 +379,12 @@ def get_tuning_config() -> Dict[str, Any]:
         "timeseries_split_gap": int(tuning.get("timeseries_split_gap", 0) or 0),
         "timeseries_small_dataset_threshold": int(tuning.get("timeseries_small_dataset_threshold", 5000) or 5000),
         "stages": stages if isinstance(stages, dict) else {},
+        "stability_focus_sample_size_low": stability_low,
+        "stability_focus_sample_size_high": stability_high,
+        "stability_violation_weight": max(1.0, stability_weight),
+        "stability_focus_bounds": stability_focus_bounds,
+        "default_bounds": default_bounds,
+        "stability_seed_params": stability_seed_params,
     }
 
 
