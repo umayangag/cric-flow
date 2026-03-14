@@ -422,11 +422,10 @@ def compute_stability_focus(
     """
     try:
         tuning = get_tuning_config()
-        low = int(tuning.get("stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW))
-        high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
-        weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
-        weight = max(1.0, weight)
-    except Exception:
+        low = tuning["stability_focus_sample_size_low"]
+        high = tuning["stability_focus_sample_size_high"]
+        weight = max(1.0, tuning["stability_violation_weight"])
+    except (KeyError, TypeError, ValueError):
         low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
         high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
         weight = DEFAULT_STABILITY_VIOLATION_WEIGHT

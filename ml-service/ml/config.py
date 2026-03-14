@@ -355,7 +355,10 @@ def get_tuning_config() -> Dict[str, Any]:
         stability_high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
     else:
         stability_high = int(stability_high)
-    stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
+    stability_weight_val = tuning.get("stability_violation_weight")
+    stability_weight = (
+        float(stability_weight_val) if stability_weight_val is not None else DEFAULT_STABILITY_VIOLATION_WEIGHT
+    )
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. All values from config.
     stability_focus_bounds = tuning.get("stability_focus_bounds")

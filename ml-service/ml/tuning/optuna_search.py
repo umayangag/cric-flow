@@ -257,9 +257,7 @@ def _run_search_two_phase_single_regression(
         return best_pipe, best_params, report
 
     n_phase2 = min(n_iter, PHASE2_TRIALS)
-    stability_focus, stability_weight = compute_stability_focus(
-        X.shape[0], cv_splits, validation_method
-    )
+    stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
 
     def _obj(trial: Any) -> float:
@@ -317,7 +315,12 @@ def _run_search_two_phase_single_regression(
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
         pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
-            pipe, X, y, scoring, mean_score, fold_std,
+            pipe,
+            X,
+            y,
+            scoring,
+            mean_score,
+            fold_std,
             stability_violation_weight=stability_weight,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
@@ -852,6 +855,9 @@ def _run_search_two_phase(
             activity="running_trial",
         )
 
+    # Data-driven stability: when sample size suggests higher CV fold variance,
+    # narrow bounds and optionally weight stability higher in the penalized objective.
+    stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
 
     def _optuna_objective(trial: Any) -> float:
@@ -933,7 +939,12 @@ def _run_search_two_phase(
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
         _pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
-            pipe, X, Y, scoring, mean_score, fold_std,
+            pipe,
+            X,
+            Y,
+            scoring,
+            mean_score,
+            fold_std,
             stability_violation_weight=stability_weight,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
@@ -949,9 +960,6 @@ def _run_search_two_phase(
             logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     # Data-driven stability seed: when sample size suggests higher CV fold variance,
     # enqueue one stability-oriented trial for the first winner that supports it.
-    stability_focus, stability_weight = compute_stability_focus(
-        X.shape[0], cv_splits, validation_method
-    )
     if stability_focus:
         for alg in winners:
             seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
