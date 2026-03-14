@@ -100,6 +100,42 @@ def _get_phase2_bounds(tuning_cfg: Dict[str, Any], stability_focus: bool) -> Dic
     return out
 
 
+def _setup_phase2_stability_focus(
+    n_samples: int,
+    cv_splits: int,
+    validation_method: str,
+    tuning_cfg: Dict[str, Any],
+    prior_params: Optional[Dict[str, Any]],
+    winners: List[str],
+    model_kind: str,
+) -> Tuple[bool, float, Dict[str, Any]]:
+    """Determine stability focus and prepare Phase 2 search bounds (shared by single and two-phase runners)."""
+    stability_focus, stability_weight = compute_stability_focus(n_samples, cv_splits, validation_method)
+    bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
+    mlp_sizes = list(bounds.get("mlp_hidden_layer_sizes", []))
+
+    def _add_mlp_size(s: Any) -> None:
+        if s is None:
+            return
+        t = tuple(s) if isinstance(s, (list, tuple)) else s
+        if t not in mlp_sizes:
+            mlp_sizes.append(t)
+
+    if prior_params and prior_params.get("algorithm") == "mlp":
+        _add_mlp_size(prior_params.get("hidden_layer_sizes"))
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed and alg == "mlp":
+                _add_mlp_size(seed.get("hidden_layer_sizes"))
+            if seed is not None:
+                break
+
+    final_bounds = dict(bounds)
+    final_bounds["mlp_hidden_layer_sizes"] = mlp_sizes
+    return stability_focus, stability_weight, final_bounds
+
+
 def _run_phase2_optuna_study(
     objective: Callable[[Any], float],
     n_phase2: int,
@@ -303,29 +339,9 @@ def _run_search_two_phase_single_regression(
         return best_pipe, best_params, report
 
     n_phase2 = min(n_iter, PHASE2_TRIALS)
-    stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
-    bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
-    mlp_sizes = list(bounds["mlp_hidden_layer_sizes"])
-
-    def _add_mlp_size_single(s: Any) -> None:
-        if s is None:
-            return
-        t = tuple(s) if isinstance(s, (list, tuple)) else s
-        if t not in mlp_sizes:
-            mlp_sizes.append(t)
-
-    if prior_params and prior_params.get("algorithm") == "mlp":
-        _add_mlp_size_single(prior_params.get("hidden_layer_sizes"))
-    if stability_focus:
-        for alg in winners:
-            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
-            if seed and alg == "mlp":
-                _add_mlp_size_single(seed.get("hidden_layer_sizes"))
-            if seed is not None:
-                break
-
-    bounds = dict(bounds)
-    bounds["mlp_hidden_layer_sizes"] = mlp_sizes
+    stability_focus, stability_weight, bounds = _setup_phase2_stability_focus(
+        X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
+    )
 
     def _obj(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
@@ -913,30 +929,9 @@ def _run_search_two_phase(
 
     # Data-driven stability: when sample size suggests higher CV fold variance,
     # narrow bounds and optionally weight stability higher in the penalized objective.
-    stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
-    bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
-    # Ensure MLP categorical choices include any enqueued trial's hidden_layer_sizes so Optuna accepts them.
-    mlp_sizes = list(bounds["mlp_hidden_layer_sizes"])
-
-    def _add_mlp_size(s: Any) -> None:
-        if s is None:
-            return
-        t = tuple(s) if isinstance(s, (list, tuple)) else s
-        if t not in mlp_sizes:
-            mlp_sizes.append(t)
-
-    if prior_params and prior_params.get("algorithm") == "mlp":
-        _add_mlp_size(prior_params.get("hidden_layer_sizes"))
-    if stability_focus:
-        for alg in winners:
-            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
-            if seed and alg == "mlp":
-                _add_mlp_size(seed.get("hidden_layer_sizes"))
-            if seed is not None:
-                break
-
-    bounds = dict(bounds)
-    bounds["mlp_hidden_layer_sizes"] = mlp_sizes
+    stability_focus, stability_weight, bounds = _setup_phase2_stability_focus(
+        X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
+    )
 
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
