@@ -179,7 +179,7 @@ def _setup_phase2_stability_focus(
     model_kind: str,
 ) -> Tuple[bool, float, Dict[str, Any]]:
     """Determine stability focus and prepare Phase 2 search bounds (shared by single and two-phase runners)."""
-    stability_focus, stability_weight = compute_stability_focus(n_samples, cv_splits, validation_method)
+    stability_focus, stability_weight = compute_stability_focus(n_samples)
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
     mlp_sizes = list(bounds.get("mlp_hidden_layer_sizes", []))
 

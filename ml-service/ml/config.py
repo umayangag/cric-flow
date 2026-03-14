@@ -79,6 +79,14 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return out
 
 
+def _load_and_merge_dict(config_dict: Dict[str, Any], key: str, default_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Loads a dictionary from config, falling back to an empty dict, and merges it with defaults."""
+    value = config_dict.get(key)
+    if not isinstance(value, dict):
+        value = {}
+    return _deep_merge(dict(default_dict), value)
+
+
 def _load() -> Dict[str, Any]:
     global _cached
     if _cached is not None:
@@ -374,14 +382,10 @@ def get_tuning_config() -> Dict[str, Any]:
     stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
-    stability_focus_bounds = tuning.get("stability_focus_bounds")
-    if not isinstance(stability_focus_bounds, dict):
-        stability_focus_bounds = {}
-    default_bounds = tuning.get("default_bounds")
-    if not isinstance(default_bounds, dict):
-        default_bounds = {}
-    stability_focus_bounds = _deep_merge(dict(DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS), stability_focus_bounds)
-    default_bounds = _deep_merge(dict(DEFAULT_PHASE2_DEFAULT_BOUNDS), default_bounds)
+    stability_focus_bounds = _load_and_merge_dict(
+        tuning, "stability_focus_bounds", DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS
+    )
+    default_bounds = _load_and_merge_dict(tuning, "default_bounds", DEFAULT_PHASE2_DEFAULT_BOUNDS)
 
     def _normalize_mlp_sizes(b: Dict[str, Any]) -> None:
         v = b.get("mlp_hidden_layer_sizes")
@@ -394,14 +398,8 @@ def get_tuning_config() -> Dict[str, Any]:
     stability_seed_params = tuning.get("stability_seed_params")
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}
-    quantile_fallback = tuning.get("quantile_fallback")
-    if not isinstance(quantile_fallback, dict):
-        quantile_fallback = {}
-    quantile_fallback = _deep_merge(dict(DEFAULT_QUANTILE_FALLBACK), quantile_fallback)
-    phase2_fallback_bounds = tuning.get("phase2_fallback_bounds")
-    if not isinstance(phase2_fallback_bounds, dict):
-        phase2_fallback_bounds = {}
-    phase2_fallback_bounds = _deep_merge(dict(DEFAULT_PHASE2_FALLBACK_BOUNDS), phase2_fallback_bounds)
+    quantile_fallback = _load_and_merge_dict(tuning, "quantile_fallback", DEFAULT_QUANTILE_FALLBACK)
+    phase2_fallback_bounds = _load_and_merge_dict(tuning, "phase2_fallback_bounds", DEFAULT_PHASE2_FALLBACK_BOUNDS)
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),

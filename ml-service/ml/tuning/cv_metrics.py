@@ -400,8 +400,6 @@ def compute_mlqa_overfitting_stability(
 
 def compute_stability_focus(
     n_samples: int,
-    cv_splits: int,
-    validation_method: str,
 ) -> Tuple[bool, float]:
     """Determine if we should bias tuning toward stability from dataset/training parameters.
 
