@@ -14,7 +14,12 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
-import { getModelEntries, getPlayerLevelKeys, getMatchLevelKeys } from '../utils/modelMetadata';
+import {
+  getModelEntries,
+  getPlayerLevelKeys,
+  getMatchLevelKeys,
+  DISPLAY_ORDER,
+} from '../utils/modelMetadata';
 import type { ModelMetadataApiResponse } from '../types';
 
 export interface WorkbenchModelFeaturesSectionProps {
@@ -23,8 +28,6 @@ export interface WorkbenchModelFeaturesSectionProps {
   loading: boolean;
   error: string | null;
 }
-
-const DISPLAY_ORDER = ['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'];
 
 const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps> = ({
   modelMetadata,

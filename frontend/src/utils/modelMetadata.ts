@@ -5,7 +5,14 @@
 import type { ModelMetadataApiResponse, ModelMetadataEntry, ModelModeEntry } from '../types';
 
 const TRAINABLE_ORDER = ['batting', 'bowling', 'fielding', 'extras', 'win'];
-const DISPLAY_ORDER = ['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'];
+export const DISPLAY_ORDER = [
+  'batting',
+  'bowling',
+  'fielding',
+  'extras',
+  'win',
+  'combination_meta',
+];
 
 function isModelEntry(v: unknown): v is ModelMetadataEntry {
   return (
