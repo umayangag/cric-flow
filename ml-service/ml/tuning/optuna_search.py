@@ -1,4 +1,9 @@
-"""Two-phase Optuna/RandomizedSearchCV search runners for regression and classification."""
+"""Two-phase Optuna/RandomizedSearchCV search runners for regression and classification.
+
+AGENTS: Changes here must apply uniformly to all algorithms (rf, gb, quantile, et, hgb, mlp, …)
+and all formats (TEST, ODI, T20, T20I). Do not add algorithm-specific or format-specific
+branches without applying the same behaviour elsewhere. See AGENTS_AUTO_TUNE.md in this package.
+"""
 
 from __future__ import annotations
 
@@ -259,6 +264,27 @@ def _run_search_two_phase_single_regression(
     n_phase2 = min(n_iter, PHASE2_TRIALS)
     stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
+    mlp_sizes = list(bounds["mlp_hidden_layer_sizes"])
+
+    def _add_mlp_size_single(s: Any) -> None:
+        if s is None:
+            return
+        t = tuple(s) if isinstance(s, (list, tuple)) else s
+        if t not in mlp_sizes:
+            mlp_sizes.append(t)
+
+    if prior_params and prior_params.get("algorithm") == "mlp":
+        _add_mlp_size_single(prior_params.get("hidden_layer_sizes"))
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed and alg == "mlp":
+                _add_mlp_size_single(seed.get("hidden_layer_sizes"))
+            if seed is not None:
+                break
+
+    bounds = dict(bounds)
+    bounds["mlp_hidden_layer_sizes"] = mlp_sizes
 
     def _obj(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
@@ -267,7 +293,7 @@ def _run_search_two_phase_single_regression(
         lr_high = bounds["learning_rate_max"]
         n_est_min = bounds["n_estimators_min"]
         mlp_alpha_min = bounds["mlp_alpha_min"]
-        mlp_sizes = bounds["mlp_hidden_layer_sizes"]
+        mlp_sizes_obj = bounds["mlp_hidden_layer_sizes"]
         if alg == "rf":
             est = RandomForestRegressor(
                 n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
@@ -291,7 +317,7 @@ def _run_search_two_phase_single_regression(
                 random_state=random_state,
             )
         elif alg == "mlp":
-            sizes = trial.suggest_categorical("hidden_layer_sizes", mlp_sizes)
+            sizes = trial.suggest_categorical("hidden_layer_sizes", mlp_sizes_obj)
             alpha = trial.suggest_float("alpha", mlp_alpha_min, 1e-1, log=True)
             lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
             est = MLPRegressor(
@@ -859,6 +885,28 @@ def _run_search_two_phase(
     # narrow bounds and optionally weight stability higher in the penalized objective.
     stability_focus, stability_weight = compute_stability_focus(X.shape[0], cv_splits, validation_method)
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
+    # Ensure MLP categorical choices include any enqueued trial's hidden_layer_sizes so Optuna accepts them.
+    mlp_sizes = list(bounds["mlp_hidden_layer_sizes"])
+
+    def _add_mlp_size(s: Any) -> None:
+        if s is None:
+            return
+        t = tuple(s) if isinstance(s, (list, tuple)) else s
+        if t not in mlp_sizes:
+            mlp_sizes.append(t)
+
+    if prior_params and prior_params.get("algorithm") == "mlp":
+        _add_mlp_size(prior_params.get("hidden_layer_sizes"))
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed and alg == "mlp":
+                _add_mlp_size(seed.get("hidden_layer_sizes"))
+            if seed is not None:
+                break
+
+    bounds = dict(bounds)
+    bounds["mlp_hidden_layer_sizes"] = mlp_sizes
 
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
