@@ -148,7 +148,7 @@ def _suggest_phase2_regression_estimator(
         )
     if alg == "hgb":
         return HistGradientBoostingRegressor(
-            max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
+            max_iter=trial.suggest_int("max_iter", n_est_min, 400, step=50),
             max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
             learning_rate=trial.suggest_float("learning_rate", 0.01, lr_high, log=True),
             min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
