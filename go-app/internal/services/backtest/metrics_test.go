@@ -18,6 +18,7 @@ func TestComputeR2(t *testing.T) {
 		{"empty", 0, nil, 0},
 		{"perfect", 0, []float64{1, 2, 3}, 1.0},
 		{"zero_variance", 0, []float64{5, 5, 5}, 0},
+		// R² = 1 - SSE/SST = 1 - 2/2 = 0
 		{"partial", 2.0, []float64{1, 2, 3}, 0.0},
 	}
 	for _, tc := range testCases {

@@ -24,7 +24,6 @@ func TestParseGOMEMLIMIT(t *testing.T) {
 		{"0", 0},
 	}
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.in, func(t *testing.T) {
 			got := parseGOMEMLIMIT(tc.in)
 			require.Equal(t, tc.want, got, "parseGOMEMLIMIT(%q)", tc.in)
