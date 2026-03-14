@@ -35,6 +35,13 @@ DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
     "mlp_alpha_min": 1e-3,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
 }
+DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 12, "alpha": 0.5}
+DEFAULT_PHASE2_FALLBACK_BOUNDS: Dict[str, Any] = {
+    "n_estimators_min": 100,
+    "n_estimators_max": 300,
+    "max_depth_min": 8,
+    "max_depth_max": 16,
+}
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
@@ -387,6 +394,14 @@ def get_tuning_config() -> Dict[str, Any]:
     stability_seed_params = tuning.get("stability_seed_params")
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}
+    quantile_fallback = tuning.get("quantile_fallback")
+    if not isinstance(quantile_fallback, dict):
+        quantile_fallback = {}
+    quantile_fallback = _deep_merge(dict(DEFAULT_QUANTILE_FALLBACK), quantile_fallback)
+    phase2_fallback_bounds = tuning.get("phase2_fallback_bounds")
+    if not isinstance(phase2_fallback_bounds, dict):
+        phase2_fallback_bounds = {}
+    phase2_fallback_bounds = _deep_merge(dict(DEFAULT_PHASE2_FALLBACK_BOUNDS), phase2_fallback_bounds)
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -405,6 +420,8 @@ def get_tuning_config() -> Dict[str, Any]:
         "stability_focus_bounds": stability_focus_bounds,
         "default_bounds": default_bounds,
         "stability_seed_params": stability_seed_params,
+        "quantile_fallback": quantile_fallback,
+        "phase2_fallback_bounds": phase2_fallback_bounds,
     }
 
 

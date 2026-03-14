@@ -104,6 +104,17 @@
         "mlp_alpha_min": 0.0001,
         "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64], [256, 128, 64]]
       },
+      "quantile_fallback": {
+        "n_estimators": 200,
+        "max_depth": 12,
+        "alpha": 0.5
+      },
+      "phase2_fallback_bounds": {
+        "n_estimators_min": 100,
+        "n_estimators_max": 300,
+        "max_depth_min": 8,
+        "max_depth_max": 16
+      },
       "stability_seed_params": {
         "rf": { "n_estimators": 200, "max_depth": 10, "min_samples_leaf": 12 },
         "gb": { "n_estimators": 300, "max_depth": 4, "learning_rate": 0.02, "min_samples_leaf": 12 },

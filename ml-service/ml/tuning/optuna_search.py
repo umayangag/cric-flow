@@ -85,11 +85,13 @@ def _suggest_phase2_regression_estimator(
     bounds: Dict[str, Any],
     random_state: int,
     model_kind: Optional[str] = None,
+    tuning_cfg: Optional[Dict[str, Any]] = None,
 ) -> Optional[Any]:
     """Suggest hyperparameters and return a configured regression estimator for Phase 2 Optuna.
 
     Shared by _run_search_two_phase_single_regression (_obj) and _run_search_two_phase (_optuna_objective).
     Handles rf, gb, et, hgb, mlp; and quantile when model_kind is set. Returns None for unknown alg.
+    When tuning_cfg is provided, quantile fallback params come from tuning_cfg.quantile_fallback.
     """
     leaf_min = bounds["min_samples_leaf_min"]
     leaf_high = bounds["min_samples_leaf_max"]
@@ -126,8 +128,16 @@ def _suggest_phase2_regression_estimator(
                 alpha=tp.get("quantile_level", 0.5),
             )
         except (ValueError, KeyError):
+            fallback = (tuning_cfg or {}).get("quantile_fallback") or {}
+            n_est = int(fallback.get("n_estimators", 200))
+            depth = int(fallback.get("max_depth", 12))
+            alpha = float(fallback.get("alpha", 0.5))
             return GradientBoostingRegressor(
-                n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
+                n_estimators=n_est,
+                max_depth=depth,
+                random_state=random_state,
+                loss="quantile",
+                alpha=alpha,
             )
     if alg == "et":
         return ExtraTreesRegressor(
@@ -404,7 +414,7 @@ def _run_search_two_phase_single_regression(
 
     def _obj(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
-        est = _suggest_phase2_regression_estimator(trial, alg, bounds, random_state)
+        est = _suggest_phase2_regression_estimator(trial, alg, bounds, random_state, tuning_cfg=tuning_cfg)
         if est is None:
             raise ValueError(f"unsupported algorithm for Phase 2 single regression: {alg}")
         pipe = _build_pipeline_single_regression(est)
@@ -947,12 +957,20 @@ def _run_search_two_phase(
         X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
     )
 
+    fallback_bounds = tuning_cfg.get("phase2_fallback_bounds") or {}
+    n_est_fb_min = int(fallback_bounds.get("n_estimators_min", 100))
+    n_est_fb_max = int(fallback_bounds.get("n_estimators_max", 300))
+    depth_fb_min = int(fallback_bounds.get("max_depth_min", 8))
+    depth_fb_max = int(fallback_bounds.get("max_depth_max", 16))
+
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
-        est = _suggest_phase2_regression_estimator(trial, alg, bounds, random_state, model_kind=model_kind)
+        est = _suggest_phase2_regression_estimator(
+            trial, alg, bounds, random_state, model_kind=model_kind, tuning_cfg=tuning_cfg
+        )
         if est is None:
-            n_est = trial.suggest_int("n_estimators", 100, 300, step=50)
-            depth = trial.suggest_int("max_depth", 8, 16, step=2)
+            n_est = trial.suggest_int("n_estimators", n_est_fb_min, n_est_fb_max, step=50)
+            depth = trial.suggest_int("max_depth", depth_fb_min, depth_fb_max, step=2)
             est = RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=random_state)
         pipe = _build_pipeline(est)
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
