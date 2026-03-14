@@ -465,9 +465,7 @@ def compute_mlqa_penalized_score(
         logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
         delta_thresh = 0.08
         std_thresh = 0.065
-    stab_weight = 1.0
-    if stability_violation_weight is not None and stability_violation_weight > 1.0:
-        stab_weight = stability_violation_weight
+    stab_weight = max(1.0, stability_violation_weight or 1.0)
     try:
         pipe_fit = clone(pipe)
         pipe_fit.fit(X, y)

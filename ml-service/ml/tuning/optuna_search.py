@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -98,6 +98,47 @@ def _get_phase2_bounds(tuning_cfg: Dict[str, Any], stability_focus: bool) -> Dic
         elif v is not None:
             out[k] = v
     return out
+
+
+def _run_phase2_optuna_study(
+    objective: Callable[[Any], float],
+    n_phase2: int,
+    random_state: int,
+    prior_params: Optional[Dict[str, Any]],
+    stability_focus: bool,
+    winners: List[str],
+    model_kind: str,
+    tuning_cfg: Dict[str, Any],
+    n_samples: int,
+    callback: Callable[[Any, Any], None],
+) -> Any:
+    """Run Phase 2 Optuna study: create study, enqueue prior/stability trials, optimize.
+    Shared by _run_search_two_phase_single_regression and _run_search_two_phase.
+    """
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except Exception as e:
+            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed is not None:
+                try:
+                    study.enqueue_trial(seed)
+                    logger.info(
+                        "auto_tune.stability_seed enqueued %s trial (n_samples=%s) for MLQA stability",
+                        alg,
+                        n_samples,
+                    )
+                except Exception as e:
+                    logger.debug("auto_tune.enqueue_stability_seed_skipped error=%s", e)
+                break
+    study.optimize(objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[callback])
+    return study
 
 
 def _run_search_two_phase_single_regression(
@@ -296,7 +337,7 @@ def _run_search_two_phase_single_regression(
         mlp_sizes_obj = bounds["mlp_hidden_layer_sizes"]
         if alg == "rf":
             est = RandomForestRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
+                n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
                 random_state=random_state,
@@ -311,7 +352,7 @@ def _run_search_two_phase_single_regression(
             )
         elif alg == "et":
             est = ExtraTreesRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
+                n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
                 max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
                 random_state=random_state,
@@ -368,29 +409,18 @@ def _run_search_two_phase_single_regression(
             message=f"Fine-tuning {best_name}",
         )
 
-    study = optuna.create_study(
-        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    study = _run_phase2_optuna_study(
+        _obj,
+        n_phase2,
+        random_state,
+        prior_params,
+        stability_focus,
+        winners,
+        model_kind,
+        tuning_cfg,
+        X.shape[0],
+        _cb,
     )
-    if prior_params:
-        try:
-            study.enqueue_trial(prior_params)
-        except Exception as e:
-            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
-    if stability_focus:
-        for alg in winners:
-            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
-            if seed is not None:
-                try:
-                    study.enqueue_trial(seed)
-                    logger.info(
-                        "auto_tune.stability_seed enqueued %s trial (n_samples=%s) for MLQA stability",
-                        alg,
-                        X.shape[0],
-                    )
-                except Exception as e:
-                    logger.debug("auto_tune.enqueue_stability_seed_skipped error=%s", e)
-                break
-    study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
         best_score = float(study.best_trial.user_attrs.get("mean_cv_score", study.best_value))
@@ -917,7 +947,7 @@ def _run_search_two_phase(
         mlp_alpha_min = bounds["mlp_alpha_min"]
         mlp_sizes = bounds["mlp_hidden_layer_sizes"]
         if alg == "rf":
-            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
+            n_est = trial.suggest_int("n_estimators", n_est_min, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
             leaf = trial.suggest_int("min_samples_leaf", leaf_min, leaf_high)
             est = RandomForestRegressor(
@@ -952,7 +982,7 @@ def _run_search_two_phase(
                     n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
                 )
         elif alg == "et":
-            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
+            n_est = trial.suggest_int("n_estimators", n_est_min, 600, step=50)
             depth = trial.suggest_int("max_depth", 4, 24, step=2)
             leaf = trial.suggest_int("min_samples_leaf", leaf_min, leaf_high)
             est = ExtraTreesRegressor(
@@ -998,32 +1028,17 @@ def _run_search_two_phase(
         trial.set_user_attr("mean_cv_score", mean_score)
         return penalized_score
 
-    study = optuna.create_study(
-        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
-    )
-    if prior_params:
-        try:
-            study.enqueue_trial(prior_params)
-        except Exception as e:
-            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
-    # Data-driven stability seed: when sample size suggests higher CV fold variance,
-    # enqueue one stability-oriented trial for the first winner that supports it.
-    if stability_focus:
-        for alg in winners:
-            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
-            if seed is not None:
-                try:
-                    study.enqueue_trial(seed)
-                    logger.info(
-                        "auto_tune.stability_seed enqueued %s trial (n_samples=%s) for MLQA stability",
-                        alg,
-                        X.shape[0],
-                    )
-                except Exception as e:
-                    logger.debug("auto_tune.enqueue_stability_seed_skipped error=%s", e)
-                break
-    study.optimize(
-        _optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback]
+    study = _run_phase2_optuna_study(
+        _optuna_objective,
+        n_phase2,
+        random_state,
+        prior_params,
+        stability_focus,
+        winners,
+        model_kind,
+        tuning_cfg,
+        X.shape[0],
+        _progress_callback,
     )
 
     if study.best_trial:
