@@ -18,6 +18,23 @@ DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
 DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW = 35_000
 DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH = 80_000
 DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
+# Phase 2 Optuna bounds when ml.tuning.default_bounds / stability_focus_bounds are missing (see config.default.json).
+DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
+    "min_samples_leaf_min": 4,
+    "min_samples_leaf_max": 24,
+    "learning_rate_max": 0.2,
+    "n_estimators_min": 50,
+    "mlp_alpha_min": 1e-4,
+    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
+}
+DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
+    "min_samples_leaf_min": 8,
+    "min_samples_leaf_max": 24,
+    "learning_rate_max": 0.08,
+    "n_estimators_min": 200,
+    "mlp_alpha_min": 1e-3,
+    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
+}
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
@@ -349,13 +366,24 @@ def get_tuning_config() -> Dict[str, Any]:
     stability_high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
     stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
-    # stability_focus_bounds (tighter); otherwise default_bounds. All values from config.
+    # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
     stability_focus_bounds = tuning.get("stability_focus_bounds")
     if not isinstance(stability_focus_bounds, dict):
         stability_focus_bounds = {}
     default_bounds = tuning.get("default_bounds")
     if not isinstance(default_bounds, dict):
         default_bounds = {}
+    stability_focus_bounds = _deep_merge(dict(DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS), stability_focus_bounds)
+    default_bounds = _deep_merge(dict(DEFAULT_PHASE2_DEFAULT_BOUNDS), default_bounds)
+
+    def _normalize_mlp_sizes(b: Dict[str, Any]) -> None:
+        v = b.get("mlp_hidden_layer_sizes")
+        if isinstance(v, (list, tuple)) and v:
+            b["mlp_hidden_layer_sizes"] = [tuple(x) for x in v if isinstance(x, (list, tuple))]
+
+    _normalize_mlp_sizes(stability_focus_bounds)
+    _normalize_mlp_sizes(default_bounds)
+
     stability_seed_params = tuning.get("stability_seed_params")
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}

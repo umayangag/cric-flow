@@ -29,13 +29,7 @@ from sklearn.model_selection import (
 )
 from sklearn.pipeline import Pipeline
 
-from ml.config import (
-    DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH,
-    DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW,
-    DEFAULT_STABILITY_VIOLATION_WEIGHT,
-    get_mlqa_config,
-    get_tuning_config,
-)
+from ml.config import get_mlqa_config, get_tuning_config
 from ml.tuning.types import (
     BATTING_FEATURE_COLS,
     BOWLING_FEATURE_COLS,
@@ -420,15 +414,10 @@ def compute_stability_focus(
     Returns:
         (stability_focus: bool, stability_violation_weight: float)
     """
-    try:
-        tuning = get_tuning_config()
-        low = tuning["stability_focus_sample_size_low"]
-        high = tuning["stability_focus_sample_size_high"]
-        weight = max(1.0, tuning["stability_violation_weight"])
-    except (KeyError, TypeError, ValueError):
-        low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
-        high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
-        weight = DEFAULT_STABILITY_VIOLATION_WEIGHT
+    tuning = get_tuning_config()
+    low = tuning["stability_focus_sample_size_low"]
+    high = tuning["stability_focus_sample_size_high"]
+    weight = tuning["stability_violation_weight"]
     focus = n_samples < low or n_samples > high
     return (focus, weight if focus else 1.0)
 
