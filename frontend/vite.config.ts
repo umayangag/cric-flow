@@ -5,7 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ['@mui/material', '@mui/material/styles', '@emotion/react', '@emotion/styled'],
+    // Exclude MUI from pre-bundling to avoid createTheme_default ESM/CJS interop errors in dev
+    exclude: ['@mui/material', '@mui/material/styles'],
+    include: ['@emotion/react', '@emotion/styled'],
   },
   build: {
     chunkSizeWarningLimit: 800,

@@ -1,7 +1,7 @@
 import React, { useMemo, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import Box from '@mui/material/Box';
+import { Box } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 
 const HealthTab = lazy(() => import('./components/HealthTab'));
