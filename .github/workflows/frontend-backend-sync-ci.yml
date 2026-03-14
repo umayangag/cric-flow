@@ -1,0 +1,59 @@
+# Ensures go-app and ml-service expose canonical formats and model metadata (frontend fetches these dynamically).
+name: Frontend–Backend Sync
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/src/utils/opsStatusHelpers.ts'
+      - 'frontend/src/hooks/useCanonicalFormats.ts'
+      - 'go-app/internal/formats/**'
+      - 'go-app/cmd/print_canonical/**'
+      - 'ml-service/app/model_metadata.py'
+      - 'ml-service/app/feature_config.py'
+      - 'ml-service/ml/train_extras.py'
+      - 'ml-service/ml/win_features.py'
+      - 'scripts/check-frontend-backend-sync.mjs'
+      - '.github/workflows/frontend-backend-sync-ci.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'frontend/src/utils/opsStatusHelpers.ts'
+      - 'frontend/src/hooks/useCanonicalFormats.ts'
+      - 'go-app/internal/formats/**'
+      - 'go-app/cmd/print_canonical/**'
+      - 'ml-service/app/model_metadata.py'
+      - 'ml-service/app/feature_config.py'
+      - 'ml-service/ml/train_extras.py'
+      - 'ml-service/ml/win_features.py'
+      - 'scripts/check-frontend-backend-sync.mjs'
+      - '.github/workflows/frontend-backend-sync-ci.yml'
+
+jobs:
+  sync-check:
+    if: github.event.pull_request.draft == false
+    name: Frontend vs go-app & ml-service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Set up Python (ml-service)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create ml-service venv and install deps
+        run: make -C ml-service ci-setup
+
+      - name: Frontend–backend sync check
+        run: make frontend-backend-sync-check

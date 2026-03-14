@@ -58,6 +58,45 @@ def test_check_reconciled_scorecard_consistency_flags_negative_wickets():
     assert any("wickets" in v and "11" in v for v in violations)
 
 
+def test_check_reconciled_scorecard_consistency_flags_negative_stats():
+    """Negative batting_runs, batting_balls, bowling_runs, bowling_balls are flagged."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=-1, batting_balls=0, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=100, batting_runs=0, batting_balls=-1, bowling_runs=0, bowling_balls=0, wickets=0
+        ),
+        3: ReconciledPlayerStats(
+            player_id=3, team_id=200, batting_runs=0, batting_balls=0, bowling_runs=-1, bowling_balls=0, wickets=0
+        ),
+        4: ReconciledPlayerStats(
+            player_id=4, team_id=200, batting_runs=0, batting_balls=0, bowling_runs=0, bowling_balls=-1, wickets=0
+        ),
+    }
+    violations = check_reconciled_scorecard_consistency(stats, team1_id=100, team2_id=200)
+    assert any("batting_runs" in v and "-1" in v for v in violations)
+    assert any("batting_balls" in v and "-1" in v for v in violations)
+    assert any("bowling_runs" in v and "-1" in v for v in violations)
+    assert any("bowling_balls" in v and "-1" in v for v in violations)
+
+
+def test_check_reconciled_scorecard_consistency_innings2_legal_balls_mismatch():
+    """When inn2 has legal_balls set and sums do not match, violations are reported."""
+    stats = {
+        1: ReconciledPlayerStats(
+            player_id=1, team_id=100, batting_runs=50, batting_balls=60, bowling_runs=50, bowling_balls=60, wickets=2
+        ),
+        2: ReconciledPlayerStats(
+            player_id=2, team_id=200, batting_runs=50, batting_balls=60, bowling_runs=50, bowling_balls=60, wickets=2
+        ),
+    }
+    inn1 = InningsTargets(batting_team_id=100, bowling_team_id=200, runs=50.0, wickets=2.0, legal_balls=60.0)
+    inn2 = InningsTargets(batting_team_id=200, bowling_team_id=100, runs=50.0, wickets=2.0, legal_balls=120.0)
+    violations = check_reconciled_scorecard_consistency(stats, team1_id=100, team2_id=200, inn1=inn1, inn2=inn2)
+    assert any("innings2" in v and "legal_balls" in v for v in violations)
+
+
 def test_adjustment_magnitude():
     before = {
         1: ReconciledPlayerStats(

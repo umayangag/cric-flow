@@ -3,6 +3,7 @@ package teamselect_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -10,49 +11,20 @@ type assertSelFn func(t *testing.T, team []ts.Player, err error)
 
 func assertNoErrorSize(want int, wantKeeper bool, wantBowlers int) assertSelFn {
 	return func(t *testing.T, team []ts.Player, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(team) != want {
-			t.Fatalf("want size=%d got %d", want, len(team))
-		}
+		require.NoError(t, err)
+		require.Len(t, team, want)
 		if wantKeeper {
-			if countIf(team, func(p ts.Player) bool { return p.IsKeeper }) == 0 {
-				t.Fatalf("expected a keeper in team")
-			}
+			require.GreaterOrEqual(t, countIf(team, func(p ts.Player) bool { return p.IsKeeper }), 1, "expected a keeper in team")
 		}
-		if countIf(team, func(p ts.Player) bool { return p.IsBowler }) < wantBowlers {
-			t.Fatalf("want >= %d bowlers", wantBowlers)
-		}
+		require.GreaterOrEqual(t, countIf(team, func(p ts.Player) bool { return p.IsBowler }), wantBowlers, "bowlers")
 	}
 }
 
 func assertErrContains(sub string) assertSelFn {
 	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
 }
 
 func countIf(ps []ts.Player, pred func(ts.Player) bool) int {

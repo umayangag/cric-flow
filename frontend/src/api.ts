@@ -1,6 +1,6 @@
 import type {
   HealthResponse,
-  ModelMetadataResponse,
+  ModelMetadataApiResponse,
   ModelStatsResponse,
   BacktestSelectResponse,
   BacktestEvaluateResponse,
@@ -135,7 +135,7 @@ export const api = {
     return httpApi('/api/health/ml');
   },
   /** Model metadata (features, outputs, artifacts pattern) from ml-service for Workbench UI. */
-  getModelMetadata(): Promise<ModelMetadataResponse> {
+  getModelMetadata(): Promise<ModelMetadataApiResponse> {
     return httpApi('/api/ml/model-metadata');
   },
   /** Model stats (name, format, params, accuracy, size) from ml-service for ML Model Stats tab. */
@@ -285,6 +285,10 @@ export const api = {
   },
   getFormats(): Promise<string[]> {
     return httpApi('/api/options/formats');
+  },
+  /** Canonical format codes (TEST, ODI, T20, T20I) from go-app. Use for ops grids and any UI that must match backend. */
+  getCanonicalFormats(): Promise<string[]> {
+    return httpApi('/api/canonical/formats');
   },
   /** Search venues by query; returns empty array if query has fewer than 3 characters. */
   searchVenues(q: string): Promise<string[]> {

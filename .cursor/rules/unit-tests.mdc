@@ -30,3 +30,15 @@ When writing or editing unit tests, follow the **language-specific conventions**
 - **Structure:** Group with `describe('module or component name', () => { ... })`; each case in `it('does something specific', () => { ... })`. Use `beforeEach` for common setup (e.g. restoring mocks).
 - **Assertions:** Use `expect(...).toEqual(...)`, `expect(...).toThrow(...)`, etc. Prefer specific matchers over generic ones.
 - **React components:** Use `@testing-library/react` for rendering and queries; avoid testing implementation details.
+
+# Test Guidelines
+
+- Use external test packages: `package foo_test`.
+- Table-driven tests: name the slice `testCases`, single struct covering all fields. Use spaces in test case names.
+- Do not use `for _, tc := range testCases` in parallel subtests.
+- Instantiate SUT and call the function under test inside `t.Run(...)`, not before it.
+- Use testify assertions exclusively. Never use `if got != want { t.Fatalf(...) }`.
+
+## Mocks
+
+- Use mocks from the `internal/mocks` sibling directory. Regenerate via `mockery` from `contract.go`.

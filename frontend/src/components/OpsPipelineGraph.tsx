@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { OpsStatus } from './OpsStatusTab';
-import Box from '@mui/material/Box';
+import { Box } from '@mui/material';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';

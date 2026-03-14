@@ -3,7 +3,7 @@ import type { MLModelStat } from '../types';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
-import Box from '@mui/material/Box';
+import { Box } from '@mui/material';
 
 function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' | 'warning' {
   if (status === 'PASS') return 'success';

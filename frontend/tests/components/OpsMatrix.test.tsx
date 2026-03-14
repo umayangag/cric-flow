@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import OpsMatrix from '../../src/components/OpsMatrix';
 
+const CANONICAL_FORMATS = ['TEST', 'ODI', 'T20I', 'T20'];
+
 describe('OpsMatrix', () => {
   it('renders precompute statuses per format', () => {
     const data = {
@@ -12,7 +14,9 @@ describe('OpsMatrix', () => {
         T20: { status: 'ok' },
       },
     };
-    render(<OpsMatrix type="precompute" title="Precompute" data={data} />);
+    render(
+      <OpsMatrix type="precompute" title="Precompute" data={data} formats={CANONICAL_FORMATS} />,
+    );
     expect(screen.getByTestId('precompute-TEST')).toBeInTheDocument();
     expect(screen.getByTestId('precompute-ODI')).toBeInTheDocument();
     expect(screen.getByTestId('precompute-T20I')).toBeInTheDocument();
@@ -31,7 +35,7 @@ describe('OpsMatrix', () => {
         T20: { files: [{ name: 'y.csv', exists: true }] },
       },
     };
-    render(<OpsMatrix type="exports" title="Exports" data={data} />);
+    render(<OpsMatrix type="exports" title="Exports" data={data} formats={CANONICAL_FORMATS} />);
     expect(screen.getByTestId('exports-TEST').textContent).toMatch(/present/i);
     expect(screen.getByTestId('exports-ODI').textContent).toMatch(/missing/i);
   });
@@ -49,7 +53,9 @@ describe('OpsMatrix', () => {
         },
       },
     };
-    render(<OpsMatrix type="artifacts" title="Artifacts" data={data} />);
+    render(
+      <OpsMatrix type="artifacts" title="Artifacts" data={data} formats={CANONICAL_FORMATS} />,
+    );
     expect(screen.getByTestId('artifacts-ODI')).toBeInTheDocument();
     // Should include the textual labels 'exists'/'missing'
     expect(screen.getByTestId('artifacts-ODI').textContent).toMatch(/exists/i);

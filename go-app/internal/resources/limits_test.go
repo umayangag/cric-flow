@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseGOMEMLIMIT(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		in   string
 		want int64
 	}{
@@ -23,11 +23,11 @@ func TestParseGOMEMLIMIT(t *testing.T) {
 		{"invalid", 0},
 		{"0", 0},
 	}
-	for _, tt := range tests {
-		got := parseGOMEMLIMIT(tt.in)
-		if got != tt.want {
-			t.Errorf("parseGOMEMLIMIT(%q) = %d, want %d", tt.in, got, tt.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.in, func(t *testing.T) {
+			got := parseGOMEMLIMIT(tc.in)
+			require.Equal(t, tc.want, got, "parseGOMEMLIMIT(%q)", tc.in)
+		})
 	}
 }
 
@@ -38,39 +38,27 @@ func TestConcurrencyLimit_EnvOverride(t *testing.T) {
 
 	_ = os.Setenv(envKey, "2")
 	got := ConcurrencyLimit(KindPrecompute, 0, nil)
-	if got != 2 {
-		t.Errorf("with PRECOMPUTE_CONCURRENCY=2 got %d, want 2", got)
-	}
+	require.Equal(t, 2, got, "with PRECOMPUTE_CONCURRENCY=2")
 	// Env must win over config callback: config says 8, env says 2 → 2
 	got = ConcurrencyLimit(KindPrecompute, 0, func() int { return 8 })
-	if got != 2 {
-		t.Errorf("env should override config callback: got %d, want 2", got)
-	}
+	require.Equal(t, 2, got, "env should override config callback")
 
 	_ = os.Unsetenv(envKey)
 	got = ConcurrencyLimit(KindPrecompute, 0, nil)
-	if got < 1 {
-		t.Errorf("with no env got %d, want >= 1", got)
-	}
+	require.GreaterOrEqual(t, got, 1, "with no env")
 }
 
 func TestConcurrencyLimit_ConfigOverride(t *testing.T) {
 	got := ConcurrencyLimit(KindPrecompute, 4, nil)
-	if got != 4 {
-		t.Errorf("with configLimit=4 got %d, want 4", got)
-	}
+	require.Equal(t, 4, got, "with configLimit=4")
 }
 
 func TestConcurrencyLimit_FloorAndCeiling(t *testing.T) {
 	// configLimit 0 with getConfig returning 999 should be clamped by ceiling
 	const highValue = 999
 	got := ConcurrencyLimit(KindPrecompute, 0, func() int { return highValue })
-	if got < 1 {
-		t.Errorf("got %d, want >= 1", got)
-	}
-	if got >= highValue {
-		t.Errorf("got %d, want value to be clamped by ceiling (less than %d)", got, highValue)
-	}
+	require.GreaterOrEqual(t, got, 1, "floor to 1")
+	require.Less(t, got, highValue, "clamped by ceiling")
 }
 
 func TestConcurrencyLimit_KindExport_KindFielding(t *testing.T) {
@@ -85,15 +73,11 @@ func TestConcurrencyLimit_KindExport_KindFielding(t *testing.T) {
 
 	_ = os.Setenv(envExport, "3")
 	got := ConcurrencyLimit(KindExport, 0, nil)
-	if got != 3 {
-		t.Errorf("KindExport with EXPORT_CONCURRENCY=3 got %d, want 3", got)
-	}
+	require.Equal(t, 3, got, "KindExport with EXPORT_CONCURRENCY=3")
 
 	_ = os.Setenv(envFielding, "4")
 	got = ConcurrencyLimit(KindFielding, 0, nil)
-	if got != 4 {
-		t.Errorf("KindFielding with FIELDING_CONCURRENCY=4 got %d, want 4", got)
-	}
+	require.Equal(t, 4, got, "KindFielding with FIELDING_CONCURRENCY=4")
 }
 
 func TestConcurrencyLimit_KindSeqCalc(t *testing.T) {
@@ -102,16 +86,12 @@ func TestConcurrencyLimit_KindSeqCalc(t *testing.T) {
 	defer func() { _ = os.Setenv(envKey, old) }()
 	_ = os.Setenv(envKey, "2")
 	got := ConcurrencyLimit(KindSeqCalc, 0, nil)
-	if got != 2 {
-		t.Errorf("KindSeqCalc with SEQCALC_CONCURRENCY=2 got %d, want 2", got)
-	}
+	require.Equal(t, 2, got, "KindSeqCalc with SEQCALC_CONCURRENCY=2")
 }
 
 func TestConcurrencyLimit_KindImport(t *testing.T) {
 	got := ConcurrencyLimit(KindImport, 6, nil)
-	if got != 6 {
-		t.Errorf("KindImport with configLimit=6 got %d, want 6", got)
-	}
+	require.Equal(t, 6, got, "KindImport with configLimit=6")
 }
 
 // TestGetLimit_ReturnsPositive ensures GetLimit returns at least 1 for each kind (covers GetLimit and config callback path).
@@ -128,19 +108,13 @@ func TestGetLimit_ReturnsPositive(t *testing.T) {
 }
 
 func TestClampToCeiling(t *testing.T) {
-	if clampToCeiling(0, 10) != 1 {
-		t.Error("clampToCeiling(0,10) should floor to 1")
-	}
-	if clampToCeiling(5, 10) != 5 {
-		t.Error("clampToCeiling(5,10) should remain 5")
-	}
-	if clampToCeiling(15, 10) != 10 {
-		t.Error("clampToCeiling(15,10) should ceiling to 10")
-	}
+	require.Equal(t, 1, clampToCeiling(0, 10), "floor to 1")
+	require.Equal(t, 5, clampToCeiling(5, 10), "unchanged")
+	require.Equal(t, 10, clampToCeiling(15, 10), "ceiling to 10")
 }
 
 func TestMemoryBasedLimit(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name     string
 		kind     Kind
 		memLimit int64 // in bytes
@@ -161,13 +135,12 @@ func TestMemoryBasedLimit(t *testing.T) {
 	defer func() { _ = os.Setenv("USE_RESOURCE_OBSERVATIONS", oldObs) }()
 	_ = os.Setenv("USE_RESOURCE_OBSERVATIONS", "false")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			detectMemoryLimitBytes = func() int64 { return tt.memLimit }
-			got := memoryBasedLimit(tt.kind)
-			if got != tt.want {
-				t.Errorf("memoryBasedLimit() = %v, want %v", got, tt.want)
-			}
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			detectMemoryLimitBytes = func() int64 { return tc.memLimit }
+			got := memoryBasedLimit(tc.kind)
+			require.Equal(t, tc.want, got, "memoryBasedLimit()")
 		})
 	}
 }

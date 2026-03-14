@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 	"github.com/umayangag/cric-flow/go-app/internal/selection"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
@@ -73,22 +73,14 @@ func TestRunner_FromDB_Success(t *testing.T) {
 	r := svc.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
 	opts := svc.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if fc.called != 1 {
-		t.Fatalf("expected connector called once, got %d", fc.called)
-	}
-	if fs.calledDB != 1 || fs.calledCSV != 0 {
-		t.Fatalf("selector calls mismatch: db=%d csv=%d", fs.calledDB, fs.calledCSV)
-	}
+	require.NoError(t, r.Run(context.Background(), opts, buf))
+	require.Equal(t, 1, fc.called, "connector called once")
+	require.Equal(t, 1, fs.calledDB, "selector DB call")
+	require.Equal(t, 0, fs.calledCSV, "selector CSV call")
 	out := buf.String()
-	if !strings.Contains(out, "Selected Team (size=2)") {
-		t.Fatalf("missing header, got: %s", out)
-	}
-	if !strings.Contains(out, "1. A") || !strings.Contains(out, "2. B") {
-		t.Fatalf("missing players, got: %s", out)
-	}
+	require.Contains(t, out, "Selected Team (size=2)", "header")
+	require.Contains(t, out, "1. A")
+	require.Contains(t, out, "2. B")
 }
 
 func TestRunner_FromDB_ConnectError(t *testing.T) {
@@ -97,9 +89,8 @@ func TestRunner_FromDB_ConnectError(t *testing.T) {
 	r := svc.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
 	err := r.Run(context.Background(), svc.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}, buf)
-	if err == nil || !strings.Contains(err.Error(), "db connect failed") {
-		t.Fatalf("expected db connect failed error, got %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "db connect failed")
 }
 
 func TestRunner_FromCSV_Success(t *testing.T) {
@@ -115,16 +106,12 @@ func TestRunner_FromCSV_Success(t *testing.T) {
 		Season:   "2019",
 		TeamSize: 11,
 	}
-	if err := r.Run(context.Background(), opts, buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if fc.called != 0 {
-		t.Fatalf("connector should not be called for CSV, got %d", fc.called)
-	}
-	if fs.calledCSV != 1 || fs.calledDB != 0 {
-		t.Fatalf("selector calls mismatch: db=%d csv=%d", fs.calledDB, fs.calledCSV)
-	}
-	if fs.lastPool != "/tmp/pool.csv" || fs.lastMatch != 1 || fs.lastFormat != "ODI" || fs.lastSeason != "2019" {
-		t.Fatalf("selector args mismatch: %+v", fs)
-	}
+	require.NoError(t, r.Run(context.Background(), opts, buf))
+	require.Equal(t, 0, fc.called, "connector not called for CSV")
+	require.Equal(t, 1, fs.calledCSV)
+	require.Equal(t, 0, fs.calledDB)
+	require.Equal(t, "/tmp/pool.csv", fs.lastPool)
+	require.Equal(t, int64(1), fs.lastMatch)
+	require.Equal(t, "ODI", fs.lastFormat)
+	require.Equal(t, "2019", fs.lastSeason)
 }

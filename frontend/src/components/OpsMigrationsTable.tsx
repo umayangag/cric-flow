@@ -7,7 +7,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
-import Box from '@mui/material/Box';
+import { Box } from '@mui/material';
 import {
   TableContainer,
   Table,

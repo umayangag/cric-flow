@@ -8,33 +8,84 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
-import { MODEL_KEYS } from '../constants/defaultModelFeatures';
-import type { ModelMetadataResponse } from '../types';
+import {
+  getModelEntries,
+  getPlayerLevelKeys,
+  getMatchLevelKeys,
+  DISPLAY_ORDER,
+} from '../utils/modelMetadata';
+import type { ModelMetadataApiResponse } from '../types';
 
 export interface WorkbenchModelFeaturesSectionProps {
-  modelFeatures: ModelMetadataResponse;
+  /** Full response from GET /api/ml/model-metadata; null when loading or on error. No fallback. */
+  modelMetadata: ModelMetadataApiResponse | null;
+  loading: boolean;
+  error: string | null;
 }
 
 const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps> = ({
-  modelFeatures,
+  modelMetadata,
+  loading,
+  error,
 }) => {
+  if (error) {
+    return (
+      <SectionCard
+        title="Model features & interconnection"
+        subtitle="Loaded from ML service (GET /api/ml/model-metadata)."
+      >
+        <Alert severity="error">ML service unavailable: {error}</Alert>
+      </SectionCard>
+    );
+  }
+
+  if (loading || !modelMetadata) {
+    return (
+      <SectionCard
+        title="Model features & interconnection"
+        subtitle="Loaded from ML service (GET /api/ml/model-metadata)."
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <CircularProgress size={20} />
+          <Typography variant="body2" color="text.secondary">
+            Loading model metadata…
+          </Typography>
+        </Stack>
+      </SectionCard>
+    );
+  }
+
+  const modelEntries = getModelEntries(modelMetadata);
+  const playerKeys = getPlayerLevelKeys(modelEntries);
+  const matchKeys = getMatchLevelKeys(modelEntries);
+  const modelKeys =
+    Object.keys(modelEntries).length > 0
+      ? DISPLAY_ORDER.filter((k) => k in modelEntries)
+      : DISPLAY_ORDER;
+
   return (
     <SectionCard
       title="Model features & interconnection"
       subtitle="All model types, per-format vs unified artifacts, features, outputs, and how they connect."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        The pipeline trains <strong>five core model types</strong>: <strong>batting</strong>,{' '}
-        <strong>bowling</strong>, <strong>fielding</strong> (player-level), and{' '}
-        <strong>extras</strong> and <strong>win</strong> (match-level). In addition, an optional{' '}
-        <strong>combination meta</strong> model learns weights for team selection. All share the
-        same feature families (context, form, consistency, venue, opposition, weather). Match-level
-        models use aggregates of player features so team composition influences extras and win
-        probability.
+        The pipeline trains <strong>player-level</strong> models ({playerKeys.join(', ')}) and{' '}
+        <strong>match-level</strong> models ({matchKeys.join(', ')}).
+        {modelEntries.combination_meta ? (
+          <>
+            {' '}
+            An optional <strong>combination meta</strong> model learns weights for team selection.
+          </>
+        ) : null}{' '}
+        All share the same feature families (context, form, consistency, venue, opposition,
+        weather). Match-level models use aggregates of player features so team composition
+        influences extras and win probability.
       </Typography>
 
       {/* Per-format vs unified (legacy) */}
@@ -79,7 +130,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
           useFlexGap
         >
           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-            {(['batting', 'bowling', 'fielding'] as const).map((key) => (
+            {playerKeys.map((key) => (
               <Chip
                 key={key}
                 label={key}
@@ -92,7 +143,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
           </Stack>
           <ArrowForwardIcon sx={{ color: 'action.active', fontSize: 20 }} />
           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-            {(['extras', 'win'] as const).map((key) => (
+            {matchKeys.map((key) => (
               <Chip
                 key={key}
                 label={key}
@@ -116,8 +167,8 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
         Features, outputs, and artifacts by model
       </Typography>
-      {MODEL_KEYS.map((key) => {
-        const m = modelFeatures[key];
+      {modelKeys.map((key) => {
+        const m = modelEntries[key];
         if (!m) return null;
         return (
           <Accordion

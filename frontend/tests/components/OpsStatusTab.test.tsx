@@ -4,17 +4,20 @@ import { vi } from 'vitest';
 import React from 'react';
 import OpsStatusTab from '../../src/components/OpsStatusTab';
 
-// Mock the API module used by the component
+// Mock the API module used by the component (OpsStatusTab and OpsStatusDetailsGrid use opsStatus + getCanonicalFormats)
 const mockOpsStatus = vi.fn();
+const mockGetCanonicalFormats = vi.fn();
 vi.mock('../../src/api', () => ({
   api: {
     opsStatus: (...args: unknown[]) => mockOpsStatus(...args),
+    getCanonicalFormats: (...args: unknown[]) => mockGetCanonicalFormats(...args),
   },
 }));
 
 describe('OpsStatusTab', () => {
   beforeEach(() => {
     mockOpsStatus.mockReset();
+    mockGetCanonicalFormats.mockResolvedValue(['TEST', 'ODI', 'T20I', 'T20']);
   });
   afterEach(() => {
     cleanup();

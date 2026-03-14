@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 type OptionsHandler struct{}
@@ -20,12 +21,18 @@ func (h *OptionsHandler) HandleGetTeams(w http.ResponseWriter, r *http.Request) 
 
 func (h *OptionsHandler) HandleGetFormats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	formats, err := db.GetUniqueFormats(ctx)
+	list, err := db.GetUniqueFormats(ctx)
 	if err != nil {
 		respondErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, formats)
+	writeJSON(w, http.StatusOK, list)
+}
+
+// HandleGetCanonicalFormats returns the canonical format codes (TEST, ODI, T20, T20I) from the formats package.
+// Use this where the UI needs a stable list that matches backend semantics (e.g. ops status grids).
+func (h *OptionsHandler) HandleGetCanonicalFormats(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, formats.CanonicalCodes())
 }
 
 func (h *OptionsHandler) HandleGetTeamsByFormat(w http.ResponseWriter, r *http.Request) {

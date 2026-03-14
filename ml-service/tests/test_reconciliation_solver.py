@@ -9,7 +9,14 @@ from app.models import (
     MatchReconciliationInputs,
     PlayerReconciliationPreferences,
 )
-from ml.reconciliation_core import ProblemBuilder
+from ml.reconciliation_core import (
+    ConstraintKind,
+    LinearConstraint,
+    ProblemBuilder,
+    ReconciliationProblem,
+    Variable,
+    VariableKind,
+)
 from ml.reconciliation_solver import solve_reconciliation_problem
 
 
@@ -145,3 +152,38 @@ def test_solver_handles_no_constraints_case():
     problem.constraints.clear()
     x = solve_reconciliation_problem(problem)
     assert np.allclose(x, problem.mu)
+
+
+def test_solver_weights_length_mismatch_raises():
+    """Weights length must match mu; otherwise ValueError."""
+    problem = ReconciliationProblem(
+        variables=[Variable(0, VariableKind.BAT_RUNS, 1, 100)],
+        mu=np.array([10.0]),
+        weights=np.array([1.0, 2.0]),  # length 2 != 1
+        constraints=[],
+    )
+    with np.testing.assert_raises(ValueError):
+        solve_reconciliation_problem(problem)
+
+
+def test_solver_singular_matrix_uses_lstsq_fallback():
+    """When M is singular, np.linalg.solve raises; solver falls back to lstsq."""
+    # Two identical constraints -> A has two identical rows -> M = A W^{-1} A^T is singular
+    variables = [
+        Variable(0, VariableKind.BAT_RUNS, 1, 100),
+        Variable(1, VariableKind.BAT_RUNS, 2, 100),
+    ]
+    constraints = [
+        LinearConstraint(coefficients={0: 1.0, 1: 1.0}, rhs=50.0, description="sum", kind=ConstraintKind.HARD),
+        LinearConstraint(coefficients={0: 1.0, 1: 1.0}, rhs=50.0, description="dup", kind=ConstraintKind.HARD),
+    ]
+    problem = ReconciliationProblem(
+        variables=variables,
+        mu=np.array([25.0, 25.0]),
+        weights=np.array([1.0, 1.0]),
+        constraints=constraints,
+    )
+    x = solve_reconciliation_problem(problem)
+    # Should still return a solution (lstsq path); constraint 1*x0 + 1*x1 = 50
+    assert x.shape == (2,)
+    assert np.isclose(x[0] + x[1], 50.0)

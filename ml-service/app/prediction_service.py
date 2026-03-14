@@ -53,6 +53,7 @@ from .models import (
     WinFeatures,
     WinPrediction,
 )
+from .prediction_settings import GenerateMatchSettings, round_datetime_to_granularity
 from .reconciliation import predict_innings, rescale_player_predictions
 from .train_on_the_fly import train_on_the_fly_cached
 
@@ -83,31 +84,6 @@ except ImportError:
     compute_derived_features = None  # type: ignore[assignment]
 
 logger = get_struct_logger()
-
-
-@dataclass
-class GenerateMatchSettings:
-    models_dir: str
-    enable_train_on_the_fly: bool
-    go_app_url: str
-    go_app_api_key: Optional[str]
-    train_latest_cache_granularity: str
-
-
-def round_datetime_to_granularity(dt: datetime, granularity: str) -> datetime:
-    """Round datetime down to the given boundary. Used for cache-key stability when use_latest_model=True."""
-    gran = (granularity or "").strip().lower()
-    if gran in ("none", ""):
-        return dt
-    if gran == "second":
-        return dt.replace(microsecond=0)
-    if gran == "minute":
-        return dt.replace(second=0, microsecond=0)
-    if gran == "hour":
-        return dt.replace(minute=0, second=0, microsecond=0)
-    if gran == "day":
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    return dt  # fallback: no rounding
 
 
 def _sum_team_feature(

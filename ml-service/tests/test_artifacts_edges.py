@@ -133,3 +133,74 @@ def test_load_per_format_extras_and_win_success(tmp_path):
         artifacts_mod._load_per_format(str(tmp_path))
     assert "ODI" in artifacts_mod.EXTRAS_MODELS
     assert "ODI" in artifacts_mod.WIN_MODELS
+
+
+def test_use_share_models_returns_false_on_import_error():
+    """_use_share_models returns False when get_config raises."""
+    with patch("ml.config.get_config", side_effect=ImportError("no config")):
+        result = artifacts_mod._use_share_models()
+    assert result is False
+
+
+def test_load_per_format_batting_share_scaler_with_model(tmp_path):
+    """When batting_share_scaler_X and batting_share_model_X exist, BAT_SHARE_MODELS is populated."""
+    (tmp_path / "batting_share_scaler_ODI.joblib").write_bytes(b"x")
+    (tmp_path / "batting_share_model_ODI.joblib").write_bytes(b"y")
+    mock_obj = MagicMock()
+    with patch("app.artifacts.joblib.load", return_value=mock_obj):
+        artifacts_mod.BAT_SHARE_MODELS.clear()
+        artifacts_mod._load_per_format(str(tmp_path))
+    assert "ODI" in artifacts_mod.BAT_SHARE_MODELS
+
+
+def test_load_per_format_batting_share_scaler_without_model_warns(tmp_path):
+    """When batting_share_scaler_X exists but model does not, warning is logged."""
+    (tmp_path / "batting_share_scaler_ODI.joblib").write_bytes(b"x")
+    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
+        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
+            artifacts_mod.BAT_SHARE_MODELS.clear()
+            artifacts_mod._load_per_format(str(tmp_path))
+            mock_warn.assert_called()
+            assert "batting_share_model_missing" in str(mock_warn.call_args)
+
+
+def test_load_per_format_bowling_share_scaler_with_model(tmp_path):
+    """When bowling_share_scaler_X and bowling_share_model_X exist, BOWL_SHARE_MODELS is populated."""
+    (tmp_path / "bowling_share_scaler_T20.joblib").write_bytes(b"x")
+    (tmp_path / "bowling_share_model_T20.joblib").write_bytes(b"y")
+    mock_obj = MagicMock()
+    with patch("app.artifacts.joblib.load", return_value=mock_obj):
+        artifacts_mod.BOWL_SHARE_MODELS.clear()
+        artifacts_mod._load_per_format(str(tmp_path))
+    assert "T20" in artifacts_mod.BOWL_SHARE_MODELS
+
+
+def test_load_per_format_bowling_share_scaler_without_model_warns(tmp_path):
+    """When bowling_share_scaler_X exists but model does not, warning is logged."""
+    (tmp_path / "bowling_share_scaler_ODI.joblib").write_bytes(b"x")
+    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
+        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
+            artifacts_mod.BOWL_SHARE_MODELS.clear()
+            artifacts_mod._load_per_format(str(tmp_path))
+            assert any("bowling_share_model_missing" in str(c) for c in mock_warn.call_args_list)
+
+
+def test_load_per_format_innings_scaler_with_model(tmp_path):
+    """When innings_scaler_X and innings_model_X exist, INNINGS_MODELS is populated."""
+    (tmp_path / "innings_scaler_ODI.joblib").write_bytes(b"x")
+    (tmp_path / "innings_model_ODI.joblib").write_bytes(b"y")
+    mock_obj = MagicMock()
+    with patch("app.artifacts.joblib.load", return_value=mock_obj):
+        artifacts_mod.INNINGS_MODELS.clear()
+        artifacts_mod._load_per_format(str(tmp_path))
+    assert "ODI" in artifacts_mod.INNINGS_MODELS
+
+
+def test_load_per_format_innings_scaler_without_model_warns(tmp_path):
+    """When innings_scaler_X exists but innings_model_X does not, warning is logged."""
+    (tmp_path / "innings_scaler_T20.joblib").write_bytes(b"x")
+    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
+        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
+            artifacts_mod.INNINGS_MODELS.clear()
+            artifacts_mod._load_per_format(str(tmp_path))
+            assert any("innings_model_missing" in str(c) for c in mock_warn.call_args_list)

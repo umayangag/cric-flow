@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Box from '@mui/material/Box';
+import { Box } from '@mui/material';
 import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';

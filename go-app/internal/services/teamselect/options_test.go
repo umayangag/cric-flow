@@ -3,9 +3,9 @@ package teamselect_test
 import (
 	"flag"
 	"os"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -13,50 +13,23 @@ type optsAssertFn func(t *testing.T, got svc.Options, err error)
 
 func assertNoErrorOpts(want svc.Options) optsAssertFn {
 	return func(t *testing.T, got svc.Options, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.MatchID != want.MatchID {
-			t.Fatalf("want MatchID=%d got %d", want.MatchID, got.MatchID)
-		}
-		if got.Format != want.Format {
-			t.Fatalf("want Format=%q got %q", want.Format, got.Format)
-		}
-		if got.Season != want.Season {
-			t.Fatalf("want Season=%q got %q", want.Season, got.Season)
-		}
-		if got.TeamSize != want.TeamSize {
-			t.Fatalf("want TeamSize=%d got %d", want.TeamSize, got.TeamSize)
-		}
-		if got.MinBowlers != want.MinBowlers {
-			t.Fatalf("want MinBowlers=%d got %d", want.MinBowlers, got.MinBowlers)
-		}
-		if got.RequireKeeper != want.RequireKeeper {
-			t.Fatalf("want RequireKeeper=%v got %v", want.RequireKeeper, got.RequireKeeper)
-		}
-		if got.FromDB != want.FromDB {
-			t.Fatalf("want FromDB=%v got %v", want.FromDB, got.FromDB)
-		}
-		if got.PoolPath != want.PoolPath {
-			t.Fatalf("want PoolPath=%q got %q", want.PoolPath, got.PoolPath)
-		}
+		require.NoError(t, err)
+		require.Equal(t, want.MatchID, got.MatchID)
+		require.Equal(t, want.Format, got.Format)
+		require.Equal(t, want.Season, got.Season)
+		require.Equal(t, want.TeamSize, got.TeamSize)
+		require.Equal(t, want.MinBowlers, got.MinBowlers)
+		require.Equal(t, want.RequireKeeper, got.RequireKeeper)
+		require.Equal(t, want.FromDB, got.FromDB)
+		require.Equal(t, want.PoolPath, got.PoolPath)
 	}
 }
 
 func assertErrorContains(sub string) optsAssertFn {
 	return func(t *testing.T, _ svc.Options, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOfStr(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %q", sub, err.Error())
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
-}
-
-func indexOfStr(s, sub string) int {
-	return strings.Index(s, sub)
 }
 
 func TestParseArgs_Basic(t *testing.T) {

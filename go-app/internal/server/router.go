@@ -58,6 +58,8 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
 		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/canonical/formats", optionsHandler.HandleGetCanonicalFormats).
+		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/venues", optionsHandler.HandleGetVenues).
 		Methods(http.MethodGet, http.MethodOptions)
 

@@ -2,9 +2,9 @@ package teamselect_test
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
@@ -30,12 +30,8 @@ func TestSelectOptimized_ValidPool(t *testing.T) {
 	w := ts.DefaultWeights()
 	pool := mkPool()
 	sel, err := ts.SelectOptimized(pool, w, ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true})
-	if err != nil {
-		t.Fatalf("SelectOptimized: %v", err)
-	}
-	if len(sel) != 11 {
-		t.Fatalf("want 11 selected, got %d", len(sel))
-	}
+	require.NoError(t, err)
+	require.Len(t, sel, 11)
 	bowlers := 0
 	keepers := 0
 	for _, p := range sel {
@@ -46,12 +42,8 @@ func TestSelectOptimized_ValidPool(t *testing.T) {
 			keepers++
 		}
 	}
-	if bowlers < 5 {
-		t.Fatalf("want at least 5 bowlers, got %d", bowlers)
-	}
-	if keepers < 1 {
-		t.Fatalf("want at least 1 keeper, got %d", keepers)
-	}
+	require.GreaterOrEqual(t, bowlers, 5, "at least 5 bowlers")
+	require.GreaterOrEqual(t, keepers, 1, "at least 1 keeper")
 }
 
 func TestSelectOptimized_Errors(t *testing.T) {
@@ -59,7 +51,7 @@ func TestSelectOptimized_Errors(t *testing.T) {
 	w := ts.DefaultWeights()
 	pool := mkPool()
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		pool   []ts.Player
 		c      ts.Constraints
@@ -67,23 +59,20 @@ func TestSelectOptimized_Errors(t *testing.T) {
 	}{
 		{"invalid size", pool, ts.Constraints{Size: 0, MinBowlers: 5}, "invalid size"},
 		{"insufficient pool", pool[:5], ts.Constraints{Size: 11, MinBowlers: 2}, "insufficient pool"},
+		// Pool of 11 with no keeper
 		{"no keeper", func() []ts.Player {
-			// Pool of 11 with no keeper
 			p := mkPool()
 			p[0].IsKeeper = false
 			return p
 		}(), ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}, "no keeper"},
 		{"not enough bowlers", pool[:8], ts.Constraints{Size: 8, MinBowlers: 6}, "not enough bowlers"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ts.SelectOptimized(tt.pool, w, tt.c)
-			if err == nil {
-				t.Fatalf("expected error containing %q", tt.errStr)
-			}
-			if !strings.Contains(err.Error(), tt.errStr) {
-				t.Fatalf("err %q does not contain %q", err.Error(), tt.errStr)
-			}
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ts.SelectOptimized(tc.pool, w, tc.c)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.errStr)
 		})
 	}
 }
@@ -93,16 +82,11 @@ func TestSelectTopK_Valid(t *testing.T) {
 	w := ts.DefaultWeights()
 	pool := mkPool()
 	xis, err := ts.SelectTopK(pool, w, ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}, 3)
-	if err != nil {
-		t.Fatalf("SelectTopK: %v", err)
-	}
-	if len(xis) < 1 || len(xis) > 3 {
-		t.Fatalf("want 1-3 XIs, got %d", len(xis))
-	}
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(xis), 1)
+	require.LessOrEqual(t, len(xis), 3)
 	for _, xi := range xis {
-		if len(xi) != 11 {
-			t.Fatalf("each XI should have 11 players, got %d", len(xi))
-		}
+		require.Len(t, xi, 11, "each XI should have 11 players")
 	}
 }
 
@@ -111,9 +95,7 @@ func TestSelectTopK_InvalidK(t *testing.T) {
 	w := ts.DefaultWeights()
 	pool := mkPool()
 	_, err := ts.SelectTopK(pool, w, ts.Constraints{Size: 11, MinBowlers: 5}, 0)
-	if err == nil {
-		t.Fatalf("expected error for k=0")
-	}
+	require.Error(t, err, "expected error for k=0")
 }
 
 func TestSelectByWinProbability_UsesEvalFunc(t *testing.T) {
@@ -136,21 +118,15 @@ func TestSelectByWinProbability_UsesEvalFunc(t *testing.T) {
 	}
 
 	sel, err := ts.SelectByWinProbability(pool, w, c, evalFunc)
-	if err != nil {
-		t.Fatalf("SelectByWinProbability: %v", err)
-	}
-	if len(sel) != 2 {
-		t.Fatalf("want 2 selected, got %d", len(sel))
-	}
+	require.NoError(t, err)
+	require.Len(t, sel, 2)
 	hasB := false
 	for _, p := range sel {
 		if p.Name == "B" {
 			hasB = true
 		}
 	}
-	if !hasB {
-		t.Errorf("expected player B (high win prob) in selected XI, got %v", sel)
-	}
+	require.True(t, hasB, "expected player B (high win prob) in selected XI: %v", sel)
 }
 
 func TestSelectByWinProbability_Errors(t *testing.T) {
@@ -159,7 +135,7 @@ func TestSelectByWinProbability_Errors(t *testing.T) {
 	pool := mkPool()
 	noop := func(_ []string) (float64, error) { return 0.5, nil }
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		pool   []ts.Player
 		c      ts.Constraints
@@ -168,15 +144,11 @@ func TestSelectByWinProbability_Errors(t *testing.T) {
 		{"invalid size", pool, ts.Constraints{Size: 0, MinBowlers: 5}, "invalid size"},
 		{"insufficient pool", pool[:3], ts.Constraints{Size: 11, MinBowlers: 2}, "insufficient pool"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ts.SelectByWinProbability(tt.pool, w, tt.c, noop)
-			if err == nil {
-				t.Fatalf("expected error containing %q", tt.errStr)
-			}
-			if !strings.Contains(err.Error(), tt.errStr) {
-				t.Fatalf("err %q does not contain %q", err.Error(), tt.errStr)
-			}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ts.SelectByWinProbability(tc.pool, w, tc.c, noop)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.errStr)
 		})
 	}
 }
@@ -196,10 +168,6 @@ func TestSelectByWinProbability_FallsBackOnEvalError(t *testing.T) {
 	}
 	// Should not panic; falls back to greedy seed
 	sel, err := ts.SelectByWinProbability(pool, w, c, evalFunc)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(sel) != 2 {
-		t.Fatalf("want 2 selected, got %d", len(sel))
-	}
+	require.NoError(t, err)
+	require.Len(t, sel, 2)
 }

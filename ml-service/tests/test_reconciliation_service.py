@@ -1,5 +1,7 @@
 """Tests for ml.reconciliation_service.reconcile_match_players."""
 
+from unittest.mock import patch
+
 from app.models import (
     BattingPrediction,
     BowlingPrediction,
@@ -9,6 +11,7 @@ from app.models import (
 )
 from ml.reconciliation_service import (
     ReconciledPlayerStats,
+    _get_max_margin_fraction,
     _sum_preserving_round,
     reconcile_match_players,
 )
@@ -187,3 +190,18 @@ def test_sum_preserving_round_handles_positive_and_negative_deltas():
     out_neg = _sum_preserving_round(vals_neg, target_neg)
     assert sum(out_neg.values()) == int(round(target_neg))
     assert all(isinstance(v, int) and v >= 0 for v in out_neg.values())
+
+
+def test_sum_preserving_round_empty_values_returns_empty():
+    """_sum_preserving_round with empty dict returns empty dict."""
+    assert _sum_preserving_round({}, 10.0) == {}
+
+
+def test_get_max_margin_fraction_invalid_config_returns_default():
+    """_get_max_margin_fraction returns 0.4 when config value is not floatable."""
+    with patch(
+        "ml.reconciliation_service.get_reconciliation_config", return_value={"max_margin_fraction": "not_a_number"}
+    ):
+        assert _get_max_margin_fraction() == 0.4
+    with patch("ml.reconciliation_service.get_reconciliation_config", return_value={"max_margin_fraction": None}):
+        assert _get_max_margin_fraction() == 0.4
