@@ -87,7 +87,7 @@
       "timeseries_small_dataset_threshold": 5000,
       "stability_focus_sample_size_low": 35000,
       "stability_focus_sample_size_high": 80000,
-      "stability_violation_weight": 1.5,
+      "stability_violation_weight": 5,
       "stability_focus_bounds": {
         "min_samples_leaf_min": 8,
         "min_samples_leaf_max": 24,
