@@ -261,7 +261,10 @@ def _run_phase2_optuna_study(
     Shared by _run_search_two_phase_single_regression and _run_search_two_phase.
     """
     study = optuna.create_study(
-        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(
+            seed=random_state, n_startup_trials=tuning_cfg.get("optuna_tpe_n_startup_trials", 5)
+        ),
     )
     if prior_params:
         try:

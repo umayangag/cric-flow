@@ -437,6 +437,7 @@ def get_tuning_config() -> Dict[str, Any]:
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
         "n_jobs": int(n_jobs),
+        "optuna_tpe_n_startup_trials": int(tuning.get("optuna_tpe_n_startup_trials", 5)),
         "random_state": int(tuning.get("random_state", 42)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
         "search_space": tuning.get("search_space"),
