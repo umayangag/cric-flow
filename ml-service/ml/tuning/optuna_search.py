@@ -957,21 +957,13 @@ def _run_search_two_phase(
         X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
     )
 
-    fallback_bounds = tuning_cfg.get("phase2_fallback_bounds") or {}
-    n_est_fb_min = int(fallback_bounds.get("n_estimators_min", 100))
-    n_est_fb_max = int(fallback_bounds.get("n_estimators_max", 300))
-    depth_fb_min = int(fallback_bounds.get("max_depth_min", 8))
-    depth_fb_max = int(fallback_bounds.get("max_depth_max", 16))
-
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
         est = _suggest_phase2_regression_estimator(
             trial, alg, bounds, random_state, model_kind=model_kind, tuning_cfg=tuning_cfg
         )
         if est is None:
-            n_est = trial.suggest_int("n_estimators", n_est_fb_min, n_est_fb_max, step=50)
-            depth = trial.suggest_int("max_depth", depth_fb_min, depth_fb_max, step=2)
-            est = RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=random_state)
+            raise ValueError(f"Algorithm '{alg}' is not supported for Phase 2 fine-tuning.")
         pipe = _build_pipeline(est)
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         mean_score = float(scores.mean())
