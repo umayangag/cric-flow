@@ -107,6 +107,9 @@
         "quantile_max_depth_min": 4,
         "quantile_max_depth_max": 20,
         "mlp_alpha_min": 0.001,
+        "mlp_alpha_max": 0.1,
+        "mlp_lr_init_min": 0.0001,
+        "mlp_lr_init_max": 0.1,
         "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64]]
       },
       "default_bounds": {
@@ -128,6 +131,9 @@
         "quantile_max_depth_min": 4,
         "quantile_max_depth_max": 20,
         "mlp_alpha_min": 0.0001,
+        "mlp_alpha_max": 0.1,
+        "mlp_lr_init_min": 0.0001,
+        "mlp_lr_init_max": 0.1,
         "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64], [256, 128, 64]]
       },
       "quantile_fallback": {

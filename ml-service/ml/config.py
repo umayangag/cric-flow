@@ -38,6 +38,9 @@ DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
     "quantile_max_depth_min": 4,
     "quantile_max_depth_max": 20,
     "mlp_alpha_min": 1e-4,
+    "mlp_alpha_max": 1e-1,
+    "mlp_lr_init_min": 1e-4,
+    "mlp_lr_init_max": 1e-1,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
 }
 DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
@@ -59,6 +62,9 @@ DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
     "quantile_max_depth_min": 4,
     "quantile_max_depth_max": 20,
     "mlp_alpha_min": 1e-3,
+    "mlp_alpha_max": 1e-1,
+    "mlp_lr_init_min": 1e-4,
+    "mlp_lr_init_max": 1e-1,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
 }
 DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 12, "alpha": 0.5}

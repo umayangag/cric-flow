@@ -2,7 +2,7 @@
 
 AGENTS: Changes here must apply uniformly to all algorithms (rf, gb, quantile, et, hgb, mlp, …)
 and all formats (TEST, ODI, T20, T20I). Do not add algorithm-specific or format-specific
-branches without applying the same behaviour elsewhere. See AGENTS_AUTO_TUNE.md in this package.
+branches without applying the same behavior elsewhere. See AGENTS_AUTO_TUNE.md in this package.
 """
 
 from __future__ import annotations
@@ -104,6 +104,9 @@ def _suggest_phase2_regression_estimator(
     n_est_min = bounds["n_estimators_min"]
     n_est_max = bounds["n_estimators_max"]
     mlp_alpha_min = bounds["mlp_alpha_min"]
+    mlp_alpha_max = bounds["mlp_alpha_max"]
+    mlp_lr_init_min = bounds["mlp_lr_init_min"]
+    mlp_lr_init_max = bounds["mlp_lr_init_max"]
     mlp_sizes = bounds["mlp_hidden_layer_sizes"]
 
     if alg == "rf":
@@ -192,8 +195,8 @@ def _suggest_phase2_regression_estimator(
         )
     if alg == "mlp":
         sizes = trial.suggest_categorical("hidden_layer_sizes", mlp_sizes)
-        alpha = trial.suggest_float("alpha", mlp_alpha_min, 1e-1, log=True)
-        lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
+        alpha = trial.suggest_float("alpha", mlp_alpha_min, mlp_alpha_max, log=True)
+        lr_init = trial.suggest_float("learning_rate_init", mlp_lr_init_min, mlp_lr_init_max, log=True)
         return MLPRegressor(
             hidden_layer_sizes=sizes,
             alpha=alpha,
