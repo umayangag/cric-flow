@@ -110,6 +110,8 @@
         "mlp_alpha_max": 0.1,
         "mlp_lr_init_min": 0.0001,
         "mlp_lr_init_max": 0.1,
+        "mlp_max_iter_min": 500,
+        "mlp_max_iter_max": 2000,
         "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64]]
       },
       "default_bounds": {
@@ -134,6 +136,8 @@
         "mlp_alpha_max": 0.1,
         "mlp_lr_init_min": 0.0001,
         "mlp_lr_init_max": 0.1,
+        "mlp_max_iter_min": 500,
+        "mlp_max_iter_max": 2000,
         "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64], [256, 128, 64]]
       },
       "quantile_fallback": {

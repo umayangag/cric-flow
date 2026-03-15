@@ -107,6 +107,8 @@ def _suggest_phase2_regression_estimator(
     mlp_alpha_max = bounds["mlp_alpha_max"]
     mlp_lr_init_min = bounds["mlp_lr_init_min"]
     mlp_lr_init_max = bounds["mlp_lr_init_max"]
+    mlp_max_iter_min = bounds["mlp_max_iter_min"]
+    mlp_max_iter_max = bounds["mlp_max_iter_max"]
     mlp_sizes = bounds["mlp_hidden_layer_sizes"]
 
     if alg == "rf":
@@ -197,11 +199,12 @@ def _suggest_phase2_regression_estimator(
         sizes = trial.suggest_categorical("hidden_layer_sizes", mlp_sizes)
         alpha = trial.suggest_float("alpha", mlp_alpha_min, mlp_alpha_max, log=True)
         lr_init = trial.suggest_float("learning_rate_init", mlp_lr_init_min, mlp_lr_init_max, log=True)
+        max_iter = trial.suggest_int("max_iter", mlp_max_iter_min, mlp_max_iter_max, step=250)
         return MLPRegressor(
             hidden_layer_sizes=sizes,
             alpha=alpha,
             learning_rate_init=lr_init,
-            max_iter=1000,
+            max_iter=max_iter,
             early_stopping=True,
             random_state=random_state,
         )
@@ -529,7 +532,7 @@ def _run_search_two_phase_single_regression(
                 hidden_layer_sizes=p.get("hidden_layer_sizes", (128, 64)),
                 alpha=p.get("alpha", 0.001),
                 learning_rate_init=p.get("learning_rate_init", 0.001),
-                max_iter=1000,
+                max_iter=p.get("max_iter", 1000),
                 early_stopping=True,
                 random_state=random_state,
             )
@@ -1094,7 +1097,7 @@ def _run_search_two_phase(
                 hidden_layer_sizes=params.get("hidden_layer_sizes", (128, 64)),
                 alpha=params.get("alpha", 0.001),
                 learning_rate_init=params.get("learning_rate_init", 0.001),
-                max_iter=1000,
+                max_iter=params.get("max_iter", 1000),
                 early_stopping=True,
                 random_state=random_state,
             )
