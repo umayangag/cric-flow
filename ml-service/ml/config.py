@@ -87,6 +87,14 @@ def _load_and_merge_dict(config_dict: Dict[str, Any], key: str, default_dict: Di
     return _deep_merge(dict(default_dict), value)
 
 
+def _load_numeric(config: Dict[str, Any], key: str, default: Any, coerce: type) -> Any:
+    """Load a numeric value from config with coercion; on ValueError/TypeError return default."""
+    try:
+        return coerce(config.get(key, default))
+    except (ValueError, TypeError):
+        return default
+
+
 def _load() -> Dict[str, Any]:
     global _cached
     if _cached is not None:
@@ -377,18 +385,13 @@ def get_tuning_config() -> Dict[str, Any]:
     stages = tuning.get("stages") or {}
     # Data-driven stability focus: when n_samples is outside [low, high], bias search toward
     # more stable configs (and optionally weight stability higher in the penalized objective).
-    try:
-        stability_low = int(tuning.get("stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW))
-    except (ValueError, TypeError):
-        stability_low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
-    try:
-        stability_high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
-    except (ValueError, TypeError):
-        stability_high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
-    try:
-        stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
-    except (ValueError, TypeError):
-        stability_weight = DEFAULT_STABILITY_VIOLATION_WEIGHT
+    stability_low = _load_numeric(
+        tuning, "stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW, int
+    )
+    stability_high = _load_numeric(
+        tuning, "stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH, int
+    )
+    stability_weight = _load_numeric(tuning, "stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT, float)
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
     stability_focus_bounds = _load_and_merge_dict(

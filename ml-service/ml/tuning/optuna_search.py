@@ -25,7 +25,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import get_training_params, get_tuning_config
+from ml.config import DEFAULT_QUANTILE_FALLBACK, get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -66,6 +66,9 @@ except ImportError:
     _progress = None
 
 logger = logging.getLogger(__name__)
+
+# Algorithms that Phase 2 Optuna can fine-tune; others (e.g. stacked) are filtered from winners.
+_PHASE2_TUNABLE_ALGORITHMS = frozenset({"rf", "gb", "quantile", "et", "hgb", "mlp"})
 
 
 def _get_phase2_bounds(tuning_cfg: Dict[str, Any], stability_focus: bool) -> Dict[str, Any]:
@@ -128,10 +131,10 @@ def _suggest_phase2_regression_estimator(
                 alpha=tp.get("quantile_level", 0.5),
             )
         except (ValueError, KeyError):
-            fallback = (tuning_cfg or {}).get("quantile_fallback") or {}
-            n_est = int(fallback.get("n_estimators", 200))
-            depth = int(fallback.get("max_depth", 12))
-            alpha = float(fallback.get("alpha", 0.5))
+            fallback = (tuning_cfg.get("quantile_fallback") if tuning_cfg else None) or DEFAULT_QUANTILE_FALLBACK
+            n_est = int(fallback["n_estimators"])
+            depth = int(fallback["max_depth"])
+            alpha = float(fallback["alpha"])
             return GradientBoostingRegressor(
                 n_estimators=n_est,
                 max_depth=depth,
@@ -902,6 +905,7 @@ def _run_search_two_phase(
         best_params = enriched[0][5]
         best_pipe = enriched[0][6]
         winners = [enriched[0][3]] + ([enriched[1][3]] if len(enriched) > 1 else [])
+        winners = [w for w in winners if w in _PHASE2_TUNABLE_ALGORITHMS]
 
     if not _HAS_OPTUNA or len(winners) == 0:
         config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
