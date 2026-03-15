@@ -377,9 +377,18 @@ def get_tuning_config() -> Dict[str, Any]:
     stages = tuning.get("stages") or {}
     # Data-driven stability focus: when n_samples is outside [low, high], bias search toward
     # more stable configs (and optionally weight stability higher in the penalized objective).
-    stability_low = int(tuning.get("stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW))
-    stability_high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
-    stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
+    try:
+        stability_low = int(tuning.get("stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW))
+    except (ValueError, TypeError):
+        stability_low = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW
+    try:
+        stability_high = int(tuning.get("stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH))
+    except (ValueError, TypeError):
+        stability_high = DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH
+    try:
+        stability_weight = float(tuning.get("stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT))
+    except (ValueError, TypeError):
+        stability_weight = DEFAULT_STABILITY_VIOLATION_WEIGHT
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
     stability_focus_bounds = _load_and_merge_dict(
