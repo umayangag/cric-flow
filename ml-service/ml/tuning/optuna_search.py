@@ -39,6 +39,7 @@ from ml.tuning.cv_metrics import (
 from ml.tuning.search_space import (
     _build_pipeline,
     _build_pipeline_single_regression,
+    _normalize_hidden_layer_sizes,
     _phase1_candidates_regression,
     _phase1_candidates_regression_single,
     _search_space_classification,
@@ -98,23 +99,35 @@ def _suggest_phase2_regression_estimator(
     """
     leaf_min = bounds["min_samples_leaf_min"]
     leaf_high = bounds["min_samples_leaf_max"]
+    lr_min = bounds["learning_rate_min"]
     lr_high = bounds["learning_rate_max"]
     n_est_min = bounds["n_estimators_min"]
+    n_est_max = bounds["n_estimators_max"]
     mlp_alpha_min = bounds["mlp_alpha_min"]
     mlp_sizes = bounds["mlp_hidden_layer_sizes"]
 
     if alg == "rf":
         return RandomForestRegressor(
-            n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
-            max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["rf_max_depth_min"],
+                bounds["rf_max_depth_max"],
+                step=2,
+            ),
             min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
             random_state=random_state,
         )
     if alg == "gb":
         return GradientBoostingRegressor(
-            n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
-            max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
-            learning_rate=trial.suggest_float("learning_rate", 0.01, lr_high, log=True),
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["gb_max_depth_min"],
+                bounds["gb_max_depth_max"],
+                step=1,
+            ),
+            learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
             min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
             random_state=random_state,
         )
@@ -122,9 +135,14 @@ def _suggest_phase2_regression_estimator(
         try:
             tp = get_training_params(model_kind)
             return GradientBoostingRegressor(
-                n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
-                max_depth=trial.suggest_int("max_depth", 4, 20, step=2),
-                learning_rate=trial.suggest_float("learning_rate", 0.01, lr_high, log=True),
+                n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+                max_depth=trial.suggest_int(
+                    "max_depth",
+                    bounds["quantile_max_depth_min"],
+                    bounds["quantile_max_depth_max"],
+                    step=2,
+                ),
+                learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
                 min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
                 random_state=random_state,
                 loss="quantile",
@@ -144,16 +162,31 @@ def _suggest_phase2_regression_estimator(
             )
     if alg == "et":
         return ExtraTreesRegressor(
-            n_estimators=trial.suggest_int("n_estimators", n_est_min, 600, step=50),
-            max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["et_max_depth_min"],
+                bounds["et_max_depth_max"],
+                step=2,
+            ),
             min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
             random_state=random_state,
         )
     if alg == "hgb":
         return HistGradientBoostingRegressor(
-            max_iter=trial.suggest_int("max_iter", n_est_min, 400, step=50),
-            max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
-            learning_rate=trial.suggest_float("learning_rate", 0.01, lr_high, log=True),
+            max_iter=trial.suggest_int(
+                "max_iter",
+                n_est_min,
+                bounds["hgb_max_iter_max"],
+                step=50,
+            ),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["hgb_max_depth_min"],
+                bounds["hgb_max_depth_max"],
+                step=1,
+            ),
+            learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
             min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
             random_state=random_state,
         )
@@ -187,10 +220,8 @@ def _setup_phase2_stability_focus(
     mlp_sizes = list(bounds.get("mlp_hidden_layer_sizes", []))
 
     def _add_mlp_size(s: Any) -> None:
-        if s is None:
-            return
-        t = tuple(s) if isinstance(s, (list, tuple)) else s
-        if t not in mlp_sizes:
+        t = _normalize_hidden_layer_sizes(s)
+        if t is not None and t not in mlp_sizes:
             mlp_sizes.append(t)
 
     if prior_params and prior_params.get("algorithm") == "mlp":
@@ -743,8 +774,11 @@ def _stability_seed_trial_params(
             return None
         # alpha (quantile_level) is not a trial param; objective gets it from get_training_params
     if algorithm == "mlp" and "hidden_layer_sizes" in out:
-        h = out["hidden_layer_sizes"]
-        out["hidden_layer_sizes"] = tuple(h) if isinstance(h, (list, tuple)) else h
+        normalized_size = _normalize_hidden_layer_sizes(out["hidden_layer_sizes"])
+        if normalized_size is not None:
+            out["hidden_layer_sizes"] = normalized_size
+        else:
+            del out["hidden_layer_sizes"]
     return out
 
 

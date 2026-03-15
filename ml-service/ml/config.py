@@ -22,26 +22,46 @@ DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
 DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
     "min_samples_leaf_min": 4,
     "min_samples_leaf_max": 24,
+    "learning_rate_min": 0.01,
     "learning_rate_max": 0.2,
     "n_estimators_min": 50,
+    "n_estimators_max": 600,
+    "rf_max_depth_min": 4,
+    "rf_max_depth_max": 24,
+    "gb_max_depth_min": 3,
+    "gb_max_depth_max": 20,
+    "et_max_depth_min": 4,
+    "et_max_depth_max": 24,
+    "hgb_max_depth_min": 3,
+    "hgb_max_depth_max": 20,
+    "hgb_max_iter_max": 400,
+    "quantile_max_depth_min": 4,
+    "quantile_max_depth_max": 20,
     "mlp_alpha_min": 1e-4,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
 }
 DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
     "min_samples_leaf_min": 8,
     "min_samples_leaf_max": 24,
+    "learning_rate_min": 0.01,
     "learning_rate_max": 0.08,
     "n_estimators_min": 200,
+    "n_estimators_max": 600,
+    "rf_max_depth_min": 4,
+    "rf_max_depth_max": 24,
+    "gb_max_depth_min": 3,
+    "gb_max_depth_max": 20,
+    "et_max_depth_min": 4,
+    "et_max_depth_max": 24,
+    "hgb_max_depth_min": 3,
+    "hgb_max_depth_max": 20,
+    "hgb_max_iter_max": 400,
+    "quantile_max_depth_min": 4,
+    "quantile_max_depth_max": 20,
     "mlp_alpha_min": 1e-3,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
 }
 DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 12, "alpha": 0.5}
-DEFAULT_PHASE2_FALLBACK_BOUNDS: Dict[str, Any] = {
-    "n_estimators_min": 100,
-    "n_estimators_max": 300,
-    "max_depth_min": 8,
-    "max_depth_max": 16,
-}
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
@@ -403,7 +423,6 @@ def get_tuning_config() -> Dict[str, Any]:
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}
     quantile_fallback = _load_and_merge_dict(tuning, "quantile_fallback", DEFAULT_QUANTILE_FALLBACK)
-    phase2_fallback_bounds = _load_and_merge_dict(tuning, "phase2_fallback_bounds", DEFAULT_PHASE2_FALLBACK_BOUNDS)
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -423,7 +442,6 @@ def get_tuning_config() -> Dict[str, Any]:
         "default_bounds": default_bounds,
         "stability_seed_params": stability_seed_params,
         "quantile_fallback": quantile_fallback,
-        "phase2_fallback_bounds": phase2_fallback_bounds,
     }
 
 
