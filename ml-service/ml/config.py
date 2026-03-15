@@ -387,14 +387,6 @@ def get_tuning_config() -> Dict[str, Any]:
     )
     default_bounds = _load_and_merge_dict(tuning, "default_bounds", DEFAULT_PHASE2_DEFAULT_BOUNDS)
 
-    def _normalize_mlp_sizes(b: Dict[str, Any]) -> None:
-        v = b.get("mlp_hidden_layer_sizes")
-        if isinstance(v, (list, tuple)) and v:
-            b["mlp_hidden_layer_sizes"] = [tuple(x) for x in v if isinstance(x, (list, tuple))]
-
-    _normalize_mlp_sizes(stability_focus_bounds)
-    _normalize_mlp_sizes(default_bounds)
-
     stability_seed_params = tuning.get("stability_seed_params")
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}
