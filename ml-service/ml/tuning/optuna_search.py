@@ -269,8 +269,8 @@ def _run_phase2_optuna_study(
     if prior_params:
         try:
             study.enqueue_trial(prior_params)
-        except Exception as e:
-            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
+        except ValueError as e:
+            logger.warning("auto_tune.enqueue_prior_trial_skipped error=%s", e)
     if stability_focus:
         for alg in winners:
             seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
@@ -282,8 +282,8 @@ def _run_phase2_optuna_study(
                         alg,
                         n_samples,
                     )
-                except Exception as e:
-                    logger.debug("auto_tune.enqueue_stability_seed_skipped error=%s", e)
+                except ValueError as e:
+                    logger.warning("auto_tune.enqueue_stability_seed_skipped error=%s", e)
                 break
     study.optimize(objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[callback])
     return study

@@ -422,6 +422,11 @@ def get_tuning_config() -> Dict[str, Any]:
         tuning, "stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH, int
     )
     stability_weight = _load_numeric(tuning, "stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT, float)
+    if stability_weight < 1.0:
+        logger.warning(
+            "config.stability_violation_weight_clamped configured=%s clamped_to=1.0",
+            stability_weight,
+        )
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
     stability_focus_bounds = _load_and_merge_dict(
