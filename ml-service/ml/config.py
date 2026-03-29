@@ -45,6 +45,10 @@ DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
     "mlp_max_iter_max": 2000,
     "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
 }
+# Tighter Phase 2 search when stability_focus is on (see ml.tuning.stability_focus_* in config.default.json).
+# mlp_alpha_min is 1e-3 vs 1e-4 in default_bounds: higher floor on L2 regularization to favour smoother fits
+# when CV variance is expected to be higher. mlp_hidden_layer_sizes omits the largest arch [256,128,64] to
+# cap capacity during stability-focused search (mirrors stability_focus_bounds in config.default.json).
 DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
     "min_samples_leaf_min": 8,
     "min_samples_leaf_max": 24,
@@ -423,9 +427,11 @@ def get_tuning_config() -> Dict[str, Any]:
     )
     stability_weight = _load_numeric(tuning, "stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT, float)
     if stability_weight < 1.0:
+        effective = max(1.0, stability_weight)
         logger.warning(
-            "config.stability_violation_weight_clamped configured=%s clamped_to=1.0",
+            "config.stability_violation_weight_clamped configured=%s effective=%s",
             stability_weight,
+            effective,
         )
     # Bounds for Phase 2 search: when n_samples triggers stability focus we use
     # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.

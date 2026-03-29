@@ -25,7 +25,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import DEFAULT_QUANTILE_FALLBACK, get_training_params, get_tuning_config
+from ml.config import get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -83,6 +83,13 @@ def _get_phase2_bounds(tuning_cfg: Dict[str, Any], stability_focus: bool) -> Dic
     return out
 
 
+def _append_unique_normalized_mlp_size(mlp_sizes: List[Any], raw_size: Any) -> None:
+    """Append normalized hidden_layer_sizes to mlp_sizes if absent (Phase 2 stability / prior merge)."""
+    normalized = _normalize_hidden_layer_sizes(raw_size)
+    if normalized is not None and normalized not in mlp_sizes:
+        mlp_sizes.append(normalized)
+
+
 def _suggest_phase2_regression_estimator(
     trial: Any,
     alg: str,
@@ -95,7 +102,7 @@ def _suggest_phase2_regression_estimator(
 
     Shared by _run_search_two_phase_single_regression (_obj) and _run_search_two_phase (_optuna_objective).
     Handles rf, gb, et, hgb, mlp; and quantile when model_kind is set. Returns None for unknown alg.
-    When tuning_cfg is provided, quantile fallback params come from tuning_cfg.quantile_fallback.
+    Quantile fallback params come from tuning_cfg["quantile_fallback"]; if tuning_cfg is None, loaded via get_tuning_config().
     """
     leaf_min = bounds["min_samples_leaf_min"]
     leaf_high = bounds["min_samples_leaf_max"]
@@ -154,7 +161,8 @@ def _suggest_phase2_regression_estimator(
                 alpha=tp.get("quantile_level", 0.5),
             )
         except (ValueError, KeyError):
-            fallback = (tuning_cfg.get("quantile_fallback") if tuning_cfg else None) or DEFAULT_QUANTILE_FALLBACK
+            cfg = tuning_cfg if tuning_cfg is not None else get_tuning_config()
+            fallback = cfg["quantile_fallback"]
             n_est = int(fallback["n_estimators"])
             depth = int(fallback["max_depth"])
             alpha = float(fallback["alpha"])
@@ -225,18 +233,13 @@ def _setup_phase2_stability_focus(
     bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
     mlp_sizes = list(bounds.get("mlp_hidden_layer_sizes", []))
 
-    def _add_mlp_size(s: Any) -> None:
-        t = _normalize_hidden_layer_sizes(s)
-        if t is not None and t not in mlp_sizes:
-            mlp_sizes.append(t)
-
     if prior_params and prior_params.get("algorithm") == "mlp":
-        _add_mlp_size(prior_params.get("hidden_layer_sizes"))
+        _append_unique_normalized_mlp_size(mlp_sizes, prior_params.get("hidden_layer_sizes"))
     if stability_focus:
         for alg in winners:
             seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
             if seed and alg == "mlp":
-                _add_mlp_size(seed.get("hidden_layer_sizes"))
+                _append_unique_normalized_mlp_size(mlp_sizes, seed.get("hidden_layer_sizes"))
             if seed is not None:
                 break
 
@@ -270,7 +273,7 @@ def _run_phase2_optuna_study(
         try:
             study.enqueue_trial(prior_params)
         except ValueError as e:
-            logger.warning("auto_tune.enqueue_prior_trial_skipped error=%s", e)
+            logger.warning("auto_tune.enqueue_prior_trial_skipped error=%s", e, exc_info=True)
     if stability_focus:
         for alg in winners:
             seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
@@ -283,7 +286,7 @@ def _run_phase2_optuna_study(
                         n_samples,
                     )
                 except ValueError as e:
-                    logger.warning("auto_tune.enqueue_stability_seed_skipped error=%s", e)
+                    logger.warning("auto_tune.enqueue_stability_seed_skipped error=%s", e, exc_info=True)
                 break
     study.optimize(objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[callback])
     return study
@@ -772,6 +775,7 @@ def _stability_seed_trial_params(
     """
     seeds = tuning_cfg.get("stability_seed_params") or {}
     raw = seeds.get(algorithm) if isinstance(seeds, dict) else None
+    # Treat missing, non-dict, or empty mapping as absent: an empty dict would not define useful hyperparams.
     if not isinstance(raw, dict) or not raw:
         return None
     out = dict(raw)

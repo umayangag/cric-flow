@@ -45,6 +45,19 @@ logger = logging.getLogger(__name__)
 # Simpler algorithms for complexity check: prefer these if within 1% of best
 _MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
 _MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
+_MLQA_THRESHOLD_FALLBACK_MSG = (
+    "MLQA config not found or invalid, using default thresholds for overfitting/stability."
+)
+
+
+def _mlqa_overfitting_and_stability_thresholds() -> Tuple[float, float]:
+    """Return (overfitting_delta_threshold, stability_fold_std_threshold) from MLQA or hard-coded defaults."""
+    try:
+        mlqa = get_mlqa_config()
+        return (mlqa["overfitting_delta_threshold"], mlqa["stability_fold_std_threshold"])
+    except Exception:
+        logger.warning(_MLQA_THRESHOLD_FALLBACK_MSG)
+        return (0.08, 0.065)
 
 
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
@@ -321,11 +334,6 @@ def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray
         return {}
 
 
-# Simpler algorithms for complexity check: prefer these if within 1% of best
-_MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
-_MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
-
-
 def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
     """Return feature names for MLQA sensitivity analysis and feature importance when available."""
     if model_kind == "batting":
@@ -374,14 +382,7 @@ def compute_mlqa_overfitting_stability(
     from sklearn.base import clone
     from sklearn.metrics import get_scorer
 
-    try:
-        mlqa = get_mlqa_config()
-        delta_thresh = mlqa["overfitting_delta_threshold"]
-        std_thresh = mlqa["stability_fold_std_threshold"]
-    except Exception:
-        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
-        delta_thresh = 0.08
-        std_thresh = 0.065
+    delta_thresh, std_thresh = _mlqa_overfitting_and_stability_thresholds()
     pipe_fit = clone(pipe)
     pipe_fit.fit(X, y)
     scorer = get_scorer(scoring)
@@ -444,14 +445,7 @@ def compute_mlqa_penalized_score(
     from sklearn.base import clone
     from sklearn.metrics import get_scorer
 
-    try:
-        mlqa = get_mlqa_config()
-        delta_thresh = mlqa["overfitting_delta_threshold"]
-        std_thresh = mlqa["stability_fold_std_threshold"]
-    except Exception:
-        logger.warning("MLQA config not found or invalid, using default thresholds for overfitting/stability.")
-        delta_thresh = 0.08
-        std_thresh = 0.065
+    delta_thresh, std_thresh = _mlqa_overfitting_and_stability_thresholds()
     stab_weight = max(1.0, stability_violation_weight or 1.0)
     try:
         pipe_fit = clone(pipe)

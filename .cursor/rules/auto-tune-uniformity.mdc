@@ -1,5 +1,5 @@
 ---
-description: Auto-tune must treat all ML algorithms and all match formats uniformly; no algorithm- or format-only behaviour
+description: Auto-tune: uniform behaviour for all algorithms and formats
 globs: ml-service/ml/auto_tune.py, ml-service/ml/tuning/**/*.py
 alwaysApply: false
 ---
