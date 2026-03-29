@@ -14,6 +14,68 @@ logger = logging.getLogger(__name__)
 # Precedence: flag/arg > env > config.json (merged over config.default.json) > config.default.json only.
 # Defaults when config is missing or invalid are defined below; same values are in config.default.json.
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
+# Used only when ml.tuning.stability_focus_sample_size_low/high are missing (see config.default.json).
+DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW = 35_000
+DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH = 80_000
+DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
+# Phase 2 Optuna bounds when ml.tuning.default_bounds / stability_focus_bounds are missing (see config.default.json).
+DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
+    "min_samples_leaf_min": 4,
+    "min_samples_leaf_max": 24,
+    "learning_rate_min": 0.01,
+    "learning_rate_max": 0.2,
+    "n_estimators_min": 50,
+    "n_estimators_max": 600,
+    "rf_max_depth_min": 4,
+    "rf_max_depth_max": 24,
+    "gb_max_depth_min": 3,
+    "gb_max_depth_max": 20,
+    "et_max_depth_min": 4,
+    "et_max_depth_max": 24,
+    "hgb_max_depth_min": 3,
+    "hgb_max_depth_max": 20,
+    "hgb_max_iter_max": 400,
+    "quantile_max_depth_min": 4,
+    "quantile_max_depth_max": 20,
+    "mlp_alpha_min": 1e-4,
+    "mlp_alpha_max": 1e-1,
+    "mlp_lr_init_min": 1e-4,
+    "mlp_lr_init_max": 1e-1,
+    "mlp_max_iter_min": 500,
+    "mlp_max_iter_max": 2000,
+    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
+}
+# Tighter Phase 2 search when stability_focus is on (see ml.tuning.stability_focus_* in config.default.json).
+# mlp_alpha_min is 1e-3 vs 1e-4 in default_bounds: higher floor on L2 regularization to favour smoother fits
+# when CV variance is expected to be higher. mlp_hidden_layer_sizes omits the largest arch [256,128,64] to
+# cap capacity during stability-focused search (mirrors stability_focus_bounds in config.default.json).
+DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
+    "min_samples_leaf_min": 8,
+    "min_samples_leaf_max": 24,
+    "learning_rate_min": 0.01,
+    "learning_rate_max": 0.08,
+    "n_estimators_min": 200,
+    "n_estimators_max": 600,
+    "rf_max_depth_min": 4,
+    "rf_max_depth_max": 24,
+    "gb_max_depth_min": 3,
+    "gb_max_depth_max": 20,
+    "et_max_depth_min": 4,
+    "et_max_depth_max": 24,
+    "hgb_max_depth_min": 3,
+    "hgb_max_depth_max": 20,
+    "hgb_max_iter_max": 400,
+    "quantile_max_depth_min": 4,
+    "quantile_max_depth_max": 20,
+    "mlp_alpha_min": 1e-3,
+    "mlp_alpha_max": 1e-1,
+    "mlp_lr_init_min": 1e-4,
+    "mlp_lr_init_max": 1e-1,
+    "mlp_max_iter_min": 500,
+    "mlp_max_iter_max": 2000,
+    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
+}
+DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 12, "alpha": 0.5}
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
@@ -49,6 +111,22 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
         else:
             out[k] = v
     return out
+
+
+def _load_and_merge_dict(config_dict: Dict[str, Any], key: str, default_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Loads a dictionary from config, falling back to an empty dict, and merges it with defaults."""
+    value = config_dict.get(key)
+    if not isinstance(value, dict):
+        value = {}
+    return _deep_merge(dict(default_dict), value)
+
+
+def _load_numeric(config: Dict[str, Any], key: str, default: Any, coerce: type) -> Any:
+    """Load a numeric value from config with coercion; on ValueError/TypeError return default."""
+    try:
+        return coerce(config.get(key, default))
+    except (ValueError, TypeError):
+        return default
 
 
 def _load() -> Dict[str, Any]:
@@ -339,10 +417,38 @@ def get_tuning_config() -> Dict[str, Any]:
         validation_method = "walk_forward"
 
     stages = tuning.get("stages") or {}
+    # Data-driven stability focus: when n_samples is outside [low, high], bias search toward
+    # more stable configs (and optionally weight stability higher in the penalized objective).
+    stability_low = _load_numeric(
+        tuning, "stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW, int
+    )
+    stability_high = _load_numeric(
+        tuning, "stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH, int
+    )
+    stability_weight = _load_numeric(tuning, "stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT, float)
+    if stability_weight < 1.0:
+        effective = max(1.0, stability_weight)
+        logger.warning(
+            "config.stability_violation_weight_clamped configured=%s effective=%s",
+            stability_weight,
+            effective,
+        )
+    # Bounds for Phase 2 search: when n_samples triggers stability focus we use
+    # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
+    stability_focus_bounds = _load_and_merge_dict(
+        tuning, "stability_focus_bounds", DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS
+    )
+    default_bounds = _load_and_merge_dict(tuning, "default_bounds", DEFAULT_PHASE2_DEFAULT_BOUNDS)
+
+    stability_seed_params = tuning.get("stability_seed_params")
+    if not isinstance(stability_seed_params, dict):
+        stability_seed_params = {}
+    quantile_fallback = _load_and_merge_dict(tuning, "quantile_fallback", DEFAULT_QUANTILE_FALLBACK)
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
         "n_jobs": int(n_jobs),
+        "optuna_tpe_n_startup_trials": int(tuning.get("optuna_tpe_n_startup_trials", 5)),
         "random_state": int(tuning.get("random_state", 42)),
         "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
         "search_space": tuning.get("search_space"),
@@ -351,6 +457,13 @@ def get_tuning_config() -> Dict[str, Any]:
         "timeseries_split_gap": int(tuning.get("timeseries_split_gap", 0) or 0),
         "timeseries_small_dataset_threshold": int(tuning.get("timeseries_small_dataset_threshold", 5000) or 5000),
         "stages": stages if isinstance(stages, dict) else {},
+        "stability_focus_sample_size_low": stability_low,
+        "stability_focus_sample_size_high": stability_high,
+        "stability_violation_weight": max(1.0, stability_weight),
+        "stability_focus_bounds": stability_focus_bounds,
+        "default_bounds": default_bounds,
+        "stability_seed_params": stability_seed_params,
+        "quantile_fallback": quantile_fallback,
     }
 
 

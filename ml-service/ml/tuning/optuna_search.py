@@ -1,11 +1,16 @@
-"""Two-phase Optuna/RandomizedSearchCV search runners for regression and classification."""
+"""Two-phase Optuna/RandomizedSearchCV search runners for regression and classification.
+
+AGENTS: Changes here must apply uniformly to all algorithms (rf, gb, quantile, et, hgb, mlp, …)
+and all formats (TEST, ODI, T20, T20I). Do not add algorithm-specific or format-specific
+branches without applying the same behavior elsewhere. See AGENTS_AUTO_TUNE.md in this package.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -20,7 +25,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import get_training_params, get_tuning_config
+from ml.config import _load_numeric, get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -29,10 +34,12 @@ from ml.tuning.cv_metrics import (
     _get_cv_object,
     compute_mlqa_overfitting_stability,
     compute_mlqa_penalized_score,
+    compute_stability_focus,
 )
 from ml.tuning.search_space import (
     _build_pipeline,
     _build_pipeline_single_regression,
+    _normalize_hidden_layer_sizes,
     _phase1_candidates_regression,
     _phase1_candidates_regression_single,
     _search_space_classification,
@@ -60,6 +67,229 @@ except ImportError:
     _progress = None
 
 logger = logging.getLogger(__name__)
+
+# Algorithms that Phase 2 Optuna can fine-tune; others (e.g. stacked) are filtered from winners.
+_PHASE2_TUNABLE_ALGORITHMS = frozenset({"rf", "gb", "quantile", "et", "hgb", "mlp"})
+
+
+def _get_phase2_bounds(tuning_cfg: Dict[str, Any], stability_focus: bool) -> Dict[str, Any]:
+    """Return Phase 2 suggest bounds from config (fully populated by get_tuning_config)."""
+    bounds = tuning_cfg["stability_focus_bounds"] if stability_focus else tuning_cfg["default_bounds"]
+    out = dict(bounds)
+    # Normalize mlp_hidden_layer_sizes to list of tuples in case of JSON list-of-lists
+    v = out.get("mlp_hidden_layer_sizes")
+    if isinstance(v, (list, tuple)) and v:
+        out["mlp_hidden_layer_sizes"] = [tuple(x) for x in v if isinstance(x, (list, tuple))]
+    return out
+
+
+def _append_unique_normalized_mlp_size(mlp_sizes: List[Any], raw_size: Any) -> None:
+    """Append normalized hidden_layer_sizes to mlp_sizes if absent (Phase 2 stability / prior merge)."""
+    normalized = _normalize_hidden_layer_sizes(raw_size)
+    if normalized is not None and normalized not in mlp_sizes:
+        mlp_sizes.append(normalized)
+
+
+def _suggest_phase2_regression_estimator(
+    trial: Any,
+    alg: str,
+    bounds: Dict[str, Any],
+    random_state: int,
+    model_kind: Optional[str] = None,
+    tuning_cfg: Optional[Dict[str, Any]] = None,
+) -> Optional[Any]:
+    """Suggest hyperparameters and return a configured regression estimator for Phase 2 Optuna.
+
+    Shared by _run_search_two_phase_single_regression (_obj) and _run_search_two_phase (_optuna_objective).
+    Handles rf, gb, et, hgb, mlp; and quantile when model_kind is set. Returns None for unknown alg.
+    Quantile fallback params come from tuning_cfg["quantile_fallback"]; if tuning_cfg is None, loaded via get_tuning_config().
+    """
+    leaf_min = bounds["min_samples_leaf_min"]
+    leaf_high = bounds["min_samples_leaf_max"]
+    lr_min = bounds["learning_rate_min"]
+    lr_high = bounds["learning_rate_max"]
+    n_est_min = bounds["n_estimators_min"]
+    n_est_max = bounds["n_estimators_max"]
+    mlp_alpha_min = bounds["mlp_alpha_min"]
+    mlp_alpha_max = bounds["mlp_alpha_max"]
+    mlp_lr_init_min = bounds["mlp_lr_init_min"]
+    mlp_lr_init_max = bounds["mlp_lr_init_max"]
+    mlp_max_iter_min = bounds["mlp_max_iter_min"]
+    mlp_max_iter_max = bounds["mlp_max_iter_max"]
+    mlp_sizes = bounds["mlp_hidden_layer_sizes"]
+
+    if alg == "rf":
+        return RandomForestRegressor(
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["rf_max_depth_min"],
+                bounds["rf_max_depth_max"],
+                step=2,
+            ),
+            min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
+            random_state=random_state,
+        )
+    if alg == "gb":
+        return GradientBoostingRegressor(
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["gb_max_depth_min"],
+                bounds["gb_max_depth_max"],
+                step=1,
+            ),
+            learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
+            min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
+            random_state=random_state,
+        )
+    if alg == "quantile" and model_kind is not None:
+        try:
+            tp = get_training_params(model_kind)
+            return GradientBoostingRegressor(
+                n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+                max_depth=trial.suggest_int(
+                    "max_depth",
+                    bounds["quantile_max_depth_min"],
+                    bounds["quantile_max_depth_max"],
+                    step=2,
+                ),
+                learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
+                min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
+                random_state=random_state,
+                loss="quantile",
+                alpha=tp.get("quantile_level", 0.5),
+            )
+        except (ValueError, KeyError):
+            cfg = tuning_cfg if tuning_cfg is not None else get_tuning_config()
+            fallback = cfg["quantile_fallback"]
+            n_est = _load_numeric(fallback, "n_estimators", 200, int)
+            depth = _load_numeric(fallback, "max_depth", 12, int)
+            alpha = _load_numeric(fallback, "alpha", 0.5, float)
+            return GradientBoostingRegressor(
+                n_estimators=n_est,
+                max_depth=depth,
+                random_state=random_state,
+                loss="quantile",
+                alpha=alpha,
+            )
+    if alg == "et":
+        return ExtraTreesRegressor(
+            n_estimators=trial.suggest_int("n_estimators", n_est_min, n_est_max, step=50),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["et_max_depth_min"],
+                bounds["et_max_depth_max"],
+                step=2,
+            ),
+            min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
+            random_state=random_state,
+        )
+    if alg == "hgb":
+        return HistGradientBoostingRegressor(
+            max_iter=trial.suggest_int(
+                "max_iter",
+                n_est_min,
+                bounds["hgb_max_iter_max"],
+                step=50,
+            ),
+            max_depth=trial.suggest_int(
+                "max_depth",
+                bounds["hgb_max_depth_min"],
+                bounds["hgb_max_depth_max"],
+                step=1,
+            ),
+            learning_rate=trial.suggest_float("learning_rate", lr_min, lr_high, log=True),
+            min_samples_leaf=trial.suggest_int("min_samples_leaf", leaf_min, leaf_high),
+            random_state=random_state,
+        )
+    if alg == "mlp":
+        sizes = trial.suggest_categorical("hidden_layer_sizes", mlp_sizes)
+        alpha = trial.suggest_float("alpha", mlp_alpha_min, mlp_alpha_max, log=True)
+        lr_init = trial.suggest_float("learning_rate_init", mlp_lr_init_min, mlp_lr_init_max, log=True)
+        max_iter = trial.suggest_int("max_iter", mlp_max_iter_min, mlp_max_iter_max, step=250)
+        return MLPRegressor(
+            hidden_layer_sizes=sizes,
+            alpha=alpha,
+            learning_rate_init=lr_init,
+            max_iter=max_iter,
+            early_stopping=True,
+            random_state=random_state,
+        )
+    return None
+
+
+def _setup_phase2_stability_focus(
+    n_samples: int,
+    cv_splits: int,
+    validation_method: str,
+    tuning_cfg: Dict[str, Any],
+    prior_params: Optional[Dict[str, Any]],
+    winners: List[str],
+    model_kind: str,
+) -> Tuple[bool, float, Dict[str, Any]]:
+    """Determine stability focus and prepare Phase 2 search bounds (shared by single and two-phase runners)."""
+    stability_focus, stability_weight = compute_stability_focus(n_samples)
+    bounds = _get_phase2_bounds(tuning_cfg, stability_focus)
+    mlp_sizes = list(bounds.get("mlp_hidden_layer_sizes", []))
+
+    if prior_params and prior_params.get("algorithm") == "mlp":
+        _append_unique_normalized_mlp_size(mlp_sizes, prior_params.get("hidden_layer_sizes"))
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed and alg == "mlp":
+                _append_unique_normalized_mlp_size(mlp_sizes, seed.get("hidden_layer_sizes"))
+            if seed is not None:
+                break
+
+    final_bounds = dict(bounds)
+    final_bounds["mlp_hidden_layer_sizes"] = mlp_sizes
+    return stability_focus, stability_weight, final_bounds
+
+
+def _run_phase2_optuna_study(
+    objective: Callable[[Any], float],
+    n_phase2: int,
+    random_state: int,
+    prior_params: Optional[Dict[str, Any]],
+    stability_focus: bool,
+    winners: List[str],
+    model_kind: str,
+    tuning_cfg: Dict[str, Any],
+    n_samples: int,
+    callback: Callable[[Any, Any], None],
+) -> Any:
+    """Run Phase 2 Optuna study: create study, enqueue prior/stability trials, optimize.
+    Shared by _run_search_two_phase_single_regression and _run_search_two_phase.
+    """
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(
+            seed=random_state, n_startup_trials=tuning_cfg.get("optuna_tpe_n_startup_trials", 5)
+        ),
+    )
+    if prior_params:
+        try:
+            study.enqueue_trial(prior_params)
+        except ValueError as e:
+            logger.warning("auto_tune.enqueue_prior_trial_skipped error=%s", e, exc_info=True)
+    if stability_focus:
+        for alg in winners:
+            seed = _stability_seed_trial_params(alg, model_kind, tuning_cfg)
+            if seed is not None:
+                try:
+                    study.enqueue_trial(seed)
+                    logger.info(
+                        "auto_tune.stability_seed enqueued %s trial (n_samples=%s) for MLQA stability",
+                        alg,
+                        n_samples,
+                    )
+                except ValueError as e:
+                    logger.warning("auto_tune.enqueue_stability_seed_skipped error=%s", e, exc_info=True)
+                break
+    study.optimize(objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[callback])
+    return study
 
 
 def _run_search_two_phase_single_regression(
@@ -223,61 +453,31 @@ def _run_search_two_phase_single_regression(
             _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
         return best_pipe, best_params, report
 
+    n_phase2 = min(n_iter, PHASE2_TRIALS)
+    stability_focus, stability_weight, bounds = _setup_phase2_stability_focus(
+        X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
+    )
+
     def _obj(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
-        if alg == "rf":
-            est = RandomForestRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
-                max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
-                random_state=random_state,
-            )
-        elif alg == "gb":
-            est = GradientBoostingRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
-                learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
-                random_state=random_state,
-            )
-        elif alg == "et":
-            est = ExtraTreesRegressor(
-                n_estimators=trial.suggest_int("n_estimators", 50, 600, step=50),
-                max_depth=trial.suggest_int("max_depth", 4, 24, step=2),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
-                random_state=random_state,
-            )
-        elif alg == "mlp":
-            sizes = trial.suggest_categorical("hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64)])
-            alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
-            lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
-            est = MLPRegressor(
-                hidden_layer_sizes=sizes,
-                alpha=alpha,
-                learning_rate_init=lr_init,
-                max_iter=1000,
-                early_stopping=True,
-                random_state=random_state,
-            )
-        else:
-            est = HistGradientBoostingRegressor(
-                max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
-                max_depth=trial.suggest_int("max_depth", 3, 20, step=1),
-                learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-                min_samples_leaf=trial.suggest_int("min_samples_leaf", 4, 24),
-                random_state=random_state,
-            )
+        est = _suggest_phase2_regression_estimator(trial, alg, bounds, random_state, tuning_cfg=tuning_cfg)
+        if est is None:
+            raise ValueError(f"unsupported algorithm for Phase 2 single regression: {alg}")
         pipe = _build_pipeline_single_regression(est)
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
         pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
-            pipe, X, y, scoring, mean_score, fold_std
+            pipe,
+            X,
+            y,
+            scoring,
+            mean_score,
+            fold_std,
+            stability_violation_weight=stability_weight,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
         return penalized_score
-
-    n_phase2 = min(n_iter, PHASE2_TRIALS)
 
     def _cb(study: Any, trial: Any) -> None:
         _progress.write_progress(
@@ -295,15 +495,18 @@ def _run_search_two_phase_single_regression(
             message=f"Fine-tuning {best_name}",
         )
 
-    study = optuna.create_study(
-        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
+    study = _run_phase2_optuna_study(
+        _obj,
+        n_phase2,
+        random_state,
+        prior_params,
+        stability_focus,
+        winners,
+        model_kind,
+        tuning_cfg,
+        X.shape[0],
+        _cb,
     )
-    if prior_params:
-        try:
-            study.enqueue_trial(prior_params)
-        except Exception as e:
-            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
-    study.optimize(_obj, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_cb])
     if study.best_trial:
         p = study.best_params
         best_score = float(study.best_trial.user_attrs.get("mean_cv_score", study.best_value))
@@ -335,7 +538,7 @@ def _run_search_two_phase_single_regression(
                 hidden_layer_sizes=p.get("hidden_layer_sizes", (128, 64)),
                 alpha=p.get("alpha", 0.001),
                 learning_rate_init=p.get("learning_rate_init", 0.001),
-                max_iter=1000,
+                max_iter=p.get("max_iter", 1000),
                 early_stopping=True,
                 random_state=random_state,
             )
@@ -560,6 +763,38 @@ def _save_artifacts_model_only(
         json.dump(report, f, indent=2)
 
 
+def _stability_seed_trial_params(
+    algorithm: str,
+    model_kind: str,
+    tuning_cfg: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Return a single stability-oriented trial params dict from config, or None.
+
+    Uses ml.tuning.stability_seed_params[algorithm]; no hardcoded params. For quantile,
+    alpha (quantile_level) is taken from ml.training.<model_kind>.
+    """
+    seeds = tuning_cfg.get("stability_seed_params") or {}
+    raw = seeds.get(algorithm) if isinstance(seeds, dict) else None
+    # Treat missing, non-dict, or empty mapping as absent: an empty dict would not define useful hyperparams.
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out = dict(raw)
+    out["algorithm"] = algorithm
+    if algorithm == "quantile":
+        try:
+            get_training_params(model_kind)  # ensure model has training config
+        except (ValueError, KeyError):
+            return None
+        # alpha (quantile_level) is not a trial param; objective gets it from get_training_params
+    if algorithm == "mlp" and "hidden_layer_sizes" in out:
+        normalized_size = _normalize_hidden_layer_sizes(out["hidden_layer_sizes"])
+        if normalized_size is not None:
+            out["hidden_layer_sizes"] = normalized_size
+        else:
+            del out["hidden_layer_sizes"]
+    return out
+
+
 def _run_search_two_phase(
     X: np.ndarray,
     Y: np.ndarray,
@@ -717,6 +952,7 @@ def _run_search_two_phase(
         best_params = enriched[0][5]
         best_pipe = enriched[0][6]
         winners = [enriched[0][3]] + ([enriched[1][3]] if len(enriched) > 1 else [])
+        winners = [w for w in winners if w in _PHASE2_TUNABLE_ALGORITHMS]
 
     if not _HAS_OPTUNA or len(winners) == 0:
         config_snippet = {k.replace("est__estimator__", ""): v for k, v in best_params.items()}
@@ -766,96 +1002,46 @@ def _run_search_two_phase(
             activity="running_trial",
         )
 
+    # Data-driven stability: when sample size suggests higher CV fold variance,
+    # narrow bounds and optionally weight stability higher in the penalized objective.
+    stability_focus, stability_weight, bounds = _setup_phase2_stability_focus(
+        X.shape[0], cv_splits, validation_method, tuning_cfg, prior_params, winners, model_kind
+    )
+
     def _optuna_objective(trial: Any) -> float:
         alg = trial.suggest_categorical("algorithm", winners)
-        if alg == "rf":
-            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
-            depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
-            est = RandomForestRegressor(
-                n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
-            )
-        elif alg == "gb":
-            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
-            depth = trial.suggest_int("max_depth", 3, 20, step=1)
-            lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
-            est = GradientBoostingRegressor(
-                n_estimators=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
-            )
-        elif alg == "quantile":
-            try:
-                tp = get_training_params(model_kind)
-                n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
-                depth = trial.suggest_int("max_depth", 4, 20, step=2)
-                lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-                leaf = trial.suggest_int("min_samples_leaf", 4, 24)
-                est = GradientBoostingRegressor(
-                    n_estimators=n_est,
-                    max_depth=depth,
-                    learning_rate=lr,
-                    min_samples_leaf=leaf,
-                    random_state=random_state,
-                    loss="quantile",
-                    alpha=tp.get("quantile_level", 0.5),
-                )
-            except (ValueError, KeyError):
-                est = GradientBoostingRegressor(
-                    n_estimators=200, max_depth=12, random_state=random_state, loss="quantile", alpha=0.5
-                )
-        elif alg == "et":
-            n_est = trial.suggest_int("n_estimators", 50, 600, step=50)
-            depth = trial.suggest_int("max_depth", 4, 24, step=2)
-            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
-            est = ExtraTreesRegressor(
-                n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, random_state=random_state
-            )
-        elif alg == "hgb":
-            n_est = trial.suggest_int("max_iter", 50, 400, step=50)
-            depth = trial.suggest_int("max_depth", 3, 14, step=1)
-            lr = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
-            leaf = trial.suggest_int("min_samples_leaf", 4, 24)
-            est = HistGradientBoostingRegressor(
-                max_iter=n_est, max_depth=depth, learning_rate=lr, min_samples_leaf=leaf, random_state=random_state
-            )
-        elif alg == "mlp":
-            sizes = trial.suggest_categorical(
-                "hidden_layer_sizes", [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)]
-            )
-            alpha = trial.suggest_float("alpha", 1e-4, 1e-1, log=True)
-            lr_init = trial.suggest_float("learning_rate_init", 1e-4, 1e-1, log=True)
-            est = MLPRegressor(
-                hidden_layer_sizes=sizes,
-                alpha=alpha,
-                learning_rate_init=lr_init,
-                max_iter=1000,
-                early_stopping=True,
-                random_state=random_state,
-            )
-        else:
-            n_est = trial.suggest_int("n_estimators", 100, 300, step=50)
-            depth = trial.suggest_int("max_depth", 8, 16, step=2)
-            est = RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=random_state)
+        est = _suggest_phase2_regression_estimator(
+            trial, alg, bounds, random_state, model_kind=model_kind, tuning_cfg=tuning_cfg
+        )
+        if est is None:
+            raise ValueError(f"Algorithm '{alg}' is not supported for Phase 2 fine-tuning.")
         pipe = _build_pipeline(est)
         scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
         mean_score = float(scores.mean())
         fold_std = float(np.std(scores))
         _pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
-            pipe, X, Y, scoring, mean_score, fold_std
+            pipe,
+            X,
+            Y,
+            scoring,
+            mean_score,
+            fold_std,
+            stability_violation_weight=stability_weight,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
         return penalized_score
 
-    study = optuna.create_study(
-        direction="maximize", sampler=optuna.samplers.TPESampler(seed=random_state, n_startup_trials=5)
-    )
-    if prior_params:
-        try:
-            study.enqueue_trial(prior_params)
-        except Exception as e:
-            logger.debug("auto_tune.enqueue_prior_trial_skipped error=%s", e)
-    study.optimize(
-        _optuna_objective, n_trials=n_phase2, n_jobs=1, show_progress_bar=False, callbacks=[_progress_callback]
+    study = _run_phase2_optuna_study(
+        _optuna_objective,
+        n_phase2,
+        random_state,
+        prior_params,
+        stability_focus,
+        winners,
+        model_kind,
+        tuning_cfg,
+        X.shape[0],
+        _progress_callback,
     )
 
     if study.best_trial:
@@ -918,7 +1104,7 @@ def _run_search_two_phase(
                 hidden_layer_sizes=params.get("hidden_layer_sizes", (128, 64)),
                 alpha=params.get("alpha", 0.001),
                 learning_rate_init=params.get("learning_rate_init", 0.001),
-                max_iter=1000,
+                max_iter=params.get("max_iter", 1000),
                 early_stopping=True,
                 random_state=random_state,
             )
