@@ -25,7 +25,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ml.config import get_training_params, get_tuning_config
+from ml.config import _load_numeric, get_training_params, get_tuning_config
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -163,9 +163,9 @@ def _suggest_phase2_regression_estimator(
         except (ValueError, KeyError):
             cfg = tuning_cfg if tuning_cfg is not None else get_tuning_config()
             fallback = cfg["quantile_fallback"]
-            n_est = int(fallback["n_estimators"])
-            depth = int(fallback["max_depth"])
-            alpha = float(fallback["alpha"])
+            n_est = _load_numeric(fallback, "n_estimators", 200, int)
+            depth = _load_numeric(fallback, "max_depth", 12, int)
+            alpha = _load_numeric(fallback, "alpha", 0.5, float)
             return GradientBoostingRegressor(
                 n_estimators=n_est,
                 max_depth=depth,
