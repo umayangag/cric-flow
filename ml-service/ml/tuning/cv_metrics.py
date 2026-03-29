@@ -45,9 +45,7 @@ logger = logging.getLogger(__name__)
 # Simpler algorithms for complexity check: prefer these if within 1% of best
 _MLQA_SIMPLER_ALGS = frozenset({"rf", "gb", "et", "hgb", "quantile"})
 _MLQA_COMPLEX_ALGS = frozenset({"mlp", "stacked"})
-_MLQA_THRESHOLD_FALLBACK_MSG = (
-    "MLQA config not found or invalid, using default thresholds for overfitting/stability."
-)
+_MLQA_THRESHOLD_FALLBACK_MSG = "MLQA config not found or invalid, using default thresholds for overfitting/stability."
 
 
 def _mlqa_overfitting_and_stability_thresholds() -> Tuple[float, float]:
