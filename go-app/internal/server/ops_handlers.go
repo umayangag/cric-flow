@@ -70,18 +70,6 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// AutoTuneDetailsRun is one tuned-params row for a given auto-tune migration.
-type AutoTuneDetailsRun struct {
-	Model     string                 `json:"model"`
-	Format    string                 `json:"format"`
-	CreatedAt string                 `json:"created_at"`
-	Params    map[string]any         `json:"params,omitempty"`
-	Metrics   map[string]any         `json:"metrics,omitempty"`
-	RawParams json.RawMessage        `json:"-"`
-	RawMetric json.RawMessage        `json:"-"`
-	Extra     map[string]interface{} `json:"-"`
-}
-
 // GetAutoTuneDetails returns details of tuned params linked to a specific data migration.
 // Route: GET /ops/migrations/{id}/auto-tune
 func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) {

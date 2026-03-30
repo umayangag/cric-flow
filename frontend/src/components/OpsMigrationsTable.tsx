@@ -281,7 +281,9 @@ const OpsMigrationsTable: React.FC = () => {
                   autoTuneRuns.map((run) => {
                     const params = (run.params ?? {}) as Record<string, unknown>;
                     const metrics = (run.metrics ?? {}) as Record<string, unknown>;
-                    const algorithms = (params.algorithms as unknown as string[]) || [];
+                    const algorithms = Array.isArray(params.algorithms)
+                      ? (params.algorithms as string[])
+                      : [];
                     const algorithm =
                       (params.algorithm as string | undefined) ||
                       (Array.isArray(algorithms) && algorithms.length > 0
