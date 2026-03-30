@@ -110,6 +110,47 @@ func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) 
 	return out, rows.Err()
 }
 
+// MLTunedParamsByMigrationEntry holds one row from ml_tuned_params joined by data_migration_id.
+// Used by ops/migrations/{id}/auto-tune to show per-migration auto-tune details.
+type MLTunedParamsByMigrationEntry struct {
+	Model     string
+	Format    string
+	CreatedAt string
+	Params    json.RawMessage
+	Metrics   json.RawMessage
+}
+
+// ListMLTunedParamsByMigration returns all tuned-params rows linked to the given data_migration_id.
+// When DB is unavailable or no rows exist, it returns an empty slice and nil error.
+func ListMLTunedParamsByMigration(ctx context.Context, migrationID int) ([]MLTunedParamsByMigrationEntry, error) {
+	if !Available() || migrationID <= 0 {
+		return []MLTunedParamsByMigrationEntry{}, nil
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT model, format, created_at, params, metrics
+		FROM ml_tuned_params
+		WHERE data_migration_id = $1
+		ORDER BY created_at DESC, model, format
+	`, migrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MLTunedParamsByMigrationEntry
+	for rows.Next() {
+		var e MLTunedParamsByMigrationEntry
+		if err := rows.Scan(&e.Model, &e.Format, &e.CreatedAt, &e.Params, &e.Metrics); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MigrationInfoForModelStats holds started_at, completed_at, and duration for model-stats enrichment.
 type MigrationInfoForModelStats struct {
 	TrainedAt    string  // ISO8601

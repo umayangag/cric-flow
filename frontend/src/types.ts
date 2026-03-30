@@ -394,6 +394,20 @@ export type Migration = {
   error_message?: string;
 };
 
+// --- Ops: Auto-tune migration details ---
+export type AutoTuneRunDetailsEntry = {
+  model: string;
+  format: string;
+  created_at: string;
+  params?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+};
+
+export type AutoTuneRunDetailsResponse = {
+  migration_id: number;
+  runs: AutoTuneRunDetailsEntry[];
+};
+
 export type Suggestion = {
   title: string;
   description: string;

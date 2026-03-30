@@ -14,7 +14,12 @@ func assertNoErrorSize(want int, wantKeeper bool, wantBowlers int) assertSelFn {
 		require.NoError(t, err)
 		require.Len(t, team, want)
 		if wantKeeper {
-			require.GreaterOrEqual(t, countIf(team, func(p ts.Player) bool { return p.IsKeeper }), 1, "expected a keeper in team")
+			require.GreaterOrEqual(
+				t,
+				countIf(team, func(p ts.Player) bool { return p.IsKeeper }),
+				1,
+				"expected a keeper in team",
+			)
 		}
 		require.GreaterOrEqual(t, countIf(team, func(p ts.Player) bool { return p.IsBowler }), wantBowlers, "bowlers")
 	}

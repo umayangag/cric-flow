@@ -43,6 +43,8 @@ func NewRouter(a *App) http.Handler {
 	// Ops Migrations
 	opsHandler := &OpsHandler{}
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/ops/migrations/{id:[0-9]+}/auto-tune", opsHandler.GetAutoTuneDetails).
+		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/stop", a.pipelineStopHandler).Methods(http.MethodPost, http.MethodOptions)

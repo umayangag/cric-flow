@@ -19,7 +19,11 @@ func TestWinQueryStructure(t *testing.T) {
 	cols := buildWinFeatureSelectColumns()
 	require.NotEmpty(t, cols)
 	// SELECT list: comma between groups, no trailing comma before FROM
-	require.False(t, strings.HasSuffix(strings.TrimSpace(cols), ","), "last select column group must not end with comma")
+	require.False(
+		t,
+		strings.HasSuffix(strings.TrimSpace(cols), ","),
+		"last select column group must not end with comma",
+	)
 }
 
 // TestBuildWinAggAndTop3CTEs_ContainsAllFeatureCTEs asserts the built CTE string includes
@@ -62,7 +66,11 @@ func TestBuildWinFeatureJoins_ContainsAllFeatureJoins(t *testing.T) {
 			t.Parallel()
 			n := i + 1
 			require.Contains(t, joins, fmt.Sprintf("LEFT JOIN agg_%s a%d ON a%d.match_id = m.match_id", name, n, n))
-			require.Contains(t, joins, fmt.Sprintf("LEFT JOIN top3_%s t3a%d ON t3a%d.match_id = m.match_id", name, n, n))
+			require.Contains(
+				t,
+				joins,
+				fmt.Sprintf("LEFT JOIN top3_%s t3a%d ON t3a%d.match_id = m.match_id", name, n, n),
+			)
 		})
 	}
 }

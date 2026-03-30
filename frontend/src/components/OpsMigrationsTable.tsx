@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import type { AutoTuneRunDetailsEntry } from '../types';
 import { Migration } from '../types';
 import StatusPill from './common/StatusPill';
 import Dialog from '@mui/material/Dialog';
@@ -107,6 +108,9 @@ const OpsMigrationsTable: React.FC = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [detailsMigration, setDetailsMigration] = useState<Migration | null>(null);
+  const [autoTuneRuns, setAutoTuneRuns] = useState<AutoTuneRunDetailsEntry[] | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
   const limit = 10;
 
   const load = useCallback(
@@ -137,6 +141,34 @@ const OpsMigrationsTable: React.FC = () => {
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil((total ?? 0) / limit));
+
+  const handleViewDetails = async (m: Migration) => {
+    setDetailsMigration(m);
+    setDetailsError(null);
+    setAutoTuneRuns(null);
+
+    if (m.command === 'ml-auto-tune' && m.status === 'COMPLETED') {
+      setDetailsLoading(true);
+      try {
+        const res = await api.autoTuneDetailsForMigration(m.id);
+        setAutoTuneRuns(res.runs ?? []);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setDetailsError(msg);
+      } finally {
+        setDetailsLoading(false);
+      }
+    } else {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    setDetailsMigration(null);
+    setAutoTuneRuns(null);
+    setDetailsError(null);
+    setDetailsLoading(false);
+  };
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
   if (error) return <ErrorText>Error: {error}</ErrorText>;
@@ -169,7 +201,7 @@ const OpsMigrationsTable: React.FC = () => {
               <DetailsCell>
                 <ViewDetailsButton
                   type="button"
-                  onClick={() => setDetailsMigration(m)}
+                  onClick={() => void handleViewDetails(m)}
                   aria-label={`View details for migration ${m.id}`}
                 >
                   View details
@@ -198,7 +230,7 @@ const OpsMigrationsTable: React.FC = () => {
 
       <Dialog
         open={detailsMigration !== null}
-        onClose={() => setDetailsMigration(null)}
+        onClose={closeDetails}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { maxHeight: '80vh' } }}
@@ -210,24 +242,148 @@ const OpsMigrationsTable: React.FC = () => {
             : ''}
         </DialogTitle>
         <DialogContent dividers>
+          {detailsMigration != null && detailsMigration.error_message && (
+            <Box
+              component="pre"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: '60vh',
+                overflow: 'auto',
+                margin: 0,
+                fontSize: 12,
+                color: '#dc2626',
+                fontFamily: 'ui-monospace, Menlo, monospace',
+              }}
+            >
+              {detailsMigration.error_message}
+            </Box>
+          )}
+
           {detailsMigration != null &&
-            (detailsMigration.error_message ? (
-              <Box
-                component="pre"
-                sx={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  maxHeight: '60vh',
-                  overflow: 'auto',
-                  margin: 0,
-                  fontSize: 12,
-                  color: '#dc2626',
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                }}
-              >
-                {detailsMigration.error_message}
+            !detailsMigration.error_message &&
+            detailsMigration.command === 'ml-auto-tune' &&
+            detailsMigration.status === 'COMPLETED' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {detailsLoading && <div>Loading auto-tune results…</div>}
+                {detailsError && (
+                  <ErrorText>Error loading auto-tune details: {detailsError}</ErrorText>
+                )}
+                {!detailsLoading &&
+                  !detailsError &&
+                  (!autoTuneRuns || autoTuneRuns.length === 0) && (
+                    <div>No auto-tune results were recorded for this migration.</div>
+                  )}
+                {!detailsLoading &&
+                  !detailsError &&
+                  autoTuneRuns &&
+                  autoTuneRuns.length > 0 &&
+                  autoTuneRuns.map((run) => {
+                    const params = (run.params ?? {}) as Record<string, unknown>;
+                    const metrics = (run.metrics ?? {}) as Record<string, unknown>;
+                    const algorithms = (params.algorithms as unknown as string[]) || [];
+                    const algorithm =
+                      (params.algorithm as string | undefined) ||
+                      (Array.isArray(algorithms) && algorithms.length > 0
+                        ? algorithms[0]
+                        : undefined);
+                    const validationMethod =
+                      (params.validation_method as string | undefined) ||
+                      (metrics.validation_method as string | undefined);
+                    const bestCvScore = metrics.best_cv_score as number | undefined;
+                    const scoring = metrics.scoring as string | undefined;
+                    const mlqa = metrics.mlqa_audit as
+                      | {
+                          audit_status?: string;
+                          final_verdict?: string;
+                          key_findings?: string[];
+                        }
+                      | undefined;
+
+                    return (
+                      <Box
+                        key={`${run.model}-${run.format}-${run.created_at}`}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: 'grey.50',
+                          fontSize: 13,
+                        }}
+                      >
+                        <strong>
+                          {run.model} — {run.format || 'Unified'} (saved at{' '}
+                          {new Date(run.created_at).toLocaleString()})
+                        </strong>
+                        <Box component="div" sx={{ mt: 1 }}>
+                          <div>
+                            <strong>Selected algorithm:</strong> {algorithm ?? 'Unknown'}
+                          </div>
+                          {validationMethod && (
+                            <div>
+                              <strong>Validation:</strong> {validationMethod}
+                            </div>
+                          )}
+                          {scoring && (
+                            <div>
+                              <strong>Scoring metric:</strong> {scoring}
+                            </div>
+                          )}
+                          {typeof bestCvScore === 'number' && (
+                            <div>
+                              <strong>Best CV score:</strong> {bestCvScore.toFixed(4)}
+                            </div>
+                          )}
+                        </Box>
+
+                        {mlqa && (
+                          <Box component="div" sx={{ mt: 1 }}>
+                            <strong>MLQA audit:</strong>
+                            <div>Status: {mlqa.audit_status ?? 'N/A'}</div>
+                            {mlqa.final_verdict && <div>Verdict: {mlqa.final_verdict}</div>}
+                            {Array.isArray(mlqa.key_findings) && mlqa.key_findings.length > 0 && (
+                              <ul>
+                                {mlqa.key_findings.map((k) => (
+                                  <li key={k}>{k}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </Box>
+                        )}
+
+                        <Box
+                          component="pre"
+                          sx={{
+                            mt: 1.5,
+                            p: 1,
+                            bgcolor: 'grey.100',
+                            borderRadius: 1,
+                            overflow: 'auto',
+                            maxHeight: '30vh',
+                            fontSize: 11,
+                            fontFamily: 'ui-monospace, Menlo, monospace',
+                          }}
+                        >
+                          {JSON.stringify(
+                            {
+                              params,
+                              metrics,
+                            },
+                            null,
+                            2,
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
               </Box>
-            ) : (
+            )}
+
+          {detailsMigration != null &&
+            !detailsMigration.error_message &&
+            (detailsMigration.command !== 'ml-auto-tune' ||
+              detailsMigration.status !== 'COMPLETED') && (
               <Box
                 component="pre"
                 sx={{
@@ -253,10 +409,10 @@ const OpsMigrationsTable: React.FC = () => {
                   2,
                 )}
               </Box>
-            ))}
+            )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailsMigration(null)}>Close</Button>
+          <Button onClick={closeDetails}>Close</Button>
         </DialogActions>
       </Dialog>
     </TableContainer>
