@@ -32,7 +32,16 @@ function TuningInsights({
   mlqa,
 }: {
   metrics: Record<string, unknown>;
-  mlqa?: { checks?: { stability?: { cv_std?: number; cv_fold_scores?: number[] } } };
+  mlqa?: {
+    checks?: {
+      stability?: {
+        cv_std?: number;
+        cv_fold_scores?: number[];
+        relative_cv_std?: number;
+        threshold?: number;
+      };
+    };
+  };
 }): JSX.Element | null {
   const defs: Array<{
     label: string;
