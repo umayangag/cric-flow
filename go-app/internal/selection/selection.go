@@ -37,8 +37,6 @@ type Result struct {
 func SelectTeamFromCSV(
 	ctx context.Context,
 	poolCSV string,
-	_ int64,
-	_, _ string,
 	opts Options,
 ) (Result, error) {
 	// Normalize options

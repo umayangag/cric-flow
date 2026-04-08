@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { AutoTuneRunDetailsEntry } from '../types';
 import { Migration } from '../types';
+import AutoTuneRunCard from './AutoTuneRunCard';
 import StatusPill from './common/StatusPill';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -107,6 +109,10 @@ const OpsMigrationsTable: React.FC = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [detailsMigration, setDetailsMigration] = useState<Migration | null>(null);
+  const [autoTuneRuns, setAutoTuneRuns] = useState<AutoTuneRunDetailsEntry[] | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const detailsAbortRef = useRef<AbortController | null>(null);
   const limit = 10;
 
   const load = useCallback(
@@ -137,6 +143,43 @@ const OpsMigrationsTable: React.FC = () => {
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil((total ?? 0) / limit));
+
+  const handleViewDetails = async (m: Migration) => {
+    detailsAbortRef.current?.abort();
+    const ac = new AbortController();
+    detailsAbortRef.current = ac;
+
+    setDetailsMigration(m);
+    setDetailsError(null);
+    setAutoTuneRuns(null);
+
+    if (m.command === 'ml-auto-tune' && m.status === 'COMPLETED') {
+      setDetailsLoading(true);
+      try {
+        const res = await api.autoTuneDetailsForMigration(m.id, { signal: ac.signal });
+        setAutoTuneRuns(res.runs ?? []);
+      } catch (e) {
+        if (ac.signal.aborted) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setDetailsError(msg);
+      } finally {
+        if (detailsAbortRef.current === ac) {
+          setDetailsLoading(false);
+        }
+      }
+    } else {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    detailsAbortRef.current?.abort();
+    detailsAbortRef.current = null;
+    setDetailsMigration(null);
+    setAutoTuneRuns(null);
+    setDetailsError(null);
+    setDetailsLoading(false);
+  };
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
   if (error) return <ErrorText>Error: {error}</ErrorText>;
@@ -169,7 +212,7 @@ const OpsMigrationsTable: React.FC = () => {
               <DetailsCell>
                 <ViewDetailsButton
                   type="button"
-                  onClick={() => setDetailsMigration(m)}
+                  onClick={() => void handleViewDetails(m)}
                   aria-label={`View details for migration ${m.id}`}
                 >
                   View details
@@ -198,7 +241,7 @@ const OpsMigrationsTable: React.FC = () => {
 
       <Dialog
         open={detailsMigration !== null}
-        onClose={() => setDetailsMigration(null)}
+        onClose={closeDetails}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { maxHeight: '80vh' } }}
@@ -210,24 +253,50 @@ const OpsMigrationsTable: React.FC = () => {
             : ''}
         </DialogTitle>
         <DialogContent dividers>
+          {detailsMigration != null && detailsMigration.error_message && (
+            <Box
+              component="pre"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: '60vh',
+                overflow: 'auto',
+                margin: 0,
+                fontSize: 12,
+                color: '#dc2626',
+                fontFamily: 'ui-monospace, Menlo, monospace',
+              }}
+            >
+              {detailsMigration.error_message}
+            </Box>
+          )}
+
           {detailsMigration != null &&
-            (detailsMigration.error_message ? (
-              <Box
-                component="pre"
-                sx={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  maxHeight: '60vh',
-                  overflow: 'auto',
-                  margin: 0,
-                  fontSize: 12,
-                  color: '#dc2626',
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                }}
-              >
-                {detailsMigration.error_message}
+            !detailsMigration.error_message &&
+            detailsMigration.command === 'ml-auto-tune' &&
+            detailsMigration.status === 'COMPLETED' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {detailsLoading && <div>Loading auto-tune results…</div>}
+                {detailsError && (
+                  <ErrorText>Error loading auto-tune details: {detailsError}</ErrorText>
+                )}
+                {!detailsLoading &&
+                  !detailsError &&
+                  (!autoTuneRuns || autoTuneRuns.length === 0) && (
+                    <div>No auto-tune results were recorded for this migration.</div>
+                  )}
+                {!detailsLoading &&
+                  !detailsError &&
+                  autoTuneRuns &&
+                  autoTuneRuns.length > 0 &&
+                  autoTuneRuns.map((run) => <AutoTuneRunCard key={run.id} run={run} />)}
               </Box>
-            ) : (
+            )}
+
+          {detailsMigration != null &&
+            !detailsMigration.error_message &&
+            (detailsMigration.command !== 'ml-auto-tune' ||
+              detailsMigration.status !== 'COMPLETED') && (
               <Box
                 component="pre"
                 sx={{
@@ -253,10 +322,10 @@ const OpsMigrationsTable: React.FC = () => {
                   2,
                 )}
               </Box>
-            ))}
+            )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailsMigration(null)}>Close</Button>
+          <Button onClick={closeDetails}>Close</Button>
         </DialogActions>
       </Dialog>
     </TableContainer>

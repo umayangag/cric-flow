@@ -18,6 +18,9 @@ DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
 DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW = 35_000
 DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH = 80_000
 DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
+# ml.mlqa relative thresholds when keys are absent or config cannot be loaded (see get_mlqa_config).
+MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT = 0.10
+MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT = 0.08
 # Phase 2 Optuna bounds when ml.tuning.default_bounds / stability_focus_bounds are missing (see config.default.json).
 DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
     "min_samples_leaf_min": 4,
@@ -518,8 +521,12 @@ def get_mlqa_config() -> Dict[str, Any]:
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
     return {
-        "overfitting_delta_threshold": float(mlqa.get("overfitting_delta_threshold", 0.08)),
-        "stability_fold_std_threshold": float(mlqa.get("stability_fold_std_threshold", 0.05)),
+        "overfitting_delta_threshold": float(
+            mlqa.get("overfitting_delta_threshold", MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT)
+        ),
+        "stability_fold_std_threshold": float(
+            mlqa.get("stability_fold_std_threshold", MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT)
+        ),
         "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
         "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
         "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),

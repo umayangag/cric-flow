@@ -17,8 +17,6 @@ type Selector interface {
 	SelectTeamFromCSV(
 		ctx context.Context,
 		poolPath string,
-		matchID int64,
-		format, season string,
 		opts selection.Options,
 	) (selection.Result, error)
 }
@@ -40,9 +38,7 @@ func (selectionAdapter) SelectTeam(
 func (selectionAdapter) SelectTeamFromCSV(
 	ctx context.Context,
 	poolPath string,
-	matchID int64,
-	format, season string,
 	opts selection.Options,
 ) (selection.Result, error) {
-	return selection.SelectTeamFromCSV(ctx, poolPath, matchID, format, season, opts)
+	return selection.SelectTeamFromCSV(ctx, poolPath, opts)
 }

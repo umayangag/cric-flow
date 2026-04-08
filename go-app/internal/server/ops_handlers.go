@@ -1,10 +1,12 @@
 package server
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -63,6 +65,67 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 		Total: total,
 		Page:  page,
 		Limit: limit,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetAutoTuneDetails returns details of tuned params linked to a specific data migration.
+// Route: GET /ops/migrations/{id}/auto-tune
+func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	migrationID, err := strconv.Atoi(idStr)
+	if err != nil || migrationID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid migration id"})
+		return
+	}
+
+	rows, err := db.ListMLTunedParamsByMigration(r.Context(), migrationID)
+	if err != nil {
+		slog.Error(
+			"ops: ListMLTunedParamsByMigration failed",
+			slog.Int("migration_id", migrationID),
+			slog.Any("err", err),
+		)
+		respondErr(w, err)
+		return
+	}
+
+	type responseRun struct {
+		ID        int             `json:"id"`
+		Model     string          `json:"model"`
+		Format    string          `json:"format"`
+		CreatedAt string          `json:"created_at"`
+		Params    json.RawMessage `json:"params,omitempty"`
+		Metrics   json.RawMessage `json:"metrics,omitempty"`
+	}
+
+	resp := struct {
+		MigrationID int           `json:"migration_id"`
+		Runs        []responseRun `json:"runs"`
+	}{
+		MigrationID: migrationID,
+		Runs:        make([]responseRun, 0, len(rows)),
+	}
+
+	for _, row := range rows {
+		var paramsRaw, metricsRaw json.RawMessage
+		if len(row.Params) > 0 {
+			paramsRaw = row.Params
+		}
+		if len(row.Metrics) > 0 {
+			metricsRaw = row.Metrics
+		}
+
+		resp.Runs = append(resp.Runs, responseRun{
+			ID:        row.ID,
+			Model:     row.Model,
+			Format:    row.Format,
+			CreatedAt: row.CreatedAt,
+			Params:    paramsRaw,
+			Metrics:   metricsRaw,
+		})
 	}
 
 	writeJSON(w, http.StatusOK, resp)

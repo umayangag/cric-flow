@@ -43,7 +43,7 @@ func (r Runner) Run(ctx context.Context, opts Options, out io.Writer) error {
 			RequireKeeper: opts.RequireKeeper,
 		})
 	} else {
-		res, err = r.Selector.SelectTeamFromCSV(ctx, opts.PoolPath, opts.MatchID, opts.Format, opts.Season, selection.Options{
+		res, err = r.Selector.SelectTeamFromCSV(ctx, opts.PoolPath, selection.Options{
 			TeamSize:      opts.TeamSize,
 			MinBowlers:    opts.MinBowlers,
 			RequireKeeper: opts.RequireKeeper,

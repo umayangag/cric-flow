@@ -42,8 +42,6 @@ func (f fakeSelector) SelectTeam(
 func (f fakeSelector) SelectTeamFromCSV(
 	_ context.Context,
 	_ string,
-	_ int64,
-	_, _ string,
 	_ selection.Options,
 ) (selection.Result, error) {
 	return f.res, f.err
@@ -169,8 +167,6 @@ func (c *capturingSelector) SelectTeam(
 func (c *capturingSelector) SelectTeamFromCSV(
 	_ context.Context,
 	_ string,
-	_ int64,
-	_, _ string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	c.lastFromDB = false

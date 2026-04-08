@@ -14,6 +14,7 @@ import type {
   PipelineProgressPayload,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
+  AutoTuneRunDetailsResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -174,6 +175,15 @@ export const api = {
     u.searchParams.set('page', String(page));
     u.searchParams.set('limit', String(limit));
     return httpApi(u.toString());
+  },
+  /** Auto-tune details for a completed migration (selected algorithm, params, metrics, audit). */
+  autoTuneDetailsForMigration(
+    migrationId: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<AutoTuneRunDetailsResponse> {
+    return httpApi(`/ops/migrations/${encodeURIComponent(String(migrationId))}/auto-tune`, {
+      signal: options?.signal,
+    });
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');

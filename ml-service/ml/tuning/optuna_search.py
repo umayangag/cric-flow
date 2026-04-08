@@ -20,7 +20,7 @@ from sklearn.ensemble import (
     HistGradientBoostingRegressor,
     RandomForestRegressor,
 )
-from sklearn.model_selection import RandomizedSearchCV, cross_val_score
+from sklearn.model_selection import RandomizedSearchCV, cross_val_score, cross_validate
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -464,9 +464,10 @@ def _run_search_two_phase_single_regression(
         if est is None:
             raise ValueError(f"unsupported algorithm for Phase 2 single regression: {alg}")
         pipe = _build_pipeline_single_regression(est)
-        scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs)
-        mean_score = float(scores.mean())
-        fold_std = float(np.std(scores))
+        cv_results = cross_validate(pipe, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs, return_train_score=True)
+        mean_score = float(cv_results["test_score"].mean())
+        fold_std = float(np.std(cv_results["test_score"]))
+        train_score_val = float(cv_results["train_score"].mean())
         pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
             pipe,
             X,
@@ -475,6 +476,7 @@ def _run_search_two_phase_single_regression(
             mean_score,
             fold_std,
             stability_violation_weight=stability_weight,
+            train_score=train_score_val,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
         return penalized_score
@@ -1016,9 +1018,10 @@ def _run_search_two_phase(
         if est is None:
             raise ValueError(f"Algorithm '{alg}' is not supported for Phase 2 fine-tuning.")
         pipe = _build_pipeline(est)
-        scores = cross_val_score(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs)
-        mean_score = float(scores.mean())
-        fold_std = float(np.std(scores))
+        cv_results = cross_validate(pipe, X, Y, cv=cv, scoring=scoring, n_jobs=n_jobs, return_train_score=True)
+        mean_score = float(cv_results["test_score"].mean())
+        fold_std = float(np.std(cv_results["test_score"]))
+        train_score_val = float(cv_results["train_score"].mean())
         _pass_audit, _violation, penalized_score = compute_mlqa_penalized_score(
             pipe,
             X,
@@ -1027,6 +1030,7 @@ def _run_search_two_phase(
             mean_score,
             fold_std,
             stability_violation_weight=stability_weight,
+            train_score=train_score_val,
         )
         trial.set_user_attr("mean_cv_score", mean_score)
         return penalized_score
