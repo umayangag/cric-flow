@@ -13,6 +13,7 @@ from typing import List, Optional, Set, Tuple
 import numpy as np
 
 # Single source of truth: match train_innings (venue, temporal, derived, ..., format one-hot)
+from ml.match_level_derived_features import compute_match_level_derived_features_scalars
 from ml.temporal_features import temporal_from_unix_scalar
 from ml.train_innings import INNINGS_FEATURE_COLS
 from ml.win_features import _format_one_hot_from_code
@@ -41,10 +42,15 @@ def build_innings_feature_vector(
     """Build feature vector for innings model prediction (order matches INNINGS_FEATURE_COLS)."""
     one_hot = _format_one_hot_from_code(format_code)
     temporal = temporal_from_unix_scalar(match_date_unix)
-    # Derived features (same formulas as train_innings._add_derived_features)
-    form_differential = bat_form_sum - bowl_form_sum
-    consistency_differential = bat_consistency_sum - bowl_consistency_sum
-    weather_composite = 0.5 * rain + 0.3 * (humidity / 100.0) + 0.2 * (cloud / 100.0)
+    form_differential, consistency_differential, weather_composite = compute_match_level_derived_features_scalars(
+        bat_form_sum,
+        bowl_form_sum,
+        bat_consistency_sum,
+        bowl_consistency_sum,
+        rain,
+        humidity,
+        cloud,
+    )
     # Order must match INNINGS_FEATURE_COLS: base, temporal, derived, then format one-hot
     values = [
         venue_id,

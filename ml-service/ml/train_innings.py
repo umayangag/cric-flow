@@ -40,6 +40,10 @@ from ml.config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from ml.match_level_derived_features import (
+    MATCH_LEVEL_DERIVED_FEATURE_COLS,
+    add_match_level_derived_features_to_df,
+)
 from ml.pipeline_common import compute_time_decay_weights
 from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
 from ml.utils import make_base_estimator
@@ -53,12 +57,8 @@ MIN_SAMPLES_FOR_FORMAT = 10
 # Format as categorical one-hot (same convention as win/extras)
 INNINGS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES] + ["format_is_OTHER"]
 
-# Derived feature columns computed from base columns during training.
-INNINGS_DERIVED_COLS = [
-    "form_differential",  # bat_form_sum - bowl_form_sum
-    "consistency_differential",  # bat_consistency_sum - bowl_consistency_sum
-    "weather_composite",  # weighted combination of rain + humidity + cloud
-]
+# Derived feature columns: shared with extras / reconciliation (see match_level_derived_features).
+INNINGS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
 # Feature columns for innings model: venue, inning_number, opposition, weather, team sums,
 # cyclical temporal features, derived features, then format one-hot.
@@ -85,31 +85,7 @@ INNINGS_FEATURE_COLS = (
 )
 INNINGS_TARGET_COLS = ["innings_runs", "innings_wickets"]
 
-
-def _add_derived_features(df: pd.DataFrame) -> None:
-    """Compute derived features in-place from base columns.
-
-    - form_differential: bat_form_sum - bowl_form_sum (batting strength vs bowling quality)
-    - consistency_differential: bat_consistency_sum - bowl_consistency_sum
-    - weather_composite: 0.5 * rain + 0.3 * humidity/100 + 0.2 * cloud/100 (normalised 0–1 scale)
-    """
-
-    def _col(name: str) -> pd.Series:
-        if name in df.columns:
-            return pd.to_numeric(df[name], errors="coerce").fillna(0.0)
-        return pd.Series(np.zeros(len(df)), index=df.index)
-
-    bat_form = _col("bat_form_sum")
-    bowl_form = _col("bowl_form_sum")
-    bat_cons = _col("bat_consistency_sum")
-    bowl_cons = _col("bowl_consistency_sum")
-    rain = _col("rain")
-    humidity = _col("humidity")
-    cloud = _col("cloud")
-
-    df["form_differential"] = bat_form - bowl_form
-    df["consistency_differential"] = bat_cons - bowl_cons
-    df["weather_composite"] = 0.5 * rain + 0.3 * (humidity / 100.0) + 0.2 * (cloud / 100.0)
+_add_derived_features = add_match_level_derived_features_to_df
 
 
 def fetch_innings_data(go_app_url: str, cutoff_iso: str, api_key=None):

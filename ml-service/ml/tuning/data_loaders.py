@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from ml.data_quality import impute_features
+from ml.match_level_derived_features import add_match_level_derived_features_to_df
 from ml.temporal_features import add_temporal_features_to_df
 from ml.tuning.types import (
     BAT_SEQ_COLS,
@@ -244,7 +245,7 @@ def load_innings_from_api(
     df = pd.DataFrame(rows, columns=headers)
     # Compute cyclical temporal features and derived features (same as train_innings.rows_to_xy_by_format).
     add_temporal_features_to_df(df)
-    _train_innings._add_derived_features(df)
+    add_match_level_derived_features_to_df(df)
     for c in _train_innings.INNINGS_FEATURE_COLS + _train_innings.INNINGS_TARGET_COLS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
