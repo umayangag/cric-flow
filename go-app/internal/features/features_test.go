@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func feq(a, b, eps float64) bool { return math.Abs(a-b) <= eps }
@@ -239,4 +241,12 @@ func TestWindowedStats(t *testing.T) {
 			t.Fatalf("MinW10=0 MaxW10=30 got %v %v", r.MinW10, r.MaxW10)
 		}
 	})
+}
+
+func TestTemporalFeaturesFromUnix_Zero_ReturnsNeutral(t *testing.T) {
+	ms, mc, ds, dc := TemporalFeaturesFromUnix(0)
+	require.Zero(t, ms)
+	require.Zero(t, mc)
+	require.Zero(t, ds)
+	require.Zero(t, dc)
 }

@@ -25,6 +25,14 @@ from sklearn.preprocessing import StandardScaler
 class TestTemporalFeatures:
     """Tests for cyclical temporal feature computation."""
 
+    def test_temporal_from_unix_scalar_zero_is_neutral(self):
+        """Unix timestamp 0 is treated as missing → neutral cyclical features."""
+        from ml.temporal_features import TEMPORAL_FEATURE_COLS, temporal_from_unix_scalar
+
+        out = temporal_from_unix_scalar(0.0)
+        assert set(out.keys()) == set(TEMPORAL_FEATURE_COLS)
+        assert all(v == 0.0 for v in out.values())
+
     def test_compute_temporal_from_unix_known_date(self):
         """Known date: 2024-03-15 (Friday, March) produces correct sin/cos."""
         from ml.temporal_features import compute_temporal_from_unix
@@ -49,6 +57,16 @@ class TestTemporalFeatures:
         feats_unix = compute_temporal_from_unix(np.array([1710460800.0]))
         for key in feats_date:
             assert abs(feats_date[key][0] - feats_unix[key][0]) < 1e-6
+
+    def test_add_temporal_features_to_df_unix_nan_not_epoch(self):
+        """Missing unix values must not be coerced to epoch before the temporal transform."""
+        from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
+
+        df = pd.DataFrame({"match_date_unix": [np.nan, 1710460800.0]})
+        add_temporal_features_to_df(df, date_col=None)
+        for col in TEMPORAL_FEATURE_COLS:
+            assert df[col].iloc[0] == 0.0
+            assert not pd.isna(df[col].iloc[1])
 
     def test_add_temporal_features_to_df_from_unix(self):
         """add_temporal_features_to_df adds 4 columns from match_date_unix."""

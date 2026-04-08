@@ -398,7 +398,8 @@ def _extract_feature_importance(
         try:
             from sklearn.inspection import permutation_importance as _perm_imp
 
-            perm = _perm_imp(pipe, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=1)
+            n_jobs = _effective_n_jobs(get_tuning_config())
+            perm = _perm_imp(pipe, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=n_jobs)
             imps = perm.importances_mean
             names = (
                 feature_names
@@ -639,13 +640,15 @@ def _compute_mlqa_audit(
             try:
                 from sklearn.inspection import permutation_importance as _perm_imp
 
-                perm = _perm_imp(pipe_fit, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=1)
+                n_jobs = _effective_n_jobs(get_tuning_config())
+                perm = _perm_imp(pipe_fit, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=n_jobs)
                 imps = perm.importances_mean
                 if imps is not None and len(imps) > 0:
                     total = float(np.sum(np.abs(imps)))
                     if total > 0:
                         sorted_idx = np.argsort(-imps)[:3]
-                        top_weight = float(imps[sorted_idx[0]] / total)
+                        top_imp = float(imps[sorted_idx[0]])
+                        top_weight = top_imp / total if top_imp > 0 else 0.0
                         names = feature_names if feature_names and len(feature_names) == len(imps) else None
                         top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
                         if top_weight > top_weight_thresh:

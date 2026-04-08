@@ -25,7 +25,12 @@ func TemporalFeatures(t time.Time) (monthSin, monthCos, dowSin, dowCos float64) 
 }
 
 // TemporalFeaturesFromUnix computes cyclical temporal features from a unix timestamp.
+// A zero timestamp is treated as missing data and yields neutral (0,0,0,0) features,
+// consistent with the Python temporal pipeline.
 func TemporalFeaturesFromUnix(unixSec float64) (monthSin, monthCos, dowSin, dowCos float64) {
+	if unixSec == 0 {
+		return 0, 0, 0, 0
+	}
 	t := time.Unix(int64(unixSec), 0).UTC()
 	return TemporalFeatures(t)
 }
