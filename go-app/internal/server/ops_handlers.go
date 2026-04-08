@@ -112,26 +112,10 @@ func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) 
 	for _, row := range rows {
 		var paramsRaw, metricsRaw json.RawMessage
 		if len(row.Params) > 0 {
-			if json.Valid(row.Params) {
-				paramsRaw = row.Params
-			} else {
-				slog.Warn(
-					"invalid JSON in params from ml_tuned_params",
-					slog.Int("migration_id", migrationID),
-					slog.Int("row_id", row.ID),
-				)
-			}
+			paramsRaw = row.Params
 		}
 		if len(row.Metrics) > 0 {
-			if json.Valid(row.Metrics) {
-				metricsRaw = row.Metrics
-			} else {
-				slog.Warn(
-					"invalid JSON in metrics from ml_tuned_params",
-					slog.Int("migration_id", migrationID),
-					slog.Int("row_id", row.ID),
-				)
-			}
+			metricsRaw = row.Metrics
 		}
 
 		resp.Runs = append(resp.Runs, responseRun{

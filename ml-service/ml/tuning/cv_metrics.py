@@ -29,7 +29,12 @@ from sklearn.model_selection import (
 )
 from sklearn.pipeline import Pipeline
 
-from ml.config import get_mlqa_config, get_tuning_config
+from ml.config import (
+    MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT,
+    MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT,
+    get_mlqa_config,
+    get_tuning_config,
+)
 from ml.tuning.types import (
     BATTING_FEATURE_COLS,
     BOWLING_FEATURE_COLS,
@@ -58,7 +63,10 @@ def _mlqa_overfitting_and_stability_thresholds() -> Tuple[float, float]:
         return (mlqa["overfitting_delta_threshold"], mlqa["stability_fold_std_threshold"])
     except Exception:
         logger.warning(_MLQA_THRESHOLD_FALLBACK_MSG)
-        return (0.10, 0.08)
+        return (
+            MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT,
+            MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT,
+        )
 
 
 def _to_relative(absolute_value: float, reference_score: float) -> float:
@@ -67,10 +75,12 @@ def _to_relative(absolute_value: float, reference_score: float) -> float:
     For neg_mean_absolute_error the scores are large negative numbers (e.g. -7.9);
     comparing an absolute std of 0.12 against a fixed 0.05 threshold is meaningless.
     Instead we compute 0.12 / abs(-7.9) ≈ 0.015 (1.5%) which is a fair comparison.
+    When the reference magnitude is ~0 and the absolute value is non-zero, returns infinity
+    so MLQA does not treat unbounded relative error as zero.
     """
     magnitude = abs(reference_score)
     if magnitude < 1e-9:
-        return 0.0
+        return float("inf") if abs(absolute_value) > 1e-9 else 0.0
     return abs(absolute_value) / magnitude
 
 

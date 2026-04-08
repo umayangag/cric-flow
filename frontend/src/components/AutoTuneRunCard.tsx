@@ -68,8 +68,8 @@ const AutoTuneRunCard: React.FC<AutoTuneRunCardProps> = ({ run }) => {
           {mlqa.final_verdict && <div>Verdict: {mlqa.final_verdict}</div>}
           {Array.isArray(mlqa.key_findings) && mlqa.key_findings.length > 0 && (
             <ul>
-              {mlqa.key_findings.map((k) => (
-                <li key={k}>{k}</li>
+              {mlqa.key_findings.map((k, idx) => (
+                <li key={`${k}-${idx}`}>{k}</li>
               ))}
             </ul>
           )}

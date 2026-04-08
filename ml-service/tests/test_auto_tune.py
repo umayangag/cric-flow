@@ -688,17 +688,19 @@ def test_to_relative_basic():
     assert abs(_to_relative(0.12, -7.9) - 0.12 / 7.9) < 1e-9
     # Large delta on large score is small relative
     assert abs(_to_relative(1.0, -20.0) - 0.05) < 1e-9
-    # Zero reference returns 0.0 (safe division)
-    assert _to_relative(0.5, 0.0) == 0.0
+    # Zero reference with non-zero absolute error → infinite relative error
+    assert _to_relative(0.5, 0.0) == float("inf")
+    assert _to_relative(0.0, 0.0) == 0.0
     # Positive reference works the same
     assert abs(_to_relative(0.1, 2.0) - 0.05) < 1e-9
 
 
 def test_to_relative_near_zero_reference():
-    """_to_relative returns 0.0 for near-zero reference scores."""
+    """_to_relative treats near-zero reference as inf relative error when absolute is non-zero."""
     from ml.tuning.cv_metrics import _to_relative
 
-    assert _to_relative(0.01, 1e-12) == 0.0
+    assert _to_relative(0.01, 1e-12) == float("inf")
+    assert _to_relative(0.0, 1e-12) == 0.0
 
 
 def test_penalized_score_uses_relative_thresholds():
