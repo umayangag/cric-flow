@@ -172,7 +172,11 @@ class TestRecomputeMLQAAuditRelativeThresholds:
                 "final_verdict": "Rollback & Re-tune",
                 "checks": {
                     "overfitting": {"delta": 0.05, "flagged": True},
-                    "stability": {"cv_std": 0.0845, "flagged": True, "cv_fold_scores": [-4.70, -4.79, -4.63, -4.80, -4.58]},
+                    "stability": {
+                        "cv_std": 0.0845,
+                        "flagged": True,
+                        "cv_fold_scores": [-4.70, -4.79, -4.63, -4.80, -4.58],
+                    },
                 },
             },
         }

@@ -183,9 +183,7 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
             )
             status_flags.append("overfitting")
         else:
-            findings.append(
-                f"Overfitting check OK: Δ = {delta_f:.4f} (relative {rel_delta:.2%} ≤ {delta_thresh:.0%})."
-            )
+            findings.append(f"Overfitting check OK: Δ = {delta_f:.4f} (relative {rel_delta:.2%} ≤ {delta_thresh:.0%}).")
 
     # 2. Stability: CV fold std vs relative threshold
     unstable = False
@@ -194,9 +192,7 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
         rel_std = _to_relative(fold_std_f)
         unstable = rel_std > std_thresh
         if unstable:
-            findings.append(
-                f"Unstable: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%} > {std_thresh:.0%})."
-            )
+            findings.append(f"Unstable: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%} > {std_thresh:.0%}).")
             status_flags.append("unstable")
         else:
             findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%}).")
