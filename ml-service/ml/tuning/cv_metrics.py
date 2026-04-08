@@ -744,6 +744,17 @@ def _compute_mlqa_audit(
         }
 
 
+def _feature_names_for_mlqa_report(
+    X: np.ndarray,
+    model_kind: str,
+    override: Optional[List[str]],
+) -> Optional[List[str]]:
+    """Prefer loader-provided names when they match X.shape[1]; else canonical list from model_kind."""
+    if override is not None and len(override) == X.shape[1]:
+        return list(override)
+    return _mlqa_feature_names(model_kind)
+
+
 def _add_final_report_details(
     report: Dict[str, Any],
     pipe: Pipeline,
@@ -753,14 +764,17 @@ def _add_final_report_details(
     scoring: str,
     task_type: str,
     model_kind: str,
+    feature_names: Optional[List[str]] = None,
 ) -> None:
-    """Computes and adds MLQA audit and feature importance to the report."""
-    report["mlqa_audit"] = _compute_mlqa_audit(
-        report, pipe, X, y, cv, scoring, task_type, _mlqa_feature_names(model_kind)
-    )
-    feature_names = _mlqa_feature_names(model_kind)
+    """Computes and adds MLQA audit and feature importance to the report.
+
+    When feature_names matches X.shape[1] (e.g. post–feature-transform columns from the data loader),
+    MLQA and SHAP use those labels; otherwise falls back to canonical names for model_kind.
+    """
+    names_for_report = _feature_names_for_mlqa_report(X, model_kind, feature_names)
+    report["mlqa_audit"] = _compute_mlqa_audit(report, pipe, X, y, cv, scoring, task_type, names_for_report)
     n_features = X.shape[1]
-    fi = _extract_feature_importance(pipe, feature_names, n_features, X=X, y=y, scoring=scoring)
+    fi = _extract_feature_importance(pipe, names_for_report, n_features, X=X, y=y, scoring=scoring)
     if fi:
         report["feature_importance"] = fi
     else:
@@ -771,7 +785,7 @@ def _add_final_report_details(
             shap_fi = compute_shap_importance(
                 pipe,
                 X,
-                feature_names=feature_names,
+                feature_names=names_for_report,
                 task_type=task_type,
                 max_background=100,
                 max_eval=300,

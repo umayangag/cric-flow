@@ -29,6 +29,35 @@ from ml.win_features import _FORMAT_CODES as _WIN_FORMAT_CODES
 logger = logging.getLogger(__name__)
 
 
+def feature_matrix_after_training_transforms(
+    X_raw: np.ndarray,
+    base_feature_names: List[str],
+    model_kind: str,
+) -> Tuple[np.ndarray, List[str]]:
+    """Apply the same log1p / interaction transforms as offline training; return X and column names."""
+    from ml.feature_transforms import apply_transforms, get_transform_config
+
+    transform_config = get_transform_config(model_kind)
+    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
+        return apply_transforms(X_raw, list(base_feature_names), transform_config, model_kind)
+    return X_raw, list(base_feature_names)
+
+
+def unpack_xy_with_feature_names(result: Any) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[List[str]]]:
+    """Normalize loader return value: (X, Y) or (X, Y, feature_names)."""
+    if result is None:
+        return None, None, None
+    if not isinstance(result, tuple):
+        raise TypeError(f"expected tuple from loader, got {type(result)}")
+    if len(result) == 3:
+        x, y, names = result
+        return x, y, names if isinstance(names, list) else None
+    if len(result) == 2:
+        x, y = result
+        return x, y, None
+    raise TypeError(f"expected 2- or 3-tuple from loader, got length {len(result)}")
+
+
 def _sort_df_by_match_date(df: pd.DataFrame) -> pd.DataFrame:
     """Sorts a DataFrame by 'match_date' if the column exists."""
     if "match_date" in df.columns:
@@ -55,7 +84,7 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
         return rows
 
 
-def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
+def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
     # Compute cyclical temporal features (replaces season_id / match_date_unix).
@@ -76,13 +105,7 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
         if c not in df.columns:
             df[c] = 0.0
     X_raw = df[BATTING_FEATURE_COLS].astype(float).values
-    from ml.feature_transforms import apply_transforms, get_transform_config
-
-    transform_config = get_transform_config("batting")
-    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
-        X, _ = apply_transforms(X_raw, list(BATTING_FEATURE_COLS), transform_config, "batting")
-    else:
-        X = X_raw
+    X, feature_names_used = feature_matrix_after_training_transforms(X_raw, list(BATTING_FEATURE_COLS), "batting")
     y_cols = [c for c in BATTING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BATTING_TARGET_COLS):
@@ -90,10 +113,10 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
         Y = np.concatenate([Y, pad], axis=1)
     # Strike rate is NOT a training target — it is derived from runs/balls and would cause
     # target leakage. It is computed post-prediction at inference time.
-    return X, Y
+    return X, Y, feature_names_used
 
 
-def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
+def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
     # Compute cyclical temporal features (replaces season_id / match_date_unix).
@@ -117,13 +140,7 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
         if c not in df.columns:
             df[c] = 0.0
     X_raw = df[BOWLING_FEATURE_COLS].astype(float).values
-    from ml.feature_transforms import apply_transforms, get_transform_config
-
-    transform_config = get_transform_config("bowling")
-    if transform_config.get("add_interactions") or transform_config.get("add_log1p"):
-        X, _ = apply_transforms(X_raw, list(BOWLING_FEATURE_COLS), transform_config, "bowling")
-    else:
-        X = X_raw
+    X, feature_names_used = feature_matrix_after_training_transforms(X_raw, list(BOWLING_FEATURE_COLS), "bowling")
     y_cols = [c for c in BOWLING_TARGET_COLS if c in df.columns]
     Y = df[y_cols].astype(float).values
     if Y.shape[1] < len(BOWLING_TARGET_COLS):
@@ -131,7 +148,7 @@ def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray]:
         Y = np.concatenate([Y, pad], axis=1)
     # Economy rate is NOT a training target — it is derived from runs/balls and would cause
     # target leakage. It is computed post-prediction at inference time.
-    return X, Y
+    return X, Y, feature_names_used
 
 
 def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
@@ -148,7 +165,9 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     return by_format
 
 
-def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any]]:
+def load_extras_csv(
+    path: str, format_code: Optional[str] = None
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, List[str]]]:
     if _train_extras is None:
         logger.error("auto_tune.load_extras_csv.train_extras_unavailable")
         raise RuntimeError("ml.train_extras not available for extras CSV")
@@ -178,26 +197,32 @@ def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Tupl
 
 def load_batting_from_api(
     go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]
-) -> Tuple[np.ndarray, np.ndarray]:
-    from app.train_on_the_fly import _batting_rows_to_xy, fetch_training_data
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    from app.train_on_the_fly import _batting_feature_cols, _batting_rows_to_xy, fetch_training_data
 
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="batting")
     bat = data.get("batting") or {}
     headers = bat.get("headers") or []
     rows = _sort_rows_by_match_date(headers, bat.get("rows") or [])
-    return _batting_rows_to_xy(headers, rows)
+    X_raw, Y = _batting_rows_to_xy(headers, rows)
+    base = _batting_feature_cols()
+    X, names = feature_matrix_after_training_transforms(X_raw, base, "batting")
+    return X, Y, names
 
 
 def load_bowling_from_api(
     go_app_url: str, format_code: str, cutoff: str, api_key: Optional[str]
-) -> Tuple[np.ndarray, np.ndarray]:
-    from app.train_on_the_fly import _bowling_rows_to_xy, fetch_training_data
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    from app.train_on_the_fly import _bowling_feature_cols, _bowling_rows_to_xy, fetch_training_data
 
     data = fetch_training_data(go_app_url, format_code, cutoff, api_key, sections="bowling")
     bowl = data.get("bowling") or {}
     headers = bowl.get("headers") or []
     rows = _sort_rows_by_match_date(headers, bowl.get("rows") or [])
-    return _bowling_rows_to_xy(headers, rows)
+    X_raw, Y = _bowling_rows_to_xy(headers, rows)
+    base = _bowling_feature_cols()
+    X, names = feature_matrix_after_training_transforms(X_raw, base, "bowling")
+    return X, Y, names
 
 
 def load_fielding_from_api(
@@ -217,7 +242,7 @@ def load_fielding_from_api(
 
 def load_extras_from_api(
     go_app_url: str, cutoff: str, api_key: Optional[str], format_filter: Optional[str] = None
-) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, Any, List[str]]]:
     if _train_extras is None:
         logger.error("auto_tune.load_extras_from_api.train_extras_unavailable")
         raise RuntimeError("ml.train_extras not available for extras API")

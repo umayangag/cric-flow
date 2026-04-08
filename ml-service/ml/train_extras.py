@@ -121,8 +121,12 @@ def fetch_extras_data(go_app_url: str, cutoff_iso: str, api_key=None):
 
 def rows_to_xy_by_format(
     headers: list, rows: list[list]
-) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
-    """Build X, Y, weights per format_code. Returns dict format_code -> (X, Y, sample_weight)."""
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]]:
+    """Build X, Y, weights per format_code.
+
+    Returns dict format_code -> (X, Y, sample_weight, feature_column_names).
+    feature_column_names matches X.shape[1] (subset of EXTRAS_FEATURE_COLS present in the frame).
+    """
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
@@ -156,20 +160,22 @@ def rows_to_xy_by_format(
         df = df.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in df.columns] + [EXTRAS_TARGET_COL])
         if df.empty:
             return {}
-        X = df[[c for c in EXTRAS_FEATURE_COLS if c in df.columns]].astype(float).values
+        feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in df.columns]
+        X = df[feat_cols].astype(float).values
         Y = df[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(df)
-        return {"_ALL_": (X, Y, w)}
+        return {"_ALL_": (X, Y, w, feat_cols)}
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in g.columns] + [EXTRAS_TARGET_COL])
         if g.empty or len(g) < MIN_SAMPLES_FOR_LEGACY:
             continue
-        X = g[[c for c in EXTRAS_FEATURE_COLS if c in g.columns]].astype(float).values
+        feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in g.columns]
+        X = g[feat_cols].astype(float).values
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(g)
-        out[fmt] = (X, Y, w)
+        out[fmt] = (X, Y, w, feat_cols)
     return out
 
 
@@ -267,15 +273,15 @@ def main() -> None:
     if not by_format:
         logger.error("train_extras.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y, w) in by_format.items():
+    for fmt, (X, Y, w, _feat_names) in by_format.items():
         logger.info("pipeline: train_extras processing format=%s n=%s", fmt, X.shape[0])
         train_and_save(X, Y, out_dir, fmt, sample_weight=w)
         logger.info("train_extras.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
     # Unified (overall) model: train on all data combined for legacy/fallback
-    all_X = np.vstack([X for _, (X, _, _) in by_format.items()])
-    all_Y = np.vstack([Y for _, (_, Y, _) in by_format.items()])
-    all_weights = _concat_weights_extras([w for _, (_, _, w) in by_format.items()])
+    all_X = np.vstack([X for _, (X, _, _, _) in by_format.items()])
+    all_Y = np.vstack([Y for _, (_, Y, _, _) in by_format.items()])
+    all_weights = _concat_weights_extras([w for _, (_, _, w, _) in by_format.items()])
     if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
         train_and_save_legacy(all_X, all_Y, out_dir, sample_weight=all_weights)
 

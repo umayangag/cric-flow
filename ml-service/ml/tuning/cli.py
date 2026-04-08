@@ -34,12 +34,27 @@ from ml.tuning.data_loaders import (
     load_innings_from_api,
     load_win_csv,
     load_win_from_api,
+    unpack_xy_with_feature_names,
 )
 from ml.tuning.runners import (
     run_auto_tune,
     run_auto_tune_extras,
     run_auto_tune_win,
 )
+
+
+def _extras_feature_names_if_consistent(by_f: Dict[str, Any]) -> Optional[List[str]]:
+    """Return shared extras column names when every format uses the same feature list (required for vstack)."""
+    vals = [v for v in by_f.values() if v and len(v) >= 4]
+    if not vals:
+        return None
+    first = vals[0][3]
+    if not isinstance(first, list):
+        return None
+    if all(len(v) >= 4 and v[3] == first for v in vals):
+        return list(first)
+    return None
+
 
 try:
     from ml import auto_tune_progress as _progress
@@ -277,6 +292,7 @@ def main() -> None:
         for model_kind in models:
             for fmt in formats_to_run:
                 format_suffix = fmt if fmt else None
+                feat_names: Optional[List[str]] = None
                 task_idx += 1
                 _progress.write_progress(
                     phase="loading",
@@ -302,8 +318,8 @@ def main() -> None:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                all_X = np.vstack([v[0] for v in by_f.values()])
+                                all_Y = np.vstack([v[1] for v in by_f.values()])
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
@@ -319,6 +335,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=_extras_feature_names_if_consistent(by_f),
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
@@ -327,7 +344,9 @@ def main() -> None:
                                     report["best_cv_score"],
                                 )
                             else:
-                                for fcode, (X, Y, *_) in by_f.items():
+                                for fcode, pack in by_f.items():
+                                    X, Y = pack[0], pack[1]
+                                    ex_fn = pack[3] if len(pack) >= 4 else None
                                     if X.size == 0 or Y.size == 0:
                                         continue
                                     report = run_auto_tune_extras(
@@ -342,6 +361,7 @@ def main() -> None:
                                         use_autogluon=use_autogluon,
                                         rescreen=args.rescreen,
                                         algorithms_explicitly_passed=bool(algorithms_override),
+                                        feature_names=ex_fn if isinstance(ex_fn, list) else None,
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, "extras", fcode, report, args.api_key or None
@@ -480,13 +500,15 @@ def main() -> None:
                                 csv_path = os.path.join(default_dir, f"batting_encoded_{fmt or 'all'}.csv")
                                 if not os.path.isfile(csv_path):
                                     csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
-                            X, Y = _load_via_csv_or_api(
-                                csv_path,
-                                lambda: load_batting_csv(csv_path),
-                                lambda: load_batting_from_api(
-                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                ),
-                                can_fallback_to_api=api_available,
+                            X, Y, feat_names = unpack_xy_with_feature_names(
+                                _load_via_csv_or_api(
+                                    csv_path,
+                                    lambda: load_batting_csv(csv_path),
+                                    lambda: load_batting_from_api(
+                                        args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                    ),
+                                    can_fallback_to_api=api_available,
+                                )
                             )
                         elif model_kind == "bowling":
                             if args.csv:
@@ -495,13 +517,15 @@ def main() -> None:
                                 csv_path = os.path.join(default_dir, f"bowling_encoded_{fmt or 'all'}.csv")
                                 if not os.path.isfile(csv_path):
                                     csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
-                            X, Y = _load_via_csv_or_api(
-                                csv_path,
-                                lambda: load_bowling_csv(csv_path),
-                                lambda: load_bowling_from_api(
-                                    args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
-                                ),
-                                can_fallback_to_api=api_available,
+                            X, Y, feat_names = unpack_xy_with_feature_names(
+                                _load_via_csv_or_api(
+                                    csv_path,
+                                    lambda: load_bowling_csv(csv_path),
+                                    lambda: load_bowling_from_api(
+                                        args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
+                                    ),
+                                    can_fallback_to_api=api_available,
+                                )
                             )
                         else:
                             if args.csv:
@@ -593,6 +617,7 @@ def main() -> None:
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
                         algorithms_explicitly_passed=bool(algorithms_override),
+                        feature_names=feat_names,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -624,8 +649,8 @@ def main() -> None:
                             logger.warning("auto_tune.no_extras_data format=%s", fmt)
                             continue
                         if args.unified:
-                            all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                            all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                            all_X = np.vstack([v[0] for v in by_f.values()])
+                            all_Y = np.vstack([v[1] for v in by_f.values()])
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_extras_data unified empty")
                                 continue
@@ -641,6 +666,7 @@ def main() -> None:
                                 use_autogluon=use_autogluon,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
+                                feature_names=_extras_feature_names_if_consistent(by_f),
                             )
                             _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                             logger.info(
@@ -649,7 +675,9 @@ def main() -> None:
                                 report["best_cv_score"],
                             )
                         else:
-                            for fcode, (X, Y, *_) in by_f.items():
+                            for fcode, pack in by_f.items():
+                                X, Y = pack[0], pack[1]
+                                ex_fn = pack[3] if len(pack) >= 4 else None
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_extras(
@@ -664,6 +692,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=ex_fn if isinstance(ex_fn, list) else None,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -806,7 +835,7 @@ def main() -> None:
                         continue
                     if result is None:
                         continue
-                    X, Y = result
+                    X, Y, csv_feat_names = unpack_xy_with_feature_names(result)
                     if X.size == 0 or Y.size == 0:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue
@@ -822,6 +851,7 @@ def main() -> None:
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
                         algorithms_explicitly_passed=bool(algorithms_override),
+                        feature_names=csv_feat_names,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

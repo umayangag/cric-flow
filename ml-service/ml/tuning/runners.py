@@ -214,6 +214,7 @@ def run_auto_tune(
     fast_mode: bool = False,
     rescreen: bool = False,
     algorithms_explicitly_passed: bool = False,
+    feature_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run two-phase search, save artifacts and report. Returns report dict."""
     tuning = _get_tuning_config()
@@ -282,6 +283,7 @@ def run_auto_tune(
         task_total,
         prior_params=prior_params,
         algorithms_requested=algorithms_requested,
+        feature_names_for_report=feature_names,
     )
     if clip_info:
         report["target_clip_info"] = clip_info
@@ -305,6 +307,7 @@ def run_auto_tune_extras(
     use_autogluon: Optional[bool] = None,
     rescreen: bool = False,
     algorithms_explicitly_passed: bool = False,
+    feature_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run two-phase single-output regression search for extras; save model only + report."""
     tuning = _get_tuning_config()
@@ -359,6 +362,7 @@ def run_auto_tune_extras(
         task_index,
         task_total,
         prior_params=prior_params,
+        feature_names_for_report=feature_names,
     )
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
@@ -401,6 +405,7 @@ def _run_search_two_phase_classification(
     task_index: int = 0,
     task_total: int = 1,
     prior_params: Optional[Dict[str, Any]] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Two-phase search for classification (win). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
@@ -431,6 +436,7 @@ def _run_search_two_phase_classification(
             algorithms,
             validation_method,
             n_jobs_override,
+            feature_names_for_report=feature_names_for_report,
         )
 
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
@@ -525,7 +531,9 @@ def _run_search_two_phase_classification(
         }
         if best_pipe:
             report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-            _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
+            _add_final_report_details(
+                report, best_pipe, X, y, cv, scoring, "classification", model_kind, feature_names_for_report
+            )
         return best_pipe, best_params, report
 
     def _obj(trial: Any) -> float:
@@ -665,7 +673,9 @@ def _run_search_two_phase_classification(
     }
     if best_pipe:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, y, cv, scoring, "classification", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 
