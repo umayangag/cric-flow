@@ -470,6 +470,7 @@ def _run_search_two_phase_single_regression(
         # Compute train score once here and pass it to avoid expensive re-fit in penalized_score
         from sklearn.base import clone as _clone
         from sklearn.metrics import get_scorer as _get_scorer
+
         pipe_fit = _clone(pipe)
         pipe_fit.fit(X, y)
         train_score_val = float(_get_scorer(scoring)(pipe_fit, X, y))
@@ -1029,6 +1030,7 @@ def _run_search_two_phase(
         # Compute train score once here and pass it to avoid expensive re-fit in penalized_score
         from sklearn.base import clone as _clone
         from sklearn.metrics import get_scorer as _get_scorer
+
         pipe_fit = _clone(pipe)
         pipe_fit.fit(X, Y)
         train_score_val = float(_get_scorer(scoring)(pipe_fit, X, Y))

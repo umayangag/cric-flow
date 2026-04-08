@@ -28,7 +28,6 @@ type fakeSelector struct {
 	lastPool   string
 	lastMatch  int64
 	lastFormat string
-	lastSeason string
 	lastOpts   selection.Options
 	res        selection.Result
 	err        error

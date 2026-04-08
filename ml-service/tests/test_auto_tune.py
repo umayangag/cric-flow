@@ -714,8 +714,13 @@ def test_penalized_score_uses_relative_thresholds():
     # Absolute std=0.12, relative std=0.12/8.0=1.5% (under 8% threshold)
     # Should PASS with relative thresholds
     pass_audit, violation, penalized = compute_mlqa_penalized_score(
-        pipe, X, y, "neg_mean_absolute_error",
-        mean_score=-8.0, fold_std=0.12, train_score=-7.5,
+        pipe,
+        X,
+        y,
+        "neg_mean_absolute_error",
+        mean_score=-8.0,
+        fold_std=0.12,
+        train_score=-7.5,
     )
     assert pass_audit is True
     assert violation == 0.0
@@ -732,8 +737,13 @@ def test_penalized_score_fails_with_high_relative_delta():
 
     # mean_score=-2.0, train_score=-0.1 → delta=1.9, relative=1.9/2.0=95% (way over 10%)
     pass_audit, violation, penalized = compute_mlqa_penalized_score(
-        pipe, X, y, "neg_mean_absolute_error",
-        mean_score=-2.0, fold_std=0.01, train_score=-0.1,
+        pipe,
+        X,
+        y,
+        "neg_mean_absolute_error",
+        mean_score=-2.0,
+        fold_std=0.01,
+        train_score=-0.1,
     )
     assert pass_audit is False
     assert violation > 0.0

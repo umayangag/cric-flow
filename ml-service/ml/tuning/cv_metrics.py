@@ -554,9 +554,7 @@ def _compute_mlqa_audit(
         rel_std = _to_relative(fold_std, val_score)
         unstable = rel_std > std_thresh
         if unstable:
-            findings.append(
-                f"Unstable: CV fold σ = {fold_std:.4f} (relative {rel_std:.2%} > {std_thresh:.0%})."
-            )
+            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (relative {rel_std:.2%} > {std_thresh:.0%}).")
             status_flags.append("unstable")
         else:
             findings.append(f"Stability OK: CV fold σ = {fold_std:.4f} (relative {rel_std:.2%}).")

@@ -114,11 +114,21 @@ func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) 
 
 		if len(row.Params) > 0 {
 			if err := json.Unmarshal(row.Params, &paramsMap); err != nil {
+				slog.Warn(
+					"failed to unmarshal params from ml_tuned_params",
+					slog.Int("migration_id", migrationID),
+					slog.Any("err", err),
+				)
 				paramsMap = nil
 			}
 		}
 		if len(row.Metrics) > 0 {
 			if err := json.Unmarshal(row.Metrics, &metricsMap); err != nil {
+				slog.Warn(
+					"failed to unmarshal metrics from ml_tuned_params",
+					slog.Int("migration_id", migrationID),
+					slog.Any("err", err),
+				)
 				metricsMap = nil
 			}
 		}
