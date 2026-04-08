@@ -46,7 +46,7 @@ type MLTunedParamsRow struct {
 func GetLatestMLTunedParams(ctx context.Context, model, format string) (*MLTunedParamsRow, error) {
 	var params json.RawMessage
 	var metrics json.RawMessage
-	var createdAt string
+	var createdAt time.Time
 	err := Pool.QueryRow(ctx, `
 		SELECT params, metrics, created_at
 		FROM ml_tuned_params
@@ -60,7 +60,11 @@ func GetLatestMLTunedParams(ctx context.Context, model, format string) (*MLTuned
 		}
 		return nil, err
 	}
-	return &MLTunedParamsRow{Params: params, Metrics: metrics, CreatedAt: createdAt}, nil
+	return &MLTunedParamsRow{
+		Params:    params,
+		Metrics:   metrics,
+		CreatedAt: createdAt.UTC().Format(time.RFC3339),
+	}, nil
 }
 
 // MLTunedParamsEntry holds one row from ml_tuned_params (model, format, created_at, metrics).
@@ -102,9 +106,11 @@ func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) 
 	var out []MLTunedParamsEntry
 	for rows.Next() {
 		var e MLTunedParamsEntry
-		if err := rows.Scan(&e.Model, &e.Format, &e.CreatedAt, &e.Metrics); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&e.Model, &e.Format, &createdAt, &e.Metrics); err != nil {
 			return nil, err
 		}
+		e.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -141,9 +147,11 @@ func ListMLTunedParamsByMigration(ctx context.Context, migrationID int) ([]MLTun
 	var out []MLTunedParamsByMigrationEntry
 	for rows.Next() {
 		var e MLTunedParamsByMigrationEntry
-		if err := rows.Scan(&e.ID, &e.Model, &e.Format, &e.CreatedAt, &e.Params, &e.Metrics); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&e.ID, &e.Model, &e.Format, &createdAt, &e.Params, &e.Metrics); err != nil {
 			return nil, err
 		}
+		e.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		out = append(out, e)
 	}
 	if err := rows.Err(); err != nil {
