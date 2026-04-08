@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from ml.temporal_features import TEMPORAL_FEATURE_COLS
+
 # Phase 1 trials per algorithm; Phase 2 Optuna trials (when Optuna available)
 PHASE1_TRIALS_PER_ALGORITHM = 5
 PHASE2_TRIALS = 40
@@ -99,9 +101,8 @@ BATTING_FEATURE_COLS = (
         "toss",
         "batting_venue",
         "batting_opposition",
-        "season_id",
-        "match_date_unix",
     ]
+    + TEMPORAL_FEATURE_COLS
     + BAT_SEQ_COLS
 )
 BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
@@ -121,9 +122,8 @@ BOWLING_FEATURE_COLS = (
         "toss",
         "bowling_venue",
         "bowling_opposition",
-        "season_id",
-        "match_date_unix",
     ]
+    + TEMPORAL_FEATURE_COLS
     + BOWL_SEQ_COLS
 )
 BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]

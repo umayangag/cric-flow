@@ -379,13 +379,35 @@ def _extract_feature_importance(
     pipe: Pipeline,
     feature_names: Optional[List[str]],
     n_features: int,
+    X: Optional[np.ndarray] = None,
+    y: Optional[np.ndarray] = None,
+    scoring: Optional[str] = None,
 ) -> Optional[Dict[str, float]]:
-    """Extract feature importance from the best pipeline (tree-based models only).
+    """Extract feature importance from the best pipeline.
 
-    Returns dict {feature_name: importance} or None if not available (e.g. MLP, linear).
+    For tree-based models, uses native ``feature_importances_``.  For non-tree
+    models (MLP, linear) falls back to **permutation importance** when *X*, *y*,
+    and *scoring* are provided.  Returns dict {feature_name: importance} or None.
     """
     est = pipe.named_steps.get("est") if pipe else None
-    return extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
+    result = extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
+    if result is not None:
+        return result
+    # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
+    if X is not None and y is not None and scoring is not None and pipe is not None:
+        try:
+            from sklearn.inspection import permutation_importance as _perm_imp
+
+            perm = _perm_imp(pipe, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=1)
+            imps = perm.importances_mean
+            names = feature_names if feature_names and len(feature_names) == len(imps) else [
+                f"feature_{i}" for i in range(len(imps))
+            ]
+            sorted_idx = np.argsort(-imps)[:n_features]
+            return {names[i]: round(float(imps[i]), 6) for i in sorted_idx if imps[i] > 0}
+        except Exception as e:
+            logger.debug("_extract_feature_importance.permutation_fallback_failed error=%s", e)
+    return None
 
 
 def compute_mlqa_overfitting_stability(
@@ -611,7 +633,35 @@ def _compute_mlqa_audit(
                         f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%."
                     )
         else:
-            findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
+            # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
+            try:
+                from sklearn.inspection import permutation_importance as _perm_imp
+
+                perm = _perm_imp(pipe_fit, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=1)
+                imps = perm.importances_mean
+                if imps is not None and len(imps) > 0:
+                    total = float(np.sum(np.abs(imps)))
+                    if total > 0:
+                        sorted_idx = np.argsort(-imps)[:3]
+                        top_weight = float(imps[sorted_idx[0]] / total)
+                        names = feature_names if feature_names and len(feature_names) == len(imps) else None
+                        top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
+                        if top_weight > top_weight_thresh:
+                            findings.append(
+                                f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}% (permutation)."
+                            )
+                            status_flags.append("sensitivity")
+                        else:
+                            findings.append(
+                                f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}% (permutation)."
+                            )
+                    else:
+                        findings.append("Sensitivity: all permutation importances zero.")
+                else:
+                    findings.append("Sensitivity: permutation importance returned empty result.")
+            except Exception as perm_err:
+                logger.debug("auto_tune.mlqa_audit.permutation_importance_failed error=%s", perm_err)
+                findings.append("Sensitivity: feature importance not available (permutation fallback failed).")
 
         # 5. Complexity
         candidates = report.get("candidates") or []
@@ -698,7 +748,7 @@ def _add_final_report_details(
     )
     feature_names = _mlqa_feature_names(model_kind)
     n_features = X.shape[1]
-    fi = _extract_feature_importance(pipe, feature_names, n_features)
+    fi = _extract_feature_importance(pipe, feature_names, n_features, X=X, y=y, scoring=scoring)
     if fi:
         report["feature_importance"] = fi
     else:

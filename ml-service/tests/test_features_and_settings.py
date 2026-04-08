@@ -42,13 +42,15 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         toss=1,
         venue=7.5,
         opposition=8.5,
-        season=2024,
-        match_date_unix=0.0,
+        month_sin=0.5,
+        month_cos=0.87,
+        day_of_week_sin=0.78,
+        day_of_week_cos=0.62,
     )
     bat_vec = features_mod.batting_feature_vector(bat)
     assert bat_vec[:18] == [0.5, 1.0, 1.2, 1.1, 0.3, 0.4, 2.0, 0.0, 1.0, 1.5, 1.2, 1.0, 1.1, 50.0, 0.1, 0.05, 7.0, 10.0]
-    assert bat_vec[18:31] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024]
-    assert bat_vec[31:] == [0.0] * (len(bat_vec) - 31)  # match_date_unix + seq
+    assert bat_vec[18:34] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 0.5, 0.87, 0.78, 0.62]
+    assert bat_vec[34:] == [0.0] * (len(bat_vec) - 34)  # seq cols default to 0
 
     bowl = SimpleNamespace(
         bowling_mean_w3=0.8,
@@ -81,8 +83,10 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         toss=1,
         bowling_venue=7.5,
         bowling_opposition=8.5,
-        season=2024,
-        match_date_unix=0.0,
+        month_sin=0.5,
+        month_cos=0.87,
+        day_of_week_sin=0.78,
+        day_of_week_cos=0.62,
     )
     bowl_vec = features_mod.bowling_feature_vector(bowl)
     assert bowl_vec[:18] == [
@@ -105,8 +109,8 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         5.0,
         8.0,
     ]
-    assert bowl_vec[18:31] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 2024]
-    assert bowl_vec[31:] == [0.0] * (len(bowl_vec) - 31)
+    assert bowl_vec[18:34] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 0.5, 0.87, 0.78, 0.62]
+    assert bowl_vec[34:] == [0.0] * (len(bowl_vec) - 34)
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):
@@ -188,15 +192,18 @@ def test_fielding_feature_vector(tmp_path):
         fielding_toss=1,
         fielding_venue=0.4,
         fielding_opposition=0.6,
-        fielding_season=2024,
+        month_sin=0.5,
+        month_cos=0.87,
+        day_of_week_sin=0.78,
+        day_of_week_cos=0.62,
     )
     vec = features_mod.fielding_feature_vector(fld)
     names = get_feature_names("fielding")
     assert len(vec) == len(names)
     assert vec[0] == 0.6
     assert vec[1] == 0.3
-    season_idx = names.index("season_id")
-    assert vec[season_idx] == 2024
+    ms_idx = names.index("month_sin")
+    assert vec[ms_idx] == 0.5
 
 
 def test_settings_get_models_dir_precedence(tmp_path, monkeypatch):

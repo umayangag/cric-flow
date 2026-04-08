@@ -375,7 +375,8 @@ def test_load_bowling_csv_minimal(tmp_path):
     df.to_csv(path, index=False)
     X, Y = load_bowling_csv(str(path))
     assert X.shape[0] == 5
-    assert X.shape[1] == len(BOWLING_FEATURE_COLS)
+    # Feature count may exceed BOWLING_FEATURE_COLS when feature_transforms add interactions/log1p.
+    assert X.shape[1] >= len(BOWLING_FEATURE_COLS)
     assert Y.shape[0] == 5
     assert Y.shape[1] >= len(BOWLING_TARGET_COLS)
 
