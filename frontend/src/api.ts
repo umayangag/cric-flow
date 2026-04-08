@@ -177,8 +177,13 @@ export const api = {
     return httpApi(u.toString());
   },
   /** Auto-tune details for a completed migration (selected algorithm, params, metrics, audit). */
-  autoTuneDetailsForMigration(migrationId: number): Promise<AutoTuneRunDetailsResponse> {
-    return httpApi(`/ops/migrations/${encodeURIComponent(String(migrationId))}/auto-tune`);
+  autoTuneDetailsForMigration(
+    migrationId: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<AutoTuneRunDetailsResponse> {
+    return httpApi(`/ops/migrations/${encodeURIComponent(String(migrationId))}/auto-tune`, {
+      signal: options?.signal,
+    });
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');

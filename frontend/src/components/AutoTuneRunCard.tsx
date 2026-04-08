@@ -11,8 +11,7 @@ const AutoTuneRunCard: React.FC<AutoTuneRunCardProps> = ({ run }) => {
   const metrics = (run.metrics ?? {}) as Record<string, unknown>;
   const algorithms = Array.isArray(params.algorithms) ? (params.algorithms as string[]) : [];
   const algorithm =
-    (params.algorithm as string | undefined) ||
-    (Array.isArray(algorithms) && algorithms.length > 0 ? algorithms[0] : undefined);
+    (params.algorithm as string | undefined) || (algorithms.length > 0 ? algorithms[0] : undefined);
   const validationMethod =
     (params.validation_method as string | undefined) ||
     (metrics.validation_method as string | undefined);

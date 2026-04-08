@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AutoTuneRunDetailsEntry } from '../types';
 import { Migration } from '../types';
@@ -112,6 +112,7 @@ const OpsMigrationsTable: React.FC = () => {
   const [autoTuneRuns, setAutoTuneRuns] = useState<AutoTuneRunDetailsEntry[] | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  const detailsAbortRef = useRef<AbortController | null>(null);
   const limit = 10;
 
   const load = useCallback(
@@ -144,6 +145,10 @@ const OpsMigrationsTable: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil((total ?? 0) / limit));
 
   const handleViewDetails = async (m: Migration) => {
+    detailsAbortRef.current?.abort();
+    const ac = new AbortController();
+    detailsAbortRef.current = ac;
+
     setDetailsMigration(m);
     setDetailsError(null);
     setAutoTuneRuns(null);
@@ -151,13 +156,16 @@ const OpsMigrationsTable: React.FC = () => {
     if (m.command === 'ml-auto-tune' && m.status === 'COMPLETED') {
       setDetailsLoading(true);
       try {
-        const res = await api.autoTuneDetailsForMigration(m.id);
+        const res = await api.autoTuneDetailsForMigration(m.id, { signal: ac.signal });
         setAutoTuneRuns(res.runs ?? []);
       } catch (e) {
+        if (ac.signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
         setDetailsError(msg);
       } finally {
-        setDetailsLoading(false);
+        if (detailsAbortRef.current === ac) {
+          setDetailsLoading(false);
+        }
       }
     } else {
       setDetailsLoading(false);
@@ -165,6 +173,8 @@ const OpsMigrationsTable: React.FC = () => {
   };
 
   const closeDetails = () => {
+    detailsAbortRef.current?.abort();
+    detailsAbortRef.current = null;
     setDetailsMigration(null);
     setAutoTuneRuns(null);
     setDetailsError(null);
