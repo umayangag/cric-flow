@@ -9,6 +9,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ml.config import get_match_level_derived_config
+
 MATCH_LEVEL_DERIVED_FEATURE_COLS: tuple[str, ...] = (
     "form_differential",
     "consistency_differential",
@@ -21,7 +23,7 @@ def add_match_level_derived_features_to_df(df: pd.DataFrame) -> None:
 
     - form_differential: bat_form_sum - bowl_form_sum
     - consistency_differential: bat_consistency_sum - bowl_consistency_sum
-    - weather_composite: 0.5 * rain + 0.3 * humidity/100 + 0.2 * cloud/100
+    - weather_composite: configurable weights on rain, humidity/100, cloud/100 (``ml.match_level_derived``).
     """
 
     def _col(name: str) -> pd.Series:
@@ -36,10 +38,16 @@ def add_match_level_derived_features_to_df(df: pd.DataFrame) -> None:
     rain = _col("rain")
     humidity = _col("humidity")
     cloud = _col("cloud")
+    wcfg = get_match_level_derived_config()
+    wr, wh, wc = (
+        wcfg["weather_composite_rain_weight"],
+        wcfg["weather_composite_humidity_weight"],
+        wcfg["weather_composite_cloud_weight"],
+    )
 
     df["form_differential"] = bat_form - bowl_form
     df["consistency_differential"] = bat_cons - bowl_cons
-    df["weather_composite"] = 0.5 * rain + 0.3 * (humidity / 100.0) + 0.2 * (cloud / 100.0)
+    df["weather_composite"] = wr * rain + wh * (humidity / 100.0) + wc * (cloud / 100.0)
 
 
 def compute_match_level_derived_features_scalars(
@@ -64,7 +72,13 @@ def compute_match_level_derived_features_scalars(
     bf, bwf = _f(bat_form_sum), _f(bowl_form_sum)
     bc, bwc = _f(bat_consistency_sum), _f(bowl_consistency_sum)
     r, h, c = _f(rain), _f(humidity), _f(cloud)
+    wcfg = get_match_level_derived_config()
+    wr, wh, wcloud = (
+        wcfg["weather_composite_rain_weight"],
+        wcfg["weather_composite_humidity_weight"],
+        wcfg["weather_composite_cloud_weight"],
+    )
     form_differential = bf - bwf
     consistency_differential = bc - bwc
-    weather_composite = 0.5 * r + 0.3 * (h / 100.0) + 0.2 * (c / 100.0)
+    weather_composite = wr * r + wh * (h / 100.0) + wcloud * (c / 100.0)
     return form_differential, consistency_differential, weather_composite

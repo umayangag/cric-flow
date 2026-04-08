@@ -7,6 +7,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
     explained_variance_score,
@@ -396,10 +397,13 @@ def _extract_feature_importance(
     # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
     if X is not None and y is not None and scoring is not None and pipe is not None:
         try:
-            from sklearn.inspection import permutation_importance as _perm_imp
-
-            n_jobs = _effective_n_jobs(get_tuning_config())
-            perm = _perm_imp(pipe, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=n_jobs)
+            tuning = get_tuning_config()
+            n_jobs = _effective_n_jobs(tuning)
+            n_repeats = int(tuning["permutation_importance_n_repeats"])
+            dec_places = int(tuning["permutation_importance_decimal_places"])
+            perm = permutation_importance(
+                pipe, X, y, scoring=scoring, n_repeats=n_repeats, random_state=42, n_jobs=n_jobs
+            )
             imps = perm.importances_mean
             names = (
                 feature_names
@@ -407,7 +411,7 @@ def _extract_feature_importance(
                 else [f"feature_{i}" for i in range(len(imps))]
             )
             sorted_idx = np.argsort(-imps)[:n_features]
-            return {names[i]: round(float(imps[i]), 6) for i in sorted_idx if imps[i] > 0}
+            return {names[i]: round(float(imps[i]), dec_places) for i in sorted_idx if imps[i] > 0}
         except Exception as e:
             logger.debug("_extract_feature_importance.permutation_fallback_failed error=%s", e)
     return None
@@ -563,6 +567,7 @@ def _compute_mlqa_audit(
         dip_low = mlqa["bias_dip_low"]
         dip_high = mlqa["bias_dip_high"]
         top_weight_thresh = mlqa["sensitivity_top_weight_threshold"]
+        sensitivity_top_n = int(mlqa["sensitivity_top_n_features"])
 
         # 1. Overfitting: train vs val delta (relative to score magnitude)
         pipe_fit = clone(pipe)
@@ -607,7 +612,7 @@ def _compute_mlqa_audit(
                 findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [{dip_low}, {dip_high}].")
                 bias_report = "Model treats subgroups equitably within defined fairness bounds."
 
-        # 4. Sensitivity: top 3 features
+        # 4. Sensitivity: top-N features (ml.mlqa.sensitivity_top_n_features)
         est = pipe.named_steps.get("est")
         imps = None
         if est is not None:
@@ -622,7 +627,7 @@ def _compute_mlqa_audit(
                 imps = np.mean(imps, axis=0)
             total = float(np.sum(imps))
             if total > 0:
-                sorted_idx = np.argsort(-imps)[:3]
+                sorted_idx = np.argsort(-imps)[:sensitivity_top_n]
                 top_weight = float(imps[sorted_idx[0]] / total)
                 names = feature_names if feature_names and len(feature_names) == len(imps) else None
                 top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
@@ -638,15 +643,17 @@ def _compute_mlqa_audit(
         else:
             # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
             try:
-                from sklearn.inspection import permutation_importance as _perm_imp
-
-                n_jobs = _effective_n_jobs(get_tuning_config())
-                perm = _perm_imp(pipe_fit, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=n_jobs)
+                tuning = get_tuning_config()
+                n_jobs = _effective_n_jobs(tuning)
+                n_repeats = int(tuning["permutation_importance_n_repeats"])
+                perm = permutation_importance(
+                    pipe_fit, X, y, scoring=scoring, n_repeats=n_repeats, random_state=42, n_jobs=n_jobs
+                )
                 imps = perm.importances_mean
                 if imps is not None and len(imps) > 0:
                     total = float(np.sum(np.abs(imps)))
                     if total > 0:
-                        sorted_idx = np.argsort(-imps)[:3]
+                        sorted_idx = np.argsort(-imps)[:sensitivity_top_n]
                         top_imp = float(imps[sorted_idx[0]])
                         top_weight = top_imp / total if top_imp > 0 else 0.0
                         names = feature_names if feature_names and len(feature_names) == len(imps) else None

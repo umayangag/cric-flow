@@ -12,6 +12,8 @@ from ml.config import (
     default_artifacts_dir,
     default_go_app_export_dir,
     get_feature_defaults,
+    get_match_level_derived_config,
+    get_mlqa_config,
     get_pipeline_common_config,
     get_prediction_defaults,
     get_training_data_fetch_timeout_sec,
@@ -371,6 +373,24 @@ def test_get_tuning_config(monkeypatch):
     assert "random_state" in cfg
     assert "scoring" in cfg
     assert "search_space" in cfg
+    assert cfg["permutation_importance_n_repeats"] >= 1
+    assert cfg["permutation_importance_decimal_places"] >= 0
+
+
+def test_get_match_level_derived_config_default_weights() -> None:
+    """get_match_level_derived_config returns weather composite weights from merged config."""
+    config_mod._cached = None
+    w = get_match_level_derived_config()
+    assert w["weather_composite_rain_weight"] == pytest.approx(0.5)
+    assert w["weather_composite_humidity_weight"] == pytest.approx(0.3)
+    assert w["weather_composite_cloud_weight"] == pytest.approx(0.2)
+
+
+def test_get_mlqa_config_includes_sensitivity_top_n() -> None:
+    """get_mlqa_config exposes sensitivity_top_n_features for MLQA audit."""
+    config_mod._cached = None
+    mlqa = get_mlqa_config()
+    assert mlqa["sensitivity_top_n_features"] >= 1
 
 
 def test_get_tuning_search_space_rf(monkeypatch):
