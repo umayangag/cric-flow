@@ -150,8 +150,8 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
         logger.debug("model_stats.mlqa_config_failed", error=str(e))
         return original
 
-    delta_thresh = float(mlqa_cfg.get("overfitting_delta_threshold", 0.08))
-    std_thresh = float(mlqa_cfg.get("stability_fold_std_threshold", 0.05))
+    delta_thresh = float(mlqa_cfg.get("overfitting_delta_threshold", 0.10))
+    std_thresh = float(mlqa_cfg.get("stability_fold_std_threshold", 0.08))
     dip_low = float(mlqa_cfg.get("bias_dip_low", 0.8))
     dip_high = float(mlqa_cfg.get("bias_dip_high", 1.25))
     top_weight_thresh = float(mlqa_cfg.get("sensitivity_top_weight_threshold", 0.70))
@@ -160,27 +160,46 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
     status_flags: List[str] = []
     bias_report = original.get("bias_report", "No protected groups defined; fairness audit skipped.")
 
-    # 1. Overfitting: train–validation delta vs threshold
+    # Reference score for relative threshold computation (same logic as cv_metrics._to_relative).
+    val_score = report.get("best_cv_score")
+    score_magnitude = abs(float(val_score)) if val_score is not None else 0.0
+
+    def _to_relative(absolute_value: float) -> float:
+        """Convert absolute metric to relative fraction of score magnitude."""
+        if score_magnitude < 1e-9:
+            return float("inf") if abs(absolute_value) > 1e-9 else 0.0
+        return abs(absolute_value) / score_magnitude
+
+    # 1. Overfitting: train–validation delta vs relative threshold
     overfitting_risk = False
     if delta is not None:
         delta_f = float(delta)
-        overfitting_risk = delta_f > delta_thresh
+        rel_delta = _to_relative(delta_f)
+        overfitting_risk = rel_delta > delta_thresh
         if overfitting_risk:
-            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta_f:.4f} (>{delta_thresh}).")
+            findings.append(
+                f"High Overfitting Risk: Train–Validation Δ = {delta_f:.4f} "
+                f"(relative {rel_delta:.2%} > {delta_thresh:.0%})."
+            )
             status_flags.append("overfitting")
         else:
-            findings.append(f"Overfitting check OK: Δ = {delta_f:.4f} ≤ {delta_thresh}.")
+            findings.append(
+                f"Overfitting check OK: Δ = {delta_f:.4f} (relative {rel_delta:.2%} ≤ {delta_thresh:.0%})."
+            )
 
-    # 2. Stability: CV fold std vs threshold
+    # 2. Stability: CV fold std vs relative threshold
     unstable = False
     if fold_std is not None:
         fold_std_f = float(fold_std)
-        unstable = fold_std_f > std_thresh
+        rel_std = _to_relative(fold_std_f)
+        unstable = rel_std > std_thresh
         if unstable:
-            findings.append(f"Unstable: CV fold σ = {fold_std_f:.4f} (>{std_thresh}).")
+            findings.append(
+                f"Unstable: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%} > {std_thresh:.0%})."
+            )
             status_flags.append("unstable")
         else:
-            findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f}.")
+            findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%}).")
 
     # 3. Bias & Fairness: disparate impact ratio
     if dip is not None:
@@ -231,14 +250,22 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
     # Build updated checks block.
     new_checks: Dict[str, Any] = {}
     if delta is not None:
+        delta_f = float(delta)
+        rel_delta = _to_relative(delta_f)
         new_checks["overfitting"] = {
-            "delta": float(delta),
+            "delta": delta_f,
+            "relative_delta": round(rel_delta, 4),
+            "threshold": delta_thresh,
             "flagged": overfitting_risk,
         }
     if fold_std is not None or cv_fold_scores is not None:
         stab_block: Dict[str, Any] = {}
         if fold_std is not None:
-            stab_block["cv_std"] = float(fold_std)
+            fold_std_f = float(fold_std)
+            rel_std = _to_relative(fold_std_f)
+            stab_block["cv_std"] = fold_std_f
+            stab_block["relative_cv_std"] = round(rel_std, 4)
+            stab_block["threshold"] = std_thresh
             stab_block["flagged"] = unstable
         if cv_fold_scores is not None:
             # Keep any existing scores for UI display.

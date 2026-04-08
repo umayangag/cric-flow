@@ -74,7 +74,15 @@ function TuningInsights({
       value: mlqa?.checks?.stability?.cv_std,
       condition: (v) => typeof v === 'number',
       format: (v) => (v as number).toFixed(4),
-      hint: 'stability; >0.05 = unstable',
+      hint: (() => {
+        const stab = mlqa?.checks?.stability;
+        if (stab?.relative_cv_std != null && stab?.threshold != null) {
+          const pct = (stab.relative_cv_std * 100).toFixed(1);
+          const thresh = (stab.threshold * 100).toFixed(0);
+          return `relative ${pct}% of score; >${thresh}% = unstable`;
+        }
+        return 'stability (relative to score magnitude)';
+      })(),
     },
     {
       label: 'CV fold scores',
@@ -219,14 +227,14 @@ export const MLModelRowDetails: React.FC<MLModelRowDetailsProps> = ({ model }) =
               <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
                 {mlqa.checks.overfitting && (
                   <Chip
-                    label={`Δ=${mlqa.checks.overfitting.delta} ${mlqa.checks.overfitting.flagged ? '⚠' : '✓'}`}
+                    label={`Δ=${mlqa.checks.overfitting.delta}${mlqa.checks.overfitting.relative_delta != null ? ` (${(mlqa.checks.overfitting.relative_delta * 100).toFixed(1)}%)` : ''} ${mlqa.checks.overfitting.flagged ? '⚠' : '✓'}`}
                     size="small"
                     variant="outlined"
                   />
                 )}
                 {mlqa.checks.stability && (
                   <Chip
-                    label={`σ=${mlqa.checks.stability.cv_std} ${mlqa.checks.stability.flagged ? '⚠' : '✓'}`}
+                    label={`σ=${mlqa.checks.stability.cv_std}${mlqa.checks.stability.relative_cv_std != null ? ` (${(mlqa.checks.stability.relative_cv_std * 100).toFixed(1)}%)` : ''} ${mlqa.checks.stability.flagged ? '⚠' : '✓'}`}
                     size="small"
                     variant="outlined"
                   />

@@ -112,9 +112,11 @@ export type MLQAAudit = {
   bias_report: string;
   final_verdict: string;
   checks?: {
-    overfitting?: { delta: number; flagged: boolean };
+    overfitting?: { delta: number; relative_delta?: number; threshold?: number; flagged: boolean };
     stability?: {
       cv_std: number;
+      relative_cv_std?: number;
+      threshold?: number;
       flagged: boolean;
       cv_fold_scores?: number[];
     };
