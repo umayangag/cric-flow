@@ -396,6 +396,7 @@ export type Migration = {
 
 // --- Ops: Auto-tune migration details ---
 export type AutoTuneRunDetailsEntry = {
+  id: number;
   model: string;
   format: string;
   created_at: string;

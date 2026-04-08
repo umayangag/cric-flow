@@ -289,12 +289,7 @@ const OpsMigrationsTable: React.FC = () => {
                   !detailsError &&
                   autoTuneRuns &&
                   autoTuneRuns.length > 0 &&
-                  autoTuneRuns.map((run) => (
-                    <AutoTuneRunCard
-                      key={`${run.model}-${run.format}-${run.created_at}`}
-                      run={run}
-                    />
-                  ))}
+                  autoTuneRuns.map((run) => <AutoTuneRunCard key={run.id} run={run} />)}
               </Box>
             )}
 

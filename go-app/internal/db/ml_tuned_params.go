@@ -113,6 +113,7 @@ func ListLatestMLTunedParams(ctx context.Context) ([]MLTunedParamsEntry, error) 
 // MLTunedParamsByMigrationEntry holds one row from ml_tuned_params joined by data_migration_id.
 // Used by ops/migrations/{id}/auto-tune to show per-migration auto-tune details.
 type MLTunedParamsByMigrationEntry struct {
+	ID        int
 	Model     string
 	Format    string
 	CreatedAt string
@@ -127,7 +128,7 @@ func ListMLTunedParamsByMigration(ctx context.Context, migrationID int) ([]MLTun
 		return []MLTunedParamsByMigrationEntry{}, nil
 	}
 	rows, err := Pool.Query(ctx, `
-		SELECT model, format, created_at, params, metrics
+		SELECT id, model, format, created_at, params, metrics
 		FROM ml_tuned_params
 		WHERE data_migration_id = $1
 		ORDER BY created_at DESC, model, format
@@ -140,7 +141,7 @@ func ListMLTunedParamsByMigration(ctx context.Context, migrationID int) ([]MLTun
 	var out []MLTunedParamsByMigrationEntry
 	for rows.Next() {
 		var e MLTunedParamsByMigrationEntry
-		if err := rows.Scan(&e.Model, &e.Format, &e.CreatedAt, &e.Params, &e.Metrics); err != nil {
+		if err := rows.Scan(&e.ID, &e.Model, &e.Format, &e.CreatedAt, &e.Params, &e.Metrics); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

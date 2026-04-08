@@ -93,11 +93,12 @@ func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type responseRun struct {
-		Model     string         `json:"model"`
-		Format    string         `json:"format"`
-		CreatedAt string         `json:"created_at"`
-		Params    map[string]any `json:"params,omitempty"`
-		Metrics   map[string]any `json:"metrics,omitempty"`
+		ID        int             `json:"id"`
+		Model     string          `json:"model"`
+		Format    string          `json:"format"`
+		CreatedAt string          `json:"created_at"`
+		Params    json.RawMessage `json:"params,omitempty"`
+		Metrics   json.RawMessage `json:"metrics,omitempty"`
 	}
 
 	resp := struct {
@@ -109,36 +110,37 @@ func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) 
 	}
 
 	for _, row := range rows {
-		var paramsMap map[string]any
-		var metricsMap map[string]any
-
+		var paramsRaw, metricsRaw json.RawMessage
 		if len(row.Params) > 0 {
-			if err := json.Unmarshal(row.Params, &paramsMap); err != nil {
+			if json.Valid(row.Params) {
+				paramsRaw = row.Params
+			} else {
 				slog.Warn(
-					"failed to unmarshal params from ml_tuned_params",
+					"invalid JSON in params from ml_tuned_params",
 					slog.Int("migration_id", migrationID),
-					slog.Any("err", err),
+					slog.Int("row_id", row.ID),
 				)
-				paramsMap = nil
 			}
 		}
 		if len(row.Metrics) > 0 {
-			if err := json.Unmarshal(row.Metrics, &metricsMap); err != nil {
+			if json.Valid(row.Metrics) {
+				metricsRaw = row.Metrics
+			} else {
 				slog.Warn(
-					"failed to unmarshal metrics from ml_tuned_params",
+					"invalid JSON in metrics from ml_tuned_params",
 					slog.Int("migration_id", migrationID),
-					slog.Any("err", err),
+					slog.Int("row_id", row.ID),
 				)
-				metricsMap = nil
 			}
 		}
 
 		resp.Runs = append(resp.Runs, responseRun{
+			ID:        row.ID,
 			Model:     row.Model,
 			Format:    row.Format,
 			CreatedAt: row.CreatedAt,
-			Params:    paramsMap,
-			Metrics:   metricsMap,
+			Params:    paramsRaw,
+			Metrics:   metricsRaw,
 		})
 	}
 
