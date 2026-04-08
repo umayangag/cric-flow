@@ -48,12 +48,10 @@ func (f *fakeSelector) SelectTeam(
 func (f *fakeSelector) SelectTeamFromCSV(
 	_ context.Context,
 	poolPath string,
-	matchID int64,
-	format, season string,
 	opts selection.Options,
 ) (selection.Result, error) {
 	f.calledCSV++
-	f.lastPool, f.lastMatch, f.lastFormat, f.lastSeason, f.lastOpts = poolPath, matchID, format, season, opts
+	f.lastPool, f.lastOpts = poolPath, opts
 	return f.res, f.err
 }
 
@@ -101,9 +99,6 @@ func TestRunner_FromCSV_Success(t *testing.T) {
 	opts := svc.Options{
 		FromDB:   false,
 		PoolPath: "/tmp/pool.csv",
-		MatchID:  1,
-		Format:   "ODI",
-		Season:   "2019",
 		TeamSize: 11,
 	}
 	require.NoError(t, r.Run(context.Background(), opts, buf))
@@ -111,7 +106,4 @@ func TestRunner_FromCSV_Success(t *testing.T) {
 	require.Equal(t, 1, fs.calledCSV)
 	require.Equal(t, 0, fs.calledDB)
 	require.Equal(t, "/tmp/pool.csv", fs.lastPool)
-	require.Equal(t, int64(1), fs.lastMatch)
-	require.Equal(t, "ODI", fs.lastFormat)
-	require.Equal(t, "2019", fs.lastSeason)
 }
