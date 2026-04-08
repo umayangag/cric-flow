@@ -17,7 +17,6 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-
 # ---------------------------------------------------------------------------
 # P0: Temporal features (ml.temporal_features)
 # ---------------------------------------------------------------------------
@@ -63,12 +62,14 @@ class TestTemporalFeatures:
 
     def test_add_temporal_features_to_df_from_date(self):
         """add_temporal_features_to_df prefers match_date over match_date_unix."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
+        from ml.temporal_features import add_temporal_features_to_df
 
-        df = pd.DataFrame({
-            "match_date": ["2024-03-15", "2024-06-20"],
-            "match_date_unix": [0.0, 0.0],  # should be ignored
-        })
+        df = pd.DataFrame(
+            {
+                "match_date": ["2024-03-15", "2024-06-20"],
+                "match_date_unix": [0.0, 0.0],  # should be ignored
+            }
+        )
         add_temporal_features_to_df(df)
         # March month_sin should be ~1.0, not 0.0 (which unix=0 would give)
         assert abs(df["month_sin"].iloc[0] - math.sin(2 * math.pi * 3 / 12)) < 1e-6
@@ -86,12 +87,14 @@ class TestTemporalFeatures:
         """replace_temporal_columns with drop_replaced removes old columns."""
         from ml.temporal_features import TEMPORAL_FEATURE_COLS, replace_temporal_columns
 
-        df = pd.DataFrame({
-            "match_date_unix": [1710460800.0],
-            "season_id": [2024],
-            "season": [2024],
-            "other": [1],
-        })
+        df = pd.DataFrame(
+            {
+                "match_date_unix": [1710460800.0],
+                "season_id": [2024],
+                "season": [2024],
+                "other": [1],
+            }
+        )
         replace_temporal_columns(df, date_col=None, drop_replaced=True)
         assert "match_date_unix" not in df.columns
         assert "season_id" not in df.columns
@@ -164,15 +167,17 @@ class TestDerivedFeatures:
         """_add_derived_features computes form_differential, consistency_differential, weather_composite."""
         from ml.train_extras import _add_derived_features
 
-        df = pd.DataFrame({
-            "bat_form_sum": [10.0, 5.0],
-            "bowl_form_sum": [3.0, 8.0],
-            "bat_consistency_sum": [7.0, 4.0],
-            "bowl_consistency_sum": [2.0, 6.0],
-            "rain": [1.0, 0.0],
-            "humidity": [80.0, 50.0],
-            "cloud": [60.0, 20.0],
-        })
+        df = pd.DataFrame(
+            {
+                "bat_form_sum": [10.0, 5.0],
+                "bowl_form_sum": [3.0, 8.0],
+                "bat_consistency_sum": [7.0, 4.0],
+                "bowl_consistency_sum": [2.0, 6.0],
+                "rain": [1.0, 0.0],
+                "humidity": [80.0, 50.0],
+                "cloud": [60.0, 20.0],
+            }
+        )
         _add_derived_features(df)
         # form_differential = bat - bowl
         assert df["form_differential"].iloc[0] == pytest.approx(7.0)
@@ -188,15 +193,17 @@ class TestDerivedFeatures:
         """_add_derived_features in innings computes same derived features."""
         from ml.train_innings import _add_derived_features
 
-        df = pd.DataFrame({
-            "bat_form_sum": [12.0],
-            "bowl_form_sum": [4.0],
-            "bat_consistency_sum": [8.0],
-            "bowl_consistency_sum": [3.0],
-            "rain": [0.0],
-            "humidity": [60.0],
-            "cloud": [40.0],
-        })
+        df = pd.DataFrame(
+            {
+                "bat_form_sum": [12.0],
+                "bowl_form_sum": [4.0],
+                "bat_consistency_sum": [8.0],
+                "bowl_consistency_sum": [3.0],
+                "rain": [0.0],
+                "humidity": [60.0],
+                "cloud": [40.0],
+            }
+        )
         _add_derived_features(df)
         assert df["form_differential"].iloc[0] == pytest.approx(8.0)
         assert df["consistency_differential"].iloc[0] == pytest.approx(5.0)
@@ -300,9 +307,7 @@ class TestPermutationImportanceFallback:
         fi_none = _extract_feature_importance(pipe, ["a", "b", "c", "d"], 4)
         assert fi_none is None
         # With X/y/scoring: returns permutation importance
-        fi = _extract_feature_importance(
-            pipe, ["a", "b", "c", "d"], 4, X=X, y=y, scoring="neg_mean_absolute_error"
-        )
+        fi = _extract_feature_importance(pipe, ["a", "b", "c", "d"], 4, X=X, y=y, scoring="neg_mean_absolute_error")
         assert fi is not None
         assert isinstance(fi, dict)
 
@@ -319,9 +324,7 @@ class TestPermutationImportanceFallback:
         pipe.fit(X, y)
         cv = KFold(n_splits=3, shuffle=True, random_state=42)
         report = {"best_cv_score": -0.4}
-        audit = _compute_mlqa_audit(
-            report, pipe, X, y, cv, "neg_mean_absolute_error", "regression"
-        )
+        audit = _compute_mlqa_audit(report, pipe, X, y, cv, "neg_mean_absolute_error", "regression")
         # Should have sensitivity finding (permutation-based), not "not available"
         sensitivity_findings = [f for f in audit.get("key_findings", []) if "Sensitivity" in f]
         assert len(sensitivity_findings) > 0
@@ -369,9 +372,9 @@ class TestReconciliationTemporal:
         fd_idx = INNINGS_FEATURE_COLS.index("form_differential")
         cd_idx = INNINGS_FEATURE_COLS.index("consistency_differential")
         wc_idx = INNINGS_FEATURE_COLS.index("weather_composite")
-        assert X[0, fd_idx] == pytest.approx(6.0)   # 10 - 4
-        assert X[0, cd_idx] == pytest.approx(5.0)   # 8 - 3
-        assert X[0, wc_idx] == pytest.approx(0.0)   # all weather defaults = 0
+        assert X[0, fd_idx] == pytest.approx(6.0)  # 10 - 4
+        assert X[0, cd_idx] == pytest.approx(5.0)  # 8 - 3
+        assert X[0, wc_idx] == pytest.approx(0.0)  # all weather defaults = 0
 
     def test_build_innings_feature_vector_no_season_id(self):
         """build_innings_feature_vector does not accept season_id parameter."""

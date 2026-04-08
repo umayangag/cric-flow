@@ -400,9 +400,11 @@ def _extract_feature_importance(
 
             perm = _perm_imp(pipe, X, y, scoring=scoring, n_repeats=5, random_state=42, n_jobs=1)
             imps = perm.importances_mean
-            names = feature_names if feature_names and len(feature_names) == len(imps) else [
-                f"feature_{i}" for i in range(len(imps))
-            ]
+            names = (
+                feature_names
+                if feature_names and len(feature_names) == len(imps)
+                else [f"feature_{i}" for i in range(len(imps))]
+            )
             sorted_idx = np.argsort(-imps)[:n_features]
             return {names[i]: round(float(imps[i]), 6) for i in sorted_idx if imps[i] > 0}
         except Exception as e:

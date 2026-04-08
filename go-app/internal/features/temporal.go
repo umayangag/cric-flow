@@ -35,9 +35,9 @@ func TemporalFeaturesFromUnix(unixSec float64) (monthSin, monthCos, dowSin, dowC
 func TemporalFeatureMap(t time.Time) map[string]float64 {
 	ms, mc, ds, dc := TemporalFeatures(t)
 	return map[string]float64{
-		"month_sin":        ms,
-		"month_cos":        mc,
-		"day_of_week_sin":  ds,
-		"day_of_week_cos":  dc,
+		"month_sin":       ms,
+		"month_cos":       mc,
+		"day_of_week_sin": ds,
+		"day_of_week_cos": dc,
 	}
 }

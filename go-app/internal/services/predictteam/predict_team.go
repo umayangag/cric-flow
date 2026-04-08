@@ -1110,23 +1110,23 @@ func tryServerSideTeamOptimization(
 		t1OppID, t2OppID := opp2IDVal, opp1IDVal
 		ms, mc, ds, dc := features.TemporalFeaturesFromUnix(matchDateUnix)
 		return map[string]float64{
-				"format_id":                 float64(formatID),
-				"venue_id":                  float64(venueIDVal),
-				"month_sin":                 ms,
-				"month_cos":                 mc,
-				"day_of_week_sin":           ds,
-				"day_of_week_cos":           dc,
-				"team1_opposition_id":       float64(t1OppID),
-				"team2_opposition_id":       float64(t2OppID),
-				"toss_winner_opposition_id": 0,
-				"temp":                      float64(temp),
-				"wind":                      float64(wind),
-				"rain":                      float64(rain),
-				"humidity":                  float64(humidity),
-				"cloud":                     float64(cloud),
-				"pressure":                  float64(pressure),
-				"viscosity":                 0,
-			}
+			"format_id":                 float64(formatID),
+			"venue_id":                  float64(venueIDVal),
+			"month_sin":                 ms,
+			"month_cos":                 mc,
+			"day_of_week_sin":           ds,
+			"day_of_week_cos":           dc,
+			"team1_opposition_id":       float64(t1OppID),
+			"team2_opposition_id":       float64(t2OppID),
+			"toss_winner_opposition_id": 0,
+			"temp":                      float64(temp),
+			"wind":                      float64(wind),
+			"rain":                      float64(rain),
+			"humidity":                  float64(humidity),
+			"cloud":                     float64(cloud),
+			"pressure":                  float64(pressure),
+			"viscosity":                 0,
+		}
 	}
 
 	pool1Opt := buildOptPoolPlayers(tsPool1, nameToID1, allFeats)

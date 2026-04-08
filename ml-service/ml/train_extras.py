@@ -51,25 +51,30 @@ EXTRAS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES] 
 # venue, season, weather, and match-level aggregates of player consistency/form.
 # Derived feature columns computed from base columns during training.
 EXTRAS_DERIVED_COLS = [
-    "form_differential",        # bat_form_sum - bowl_form_sum
-    "consistency_differential", # bat_consistency_sum - bowl_consistency_sum
-    "weather_composite",        # weighted combination of rain + humidity + cloud
+    "form_differential",  # bat_form_sum - bowl_form_sum
+    "consistency_differential",  # bat_consistency_sum - bowl_consistency_sum
+    "weather_composite",  # weighted combination of rain + humidity + cloud
 ]
 
-EXTRAS_FEATURE_COLS = [
-    "venue_id",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
-    "bat_consistency_sum",
-    "bowl_consistency_sum",
-    "bat_form_sum",
-    "bowl_form_sum",
-] + TEMPORAL_FEATURE_COLS + EXTRAS_DERIVED_COLS + EXTRAS_FORMAT_ONE_HOT_COLS
+EXTRAS_FEATURE_COLS = (
+    [
+        "venue_id",
+        "temp",
+        "wind",
+        "rain",
+        "humidity",
+        "cloud",
+        "pressure",
+        "viscosity",
+        "bat_consistency_sum",
+        "bowl_consistency_sum",
+        "bat_form_sum",
+        "bowl_form_sum",
+    ]
+    + TEMPORAL_FEATURE_COLS
+    + EXTRAS_DERIVED_COLS
+    + EXTRAS_FORMAT_ONE_HOT_COLS
+)
 EXTRAS_TARGET_COL = "total_extras"
 
 
@@ -80,6 +85,7 @@ def _add_derived_features(df: pd.DataFrame) -> None:
     - consistency_differential: bat_consistency_sum - bowl_consistency_sum
     - weather_composite: 0.5 * rain + 0.3 * humidity/100 + 0.2 * cloud/100 (normalised 0–1 scale)
     """
+
     def _col(name: str) -> pd.Series:
         if name in df.columns:
             return pd.to_numeric(df[name], errors="coerce").fillna(0.0)

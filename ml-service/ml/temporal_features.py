@@ -51,8 +51,8 @@ def compute_temporal_from_unix(unix_seconds: np.ndarray) -> dict[str, np.ndarray
     ts = np.asarray(unix_seconds, dtype=np.float64)
     # Convert to pandas Timestamps for reliable month / day-of-week extraction.
     dt_index = pd.to_datetime(ts, unit="s", utc=True)
-    months = np.array(dt_index.month, dtype=np.float64)       # 1–12
-    dows = np.array(dt_index.dayofweek, dtype=np.float64)     # 0=Mon … 6=Sun
+    months = np.array(dt_index.month, dtype=np.float64)  # 1–12
+    dows = np.array(dt_index.dayofweek, dtype=np.float64)  # 0=Mon … 6=Sun
 
     two_pi = 2.0 * math.pi
     return {
