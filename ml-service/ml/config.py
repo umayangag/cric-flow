@@ -518,8 +518,8 @@ def get_mlqa_config() -> Dict[str, Any]:
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
     return {
-        "overfitting_delta_threshold": float(mlqa.get("overfitting_delta_threshold", 0.08)),
-        "stability_fold_std_threshold": float(mlqa.get("stability_fold_std_threshold", 0.05)),
+        "overfitting_delta_threshold": float(mlqa.get("overfitting_delta_threshold", 0.10)),
+        "stability_fold_std_threshold": float(mlqa.get("stability_fold_std_threshold", 0.08)),
         "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
         "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
         "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),

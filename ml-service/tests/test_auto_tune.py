@@ -673,3 +673,86 @@ def test_prior_params_to_optuna_regression():
     assert out["max_depth"] == 5
     out2 = _prior_params_to_optuna_regression("mlp", {"hidden_layer_sizes": [64, 32]})
     assert out2["hidden_layer_sizes"] == (64, 32)
+
+
+# ---------------------------------------------------------------------------
+# Tests for relative threshold logic (_to_relative, penalized score, audit)
+# ---------------------------------------------------------------------------
+
+
+def test_to_relative_basic():
+    """_to_relative computes abs(value)/abs(reference) correctly."""
+    from ml.tuning.cv_metrics import _to_relative
+
+    # 0.12 std on a score of -7.9 → ~1.5%
+    assert abs(_to_relative(0.12, -7.9) - 0.12 / 7.9) < 1e-9
+    # Large delta on large score is small relative
+    assert abs(_to_relative(1.0, -20.0) - 0.05) < 1e-9
+    # Zero reference returns 0.0 (safe division)
+    assert _to_relative(0.5, 0.0) == 0.0
+    # Positive reference works the same
+    assert abs(_to_relative(0.1, 2.0) - 0.05) < 1e-9
+
+
+def test_to_relative_near_zero_reference():
+    """_to_relative returns 0.0 for near-zero reference scores."""
+    from ml.tuning.cv_metrics import _to_relative
+
+    assert _to_relative(0.01, 1e-12) == 0.0
+
+
+def test_penalized_score_uses_relative_thresholds():
+    """compute_mlqa_penalized_score uses relative thresholds so large-magnitude scores pass."""
+    from ml.tuning.cv_metrics import compute_mlqa_penalized_score
+
+    pipe = _minimal_model_only_pipeline(regression=True)
+    X = np.random.RandomState(42).rand(50, 5)
+    y = np.random.RandomState(43).rand(50)
+
+    # Simulate a model with mean_score=-8.0, fold_std=0.12, train_score=-7.5
+    # Absolute delta=0.5, relative delta=0.5/8.0=6.25% (under 10% threshold)
+    # Absolute std=0.12, relative std=0.12/8.0=1.5% (under 8% threshold)
+    # Should PASS with relative thresholds
+    pass_audit, violation, penalized = compute_mlqa_penalized_score(
+        pipe, X, y, "neg_mean_absolute_error",
+        mean_score=-8.0, fold_std=0.12, train_score=-7.5,
+    )
+    assert pass_audit is True
+    assert violation == 0.0
+    assert penalized == -8.0
+
+
+def test_penalized_score_fails_with_high_relative_delta():
+    """compute_mlqa_penalized_score fails when relative delta exceeds threshold."""
+    from ml.tuning.cv_metrics import compute_mlqa_penalized_score
+
+    pipe = _minimal_model_only_pipeline(regression=True)
+    X = np.random.RandomState(42).rand(50, 5)
+    y = np.random.RandomState(43).rand(50)
+
+    # mean_score=-2.0, train_score=-0.1 → delta=1.9, relative=1.9/2.0=95% (way over 10%)
+    pass_audit, violation, penalized = compute_mlqa_penalized_score(
+        pipe, X, y, "neg_mean_absolute_error",
+        mean_score=-2.0, fold_std=0.01, train_score=-0.1,
+    )
+    assert pass_audit is False
+    assert violation > 0.0
+    assert penalized < -2.0
+
+
+def test_mlqa_audit_uses_relative_thresholds():
+    """_compute_mlqa_audit with large-magnitude scores passes when relative metrics are small."""
+    m = _get_module()
+    est = RandomForestRegressor(n_estimators=10, random_state=42)
+    pipe = m._build_pipeline_single_regression(est)
+    X = np.random.RandomState(42).rand(80, 5)
+    y = np.random.RandomState(43).rand(80) * 10  # larger target → larger magnitude scores
+    cv = KFold(n_splits=3, shuffle=True, random_state=42)
+    report = {"best_cv_score": -2.5, "candidates": [{"algorithm": "rf", "best_score": -2.5}]}
+    audit = m._compute_mlqa_audit(
+        report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", ["f0", "f1", "f2", "f3", "f4"]
+    )
+    # With relative thresholds, the audit checks should include relative info
+    if "checks" in audit:
+        assert "relative_delta" in audit["checks"]["overfitting"]
+        assert "relative_cv_std" in audit["checks"]["stability"]

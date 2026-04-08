@@ -49,13 +49,29 @@ _MLQA_THRESHOLD_FALLBACK_MSG = "MLQA config not found or invalid, using default 
 
 
 def _mlqa_overfitting_and_stability_thresholds() -> Tuple[float, float]:
-    """Return (overfitting_delta_threshold, stability_fold_std_threshold) from MLQA or hard-coded defaults."""
+    """Return (overfitting_delta_threshold, stability_fold_std_threshold) from MLQA or hard-coded defaults.
+
+    Thresholds are *relative* (fraction of score magnitude). Default 0.10 means 10%.
+    """
     try:
         mlqa = get_mlqa_config()
         return (mlqa["overfitting_delta_threshold"], mlqa["stability_fold_std_threshold"])
     except Exception:
         logger.warning(_MLQA_THRESHOLD_FALLBACK_MSG)
-        return (0.08, 0.065)
+        return (0.10, 0.08)
+
+
+def _to_relative(absolute_value: float, reference_score: float) -> float:
+    """Convert an absolute metric (delta or std) to a relative fraction of the score magnitude.
+
+    For neg_mean_absolute_error the scores are large negative numbers (e.g. -7.9);
+    comparing an absolute std of 0.12 against a fixed 0.05 threshold is meaningless.
+    Instead we compute 0.12 / abs(-7.9) ≈ 0.015 (1.5%) which is a fair comparison.
+    """
+    magnitude = abs(reference_score)
+    if magnitude < 1e-9:
+        return 0.0
+    return abs(absolute_value) / magnitude
 
 
 def _effective_n_jobs(tuning_cfg: Dict[str, Any], n_jobs_override: Optional[int] = None) -> int:
@@ -385,16 +401,19 @@ def compute_mlqa_overfitting_stability(
     pipe_fit.fit(X, y)
     scorer = get_scorer(scoring)
     train_score_val = scorer(pipe_fit, X, y)
-    delta = abs(float(train_score_val) - float(val_score))
+    abs_delta = abs(float(train_score_val) - float(val_score))
     if fold_std_override is not None:
         fold_std = float(fold_std_override)
     else:
         fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
         fold_std = float(np.std(fold_scores))
-    overfitting_ok = delta <= delta_thresh
-    stability_ok = fold_std <= std_thresh
-    violation = max(0.0, delta - delta_thresh) + max(0.0, fold_std - std_thresh)
-    return (overfitting_ok and stability_ok, delta, fold_std, violation)
+    # Use relative metrics: fraction of score magnitude (handles neg_mean_absolute_error scale)
+    rel_delta = _to_relative(abs_delta, val_score)
+    rel_std = _to_relative(fold_std, val_score)
+    overfitting_ok = rel_delta <= delta_thresh
+    stability_ok = rel_std <= std_thresh
+    violation = max(0.0, rel_delta - delta_thresh) + max(0.0, rel_std - std_thresh)
+    return (overfitting_ok and stability_ok, abs_delta, fold_std, violation)
 
 
 def compute_stability_focus(
@@ -427,6 +446,7 @@ def compute_mlqa_penalized_score(
     mean_score: float,
     fold_std: float,
     stability_violation_weight: Optional[float] = None,
+    train_score: Optional[float] = None,
 ) -> Tuple[bool, float, float]:
     """Compute MLQA pass, violation, and penalized score from existing CV mean and fold std.
 
@@ -439,6 +459,9 @@ def compute_mlqa_penalized_score(
     When stability_violation_weight is provided and > 1, the stability part of the
     violation is weighted so that Optuna more strongly prefers trials with lower
     CV fold std (data-driven stability focus, applies to all algorithms).
+
+    When train_score is provided, skip the expensive clone+fit+score step and use
+    the caller-supplied value directly (performance optimization for Optuna trials).
     """
     from sklearn.base import clone
     from sklearn.metrics import get_scorer
@@ -446,14 +469,20 @@ def compute_mlqa_penalized_score(
     delta_thresh, std_thresh = _mlqa_overfitting_and_stability_thresholds()
     stab_weight = max(1.0, stability_violation_weight or 1.0)
     try:
-        pipe_fit = clone(pipe)
-        pipe_fit.fit(X, y)
-        scorer = get_scorer(scoring)
-        train_score_val = scorer(pipe_fit, X, y)
-        delta = abs(float(train_score_val) - mean_score)
-        pass_audit = delta <= delta_thresh and fold_std <= std_thresh
-        delta_excess = max(0.0, delta - delta_thresh)
-        std_excess = max(0.0, fold_std - std_thresh)
+        if train_score is not None:
+            train_score_val = float(train_score)
+        else:
+            pipe_fit = clone(pipe)
+            pipe_fit.fit(X, y)
+            scorer = get_scorer(scoring)
+            train_score_val = scorer(pipe_fit, X, y)
+        abs_delta = abs(float(train_score_val) - mean_score)
+        # Use relative metrics: fraction of score magnitude
+        rel_delta = _to_relative(abs_delta, mean_score)
+        rel_std = _to_relative(fold_std, mean_score)
+        pass_audit = rel_delta <= delta_thresh and rel_std <= std_thresh
+        delta_excess = max(0.0, rel_delta - delta_thresh)
+        std_excess = max(0.0, rel_std - std_thresh)
         violation = delta_excess + stab_weight * std_excess
         penalized = mean_score if pass_audit else mean_score - violation
         return (pass_audit, violation, penalized)
@@ -500,28 +529,37 @@ def _compute_mlqa_audit(
         dip_high = mlqa["bias_dip_high"]
         top_weight_thresh = mlqa["sensitivity_top_weight_threshold"]
 
-        # 1. Overfitting: train vs val delta
+        # 1. Overfitting: train vs val delta (relative to score magnitude)
         pipe_fit = clone(pipe)
         pipe_fit.fit(X, y)
         scorer = get_scorer(scoring)
         train_score_val = scorer(pipe_fit, X, y)
-        delta = abs(float(train_score_val) - float(val_score))
-        overfitting_risk = delta > delta_thresh
+        abs_delta = abs(float(train_score_val) - float(val_score))
+        rel_delta = _to_relative(abs_delta, val_score)
+        overfitting_risk = rel_delta > delta_thresh
         if overfitting_risk:
-            findings.append(f"High Overfitting Risk: Train–Validation Δ = {delta:.4f} (>{delta_thresh}).")
+            findings.append(
+                f"High Overfitting Risk: Train–Validation Δ = {abs_delta:.4f} "
+                f"(relative {rel_delta:.2%} > {delta_thresh:.0%})."
+            )
             status_flags.append("overfitting")
         else:
-            findings.append(f"Overfitting check OK: Δ = {delta:.4f} ≤ {delta_thresh}.")
+            findings.append(
+                f"Overfitting check OK: Δ = {abs_delta:.4f} (relative {rel_delta:.2%} ≤ {delta_thresh:.0%})."
+            )
 
-        # 2. Stability: CV fold std
+        # 2. Stability: CV fold std (relative to score magnitude)
         fold_scores = cross_val_score(pipe, X, y, cv=cv, scoring=scoring)
         fold_std = float(np.std(fold_scores))
-        unstable = fold_std > std_thresh
+        rel_std = _to_relative(fold_std, val_score)
+        unstable = rel_std > std_thresh
         if unstable:
-            findings.append(f"Unstable: CV fold σ = {fold_std:.4f} (>{std_thresh}).")
+            findings.append(
+                f"Unstable: CV fold σ = {fold_std:.4f} (relative {rel_std:.2%} > {std_thresh:.0%})."
+            )
             status_flags.append("unstable")
         else:
-            findings.append(f"Stability OK: CV fold σ = {fold_std:.4f}.")
+            findings.append(f"Stability OK: CV fold σ = {fold_std:.4f} (relative {rel_std:.2%}).")
 
         # 3. Bias & Fairness
         fairness = report.get("fairness_metrics") or {}
@@ -611,9 +649,16 @@ def _compute_mlqa_audit(
             "bias_report": bias_report,
             "final_verdict": final_verdict,
             "checks": {
-                "overfitting": {"delta": round(delta, 4), "flagged": overfitting_risk},
+                "overfitting": {
+                    "delta": round(abs_delta, 4),
+                    "relative_delta": round(rel_delta, 4),
+                    "threshold": delta_thresh,
+                    "flagged": overfitting_risk,
+                },
                 "stability": {
                     "cv_std": round(fold_std, 4),
+                    "relative_cv_std": round(rel_std, 4),
+                    "threshold": std_thresh,
                     "flagged": unstable,
                     "cv_fold_scores": [round(float(s), 4) for s in fold_scores],
                 },
