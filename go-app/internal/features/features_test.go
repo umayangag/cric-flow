@@ -250,3 +250,11 @@ func TestTemporalFeaturesFromUnix_Zero_ReturnsNeutral(t *testing.T) {
 	require.Zero(t, ds)
 	require.Zero(t, dc)
 }
+
+func TestTemporalFeatures_ZeroTime_ReturnsNeutral(t *testing.T) {
+	ms, mc, ds, dc := TemporalFeatures(time.Time{})
+	require.Zero(t, ms)
+	require.Zero(t, mc)
+	require.Zero(t, ds)
+	require.Zero(t, dc)
+}

@@ -10,7 +10,11 @@ const twoPi = 2.0 * math.Pi
 // TemporalFeatures computes cyclical temporal features from a match date.
 // Returns month_sin, month_cos, day_of_week_sin, day_of_week_cos.
 // These replace raw match_date_unix and season_id to prevent temporal leakage.
+// A zero time value is treated as missing and yields neutral (0,0,0,0), matching TemporalFeaturesFromUnix(0).
 func TemporalFeatures(t time.Time) (monthSin, monthCos, dowSin, dowCos float64) {
+	if t.IsZero() {
+		return 0, 0, 0, 0
+	}
 	month := float64(t.Month()) // 1–12
 	dow := float64(t.Weekday()) // 0=Sun in Go; convert to 0=Mon to match Python
 	// Python: Monday=0 … Sunday=6.  Go: Sunday=0 … Saturday=6.
