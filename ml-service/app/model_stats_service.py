@@ -150,8 +150,9 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
         logger.debug("model_stats.mlqa_config_failed", error=str(e))
         return original
 
-    delta_thresh = float(mlqa_cfg.get("overfitting_delta_threshold", 0.10))
-    std_thresh = float(mlqa_cfg.get("stability_fold_std_threshold", 0.08))
+    # Thresholds come only from ml.mlqa (merged config + defaults in get_mlqa_config); not duplicated here.
+    delta_thresh = float(mlqa_cfg["overfitting_delta_threshold"])
+    std_thresh = float(mlqa_cfg["stability_fold_std_threshold"])
     dip_low = float(mlqa_cfg.get("bias_dip_low", 0.8))
     dip_high = float(mlqa_cfg.get("bias_dip_high", 1.25))
     top_weight_thresh = float(mlqa_cfg.get("sensitivity_top_weight_threshold", 0.70))

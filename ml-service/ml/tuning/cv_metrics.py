@@ -434,6 +434,7 @@ def _extract_feature_importance(
         return result
     # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
     tuning = get_tuning_config()
+    # ml.tuning.permutation_importance_decimal_places (default 6) is enough precision for MLQA audit / reporting.
     dec_places = int(tuning["permutation_importance_decimal_places"])
     if precomputed_perm_mean is not None and pipe is not None:
         try:

@@ -45,6 +45,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
+	-- fielding_data.inning_number + unique (match_id, inning_number, player_id): migration 0095_fielding_data_inning_number.sql
 	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id`
 
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.

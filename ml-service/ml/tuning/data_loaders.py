@@ -48,7 +48,11 @@ def unpack_xy_with_feature_names(
     *,
     format_key: Optional[str] = None,
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[List[str]]]:
-    """Normalize loader return value: (X, Y), (X, Y, feature_names), dict[str, tuple], or win-style 4-tuple."""
+    """Normalize loader return value: (X, Y), (X, Y, feature_names), dict[str, tuple], or win-style 4-tuple.
+
+    If *result* is a dict with more than one format key, callers must pass *format_key* (see
+    ``ml.tuning.cli`` auto_tune: batting/bowling paths pass ``format_key=fmt``).
+    """
     if result is None:
         return None, None, None
     if isinstance(result, dict):
@@ -65,7 +69,10 @@ def unpack_xy_with_feature_names(
         if len(result) == 1:
             return unpack_xy_with_feature_names(next(iter(result.values())), format_key=None)
         keys = ", ".join(sorted(str(k) for k in result.keys()))
-        raise TypeError(f"expected tuple from loader, got dict with multiple keys; pass format_key (have: {keys})")
+        raise TypeError(
+            "expected tuple from loader, got dict with multiple keys; pass format_key "
+            f"(have: {keys}). API loaders in ml.tuning.cli always pass format_key when unpacking."
+        )
     if not isinstance(result, tuple):
         raise TypeError(f"expected tuple or dict from loader, got {type(result)}")
     if len(result) == 2:
