@@ -40,6 +40,7 @@ from ml.config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from ml.data_quality import drop_low_variance_columns
 from ml.match_level_derived_features import (
     MATCH_LEVEL_DERIVED_FEATURE_COLS,
     add_match_level_derived_features_to_df,
@@ -170,28 +171,32 @@ def rows_to_xy_by_format(
         if df.empty or len(df) < MIN_SAMPLES_FOR_FORMAT:
             return {}, None, None, None
         X_raw = df[feat_cols].astype(float).values
+        X_raw, feat_cols, _dropped = drop_low_variance_columns(X_raw, feat_cols)
         Y = df[INNINGS_TARGET_COLS].astype(float).values
         scaler = StandardScaler()
         X = scaler.fit_transform(X_raw)
         w = _weights(df)
-        return {"_ALL_": (X, Y, scaler, w)}, X_raw, Y, scaler
+        return {"_ALL_": (X, Y, scaler, w, feat_cols)}, X_raw, Y, scaler
     out = {}
     all_X_raw_list = []
     all_Y_list = []
     all_weights_list = []
+    # Per-format: exclude format one-hot cols (constant within a single format group).
+    per_format_exclude = frozenset(INNINGS_FORMAT_ONE_HOT_COLS)
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in INNINGS_FEATURE_COLS if c in g.columns] + INNINGS_TARGET_COLS)
         if g.empty or len(g) < MIN_SAMPLES_FOR_FORMAT:
             continue
-        feat_cols_fmt = [c for c in INNINGS_FEATURE_COLS if c in g.columns]
+        feat_cols_fmt = [c for c in INNINGS_FEATURE_COLS if c in g.columns and c not in per_format_exclude]
         X_raw = g[feat_cols_fmt].astype(float).values
+        X_raw, feat_cols_fmt, _dropped = drop_low_variance_columns(X_raw, feat_cols_fmt)
         Y = g[INNINGS_TARGET_COLS].astype(float).values
         scaler = StandardScaler()
         X = scaler.fit_transform(X_raw)
         w = _weights(g)
-        out[fmt] = (X, Y, scaler, w)
-        all_X_raw_list.append(X_raw)
+        out[fmt] = (X, Y, scaler, w, feat_cols_fmt)
+        all_X_raw_list.append(g[feat_cols_fmt].astype(float).values)
         all_Y_list.append(Y)
         all_weights_list.append(w)
     if not out:
@@ -299,7 +304,7 @@ def main() -> None:
     if not by_format:
         logger.error("train_innings.no_data hint=empty or insufficient rows")
         sys.exit(1)
-    for fmt, (X, Y, scaler, w) in by_format.items():
+    for fmt, (X, Y, scaler, w, _feat_names) in by_format.items():
         logger.info("pipeline: train_innings processing format=%s n=%s", fmt, X.shape[0])
         train_and_save(X, Y, scaler, out_dir, fmt, sample_weight=w)
 
@@ -311,7 +316,7 @@ def main() -> None:
         and all_X_raw.shape[0] >= MIN_SAMPLES_FOR_FORMAT
     ):
         all_X = legacy_scaler.transform(all_X_raw)
-        all_weights_list = [w for _, (_, _, _, w) in by_format.items()]
+        all_weights_list = [w for _, (_, _, _, w, _fn) in by_format.items()]
         all_weights = np.concatenate(all_weights_list) if all(w is not None for w in all_weights_list) else None
         train_and_save_legacy(all_X, all_Y, legacy_scaler, out_dir, sample_weight=all_weights)
 

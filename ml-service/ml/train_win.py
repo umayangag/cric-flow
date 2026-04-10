@@ -39,6 +39,7 @@ from ml.config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from ml.data_quality import drop_low_variance_columns
 from ml.pipeline_common import compute_time_decay_weights
 from ml.win_features import (
     DERIVED_FEATURE_COLS,
@@ -159,11 +160,14 @@ def rows_to_xy_by_format(
         if df.empty:
             return {}
         X = df[feature_cols].astype(float).values
+        X, feature_cols, _dropped = drop_low_variance_columns(X, feature_cols)
         Y = df[WIN_TARGET_COL].astype(int).values
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feature_cols)}
 
     min_rows = pipe_cfg["min_rows_for_training"]
+    # Per-format: exclude format one-hot cols (constant within a single format group).
+    per_format_exclude = frozenset(c for c in feature_cols if c.startswith("format_is_"))
     out = {}
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
@@ -176,10 +180,12 @@ def rows_to_xy_by_format(
                 min_rows,
             )
             continue
-        X = g[feature_cols].astype(float).values
+        fmt_feature_cols = [c for c in feature_cols if c not in per_format_exclude]
+        X = g[fmt_feature_cols].astype(float).values
+        X, fmt_feature_cols, _dropped = drop_low_variance_columns(X, fmt_feature_cols)
         Y = g[WIN_TARGET_COL].astype(int).values
         w = _weights(g)
-        out[fmt] = (X, Y, w, feature_cols)
+        out[fmt] = (X, Y, w, fmt_feature_cols)
     return out
 
 

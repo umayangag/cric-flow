@@ -36,6 +36,7 @@ from ml.config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from ml.data_quality import drop_low_variance_columns
 from ml.match_level_derived_features import (
     MATCH_LEVEL_DERIVED_FEATURE_COLS,
     add_match_level_derived_features_to_df,
@@ -162,17 +163,21 @@ def rows_to_xy_by_format(
             return {}
         feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in df.columns]
         X = df[feat_cols].astype(float).values
+        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
         Y = df[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feat_cols)}
     out = {}
+    # Per-format: exclude format one-hot cols (constant within a single format group).
+    per_format_exclude = frozenset(EXTRAS_FORMAT_ONE_HOT_COLS)
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in g.columns] + [EXTRAS_TARGET_COL])
         if g.empty or len(g) < MIN_SAMPLES_FOR_LEGACY:
             continue
-        feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in g.columns]
+        feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in g.columns and c not in per_format_exclude]
         X = g[feat_cols].astype(float).values
+        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(g)
         out[fmt] = (X, Y, w, feat_cols)

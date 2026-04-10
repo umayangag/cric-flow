@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ml.data_quality import impute_features
+from ml.data_quality import drop_low_variance_columns, impute_features
 from ml.match_level_derived_features import add_match_level_derived_features_to_df
 from ml.temporal_features import add_temporal_features_to_df
 from ml.tuning.types import (
@@ -312,14 +312,17 @@ def load_innings_from_api(
             code = col.replace("format_is_", "")
             df[col] = (fmt_series == code).astype(float)
     feat_cols = [c for c in _train_innings.INNINGS_FEATURE_COLS if c in df.columns]
+    # Per-format: exclude format one-hot cols (constant within a single format group).
+    per_format_exclude = frozenset(_train_innings.INNINGS_FORMAT_ONE_HOT_COLS)
     out: Dict[str, Tuple[np.ndarray, np.ndarray, Any]] = {}
     if "format_code" not in df.columns:
         df = df.dropna(subset=feat_cols + _train_innings.INNINGS_TARGET_COLS)
         if df.empty or len(df) < _train_innings.MIN_SAMPLES_FOR_FORMAT:
             return {}
         X_raw = df[feat_cols].astype(float).values
+        X_raw, feat_cols, _dropped = drop_low_variance_columns(X_raw, feat_cols)
         Y = df[_train_innings.INNINGS_TARGET_COLS].astype(float).values
-        out["_ALL_"] = (X_raw, Y, None)
+        out["_ALL_"] = (X_raw, Y, feat_cols)
     else:
         for fmt, g in df.groupby("format_code"):
             fmt = str(fmt).strip().upper() or "_ALL_"
@@ -329,10 +332,13 @@ def load_innings_from_api(
             )
             if g.empty or len(g) < _train_innings.MIN_SAMPLES_FOR_FORMAT:
                 continue
-            feat_cols_fmt = [c for c in _train_innings.INNINGS_FEATURE_COLS if c in g.columns]
+            feat_cols_fmt = [
+                c for c in _train_innings.INNINGS_FEATURE_COLS if c in g.columns and c not in per_format_exclude
+            ]
             X_raw = g[feat_cols_fmt].astype(float).values
+            X_raw, feat_cols_fmt, _dropped = drop_low_variance_columns(X_raw, feat_cols_fmt)
             Y = g[_train_innings.INNINGS_TARGET_COLS].astype(float).values
-            out[fmt] = (X_raw, Y, None)
+            out[fmt] = (X_raw, Y, feat_cols_fmt)
     if format_code and format_code in out:
         return {format_code: out[format_code]}
     return out

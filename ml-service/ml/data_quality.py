@@ -130,3 +130,61 @@ def clip_target_outliers(
         )
 
     return clipped, clip_info
+
+
+# Weather feature columns — kept in feature lists even when currently empty/constant
+# because the user plans to populate them in the future.
+WEATHER_FEATURE_COLS = frozenset(
+    {"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity"}
+)
+
+
+def drop_low_variance_columns(
+    X: np.ndarray,
+    feature_names: List[str],
+    variance_threshold: float = 1e-6,
+    protected_columns: Optional[frozenset] = None,
+) -> Tuple[np.ndarray, List[str], List[str]]:
+    """Remove near-constant feature columns that add noise without signal.
+
+    Columns whose variance is below *variance_threshold* are dropped **unless**
+    they appear in *protected_columns* (e.g. weather fields that are currently
+    empty but will be populated later).
+
+    Args:
+        X: Feature matrix (n_samples, n_features).
+        feature_names: Column names matching X.shape[1].
+        variance_threshold: Columns with variance <= this are candidates for removal.
+        protected_columns: Column names that must never be removed regardless of variance.
+
+    Returns:
+        Tuple of (filtered X, filtered feature_names, list of dropped column names).
+    """
+    if protected_columns is None:
+        protected_columns = WEATHER_FEATURE_COLS
+
+    if X.shape[1] != len(feature_names):
+        logger.warning(
+            "data_quality.drop_low_variance_columns.shape_mismatch n_cols=%d n_names=%d",
+            X.shape[1],
+            len(feature_names),
+        )
+        return X, list(feature_names), []
+
+    variances = np.var(X, axis=0)
+    keep_mask = np.ones(X.shape[1], dtype=bool)
+    dropped: List[str] = []
+
+    for idx, (name, var) in enumerate(zip(feature_names, variances)):
+        if var <= variance_threshold and name not in protected_columns:
+            keep_mask[idx] = False
+            dropped.append(name)
+
+    if dropped:
+        logger.info(
+            "data_quality.drop_low_variance_columns dropped=%d cols=%s",
+            len(dropped),
+            dropped,
+        )
+
+    return X[:, keep_mask], [n for n, k in zip(feature_names, keep_mask) if k], dropped
