@@ -195,7 +195,7 @@ def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[s
             findings.append(f"Unstable: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%} > {std_thresh:.0%}).")
             status_flags.append("unstable")
         else:
-            findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%}).")
+            findings.append(f"Stability OK: CV fold σ = {fold_std_f:.4f} (relative {rel_std:.2%} ≤ {std_thresh:.0%}).")
 
     # 3. Bias & Fairness: disparate impact ratio
     if dip is not None:

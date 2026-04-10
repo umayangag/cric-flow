@@ -43,19 +43,41 @@ def feature_matrix_after_training_transforms(
     return X_raw, list(base_feature_names)
 
 
-def unpack_xy_with_feature_names(result: Any) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[List[str]]]:
-    """Normalize loader return value: (X, Y) or (X, Y, feature_names)."""
+def unpack_xy_with_feature_names(
+    result: Any,
+    *,
+    format_key: Optional[str] = None,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[List[str]]]:
+    """Normalize loader return value: (X, Y), (X, Y, feature_names), dict[str, tuple], or win-style 4-tuple."""
     if result is None:
         return None, None, None
+    if isinstance(result, dict):
+        if not result:
+            return None, None, None
+        if format_key is not None:
+            fk = str(format_key).strip()
+            if fk in result:
+                return unpack_xy_with_feature_names(result[fk], format_key=None)
+            fk_upper = fk.upper()
+            for k in result:
+                if str(k).strip().upper() == fk_upper:
+                    return unpack_xy_with_feature_names(result[k], format_key=None)
+        if len(result) == 1:
+            return unpack_xy_with_feature_names(next(iter(result.values())), format_key=None)
+        keys = ", ".join(sorted(str(k) for k in result.keys()))
+        raise TypeError(f"expected tuple from loader, got dict with multiple keys; pass format_key (have: {keys})")
     if not isinstance(result, tuple):
-        raise TypeError(f"expected tuple from loader, got {type(result)}")
-    if len(result) == 3:
-        x, y, names = result
-        return x, y, names if isinstance(names, list) else None
+        raise TypeError(f"expected tuple or dict from loader, got {type(result)}")
     if len(result) == 2:
         x, y = result
         return x, y, None
-    raise TypeError(f"expected 2- or 3-tuple from loader, got length {len(result)}")
+    if len(result) == 3:
+        x, y, third = result
+        return x, y, third if isinstance(third, list) else None
+    if len(result) == 4:
+        x, y, _third, fourth = result
+        return x, y, fourth if isinstance(fourth, list) else None
+    raise TypeError(f"expected 2-, 3-, or 4-tuple from loader, got length {len(result)}")
 
 
 def _sort_df_by_match_date(df: pd.DataFrame) -> pd.DataFrame:

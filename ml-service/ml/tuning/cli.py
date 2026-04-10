@@ -508,7 +508,8 @@ def main() -> None:
                                         args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                                     ),
                                     can_fallback_to_api=api_available,
-                                )
+                                ),
+                                format_key=fmt,
                             )
                         elif model_kind == "bowling":
                             if args.csv:
@@ -525,7 +526,8 @@ def main() -> None:
                                         args.go_app_url, fmt or "all", args.cutoff, args.api_key or None
                                     ),
                                     can_fallback_to_api=api_available,
-                                )
+                                ),
+                                format_key=fmt,
                             )
                         else:
                             if args.csv:
@@ -835,7 +837,7 @@ def main() -> None:
                         continue
                     if result is None:
                         continue
-                    X, Y, csv_feat_names = unpack_xy_with_feature_names(result)
+                    X, Y, csv_feat_names = unpack_xy_with_feature_names(result, format_key=fmt)
                     if X.size == 0 or Y.size == 0:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue

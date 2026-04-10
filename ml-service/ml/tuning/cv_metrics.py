@@ -710,9 +710,9 @@ def _compute_mlqa_audit(
                 if imps is not None and len(imps) > 0:
                     total = float(np.sum(np.abs(imps)))
                     if total > 0:
-                        sorted_idx = np.argsort(-imps)[:sensitivity_top_n]
+                        sorted_idx = np.argsort(-np.abs(imps))[:sensitivity_top_n]
                         top_imp = float(imps[sorted_idx[0]])
-                        top_weight = top_imp / total if top_imp > 0 else 0.0
+                        top_weight = abs(top_imp) / total
                         names = feature_names if feature_names and len(feature_names) == len(imps) else None
                         top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
                         if top_weight > top_weight_thresh:
