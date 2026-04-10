@@ -45,7 +45,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id`
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id`
 
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
 	if IsSeqEnabled(ctx) {
@@ -232,7 +232,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
-		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -312,7 +312,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
-		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -392,7 +392,7 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, bd.match_id, bd.player_id`
 	args = []any{cutoff}
@@ -627,7 +627,7 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
 }

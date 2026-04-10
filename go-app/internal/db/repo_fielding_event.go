@@ -47,10 +47,11 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 	if PoolAPI == nil {
 		return errors.New("db pool not initialized")
 	}
-	// Aggregate counts per fielder for the given match; exclude NULL fielder_id
+	// Aggregate counts per fielder per inning for the given match; exclude NULL fielder_id
 	rows, err := PoolAPI.Query(ctx, `
         WITH base AS (
             SELECT
+                fe.innings AS inning_number,
                 fe.fielder_id AS player_id,
                 SUM(CASE WHEN fe.kind = 'caught' THEN 1 ELSE 0 END) AS catches,
                 SUM(CASE WHEN fe.kind = 'run_out' THEN 1 ELSE 0 END) AS run_outs,
@@ -58,9 +59,9 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
                 SUM(CASE WHEN fe.kind = 'run_out' AND fe.is_direct_hit THEN 1 ELSE 0 END) AS runouts_direct_hits
             FROM fielding_event fe
             WHERE fe.match_id = $1 AND fe.fielder_id IS NOT NULL
-            GROUP BY fe.fielder_id
+            GROUP BY fe.innings, fe.fielder_id
         )
-        SELECT player_id, catches, run_outs, stumpings, runouts_direct_hits FROM base
+        SELECT inning_number, player_id, catches, run_outs, stumpings, runouts_direct_hits FROM base
     `, matchID)
 	if err != nil {
 		return err
@@ -68,9 +69,10 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 	defer rows.Close()
 
 	for rows.Next() {
+		var inningNumber int
 		var playerID int64
 		var catches, runOuts, stumpings, directHits int
-		if err := rows.Scan(&playerID, &catches, &runOuts, &stumpings, &directHits); err != nil {
+		if err := rows.Scan(&inningNumber, &playerID, &catches, &runOuts, &stumpings, &directHits); err != nil {
 			return err
 		}
 		// Upsert aggregates into fielding_data. Ensure zero/NULL safety using pointers.
@@ -78,6 +80,7 @@ func RecomputeFieldingAggregates(ctx context.Context, matchID int64) error {
 		// Keep existing dropped/missed as-is by passing nils; UpsertFielding handles COALESCE
 		if err := UpsertFielding(ctx, &Fielding{
 			MatchID:           matchID,
+			InningNumber:      inningNumber,
 			PlayerID:          playerID,
 			Catches:           &c,
 			RunOuts:           &r,
@@ -98,6 +101,7 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 	rows, err := tx.Query(ctx, `
         WITH base AS (
             SELECT
+                fe.innings AS inning_number,
                 fe.fielder_id AS player_id,
                 SUM(CASE WHEN fe.kind = 'caught' THEN 1 ELSE 0 END) AS catches,
                 SUM(CASE WHEN fe.kind = 'run_out' THEN 1 ELSE 0 END) AS run_outs,
@@ -105,9 +109,9 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
                 SUM(CASE WHEN fe.kind = 'run_out' AND fe.is_direct_hit THEN 1 ELSE 0 END) AS runouts_direct_hits
             FROM fielding_event fe
             WHERE fe.match_id = $1 AND fe.fielder_id IS NOT NULL
-            GROUP BY fe.fielder_id
+            GROUP BY fe.innings, fe.fielder_id
         )
-        SELECT player_id, catches, run_outs, stumpings, runouts_direct_hits FROM base
+        SELECT inning_number, player_id, catches, run_outs, stumpings, runouts_direct_hits FROM base
     `, matchID)
 	if err != nil {
 		return err
@@ -115,21 +119,23 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 	defer rows.Close()
 
 	var results []struct {
-		playerID   int64
-		catches    int
-		runOuts    int
-		stumpings  int
-		directHits int
+		inningNumber int
+		playerID     int64
+		catches      int
+		runOuts      int
+		stumpings    int
+		directHits   int
 	}
 	for rows.Next() {
 		var r struct {
-			playerID   int64
-			catches    int
-			runOuts    int
-			stumpings  int
-			directHits int
+			inningNumber int
+			playerID     int64
+			catches      int
+			runOuts      int
+			stumpings    int
+			directHits   int
 		}
-		if err := rows.Scan(&r.playerID, &r.catches, &r.runOuts, &r.stumpings, &r.directHits); err != nil {
+		if err := rows.Scan(&r.inningNumber, &r.playerID, &r.catches, &r.runOuts, &r.stumpings, &r.directHits); err != nil {
 			return err
 		}
 		results = append(results, r)
@@ -144,6 +150,7 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 		c, ro, s, dh := r.catches, r.runOuts, r.stumpings, r.directHits
 		fieldingRows = append(fieldingRows, Fielding{
 			MatchID:           matchID,
+			InningNumber:      r.inningNumber,
 			PlayerID:          r.playerID,
 			Catches:           &c,
 			RunOuts:           &ro,
