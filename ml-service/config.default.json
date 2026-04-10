@@ -18,6 +18,9 @@
       "T20I"
     ],
     "artifact_template": "{kind}_{name}_{format}.joblib",
+    "data_quality": {
+      "low_variance_threshold": 1e-6
+    },
     "training": {
       "batting": {
         "n_estimators": 200,

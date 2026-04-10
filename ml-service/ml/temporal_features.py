@@ -24,6 +24,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 
+_TWO_PI = 2.0 * math.pi
+
 # Canonical column names produced by the temporal transform.
 TEMPORAL_FEATURE_COLS: List[str] = [
     "month_sin",
@@ -56,12 +58,11 @@ def compute_temporal_from_unix(unix_seconds: np.ndarray) -> dict[str, np.ndarray
     months = np.array(dt_index.month, dtype=np.float64)  # 1–12
     dows = np.array(dt_index.dayofweek, dtype=np.float64)  # 0=Mon … 6=Sun
 
-    two_pi = 2.0 * math.pi
     return {
-        "month_sin": np.sin(two_pi * months / 12.0),
-        "month_cos": np.cos(two_pi * months / 12.0),
-        "day_of_week_sin": np.sin(two_pi * dows / 7.0),
-        "day_of_week_cos": np.cos(two_pi * dows / 7.0),
+        "month_sin": np.sin(_TWO_PI * months / 12.0),
+        "month_cos": np.cos(_TWO_PI * months / 12.0),
+        "day_of_week_sin": np.sin(_TWO_PI * dows / 7.0),
+        "day_of_week_cos": np.cos(_TWO_PI * dows / 7.0),
     }
 
 
@@ -81,12 +82,11 @@ def compute_temporal_from_date(date_series: pd.Series) -> dict[str, np.ndarray]:
     months = np.array(dt.dt.month, dtype=np.float64)
     dows = np.array(dt.dt.dayofweek, dtype=np.float64)
 
-    two_pi = 2.0 * math.pi
     return {
-        "month_sin": np.sin(two_pi * months / 12.0),
-        "month_cos": np.cos(two_pi * months / 12.0),
-        "day_of_week_sin": np.sin(two_pi * dows / 7.0),
-        "day_of_week_cos": np.cos(two_pi * dows / 7.0),
+        "month_sin": np.sin(_TWO_PI * months / 12.0),
+        "month_cos": np.cos(_TWO_PI * months / 12.0),
+        "day_of_week_sin": np.sin(_TWO_PI * dows / 7.0),
+        "day_of_week_cos": np.cos(_TWO_PI * dows / 7.0),
     }
 
 

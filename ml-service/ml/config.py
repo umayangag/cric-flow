@@ -90,6 +90,8 @@ DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 1
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
+# Near-constant feature removal (see ml.data_quality in config.default.json).
+DEFAULT_LOW_VARIANCE_THRESHOLD = 1e-6
 
 _cached: Optional[Dict[str, Any]] = None
 
@@ -552,6 +554,17 @@ def get_mlqa_config() -> Dict[str, Any]:
         "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),
         "sensitivity_top_n_features": sens_top_n,
     }
+
+
+def get_data_quality_config() -> Dict[str, float]:
+    """Load thresholds for ml.data_quality from ml.data_quality."""
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    block = (ml.get("data_quality") if isinstance(ml, dict) else None) or {}
+    thresh = _load_numeric(block, "low_variance_threshold", DEFAULT_LOW_VARIANCE_THRESHOLD, float)
+    if thresh < 0.0:
+        thresh = DEFAULT_LOW_VARIANCE_THRESHOLD
+    return {"low_variance_threshold": float(thresh)}
 
 
 def get_match_level_derived_config() -> Dict[str, float]:

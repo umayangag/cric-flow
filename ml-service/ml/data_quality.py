@@ -22,6 +22,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from ml.config import get_data_quality_config
+
 logger = logging.getLogger(__name__)
 
 # Features that represent encoded categorical IDs — use -1 sentinel for missing.
@@ -134,15 +136,13 @@ def clip_target_outliers(
 
 # Weather feature columns — kept in feature lists even when currently empty/constant
 # because the user plans to populate them in the future.
-WEATHER_FEATURE_COLS = frozenset(
-    {"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity"}
-)
+WEATHER_FEATURE_COLS = frozenset({"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity"})
 
 
 def drop_low_variance_columns(
     X: np.ndarray,
     feature_names: List[str],
-    variance_threshold: float = 1e-6,
+    variance_threshold: Optional[float] = None,
     protected_columns: Optional[frozenset] = None,
 ) -> Tuple[np.ndarray, List[str], List[str]]:
     """Remove near-constant feature columns that add noise without signal.
@@ -155,6 +155,7 @@ def drop_low_variance_columns(
         X: Feature matrix (n_samples, n_features).
         feature_names: Column names matching X.shape[1].
         variance_threshold: Columns with variance <= this are candidates for removal.
+            If None, uses ``ml.data_quality.low_variance_threshold`` from service config.
         protected_columns: Column names that must never be removed regardless of variance.
 
     Returns:
@@ -162,6 +163,9 @@ def drop_low_variance_columns(
     """
     if protected_columns is None:
         protected_columns = WEATHER_FEATURE_COLS
+
+    if variance_threshold is None:
+        variance_threshold = get_data_quality_config()["low_variance_threshold"]
 
     if X.shape[1] != len(feature_names):
         logger.warning(
@@ -172,13 +176,11 @@ def drop_low_variance_columns(
         return X, list(feature_names), []
 
     variances = np.var(X, axis=0)
-    keep_mask = np.ones(X.shape[1], dtype=bool)
-    dropped: List[str] = []
-
-    for idx, (name, var) in enumerate(zip(feature_names, variances)):
-        if var <= variance_threshold and name not in protected_columns:
-            keep_mask[idx] = False
-            dropped.append(name)
+    low_variance_mask = variances <= variance_threshold
+    protected_mask = np.array([name in protected_columns for name in feature_names], dtype=bool)
+    drop_mask = low_variance_mask & ~protected_mask
+    keep_mask = ~drop_mask
+    dropped = [name for name, to_drop in zip(feature_names, drop_mask) if to_drop]
 
     if dropped:
         logger.info(

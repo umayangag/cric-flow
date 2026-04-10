@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ml.data_quality import WEATHER_FEATURE_COLS, drop_low_variance_columns
 
@@ -80,7 +79,7 @@ class TestInningsFormatOneHotExclusion:
         rows = []
         for i in range(n_rows):
             row = [str(rng.rand()) for _ in base_cols]
-            row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), "T20I", f"2024-01-{i+1:02d}"]
+            row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), "T20I", f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
         by_format, _, _, _ = rows_to_xy_by_format(headers, rows)
@@ -90,7 +89,7 @@ class TestInningsFormatOneHotExclusion:
             assert col not in feat_names, f"format one-hot col {col} should be excluded for per-format"
 
     def test_unified_keeps_format_one_hot(self):
-        from ml.train_innings import INNINGS_FEATURE_COLS, INNINGS_FORMAT_ONE_HOT_COLS, rows_to_xy_by_format
+        from ml.train_innings import INNINGS_FEATURE_COLS, rows_to_xy_by_format
 
         # Build data WITHOUT format_code → unified _ALL_ model
         base_cols = [c for c in INNINGS_FEATURE_COLS if not c.startswith("format_is_")]
@@ -100,7 +99,7 @@ class TestInningsFormatOneHotExclusion:
         rows = []
         for i in range(n_rows):
             row = [str(rng.rand()) for _ in base_cols]
-            row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), f"2024-01-{i+1:02d}"]
+            row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
         by_format, _, _, _ = rows_to_xy_by_format(headers, rows)
@@ -122,7 +121,7 @@ class TestExtrasFormatOneHotExclusion:
         rows = []
         for i in range(n_rows):
             row = [str(rng.rand()) for _ in base_cols]
-            row += [str(int(rng.randint(5, 30))), "ODI", f"2024-01-{i+1:02d}"]
+            row += [str(int(rng.randint(5, 30))), "ODI", f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
         by_format = rows_to_xy_by_format(headers, rows)
@@ -147,7 +146,7 @@ class TestWinFormatOneHotExclusion:
         rows = []
         for i in range(n_rows):
             row = [str(rng.rand()) for _ in base_cols]
-            row += [str(rng.randint(0, 2)), "T20", f"2024-01-{i+1:02d}"]
+            row += [str(rng.randint(0, 2)), "T20", f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
         by_format = rows_to_xy_by_format(headers, rows)
