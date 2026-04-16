@@ -42,7 +42,6 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
-from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
 from ml.win_features import _FORMAT_CODES as WIN_FORMAT_CODES  # reuse configured formats for one-hot encoding
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,9 @@ EXTRAS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
 EXTRAS_FEATURE_COLS = (
     [
+        "season_id",
         "venue_id",
+        "match_date_unix",
         "temp",
         "wind",
         "rain",
@@ -72,7 +73,6 @@ EXTRAS_FEATURE_COLS = (
         "bat_form_sum",
         "bowl_form_sum",
     ]
-    + TEMPORAL_FEATURE_COLS
     + EXTRAS_DERIVED_COLS
     + EXTRAS_FORMAT_ONE_HOT_COLS
 )
@@ -131,8 +131,6 @@ def rows_to_xy_by_format(
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    # Compute cyclical temporal features (replaces season_id / match_date_unix).
-    add_temporal_features_to_df(df)
     # Compute derived features from base columns.
     _add_derived_features(df)
     for c in EXTRAS_FEATURE_COLS + [EXTRAS_TARGET_COL]:

@@ -70,10 +70,6 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "batting_inning": (1, 2),
         "batting_session": (1, 3),
         "toss": (0, 1),
-        "month_sin": (-1, 1),
-        "month_cos": (-1, 1),
-        "day_of_week_sin": (-1, 1),
-        "day_of_week_cos": (-1, 1),
     }
     bat_kwargs = kwargs_for_order(cfg["batting"], bat_int, bat_clamp)
     bat_kwargs["player_name"] = "P"
@@ -100,10 +96,6 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "batting_inning": (1, 2),
         "bowling_session": (1, 3),
         "toss": (0, 1),
-        "month_sin": (-1, 1),
-        "month_cos": (-1, 1),
-        "day_of_week_sin": (-1, 1),
-        "day_of_week_cos": (-1, 1),
     }
     bowl_kwargs = kwargs_for_order(cfg["bowling"], bowl_int, bowl_clamp)
     bowl_kwargs["player_name"] = "P"

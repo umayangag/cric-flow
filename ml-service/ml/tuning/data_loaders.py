@@ -11,7 +11,6 @@ import pandas as pd
 
 from ml.data_quality import drop_low_variance_columns, impute_features
 from ml.match_level_derived_features import add_match_level_derived_features_to_df
-from ml.temporal_features import add_temporal_features_to_df
 from ml.tuning.types import (
     BAT_SEQ_COLS,
     BATTING_FEATURE_COLS,
@@ -116,8 +115,6 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
 def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
-    # Compute cyclical temporal features (replaces season_id / match_date_unix).
-    add_temporal_features_to_df(df)
     for col in BAT_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -148,8 +145,6 @@ def load_batting_csv(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
 def load_bowling_csv(path: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     df = pd.read_csv(path)
     df = _sort_df_by_match_date(df)
-    # Compute cyclical temporal features (replaces season_id / match_date_unix).
-    add_temporal_features_to_df(df)
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
             df[col] = 0.0
@@ -297,8 +292,7 @@ def load_innings_from_api(
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    # Compute cyclical temporal features and derived features (same as train_innings.rows_to_xy_by_format).
-    add_temporal_features_to_df(df)
+    # Compute derived features (same as train_innings.rows_to_xy_by_format).
     add_match_level_derived_features_to_df(df)
     for c in _train_innings.INNINGS_FEATURE_COLS + _train_innings.INNINGS_TARGET_COLS:
         if c in df.columns:

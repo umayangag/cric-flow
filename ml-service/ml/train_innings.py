@@ -46,7 +46,6 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
-from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
 from ml.utils import make_base_estimator
 from ml.win_features import _FORMAT_CODES as WIN_FORMAT_CODES  # reuse configured formats for one-hot
 
@@ -61,13 +60,15 @@ INNINGS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES]
 # Derived feature columns: shared with extras / reconciliation (see match_level_derived_features).
 INNINGS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
-# Feature columns for innings model: venue, inning_number, opposition, weather, team sums,
-# cyclical temporal features, derived features, then format one-hot.
+# Feature columns for innings model: season, venue, inning_number, opposition, match_date_unix,
+# weather, team sums, derived features, then format one-hot.
 INNINGS_FEATURE_COLS = (
     [
+        "season_id",
         "venue_id",
         "inning_number",
         "opposition_id",
+        "match_date_unix",
         "temp",
         "wind",
         "rain",
@@ -80,7 +81,6 @@ INNINGS_FEATURE_COLS = (
         "bat_form_sum",
         "bowl_form_sum",
     ]
-    + TEMPORAL_FEATURE_COLS
     + INNINGS_DERIVED_COLS
     + INNINGS_FORMAT_ONE_HOT_COLS
 )
@@ -133,8 +133,6 @@ def rows_to_xy_by_format(
     if not headers or not rows:
         return {}, None, None, None
     df = pd.DataFrame(rows, columns=headers)
-    # Compute cyclical temporal features (replaces season_id / match_date_unix).
-    add_temporal_features_to_df(df)
     # Compute derived features from base columns.
     _add_derived_features(df)
     for c in INNINGS_FEATURE_COLS + INNINGS_TARGET_COLS:

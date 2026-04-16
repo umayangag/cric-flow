@@ -6,8 +6,6 @@ These tests verify the six improvement areas without running real model training
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,145 +16,30 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 # ---------------------------------------------------------------------------
-# P0: Temporal features (ml.temporal_features)
+# P0: Monotonic temporal features (season_id, match_date_unix) presence
 # ---------------------------------------------------------------------------
 
 
-class TestTemporalFeatures:
-    """Tests for cyclical temporal feature computation."""
+class TestMonotonicTemporalFeatures:
+    """Monotonic temporal feature presence in canonical feature column lists."""
 
-    def test_temporal_from_unix_scalar_zero_is_neutral(self):
-        """Unix timestamp 0 is treated as missing → neutral cyclical features."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, temporal_from_unix_scalar
-
-        out = temporal_from_unix_scalar(0.0)
-        assert set(out.keys()) == set(TEMPORAL_FEATURE_COLS)
-        assert all(v == 0.0 for v in out.values())
-
-    def test_compute_temporal_from_unix_known_date(self):
-        """Known date: 2024-03-15 (Friday, March) produces correct sin/cos."""
-        from ml.temporal_features import compute_temporal_from_unix
-
-        # 2024-03-15 00:00:00 UTC = 1710460800
-        unix_ts = np.array([1710460800.0])
-        feats = compute_temporal_from_unix(unix_ts)
-        assert set(feats.keys()) == {"month_sin", "month_cos", "day_of_week_sin", "day_of_week_cos"}
-        # March = month 3; sin(2π*3/12) = sin(π/2) = 1.0
-        assert abs(feats["month_sin"][0] - math.sin(2 * math.pi * 3 / 12)) < 1e-6
-        assert abs(feats["month_cos"][0] - math.cos(2 * math.pi * 3 / 12)) < 1e-6
-        # Friday = Python dayofweek 4; sin(2π*4/7)
-        assert abs(feats["day_of_week_sin"][0] - math.sin(2 * math.pi * 4 / 7)) < 1e-6
-        assert abs(feats["day_of_week_cos"][0] - math.cos(2 * math.pi * 4 / 7)) < 1e-6
-
-    def test_compute_temporal_from_date_string(self):
-        """Date string produces same result as unix timestamp."""
-        from ml.temporal_features import compute_temporal_from_date, compute_temporal_from_unix
-
-        date_series = pd.Series(["2024-03-15"])
-        feats_date = compute_temporal_from_date(date_series)
-        feats_unix = compute_temporal_from_unix(np.array([1710460800.0]))
-        for key in feats_date:
-            assert abs(feats_date[key][0] - feats_unix[key][0]) < 1e-6
-
-    def test_add_temporal_features_to_df_unix_nan_not_epoch(self):
-        """Missing unix values must not be coerced to epoch before the temporal transform."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
-
-        df = pd.DataFrame({"match_date_unix": [np.nan, 1710460800.0]})
-        add_temporal_features_to_df(df, date_col=None)
-        for col in TEMPORAL_FEATURE_COLS:
-            assert df[col].iloc[0] == 0.0
-            assert not pd.isna(df[col].iloc[1])
-
-    def test_add_temporal_features_to_df_from_unix(self):
-        """add_temporal_features_to_df adds 4 columns from match_date_unix."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
-
-        df = pd.DataFrame({"match_date_unix": [1710460800.0, 1710547200.0], "other": [1, 2]})
-        result = add_temporal_features_to_df(df, date_col=None)
-        for col in TEMPORAL_FEATURE_COLS:
-            assert col in result.columns
-            assert not result[col].isna().any()
-
-    def test_add_temporal_features_to_df_from_date(self):
-        """add_temporal_features_to_df prefers match_date over match_date_unix."""
-        from ml.temporal_features import add_temporal_features_to_df
-
-        df = pd.DataFrame(
-            {
-                "match_date": ["2024-03-15", "2024-06-20"],
-                "match_date_unix": [0.0, 0.0],  # should be ignored
-            }
-        )
-        add_temporal_features_to_df(df)
-        # March month_sin should be ~1.0, not 0.0 (which unix=0 would give)
-        assert abs(df["month_sin"].iloc[0] - math.sin(2 * math.pi * 3 / 12)) < 1e-6
-
-    def test_add_temporal_features_fills_zero_when_no_source(self):
-        """When neither date nor unix column exists, fills with 0.0."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
-
-        df = pd.DataFrame({"other": [1, 2, 3]})
-        add_temporal_features_to_df(df)
-        for col in TEMPORAL_FEATURE_COLS:
-            assert (df[col] == 0.0).all()
-
-    def test_replace_temporal_columns_drop(self):
-        """replace_temporal_columns with drop_replaced removes old columns."""
-        from ml.temporal_features import TEMPORAL_FEATURE_COLS, replace_temporal_columns
-
-        df = pd.DataFrame(
-            {
-                "match_date_unix": [1710460800.0],
-                "season_id": [2024],
-                "season": [2024],
-                "other": [1],
-            }
-        )
-        replace_temporal_columns(df, date_col=None, drop_replaced=True)
-        assert "match_date_unix" not in df.columns
-        assert "season_id" not in df.columns
-        assert "season" not in df.columns
-        for col in TEMPORAL_FEATURE_COLS:
-            assert col in df.columns
-
-    def test_temporal_from_unix_scalar(self):
-        """temporal_from_unix_scalar returns dict of floats for a single timestamp."""
-        from ml.temporal_features import temporal_from_unix_scalar
-
-        result = temporal_from_unix_scalar(1710460800.0)
-        assert isinstance(result, dict)
-        assert len(result) == 4
-        for v in result.values():
-            assert isinstance(v, float)
-            assert -1.0 <= v <= 1.0
-
-    def test_temporal_features_in_batting_feature_cols(self):
-        """BATTING_FEATURE_COLS includes temporal features, not season_id/match_date_unix."""
+    def test_batting_feature_cols_contain_season_and_match_date_unix(self):
         from ml.tuning.types import BATTING_FEATURE_COLS
 
-        assert "month_sin" in BATTING_FEATURE_COLS
-        assert "month_cos" in BATTING_FEATURE_COLS
-        assert "day_of_week_sin" in BATTING_FEATURE_COLS
-        assert "day_of_week_cos" in BATTING_FEATURE_COLS
-        assert "season_id" not in BATTING_FEATURE_COLS
-        assert "match_date_unix" not in BATTING_FEATURE_COLS
+        assert "season" in BATTING_FEATURE_COLS
+        assert "match_date_unix" in BATTING_FEATURE_COLS
 
-    def test_temporal_features_in_bowling_feature_cols(self):
-        """BOWLING_FEATURE_COLS includes temporal features, not season_id/match_date_unix."""
+    def test_bowling_feature_cols_contain_season_and_match_date_unix(self):
         from ml.tuning.types import BOWLING_FEATURE_COLS
 
-        assert "month_sin" in BOWLING_FEATURE_COLS
-        assert "season_id" not in BOWLING_FEATURE_COLS
-        assert "match_date_unix" not in BOWLING_FEATURE_COLS
+        assert "season" in BOWLING_FEATURE_COLS
+        assert "match_date_unix" in BOWLING_FEATURE_COLS
 
-    def test_temporal_features_in_fielding_feature_cols(self):
-        """FIELDING_FEATURE_COLS includes temporal features."""
+    def test_fielding_feature_cols_contain_season_id_and_match_date_unix(self):
         from ml.train_fielding import FIELDING_FEATURE_COLS
 
-        assert "month_sin" in FIELDING_FEATURE_COLS
-        assert "season_id" not in FIELDING_FEATURE_COLS
-        assert "match_date_unix" not in FIELDING_FEATURE_COLS
+        assert "season_id" in FIELDING_FEATURE_COLS
+        assert "match_date_unix" in FIELDING_FEATURE_COLS
 
 
 # ---------------------------------------------------------------------------
@@ -352,15 +235,15 @@ class TestPermutationImportanceFallback:
 
 
 # ---------------------------------------------------------------------------
-# P3: Reconciliation with temporal features
+# P3: Reconciliation feature vector (monotonic temporal + derived)
 # ---------------------------------------------------------------------------
 
 
-class TestReconciliationTemporal:
-    """Tests for reconciliation module using temporal features."""
+class TestReconciliationFeatureVector:
+    """Tests for reconciliation.build_innings_feature_vector content and ordering."""
 
-    def test_build_innings_feature_vector_includes_temporal(self):
-        """build_innings_feature_vector includes temporal features from match_date_unix."""
+    def test_build_innings_feature_vector_includes_monotonic_temporal(self):
+        """build_innings_feature_vector places season_id and match_date_unix values in the vector."""
         from app.reconciliation import INNINGS_FEATURE_COLS, build_innings_feature_vector
 
         X = build_innings_feature_vector(
@@ -369,12 +252,14 @@ class TestReconciliationTemporal:
             bowl_consistency_sum=1.0,
             bat_form_sum=0.5,
             bowl_form_sum=0.5,
-            match_date_unix=1710460800.0,  # 2024-03-15
+            season_id=2024,
+            match_date_unix=1710460800.0,
         )
         assert X.shape == (1, len(INNINGS_FEATURE_COLS))
-        # Temporal features should be non-zero for a real date
-        ms_idx = INNINGS_FEATURE_COLS.index("month_sin")
-        assert X[0, ms_idx] != 0.0
+        season_idx = INNINGS_FEATURE_COLS.index("season_id")
+        md_idx = INNINGS_FEATURE_COLS.index("match_date_unix")
+        assert X[0, season_idx] == pytest.approx(2024.0)
+        assert X[0, md_idx] == pytest.approx(1710460800.0)
 
     def test_build_innings_feature_vector_includes_derived(self):
         """build_innings_feature_vector includes derived features."""
@@ -390,18 +275,18 @@ class TestReconciliationTemporal:
         fd_idx = INNINGS_FEATURE_COLS.index("form_differential")
         cd_idx = INNINGS_FEATURE_COLS.index("consistency_differential")
         wc_idx = INNINGS_FEATURE_COLS.index("weather_composite")
-        assert X[0, fd_idx] == pytest.approx(6.0)  # 10 - 4
-        assert X[0, cd_idx] == pytest.approx(5.0)  # 8 - 3
-        assert X[0, wc_idx] == pytest.approx(0.0)  # all weather defaults = 0
+        assert X[0, fd_idx] == pytest.approx(6.0)
+        assert X[0, cd_idx] == pytest.approx(5.0)
+        assert X[0, wc_idx] == pytest.approx(0.0)
 
-    def test_build_innings_feature_vector_no_season_id(self):
-        """build_innings_feature_vector does not accept season_id parameter."""
+    def test_build_innings_feature_vector_accepts_season_id(self):
+        """build_innings_feature_vector exposes a season_id parameter."""
         import inspect
 
         from app.reconciliation import build_innings_feature_vector
 
         sig = inspect.signature(build_innings_feature_vector)
-        assert "season_id" not in sig.parameters
+        assert "season_id" in sig.parameters
 
 
 # ---------------------------------------------------------------------------
@@ -419,17 +304,3 @@ class TestMLQARelativeThresholds:
         mlqa = get_mlqa_config()
         assert mlqa["overfitting_delta_threshold"] == pytest.approx(0.10)
         assert mlqa["stability_fold_std_threshold"] == pytest.approx(0.08)
-
-    def test_no_season_id_in_extras_feature_cols(self):
-        """EXTRAS_FEATURE_COLS does not contain season_id or match_date_unix."""
-        from ml.train_extras import EXTRAS_FEATURE_COLS
-
-        assert "season_id" not in EXTRAS_FEATURE_COLS
-        assert "match_date_unix" not in EXTRAS_FEATURE_COLS
-
-    def test_no_season_id_in_innings_feature_cols(self):
-        """INNINGS_FEATURE_COLS does not contain season_id or match_date_unix."""
-        from ml.train_innings import INNINGS_FEATURE_COLS
-
-        assert "season_id" not in INNINGS_FEATURE_COLS
-        assert "match_date_unix" not in INNINGS_FEATURE_COLS

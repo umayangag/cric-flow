@@ -31,10 +31,8 @@
     "toss",
     "venue",
     "opposition",
-    "month_sin",
-    "month_cos",
-    "day_of_week_sin",
-    "day_of_week_cos",
+    "season",
+    "match_date_unix",
     "bat_prev_sr",
     "bat_prev_out_rate",
     "bat_window_sr_12_pp",
@@ -75,10 +73,8 @@
     "toss",
     "bowling_venue",
     "bowling_opposition",
-    "month_sin",
-    "month_cos",
-    "day_of_week_sin",
-    "day_of_week_cos",
+    "season",
+    "match_date_unix",
     "bowl_prev_wkt_rate",
     "bowl_window_econ_24_death",
     "bowl_window_wkt_rate_24_death",
@@ -102,9 +98,7 @@
     "toss",
     "fielding_venue",
     "fielding_opposition",
-    "month_sin",
-    "month_cos",
-    "day_of_week_sin",
-    "day_of_week_cos"
+    "season_id",
+    "match_date_unix"
   ]
 }

@@ -27,7 +27,6 @@ from app.feature_config import get_feature_names
 from app.logging import get_struct_logger
 from ml.config import get_training_data_fetch_timeout_sec, get_training_params
 from ml.data_quality import impute_features
-from ml.temporal_features import add_temporal_features_to_df
 from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
@@ -116,8 +115,6 @@ def _rows_to_xy(
     if not headers or not rows:
         return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
     df = pd.DataFrame(rows, columns=headers)
-    # Compute cyclical temporal features (replaces season_id / match_date_unix).
-    add_temporal_features_to_df(df)
     all_cols = feature_cols + target_cols
     for c in all_cols:
         if c not in df.columns and c.replace("_", " ") in df.columns:

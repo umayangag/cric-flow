@@ -40,6 +40,7 @@ def bowling_feature_vector(f: Any) -> List[float]:
 _FIELDING_NAME_TO_ATTR = {
     "inning": "fielding_inning",
     "toss": "fielding_toss",
+    "season_id": "fielding_season",
 }
 
 

@@ -38,7 +38,6 @@ from .config import (
     get_training_params,
 )
 from .pipeline_common import compute_time_decay_weights, get_scaler
-from .temporal_features import TEMPORAL_FEATURE_COLS, add_temporal_features_to_df
 from .training_pipeline import ModelSpec, TrainingPipeline
 from .utils import make_base_estimator
 
@@ -58,7 +57,9 @@ FIELDING_FEATURE_COLS = [
     "toss",
     "fielding_venue",
     "fielding_opposition",
-] + TEMPORAL_FEATURE_COLS
+    "season_id",
+    "match_date_unix",
+]
 FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
 
 # ── ModelSpec (used by auto_tune and other consumers) ────────────────────
@@ -125,8 +126,6 @@ def rows_to_xy_by_format(
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
-    # Compute cyclical temporal features before numeric conversion (uses match_date or match_date_unix).
-    add_temporal_features_to_df(df)
     for c in FIELDING_FEATURE_COLS + FIELDING_TARGET_COLS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")

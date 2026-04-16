@@ -12,9 +12,8 @@ from typing import List, Optional, Set, Tuple
 
 import numpy as np
 
-# Single source of truth: match train_innings (venue, temporal, derived, ..., format one-hot)
+# Single source of truth: match train_innings (base context, derived, format one-hot)
 from ml.match_level_derived_features import compute_match_level_derived_features_scalars
-from ml.temporal_features import temporal_from_unix_scalar
 from ml.train_innings import INNINGS_FEATURE_COLS
 from ml.win_features import _format_one_hot_from_code
 
@@ -28,7 +27,9 @@ def build_innings_feature_vector(
     bat_form_sum: float,
     bowl_form_sum: float,
     venue_id: float = 0,
+    season_id: float = 0,
     opposition_id: float = 0,
+    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -37,11 +38,9 @@ def build_innings_feature_vector(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
-    match_date_unix: float = 0.0,
 ) -> np.ndarray:
     """Build feature vector for innings model prediction (order matches INNINGS_FEATURE_COLS)."""
     one_hot = _format_one_hot_from_code(format_code)
-    temporal = temporal_from_unix_scalar(match_date_unix)
     form_differential, consistency_differential, weather_composite = compute_match_level_derived_features_scalars(
         bat_form_sum,
         bowl_form_sum,
@@ -51,11 +50,13 @@ def build_innings_feature_vector(
         humidity,
         cloud,
     )
-    # Order must match INNINGS_FEATURE_COLS: base, temporal, derived, then format one-hot
+    # Order must match INNINGS_FEATURE_COLS: base, derived, then format one-hot
     values = [
+        season_id,
         venue_id,
         inning_number,
         opposition_id,
+        match_date_unix,
         temp,
         wind,
         rain,
@@ -67,10 +68,6 @@ def build_innings_feature_vector(
         bowl_consistency_sum,
         bat_form_sum,
         bowl_form_sum,
-        temporal["month_sin"],
-        temporal["month_cos"],
-        temporal["day_of_week_sin"],
-        temporal["day_of_week_cos"],
         form_differential,
         consistency_differential,
         weather_composite,
@@ -90,7 +87,9 @@ def predict_innings(
     bat_form_sum: float,
     bowl_form_sum: float,
     venue_id: float = 0,
+    season_id: float = 0,
     opposition_id: float = 0,
+    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -99,7 +98,6 @@ def predict_innings(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
-    match_date_unix: float = 0.0,
 ) -> Tuple[float, float]:
     """Predict innings_runs and innings_wickets for one innings."""
     X = build_innings_feature_vector(
@@ -109,7 +107,9 @@ def predict_innings(
         bat_form_sum=bat_form_sum,
         bowl_form_sum=bowl_form_sum,
         venue_id=venue_id,
+        season_id=season_id,
         opposition_id=opposition_id,
+        match_date_unix=match_date_unix,
         temp=temp,
         wind=wind,
         rain=rain,
@@ -118,7 +118,6 @@ def predict_innings(
         pressure=pressure,
         viscosity=viscosity,
         format_code=format_code,
-        match_date_unix=match_date_unix,
     )
     if scaler is not None:
         X = scaler.transform(X)
