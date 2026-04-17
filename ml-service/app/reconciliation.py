@@ -59,7 +59,6 @@ def _innings_feature_dict(
     )
     values: Dict[str, float] = {
         "season_id": float(season_id),
-        "season": float(season_id),
         "venue_id": float(venue_id),
         "inning_number": float(inning_number),
         "opposition_id": float(opposition_id),

@@ -45,13 +45,12 @@ from ml.tuning.runners import (
 _EXTRAS_LEGACY_KEY = "_LEGACY_"
 
 
-def _extras_pop_legacy(by_f: Dict[str, LoaderResult]) -> Optional[LoaderResult]:
-    """Pop the aggregated legacy pack from the extras by_format dict.
+def _pop_legacy_pack(by_f: Dict[str, LoaderResult]) -> Optional[LoaderResult]:
+    """Pop the aggregated legacy pack from a by-format dict.
 
-    ``ml.train_extras.rows_to_xy_by_format`` emits a special ``_LEGACY_`` entry
-    containing the unified pool (``format_is_*`` retained, single low-variance
-    drop). CLI callers must separate this from real format entries before
-    iterating.
+    Extras, fielding, and related loaders may emit a special ``_LEGACY_`` entry
+    containing a unified pool. CLI callers must separate this from real format
+    entries before iterating.
     """
     return by_f.pop(_EXTRAS_LEGACY_KEY, None)
 
@@ -110,10 +109,10 @@ def _unified_stack_xy_or_none(
     return all_X, all_Y, unified_feature_names
 
 
-def _extras_stack_unified_or_none(
+def _stack_unified_pack(
     by_f: Dict[str, LoaderResult],
 ) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
-    """Stack per-format extras matrices when legacy pack is absent.
+    """Stack per-format matrices when legacy pack is absent.
 
     Returns None if column counts differ, ``_shared_feature_names`` is None
     (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
@@ -382,7 +381,7 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
-                            legacy_pack = _extras_pop_legacy(by_f)
+                            legacy_pack = _pop_legacy_pack(by_f)
                             if args.unified:
                                 # Prefer the loader's aggregated legacy pack (retains format_is_*, single
                                 # low-variance drop). Fall back to vstack when the loader did not emit one.
@@ -390,7 +389,7 @@ def main() -> None:
                                     all_X, all_Y = legacy_pack.X, legacy_pack.Y
                                     unified_feature_names = legacy_pack.feature_names
                                 else:
-                                    stacked = _extras_stack_unified_or_none(by_f)
+                                    stacked = _stack_unified_pack(by_f)
                                     if stacked is None:
                                         continue
                                     all_X, all_Y, unified_feature_names = stacked
@@ -624,13 +623,13 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
-                            legacy_lr = _extras_pop_legacy(by_f)
+                            legacy_lr = _pop_legacy_pack(by_f)
                             if args.unified:
                                 if legacy_lr is not None:
                                     all_X, all_Y = legacy_lr.X, legacy_lr.Y
                                     unified_feature_names = legacy_lr.feature_names
                                 else:
-                                    stacked = _extras_stack_unified_or_none(by_f)
+                                    stacked = _stack_unified_pack(by_f)
                                     if stacked is None:
                                         logger.warning("auto_tune.no_fielding_data unified empty")
                                         continue
@@ -740,13 +739,13 @@ def main() -> None:
                         if not by_f:
                             logger.warning("auto_tune.no_extras_data format=%s", fmt)
                             continue
-                        legacy_pack = _extras_pop_legacy(by_f)
+                        legacy_pack = _pop_legacy_pack(by_f)
                         if args.unified:
                             if legacy_pack is not None:
                                 all_X, all_Y = legacy_pack.X, legacy_pack.Y
                                 unified_feature_names = legacy_pack.feature_names
                             else:
-                                stacked = _extras_stack_unified_or_none(by_f)
+                                stacked = _stack_unified_pack(by_f)
                                 if stacked is None:
                                     continue
                                 all_X, all_Y, unified_feature_names = stacked
@@ -886,17 +885,25 @@ def main() -> None:
                             continue
                         if by_f is None:
                             continue
-                        # Remove optional _LEGACY_ pooled pack (fielding loaders may emit it) so only real format keys run.
-                        _extras_pop_legacy(by_f)
-                        for fcode, lr in by_f.items():
-                            X, Y = lr.X, lr.Y
-                            if X.size == 0 or Y.size == 0:
+                        legacy_lr = _pop_legacy_pack(by_f)
+                        if args.unified:
+                            if legacy_lr is not None:
+                                all_X, all_Y = legacy_lr.X, legacy_lr.Y
+                                unified_feature_names = legacy_lr.feature_names
+                            else:
+                                stacked = _stack_unified_pack(by_f)
+                                if stacked is None:
+                                    logger.warning("auto_tune.no_fielding_data unified empty")
+                                    continue
+                                all_X, all_Y, unified_feature_names = stacked
+                            if all_X.size == 0 or all_Y.size == 0:
+                                logger.warning("auto_tune.no_fielding_data unified empty")
                                 continue
                             report = run_auto_tune(
                                 model_kind,
-                                X,
-                                Y,
-                                fcode,
+                                all_X,
+                                all_Y,
+                                None,
                                 out_dir,
                                 algorithms_override,
                                 validation_method_override,
@@ -904,16 +911,44 @@ def main() -> None:
                                 fast_mode=fast_mode,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
-                                feature_names=lr.feature_names,
+                                feature_names=unified_feature_names,
                             )
-                            _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
+                            _maybe_save_tuned_params(args.go_app_url, model_kind, None, report, args.api_key or None)
                             logger.info(
-                                "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                "auto_tune.done model=%s format=unified n=%s best_cv_score=%s",
                                 model_kind,
-                                fcode,
-                                X.shape[0],
+                                all_X.shape[0],
                                 report["best_cv_score"],
                             )
+                        else:
+                            for fcode, lr in by_f.items():
+                                X, Y = lr.X, lr.Y
+                                if X.size == 0 or Y.size == 0:
+                                    continue
+                                report = run_auto_tune(
+                                    model_kind,
+                                    X,
+                                    Y,
+                                    fcode,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
+                                    rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=lr.feature_names,
+                                )
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                )
+                                logger.info(
+                                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                    model_kind,
+                                    fcode,
+                                    X.shape[0],
+                                    report["best_cv_score"],
+                                )
                         continue
                     csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded_{fmt or 'LEGACY'}.csv")
                     if not os.path.isfile(csv_path) and not args.csv:
