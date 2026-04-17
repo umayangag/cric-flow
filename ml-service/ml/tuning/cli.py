@@ -599,9 +599,17 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
+                            legacy_lr = _extras_pop_legacy(by_f)
                             if args.unified:
-                                all_X = np.vstack([lr.X for lr in by_f.values()])
-                                all_Y = np.vstack([lr.Y for lr in by_f.values()])
+                                if legacy_lr is not None:
+                                    all_X, all_Y = legacy_lr.X, legacy_lr.Y
+                                    unified_feature_names = legacy_lr.feature_names
+                                else:
+                                    stacked = _extras_stack_unified_or_none(by_f)
+                                    if stacked is None:
+                                        logger.warning("auto_tune.no_fielding_data unified empty")
+                                        continue
+                                    all_X, all_Y, unified_feature_names = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_fielding_data unified empty")
                                     continue
@@ -617,6 +625,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=unified_feature_names,
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, None, report, args.api_key or None
@@ -644,6 +653,7 @@ def main() -> None:
                                         fast_mode=fast_mode,
                                         rescreen=args.rescreen,
                                         algorithms_explicitly_passed=bool(algorithms_override),
+                                        feature_names=lr.feature_names,
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -849,6 +859,7 @@ def main() -> None:
                             continue
                         if by_f is None:
                             continue
+                        _extras_pop_legacy(by_f)
                         for fcode, lr in by_f.items():
                             X, Y = lr.X, lr.Y
                             if X.size == 0 or Y.size == 0:
@@ -865,6 +876,7 @@ def main() -> None:
                                 fast_mode=fast_mode,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
+                                feature_names=lr.feature_names,
                             )
                             _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(

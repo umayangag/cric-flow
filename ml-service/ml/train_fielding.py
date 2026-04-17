@@ -37,6 +37,7 @@ from .config import (
     get_training_data_fetch_timeout_sec,
     get_training_params,
 )
+from .data_quality import drop_low_variance_columns
 from .pipeline_common import compute_time_decay_weights, get_scaler
 from .training_pipeline import ModelSpec, TrainingPipeline
 from .utils import make_base_estimator
@@ -121,8 +122,18 @@ def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
 
 def rows_to_xy_by_format(
     headers: list[str], rows: list[list[str]]
-) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
-    """Build X, Y, weights per format_code. Returns dict format_code -> (X, Y, sample_weight)."""
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]]:
+    """Build X, Y, weights, feature names per format_code.
+
+    Returns dict format_code -> (X, Y, sample_weight, feature_column_names).
+    ``feature_column_names`` matches ``X.shape[1]`` after scale-aware low-variance
+    drops (aligned with ``train_extras`` / ``train_win``).
+
+    When ``format_code`` is present and at least one format group qualifies, a
+    ``"_LEGACY_"`` entry holds the pooled rows with a single low-variance pass
+    for the unified fielding model (same column width as ``np.vstack`` of per-format
+    matrices would require).
+    """
     if not headers or not rows:
         return {}
     df = pd.DataFrame(rows, columns=headers)
@@ -144,22 +155,40 @@ def rows_to_xy_by_format(
         df = df.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in df.columns])
         if df.empty:
             return {}
-        X = df[[c for c in FIELDING_FEATURE_COLS if c in df.columns]].astype(float).values
+        feat_cols = [c for c in FIELDING_FEATURE_COLS if c in df.columns]
+        X = df[feat_cols].astype(float).values
+        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
         Y = df[[c for c in FIELDING_TARGET_COLS if c in df.columns]].astype(float).values
         w = _weights(df)
-        return {"_ALL_": (X, Y, w)}
-    out = {}
+        return {"_ALL_": (X, Y, w, feat_cols)}
+    out: dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]] = {}
+    legacy_feat_cols = [c for c in FIELDING_FEATURE_COLS if c in df.columns]
+    legacy_X_blocks: list[np.ndarray] = []
+    legacy_Y_blocks: list[np.ndarray] = []
+    legacy_w_blocks: list[Optional[np.ndarray]] = []
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in g.columns])
         if g.empty:
             continue
-        X = g[[c for c in FIELDING_FEATURE_COLS if c in g.columns]].astype(float).values
+        feat_cols = [c for c in FIELDING_FEATURE_COLS if c in g.columns]
+        X = g[feat_cols].astype(float).values
+        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
         Y = g[[c for c in FIELDING_TARGET_COLS if c in g.columns]].astype(float).values
         if X.shape[0] < 10:
             continue
         w = _weights(g)
-        out[fmt] = (X, Y, w)
+        out[fmt] = (X, Y, w, feat_cols)
+        legacy_X_blocks.append(g[legacy_feat_cols].astype(float).values)
+        legacy_Y_blocks.append(Y)
+        legacy_w_blocks.append(w)
+    if legacy_X_blocks:
+        all_X = np.vstack(legacy_X_blocks)
+        all_Y = np.vstack(legacy_Y_blocks)
+        pooled_cols = list(legacy_feat_cols)
+        all_X, pooled_cols, _dropped = drop_low_variance_columns(all_X, pooled_cols)
+        all_w = _concat_weights(legacy_w_blocks)
+        out["_LEGACY_"] = (all_X, all_Y, all_w, pooled_cols)
     return out
 
 
@@ -168,12 +197,17 @@ def train_and_save(
     Y: np.ndarray,
     out_dir: str,
     format_code: str,
+    feature_names: list[str],
     sample_weight: Optional[np.ndarray] = None,
 ) -> None:
     """Train fielding model and save scaler + model for format_code.
 
     Uses TrainingPipeline internally for scaling, fitting, and feature importance extraction.
     """
+    if X.shape[1] != len(feature_names):
+        raise ValueError(
+            f"train_fielding.train_and_save.feature_mismatch X.shape[1]={X.shape[1]} names={len(feature_names)}"
+        )
     params = get_training_params("fielding", format_code)
     pipe_cfg = get_pipeline_common_config()
     scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))
@@ -186,7 +220,7 @@ def train_and_save(
         model.fit(Xs, Y)
 
     # Extract feature importance
-    feature_importance = TrainingPipeline.extract_feature_importance(model, FIELDING_FEATURE_COLS)
+    feature_importance = TrainingPipeline.extract_feature_importance(model, feature_names)
 
     os.makedirs(out_dir, exist_ok=True)
     compress = params["joblib_compress"]
@@ -276,6 +310,7 @@ def main() -> None:
         logger.error("train_fielding.no_data hint=empty or insufficient rows")
         sys.exit(1)
 
+    legacy_pack = by_format.pop("_LEGACY_", None)
     formats_items = list(by_format.items())
     max_workers = min(
         len(formats_items),
@@ -283,18 +318,21 @@ def main() -> None:
     )
 
     def _train_one_format(item):
-        fmt, (X, Y, w) = item
+        fmt, (X, Y, w, feat_names) = item
         logger.info("pipeline: train_fielding processing format=%s n=%s", fmt, X.shape[0])
-        train_and_save(X, Y, out_dir, fmt, sample_weight=w)
+        train_and_save(X, Y, out_dir, fmt, feat_names, sample_weight=w)
         logger.info("train_fielding.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         list(executor.map(_train_one_format, formats_items))
 
     # Unified (overall) model: train on all data combined for legacy/fallback
-    all_X = np.vstack([X for _, (X, _, _) in by_format.items()])
-    all_Y = np.vstack([Y for _, (_, Y, _) in by_format.items()])
-    all_weights = _concat_weights([w for _, (_, _, w) in by_format.items()])
+    if legacy_pack is not None:
+        all_X, all_Y, all_weights, _legacy_feats = legacy_pack
+    else:
+        all_X = np.vstack([X for _, (X, _, _, _) in by_format.items()])
+        all_Y = np.vstack([Y for _, (_, Y, _, _) in by_format.items()])
+        all_weights = _concat_weights([w for _, (_, _, w, _) in by_format.items()])
     del by_format
     gc.collect()
     if all_X.shape[0] >= 10:

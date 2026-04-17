@@ -84,9 +84,9 @@ def _wrap_win_pack(pack: Tuple[Any, ...]) -> LoaderResult:
 
 
 def _wrap_fielding_pack(pack: Tuple[Any, ...]) -> LoaderResult:
-    """Wrap a train_fielding ``(X, Y, w)`` tuple in a LoaderResult (no feature_names)."""
-    x, y, w = pack[0], pack[1], pack[2]
-    return LoaderResult(x, y, feature_names=None, sample_weight=w)
+    """Wrap a train_fielding ``(X, Y, w, feat_cols)`` tuple in a LoaderResult."""
+    x, y, w, feat = pack[0], pack[1], pack[2], pack[3]
+    return LoaderResult(x, y, feature_names=list(feat) if feat is not None else None, sample_weight=w)
 
 
 def _sort_df_by_match_date(df: pd.DataFrame) -> pd.DataFrame:
@@ -189,7 +189,11 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_fielding_pack(pack) for fmt, pack in by_format.items()}
     if format_code and format_code in wrapped:
-        return {format_code: wrapped[format_code]}
+        legacy = wrapped.get("_LEGACY_")
+        out = {format_code: wrapped[format_code]}
+        if legacy is not None:
+            out["_LEGACY_"] = legacy
+        return out
     return wrapped
 
 
@@ -266,7 +270,11 @@ def load_fielding_from_api(
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_fielding_pack(pack) for fmt, pack in by_format.items()}
     if format_filter and format_filter in wrapped:
-        return {format_filter: wrapped[format_filter]}
+        legacy = wrapped.get("_LEGACY_")
+        out = {format_filter: wrapped[format_filter]}
+        if legacy is not None:
+            out["_LEGACY_"] = legacy
+        return out
     return wrapped
 
 
