@@ -88,3 +88,46 @@ def test_compute_match_level_derived_features_scalars_non_finite_to_zero() -> No
     assert fd == pytest.approx(0.0 - 2.0)
     assert cd == pytest.approx(0.0 - 1.0)
     assert wc == pytest.approx(0.5 * 0.0 + 0.3 * 1.0 + 0.2 * 0.5)
+
+
+def test_compute_scalars_respects_explicit_weights() -> None:
+    """Inference should be able to pin training-time weights via the sidecar."""
+    pinned = {
+        "weather_composite_rain_weight": 1.0,
+        "weather_composite_humidity_weight": 0.0,
+        "weather_composite_cloud_weight": 0.0,
+    }
+    _, _, wc = compute_match_level_derived_features_scalars(
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        100.0,
+        100.0,
+        weights=pinned,
+    )
+    assert wc == pytest.approx(1.0)
+
+
+def test_add_to_df_respects_explicit_weights() -> None:
+    """Pinned weights at inference override the current service config."""
+    df = pd.DataFrame({"rain": [0.0, 1.0], "humidity": [100.0, 0.0], "cloud": [0.0, 0.0]})
+    pinned = {
+        "weather_composite_rain_weight": 2.0,
+        "weather_composite_humidity_weight": 0.5,
+        "weather_composite_cloud_weight": 0.0,
+    }
+    add_match_level_derived_features_to_df(df, weights=pinned)
+    assert df["weather_composite"].iloc[0] == pytest.approx(0.5 * 1.0)  # humidity/100 * 0.5
+    assert df["weather_composite"].iloc[1] == pytest.approx(2.0 * 1.0)
+
+
+def test_add_to_df_partial_weights_fill_from_config() -> None:
+    """Partial overrides fall back to the service config for missing keys."""
+    df = pd.DataFrame({"rain": [1.0], "humidity": [100.0], "cloud": [100.0]})
+    partial = {"weather_composite_rain_weight": 0.0}
+    add_match_level_derived_features_to_df(df, weights=partial)
+    default_humidity = 0.3
+    default_cloud = 0.2
+    assert df["weather_composite"].iloc[0] == pytest.approx(default_humidity + default_cloud)

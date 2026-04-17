@@ -112,6 +112,15 @@ def predict_match_innings(
     if innings_pair is None:
         return None
     scaler_inn, model_inn = innings_pair
+    # Resolve sidecar metadata for the same registry key chosen above so inference uses the
+    # exact feature order and derived-feature weights pinned at training time.
+    from app.artifacts import INNINGS_META  # local import to avoid a cycle at module load
+
+    meta_inn = None
+    if fmt_upper and INNINGS_MODELS.get(fmt_upper) is not None:
+        meta_inn = INNINGS_META.get(fmt_upper)
+    if meta_inn is None:
+        meta_inn = INNINGS_META.get("_LEGACY_")
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
 
@@ -140,6 +149,7 @@ def predict_match_innings(
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
         format_code=fmt_upper,
+        meta=meta_inn,
     )
     inn2_runs, inn2_wkts = predict_innings(
         scaler_inn,
@@ -161,6 +171,7 @@ def predict_match_innings(
         pressure=match_context.pressure,
         viscosity=match_context.viscosity,
         format_code=fmt_upper,
+        meta=meta_inn,
     )
     return inn1_runs, inn1_wkts, inn2_runs, inn2_wkts
 

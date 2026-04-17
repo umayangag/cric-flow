@@ -82,7 +82,7 @@ class TestInningsFormatOneHotExclusion:
             row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), "T20I", f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
-        by_format, _, _, _ = rows_to_xy_by_format(headers, rows)
+        by_format, _, _, _, _ = rows_to_xy_by_format(headers, rows)
         assert "T20I" in by_format
         _, _, _, _, feat_names = by_format["T20I"]
         for col in INNINGS_FORMAT_ONE_HOT_COLS:
@@ -102,7 +102,7 @@ class TestInningsFormatOneHotExclusion:
             row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
-        by_format, _, _, _ = rows_to_xy_by_format(headers, rows)
+        by_format, _, _, _, _ = rows_to_xy_by_format(headers, rows)
         assert "_ALL_" in by_format
         # Unified model may still drop format one-hot via low-variance (all zeros),
         # but the key point is they weren't explicitly excluded.

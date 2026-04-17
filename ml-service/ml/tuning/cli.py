@@ -42,6 +42,18 @@ from ml.tuning.runners import (
     run_auto_tune_win,
 )
 
+_EXTRAS_LEGACY_KEY = "_LEGACY_"
+
+
+def _extras_pop_legacy(by_f: Dict[str, Any]) -> Optional[Any]:
+    """Pop the aggregated legacy pack from the extras by_format dict (new format).
+
+    ``ml.train_extras.rows_to_xy_by_format`` now emits a special ``_LEGACY_`` entry
+    containing the unified pool (``format_is_*`` retained, single low-variance drop).
+    CLI callers must separate this from real format entries before iterating.
+    """
+    return by_f.pop(_EXTRAS_LEGACY_KEY, None)
+
 
 def _extras_feature_names_if_consistent(by_f: Dict[str, Any]) -> Optional[List[str]]:
     """Return shared extras column names when every format uses the same feature list (required for vstack)."""
@@ -317,9 +329,17 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
+                            legacy_pack = _extras_pop_legacy(by_f)
                             if args.unified:
-                                all_X = np.vstack([v[0] for v in by_f.values()])
-                                all_Y = np.vstack([v[1] for v in by_f.values()])
+                                # Prefer the loader's aggregated legacy pack (retains format_is_*, single
+                                # low-variance drop). Fall back to vstack when the loader did not emit one.
+                                if legacy_pack is not None:
+                                    all_X, all_Y, _all_w, legacy_names = legacy_pack
+                                    unified_feature_names = legacy_names
+                                else:
+                                    all_X = np.vstack([v[0] for v in by_f.values()])
+                                    all_Y = np.vstack([v[1] for v in by_f.values()])
+                                    unified_feature_names = _extras_feature_names_if_consistent(by_f)
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
@@ -335,7 +355,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
-                                    feature_names=_extras_feature_names_if_consistent(by_f),
+                                    feature_names=unified_feature_names,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
@@ -650,9 +670,15 @@ def main() -> None:
                         if not by_f:
                             logger.warning("auto_tune.no_extras_data format=%s", fmt)
                             continue
+                        legacy_pack = _extras_pop_legacy(by_f)
                         if args.unified:
-                            all_X = np.vstack([v[0] for v in by_f.values()])
-                            all_Y = np.vstack([v[1] for v in by_f.values()])
+                            if legacy_pack is not None:
+                                all_X, all_Y, _all_w, legacy_names = legacy_pack
+                                unified_feature_names = legacy_names
+                            else:
+                                all_X = np.vstack([v[0] for v in by_f.values()])
+                                all_Y = np.vstack([v[1] for v in by_f.values()])
+                                unified_feature_names = _extras_feature_names_if_consistent(by_f)
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_extras_data unified empty")
                                 continue
@@ -668,7 +694,7 @@ def main() -> None:
                                 use_autogluon=use_autogluon,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
-                                feature_names=_extras_feature_names_if_consistent(by_f),
+                                feature_names=unified_feature_names,
                             )
                             _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                             logger.info(
