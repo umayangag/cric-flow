@@ -72,6 +72,44 @@ def _shared_feature_names(by_f: Dict[str, LoaderResult]) -> Optional[List[str]]:
     return None
 
 
+def _unified_stack_xy_or_none(
+    by_f: Dict[str, LoaderResult],
+    *,
+    y_combine: str,
+) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
+    """Stack per-format ``X``/``Y`` when column counts and ``feature_names`` align.
+
+    Returns None if column counts differ, ``_shared_feature_names`` is None
+    (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
+
+    ``y_combine``: ``"vstack"`` for multi-output regression (extras, innings, fielding);
+    ``"ravel_concat"`` for win classification labels.
+    """
+    if not by_f:
+        return None
+    results = list(by_f.values())
+    n_cols = results[0].X.shape[1]
+    if any(r.X.shape[1] != n_cols for r in results):
+        logger.warning(
+            "auto_tune.unified_stack_column_mismatch n_cols_first=%s shapes=%s",
+            n_cols,
+            [r.X.shape for r in results],
+        )
+        return None
+    unified_feature_names = _shared_feature_names(by_f)
+    if unified_feature_names is None:
+        logger.warning("auto_tune.unified_stack_feature_names_not_aligned")
+        return None
+    all_X = np.vstack([r.X for r in results])
+    if y_combine == "ravel_concat":
+        all_Y = np.concatenate([r.Y.ravel() for r in results])
+    elif y_combine == "vstack":
+        all_Y = np.vstack([r.Y for r in results])
+    else:
+        raise ValueError(f"unknown y_combine: {y_combine!r}")
+    return all_X, all_Y, unified_feature_names
+
+
 def _extras_stack_unified_or_none(
     by_f: Dict[str, LoaderResult],
 ) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
@@ -80,24 +118,7 @@ def _extras_stack_unified_or_none(
     Returns None if column counts differ, ``_shared_feature_names`` is None
     (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
     """
-    if not by_f:
-        return None
-    results = list(by_f.values())
-    n_cols = results[0].X.shape[1]
-    if any(r.X.shape[1] != n_cols for r in results):
-        logger.warning(
-            "auto_tune.extras_unified_column_mismatch n_cols_first=%s shapes=%s",
-            n_cols,
-            [r.X.shape for r in results],
-        )
-        return None
-    unified_feature_names = _shared_feature_names(by_f)
-    if unified_feature_names is None:
-        logger.warning("auto_tune.extras_unified_feature_names_not_aligned")
-        return None
-    all_X = np.vstack([r.X for r in results])
-    all_Y = np.vstack([r.Y for r in results])
-    return all_X, all_Y, unified_feature_names
+    return _unified_stack_xy_or_none(by_f, y_combine="vstack")
 
 
 try:
@@ -437,8 +458,10 @@ def main() -> None:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([lr.X for lr in by_f.values()])
-                                all_Y = np.concatenate([lr.Y.ravel() for lr in by_f.values()])
+                                stacked = _unified_stack_xy_or_none(by_f, y_combine="ravel_concat")
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, _ = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_win_data unified empty")
                                     continue
@@ -495,8 +518,10 @@ def main() -> None:
                                 logger.warning("auto_tune.no_innings_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([lr.X for lr in by_f.values()])
-                                all_Y = np.vstack([lr.Y for lr in by_f.values()])
+                                stacked = _unified_stack_xy_or_none(by_f, y_combine="vstack")
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, _ = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_innings_data unified empty")
                                     continue
@@ -793,8 +818,10 @@ def main() -> None:
                             logger.warning("auto_tune.no_win_data format=%s", fmt)
                             continue
                         if args.unified:
-                            all_X = np.vstack([lr.X for lr in by_f.values()])
-                            all_Y = np.concatenate([lr.Y.ravel() for lr in by_f.values()])
+                            stacked = _unified_stack_xy_or_none(by_f, y_combine="ravel_concat")
+                            if stacked is None:
+                                continue
+                            all_X, all_Y, _ = stacked
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_win_data unified empty")
                                 continue
@@ -859,6 +886,7 @@ def main() -> None:
                             continue
                         if by_f is None:
                             continue
+                        # Remove optional _LEGACY_ pooled pack (fielding loaders may emit it) so only real format keys run.
                         _extras_pop_legacy(by_f)
                         for fcode, lr in by_f.items():
                             X, Y = lr.X, lr.Y

@@ -26,7 +26,7 @@ func FieldingTrainingRowsWithFormat(ctx context.Context, format string, cutoff t
 
 func fieldingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string, args []any) {
 	// Opposition for fielding = batting team in the inning the player fielded in.
-	// Weather is matched to the fielding session: inning 1 fielding uses bowling session, inning 2 uses batting session.
+	// Weather: first innings aligns with batting session, second with bowling session.
 	q = `SELECT
 		m.match_date,
 		fd.player_id,
@@ -46,7 +46,7 @@ func fieldingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string
 	LEFT JOIN match m ON m.match_id = fd.match_id
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN match_inning mi ON mi.match_id = fd.match_id AND mi.inning_number = fd.inning_number
-	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'bowling' ELSE 'batting' END
+	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'batting' ELSE 'bowling' END
 	LEFT JOIN season s ON s.id = m.season_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, fd.match_id, fd.inning_number, fd.player_id`
@@ -182,7 +182,7 @@ func fieldingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN match m ON m.match_id = fd.match_id
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN match_inning mi ON mi.match_id = fd.match_id AND mi.inning_number = fd.inning_number
-	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'bowling' ELSE 'batting' END
+	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'batting' ELSE 'bowling' END
 	LEFT JOIN season s ON s.id = m.season_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
