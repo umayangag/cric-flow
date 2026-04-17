@@ -248,3 +248,29 @@ The sidecar pins two things:
 Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fielding_data` (default 1) and replaces the unique constraint with `(match_id, inning_number, player_id)`. Migration `0096_backfill_fielding_data_inning_number.sql` then recomputes per-inning aggregates from `fielding_event` where event-level data exists, preserving manually entered `dropped_catches` and `missed_run_outs` on inning 1 (these are not tracked in `fielding_event`).
 
 Matches with no `fielding_event` data retain their pre-existing single-row representation at `inning_number = 1`. If per-inning event data is ingested later for such matches, running `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) will split the aggregates correctly.
+
+---
+
+## Loader contract: `LoaderResult`
+
+All tuning data loaders in `ml.tuning.data_loaders` return a typed envelope:
+
+- Single-pack loaders (batting, bowling): `LoaderResult(X, Y, feature_names, sample_weight=None)`.
+- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). Extras additionally emits a special `_LEGACY_` key holding the aggregated unified-model pool.
+
+Call sites in `ml.tuning.cli` consume `result.X / result.Y / result.feature_names / result.sample_weight` directly; the previous `unpack_xy_with_feature_names` / `_extras_feature_names_if_consistent` helpers have been removed. To add a new loader, return a `LoaderResult` (or `Dict[str, LoaderResult]`) from the outset — it keeps optional fields explicit and prevents shape drift between training and tuning.
+
+---
+
+## Pending validation work
+
+The following is **not** yet verified in this branch and is deliberately left as an operator follow-up because it requires a populated training DB and non-trivial auto-tune time:
+
+- **Feature transforms A/B (`config.json` → `feature_transforms`)**: `add_log1p` for `*_career_count`, `*_days_since_last`, `*_innings_in_last_90d` and three hand-picked interactions per side are enabled for batting/bowling. Before accepting them as defaults, run `make auto-tune` per format with and without transforms (toggle `feature_transforms.batting.add_interactions` / `add_log1p` and the matching bowling block) on the same cutoff and compare:
+  - `best_cv_score` (lower MAE is better).
+  - `mlqa_audit.checks.overfitting.relative_delta` and `mlqa_audit.checks.stability.relative_cv_std`.
+  - Per-fold CV score spread.
+
+  If transforms help, migrate the block from `config.json` (environment-local override) to `config.default.json` so it ships with defaults. If they don't, remove them to avoid the redundant feature-name plumbing cost at inference.
+
+- **Weather-composite ablation**: `weather_composite = wr·rain + wh·humidity/100 + wc·cloud/100` is a hand-picked linear blend. The `form_differential` and `consistency_differential` columns are pure subtractions of features the model also sees. Tree-based models can (and usually do) recover these from raw columns on their own. Run the same auto-tune sweep with and without `form_differential` / `consistency_differential` / `weather_composite` and keep only the ones that improve hold-out MAE or MLQA stability; drop the rest from `MATCH_LEVEL_DERIVED_FEATURE_COLS`. Note that `resolve_weights` now logs a warning if the resolved weight sum falls outside `[0, 1.5]`, to catch accidental weight drift during experimentation.
