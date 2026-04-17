@@ -157,16 +157,16 @@ class TestWinFormatOneHotExclusion:
 
 
 class TestDataLoadersInningsFeatureNames:
-    """data_loaders.load_innings_from_api returns feature names in tuple."""
+    """data_loaders.LoaderResult carries feature names from load_innings_from_api."""
 
-    def test_unpack_xy_with_feature_names_innings_tuple(self):
-        from ml.tuning.data_loaders import unpack_xy_with_feature_names
+    def test_loader_result_exposes_feature_names(self):
+        from ml.tuning.data_loaders import LoaderResult
 
-        # Simulate the new 3-tuple: (X, Y, feat_names)
         X = np.random.rand(10, 5)
         Y = np.random.rand(10, 2)
         feat_names = ["a", "b", "c", "d", "e"]
-        result = (X, Y, feat_names)
-        x_out, y_out, names_out = unpack_xy_with_feature_names(result)
-        assert names_out == feat_names
-        assert x_out.shape == (10, 5)
+        result = LoaderResult(X, Y, feature_names=feat_names)
+        assert result.feature_names == feat_names
+        assert result.X.shape == (10, 5)
+        assert result.Y.shape == (10, 2)
+        assert result.sample_weight is None

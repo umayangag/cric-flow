@@ -35,6 +35,7 @@ from ml.tuning.cv_metrics import (  # noqa: F401
 
 # ── Re-export data loaders ──────────────────────────────────────────────
 from ml.tuning.data_loaders import (  # noqa: F401
+    LoaderResult,
     _load_via_csv_or_api,
     _sort_df_by_match_date,
     _sort_rows_by_match_date,
@@ -50,7 +51,6 @@ from ml.tuning.data_loaders import (  # noqa: F401
     load_innings_from_api,
     load_win_csv,
     load_win_from_api,
-    unpack_xy_with_feature_names,
 )
 
 # ── Re-export optuna search runners ─────────────────────────────────────
