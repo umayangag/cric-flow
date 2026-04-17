@@ -31,6 +31,7 @@ from sklearn.model_selection import (
 from sklearn.pipeline import Pipeline
 
 from ml.config import (
+    DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES,
     MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT,
     MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT,
     get_mlqa_config,
@@ -434,9 +435,7 @@ def _extract_feature_importance(
         return result
     # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
     tuning = get_tuning_config()
-    # Rounding uses tuning["permutation_importance_decimal_places"] from ml.tuning (config.default.json);
-    # get_tuning_config applies the same default as ml.config.DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES when the key is missing.
-    dec_places = int(tuning["permutation_importance_decimal_places"])
+    dec_places = int(tuning.get("permutation_importance_decimal_places", DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES))
     if precomputed_perm_mean is not None and pipe is not None:
         try:
             imps = precomputed_perm_mean

@@ -19,9 +19,9 @@ from ml.match_level_derived_features import (
 @pytest.fixture(autouse=True)
 def _reset_weight_sum_warning_flag() -> None:
     """The weight-sum warning is emitted at most once per process; reset between tests."""
-    mldf._weight_sum_warning_emitted = False
+    mldf._reset_weight_sum_warning_state_for_tests()
     yield
-    mldf._weight_sum_warning_emitted = False
+    mldf._reset_weight_sum_warning_state_for_tests()
 
 
 def test_match_level_derived_feature_cols_order() -> None:

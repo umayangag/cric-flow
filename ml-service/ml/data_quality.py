@@ -194,6 +194,11 @@ def drop_low_variance_columns(
     if n_samples <= 1:
         # With a single row, std is 0 on every column; every non-protected column
         # would be flagged as low-variance and dropped.
+        logger.warning(
+            "data_quality.drop_low_variance_columns.skip n_samples=%d "
+            "(variance filter requires at least 2 rows; check upstream data pipeline if this is common)",
+            n_samples,
+        )
         return X, list(feature_names), []
 
     std = np.std(X, axis=0)
