@@ -4,11 +4,11 @@ import numpy as np
 
 from app.models import BacktestPlayerPred
 from app.reconciliation import (
-    INNINGS_FEATURE_COLS,
     build_innings_feature_vector,
     predict_innings,
     rescale_player_predictions,
 )
+from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
 
 
 def test_build_innings_feature_vector_shape():
@@ -20,9 +20,9 @@ def test_build_innings_feature_vector_shape():
         bat_form_sum=0.5,
         bowl_form_sum=0.5,
     )
-    assert X.shape == (1, len(INNINGS_FEATURE_COLS))
-    inning_idx = INNINGS_FEATURE_COLS.index("inning_number")
-    bat_consistency_idx = INNINGS_FEATURE_COLS.index("bat_consistency_sum")
+    assert X.shape == (1, len(LEGACY_INNINGS_FEATURE_COLS))
+    inning_idx = LEGACY_INNINGS_FEATURE_COLS.index("inning_number")
+    bat_consistency_idx = LEGACY_INNINGS_FEATURE_COLS.index("bat_consistency_sum")
     assert X[0, inning_idx] == 1.0  # inning_number
     assert X[0, bat_consistency_idx] == 1.0  # bat_consistency_sum
 

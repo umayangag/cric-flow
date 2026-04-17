@@ -18,7 +18,9 @@ function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' |
  */
 function formatRelativePct(v: number | null | undefined, digits = 1): string | null {
   if (v == null || !Number.isFinite(v)) return null;
-  return `${(v * 100).toFixed(digits)}%`;
+  const pct = v * 100;
+  const effectiveDigits = Math.abs(pct) > 0 && Math.abs(pct) < 0.1 ? Math.max(digits, 2) : digits;
+  return `${pct.toFixed(effectiveDigits)}%`;
 }
 
 /**

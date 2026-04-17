@@ -86,6 +86,27 @@ INNINGS_FEATURE_COLS = (
     + INNINGS_DERIVED_COLS
     + INNINGS_FORMAT_ONE_HOT_COLS
 )
+
+# Column order for artifacts trained before derived features and sidecars (matches pre-refactor training).
+# Reconciliation and callers without sidecar metadata must use this so older joblib models still align.
+LEGACY_INNINGS_FEATURE_COLS = [
+    "venue_id",
+    "season_id",
+    "match_date_unix",
+    "inning_number",
+    "opposition_id",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "bat_consistency_sum",
+    "bowl_consistency_sum",
+    "bat_form_sum",
+    "bowl_form_sum",
+] + INNINGS_FORMAT_ONE_HOT_COLS
 INNINGS_TARGET_COLS = ["innings_runs", "innings_wickets"]
 
 _add_derived_features = add_match_level_derived_features_to_df

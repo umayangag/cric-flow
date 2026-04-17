@@ -78,6 +78,24 @@ EXTRAS_FEATURE_COLS = (
     + EXTRAS_DERIVED_COLS
     + EXTRAS_FORMAT_ONE_HOT_COLS
 )
+
+# Order for legacy extras artifacts without sidecar metadata (matches pre-derived training).
+LEGACY_EXTRAS_FEATURE_COLS = [
+    "venue_id",
+    "season_id",
+    "match_date_unix",
+    "temp",
+    "wind",
+    "rain",
+    "humidity",
+    "cloud",
+    "pressure",
+    "viscosity",
+    "bat_consistency_sum",
+    "bowl_consistency_sum",
+    "bat_form_sum",
+    "bowl_form_sum",
+] + EXTRAS_FORMAT_ONE_HOT_COLS
 EXTRAS_TARGET_COL = "total_extras"
 
 _add_derived_features = add_match_level_derived_features_to_df

@@ -24,6 +24,7 @@ from .artifacts import (
     BAT_SHARE_MODELS,
     BOWL_MODELS,
     BOWL_SHARE_MODELS,
+    EXTRAS_META,
     EXTRAS_MODELS,
     FIELD_MODELS,
     INNINGS_MODELS,
@@ -66,9 +67,10 @@ except ImportError:
     apply_constraint_reconciliation_from_backtest_preds = None  # type: ignore[assignment]
 
 try:
-    from ml.train_extras import EXTRAS_FEATURE_COLS
+    from ml.train_extras import EXTRAS_FEATURE_COLS, LEGACY_EXTRAS_FEATURE_COLS
 except ImportError:
     EXTRAS_FEATURE_COLS = []
+    LEGACY_EXTRAS_FEATURE_COLS = ()  # type: ignore[misc, assignment]
 
 try:
     from ml.win_features import (
@@ -84,6 +86,18 @@ except ImportError:
     compute_derived_features = None  # type: ignore[assignment]
 
 logger = get_struct_logger()
+
+
+def _resolve_extras_feature_order(fmt_key: str) -> List[str]:
+    """Column order: sidecar feature_names when loaded, else legacy layout for old artifacts."""
+    meta = EXTRAS_META.get(fmt_key)
+    if meta is not None:
+        names = meta.get("feature_names")
+        if isinstance(names, list) and names:
+            return [str(n) for n in names]
+    if LEGACY_EXTRAS_FEATURE_COLS:
+        return list(LEGACY_EXTRAS_FEATURE_COLS)
+    return list(EXTRAS_FEATURE_COLS)
 
 
 def _sum_team_feature(
@@ -1052,11 +1066,13 @@ def run_bowling_prediction(features: List[BowlingFeatures]) -> List[BowlingPredi
 
 
 def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
-    """Build feature vector in EXTRAS_FEATURE_COLS order (exclude 'format' key)."""
-    if not EXTRAS_FEATURE_COLS:
+    """Build feature vector in sidecar or legacy column order (exclude 'format' key)."""
+    fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
+    fmt_key = fmt if fmt else "_LEGACY_"
+    cols = _resolve_extras_feature_order(fmt_key)
+    if not cols:
         return np.zeros(0)
     d = f.model_dump()
-    fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
     try:
         from ml.win_features import _format_one_hot_from_code  # type: ignore[attr-defined]
 
@@ -1064,10 +1080,10 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
         d.update(one_hot)
     except Exception:
         # Fall back to zeros for one-hot columns if helper is unavailable.
-        for col in EXTRAS_FEATURE_COLS:
+        for col in cols:
             if col.startswith("format_is_") and col not in d:
                 d[col] = 0.0
-    return np.array([float(d.get(c, 0)) for c in EXTRAS_FEATURE_COLS], dtype=float)
+    return np.array([float(d.get(c, 0)) for c in cols], dtype=float)
 
 
 def win_feature_vector(f: WinFeatures) -> np.ndarray:
@@ -1119,7 +1135,10 @@ def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPredicti
     if X.size == 0:
         raise HTTPException(
             status_code=500,
-            detail=error_payload(code="FEATURE_ORDER_EMPTY", message="EXTRAS_FEATURE_COLS not available"),
+            detail=error_payload(
+                code="FEATURE_ORDER_EMPTY",
+                message="Extras feature column list is empty (check artifacts and sidecar)",
+            ),
         )
     try:
         y = model.predict(X)

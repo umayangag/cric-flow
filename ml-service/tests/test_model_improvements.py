@@ -244,8 +244,10 @@ class TestReconciliationFeatureVector:
 
     def test_build_innings_feature_vector_includes_monotonic_temporal(self):
         """build_innings_feature_vector places season_id and match_date_unix values in the vector."""
-        from app.reconciliation import INNINGS_FEATURE_COLS, build_innings_feature_vector
+        from app.reconciliation import build_innings_feature_vector
+        from ml.train_innings import INNINGS_FEATURE_COLS
 
+        meta = {"feature_names": list(INNINGS_FEATURE_COLS)}
         X = build_innings_feature_vector(
             inning_number=1,
             bat_consistency_sum=1.0,
@@ -254,6 +256,7 @@ class TestReconciliationFeatureVector:
             bowl_form_sum=0.5,
             season_id=2024,
             match_date_unix=1710460800.0,
+            meta=meta,
         )
         assert X.shape == (1, len(INNINGS_FEATURE_COLS))
         season_idx = INNINGS_FEATURE_COLS.index("season_id")
@@ -263,14 +266,17 @@ class TestReconciliationFeatureVector:
 
     def test_build_innings_feature_vector_includes_derived(self):
         """build_innings_feature_vector includes derived features."""
-        from app.reconciliation import INNINGS_FEATURE_COLS, build_innings_feature_vector
+        from app.reconciliation import build_innings_feature_vector
+        from ml.train_innings import INNINGS_FEATURE_COLS
 
+        meta = {"feature_names": list(INNINGS_FEATURE_COLS)}
         X = build_innings_feature_vector(
             inning_number=1,
             bat_consistency_sum=8.0,
             bowl_consistency_sum=3.0,
             bat_form_sum=10.0,
             bowl_form_sum=4.0,
+            meta=meta,
         )
         fd_idx = INNINGS_FEATURE_COLS.index("form_differential")
         cd_idx = INNINGS_FEATURE_COLS.index("consistency_differential")

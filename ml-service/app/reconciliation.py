@@ -15,7 +15,7 @@ import numpy as np
 # Single source of truth: match train_innings (base context, derived, format one-hot).
 # Keep ml.* imports at module scope (not inside helpers) so the dependency graph stays explicit.
 from ml.match_level_derived_features import compute_match_level_derived_features_scalars
-from ml.train_innings import INNINGS_FEATURE_COLS
+from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
 from ml.win_features import _format_one_hot_from_code
 
 from .models import BacktestPlayerPred
@@ -85,12 +85,12 @@ def _innings_feature_dict(
 
 
 def _resolve_innings_feature_order(meta: Optional[Mapping[str, Any]]) -> List[str]:
-    """Pick the feature column order: sidecar when available, else INNINGS_FEATURE_COLS."""
+    """Pick the feature column order: sidecar when available, else legacy pre-sidecar order."""
     if meta is not None:
         names = meta.get("feature_names")
         if isinstance(names, list) and names:
             return [str(n) for n in names]
-    return list(INNINGS_FEATURE_COLS)
+    return list(LEGACY_INNINGS_FEATURE_COLS)
 
 
 def build_innings_feature_vector(
@@ -117,8 +117,8 @@ def build_innings_feature_vector(
 
     When *meta* (artifact sidecar) is provided, its ``feature_names`` drives
     column order/selection and ``derived_weights`` are used when computing the
-    weather composite. Falls back to :data:`INNINGS_FEATURE_COLS` otherwise so
-    artifacts trained before sidecars were introduced keep working.
+    weather composite. Without sidecar metadata, uses :data:`LEGACY_INNINGS_FEATURE_COLS`
+    so older artifacts (trained before derived features) keep the expected layout.
     """
     derived_weights: Optional[Mapping[str, float]] = None
     if meta is not None:

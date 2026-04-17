@@ -23,8 +23,15 @@ FROM fielding_data fd
 WHERE EXISTS (SELECT 1 FROM fielding_event fe WHERE fe.match_id = fd.match_id)
   AND (fd.dropped_catches IS NOT NULL OR fd.missed_run_outs IS NOT NULL);
 
+-- Only remove rows we will replace from fielding_event aggregates. Players present only in
+-- fielding_data (no fielding_event rows as that fielder) keep their manually entered stats.
 DELETE FROM fielding_data fd
-WHERE EXISTS (SELECT 1 FROM fielding_event fe WHERE fe.match_id = fd.match_id);
+WHERE EXISTS (
+    SELECT 1
+    FROM fielding_event fe
+    WHERE fe.match_id = fd.match_id
+      AND fe.fielder_id = fd.player_id
+);
 
 WITH aggregated_events AS (
     SELECT
