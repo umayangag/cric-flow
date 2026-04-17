@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 import pytest
 
+from ml import match_level_derived_features as mldf
 from ml.match_level_derived_features import (
     MATCH_LEVEL_DERIVED_FEATURE_COLS,
     add_match_level_derived_features_to_df,
     compute_match_level_derived_features_scalars,
+    resolve_weights,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_weight_sum_warning_flag() -> None:
+    """The weight-sum warning is emitted at most once per process; reset between tests."""
+    mldf._weight_sum_warning_emitted = False
+    yield
+    mldf._weight_sum_warning_emitted = False
 
 
 def test_match_level_derived_feature_cols_order() -> None:
@@ -131,3 +143,36 @@ def test_add_to_df_partial_weights_fill_from_config() -> None:
     default_humidity = 0.3
     default_cloud = 0.2
     assert df["weather_composite"].iloc[0] == pytest.approx(default_humidity + default_cloud)
+
+
+def test_resolve_weights_warns_when_sum_exceeds_envelope(caplog: pytest.LogCaptureFixture) -> None:
+    """Weight sum > 1.5 should emit a single logger warning."""
+    noisy = {
+        "weather_composite_rain_weight": 1.0,
+        "weather_composite_humidity_weight": 0.8,
+        "weather_composite_cloud_weight": 0.5,  # sum = 2.3
+    }
+    with caplog.at_level(logging.WARNING, logger=mldf.__name__):
+        resolve_weights(noisy)
+    assert any("weather_composite weight sum" in r.message for r in caplog.records)
+
+
+def test_resolve_weights_warns_only_once(caplog: pytest.LogCaptureFixture) -> None:
+    """Repeated calls with out-of-range weights should not spam the log."""
+    noisy = {
+        "weather_composite_rain_weight": 5.0,
+        "weather_composite_humidity_weight": 0.0,
+        "weather_composite_cloud_weight": 0.0,
+    }
+    with caplog.at_level(logging.WARNING, logger=mldf.__name__):
+        for _ in range(5):
+            resolve_weights(noisy)
+    warnings = [r for r in caplog.records if "weather_composite weight sum" in r.message]
+    assert len(warnings) == 1
+
+
+def test_resolve_weights_within_envelope_emits_no_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """Canonical weights (sum ~ 1.0) must not trigger the warning."""
+    with caplog.at_level(logging.WARNING, logger=mldf.__name__):
+        resolve_weights(None)  # falls back to config defaults
+    assert not any("weather_composite weight sum" in r.message for r in caplog.records)

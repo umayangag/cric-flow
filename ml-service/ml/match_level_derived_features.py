@@ -10,12 +10,15 @@ the training-time weights even if config is later retuned.
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, Mapping, Optional
 
 import numpy as np
 import pandas as pd
 
 from ml.config import get_match_level_derived_config
+
+logger = logging.getLogger(__name__)
 
 MATCH_LEVEL_DERIVED_FEATURE_COLS: tuple[str, ...] = (
     "form_differential",
@@ -29,6 +32,33 @@ _WEIGHT_KEYS = (
     "weather_composite_cloud_weight",
 )
 
+# Sanity envelope for the weather_composite weight sum.
+# The canonical default sums to 1.0 (0.5 + 0.3 + 0.2). We warn rather than
+# hard-error outside [0, 1.5] so operators can still experiment, but get a
+# loud signal when weights drift into territory likely to distort the
+# feature scale relative to the model's training distribution.
+_WEIGHT_SUM_WARN_MIN = 0.0
+_WEIGHT_SUM_WARN_MAX = 1.5
+_weight_sum_warning_emitted = False
+
+
+def _maybe_warn_weight_sum(weight_sum: float) -> None:
+    """Emit a single logger warning if the weight sum is outside the sane envelope."""
+
+    global _weight_sum_warning_emitted
+    if _weight_sum_warning_emitted:
+        return
+    if not np.isfinite(weight_sum) or weight_sum < _WEIGHT_SUM_WARN_MIN or weight_sum > _WEIGHT_SUM_WARN_MAX:
+        logger.warning(
+            "weather_composite weight sum %.4f is outside [%.1f, %.1f]; "
+            "this will rescale the feature relative to training distribution. "
+            "Check ml.match_level_derived.* config or the pinned weights in the model sidecar.",
+            weight_sum,
+            _WEIGHT_SUM_WARN_MIN,
+            _WEIGHT_SUM_WARN_MAX,
+        )
+        _weight_sum_warning_emitted = True
+
 
 def resolve_weights(weights: Optional[Mapping[str, float]] = None) -> Dict[str, float]:
     """Return a concrete weight dict.
@@ -36,14 +66,20 @@ def resolve_weights(weights: Optional[Mapping[str, float]] = None) -> Dict[str, 
     When *weights* is provided (e.g. loaded from a model sidecar) we use those
     values verbatim and fill any missing key with the current config default.
     When *weights* is None we return a full copy of the current config.
+
+    Emits a one-time logger warning if the resolved weight sum falls outside
+    ``[0, 1.5]``, which is a strong signal that weights have drifted from the
+    canonical distribution the model was trained on.
     """
     cfg = get_match_level_derived_config()
     if weights is None:
-        return {k: float(cfg[k]) for k in _WEIGHT_KEYS}
-    out: Dict[str, float] = {}
-    for k in _WEIGHT_KEYS:
-        val = weights.get(k) if weights is not None else None
-        out[k] = float(val) if val is not None else float(cfg[k])
+        out = {k: float(cfg[k]) for k in _WEIGHT_KEYS}
+    else:
+        out = {}
+        for k in _WEIGHT_KEYS:
+            val = weights.get(k) if weights is not None else None
+            out[k] = float(val) if val is not None else float(cfg[k])
+    _maybe_warn_weight_sum(sum(out.values()))
     return out
 
 
