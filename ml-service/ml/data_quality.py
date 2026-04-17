@@ -190,6 +190,12 @@ def drop_low_variance_columns(
     if X.size == 0:
         return X, list(feature_names), []
 
+    n_samples = X.shape[0]
+    if n_samples <= 1:
+        # With a single row, std is 0 on every column; every non-protected column
+        # would be flagged as low-variance and dropped.
+        return X, list(feature_names), []
+
     std = np.std(X, axis=0)
     mean_abs = np.abs(np.mean(X, axis=0))
     ranges = np.ptp(X, axis=0)
