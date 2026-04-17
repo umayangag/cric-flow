@@ -13,6 +13,10 @@
 
 BEGIN;
 
+-- If 0095 ran before it dropped uq_fielding_match_player, that legacy UNIQUE (match_id, player_id)
+-- still blocks multiple innings per player; remove it so per-inning inserts can succeed.
+ALTER TABLE fielding_data DROP CONSTRAINT IF EXISTS uq_fielding_match_player;
+
 CREATE TEMP TABLE _fielding_manual_stash ON COMMIT DROP AS
 SELECT
     fd.match_id,
