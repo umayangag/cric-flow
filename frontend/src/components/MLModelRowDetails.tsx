@@ -11,6 +11,27 @@ function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' |
   return 'warning';
 }
 
+/**
+ * Format a relative metric (e.g. relative overfitting delta, relative CV std) as a
+ * percentage, guarding against non-finite values. When the reference score is near
+ * zero the backend returns Infinity, which should not be rendered as "Infinity%".
+ */
+function formatRelativePct(v: number | null | undefined, digits = 1): string | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return `${(v * 100).toFixed(digits)}%`;
+}
+
+/**
+ * Render a short sidebar chip suffix like "(12.3%)" or fall back to "(n/a)" when the
+ * relative metric is non-finite (baseline score too close to zero).
+ */
+function relativePctSuffix(v: number | null | undefined): string {
+  const formatted = formatRelativePct(v);
+  if (formatted != null) return ` (${formatted})`;
+  if (v != null && !Number.isFinite(v)) return ' (n/a)';
+  return '';
+}
+
 function flattenMetricsForDisplay(
   metrics: Record<string, unknown>,
 ): Array<[string, string | number | boolean]> {
@@ -85,10 +106,13 @@ function TuningInsights({
       format: (v) => (v as number).toFixed(4),
       hint: (() => {
         const stab = mlqa?.checks?.stability;
-        if (stab?.relative_cv_std != null && stab?.threshold != null) {
-          const pct = (stab.relative_cv_std * 100).toFixed(1);
-          const thresh = (stab.threshold * 100).toFixed(0);
-          return `relative ${pct}% of score; >${thresh}% = unstable`;
+        const pct = formatRelativePct(stab?.relative_cv_std);
+        const thresh = stab?.threshold != null ? `${(stab.threshold * 100).toFixed(0)}%` : null;
+        if (pct != null && thresh != null) {
+          return `relative ${pct} of score; >${thresh} = unstable`;
+        }
+        if (stab?.relative_cv_std != null && !Number.isFinite(stab.relative_cv_std)) {
+          return 'score near zero — relative σ cannot be computed';
         }
         return 'stability (relative to score magnitude)';
       })(),
@@ -236,16 +260,26 @@ export const MLModelRowDetails: React.FC<MLModelRowDetailsProps> = ({ model }) =
               <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
                 {mlqa.checks.overfitting && (
                   <Chip
-                    label={`Δ=${mlqa.checks.overfitting.delta}${mlqa.checks.overfitting.relative_delta != null ? ` (${(mlqa.checks.overfitting.relative_delta * 100).toFixed(1)}%)` : ''} ${mlqa.checks.overfitting.flagged ? '⚠' : '✓'}`}
+                    label={`Δ=${mlqa.checks.overfitting.delta}${relativePctSuffix(mlqa.checks.overfitting.relative_delta)} ${mlqa.checks.overfitting.flagged ? '⚠' : '✓'}`}
                     size="small"
                     variant="outlined"
+                    title={
+                      mlqa.checks.overfitting.threshold != null
+                        ? `train−val score gap; flagged when relative Δ > ${(mlqa.checks.overfitting.threshold * 100).toFixed(0)}% of validation score`
+                        : 'train−val score gap; flagged when relative Δ exceeds configured threshold'
+                    }
                   />
                 )}
                 {mlqa.checks.stability && (
                   <Chip
-                    label={`σ=${mlqa.checks.stability.cv_std}${mlqa.checks.stability.relative_cv_std != null ? ` (${(mlqa.checks.stability.relative_cv_std * 100).toFixed(1)}%)` : ''} ${mlqa.checks.stability.flagged ? '⚠' : '✓'}`}
+                    label={`σ=${mlqa.checks.stability.cv_std}${relativePctSuffix(mlqa.checks.stability.relative_cv_std)} ${mlqa.checks.stability.flagged ? '⚠' : '✓'}`}
                     size="small"
                     variant="outlined"
+                    title={
+                      mlqa.checks.stability.threshold != null
+                        ? `cross-validation fold σ; flagged when relative σ > ${(mlqa.checks.stability.threshold * 100).toFixed(0)}% of mean score`
+                        : 'cross-validation fold σ; flagged when relative σ exceeds configured threshold'
+                    }
                   />
                 )}
               </Stack>

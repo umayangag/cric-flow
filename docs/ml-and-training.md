@@ -203,3 +203,48 @@ For classifiers (e.g. win model), predicted probabilities can be **calibrated** 
 **API:** `POST /api/predict/team-selection` (or GET) with `simulate=true` (or `?simulate=true`). Optional: `simulation_top_k` (default 50), `simulation_samples` (default 500 per matchup), `simulation_max_pairs` (0 = no cap). Response includes `team1`, `team2`, `scorecard_summary` as usual, plus `simulation`: `win_probability_team1`, `win_probability_team2`, `draw_probability`, `innings1_total_mean`, `innings1_total_std`, `innings1_total_p10/p50/p90`, and the same for innings 2, plus `num_matchups` and `num_samples`.
 
 **Resource use:** Example: 50×50 = 2,500 matchups × 500 samples = 1.25M samples; typically completes in under a minute on a modern PC. Reduce `simulation_top_k` or `simulation_max_pairs` for faster responses.
+
+---
+
+## Match-level derived features and model sidecars
+
+**Derived features** (`ml.match_level_derived_features`) are computed in one place and reused by `train_innings`, `train_extras`, and the inference path in `app.reconciliation`:
+
+- `form_differential = bat_form_sum − bowl_form_sum`
+- `consistency_differential = bat_consistency_sum − bowl_consistency_sum`
+- `weather_composite = wr · rain + wh · (humidity / 100) + wc · (cloud / 100)`
+
+The three `weather_composite_*_weight` values live under `ml.match_level_derived` in config.
+
+**Caveats — `weather_composite`:**
+
+1. It is a **linear, hand-picked blend** of three raw weather features that are *also* kept in the feature list. Tree models can learn interactions from the raw features on their own; the composite is justified only for linear/kernel models that can’t. Treat it as optional and A/B-test whether dropping the raw weather cols (or the composite) improves validation MAE before committing to it.
+2. Because the weights are config-driven, they must match between training and inference. From this change onward each trained artifact writes a **sidecar file** next to the joblib (e.g. `innings_meta_T20.json` / `extras_meta.json`) containing `feature_names` and `derived_weights`. `app/reconciliation.build_innings_feature_vector` reads this sidecar at inference time, so retuning the config after training does not silently drift predictions.
+
+**Artifact sidecars (`ml.artifact_sidecar`)**:
+
+| File | Written by | Read by |
+|------|------------|---------|
+| `innings_meta_<FMT>.json` / `innings_meta.json` | `ml.train_innings.train_and_save(_legacy)` | `app.artifacts.reload` → `app.reconciliation.predict_innings` |
+| `extras_meta_<FMT>.json` / `extras_meta.json` | `ml.train_extras.train_and_save(_legacy)` | `app.artifacts.reload` (available to prediction code as `EXTRAS_META`) |
+
+The sidecar pins two things:
+
+- `feature_names`: exact column order the scaler/model were fitted on, so per-format `drop_low_variance_columns` and format one-hot exclusion cannot cause a shape mismatch at inference.
+- `derived_weights`: the `ml.match_level_derived` block as it was at training time.
+
+**Operational note:** old artifacts without sidecars still load; `build_innings_feature_vector` falls back to `INNINGS_FEATURE_COLS` + the current config. Retrain any per-format model whose training data included format-only columns that were dropped during low-variance filtering so its sidecar is written and inference stops relying on the fallback.
+
+---
+
+## Data-quality: scale-aware low-variance column drop
+
+`ml.data_quality.drop_low_variance_columns` removes effectively constant columns before fitting. The threshold is **scale-aware**: a column is dropped when `std ≤ threshold · (|mean| + 1)`. The `+ 1` term gives a sensible bar for zero-mean features (like `form_differential`) while still flagging tiny noise on large-mean ones (like `match_date_unix`). The knob lives under `ml.data_quality.low_variance_threshold` (default `1e-6`); values are coefficients, not absolute variance thresholds. Weather fields are protected by default — they are often empty historically but will be populated over time.
+
+---
+
+## Fielding per-inning migration
+
+Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fielding_data` (default 1) and replaces the unique constraint with `(match_id, inning_number, player_id)`. Migration `0096_backfill_fielding_data_inning_number.sql` then recomputes per-inning aggregates from `fielding_event` where event-level data exists, preserving manually entered `dropped_catches` and `missed_run_outs` on inning 1 (these are not tracked in `fielding_event`).
+
+Matches with no `fielding_event` data retain their pre-existing single-row representation at `inning_number = 1`. If per-inning event data is ingested later for such matches, running `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) will split the aggregates correctly.
