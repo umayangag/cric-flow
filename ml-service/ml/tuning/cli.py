@@ -386,8 +386,11 @@ def main() -> None:
                                 # Prefer the loader's aggregated legacy pack (retains format_is_*, single
                                 # low-variance drop). Fall back to vstack when the loader did not emit one.
                                 if legacy_pack is not None:
-                                    all_X, all_Y = legacy_pack.X, legacy_pack.Y
-                                    unified_feature_names = legacy_pack.feature_names
+                                    all_X, all_Y, unified_feature_names = (
+                                        legacy_pack.X,
+                                        legacy_pack.Y,
+                                        legacy_pack.feature_names,
+                                    )
                                 else:
                                     stacked = _stack_unified_pack(by_f)
                                     if stacked is None:
@@ -626,8 +629,11 @@ def main() -> None:
                             legacy_lr = _pop_legacy_pack(by_f)
                             if args.unified:
                                 if legacy_lr is not None:
-                                    all_X, all_Y = legacy_lr.X, legacy_lr.Y
-                                    unified_feature_names = legacy_lr.feature_names
+                                    all_X, all_Y, unified_feature_names = (
+                                        legacy_lr.X,
+                                        legacy_lr.Y,
+                                        legacy_lr.feature_names,
+                                    )
                                 else:
                                     stacked = _stack_unified_pack(by_f)
                                     if stacked is None:
@@ -742,8 +748,11 @@ def main() -> None:
                         legacy_pack = _pop_legacy_pack(by_f)
                         if args.unified:
                             if legacy_pack is not None:
-                                all_X, all_Y = legacy_pack.X, legacy_pack.Y
-                                unified_feature_names = legacy_pack.feature_names
+                                all_X, all_Y, unified_feature_names = (
+                                    legacy_pack.X,
+                                    legacy_pack.Y,
+                                    legacy_pack.feature_names,
+                                )
                             else:
                                 stacked = _stack_unified_pack(by_f)
                                 if stacked is None:
@@ -888,8 +897,11 @@ def main() -> None:
                         legacy_lr = _pop_legacy_pack(by_f)
                         if args.unified:
                             if legacy_lr is not None:
-                                all_X, all_Y = legacy_lr.X, legacy_lr.Y
-                                unified_feature_names = legacy_lr.feature_names
+                                all_X, all_Y, unified_feature_names = (
+                                    legacy_lr.X,
+                                    legacy_lr.Y,
+                                    legacy_lr.feature_names,
+                                )
                             else:
                                 stacked = _stack_unified_pack(by_f)
                                 if stacked is None:
