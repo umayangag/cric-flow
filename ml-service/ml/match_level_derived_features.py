@@ -77,7 +77,7 @@ def resolve_weights(weights: Optional[Mapping[str, float]] = None) -> Dict[str, 
     else:
         out = {}
         for k in _WEIGHT_KEYS:
-            val = weights.get(k) if weights is not None else None
+            val = weights.get(k)
             out[k] = float(val) if val is not None else float(cfg[k])
     _maybe_warn_weight_sum(sum(out.values()))
     return out

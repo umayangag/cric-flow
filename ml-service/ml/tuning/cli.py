@@ -63,11 +63,11 @@ def _shared_feature_names(by_f: Dict[str, LoaderResult]) -> Optional[List[str]]:
     in column count or ordering would silently produce a wrong-shape matrix or
     raise at stack time.
     """
-    vals = [v for v in by_f.values() if v is not None and v.feature_names is not None]
-    if not vals:
+    if not by_f:
         return None
-    first = vals[0].feature_names
-    if all(v.feature_names == first for v in vals):
+    results = list(by_f.values())
+    first = results[0].feature_names
+    if first is not None and all(r.feature_names == first for r in results):
         return list(first)
     return None
 

@@ -99,7 +99,7 @@ BATTING_FEATURE_COLS = (
         "toss",
         "batting_venue",
         "batting_opposition",
-        "season",
+        "season_id",
         "match_date_unix",
     ]
     + BAT_SEQ_COLS
@@ -121,7 +121,7 @@ BOWLING_FEATURE_COLS = (
         "toss",
         "bowling_venue",
         "bowling_opposition",
-        "season",
+        "season_id",
         "match_date_unix",
     ]
     + BOWL_SEQ_COLS

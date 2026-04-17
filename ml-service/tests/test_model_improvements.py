@@ -23,16 +23,16 @@ from sklearn.preprocessing import StandardScaler
 class TestMonotonicTemporalFeatures:
     """Monotonic temporal feature presence in canonical feature column lists."""
 
-    def test_batting_feature_cols_contain_season_and_match_date_unix(self):
+    def test_batting_feature_cols_contain_season_id_and_match_date_unix(self):
         from ml.tuning.types import BATTING_FEATURE_COLS
 
-        assert "season" in BATTING_FEATURE_COLS
+        assert "season_id" in BATTING_FEATURE_COLS
         assert "match_date_unix" in BATTING_FEATURE_COLS
 
-    def test_bowling_feature_cols_contain_season_and_match_date_unix(self):
+    def test_bowling_feature_cols_contain_season_id_and_match_date_unix(self):
         from ml.tuning.types import BOWLING_FEATURE_COLS
 
-        assert "season" in BOWLING_FEATURE_COLS
+        assert "season_id" in BOWLING_FEATURE_COLS
         assert "match_date_unix" in BOWLING_FEATURE_COLS
 
     def test_fielding_feature_cols_contain_season_id_and_match_date_unix(self):
