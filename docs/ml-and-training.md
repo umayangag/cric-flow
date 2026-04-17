@@ -210,8 +210,8 @@ For classifiers (e.g. win model), predicted probabilities can be **calibrated** 
 
 **Derived features** (`ml.match_level_derived_features`) are computed in one place and reused by `train_innings`, `train_extras`, and the inference path in `app.reconciliation`:
 
-- `form_differential = bat_form_sum − bowl_form_sum`
-- `consistency_differential = bat_consistency_sum − bowl_consistency_sum`
+- `form_differential = bat_form_sum - bowl_form_sum`
+- `consistency_differential = bat_consistency_sum - bowl_consistency_sum`
 - `weather_composite = wr · rain + wh · (humidity / 100) + wc · (cloud / 100)`
 
 The three `weather_composite_*_weight` values live under `ml.match_level_derived` in config.

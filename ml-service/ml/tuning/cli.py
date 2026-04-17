@@ -72,6 +72,34 @@ def _shared_feature_names(by_f: Dict[str, LoaderResult]) -> Optional[List[str]]:
     return None
 
 
+def _extras_stack_unified_or_none(
+    by_f: Dict[str, LoaderResult],
+) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
+    """Stack per-format extras matrices when legacy pack is absent.
+
+    Returns None if column counts differ, ``_shared_feature_names`` is None
+    (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
+    """
+    if not by_f:
+        return None
+    results = list(by_f.values())
+    n_cols = results[0].X.shape[1]
+    if any(r.X.shape[1] != n_cols for r in results):
+        logger.warning(
+            "auto_tune.extras_unified_column_mismatch n_cols_first=%s shapes=%s",
+            n_cols,
+            [r.X.shape for r in results],
+        )
+        return None
+    unified_feature_names = _shared_feature_names(by_f)
+    if unified_feature_names is None:
+        logger.warning("auto_tune.extras_unified_feature_names_not_aligned")
+        return None
+    all_X = np.vstack([r.X for r in results])
+    all_Y = np.vstack([r.Y for r in results])
+    return all_X, all_Y, unified_feature_names
+
+
 try:
     from ml import auto_tune_progress as _progress
 except ImportError:
@@ -341,9 +369,10 @@ def main() -> None:
                                     all_X, all_Y = legacy_pack.X, legacy_pack.Y
                                     unified_feature_names = legacy_pack.feature_names
                                 else:
-                                    all_X = np.vstack([lr.X for lr in by_f.values()])
-                                    all_Y = np.vstack([lr.Y for lr in by_f.values()])
-                                    unified_feature_names = _shared_feature_names(by_f)
+                                    stacked = _extras_stack_unified_or_none(by_f)
+                                    if stacked is None:
+                                        continue
+                                    all_X, all_Y, unified_feature_names = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
@@ -682,9 +711,10 @@ def main() -> None:
                                 all_X, all_Y = legacy_pack.X, legacy_pack.Y
                                 unified_feature_names = legacy_pack.feature_names
                             else:
-                                all_X = np.vstack([lr.X for lr in by_f.values()])
-                                all_Y = np.vstack([lr.Y for lr in by_f.values()])
-                                unified_feature_names = _shared_feature_names(by_f)
+                                stacked = _extras_stack_unified_or_none(by_f)
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, unified_feature_names = stacked
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_extras_data unified empty")
                                 continue

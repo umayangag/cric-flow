@@ -26,6 +26,19 @@ WHERE EXISTS (SELECT 1 FROM fielding_event fe WHERE fe.match_id = fd.match_id)
 DELETE FROM fielding_data fd
 WHERE EXISTS (SELECT 1 FROM fielding_event fe WHERE fe.match_id = fd.match_id);
 
+WITH aggregated_events AS (
+    SELECT
+        fe.match_id,
+        fe.innings AS inning_number,
+        fe.fielder_id AS player_id,
+        SUM(CASE WHEN fe.kind = 'caught'  THEN 1 ELSE 0 END) AS catches,
+        SUM(CASE WHEN fe.kind = 'run_out' THEN 1 ELSE 0 END) AS run_outs,
+        SUM(CASE WHEN fe.kind = 'stumped' THEN 1 ELSE 0 END) AS stumpings,
+        SUM(CASE WHEN fe.kind = 'run_out' AND fe.is_direct_hit THEN 1 ELSE 0 END) AS runouts_direct_hits
+    FROM fielding_event fe
+    WHERE fe.fielder_id IS NOT NULL
+    GROUP BY fe.match_id, fe.innings, fe.fielder_id
+)
 INSERT INTO fielding_data (
     match_id,
     inning_number,
@@ -38,24 +51,17 @@ INSERT INTO fielding_data (
     missed_run_outs
 )
 SELECT
-    fe.match_id,
-    fe.innings AS inning_number,
-    fe.fielder_id AS player_id,
-    SUM(CASE WHEN fe.kind = 'caught'  THEN 1 ELSE 0 END) AS catches,
-    SUM(CASE WHEN fe.kind = 'run_out' THEN 1 ELSE 0 END) AS run_outs,
-    SUM(CASE WHEN fe.kind = 'stumped' THEN 1 ELSE 0 END) AS stumpings,
-    SUM(CASE WHEN fe.kind = 'run_out' AND fe.is_direct_hit THEN 1 ELSE 0 END) AS runouts_direct_hits,
-    CASE WHEN fe.innings = 1 THEN (
-        SELECT s.dropped_catches FROM _fielding_manual_stash s
-        WHERE s.match_id = fe.match_id AND s.player_id = fe.fielder_id
-    ) END AS dropped_catches,
-    CASE WHEN fe.innings = 1 THEN (
-        SELECT s.missed_run_outs FROM _fielding_manual_stash s
-        WHERE s.match_id = fe.match_id AND s.player_id = fe.fielder_id
-    ) END AS missed_run_outs
-FROM fielding_event fe
-WHERE fe.fielder_id IS NOT NULL
-GROUP BY fe.match_id, fe.innings, fe.fielder_id
+    agg.match_id,
+    agg.inning_number,
+    agg.player_id,
+    agg.catches,
+    agg.run_outs,
+    agg.stumpings,
+    agg.runouts_direct_hits,
+    CASE WHEN agg.inning_number = 1 THEN s.dropped_catches END,
+    CASE WHEN agg.inning_number = 1 THEN s.missed_run_outs END
+FROM aggregated_events agg
+LEFT JOIN _fielding_manual_stash s ON s.match_id = agg.match_id AND s.player_id = agg.player_id
 ON CONFLICT (match_id, inning_number, player_id) DO NOTHING;
 
 -- Rows for matches without fielding_event data stay at inning_number = 1.
