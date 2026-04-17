@@ -145,17 +145,29 @@ def drop_low_variance_columns(
     variance_threshold: Optional[float] = None,
     protected_columns: Optional[frozenset] = None,
 ) -> Tuple[np.ndarray, List[str], List[str]]:
-    """Remove near-constant feature columns that add noise without signal.
+    """Remove effectively constant feature columns that add noise without signal.
 
-    Columns whose variance is below *variance_threshold* are dropped **unless**
-    they appear in *protected_columns* (e.g. weather fields that are currently
-    empty but will be populated later).
+    The detection is **scale-aware**: a column is dropped when its standard
+    deviation is negligible relative to its magnitude. Concretely, a column is
+    flagged when::
+
+        std(col) <= threshold * (|mean(col)| + 1.0)
+
+    The ``+ 1.0`` bootstraps a sensible bar for zero-mean columns so the same
+    threshold works for ``season_id`` (magnitude ~2e3) and ``rain`` (magnitude
+    ~0.2). Columns whose range (``max - min``) is zero are always treated as
+    constant regardless of threshold.
+
+    Weather fields are protected by default (currently often empty but planned
+    to be populated), callers can override *protected_columns*.
 
     Args:
         X: Feature matrix (n_samples, n_features).
         feature_names: Column names matching X.shape[1].
-        variance_threshold: Columns with variance <= this are candidates for removal.
-            If None, uses ``ml.data_quality.low_variance_threshold`` from service config.
+        variance_threshold: Scale-aware coefficient. Defaults to
+            ``ml.data_quality.low_variance_threshold`` from service config.
+            Recommended values are small (e.g. 1e-6) because the threshold is
+            now relative rather than absolute.
         protected_columns: Column names that must never be removed regardless of variance.
 
     Returns:
@@ -175,8 +187,14 @@ def drop_low_variance_columns(
         )
         return X, list(feature_names), []
 
-    variances = np.var(X, axis=0)
-    low_variance_mask = variances <= variance_threshold
+    if X.size == 0:
+        return X, list(feature_names), []
+
+    std = np.std(X, axis=0)
+    mean_abs = np.abs(np.mean(X, axis=0))
+    ranges = np.ptp(X, axis=0)
+    scale_aware_threshold = variance_threshold * (mean_abs + 1.0)
+    low_variance_mask = (ranges <= 0) | (std <= scale_aware_threshold)
     protected_mask = np.array([name in protected_columns for name in feature_names], dtype=bool)
     drop_mask = low_variance_mask & ~protected_mask
     keep_mask = ~drop_mask

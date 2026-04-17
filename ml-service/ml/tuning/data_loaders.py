@@ -1,13 +1,41 @@
-"""Data loading functions for CSV and go-app API sources."""
+"""Data loading functions for CSV and go-app API sources.
+
+Return-type conventions
+----------------------
+Historically loaders return a mix of shapes: ``(X, Y)``, ``(X, Y, feature_names)``,
+``(X, Y, scaler, feature_names)``, ``dict[format -> tuple]``, and the legacy win
+4-tuple. New loaders should return :class:`LoaderResult` (a NamedTuple) to make the
+shape explicit at call sites. The existing polymorphic helpers
+(:func:`unpack_xy_with_feature_names`) accept both the legacy tuples and
+:class:`LoaderResult` so migration can be incremental.
+"""
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+class LoaderResult(NamedTuple):
+    """Typed envelope returned by data loaders.
+
+    Attributes:
+        X: Feature matrix of shape ``(n_samples, n_features)``.
+        Y: Target matrix; shape depends on model kind (``(n,)`` or ``(n, k)``).
+        feature_names: Column names matching ``X.shape[1]``; ``None`` when the
+            loader cannot infer names (legacy path).
+        sample_weight: Optional time-decay weights per row.
+    """
+
+    X: np.ndarray
+    Y: np.ndarray
+    feature_names: Optional[List[str]] = None
+    sample_weight: Optional[np.ndarray] = None
+
 
 from ml.data_quality import drop_low_variance_columns, impute_features
 from ml.match_level_derived_features import add_match_level_derived_features_to_df
