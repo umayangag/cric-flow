@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 import numpy as np
 
-# Single source of truth: match train_innings (base context, derived, format one-hot)
+# Single source of truth: match train_innings (base context, derived, format one-hot).
+# Keep ml.* imports at module scope (not inside helpers) so the dependency graph stays explicit.
 from ml.match_level_derived_features import compute_match_level_derived_features_scalars
 from ml.train_innings import INNINGS_FEATURE_COLS
 from ml.win_features import _format_one_hot_from_code
