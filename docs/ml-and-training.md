@@ -245,9 +245,9 @@ The sidecar pins two things:
 
 ## Fielding per-inning migration
 
-Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fielding_data` (default 1) and replaces the unique constraint with `(match_id, inning_number, player_id)`. Migration `0096_backfill_fielding_data_inning_number.sql` then recomputes per-inning aggregates from `fielding_event` where event-level data exists, preserving manually entered `dropped_catches` and `missed_run_outs` on inning 1 (these are not tracked in `fielding_event`).
+Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fielding_data` (default 1) and replaces the unique constraint with `(match_id, inning_number, player_id)`.
 
-Matches with no `fielding_event` data retain their pre-existing single-row representation at `inning_number = 1`. If per-inning event data is ingested later for such matches, running `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) will split the aggregates correctly.
+Historical rows remain at `inning_number = 1` until operators run a full re-import/recompute flow from source event data. `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) can split aggregates per inning when `fielding_event` is available for the target matches.
 
 ---
 
