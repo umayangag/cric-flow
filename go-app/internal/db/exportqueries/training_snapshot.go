@@ -722,7 +722,8 @@ func ComputeFeaturesAtCutoffNoMatch(
 	// When precomputed features are missing (e.g. debut players), fill with 0 to avoid pipeline failure.
 	// Monitor warning frequency; high rates may warrant improving the precompute process to cover more players.
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredPrecomputedKeysBase); len(m) > 0 {
-		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
+		slog.Warn(
+			"precomputed features missing; filling with 0 for new/debut players",
 			slog.String("format", format),
 			slog.String("missing", strings.Join(m, "; ")),
 		)
@@ -806,7 +807,8 @@ func ComputeFeaturesAtCutoffForMatch(
 		requiredMatch = append(requiredMatch, "batting_opposition", "bowling_opposition", "opposition")
 	}
 	if m := missingPrecomputedKeys(precomp, playerIDs, requiredMatch); len(m) > 0 {
-		slog.Warn("precomputed features missing; filling with 0 for new/debut players",
+		slog.Warn(
+			"precomputed features missing; filling with 0 for new/debut players",
 			slog.Int64("match_id", matchID),
 			slog.String("missing", strings.Join(m, "; ")),
 		)

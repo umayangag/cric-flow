@@ -67,13 +67,15 @@ func buildWinFeatureJoins() string {
 	joins := make([]string, 0, len(winFeatureCTENames)+len(winFeatureCTENames))
 	for i, name := range winFeatureCTENames {
 		n := i + 1
-		joins = append(joins,
+		joins = append(
+			joins,
 			fmt.Sprintf("LEFT JOIN agg_%s a%d ON a%d.match_id = m.match_id", name, n, n),
 		)
 	}
 	for i, name := range winFeatureCTENames {
 		n := i + 1
-		joins = append(joins,
+		joins = append(
+			joins,
 			fmt.Sprintf("LEFT JOIN top3_%s t3a%d ON t3a%d.match_id = m.match_id", name, n, n),
 		)
 	}
@@ -283,14 +285,16 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 	var groups [8]featureDistStats
 
 	dest := make([]any, 0, 16+7*len(groups))
-	dest = append(dest,
+	dest = append(
+		dest,
 		&matchID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
 		&matchDate,
 		&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 	)
 	for i := range groups {
 		g := &groups[i] //nolint:gosec // fixed-size array indexed by range
-		dest = append(dest,
+		dest = append(
+			dest,
 			&g.sum, &g.mean, &g.std,
 			&g.max, &g.min, &g.top3Mean, &g.count,
 		)

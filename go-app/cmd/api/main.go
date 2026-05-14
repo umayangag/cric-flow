@@ -31,7 +31,8 @@ func run() int {
 	// Ensure any panic is logged with stack trace before exit (e.g. precompute or init crash).
 	defer func() {
 		if v := recover(); v != nil {
-			slog.Error("api panic (crash)",
+			slog.Error(
+				"api panic (crash)",
 				slog.String("panic", fmt.Sprint(v)),
 				slog.String("stack", string(debug.Stack())),
 			)
@@ -202,7 +203,8 @@ func trackingStaleCancelAge() time.Duration {
 func logMemStatsOnce() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	slog.Info("memory stats",
+	slog.Info(
+		"memory stats",
 		slog.Uint64("heap_alloc_mb", m.Alloc/(1024*1024)),
 		slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
 		slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),
@@ -217,7 +219,8 @@ func logMemStatsLoop(interval time.Duration) {
 	for range ticker.C {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		slog.Info("memory stats (periodic)",
+		slog.Info(
+			"memory stats (periodic)",
 			slog.Uint64("heap_alloc_mb", m.Alloc/(1024*1024)),
 			slog.Uint64("heap_sys_mb", m.HeapSys/(1024*1024)),
 			slog.Uint64("heap_inuse_mb", m.HeapInuse/(1024*1024)),

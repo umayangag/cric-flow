@@ -49,7 +49,8 @@ func UpsertBowlingSequences(ctx context.Context, rows []BowlSequenceRow) error {
 			if scope == "overall" {
 				scopeID = nil
 			}
-			if err := PoolAPI.Exec(ctx, `
+			if err := PoolAPI.Exec(
+				ctx, `
                 INSERT INTO bowling_sequence_features(
                     as_of_date, format_id, scope, scope_id, prev_bowler_id, bowler_id, phase,
                     overs_pairs, balls, runs, wickets, dot_balls

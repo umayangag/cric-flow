@@ -144,7 +144,8 @@ func RecordWorkerMemorySample(kind Kind, concurrency int) {
 	observationsMu.Lock()
 	observations[kind] = perWorker
 	observationsMu.Unlock()
-	slog.Info("resources: observed MB per worker",
+	slog.Info(
+		"resources: observed MB per worker",
 		slog.String("kind", string(kind)),
 		slog.Int("concurrency", concurrency),
 		slog.Int("heap_mb", heapMB),

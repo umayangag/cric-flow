@@ -103,7 +103,8 @@ func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			slog.Error("training-data: panic recovered",
+			slog.Error(
+				"training-data: panic recovered",
 				slog.Any("panic", rec),
 				slog.String("stack", string(debug.Stack())),
 			)
@@ -139,7 +140,8 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	}
 	runAllSections := len(wantSection) == 0
 
-	slog.Info("training-data: request start",
+	slog.Info(
+		"training-data: request start",
 		slog.String("cutoff", cutoffStr),
 		slog.String("format", format),
 		slog.String("sections", sectionsParam),
@@ -174,7 +176,8 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 			elapsed := time.Since(t0)
 			rowCount := len(*loader.rows)
 			if loadErr != nil {
-				slog.Error("training-data: section load failed",
+				slog.Error(
+					"training-data: section load failed",
 					slog.String("section", loader.name),
 					slog.Duration("elapsed", elapsed),
 					slog.Any("err", loadErr),
@@ -182,7 +185,8 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 				respondTrainingDataErr(w, loadErr, formatForErr)
 				return
 			}
-			slog.Info("training-data: section loaded",
+			slog.Info(
+				"training-data: section loaded",
 				slog.String("section", loader.name),
 				slog.Int("rows", rowCount),
 				slog.Duration("elapsed_ms", elapsed),
@@ -202,7 +206,8 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 	winH, winD := part(winRows)
 	inningsH, inningsD := part(inningsRows)
 
-	slog.Info("training-data: all sections ready, writing response",
+	slog.Info(
+		"training-data: all sections ready, writing response",
 		slog.Int("batting_rows", len(batD)),
 		slog.Int("bowling_rows", len(bowlD)),
 		slog.Int("fielding_rows", len(fieldD)),

@@ -31,7 +31,8 @@ func EnqueueWeatherJob(ctx context.Context, j *WeatherJob) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `INSERT INTO weather_job(
+	_, err := Pool.Exec(
+		ctx, `INSERT INTO weather_job(
 		match_id, normalized_venue, city, country, start_at_local, end_at_local, sessions, status
 	) VALUES($1,$2,$3,$4,$5,$6,$7,'queued')
 	ON CONFLICT (match_id) DO NOTHING`,

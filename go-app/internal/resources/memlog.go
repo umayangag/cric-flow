@@ -19,7 +19,8 @@ func LogMemoryAndGoroutines(msg string, extra ...slog.Attr) {
 	runtime.ReadMemStats(&mem)
 	n := runtime.NumGoroutine()
 	attrs := make([]slog.Attr, 0, 4+len(extra))
-	attrs = append(attrs,
+	attrs = append(
+		attrs,
 		slog.Uint64("heap_alloc_mb", mem.Alloc/(1024*1024)),
 		slog.Uint64("heap_inuse_mb", mem.HeapInuse/(1024*1024)),
 		slog.Uint64("heap_sys_mb", mem.HeapSys/(1024*1024)),

@@ -569,7 +569,8 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		row := make([]string, 0, len(headers))
 		row = append(row, r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos)
 		row = append(row, rawStrs...)
-		row = append(row,
+		row = append(
+			row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
@@ -764,7 +765,8 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		row := make([]string, 0, len(headers))
 		row = append(row, r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos)
 		row = append(row, rawStrs...)
-		row = append(row,
+		row = append(
+			row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),

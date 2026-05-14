@@ -52,7 +52,7 @@ func TestComputeR2(t *testing.T) {
 			name: "non-perfect < 1",
 			sse:  2,
 			y:    []float64{1, 2, 3, 4},
-			want: 1 - (2.0 / (5.0)),
+			want: 1 - (2.0 / 5.0),
 		}, // ssTot for [1,2,3,4] is 5
 	}
 	for _, tt := range tests {

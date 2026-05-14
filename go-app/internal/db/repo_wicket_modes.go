@@ -31,7 +31,8 @@ func UpsertWicketModes(ctx context.Context, rows []WicketModeRow) error {
 		if r.Scope == "" {
 			r.Scope = "overall"
 		}
-		_, err := Pool.Exec(ctx, `
+		_, err := Pool.Exec(
+			ctx, `
 			INSERT INTO wicket_mode_features(
 				as_of_date, format_id, scope, scope_id, player_id, phase, mode,
 				balls, wickets, wickets_per_100

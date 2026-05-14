@@ -46,7 +46,8 @@ func UpsertMatch(ctx context.Context, m *MatchInsert) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `
+	_, err := Pool.Exec(
+		ctx, `
 		INSERT INTO match (
 			match_id, format_id, match_date, original_match_type, venue_id, season_id,
 			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
@@ -80,7 +81,8 @@ func UpsertMatch(ctx context.Context, m *MatchInsert) error {
 
 // UpsertMatchTx inserts or updates the match table using the given transaction.
 func UpsertMatchTx(ctx context.Context, tx CopyFromTx, m *MatchInsert) error {
-	err := tx.Exec(ctx, `
+	err := tx.Exec(
+		ctx, `
 		INSERT INTO match (
 			match_id, format_id, match_date, original_match_type, venue_id, season_id,
 			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
@@ -117,7 +119,8 @@ func UpsertMatchInning(ctx context.Context, mi *MatchInningInsert) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(ctx, `
+	_, err := Pool.Exec(
+		ctx, `
 		INSERT INTO match_inning (
 			match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
 			runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate,
@@ -144,7 +147,8 @@ func UpsertMatchInning(ctx context.Context, mi *MatchInningInsert) error {
 
 // UpsertMatchInningTx inserts or updates a match_inning row using the given transaction.
 func UpsertMatchInningTx(ctx context.Context, tx CopyFromTx, mi *MatchInningInsert) error {
-	err := tx.Exec(ctx, `
+	err := tx.Exec(
+		ctx, `
 		INSERT INTO match_inning (
 			match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
 			runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate,
