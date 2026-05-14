@@ -233,7 +233,7 @@ The sidecar pins two things:
 - `feature_names`: exact column order the scaler/model were fitted on, so per-format `drop_low_variance_columns` and format one-hot exclusion cannot cause a shape mismatch at inference.
 - `derived_weights`: the `ml.match_level_derived` block as it was at training time.
 
-**Operational note:** old artifacts without sidecars still load; `build_innings_feature_vector` falls back to `INNINGS_FEATURE_COLS` + the current config. Retrain any per-format model whose training data included format-only columns that were dropped during low-variance filtering so its sidecar is written and inference stops relying on the fallback.
+**Operational note:** old artifacts without sidecars still load; `build_innings_feature_vector` falls back to `LEGACY_INNINGS_FEATURE_COLS` + the current config. Retrain any per-format model whose training data included format-only columns that were dropped during low-variance filtering so its sidecar is written and inference stops relying on the fallback.
 
 ---
 
