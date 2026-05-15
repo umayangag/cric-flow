@@ -1,10 +1,11 @@
-package exportqueries
+package exportqueries_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 func TestWithSeqEnabled_IsSeqEnabled(t *testing.T) {
@@ -12,26 +13,26 @@ func TestWithSeqEnabled_IsSeqEnabled(t *testing.T) {
 
 	t.Run("nil context stores value", func(t *testing.T) {
 		//nolint:staticcheck // SA1012: intentionally testing nil context handling
-		ctx := WithSeqEnabled(nil, true)
-		require.True(t, IsSeqEnabled(ctx))
+		ctx := exportqueries.WithSeqEnabled(nil, true)
+		require.True(t, exportqueries.IsSeqEnabled(ctx))
 	})
 
 	t.Run("false roundtrip", func(t *testing.T) {
-		ctx := WithSeqEnabled(context.Background(), false)
-		require.False(t, IsSeqEnabled(ctx))
+		ctx := exportqueries.WithSeqEnabled(context.Background(), false)
+		require.False(t, exportqueries.IsSeqEnabled(ctx))
 	})
 
 	t.Run("true roundtrip", func(t *testing.T) {
-		ctx := WithSeqEnabled(context.Background(), true)
-		require.True(t, IsSeqEnabled(ctx))
+		ctx := exportqueries.WithSeqEnabled(context.Background(), true)
+		require.True(t, exportqueries.IsSeqEnabled(ctx))
 	})
 
 	t.Run("default context returns false", func(t *testing.T) {
-		require.False(t, IsSeqEnabled(context.Background()))
+		require.False(t, exportqueries.IsSeqEnabled(context.Background()))
 	})
 
 	t.Run("nil context without WithSeqEnabled returns false", func(t *testing.T) {
 		//nolint:staticcheck // SA1012: intentionally testing nil context handling
-		require.False(t, IsSeqEnabled(nil))
+		require.False(t, exportqueries.IsSeqEnabled(nil))
 	})
 }
