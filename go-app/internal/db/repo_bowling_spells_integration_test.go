@@ -18,14 +18,10 @@ func TestUpsertBowlingSpells_Integration(t *testing.T) {
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations using an absolute path derived from this test package
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Clean table
-	if err := Exec(ctx, "TRUNCATE bowling_spell_features"); err != nil {
-		t.Fatalf("truncate failed: %v", err)
-	}
+	require.NoError(t, Exec(ctx, "TRUNCATE bowling_spell_features"))
 
 	// Prepare an initial batch (> smallBatchThreshold to exercise COPY path)
 	base := []BowlingSpellRow{
@@ -229,18 +225,12 @@ func TestUpsertBowlingSpells_Integration(t *testing.T) {
 		},
 	}
 
-	if err := UpsertBowlingSpells(ctx, base); err != nil {
-		t.Fatalf("first upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBowlingSpells(ctx, base))
 
 	// Verify count
 	var cnt int
-	if err := QueryRow(ctx, `SELECT count(*) FROM bowling_spell_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count scan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("unexpected row count: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM bowling_spell_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Upsert a conflicting row with new values to test ON CONFLICT DO UPDATE
 	upd := BowlingSpellRow{
@@ -250,23 +240,17 @@ func TestUpsertBowlingSpells_Integration(t *testing.T) {
 		LaterOversBalls: 12, LaterOversRuns: 11, LaterOversWickets: 2, LaterOversDots: 5, LaterOversBoundaries: 3,
 		FirstOverEcon: 4.5, LaterOverEcon: 5.5,
 	}
-	if err := UpsertBowlingSpells(ctx, []BowlingSpellRow{upd}); err != nil {
-		t.Fatalf("second upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBowlingSpells(ctx, []BowlingSpellRow{upd}))
 
 	// Verify row count unchanged
-	if err := QueryRow(ctx, `SELECT count(*) FROM bowling_spell_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count rescan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("row count changed after update: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM bowling_spell_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Verify the updated values
 	var spells, spellOvers, fBalls, fRuns, fWkts, fDots, fBounds int
 	var lBalls, lRuns, lWkts, lDots, lBounds int
 	var fEcon, lEcon float64
-	if err := QueryRow(ctx, `
+	require.NoError(t, QueryRow(ctx, `
         SELECT spells, spell_overs,
                first_overs_balls, first_overs_runs, first_overs_wickets, first_overs_dots, first_overs_boundaries,
                later_overs_balls, later_overs_runs, later_overs_wickets, later_overs_dots, later_overs_boundaries,
@@ -279,14 +263,19 @@ func TestUpsertBowlingSpells_Integration(t *testing.T) {
 		&fBalls, &fRuns, &fWkts, &fDots, &fBounds,
 		&lBalls, &lRuns, &lWkts, &lDots, &lBounds,
 		&fEcon, &lEcon,
-	); err != nil {
-		t.Fatalf("select updated row failed: %v", err)
-	}
-
-	if spells != upd.Spells || spellOvers != upd.SpellOvers ||
-		fBalls != upd.FirstOversBalls || fRuns != upd.FirstOversRuns || fWkts != upd.FirstOversWickets || fDots != upd.FirstOversDots || fBounds != upd.FirstOversBoundaries ||
-		lBalls != upd.LaterOversBalls || lRuns != upd.LaterOversRuns || lWkts != upd.LaterOversWickets || lDots != upd.LaterOversDots || lBounds != upd.LaterOversBoundaries ||
-		fEcon != upd.FirstOverEcon || lEcon != upd.LaterOverEcon {
-		t.Fatalf("updated values mismatch")
-	}
+	))
+	require.Equal(t, upd.Spells, spells)
+	require.Equal(t, upd.SpellOvers, spellOvers)
+	require.Equal(t, upd.FirstOversBalls, fBalls)
+	require.Equal(t, upd.FirstOversRuns, fRuns)
+	require.Equal(t, upd.FirstOversWickets, fWkts)
+	require.Equal(t, upd.FirstOversDots, fDots)
+	require.Equal(t, upd.FirstOversBoundaries, fBounds)
+	require.Equal(t, upd.LaterOversBalls, lBalls)
+	require.Equal(t, upd.LaterOversRuns, lRuns)
+	require.Equal(t, upd.LaterOversWickets, lWkts)
+	require.Equal(t, upd.LaterOversDots, lDots)
+	require.Equal(t, upd.LaterOversBoundaries, lBounds)
+	require.Equal(t, upd.FirstOverEcon, fEcon)
+	require.Equal(t, upd.LaterOverEcon, lEcon)
 }

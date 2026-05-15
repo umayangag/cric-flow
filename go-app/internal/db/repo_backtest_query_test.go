@@ -1,13 +1,12 @@
 package db
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-)
 
-// helper removed: was unused; direct strings.Contains checks are used below.
+	"github.com/stretchr/testify/require"
+)
 
 func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 	ts := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
@@ -88,8 +87,6 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 			end:    te,
 			order:  "desc",
 			limit:  25,
-			// We do not assert the exact placeholder indices beyond relative ordering pieces;
-			// we validate argument list ordering precisely.
 			wantParts: []string{
 				"mf.code = $1",
 				"m.match_date >= $2",
@@ -104,6 +101,7 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
+			// Act
 			sql, args := buildPlayedMatchesFiltersQuery(
 				tc.format,
 				tc.team1,
@@ -113,23 +111,16 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 				tc.order,
 				tc.limit,
 			)
-			// Basic guard: must always include NOW() filter
-			if !strings.Contains(sql, "WHERE m.match_date < NOW()") {
-				t.Fatalf("SQL missing base NOW() filter: %s", sql)
-			}
+
+			// Assert
+			require.Contains(t, sql, "WHERE m.match_date < NOW()")
 			for _, p := range tc.wantParts {
-				if !strings.Contains(sql, p) {
-					t.Fatalf("SQL missing expected part %q\nSQL: %s", p, sql)
-				}
+				require.True(t, strings.Contains(sql, p), "SQL missing expected part %q\nSQL: %s", p, sql)
 			}
 			for _, np := range tc.notParts {
-				if strings.Contains(sql, np) {
-					t.Fatalf("SQL should not contain %q\nSQL: %s", np, sql)
-				}
+				require.False(t, strings.Contains(sql, np), "SQL should not contain %q\nSQL: %s", np, sql)
 			}
-			if !reflect.DeepEqual(args, tc.wantArgs) {
-				t.Fatalf("args mismatch\n got: %#v\nwant: %#v", args, tc.wantArgs)
-			}
+			require.Equal(t, tc.wantArgs, args)
 		})
 	}
 }

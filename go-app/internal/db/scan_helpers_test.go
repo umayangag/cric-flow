@@ -3,6 +3,8 @@ package db
 import (
 	"database/sql"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestToNullString(t *testing.T) {
@@ -18,9 +20,8 @@ func TestToNullString(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := toNullString(tc.in)
-			if got.Valid != tc.want.Valid || got.String != tc.want.String {
-				t.Fatalf("toNullString(%q)=%+v want %+v", tc.in, got, tc.want)
-			}
+			require.Equal(t, tc.want.Valid, got.Valid)
+			require.Equal(t, tc.want.String, got.String)
 		})
 	}
 }
@@ -38,9 +39,8 @@ func TestToNullFloat64(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := toNullFloat64(tc.in)
-			if !got.Valid || got.Float64 != tc.in {
-				t.Fatalf("toNullFloat64(%v)=%+v want valid with same value", tc.in, got)
-			}
+			require.True(t, got.Valid)
+			require.Equal(t, tc.in, got.Float64)
 		})
 	}
 }
@@ -58,9 +58,7 @@ func TestFromNullString(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := fromNullString(tc.in)
-			if got != tc.want {
-				t.Fatalf("fromNullString(%+v)=%q want %q", tc.in, got, tc.want)
-			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

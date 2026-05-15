@@ -18,16 +18,11 @@ func TestGetTableStats_Integration(t *testing.T) {
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations to ensure we have tables
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	stats, err := GetTableStats(ctx)
 	require.NoError(t, err)
-
-	if len(stats) == 0 {
-		t.Fatalf("Expected some tables, got 0")
-	}
+	require.NotEmpty(t, stats, "expected some tables")
 
 	foundMigrations := false
 	for _, s := range stats {
@@ -37,7 +32,5 @@ func TestGetTableStats_Integration(t *testing.T) {
 		}
 	}
 
-	if !foundMigrations {
-		t.Errorf("schema_migrations table not found in stats")
-	}
+	require.True(t, foundMigrations, "schema_migrations table not found in stats")
 }

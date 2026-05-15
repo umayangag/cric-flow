@@ -18,14 +18,10 @@ func TestUpsertBowlingSequences_Integration(t *testing.T) {
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations using an absolute path derived from this test package
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Clean table
-	if err := Exec(ctx, "TRUNCATE bowling_sequence_features"); err != nil {
-		t.Fatalf("truncate failed: %v", err)
-	}
+	require.NoError(t, Exec(ctx, "TRUNCATE bowling_sequence_features"))
 
 	// Prepare an initial batch (> smallBatchThreshold to exercise COPY path)
 	base := []BowlSequenceRow{
@@ -157,18 +153,12 @@ func TestUpsertBowlingSequences_Integration(t *testing.T) {
 		},
 	}
 
-	if err := UpsertBowlingSequences(ctx, base); err != nil {
-		t.Fatalf("first upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBowlingSequences(ctx, base))
 
 	// Verify count
 	var cnt int
-	if err := QueryRow(ctx, `SELECT count(*) FROM bowling_sequence_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count scan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("unexpected row count: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM bowling_sequence_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Upsert a conflicting row with new values to test ON CONFLICT DO UPDATE
 	upd := BowlSequenceRow{
@@ -185,31 +175,23 @@ func TestUpsertBowlingSequences_Integration(t *testing.T) {
 		Wickets:      1,
 		DotBalls:     6,
 	}
-	if err := UpsertBowlingSequences(ctx, []BowlSequenceRow{upd}); err != nil {
-		t.Fatalf("second upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBowlingSequences(ctx, []BowlSequenceRow{upd}))
 
 	// Verify row count unchanged
-	if err := QueryRow(ctx, `SELECT count(*) FROM bowling_sequence_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count rescan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("row count changed after update: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM bowling_sequence_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Verify the updated values
 	var oversPairs, balls, runs, wickets, dotBalls int
-	if err := QueryRow(ctx, `
+	require.NoError(t, QueryRow(ctx, `
         SELECT overs_pairs, balls, runs, wickets, dot_balls
         FROM bowling_sequence_features
         WHERE as_of_date = $1 AND format_id = $2 AND scope = $3 AND scope_id IS NULL
           AND prev_bowler_id = $4 AND bowler_id = $5 AND phase = $6
-    `, upd.AsOfDate, upd.FormatID, "overall", upd.PrevBowlerID, upd.BowlerID, upd.Phase).Scan(&oversPairs, &balls, &runs, &wickets, &dotBalls); err != nil {
-		t.Fatalf("select updated row failed: %v", err)
-	}
-	if oversPairs != upd.OversPairs || balls != upd.Balls || runs != upd.Runs || wickets != upd.Wickets ||
-		dotBalls != upd.DotBalls {
-		t.Fatalf("updated values mismatch: got (op=%d b=%d r=%d w=%d d=%d) want (op=%d b=%d r=%d w=%d d=%d)",
-			oversPairs, balls, runs, wickets, dotBalls, upd.OversPairs, upd.Balls, upd.Runs, upd.Wickets, upd.DotBalls)
-	}
+    `, upd.AsOfDate, upd.FormatID, "overall", upd.PrevBowlerID, upd.BowlerID, upd.Phase).Scan(&oversPairs, &balls, &runs, &wickets, &dotBalls))
+	require.Equal(t, upd.OversPairs, oversPairs)
+	require.Equal(t, upd.Balls, balls)
+	require.Equal(t, upd.Runs, runs)
+	require.Equal(t, upd.Wickets, wickets)
+	require.Equal(t, upd.DotBalls, dotBalls)
 }
