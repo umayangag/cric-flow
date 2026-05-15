@@ -8,7 +8,7 @@ import (
 )
 
 func TestSqlNullString(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		in   string
 		want sql.NullString
@@ -16,11 +16,12 @@ func TestSqlNullString(t *testing.T) {
 		{"empty returns invalid", "", sql.NullString{Valid: false}},
 		{"non_empty returns valid", "abc", sql.NullString{String: "abc", Valid: true}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sqlNullString(tt.in)
-			require.Equal(t, tt.want.Valid, got.Valid)
-			require.Equal(t, tt.want.String, got.String)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := sqlNullString(tc.in)
+			require.Equal(t, tc.want.Valid, got.Valid)
+			require.Equal(t, tc.want.String, got.String)
 		})
 	}
 }
@@ -32,7 +33,7 @@ func TestSqlNullFloat64(t *testing.T) {
 }
 
 func TestNullString(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		in   sql.NullString
 		want string
@@ -40,10 +41,11 @@ func TestNullString(t *testing.T) {
 		{"invalid returns empty", sql.NullString{Valid: false}, ""},
 		{"valid returns string", sql.NullString{String: "xyz", Valid: true}, "xyz"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := nullString(tt.in)
-			require.Equal(t, tt.want, got)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := nullString(tc.in)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

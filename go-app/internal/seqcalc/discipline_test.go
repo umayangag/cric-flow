@@ -115,14 +115,15 @@ func TestAggregateDiscipline_FormatMapping(t *testing.T) {
 	t.Parallel()
 	asOf := time.Date(2024, 9, 10, 0, 0, 0, 0, time.UTC)
 	bowler := int64(909)
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		fmtID int
 	}{
 		{"ODI", 2},
 		{"TEST", 1},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			seq := []evRow{
 				// two legal balls in powerplay

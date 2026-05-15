@@ -13,7 +13,7 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 	ts := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	te := time.Date(2024, 2, 3, 0, 0, 0, 0, time.UTC)
 
-	tests := []struct {
+	testCases := []struct {
 		name      string
 		format    string
 		team1     string
@@ -101,33 +101,34 @@ func TestBuildPlayedMatchesFiltersQuery(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			sql, args := buildPlayedMatchesFiltersQuery(
-				tt.format,
-				tt.team1,
-				tt.team2,
-				tt.start,
-				tt.end,
-				tt.order,
-				tt.limit,
+				tc.format,
+				tc.team1,
+				tc.team2,
+				tc.start,
+				tc.end,
+				tc.order,
+				tc.limit,
 			)
 			// Basic guard: must always include NOW() filter
 			if !strings.Contains(sql, "WHERE m.match_date < NOW()") {
 				t.Fatalf("SQL missing base NOW() filter: %s", sql)
 			}
-			for _, p := range tt.wantParts {
+			for _, p := range tc.wantParts {
 				if !strings.Contains(sql, p) {
 					t.Fatalf("SQL missing expected part %q\nSQL: %s", p, sql)
 				}
 			}
-			for _, np := range tt.notParts {
+			for _, np := range tc.notParts {
 				if strings.Contains(sql, np) {
 					t.Fatalf("SQL should not contain %q\nSQL: %s", np, sql)
 				}
 			}
-			if !reflect.DeepEqual(args, tt.wantArgs) {
-				t.Fatalf("args mismatch\n got: %#v\nwant: %#v", args, tt.wantArgs)
+			if !reflect.DeepEqual(args, tc.wantArgs) {
+				t.Fatalf("args mismatch\n got: %#v\nwant: %#v", args, tc.wantArgs)
 			}
 		})
 	}

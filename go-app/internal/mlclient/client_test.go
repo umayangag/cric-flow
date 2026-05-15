@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/models"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test helpers
@@ -33,7 +35,7 @@ func (badJSON) MarshalJSON() ([]byte, error) { return nil, errors.New("marshal b
 
 // New() configuration tests (env default/override)
 func TestClient_New(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name      string
 		setEnv    bool
 		envVal    string
@@ -42,7 +44,8 @@ func TestClient_New(t *testing.T) {
 		{"defaults when env unset", false, "", "http://localhost:8000"},
 		{"respects ML_BASE_URL env", true, "http://example.test:1234", "http://example.test:1234"},
 	}
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setEnv {
 				os.Setenv("ML_BASE_URL", tc.envVal)
@@ -51,9 +54,7 @@ func TestClient_New(t *testing.T) {
 				_ = os.Unsetenv("ML_BASE_URL")
 			}
 			c := New()
-			if c.BaseURL != tc.expectURL {
-				t.Fatalf("BaseURL = %q, want %q", c.BaseURL, tc.expectURL)
-			}
+			require.Equal(t, tc.expectURL, c.BaseURL)
 			if c.HTTP == nil || c.Timeout <= 0 || c.HTTP.Timeout <= 0 {
 				t.Fatalf("unexpected HTTP/Timeout configuration: Timeout=%v HTTP.Timeout=%v", c.Timeout, c.HTTP.Timeout)
 			}
@@ -70,9 +71,7 @@ func TestClient_postJSON(t *testing.T) {
 		wantUA := "mlclient-test/1.0"
 		seenUA := ""
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				t.Fatalf("method = %s, want POST", r.Method)
-			}
+			require.Equal(t, http.MethodPost, r.Method)
 			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 				t.Fatalf("content-type = %s, want application/json", ct)
 			}
@@ -88,12 +87,8 @@ func TestClient_postJSON(t *testing.T) {
 		if err := c.postJSON(ctx, "/x", map[string]int{"a": 1}, &out); err != nil {
 			t.Fatalf("postJSON error: %v", err)
 		}
-		if !out.OK {
-			t.Fatalf("unexpected response: %+v", out)
-		}
-		if seenUA != wantUA {
-			t.Fatalf("User-Agent seen %q, want %q", seenUA, wantUA)
-		}
+		require.True(t, out.OK)
+		require.Equal(t, wantUA, seenUA)
 	})
 
 	t.Run("non-2xx status", func(t *testing.T) {
@@ -141,24 +136,20 @@ func TestClient_postJSON(t *testing.T) {
 		var out postJSONResp
 		err := c.postJSON(ctx, "/x", map[string]int{"a": 1}, &out)
 		close(done)
-		if err == nil {
-			t.Fatalf("expected context cancellation error")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("marshal error", func(t *testing.T) {
 		c := newTestClient("http://invalid", httptest.NewServer(nil).Client())
 		var out any
 		err := c.postJSON(context.Background(), "/unused", badJSON{}, &out)
-		if err == nil {
-			t.Fatalf("expected marshal error, got nil")
-		}
+		require.Error(t, err)
 	})
 }
 
 // PredictBatting behavior grouped
 func TestClient_PredictBatting(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		serverFunc http.HandlerFunc
 		expectErr  bool
@@ -188,7 +179,8 @@ func TestClient_PredictBatting(t *testing.T) {
 			0,
 		},
 	}
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(tc.serverFunc)
 			defer srv.Close()
@@ -219,9 +211,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
 		preds, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 		if len(preds) != 1 || preds[0].WicketsTaken != 3 {
 			t.Fatalf("unexpected preds: %#v", preds)
 		}
@@ -235,9 +225,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
 		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
-		if err == nil {
-			t.Fatalf("expected JSON decode error")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("timeout", func(t *testing.T) {
@@ -251,9 +239,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		hc.Timeout = 50 * time.Millisecond
 		c := newTestClient(srv.URL, hc)
 		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
-		if err == nil {
-			t.Fatalf("expected timeout error, got nil")
-		}
+		require.Error(t, err)
 	})
 
 	t.Run("user-agent absent uses Go default", func(t *testing.T) {
@@ -267,9 +253,7 @@ func TestClient_PredictBowling(t *testing.T) {
 		c := newTestClient(srv.URL, srv.Client())
 		c.UserAgent = "" // explicitly clear
 		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 		if sawUA != "Go-http-client/1.1" {
 			t.Fatalf("expected default Go User-Agent, got %q", sawUA)
 		}

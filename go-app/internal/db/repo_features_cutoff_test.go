@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // DefaultFeatureProvider no longer returns average-based features; it returns an error so callers
@@ -13,16 +15,12 @@ func TestDefaultFeatureProvider_EmptyPlayerIDs_ReturnsEmptyMap(t *testing.T) {
 	p := &DefaultFeatureProvider{}
 	cutoff := time.Date(2024, 10, 30, 0, 0, 0, 0, time.UTC)
 	got, err := p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, nil)
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
+	require.NoError(t, err)
 	if len(got) != 0 {
 		t.Fatalf("expected empty map, got %d entries", len(got))
 	}
 	got, err = p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, []int64{})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
+	require.NoError(t, err)
 	if len(got) != 0 {
 		t.Fatalf("expected empty map, got %d entries", len(got))
 	}
@@ -43,12 +41,8 @@ func TestDefaultFeatureProvider_NonEmptyPlayerIDs_ReturnsErrorNoAverages(t *test
 func TestDefaultFeatureProvider_ZeroCutoff_ReturnsError(t *testing.T) {
 	p := &DefaultFeatureProvider{}
 	got, err := p.GetPlayerFeaturesAtCutoff(context.Background(), time.Time{}, []int64{1})
-	if err == nil {
-		t.Fatalf("expected error for zero cutoff, got nil")
-	}
-	if got != nil {
-		t.Fatalf("expected nil map on error, got %v", got)
-	}
+	require.Error(t, err)
+	require.Nil(t, got)
 }
 
 func contains(s, sub string) bool {

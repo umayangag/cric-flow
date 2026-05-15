@@ -38,7 +38,7 @@ func TestEnsureBatAndBowl(t *testing.T) {
 func TestInningsRuns(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		inng Innings
 		want int
@@ -58,7 +58,8 @@ func TestInningsRuns(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := inningsRuns(tc.inng)
 			require.Equal(t, tc.want, got)
@@ -69,7 +70,7 @@ func TestInningsRuns(t *testing.T) {
 func TestOversFromBalls(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		balls int
 		bpo   int
@@ -79,7 +80,8 @@ func TestOversFromBalls(t *testing.T) {
 		{name: "exact over boundary", balls: 12, bpo: 6, want: 2.0},
 		{name: "invalid bpo -> default to 6", balls: 6, bpo: 0, want: 1.0},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := oversFromBalls(tc.balls, tc.bpo)
 			require.Equal(t, tc.want, got)
@@ -90,7 +92,7 @@ func TestOversFromBalls(t *testing.T) {
 func TestMaidenCount(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		overs map[int]int
 		want  int
@@ -98,7 +100,8 @@ func TestMaidenCount(t *testing.T) {
 		{name: "two maidens", overs: map[int]int{0: 0, 1: 6, 2: 0, 3: 1}, want: 2},
 		{name: "none", overs: map[int]int{0: 1, 1: 2}, want: 0},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, maidenCount(tc.overs))
 		})
@@ -108,7 +111,7 @@ func TestMaidenCount(t *testing.T) {
 func TestStrikeRate(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		runs  int
 		balls int
@@ -117,7 +120,8 @@ func TestStrikeRate(t *testing.T) {
 		{name: "50 off 35", runs: 50, balls: 35, want: float32(float64(50) / float64(35) * 100.0)},
 		{name: "zero balls -> zero sr", runs: 10, balls: 0, want: 0},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := strikeRate(tc.runs, tc.balls)
 			if tc.balls == 0 {
@@ -138,7 +142,7 @@ func TestStrPtrAndFirstNonEmpty(t *testing.T) {
 		require.Equal(t, "hello", *p)
 	})
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		in   []string
 		want string
@@ -146,7 +150,8 @@ func TestStrPtrAndFirstNonEmpty(t *testing.T) {
 		{name: "skips blanks returns A", in: []string{" ", "", "A", "B"}, want: "A"},
 		{name: "all blank -> empty", in: []string{" ", "  "}, want: ""},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := firstNonEmpty(tc.in...)
 			require.Equal(t, tc.want, got)
@@ -157,7 +162,7 @@ func TestStrPtrAndFirstNonEmpty(t *testing.T) {
 func TestOtherTeam(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		team string
 		a    string
@@ -169,7 +174,8 @@ func TestOtherTeam(t *testing.T) {
 		{name: "trimmed spaces", team: "", a: " India ", b: " ", want: "India"},
 		{name: "no match -> empty", team: "England", a: "India", b: "Australia", want: ""},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, otherTeam(tc.team, tc.a, tc.b))
 		})
@@ -179,7 +185,7 @@ func TestOtherTeam(t *testing.T) {
 func TestBattingOrderFromInnings(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		inng     Innings
 		names    []string
@@ -215,7 +221,8 @@ func TestBattingOrderFromInnings(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			order := battingOrderFromInnings(tc.inng, tc.names)
 			require.Len(t, order, len(tc.expected))

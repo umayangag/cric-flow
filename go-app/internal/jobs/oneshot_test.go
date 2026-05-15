@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	jobs "github.com/umayangag/cric-flow/go-app/internal/jobs"
+	"github.com/umayangag/cric-flow/go-app/internal/jobs"
 )
 
 // TestOneShotSource_Next_Table follows the gold-standard table-driven style
@@ -16,7 +16,7 @@ func TestOneShotSource_Next_Table(t *testing.T) {
 	type arrangeFn func(ctx context.Context) *jobs.OneShotSource
 	type assertFn func(t *testing.T, ids []int64, ok bool, err error)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		batch   int
 		arrange arrangeFn
@@ -64,7 +64,8 @@ func TestOneShotSource_Next_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 

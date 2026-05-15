@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
+
+	"github.com/stretchr/testify/require"
 )
 
 type optsAssertFn func(t *testing.T, got svc.Options, err error)
 
 func assertNoErrorFormats(want []string) optsAssertFn {
 	return func(t *testing.T, got svc.Options, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
+		require.NoError(t, err)
 		if len(got.Formats) != len(want) {
 			t.Fatalf("want %d formats, got %d (%v)", len(want), len(got.Formats), got.Formats)
 		}
@@ -33,19 +33,15 @@ func assertNoErrorFormats(want []string) optsAssertFn {
 
 func assertHasUnified(v bool) optsAssertFn {
 	return func(t *testing.T, got svc.Options, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.Unified != v {
-			t.Fatalf("want unified=%v got %v", v, got.Unified)
-		}
+		require.NoError(t, err)
+		require.Equal(t, v, got.Unified)
 	}
 }
 
 func TestParse_BasicFlags(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		args   []string
 		assert optsAssertFn
@@ -72,7 +68,8 @@ func TestParse_BasicFlags(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Ensure a fresh FlagSet environment for each test
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)

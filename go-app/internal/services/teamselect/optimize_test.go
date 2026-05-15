@@ -67,8 +67,8 @@ func TestSelectOptimized_Errors(t *testing.T) {
 		}(), ts.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true}, "no keeper"},
 		{"not enough bowlers", pool[:8], ts.Constraints{Size: 8, MinBowlers: 6}, "not enough bowlers"},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ts.SelectOptimized(tc.pool, w, tc.c)
 			require.Error(t, err)
@@ -144,7 +144,8 @@ func TestSelectByWinProbability_Errors(t *testing.T) {
 		{"invalid size", pool, ts.Constraints{Size: 0, MinBowlers: 5}, "invalid size"},
 		{"insufficient pool", pool[:3], ts.Constraints{Size: 11, MinBowlers: 2}, "insufficient pool"},
 	}
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ts.SelectByWinProbability(tc.pool, w, tc.c, noop)
 			require.Error(t, err)

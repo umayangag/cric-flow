@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCalculateOverallPerformanceWithConfig verifies team aggregates are computed
 // correctly from player predictions using the provided config. We avoid any IO
 // by constructing the config inline.
 func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name     string
 		players  []PlayerPrediction
 		matchID  int64
@@ -65,7 +66,8 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.Predictor.TeamSize = tc.teamSize
@@ -74,24 +76,12 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 
 			// Compute expected totals inline for assertion.
 			if len(tc.players) == 0 {
-				if team.TotalScore != tc.expect.TotalScore {
-					t.Fatalf("TotalScore mismatch: got %.2f want %.2f", team.TotalScore, tc.expect.TotalScore)
-				}
-				if team.Target != tc.expect.Target {
-					t.Fatalf("Target mismatch: got %.2f want %.2f", team.Target, tc.expect.Target)
-				}
-				if team.TotalBalls != tc.expect.TotalBalls {
-					t.Fatalf("TotalBalls mismatch: got %.2f want %.2f", team.TotalBalls, tc.expect.TotalBalls)
-				}
-				if team.TotalWickets != tc.expect.TotalWickets {
-					t.Fatalf("TotalWickets mismatch: got %.0f want %.0f", team.TotalWickets, tc.expect.TotalWickets)
-				}
-				if team.Extras != tc.expect.Extras {
-					t.Fatalf("Extras mismatch: got %.2f want %.2f", team.Extras, tc.expect.Extras)
-				}
-				if team.MatchNumber != tc.expect.MatchNumber {
-					t.Fatalf("MatchNumber mismatch: got %d want %d", team.MatchNumber, tc.expect.MatchNumber)
-				}
+				require.Equal(t, tc.expect.TotalScore, team.TotalScore)
+				require.Equal(t, tc.expect.Target, team.Target)
+				require.Equal(t, tc.expect.TotalBalls, team.TotalBalls)
+				require.Equal(t, tc.expect.TotalWickets, team.TotalWickets)
+				require.Equal(t, tc.expect.Extras, team.Extras)
+				require.Equal(t, tc.expect.MatchNumber, team.MatchNumber)
 				if len(team.Players) != 0 {
 					t.Fatalf("Players length mismatch: got %d want %d", len(team.Players), 0)
 				}
@@ -109,24 +99,12 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 			expectedTarget := totalRunsConceded * magic
 			expectedTotalBalls := totalBallsFaced * magic
 
-			if team.TotalScore != expectedTotalScore {
-				t.Fatalf("TotalScore mismatch: got %.2f want %.2f", team.TotalScore, expectedTotalScore)
-			}
-			if team.Target != expectedTarget {
-				t.Fatalf("Target mismatch: got %.2f want %.2f", team.Target, expectedTarget)
-			}
-			if team.TotalBalls != expectedTotalBalls {
-				t.Fatalf("TotalBalls mismatch: got %.2f want %.2f", team.TotalBalls, expectedTotalBalls)
-			}
-			if team.TotalWickets != tc.expect.TotalWickets {
-				t.Fatalf("TotalWickets mismatch: got %.0f want %.0f", team.TotalWickets, tc.expect.TotalWickets)
-			}
-			if team.Extras != tc.expect.Extras {
-				t.Fatalf("Extras mismatch: got %.2f want %.2f", team.Extras, tc.expect.Extras)
-			}
-			if team.MatchNumber != tc.expect.MatchNumber {
-				t.Fatalf("MatchNumber mismatch: got %d want %d", team.MatchNumber, tc.expect.MatchNumber)
-			}
+			require.Equal(t, expectedTotalScore, team.TotalScore)
+			require.Equal(t, expectedTarget, team.Target)
+			require.Equal(t, expectedTotalBalls, team.TotalBalls)
+			require.Equal(t, tc.expect.TotalWickets, team.TotalWickets)
+			require.Equal(t, tc.expect.Extras, team.Extras)
+			require.Equal(t, tc.expect.MatchNumber, team.MatchNumber)
 			if len(team.Players) != len(tc.players) {
 				t.Fatalf("Players length mismatch: got %d want %d", len(team.Players), len(tc.players))
 			}

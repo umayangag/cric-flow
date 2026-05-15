@@ -63,7 +63,7 @@ func TestOrch_Table(t *testing.T) {
 	type arrangeFn func() (r ts.Runner, opts ts.Options, buf *bytes.Buffer, fc *fakeConnector)
 	type assertFn func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -135,7 +135,8 @@ func TestOrch_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			r, opts, buf, fc := tc.arrange()

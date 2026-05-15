@@ -46,7 +46,7 @@ func approx(a, b, eps float64) bool {
 
 func TestComputeMetrics(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		in     svc.Inputs
 		assert assertMetricsFn
@@ -67,7 +67,8 @@ func TestComputeMetrics(t *testing.T) {
 			assert: assertNaNs(),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := svc.ComputeMetrics(tc.in)
 			tc.assert(t, got)

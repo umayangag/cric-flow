@@ -10,6 +10,7 @@ import (
 	"time"
 
 	db "github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/stretchr/testify/require"
 )
 
 // withBacktestSeams is a small test helper that snapshots all global seam
@@ -121,17 +122,13 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 
 	app.backtestAccuracyTrendHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if payload.Count != 2 {
-		t.Fatalf("count = %d, want 2", payload.Count)
-	}
+	require.Equal(t, 2, payload.Count)
 	// Check per-match metrics exist
 	if len(payload.Results) != 2 {
 		t.Fatalf("results len = %d, want 2", len(payload.Results))
@@ -221,17 +218,13 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 	)
 
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if payload.Count != 2 {
-		t.Fatalf("count = %d, want 2", payload.Count)
-	}
+	require.Equal(t, 2, payload.Count)
 	// Progressive first item reflects first result (desc: matchID 202)
 	if len(payload.Progressive) != 2 {
 		t.Fatalf("progressive len = %d, want 2", len(payload.Progressive))
@@ -327,9 +320,7 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 	)
 
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
@@ -411,9 +402,7 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 	)
 
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -462,9 +451,7 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS", nil)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -537,16 +524,12 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if payload.Count != 1 {
-		t.Fatalf("count = %d, want 1", payload.Count)
-	}
+	require.Equal(t, 1, payload.Count)
 	// team_runs_mae should be |155-150| = 5 from cached predictions
 	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 4.99 || v > 5.01 {
 		t.Fatalf("team_runs_mae = %f, want 5 (from cache)", v)
@@ -607,16 +590,12 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if payload.Count != 1 {
-		t.Fatalf("count = %d, want 1", payload.Count)
-	}
+	require.Equal(t, 1, payload.Count)
 	// Expect ML value 152 vs actual 150 => MAE 2 (not using cached 140)
 	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 1.99 || v > 2.01 {
 		t.Fatalf("team_runs_mae = %f, want 2 (from ML, ignoring cache)", v)
@@ -689,7 +668,5 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 	if !called {
 		t.Error("expected upsertMatchPredictionAggregatesFunc to be called, but it was not")
 	}
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 }

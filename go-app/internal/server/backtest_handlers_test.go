@@ -16,7 +16,7 @@ func almostEqual(a, b float64) bool {
 }
 
 func TestChooseBacktestMode(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		modeIn  string
 		matchID string
@@ -28,18 +28,19 @@ func TestChooseBacktestMode(t *testing.T) {
 		{name: "explicit evaluate kept", modeIn: "evaluate", matchID: "", want: "evaluate"},
 		{name: "whitespace trimmed", modeIn: "  select  ", matchID: "", want: "select"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := chooseBacktestMode(tt.modeIn, tt.matchID)
-			if got != tt.want {
-				t.Fatalf("chooseBacktestMode(%q,%q)=%q want %q", tt.modeIn, tt.matchID, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := chooseBacktestMode(tc.modeIn, tc.matchID)
+			if got != tc.want {
+				t.Fatalf("chooseBacktestMode(%q,%q)=%q want %q", tc.modeIn, tc.matchID, got, tc.want)
 			}
 		})
 	}
 }
 
 func TestComputeR2(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		sse  float64
 		y    []float64
@@ -55,18 +56,19 @@ func TestComputeR2(t *testing.T) {
 			want: 1 - (2.0 / 5.0),
 		}, // ssTot for [1,2,3,4] is 5
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := computeR2(tt.sse, tt.y)
-			if !almostEqual(got, tt.want) {
-				t.Fatalf("computeR2(%v,%v)=%v want %v", tt.sse, tt.y, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := computeR2(tc.sse, tc.y)
+			if !almostEqual(got, tc.want) {
+				t.Fatalf("computeR2(%v,%v)=%v want %v", tc.sse, tc.y, got, tc.want)
 			}
 		})
 	}
 }
 
 func TestWinnerAccuracy(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		pred string
 		act  string
@@ -76,11 +78,12 @@ func TestWinnerAccuracy(t *testing.T) {
 		{name: "match case-insensitive => 1", pred: "ind", act: "IND", want: 1},
 		{name: "different => 0", pred: "IND", act: "AUS", want: 0},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := winnerAccuracy(tt.pred, tt.act)
-			if got != tt.want {
-				t.Fatalf("winnerAccuracy(%q,%q)=%v want %v", tt.pred, tt.act, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := winnerAccuracy(tc.pred, tc.act)
+			if got != tc.want {
+				t.Fatalf("winnerAccuracy(%q,%q)=%v want %v", tc.pred, tc.act, got, tc.want)
 			}
 		})
 	}
@@ -92,7 +95,7 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 		return r
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		rawURL     string
 		wantErr    error
@@ -106,9 +109,7 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 				if !p.IncludePlayer || !p.IncludeTeam {
 					t.Fatalf("metrics defaults not applied: %+v", p)
 				}
-				if p.Limit != 100 {
-					t.Fatalf("default limit=100, got %d", p.Limit)
-				}
+				require.Equal(t, 100, p.Limit)
 				if p.Order != "asc" {
 					t.Fatalf("default order=asc, got %q", p.Order)
 				}
@@ -122,9 +123,7 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 			rawURL:  "/api/backtest/accuracy-trend?format=t20&team1=IND&team2=AUS&limit=9999&order=desc&cache=off&metrics=player",
 			wantErr: nil,
 			assertFunc: func(t *testing.T, p accuracyTrendParams) {
-				if p.Limit != 500 {
-					t.Fatalf("limit should be capped to 500, got %d", p.Limit)
-				}
+				require.Equal(t, 500, p.Limit)
 				if p.Order != "desc" {
 					t.Fatalf("order=desc expected, got %q", p.Order)
 				}
@@ -167,31 +166,28 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := makeReq(tt.rawURL)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			r := makeReq(tc.rawURL)
 			p, err := parseBacktestAccuracyTrendParams(r)
-			if tt.wantErr != nil {
-				if err == nil {
-					t.Fatalf("expected error %v, got nil", tt.wantErr)
-				}
-				if err.Error() != tt.wantErr.Error() {
-					t.Fatalf("error mismatch: got %v, want %v", err, tt.wantErr)
+			if tc.wantErr != nil {
+				require.Error(t, err)
+				if err.Error() != tc.wantErr.Error() {
+					t.Fatalf("error mismatch: got %v, want %v", err, tc.wantErr)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if tt.assertFunc != nil {
-				tt.assertFunc(t, p)
+			require.NoError(t, err)
+			if tc.assertFunc != nil {
+				tc.assertFunc(t, p)
 			}
 		})
 	}
 }
 
 func TestParseUseUnifiedModel(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		rawURL     string
 		defaultVal bool
@@ -203,19 +199,20 @@ func TestParseUseUnifiedModel(t *testing.T) {
 		{"use_unified_model=true", "/api/backtest?match_id=1&use_unified_model=true", false, true},
 		{"model=unified", "/api/backtest?match_id=1&model=unified", false, true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, tt.rawURL, nil)
-			got := parseUseUnifiedModel(r, tt.defaultVal)
-			if got != tt.want {
-				t.Fatalf("parseUseUnifiedModel(%q, %v)=%v want %v", tt.rawURL, tt.defaultVal, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tc.rawURL, nil)
+			got := parseUseUnifiedModel(r, tc.defaultVal)
+			if got != tc.want {
+				t.Fatalf("parseUseUnifiedModel(%q, %v)=%v want %v", tc.rawURL, tc.defaultVal, got, tc.want)
 			}
 		})
 	}
 }
 
 func TestParseUseLatestModel(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		rawURL     string
 		defaultVal bool
@@ -226,12 +223,13 @@ func TestParseUseLatestModel(t *testing.T) {
 		{"use_latest_model=1", "/api/backtest?match_id=1&use_latest_model=1", false, true},
 		{"use_latest_model=true", "/api/backtest?match_id=1&use_latest_model=true", false, true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, tt.rawURL, nil)
-			got := parseUseLatestModel(r, tt.defaultVal)
-			if got != tt.want {
-				t.Fatalf("parseUseLatestModel(%q, %v)=%v want %v", tt.rawURL, tt.defaultVal, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tc.rawURL, nil)
+			got := parseUseLatestModel(r, tc.defaultVal)
+			if got != tc.want {
+				t.Fatalf("parseUseLatestModel(%q, %v)=%v want %v", tc.rawURL, tc.defaultVal, got, tc.want)
 			}
 		})
 	}

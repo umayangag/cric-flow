@@ -15,7 +15,7 @@ import (
 func TestExtrasService_Exports(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.ExtrasService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		want   string
@@ -41,7 +41,8 @@ func TestExtrasService_Exports(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			service := svc.NewExtrasService(m)
@@ -55,7 +56,7 @@ func TestExtrasService_Exports(t *testing.T) {
 
 func TestExtrasService_Errors(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.ExtrasService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		assert assertFn
@@ -77,7 +78,8 @@ func TestExtrasService_Errors(t *testing.T) {
 			assertErrContains("boom"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			s := svc.NewExtrasService(m)

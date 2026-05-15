@@ -4,7 +4,7 @@ import "testing"
 
 func TestEncodeSession(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		in   int
 		want int
 	}{
@@ -16,17 +16,18 @@ func TestEncodeSession(t *testing.T) {
 		{4, 3},
 		{10, 3},
 	}
-	for _, tt := range tests {
-		got := encodeSession(tt.in)
-		if got != tt.want {
-			t.Errorf("encodeSession(%d) = %d, want %d", tt.in, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		got := encodeSession(tc.in)
+		if got != tc.want {
+			t.Errorf("encodeSession(%d) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }
 
 func TestEncodeViscosity(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		in   int
 		want int
 	}{
@@ -38,10 +39,11 @@ func TestEncodeViscosity(t *testing.T) {
 		{5, 1},
 		{100, 1},
 	}
-	for _, tt := range tests {
-		got := encodeViscosity(tt.in)
-		if got != tt.want {
-			t.Errorf("encodeViscosity(%d) = %d, want %d", tt.in, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		got := encodeViscosity(tc.in)
+		if got != tc.want {
+			t.Errorf("encodeViscosity(%d) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }

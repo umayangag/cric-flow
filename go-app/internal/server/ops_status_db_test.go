@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+
+	"github.com/stretchr/testify/require"
 )
 
 type fakeDBProbe struct {
@@ -45,7 +47,7 @@ func (f fakeDBProbe) TableStats(_ context.Context) ([]db.TableStat, error) {
 }
 
 func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name       string
 		probe      fakeDBProbe
 		wantConn   bool
@@ -85,15 +87,14 @@ func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			app := &App{mlClient: nil, dbProbe: tc.probe}
 			req := httptest.NewRequest(http.MethodGet, "/ops/status", nil)
 			rr := httptest.NewRecorder()
 			app.opsStatusHandler(rr, req)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("expected 200, got %d", rr.Code)
-			}
+			require.Equal(t, http.StatusOK, rr.Code)
 			// decode as generic map to inspect fields easily
 			var m map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
@@ -112,9 +113,7 @@ func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
 			}
 			if tc.wantConn && tc.wantCounts != nil {
 				countsAny, ok := dbAny["counts"].(map[string]any)
-				if !ok {
-					t.Fatalf("missing counts")
-				}
+				require.True(t, ok)
 				for k, v := range tc.wantCounts {
 					if got, ok := countsAny[k].(float64); !ok || int64(got) != v {
 						t.Fatalf("count %s mismatch: got %v want %d", k, countsAny[k], v)

@@ -31,7 +31,7 @@ func assertErrContains(sub string) assertSvcFn {
 
 func TestIngestService_BasicFlows(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		apply   bool
 		conc    int
@@ -69,7 +69,8 @@ func TestIngestService_BasicFlows(t *testing.T) {
 			assert: assertNoErrorProcessed(2),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			l := cricsheetmocks.NewMockLoader(t)
 			p := cricsheetmocks.NewMockParser(t)
@@ -86,7 +87,7 @@ func TestIngestService_BasicFlows(t *testing.T) {
 
 func TestIngestService_Errors(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		dir     string
 		arrange func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo)
@@ -154,7 +155,8 @@ func TestIngestService_Errors(t *testing.T) {
 			assert: assertErrContains("db"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			var s *svc.IngestService
 			if tc.svcNil {

@@ -19,7 +19,7 @@ func TestRunner_Run_Table(t *testing.T) {
 	type arrangeFn func(l *cricsheetmocks.MockLoader, p *cricsheetmocks.MockParser, r *dbmocks.MockMatchRepo)
 	type assertFn func(t *testing.T, err error)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		opts    svc.Options
 		arrange arrangeFn
@@ -191,8 +191,8 @@ func TestRunner_Run_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

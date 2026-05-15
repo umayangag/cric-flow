@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // test helper: write a file with N lines and fixed modtime
@@ -13,9 +15,7 @@ func writeFileWithLines(t *testing.T, dir, name string, lines int) {
 	t.Helper()
 	p := filepath.Join(dir, name)
 	f, err := os.Create(p)
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 	for i := 0; i < lines; i++ {
 		if _, err := f.WriteString("row\n"); err != nil {
@@ -39,18 +39,12 @@ func TestBuildExportsSection_Table(t *testing.T) {
 				t.Fatalf("root mismatch: got %v", sec["root"])
 			}
 			fm, ok := sec["formats"].(map[string]any)
-			if !ok {
-				t.Fatalf("formats wrong type: %T", sec["formats"])
-			}
+			require.True(t, ok)
 			for _, f := range []string{"TEST", "ODI", "T20I", "T20"} {
 				vf, ok := fm[f].(map[string]any)
-				if !ok {
-					t.Fatalf("missing format %s", f)
-				}
+				require.True(t, ok)
 				if arr, ok := vf["files"].([]map[string]any); ok {
-					if len(arr) != 0 {
-						t.Fatalf("files not empty for %s", f)
-					}
+					require.Len(t, arr, 0)
 				} else if arrAny, ok := vf["files"].([]any); ok {
 					if len(arrAny) != 0 {
 						t.Fatalf("files not empty(any) for %s", f)
@@ -100,9 +94,7 @@ func TestBuildExportsSection_Table(t *testing.T) {
 					hasODI = true
 				}
 			}
-			if !hasODI {
-				t.Fatalf("ODI batting not detected")
-			}
+			require.True(t, hasODI)
 			// T20I has bowling file
 			var hasT20I bool
 			for _, e := range fm["T20I"].(map[string]any)["files"].([]map[string]any) {
@@ -110,13 +102,11 @@ func TestBuildExportsSection_Table(t *testing.T) {
 					hasT20I = true
 				}
 			}
-			if !hasT20I {
-				t.Fatalf("T20I bowling not detected")
-			}
+			require.True(t, hasT20I)
 		}
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		setup  func(t *testing.T) string // returns root
 		assert assertion
@@ -173,9 +163,7 @@ func TestBuildExportsSection_Table(t *testing.T) {
 						t20Rows += r
 					}
 				}
-				if t20Rows != 300 {
-					t.Fatalf("T20 row sum should be 300, got %d", t20Rows)
-				}
+				require.Equal(t, 300, t20Rows)
 				// T20I must have only T20I files (row sum 300+400=700)
 				t20iFiles := fm["T20I"].(map[string]any)["files"].([]map[string]any)
 				if len(t20iFiles) != 2 {
@@ -187,14 +175,13 @@ func TestBuildExportsSection_Table(t *testing.T) {
 						t20iRows += r
 					}
 				}
-				if t20iRows != 700 {
-					t.Fatalf("T20I row sum should be 700, got %d", t20iRows)
-				}
+				require.Equal(t, 700, t20iRows)
 			},
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			root := tc.setup(t)
 			sec := BuildExportsSection(root)

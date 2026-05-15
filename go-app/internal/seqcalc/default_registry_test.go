@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {
 	reg := seqcalc.NewDefaultRegistry()
 
 	calcs, err := reg.ResolveTargets("bat_transitions")
-	if err != nil {
-		t.Fatalf("ResolveTargets(bat_transitions) error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(calcs) != 1 {
 		t.Fatalf("expected 1 calc, got %d", len(calcs))
 	}
@@ -22,9 +22,7 @@ func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {
 	}
 
 	_, err = reg.ResolveTargets("unknown_target_xyz")
-	if err == nil {
-		t.Fatal("expected error for unknown target")
-	}
+	require.Error(t, err)
 }
 
 func TestDryRun(t *testing.T) {
@@ -33,24 +31,18 @@ func TestDryRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := seqcalc.DryRun(&buf, calcs, seqcalc.Params{FormatCode: "T20"})
-	if err != nil {
-		t.Fatalf("DryRun error: %v", err)
-	}
+	require.NoError(t, err)
 	if buf.Len() == 0 {
 		t.Fatal("DryRun should write output")
 	}
 
 	// Error: nil writer
 	err = seqcalc.DryRun(nil, calcs, seqcalc.Params{})
-	if err == nil {
-		t.Fatal("expected error for nil writer")
-	}
+	require.Error(t, err)
 
 	// Error: no calculators
 	err = seqcalc.DryRun(&buf, nil, seqcalc.Params{})
-	if err == nil {
-		t.Fatal("expected error for empty calcs")
-	}
+	require.Error(t, err)
 }
 
 func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
@@ -82,9 +74,7 @@ func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
 
 	// Resolve "all" should return one calculator per expected target
 	calcs, err := reg.ResolveTargets("all")
-	if err != nil {
-		t.Fatalf("ResolveTargets(all) error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(calcs) != len(expected) {
 		t.Fatalf("unexpected calculators count for all: got=%d want=%d", len(calcs), len(expected))
 	}

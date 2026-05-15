@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBacktestAccuracyTrendHandler_InvalidStartDate(t *testing.T) {
@@ -19,9 +20,7 @@ func TestBacktestAccuracyTrendHandler_InvalidStartDate(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestBacktestAccuracyTrendHandler_InvalidEndDate(t *testing.T) {
@@ -34,9 +33,7 @@ func TestBacktestAccuracyTrendHandler_InvalidEndDate(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestBacktestAccuracyTrendHandler_EndBeforeStart(t *testing.T) {
@@ -49,9 +46,7 @@ func TestBacktestAccuracyTrendHandler_EndBeforeStart(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestBacktestAccuracyTrendHandler_EmptyResults(t *testing.T) {
@@ -70,16 +65,12 @@ func TestBacktestAccuracyTrendHandler_EmptyResults(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if payload.Count != 0 {
-		t.Fatalf("Count = %d, want 0", payload.Count)
-	}
+	require.Equal(t, 0, payload.Count)
 	if len(payload.Results) != 0 {
 		t.Fatalf("Results len = %d, want 0", len(payload.Results))
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // dummyOut is used to decode JSON into a no-op type
@@ -17,14 +19,15 @@ type dummyOut struct {
 }
 
 func TestDoJSON_Non2xx(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		status int
 	}{
 		{name: "400", status: http.StatusBadRequest},
 		{name: "500", status: http.StatusInternalServerError},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		// capture tc for closure
 		status := tc.status
 		t.Run(tc.name, func(t *testing.T) {
@@ -36,17 +39,11 @@ func TestDoJSON_Non2xx(t *testing.T) {
 
 			client := DefaultClient(2 * time.Second)
 			req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "test-agent")
-			if err != nil {
-				t.Fatalf("newRequest err: %v", err)
-			}
+			require.NoError(t, err)
 			var out dummyOut
 			resp, derr := doJSON(client, req, &out)
-			if derr == nil {
-				t.Fatalf("expected error for non-2xx, got nil")
-			}
-			if resp == nil {
-				t.Fatalf("expected non-nil response on non-2xx")
-			}
+			require.Error(t, derr)
+			require.NotNil(t, resp)
 			if !strings.HasPrefix(derr.Error(), "ml-service status:") {
 				t.Fatalf("error should start with 'ml-service status:', got %v", derr)
 			}
@@ -63,17 +60,11 @@ func TestDoJSON_BadJSON(t *testing.T) {
 
 	client := DefaultClient(2 * time.Second)
 	req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "test-agent")
-	if err != nil {
-		t.Fatalf("newRequest err: %v", err)
-	}
+	require.NoError(t, err)
 	var out dummyOut
 	resp, derr := doJSON(client, req, &out)
-	if resp == nil {
-		t.Fatalf("expected response, got nil")
-	}
-	if derr == nil {
-		t.Fatalf("expected decode error, got nil")
-	}
+	require.NotNil(t, resp)
+	require.Error(t, derr)
 }
 
 func TestDefaultClient_Timeout(t *testing.T) {
@@ -87,14 +78,10 @@ func TestDefaultClient_Timeout(t *testing.T) {
 
 	client := DefaultClient(50 * time.Millisecond)
 	req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "")
-	if err != nil {
-		t.Fatalf("newRequest err: %v", err)
-	}
+	require.NoError(t, err)
 	var out dummyOut
 	_, derr := doJSON(client, req, &out)
-	if derr == nil {
-		t.Fatalf("expected timeout error, got nil")
-	}
+	require.Error(t, derr)
 	// Accept either client timeout or context deadline exceeded wording
 	if !strings.Contains(derr.Error(), "Client.Timeout") && !errors.Is(derr, context.DeadlineExceeded) {
 		// We cannot reliably unwrap here without importing net/http internals; do a substring fallback
@@ -107,9 +94,7 @@ func TestDefaultClient_Timeout(t *testing.T) {
 func TestNewRequest_Headers(t *testing.T) {
 	// with User-Agent
 	req1, err := newRequest(context.Background(), http.MethodPost, "http://example", map[string]int{"a": 1}, "ua-1")
-	if err != nil {
-		t.Fatalf("newRequest err: %v", err)
-	}
+	require.NoError(t, err)
 	if ct := req1.Header.Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("content-type expected application/json, got %q", ct)
 	}
@@ -118,9 +103,7 @@ func TestNewRequest_Headers(t *testing.T) {
 	}
 	// without User-Agent
 	req2, err := newRequest(context.Background(), http.MethodPost, "http://example", map[string]int{"a": 1}, "")
-	if err != nil {
-		t.Fatalf("newRequest err: %v", err)
-	}
+	require.NoError(t, err)
 	if ua := req2.Header.Get("User-Agent"); ua != "" {
 		t.Fatalf("user-agent expected empty, got %q", ua)
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ---- Test fakes ----
@@ -61,7 +63,7 @@ func TestBuildDBFreshnessSection_Table(t *testing.T) {
 		return fakeInsightsProbe{latestByFmt: m}
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		probe  fakeInsightsProbe
 		wantSt map[string]string // per-format status
@@ -97,20 +99,17 @@ func TestBuildDBFreshnessSection_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := BuildDBFreshnessSection(context.Background(), tc.probe, now)
 			// validate structure
 			fm, ok := got["formats"].(map[string]any)
-			if !ok {
-				t.Fatalf("formats missing or wrong type")
-			}
+			require.True(t, ok)
 			// per-format statuses
 			for k, want := range tc.wantSt {
 				m, ok := fm[k].(map[string]any)
-				if !ok {
-					t.Fatalf("format %s missing", k)
-				}
+				require.True(t, ok)
 				if st, _ := m["status"].(string); st != want {
 					t.Fatalf("status[%s]=%q want %q", k, st, want)
 				}

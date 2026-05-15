@@ -9,7 +9,7 @@ import (
 
 func TestParseArgs_HappyPaths(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name string
 		args []string
 	}{
@@ -17,7 +17,8 @@ func TestParseArgs_HappyPaths(t *testing.T) {
 		{"asof_with_seq", []string{"-format", "ODI", "-as-of", "2020-12-31", "-seq-targets", "all"}},
 		{"aliases_ok", []string{"-format", "IT20", "-replay", "-ewm-alpha", "0.5", "-lastN", "12"}},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 			if _, err := svc.ParseArgs(fs, tc.args); err != nil {
@@ -29,7 +30,7 @@ func TestParseArgs_HappyPaths(t *testing.T) {
 
 func TestParseArgs_Validation(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name string
 		args []string
 	}{
@@ -37,7 +38,8 @@ func TestParseArgs_Validation(t *testing.T) {
 		{"bad_alpha", []string{"-format", "T20", "-ewm-alpha", "0"}},
 		{"neg_lastN", []string{"-format", "T20", "-lastN", "-1"}},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 			if _, err := svc.ParseArgs(fs, tc.args); err == nil {

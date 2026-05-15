@@ -33,7 +33,7 @@ func TestService_Predict_Table(t *testing.T) {
 
 	type arrangeFn func(t *testing.T) *svc.Service
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		opts    svc.Options
 		arrange arrangeFn
@@ -84,8 +84,8 @@ func TestService_Predict_Table(t *testing.T) {
 			assert: assertErrContains("nil service"),
 		},
 	}
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			s := tc.arrange(t)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
@@ -40,9 +41,7 @@ func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload backtestSelectResponse
 	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
@@ -65,9 +64,7 @@ func TestBacktestMatchHandler_SelectMode_MissingParams(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND", nil)
 	app.backtestMatchHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
@@ -84,9 +81,7 @@ func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rr.Code)
-	}
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
 }
 
 // no extra helpers

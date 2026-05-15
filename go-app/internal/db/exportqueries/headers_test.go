@@ -28,7 +28,7 @@ func TestBattingSeqHeaders(t *testing.T) {
 func TestAppendSeqIfEnabled(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name       string
 		seqEnabled bool
 		base       []string
@@ -50,8 +50,8 @@ func TestAppendSeqIfEnabled(t *testing.T) {
 		{name: "batting headers with seq enabled", seqEnabled: true, base: []string{"h1"}, seqFn: BattingSeqHeaders},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			ctx := context.Background()

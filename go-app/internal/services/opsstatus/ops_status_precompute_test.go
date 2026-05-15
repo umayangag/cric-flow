@@ -7,18 +7,16 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+
+	"github.com/stretchr/testify/require"
 )
 
 // helper to extract map[string]any safely
 func getMap(m map[string]any, key string, t *testing.T) map[string]any {
 	v, ok := m[key]
-	if !ok {
-		t.Fatalf("missing key %s", key)
-	}
+	require.True(t, ok)
 	mv, ok := v.(map[string]any)
-	if !ok {
-		t.Fatalf("key %s is not a map: %T", key, v)
-	}
+	require.True(t, ok)
 	return mv
 }
 

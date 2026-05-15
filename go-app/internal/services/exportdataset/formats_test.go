@@ -32,7 +32,7 @@ func assertEqualSlice(want []string) assertStrsFn {
 func TestResolveFormats_CliPrecedence(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		opts   svc.Options
 		cfg    *config.Config
@@ -62,7 +62,8 @@ func TestResolveFormats_CliPrecedence(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := svc.ResolveFormats(tc.opts, tc.cfg)
 			tc.assert(t, got)
@@ -73,7 +74,7 @@ func TestResolveFormats_CliPrecedence(t *testing.T) {
 func TestResolveFormats_ConfigFallbacks(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		cfg    *config.Config
 		want   []string
@@ -106,7 +107,8 @@ func TestResolveFormats_ConfigFallbacks(t *testing.T) {
 	}
 
 	emptyOpts := svc.Options{}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := svc.ResolveFormats(emptyOpts, tc.cfg)
 			tc.assert(t, got)

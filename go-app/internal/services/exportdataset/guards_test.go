@@ -41,7 +41,7 @@ func indexOfG(s, sub string) int {
 
 func TestServices_Guards(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func() error
 		assert assertFnG
@@ -73,7 +73,8 @@ func TestServices_Guards(t *testing.T) {
 			assert: assertErrContainsG("nil service or repo"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.act()
 			tc.assert(t, err)

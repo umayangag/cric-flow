@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // These integration tests guard against regressions that occurred during cricsheet import:
@@ -19,9 +21,7 @@ func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	if err := RunMigrations(ctx, migrationsDir()); err != nil {
@@ -29,9 +29,7 @@ func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
 	}
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// First batch (inning 1)
@@ -62,9 +60,7 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	if err := RunMigrations(ctx, migrationsDir()); err != nil {
@@ -82,9 +78,7 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 	}
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	runs1, runs2 := 10, 20
@@ -114,9 +108,7 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	if err := RunMigrations(ctx, migrationsDir()); err != nil {
@@ -133,9 +125,7 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 	}
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	wickets1, wickets2 := 1, 2
@@ -165,9 +155,7 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	if err := RunMigrations(ctx, migrationsDir()); err != nil {
@@ -198,7 +186,5 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 		// RecomputeFieldingAggregatesTx does a Query then UpsertFieldingTx per row; rows must be fully read and closed first to avoid "conn busy"
 		return RecomputeFieldingAggregatesTx(ctx, tx, 888884)
 	})
-	if err != nil {
-		t.Fatalf("RunInTx (recompute fielding aggregates): %v", err)
-	}
+	require.NoError(t, err)
 }

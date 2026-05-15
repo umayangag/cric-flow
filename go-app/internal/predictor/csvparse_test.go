@@ -3,6 +3,8 @@ package predictor
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParsePlayersCSV_Basic(t *testing.T) {
@@ -11,9 +13,7 @@ func TestParsePlayersCSV_Basic(t *testing.T) {
 		"Bob,10,12,1,0,5,83.3,35,18,2,6.5,0.55\n"
 
 	players, err := parsePlayersCSV(strings.NewReader(csv))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(players) != 2 {
 		t.Fatalf("want 2 players, got %d", len(players))
 	}
@@ -27,7 +27,5 @@ func TestParsePlayersCSV_Basic(t *testing.T) {
 
 func TestParsePlayersCSV_Empty(t *testing.T) {
 	_, err := parsePlayersCSV(strings.NewReader(""))
-	if err == nil {
-		t.Fatalf("expected error for empty csv")
-	}
+	require.Error(t, err)
 }

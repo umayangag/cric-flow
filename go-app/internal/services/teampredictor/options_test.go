@@ -6,30 +6,20 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/teampredictor"
+
+	"github.com/stretchr/testify/require"
 )
 
 type assertFn func(t *testing.T, got svc.Options, err error)
 
 func assertNoErrorOpts(want svc.Options) assertFn {
 	return func(t *testing.T, got svc.Options, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.MatchID != want.MatchID {
-			t.Fatalf("want MatchID=%d got %d", want.MatchID, got.MatchID)
-		}
-		if got.Format != want.Format {
-			t.Fatalf("want Format=%q got %q", want.Format, got.Format)
-		}
-		if got.Season != want.Season {
-			t.Fatalf("want Season=%q got %q", want.Season, got.Season)
-		}
-		if got.Bat != want.Bat {
-			t.Fatalf("want Bat=%d got %d", want.Bat, got.Bat)
-		}
-		if got.Bowl != want.Bowl {
-			t.Fatalf("want Bowl=%d got %d", want.Bowl, got.Bowl)
-		}
+		require.NoError(t, err)
+		require.Equal(t, want.MatchID, got.MatchID)
+		require.Equal(t, want.Format, got.Format)
+		require.Equal(t, want.Season, got.Season)
+		require.Equal(t, want.Bat, got.Bat)
+		require.Equal(t, want.Bowl, got.Bowl)
 	}
 }
 
@@ -63,7 +53,7 @@ func indexOf(s, sub string) int {
 
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		setup  func()
 		args   []string
@@ -120,7 +110,8 @@ func TestParseArgs_Basic(t *testing.T) {
 			assert: assertErrorContains("invalid bowl"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			os.Unsetenv("TEAM_PREDICTOR_MATCH")
 			os.Unsetenv("TEAM_PREDICTOR_FORMAT")

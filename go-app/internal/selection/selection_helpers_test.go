@@ -21,9 +21,7 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 
 	// Case: teamSize 3, need at least 1 bowler -> should be satisfied by initial top-3 after sorting
 	sel, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 1)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(sel) != 3 {
 		t.Fatalf("expected 3 selected, got %d", len(sel))
 	}
@@ -39,9 +37,7 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 
 	// Case: teamSize 3, require 2 bowlers -> should swap one batter with next bowler
 	sel2, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 2)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(sel2) != 3 {
 		t.Fatalf("expected 3 selected, got %d", len(sel2))
 	}
@@ -57,9 +53,7 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 
 	// Case: pool too small
 	_, err = selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 10, 1)
-	if err == nil {
-		t.Fatalf("expected error for small pool, got nil")
-	}
+	require.Error(t, err)
 
 	// Case: minBowlers 0 - no constraint, just top N
 	sel3, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 0)
@@ -95,7 +89,7 @@ func TestComputeAverageWinProbability(t *testing.T) {
 }
 
 func TestParseF64(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		in   string
 		want float64
 	}{
@@ -104,15 +98,16 @@ func TestParseF64(t *testing.T) {
 		{"0", 0},
 		{"invalid", 0},
 	}
-	for _, tt := range tests {
-		if got := parseF64(tt.in); got != tt.want {
-			t.Errorf("parseF64(%q) = %v, want %v", tt.in, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		if got := parseF64(tc.in); got != tc.want {
+			t.Errorf("parseF64(%q) = %v, want %v", tc.in, got, tc.want)
 		}
 	}
 }
 
 func TestPrevSeasonName(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		in   string
 		want string
 	}{
@@ -120,15 +115,16 @@ func TestPrevSeasonName(t *testing.T) {
 		{"2019", "2018"},
 		{"invalid", "invalid"},
 	}
-	for _, tt := range tests {
-		if got := prevSeasonName(tt.in); got != tt.want {
-			t.Errorf("prevSeasonName(%q) = %q, want %q", tt.in, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		if got := prevSeasonName(tc.in); got != tc.want {
+			t.Errorf("prevSeasonName(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
 
 func TestParseSeasonInt(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		in   string
 		want int
 	}{
@@ -136,9 +132,10 @@ func TestParseSeasonInt(t *testing.T) {
 		{" 2019 ", 2019},
 		{"x", 0},
 	}
-	for _, tt := range tests {
-		if got := parseSeasonInt(tt.in); got != tt.want {
-			t.Errorf("parseSeasonInt(%q) = %d, want %d", tt.in, got, tt.want)
+	for i := range testCases {
+		tc := testCases[i]
+		if got := parseSeasonInt(tc.in); got != tc.want {
+			t.Errorf("parseSeasonInt(%q) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }

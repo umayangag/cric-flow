@@ -25,16 +25,16 @@ func TestBuildMatchAggregates_TableDriven(t *testing.T) {
 		{"fractional runs", 99.5, 3, 2, "AUS"},
 		{"large values", 500, 20, 25, "PAK"},
 	}
-	for _, tt := range testCases {
-		tt := tt // capture range variable
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := buildMatchAggregates(tt.runs, tt.wickets, tt.extras, tt.winner)
+			got := buildMatchAggregates(tc.runs, tc.wickets, tc.extras, tc.winner)
 			require.Equal(t, MatchAggregates{
-				Runs:           tt.runs,
-				Wickets:        tt.wickets,
-				Extras:         tt.extras,
-				WinnerTeamCode: tt.winner,
+				Runs:           tc.runs,
+				Wickets:        tc.wickets,
+				Extras:         tc.extras,
+				WinnerTeamCode: tc.winner,
 			}, got)
 		})
 	}

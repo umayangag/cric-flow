@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/models"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPredictBatting_Non2xx_New(t *testing.T) {
@@ -18,9 +19,7 @@ func TestPredictBatting_Non2xx_New(t *testing.T) {
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{PlayerName: "A"}})
-	if err == nil {
-		t.Fatalf("expected error for non-2xx response")
-	}
+	require.Error(t, err)
 }
 
 func TestPredictBowling_InvalidJSON_New(t *testing.T) {
@@ -32,7 +31,5 @@ func TestPredictBowling_InvalidJSON_New(t *testing.T) {
 
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{PlayerName: "B"}})
-	if err == nil {
-		t.Fatalf("expected json decode error")
-	}
+	require.Error(t, err)
 }

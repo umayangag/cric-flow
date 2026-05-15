@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/migrate"
+
+	"github.com/stretchr/testify/require"
 )
 
 type assertOptsFn func(t *testing.T, got svc.Options, err error)
@@ -12,28 +14,22 @@ type assertOptsFn func(t *testing.T, got svc.Options, err error)
 func assertNoErrWant(want svc.Options) assertOptsFn {
 	return func(t *testing.T, got svc.Options, err error) {
 		t.Helper()
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.Dir != want.Dir {
-			t.Fatalf("want Dir=%q got %q", want.Dir, got.Dir)
-		}
+		require.NoError(t, err)
+		require.Equal(t, want.Dir, got.Dir)
 	}
 }
 
 func assertOptsErr() assertOptsFn {
 	return func(t *testing.T, _ svc.Options, err error) {
 		t.Helper()
-		if err == nil {
-			t.Fatalf("expected error, got nil")
-		}
+		require.Error(t, err)
 	}
 }
 
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		fs     *flag.FlagSet
 		args   []string
@@ -59,7 +55,8 @@ func TestParseArgs(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := svc.ParseArgs(tc.fs, tc.args)
 			tc.assert(t, got, err)

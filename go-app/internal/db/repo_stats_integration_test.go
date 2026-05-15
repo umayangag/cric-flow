@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetTableStats_Integration(t *testing.T) {
@@ -12,9 +14,7 @@ func TestGetTableStats_Integration(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect error: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations to ensure we have tables
@@ -23,9 +23,7 @@ func TestGetTableStats_Integration(t *testing.T) {
 	}
 
 	stats, err := GetTableStats(ctx)
-	if err != nil {
-		t.Fatalf("GetTableStats failed: %v", err)
-	}
+	require.NoError(t, err)
 
 	if len(stats) == 0 {
 		t.Fatalf("Expected some tables, got 0")

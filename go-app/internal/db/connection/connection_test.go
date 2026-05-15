@@ -3,22 +3,24 @@ package connection
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBuildDSN_ComposesExpectedURL(t *testing.T) {
+	t.Parallel()
+
+	// Act
 	got := BuildDSN("user", "x", "host", "5432", "dbname", "disable")
+
+	// Assert
 	wantSuffix := "://user:x@host:5432/dbname?sslmode=disable"
-	if !strings.HasSuffix(got, wantSuffix) {
-		t.Fatalf("BuildDSN() = %q, want suffix %q", got, wantSuffix)
-	}
+	assert.True(t, strings.HasSuffix(got, wantSuffix), "BuildDSN() = %q, want suffix %q", got, wantSuffix)
 }
 
 func TestGetenv_ReturnsEnvOrDefault(t *testing.T) {
 	t.Setenv("SOME_KEY", "value")
-	if got := getenv("SOME_KEY", "default"); got != "value" {
-		t.Fatalf("getenv with env set = %q, want %q", got, "value")
-	}
-	if got := getenv("MISSING_KEY", "fallback"); got != "fallback" {
-		t.Fatalf("getenv with missing key = %q, want %q", got, "fallback")
-	}
+
+	assert.Equal(t, "value", getenv("SOME_KEY", "default"))
+	assert.Equal(t, "fallback", getenv("MISSING_KEY", "fallback"))
 }

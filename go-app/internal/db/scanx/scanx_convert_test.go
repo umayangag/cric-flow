@@ -3,6 +3,9 @@ package scanx
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeScanner struct {
@@ -28,56 +31,66 @@ func (f *fakeScanner) Scan(dest ...any) error {
 }
 
 func TestAnyToString_Primitives(t *testing.T) {
-	cases := []struct {
-		in   any
-		want string
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    any
+		expected string
 	}{
-		{nil, ""},
-		{"abc", "abc"},
-		{[]byte("xyz"), "xyz"},
-		{int64(42), "42"},
-		{int32(7), "7"},
-		{3, "3"},
-		{float32(1.5), "1.5"},
-		{float64(2.0), "2"},
-		{true, "1"},
-		{false, "0"},
+		{name: "nil returns empty", input: nil, expected: ""},
+		{name: "string passthrough", input: "abc", expected: "abc"},
+		{name: "byte slice", input: []byte("xyz"), expected: "xyz"},
+		{name: "int64", input: int64(42), expected: "42"},
+		{name: "int32", input: int32(7), expected: "7"},
+		{name: "int", input: 3, expected: "3"},
+		{name: "float32", input: float32(1.5), expected: "1.5"},
+		{name: "float64", input: float64(2.0), expected: "2"},
+		{name: "bool true", input: true, expected: "1"},
+		{name: "bool false", input: false, expected: "0"},
 	}
-	for i, c := range cases {
-		got := AnyToString(c.in)
-		if got != c.want {
-			t.Fatalf("case %d: want %q, got %q", i, c.want, got)
-		}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := AnyToString(tc.input)
+			assert.Equal(t, tc.expected, got)
+		})
 	}
 }
 
 func TestTrimFloat(t *testing.T) {
-	cases := map[string]string{
-		"1.000000": "1",
-		"3.140000": "3.14",
-		"0.500000": "0.5",
-		"10":       "10",
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "trailing zeros removed", input: "1.000000", expected: "1"},
+		{name: "partial trailing zeros", input: "3.140000", expected: "3.14"},
+		{name: "single trailing zero", input: "0.500000", expected: "0.5"},
+		{name: "no decimal unchanged", input: "10", expected: "10"},
 	}
-	for in, want := range cases {
-		if got := TrimFloat(in); got != want {
-			t.Fatalf("TrimFloat(%q) = %q, want %q", in, got, want)
-		}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := TrimFloat(tc.input)
+			assert.Equal(t, tc.expected, got)
+		})
 	}
 }
 
 func TestScanToStrings(t *testing.T) {
+	t.Parallel()
+
 	fs := &fakeScanner{vals: []any{int64(1), float64(2.0), []byte("ok"), true, nil}}
 	got, err := ScanToStrings(fs, 5)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := []string{"1", "2", "ok", "1", ""}
-	if len(got) != len(want) {
-		t.Fatalf("len mismatch: got %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("idx %d: want %q, got %q", i, want[i], got[i])
-		}
-	}
+	require.NoError(t, err)
+
+	expected := []string{"1", "2", "ok", "1", ""}
+	assert.Equal(t, expected, got)
 }

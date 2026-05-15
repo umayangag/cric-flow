@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/cricsheetimporter"
+
+	"github.com/stretchr/testify/require"
 )
 
 type assertFn func(t *testing.T, got svc.Options, err error)
@@ -13,18 +15,10 @@ type assertFn func(t *testing.T, got svc.Options, err error)
 func assertNoErrorApplyDir(wantDir string, wantApply bool, wantConc int) assertFn {
 	return func(t *testing.T, got svc.Options, err error) {
 		t.Helper()
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.InDir != wantDir {
-			t.Fatalf("want InDir=%q got %q", wantDir, got.InDir)
-		}
-		if got.Apply != wantApply {
-			t.Fatalf("want Apply=%v got %v", wantApply, got.Apply)
-		}
-		if got.Concurrency != wantConc {
-			t.Fatalf("want Concurrency=%d got %d", wantConc, got.Concurrency)
-		}
+		require.NoError(t, err)
+		require.Equal(t, wantDir, got.InDir)
+		require.Equal(t, wantApply, got.Apply)
+		require.Equal(t, wantConc, got.Concurrency)
 	}
 }
 
@@ -61,7 +55,7 @@ func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		setup  func()
 		args   []string
@@ -97,15 +91,9 @@ func TestParseArgs_Basic(t *testing.T) {
 			args:  []string{"-placeholders-weather", "-placeholders-fielding", "-weather-enqueue=false"},
 			assert: func(t *testing.T, got svc.Options, err error) {
 				t.Helper()
-				if err != nil {
-					t.Fatalf("unexpected err: %v", err)
-				}
-				if !got.PlaceholdersWeather {
-					t.Fatalf("expected placeholders-weather true")
-				}
-				if !got.PlaceholdersFielding {
-					t.Fatalf("expected placeholders-fielding true")
-				}
+				require.NoError(t, err)
+				require.True(t, got.PlaceholdersWeather)
+				require.True(t, got.PlaceholdersFielding)
 				if got.WeatherEnqueue {
 					t.Fatalf("expected weather-enqueue false")
 				}
@@ -113,7 +101,8 @@ func TestParseArgs_Basic(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			os.Unsetenv("GO_APP_CRICSHEET_DIR")
 			os.Unsetenv("CRICSHEET_CONCURRENCY")

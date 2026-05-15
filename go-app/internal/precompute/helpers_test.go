@@ -59,7 +59,7 @@ func TestGetStatus_ReturnsSnapshot(_ *testing.T) {
 func TestDiscoverFormatCodes(t *testing.T) {
 	// Do not use t.Parallel(); empty-provided case uses db.SetDB (global).
 
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		setup    func(*mocks.MockDB)
 		provided []string
@@ -103,7 +103,8 @@ func TestDiscoverFormatCodes(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setup != nil {
 				mockDB := &mocks.MockDB{}

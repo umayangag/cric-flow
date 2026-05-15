@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpsStatusHandler_ScaffoldShape(t *testing.T) {
@@ -14,9 +15,7 @@ func TestOpsStatusHandler_ScaffoldShape(t *testing.T) {
 
 	app.opsStatusHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var body map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {

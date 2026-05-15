@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test PredictPlayers sends cutoff and player_ids and maps response correctly.
@@ -48,9 +50,7 @@ func TestBacktestMLClient_PredictPlayers(t *testing.T) {
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, false, nil)
-	if err != nil {
-		t.Fatalf("PredictPlayers error: %v", err)
-	}
+	require.NoError(t, err)
 	if len(res) != 3 {
 		t.Fatalf("len(res) = %d, want 3", len(res))
 	}
@@ -93,9 +93,7 @@ func TestBacktestMLClient_PredictMatchAggregates(t *testing.T) {
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	agg, _, err := c.predictMatchAggregates(t.Context(), cutoff, [2]string{"IND", "AUS"})
-	if err != nil {
-		t.Fatalf("PredictMatchAggregates error: %v", err)
-	}
+	require.NoError(t, err)
 	if agg.Runs != 160 || agg.Wickets != 6 || agg.Extras != 12 || agg.WinnerTeamCode != "IND" {
 		t.Fatalf("agg = %+v, want runs=160,wickets=6,extras=12,winner=IND", agg)
 	}
@@ -143,9 +141,7 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	// Case 1: by match_id
 	mid := int64(789)
 	res, err := c.historicalMatchBacktest(t.Context(), cutoff, &mid, nil)
-	if err != nil {
-		t.Fatalf("historicalMatchBacktest by id error: %v", err)
-	}
+	require.NoError(t, err)
 	if res.ModelVersion != "v-test" {
 		t.Fatalf("ModelVersion = %q, want v-test", res.ModelVersion)
 	}
@@ -159,18 +155,12 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	// Case 2: by filters
 	filters := &HistoricalMatchFilters{Format: "T20", Team1: "IND", Team2: "AUS", MatchDate: cutoff}
 	res2, err := c.historicalMatchBacktest(t.Context(), cutoff, nil, filters)
-	if err != nil {
-		t.Fatalf("historicalMatchBacktest by filters error: %v", err)
-	}
-	if res2.Match.Actual.Wickets != 7 {
-		t.Fatalf("expected actual wickets=7, got %+v", res2.Match.Actual)
-	}
+	require.NoError(t, err)
+ require.Equal(t, float64(7), res2.Match.Actual.Wickets)
 
 	// Case 3: validation error when neither provided
 	_, err = c.historicalMatchBacktest(t.Context(), cutoff, nil, nil)
-	if err == nil {
-		t.Fatalf("expected error when neither matchID nor filters provided")
-	}
+	require.Error(t, err)
 }
 
 // Test GenerateMatch sends cutoff, format, player_ids, features, and match_context and maps response.
@@ -235,9 +225,7 @@ func TestBacktestMLClient_GenerateMatch(t *testing.T) {
 		Temp:              25,
 	}
 	res, err := c.GenerateMatch(t.Context(), cutoff, "T20", []int64{10, 20}, features, true, ctx)
-	if err != nil {
-		t.Fatalf("GenerateMatch error: %v", err)
-	}
+	require.NoError(t, err)
 	if res.ModelVersion != "v-test-generate" {
 		t.Fatalf("ModelVersion = %q, want v-test-generate", res.ModelVersion)
 	}

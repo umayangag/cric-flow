@@ -183,14 +183,15 @@ func TestAggregateEndPressure_FormatMapping(t *testing.T) {
 	t.Parallel()
 	asOf := time.Date(2024, 9, 14, 0, 0, 0, 0, time.UTC)
 	bow := int64(8181)
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		fmtID int
 	}{
 		{"ODI", 2},
 		{"TEST", 1},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			seq := []evRowEP{
 				// Over 10 with six legal balls so positions 5 and 6 exist

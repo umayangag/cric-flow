@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestUpsertBattingTransitions_Integration(t *testing.T) {
@@ -12,9 +14,7 @@ func TestUpsertBattingTransitions_Integration(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect error: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations using an absolute path derived from this test package

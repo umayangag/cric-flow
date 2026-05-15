@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // helper: simple HTTP client pointing at a test server
@@ -67,7 +69,7 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 	}))
 	defer tsUnhealthy.Close()
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		setup  func(t *testing.T) (*http.Client, string) // client, fsRoot
 		assert assertion
@@ -79,9 +81,7 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 				return client, t.TempDir()
 			},
 			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
-				if !mlOK {
-					t.Fatalf("expected mlOK=true")
-				}
+				require.True(t, mlOK)
 				fm := sec["formats"].(map[string]any)
 				// Check values came from HTTP detail payload
 				odi := fm["ODI"].(map[string]any)["batting"].(map[string]any)
@@ -151,7 +151,8 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			client, root := tc.setup(t)
 			sec, mlOK := BuildArtifactsSection(client, root)

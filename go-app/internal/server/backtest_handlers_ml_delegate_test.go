@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test the backtest evaluate handler delegation path (use_ml=1)
@@ -20,7 +22,7 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 
 	// Table-driven tests
-	tests := []struct {
+	testCases := []struct {
 		name          string
 		query         url.Values
 		stub          func()
@@ -121,7 +123,8 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			tc.stub()
 			app := &App{}
@@ -148,9 +151,7 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 			}
 			// Metrics include player_runs_mae and winner_accuracy
 			metrics, ok := body["metrics"].(map[string]any)
-			if !ok {
-				t.Fatalf("missing metrics: %+v", body)
-			}
+			require.True(t, ok)
 			if tc.wantPlayerMAE != nil {
 				if got, _ := metrics["player_runs_mae"].(float64); !floatApproxEqual(got, *tc.wantPlayerMAE) {
 					t.Fatalf("player_runs_mae=%v want=%v", got, *tc.wantPlayerMAE)

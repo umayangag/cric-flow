@@ -96,9 +96,7 @@ func TestTracker_Complete_Fail_Cancel(t *testing.T) {
 
 		tracker := &Tracker{ID: 1}
 		err := tracker.Complete(context.Background(), map[string]string{"k": "v"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		mockDB.AssertExpectations(t)
 	})
 
@@ -110,9 +108,7 @@ func TestTracker_Complete_Fail_Cancel(t *testing.T) {
 
 		tracker := &Tracker{ID: 1}
 		err := tracker.Fail(context.Background(), "failed")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		mockDB.AssertExpectations(t)
 	})
 
@@ -124,9 +120,7 @@ func TestTracker_Complete_Fail_Cancel(t *testing.T) {
 
 		tracker := &Tracker{ID: 1}
 		err := tracker.Cancel(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		mockDB.AssertExpectations(t)
 	})
 }

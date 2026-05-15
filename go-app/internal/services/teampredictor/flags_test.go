@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFlags_BlankFormatOrSeasonErrors(t *testing.T) {
@@ -26,7 +28,7 @@ func TestParseFlags_SuccessAndDefaults(t *testing.T) {
 	cfg.Team.DefaultBowlers = 5
 	cfg.Team.MinBowlers = 5
 
-	tests := []struct {
+	testCases := []struct {
 		name string
 		args []string
 		exp  options
@@ -48,14 +50,13 @@ func TestParseFlags_SuccessAndDefaults(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for i := range testCases {
+		tc := testCases[i]
 		// capture range var
 		c := tc
 		t.Run(c.name, func(t *testing.T) {
 			got, err := parseFlags(c.args, cfg)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 			if !reflect.DeepEqual(got, c.exp) {
 				t.Fatalf("options mismatch:\n got: %#v\nwant: %#v", got, c.exp)
 			}
