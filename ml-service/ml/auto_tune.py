@@ -28,15 +28,18 @@ from ml.tuning.cv_metrics import (  # noqa: F401
     _effective_n_jobs,
     _effective_timeseries_gap,
     _extract_feature_importance,
+    _feature_names_for_mlqa_report,
     _get_cv_object,
     _mlqa_feature_names,
 )
 
 # ── Re-export data loaders ──────────────────────────────────────────────
 from ml.tuning.data_loaders import (  # noqa: F401
+    LoaderResult,
     _load_via_csv_or_api,
     _sort_df_by_match_date,
     _sort_rows_by_match_date,
+    feature_matrix_after_training_transforms,
     load_batting_csv,
     load_batting_from_api,
     load_bowling_csv,

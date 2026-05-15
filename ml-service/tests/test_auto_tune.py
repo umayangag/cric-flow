@@ -373,9 +373,12 @@ def test_load_bowling_csv_minimal(tmp_path):
     df["wickets"] = [1, 2, 0, 1, 2]
     path = tmp_path / "bowling.csv"
     df.to_csv(path, index=False)
-    X, Y = load_bowling_csv(str(path))
+    result = load_bowling_csv(str(path))
+    X, Y, names = result.X, result.Y, result.feature_names
     assert X.shape[0] == 5
-    assert X.shape[1] == len(BOWLING_FEATURE_COLS)
+    # Feature count may exceed BOWLING_FEATURE_COLS when feature_transforms add interactions/log1p.
+    assert X.shape[1] >= len(BOWLING_FEATURE_COLS)
+    assert names is not None and len(names) == X.shape[1]
     assert Y.shape[0] == 5
     assert Y.shape[1] >= len(BOWLING_TARGET_COLS)
 

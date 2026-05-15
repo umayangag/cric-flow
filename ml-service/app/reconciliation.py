@@ -8,15 +8,88 @@ raw batting/bowling predictions are rescaled so that:
 This ensures consistency: runs conceded by bowlers = runs scored by batsmen.
 """
 
-from typing import List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 import numpy as np
 
-# Single source of truth: match train_innings (venue, season, ..., format one-hot)
-from ml.train_innings import INNINGS_FEATURE_COLS
+# Single source of truth: match train_innings (base context, derived, format one-hot).
+# Keep ml.* imports at module scope (not inside helpers) so the dependency graph stays explicit.
+from ml.match_level_derived_features import compute_match_level_derived_features_scalars
+from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
 from ml.win_features import _format_one_hot_from_code
 
 from .models import BacktestPlayerPred
+
+
+def _innings_feature_dict(
+    inning_number: int,
+    bat_consistency_sum: float,
+    bowl_consistency_sum: float,
+    bat_form_sum: float,
+    bowl_form_sum: float,
+    venue_id: float,
+    season_id: float,
+    opposition_id: float,
+    match_date_unix: float,
+    temp: int,
+    wind: int,
+    rain: int,
+    humidity: int,
+    cloud: int,
+    pressure: int,
+    viscosity: int,
+    format_code: Optional[str],
+    derived_weights: Optional[Mapping[str, float]],
+) -> Dict[str, float]:
+    """Compute every potential innings feature as a name -> scalar mapping.
+
+    This lets downstream code build the actual model input by selecting and
+    ordering only the columns the trained model expects (via its sidecar).
+    """
+    one_hot = _format_one_hot_from_code(format_code)
+    form_differential, consistency_differential, weather_composite = compute_match_level_derived_features_scalars(
+        bat_form_sum,
+        bowl_form_sum,
+        bat_consistency_sum,
+        bowl_consistency_sum,
+        rain,
+        humidity,
+        cloud,
+        weights=derived_weights,
+    )
+    values: Dict[str, float] = {
+        "season_id": float(season_id),
+        "venue_id": float(venue_id),
+        "inning_number": float(inning_number),
+        "opposition_id": float(opposition_id),
+        "match_date_unix": float(match_date_unix),
+        "temp": float(temp),
+        "wind": float(wind),
+        "rain": float(rain),
+        "humidity": float(humidity),
+        "cloud": float(cloud),
+        "pressure": float(pressure),
+        "viscosity": float(viscosity),
+        "bat_consistency_sum": float(bat_consistency_sum),
+        "bowl_consistency_sum": float(bowl_consistency_sum),
+        "bat_form_sum": float(bat_form_sum),
+        "bowl_form_sum": float(bowl_form_sum),
+        "form_differential": float(form_differential),
+        "consistency_differential": float(consistency_differential),
+        "weather_composite": float(weather_composite),
+    }
+    for col, val in one_hot.items():
+        values[col] = float(val)
+    return values
+
+
+def _resolve_innings_feature_order(meta: Optional[Mapping[str, Any]]) -> List[str]:
+    """Pick the feature column order: sidecar when available, else legacy pre-sidecar order."""
+    if meta is not None:
+        names = meta.get("feature_names")
+        if isinstance(names, list) and names:
+            return [str(n) for n in names]
+    return list(LEGACY_INNINGS_FEATURE_COLS)
 
 
 def build_innings_feature_vector(
@@ -27,8 +100,8 @@ def build_innings_feature_vector(
     bowl_form_sum: float,
     venue_id: float = 0,
     season_id: float = 0,
-    match_date_unix: float = 0.0,
     opposition_id: float = 0,
+    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -37,31 +110,42 @@ def build_innings_feature_vector(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
+    meta: Optional[Mapping[str, Any]] = None,
 ) -> np.ndarray:
-    """Build feature vector for innings model prediction (order matches INNINGS_FEATURE_COLS)."""
-    one_hot = _format_one_hot_from_code(format_code)
-    # Order must match INNINGS_FEATURE_COLS: base cols then format one-hot
-    values = [
-        venue_id,
-        season_id,
-        match_date_unix,
-        inning_number,
-        opposition_id,
-        temp,
-        wind,
-        rain,
-        humidity,
-        cloud,
-        pressure,
-        viscosity,
-        bat_consistency_sum,
-        bowl_consistency_sum,
-        bat_form_sum,
-        bowl_form_sum,
-    ]
-    for col in INNINGS_FEATURE_COLS:
-        if col.startswith("format_is_"):
-            values.append(one_hot.get(col, 0.0))
+    """Build the innings-model feature vector.
+
+    When *meta* (artifact sidecar) is provided, its ``feature_names`` drives
+    column order/selection and ``derived_weights`` are used when computing the
+    weather composite. Without sidecar metadata, uses :data:`LEGACY_INNINGS_FEATURE_COLS`
+    so older artifacts (trained before derived features) keep the expected layout.
+    """
+    derived_weights: Optional[Mapping[str, float]] = None
+    if meta is not None:
+        dw = meta.get("derived_weights")
+        if isinstance(dw, dict):
+            derived_weights = dw
+    feature_dict = _innings_feature_dict(
+        inning_number=inning_number,
+        bat_consistency_sum=bat_consistency_sum,
+        bowl_consistency_sum=bowl_consistency_sum,
+        bat_form_sum=bat_form_sum,
+        bowl_form_sum=bowl_form_sum,
+        venue_id=venue_id,
+        season_id=season_id,
+        opposition_id=opposition_id,
+        match_date_unix=match_date_unix,
+        temp=temp,
+        wind=wind,
+        rain=rain,
+        humidity=humidity,
+        cloud=cloud,
+        pressure=pressure,
+        viscosity=viscosity,
+        format_code=format_code,
+        derived_weights=derived_weights,
+    )
+    order = _resolve_innings_feature_order(meta)
+    values = [feature_dict.get(col, 0.0) for col in order]
     return np.array(values, dtype=float).reshape(1, -1)
 
 
@@ -75,8 +159,8 @@ def predict_innings(
     bowl_form_sum: float,
     venue_id: float = 0,
     season_id: float = 0,
-    match_date_unix: float = 0.0,
     opposition_id: float = 0,
+    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -85,8 +169,13 @@ def predict_innings(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
+    meta: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[float, float]:
-    """Predict innings_runs and innings_wickets for one innings."""
+    """Predict innings_runs and innings_wickets for one innings.
+
+    Pass *meta* (artifact sidecar) to pin feature order and derived-feature
+    weights to those used at training time. See :func:`build_innings_feature_vector`.
+    """
     X = build_innings_feature_vector(
         inning_number=inning_number,
         bat_consistency_sum=bat_consistency_sum,
@@ -95,8 +184,8 @@ def predict_innings(
         bowl_form_sum=bowl_form_sum,
         venue_id=venue_id,
         season_id=season_id,
-        match_date_unix=match_date_unix,
         opposition_id=opposition_id,
+        match_date_unix=match_date_unix,
         temp=temp,
         wind=wind,
         rain=rain,
@@ -105,6 +194,7 @@ def predict_innings(
         pressure=pressure,
         viscosity=viscosity,
         format_code=format_code,
+        meta=meta,
     )
     if scaler is not None:
         X = scaler.transform(X)

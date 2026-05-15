@@ -105,7 +105,8 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	if totalLimit < 1 {
 		totalLimit = 1
 	}
-	slog.Info("precompute: running formats",
+	slog.Info(
+		"precompute: running formats",
 		slog.Int("formats", len(codes)),
 		slog.Int("concurrency", totalLimit),
 	)

@@ -104,12 +104,14 @@ func DryRun(w io.Writer, calcs []Calculator, params Params) error {
 // and keeps memory footprint lower). When concurrency > 1, uses errgroup with SetLimit(limit).
 func Run(ctx context.Context, calcs []Calculator, params Params, dry bool) error {
 	limit := seqcalcConcurrency()
-	slog.Info("seqcalc: starting run",
+	slog.Info(
+		"seqcalc: starting run",
 		slog.Int("calculators", len(calcs)),
 		slog.String("format", params.FormatCode),
 		slog.Int("concurrency", limit),
 	)
-	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at start",
+	resources.LogMemoryAndGoroutines(
+		"seqcalc: memory and goroutines at start",
 		slog.String("format", params.FormatCode),
 		slog.Int("concurrency", limit),
 	)
@@ -140,13 +142,15 @@ func RunMultiFormat(ctx context.Context, calcs []Calculator, paramsList []Params
 		limit = 1
 	}
 	totalWork := len(paramsList) * len(calcs)
-	slog.Info("seqcalc: starting multi-format run",
+	slog.Info(
+		"seqcalc: starting multi-format run",
 		slog.Int("formats", len(paramsList)),
 		slog.Int("calculators", len(calcs)),
 		slog.Int("work_items", totalWork),
 		slog.Int("concurrency", limit),
 	)
-	resources.LogMemoryAndGoroutines("seqcalc: memory and goroutines at start (multi-format)",
+	resources.LogMemoryAndGoroutines(
+		"seqcalc: memory and goroutines at start (multi-format)",
 		slog.Int("concurrency", limit),
 	)
 
@@ -174,13 +178,15 @@ func RunMultiFormat(ctx context.Context, calcs []Calculator, paramsList []Params
 				err := item.calc.Compute(gCtx, item.params, dry)
 				if err != nil {
 					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-						slog.Error("seqcalc.calculator.cancelled_or_timeout",
+						slog.Error(
+							"seqcalc.calculator.cancelled_or_timeout",
 							slog.String("calculator", string(name)),
 							slog.String("format", item.params.FormatCode),
 							slog.Any("err", err),
 						)
 					} else {
-						slog.Error("seqcalc.calculator.failed",
+						slog.Error(
+							"seqcalc.calculator.failed",
 							slog.String("calculator", string(name)),
 							slog.String("format", item.params.FormatCode),
 							slog.Any("err", err),
@@ -223,13 +229,15 @@ func runSequential(ctx context.Context, calcs []Calculator, params Params, dry b
 		err := calc.Compute(ctx, params, dry)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				slog.Error("seqcalc.calculator.cancelled_or_timeout",
+				slog.Error(
+					"seqcalc.calculator.cancelled_or_timeout",
 					slog.String("calculator", string(name)),
 					slog.String("format", params.FormatCode),
 					slog.Any("err", err),
 				)
 			} else {
-				slog.Error("seqcalc.calculator.failed",
+				slog.Error(
+					"seqcalc.calculator.failed",
 					slog.String("calculator", string(name)),
 					slog.String("format", params.FormatCode),
 					slog.Any("err", err),
@@ -266,13 +274,15 @@ func runConcurrent(ctx context.Context, calcs []Calculator, params Params, dry b
 			err := calc.Compute(ctx, params, dry)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					slog.Error("seqcalc.calculator.cancelled_or_timeout",
+					slog.Error(
+						"seqcalc.calculator.cancelled_or_timeout",
 						slog.String("calculator", string(name)),
 						slog.String("format", params.FormatCode),
 						slog.Any("err", err),
 					)
 				} else {
-					slog.Error("seqcalc.calculator.failed",
+					slog.Error(
+						"seqcalc.calculator.failed",
 						slog.String("calculator", string(name)),
 						slog.String("format", params.FormatCode),
 						slog.Any("err", err),

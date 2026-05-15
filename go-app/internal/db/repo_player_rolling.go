@@ -46,7 +46,8 @@ func UpsertPlayerWindows(ctx context.Context, rows []PlayerWindowRow) error {
 	}
 	for i := range rows {
 		r := rows[i]
-		_, err := Pool.Exec(ctx, `
+		_, err := Pool.Exec(
+			ctx, `
 			INSERT INTO player_window_features(
 				as_of_date, format_id, scope, scope_id, player_id, role, phase, horizon,
 				balls, runs, dots,

@@ -32,7 +32,8 @@ func UpsertOverPos(ctx context.Context, rows []OverPosRow) error {
 		if r.Scope == "" {
 			r.Scope = "overall"
 		}
-		_, err := Pool.Exec(ctx, `
+		_, err := Pool.Exec(
+			ctx, `
 			INSERT INTO over_boundary_wicket_features(
 				as_of_date, format_id, scope, scope_id, player_id, phase, position,
 				balls, boundaries, wickets,

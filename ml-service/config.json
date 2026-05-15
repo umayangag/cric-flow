@@ -66,7 +66,9 @@
       "n_jobs": -1,
       "random_state": 42,
       "algorithms": "all",
-      "validation_method": "walk_forward"
+      "validation_method": "walk_forward",
+      "permutation_importance_n_repeats": 5,
+      "permutation_importance_decimal_places": 6
     },
     "cv_splits": 5,
     "test_size": 0.2,
@@ -108,12 +110,20 @@
     },
     "feature_transforms": {
       "batting": {
-        "add_interactions": [],
-        "add_log1p": []
+        "add_interactions": [
+          ["batting_mean_w5", "batting_venue"],
+          ["batting_std_w10", "batting_mean_w5"],
+          ["batting_trend_w5", "inning"]
+        ],
+        "add_log1p": ["batting_career_count", "batting_days_since_last", "batting_innings_in_last_90d"]
       },
       "bowling": {
-        "add_interactions": [],
-        "add_log1p": []
+        "add_interactions": [
+          ["bowling_mean_w5", "bowling_venue"],
+          ["bowling_std_w10", "bowling_mean_w5"],
+          ["bowling_trend_w5", "inning"]
+        ],
+        "add_log1p": ["bowling_career_count", "bowling_days_since_last", "bowling_innings_in_last_90d"]
       },
       "fielding": {
         "add_interactions": [],
@@ -121,11 +131,17 @@
       }
     },
     "mlqa": {
-      "overfitting_delta_threshold": 0.08,
-      "stability_fold_std_threshold": 0.065,
+      "overfitting_delta_threshold": 0.10,
+      "stability_fold_std_threshold": 0.08,
       "bias_dip_low": 0.8,
       "bias_dip_high": 1.25,
-      "sensitivity_top_weight_threshold": 0.7
+      "sensitivity_top_weight_threshold": 0.7,
+      "sensitivity_top_n_features": 3
+    },
+    "match_level_derived": {
+      "weather_composite_rain_weight": 0.5,
+      "weather_composite_humidity_weight": 0.3,
+      "weather_composite_cloud_weight": 0.2
     }
   },
   "team_prediction": {

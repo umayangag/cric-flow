@@ -58,7 +58,8 @@ func UpsertBowlingSpells(ctx context.Context, rows []BowlingSpellRow) error {
 			if scope == "overall" {
 				scopeID = nil
 			}
-			if err := PoolAPI.Exec(ctx, `
+			if err := PoolAPI.Exec(
+				ctx, `
                 INSERT INTO bowling_spell_features(
                     as_of_date, format_id, scope, scope_id, player_id, phase,
                     spells, spell_overs,

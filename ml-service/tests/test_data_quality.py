@@ -6,6 +6,7 @@ import pandas as pd
 from ml.data_quality import (
     CATEGORICAL_SENTINEL,
     clip_target_outliers,
+    drop_low_variance_columns,
     impute_features,
 )
 
@@ -43,6 +44,16 @@ def test_impute_features_all_nan_uses_zero():
     out, medians = impute_features(df, ["all_nan"])
     assert medians["all_nan"] == 0.0
     assert out["all_nan"].iloc[0] == 0.0
+
+
+def test_drop_low_variance_columns_single_sample_does_not_drop_all():
+    """With one row, std is zero everywhere; skip dropping to avoid empty features."""
+    X = np.array([[1.0, 2.0, 3.0]])
+    names = ["a", "b", "c"]
+    X_out, names_out, dropped = drop_low_variance_columns(X, names, protected_columns=frozenset())
+    np.testing.assert_array_equal(X_out, X)
+    assert names_out == names
+    assert dropped == []
 
 
 def test_clip_target_outliers_invalid_percentile_returns_unchanged():

@@ -54,7 +54,8 @@ var defaultContract = contract{
 	},
 	Fielding: []string{
 		"fielding_consistency", "fielding_form", "fielding_temp", "fielding_wind", "fielding_rain", "fielding_humidity",
-		"fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix",
+		"fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition",
+		"season_id", "match_date_unix",
 	},
 }
 

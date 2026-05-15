@@ -56,7 +56,7 @@ func ScanToStrings(s Scanner, n int) ([]string, error) {
 	}
 	out := make([]string, n)
 	for i := 0; i < n; i++ {
-		v := *(dests[i].(*any))
+		v := *dests[i].(*any)
 		out[i] = AnyToString(v)
 	}
 	return out, nil

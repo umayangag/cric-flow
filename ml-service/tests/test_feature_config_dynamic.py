@@ -47,7 +47,8 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
                 val = (i + 1) if name in int_keys else float(i + 1)
                 if name in clamp_int:
                     lo, hi = clamp_int[name]
-                    val = lo if val < lo else (hi if val > hi else int(val))
+                    clamped = lo if val < lo else (hi if val > hi else val)
+                    val = int(clamped) if name in int_keys else float(clamped)
                 out[name] = val
         return out
 
@@ -63,9 +64,13 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "batting_inning",
         "batting_session",
         "toss",
-        "season",
     }
-    bat_clamp = {"batting_viscosity": (0, 1), "batting_inning": (1, 2), "batting_session": (1, 3), "toss": (0, 1)}
+    bat_clamp = {
+        "batting_viscosity": (0, 1),
+        "batting_inning": (1, 2),
+        "batting_session": (1, 3),
+        "toss": (0, 1),
+    }
     bat_kwargs = kwargs_for_order(cfg["batting"], bat_int, bat_clamp)
     bat_kwargs["player_name"] = "P"
     bat_kwargs["format"] = "ODI"
@@ -85,9 +90,13 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
         "batting_inning",
         "bowling_session",
         "toss",
-        "season",
     }
-    bowl_clamp = {"bowling_viscosity": (0, 1), "batting_inning": (1, 2), "bowling_session": (1, 3), "toss": (0, 1)}
+    bowl_clamp = {
+        "bowling_viscosity": (0, 1),
+        "batting_inning": (1, 2),
+        "bowling_session": (1, 3),
+        "toss": (0, 1),
+    }
     bowl_kwargs = kwargs_for_order(cfg["bowling"], bowl_int, bowl_clamp)
     bowl_kwargs["player_name"] = "P"
     bowl_kwargs["format"] = "ODI"

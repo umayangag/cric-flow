@@ -45,7 +45,8 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id`
+	-- fielding_data.inning_number + unique (match_id, inning_number, player_id): migration 0095_fielding_data_inning_number.sql
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id`
 
 	// When sequence features are enabled, wrap the base query to append extra columns via LATERAL joins.
 	if IsSeqEnabled(ctx) {
@@ -232,7 +233,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
-		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -312,7 +313,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		  WHERE player_id=bd.player_id AND format_id = m.format_id AND scope='venue' AND scope_id = m.venue_id AND as_of_date <= m.match_date
 		  ORDER BY as_of_date DESC LIMIT 1
 		) tvv ON TRUE
-		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+		LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 		WHERE m.format_id = $1`
 	rows, err := db.Pool.Query(ctx, q, formatID)
 	if err != nil {
@@ -392,7 +393,7 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, bd.match_id, bd.player_id`
 	args = []any{cutoff}
@@ -568,7 +569,8 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		row := make([]string, 0, len(headers))
 		row = append(row, r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos)
 		row = append(row, rawStrs...)
-		row = append(row,
+		row = append(
+			row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
@@ -627,7 +629,7 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN season s ON s.id = m.season_id
-	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.player_id = bd.player_id
+	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
 }
@@ -763,7 +765,8 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		row := make([]string, 0, len(headers))
 		row = append(row, r.runs, r.inningsRuns, r.balls, r.fours, r.sixes, r.pos)
 		row = append(row, rawStrs...)
-		row = append(row,
+		row = append(
+			row,
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),

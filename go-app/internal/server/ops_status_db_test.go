@@ -37,7 +37,9 @@ func (f fakeDBProbe) CountFieldingByFormatGrouped(_ context.Context) (map[string
 func (f fakeDBProbe) MigrationInfo(_ context.Context) (int, int, string, error) {
 	return f.migCurrent, f.migExpected, f.migStatus, f.migErr
 }
+
 func (f fakeDBProbe) LastMatchImportAt(_ context.Context) (time.Time, error) { return time.Time{}, nil }
+
 func (f fakeDBProbe) TableStats(_ context.Context) ([]db.TableStat, error) {
 	return f.tableStats, nil
 }

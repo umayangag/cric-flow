@@ -21,6 +21,14 @@ DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
 # ml.mlqa relative thresholds when keys are absent or config cannot be loaded (see get_mlqa_config).
 MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT = 0.10
 MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT = 0.08
+MLQA_SENSITIVITY_TOP_N_FEATURES_DEFAULT = 3
+# Match-level derived features (see ml.match_level_derived in config.default.json).
+DEFAULT_WEATHER_COMPOSITE_RAIN_WEIGHT = 0.5
+DEFAULT_WEATHER_COMPOSITE_HUMIDITY_WEIGHT = 0.3
+DEFAULT_WEATHER_COMPOSITE_CLOUD_WEIGHT = 0.2
+# Permutation importance in tuning / MLQA (see ml.tuning in config.default.json).
+DEFAULT_PERMUTATION_IMPORTANCE_N_REPEATS = 5
+DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES = 6
 # Phase 2 Optuna bounds when ml.tuning.default_bounds / stability_focus_bounds are missing (see config.default.json).
 DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
     "min_samples_leaf_min": 4,
@@ -82,6 +90,8 @@ DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 1
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
+# Near-constant feature removal (see ml.data_quality in config.default.json).
+DEFAULT_LOW_VARIANCE_THRESHOLD = 1e-6
 
 _cached: Optional[Dict[str, Any]] = None
 
@@ -447,6 +457,14 @@ def get_tuning_config() -> Dict[str, Any]:
     if not isinstance(stability_seed_params, dict):
         stability_seed_params = {}
     quantile_fallback = _load_and_merge_dict(tuning, "quantile_fallback", DEFAULT_QUANTILE_FALLBACK)
+    perm_n_repeats = _load_numeric(
+        tuning, "permutation_importance_n_repeats", DEFAULT_PERMUTATION_IMPORTANCE_N_REPEATS, int
+    )
+    perm_n_repeats = max(1, perm_n_repeats)
+    perm_decimals = _load_numeric(
+        tuning, "permutation_importance_decimal_places", DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES, int
+    )
+    perm_decimals = max(0, perm_decimals)
     return {
         "cv_splits": int(tuning.get("cv_splits", 5)),
         "n_iter": int(tuning.get("n_iter", 25)),
@@ -467,6 +485,8 @@ def get_tuning_config() -> Dict[str, Any]:
         "default_bounds": default_bounds,
         "stability_seed_params": stability_seed_params,
         "quantile_fallback": quantile_fallback,
+        "permutation_importance_n_repeats": perm_n_repeats,
+        "permutation_importance_decimal_places": perm_decimals,
     }
 
 
@@ -520,6 +540,8 @@ def get_mlqa_config() -> Dict[str, Any]:
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
     mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
+    sens_top_n = _load_numeric(mlqa, "sensitivity_top_n_features", MLQA_SENSITIVITY_TOP_N_FEATURES_DEFAULT, int)
+    sens_top_n = max(1, sens_top_n)
     return {
         "overfitting_delta_threshold": float(
             mlqa.get("overfitting_delta_threshold", MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT)
@@ -530,6 +552,33 @@ def get_mlqa_config() -> Dict[str, Any]:
         "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
         "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
         "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),
+        "sensitivity_top_n_features": sens_top_n,
+    }
+
+
+def get_data_quality_config() -> Dict[str, float]:
+    """Load thresholds for ml.data_quality from ml.data_quality."""
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    block = (ml.get("data_quality") if isinstance(ml, dict) else None) or {}
+    thresh = _load_numeric(block, "low_variance_threshold", DEFAULT_LOW_VARIANCE_THRESHOLD, float)
+    if thresh < 0.0:
+        thresh = DEFAULT_LOW_VARIANCE_THRESHOLD
+    return {"low_variance_threshold": float(thresh)}
+
+
+def get_match_level_derived_config() -> Dict[str, float]:
+    """Load weights for match-level derived features from ml.match_level_derived."""
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    block = (ml.get("match_level_derived") if isinstance(ml, dict) else None) or {}
+    rain_w = _load_numeric(block, "weather_composite_rain_weight", DEFAULT_WEATHER_COMPOSITE_RAIN_WEIGHT, float)
+    hum_w = _load_numeric(block, "weather_composite_humidity_weight", DEFAULT_WEATHER_COMPOSITE_HUMIDITY_WEIGHT, float)
+    cloud_w = _load_numeric(block, "weather_composite_cloud_weight", DEFAULT_WEATHER_COMPOSITE_CLOUD_WEIGHT, float)
+    return {
+        "weather_composite_rain_weight": float(rain_w),
+        "weather_composite_humidity_weight": float(hum_w),
+        "weather_composite_cloud_weight": float(cloud_w),
     }
 
 

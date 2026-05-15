@@ -22,6 +22,7 @@ from ml.config import (
     save_tuned_params_to_go_app,
 )
 from ml.tuning.data_loaders import (
+    LoaderResult,
     _load_via_csv_or_api,
     load_batting_csv,
     load_batting_from_api,
@@ -40,6 +41,84 @@ from ml.tuning.runners import (
     run_auto_tune_extras,
     run_auto_tune_win,
 )
+
+_EXTRAS_LEGACY_KEY = "_LEGACY_"
+
+
+def _pop_legacy_pack(by_f: Dict[str, LoaderResult]) -> Optional[LoaderResult]:
+    """Pop the aggregated legacy pack from a by-format dict.
+
+    Extras, fielding, and related loaders may emit a special ``_LEGACY_`` entry
+    containing a unified pool. CLI callers must separate this from real format
+    entries before iterating.
+    """
+    return by_f.pop(_EXTRAS_LEGACY_KEY, None)
+
+
+def _shared_feature_names(by_f: Dict[str, LoaderResult]) -> Optional[List[str]]:
+    """Return the shared feature_names list when every entry has the same list; else None.
+
+    Required when the caller will ``np.vstack`` per-format matrices — a mismatch
+    in column count or ordering would silently produce a wrong-shape matrix or
+    raise at stack time.
+    """
+    if not by_f:
+        return None
+    results = list(by_f.values())
+    first = results[0].feature_names
+    if first is not None and all(r.feature_names == first for r in results):
+        return list(first)
+    return None
+
+
+def _unified_stack_xy_or_none(
+    by_f: Dict[str, LoaderResult],
+    *,
+    y_combine: str,
+) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
+    """Stack per-format ``X``/``Y`` when column counts and ``feature_names`` align.
+
+    Returns None if column counts differ, ``_shared_feature_names`` is None
+    (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
+
+    ``y_combine``: ``"vstack"`` for multi-output regression (extras, innings, fielding);
+    ``"ravel_concat"`` for win classification labels.
+    """
+    if not by_f:
+        return None
+    results = list(by_f.values())
+    n_cols = results[0].X.shape[1]
+    if any(r.X.shape[1] != n_cols for r in results):
+        logger.warning(
+            "auto_tune.unified_stack_column_mismatch n_cols_first=%s shapes=%s",
+            n_cols,
+            [r.X.shape for r in results],
+        )
+        return None
+    unified_feature_names = _shared_feature_names(by_f)
+    if unified_feature_names is None:
+        logger.warning("auto_tune.unified_stack_feature_names_not_aligned")
+        return None
+    all_X = np.vstack([r.X for r in results])
+    if y_combine == "ravel_concat":
+        all_Y = np.concatenate([r.Y.ravel() for r in results])
+    elif y_combine == "vstack":
+        all_Y = np.vstack([r.Y for r in results])
+    else:
+        raise ValueError(f"unknown y_combine: {y_combine!r}")
+    return all_X, all_Y, unified_feature_names
+
+
+def _stack_unified_pack(
+    by_f: Dict[str, LoaderResult],
+) -> Optional[tuple[np.ndarray, np.ndarray, List[str]]]:
+    """Stack per-format matrices when legacy pack is absent.
+
+    Returns None if column counts differ, ``_shared_feature_names`` is None
+    (ordering/names disagree), or inputs are empty — unsafe to ``vstack``.
+    """
+    return _unified_stack_xy_or_none(by_f, y_combine="vstack")
+
 
 try:
     from ml import auto_tune_progress as _progress
@@ -277,6 +356,7 @@ def main() -> None:
         for model_kind in models:
             for fmt in formats_to_run:
                 format_suffix = fmt if fmt else None
+                feat_names: Optional[List[str]] = None
                 task_idx += 1
                 _progress.write_progress(
                     phase="loading",
@@ -301,9 +381,21 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_extras_data format=%s", fmt)
                                 continue
+                            legacy_pack = _pop_legacy_pack(by_f)
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                # Prefer the loader's aggregated legacy pack (retains format_is_*, single
+                                # low-variance drop). Fall back to vstack when the loader did not emit one.
+                                if legacy_pack is not None:
+                                    all_X, all_Y, unified_feature_names = (
+                                        legacy_pack.X,
+                                        legacy_pack.Y,
+                                        legacy_pack.feature_names,
+                                    )
+                                else:
+                                    stacked = _stack_unified_pack(by_f)
+                                    if stacked is None:
+                                        continue
+                                    all_X, all_Y, unified_feature_names = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_extras_data unified empty")
                                     continue
@@ -319,6 +411,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=unified_feature_names,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                                 logger.info(
@@ -327,7 +420,8 @@ def main() -> None:
                                     report["best_cv_score"],
                                 )
                             else:
-                                for fcode, (X, Y, *_) in by_f.items():
+                                for fcode, pack in by_f.items():
+                                    X, Y = pack.X, pack.Y
                                     if X.size == 0 or Y.size == 0:
                                         continue
                                     report = run_auto_tune_extras(
@@ -342,6 +436,7 @@ def main() -> None:
                                         use_autogluon=use_autogluon,
                                         rescreen=args.rescreen,
                                         algorithms_explicitly_passed=bool(algorithms_override),
+                                        feature_names=pack.feature_names,
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, "extras", fcode, report, args.api_key or None
@@ -365,8 +460,10 @@ def main() -> None:
                                 logger.warning("auto_tune.no_win_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, Y, *_) in by_f.items()])
-                                all_Y = np.concatenate([Y.ravel() for _, (X, Y, *_) in by_f.items()])
+                                stacked = _unified_stack_xy_or_none(by_f, y_combine="ravel_concat")
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, _ = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_win_data unified empty")
                                     continue
@@ -390,7 +487,8 @@ def main() -> None:
                                     report["best_cv_score"],
                                 )
                             else:
-                                for fcode, (X, Y, *_) in by_f.items():
+                                for fcode, lr in by_f.items():
+                                    X, Y = lr.X, lr.Y
                                     if X.size == 0 or Y.size == 0:
                                         continue
                                     report = run_auto_tune_win(
@@ -422,8 +520,10 @@ def main() -> None:
                                 logger.warning("auto_tune.no_innings_data format=%s", fmt)
                                 continue
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                stacked = _unified_stack_xy_or_none(by_f, y_combine="vstack")
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, _ = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_innings_data unified empty")
                                     continue
@@ -447,7 +547,8 @@ def main() -> None:
                                     report["best_cv_score"],
                                 )
                             else:
-                                for fcode, (X, Y, *_) in by_f.items():
+                                for fcode, lr in by_f.items():
+                                    X, Y = lr.X, lr.Y
                                     if X.size == 0 or Y.size == 0:
                                         continue
                                     report = run_auto_tune(
@@ -480,7 +581,7 @@ def main() -> None:
                                 csv_path = os.path.join(default_dir, f"batting_encoded_{fmt or 'all'}.csv")
                                 if not os.path.isfile(csv_path):
                                     csv_path = os.path.join(default_dir, "batting_encoded_all.csv")
-                            X, Y = _load_via_csv_or_api(
+                            _lr: Optional[LoaderResult] = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_batting_csv(csv_path),
                                 lambda: load_batting_from_api(
@@ -488,6 +589,9 @@ def main() -> None:
                                 ),
                                 can_fallback_to_api=api_available,
                             )
+                            if _lr is None:
+                                continue
+                            X, Y, feat_names = _lr.X, _lr.Y, _lr.feature_names
                         elif model_kind == "bowling":
                             if args.csv:
                                 csv_path = args.csv
@@ -495,7 +599,7 @@ def main() -> None:
                                 csv_path = os.path.join(default_dir, f"bowling_encoded_{fmt or 'all'}.csv")
                                 if not os.path.isfile(csv_path):
                                     csv_path = os.path.join(default_dir, "bowling_encoded_all.csv")
-                            X, Y = _load_via_csv_or_api(
+                            _lr = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_bowling_csv(csv_path),
                                 lambda: load_bowling_from_api(
@@ -503,6 +607,9 @@ def main() -> None:
                                 ),
                                 can_fallback_to_api=api_available,
                             )
+                            if _lr is None:
+                                continue
+                            X, Y, feat_names = _lr.X, _lr.Y, _lr.feature_names
                         else:
                             if args.csv:
                                 csv_path = args.csv
@@ -519,9 +626,20 @@ def main() -> None:
                             if not by_f:
                                 logger.warning("auto_tune.no_fielding_data format=%s", fmt)
                                 continue
+                            legacy_lr = _pop_legacy_pack(by_f)
                             if args.unified:
-                                all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                                all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                                if legacy_lr is not None:
+                                    all_X, all_Y, unified_feature_names = (
+                                        legacy_lr.X,
+                                        legacy_lr.Y,
+                                        legacy_lr.feature_names,
+                                    )
+                                else:
+                                    stacked = _stack_unified_pack(by_f)
+                                    if stacked is None:
+                                        logger.warning("auto_tune.no_fielding_data unified empty")
+                                        continue
+                                    all_X, all_Y, unified_feature_names = stacked
                                 if all_X.size == 0 or all_Y.size == 0:
                                     logger.warning("auto_tune.no_fielding_data unified empty")
                                     continue
@@ -537,6 +655,7 @@ def main() -> None:
                                     fast_mode=fast_mode,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=unified_feature_names,
                                 )
                                 _maybe_save_tuned_params(
                                     args.go_app_url, model_kind, None, report, args.api_key or None
@@ -548,7 +667,8 @@ def main() -> None:
                                     report["best_cv_score"],
                                 )
                             else:
-                                for fcode, (X, Y, *_) in by_f.items():
+                                for fcode, lr in by_f.items():
+                                    X, Y = lr.X, lr.Y
                                     if X.size == 0 or Y.size == 0:
                                         continue
                                     report = run_auto_tune(
@@ -563,6 +683,7 @@ def main() -> None:
                                         fast_mode=fast_mode,
                                         rescreen=args.rescreen,
                                         algorithms_explicitly_passed=bool(algorithms_override),
+                                        feature_names=lr.feature_names,
                                     )
                                     _maybe_save_tuned_params(
                                         args.go_app_url, model_kind, fcode, report, args.api_key or None
@@ -593,6 +714,7 @@ def main() -> None:
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
                         algorithms_explicitly_passed=bool(algorithms_override),
+                        feature_names=feat_names,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(
@@ -623,9 +745,19 @@ def main() -> None:
                         if not by_f:
                             logger.warning("auto_tune.no_extras_data format=%s", fmt)
                             continue
+                        legacy_pack = _pop_legacy_pack(by_f)
                         if args.unified:
-                            all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                            all_Y = np.vstack([Y for _, (_, Y, _) in by_f.items()])
+                            if legacy_pack is not None:
+                                all_X, all_Y, unified_feature_names = (
+                                    legacy_pack.X,
+                                    legacy_pack.Y,
+                                    legacy_pack.feature_names,
+                                )
+                            else:
+                                stacked = _stack_unified_pack(by_f)
+                                if stacked is None:
+                                    continue
+                                all_X, all_Y, unified_feature_names = stacked
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_extras_data unified empty")
                                 continue
@@ -641,6 +773,7 @@ def main() -> None:
                                 use_autogluon=use_autogluon,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
+                                feature_names=unified_feature_names,
                             )
                             _maybe_save_tuned_params(args.go_app_url, "extras", None, report, args.api_key or None)
                             logger.info(
@@ -649,7 +782,8 @@ def main() -> None:
                                 report["best_cv_score"],
                             )
                         else:
-                            for fcode, (X, Y, *_) in by_f.items():
+                            for fcode, pack in by_f.items():
+                                X, Y = pack.X, pack.Y
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_extras(
@@ -664,6 +798,7 @@ def main() -> None:
                                     use_autogluon=use_autogluon,
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=pack.feature_names,
                                 )
                                 _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
@@ -691,8 +826,10 @@ def main() -> None:
                             logger.warning("auto_tune.no_win_data format=%s", fmt)
                             continue
                         if args.unified:
-                            all_X = np.vstack([X for _, (X, _, _) in by_f.items()])
-                            all_Y = np.concatenate([Y.ravel() for _, (_, Y, _) in by_f.items()])
+                            stacked = _unified_stack_xy_or_none(by_f, y_combine="ravel_concat")
+                            if stacked is None:
+                                continue
+                            all_X, all_Y, _ = stacked
                             if all_X.size == 0 or all_Y.size == 0:
                                 logger.warning("auto_tune.no_win_data unified empty")
                                 continue
@@ -716,7 +853,8 @@ def main() -> None:
                                 report["best_cv_score"],
                             )
                         else:
-                            for fcode, (X, Y, *_) in by_f.items():
+                            for fcode, lr in by_f.items():
+                                X, Y = lr.X, lr.Y
                                 if X.size == 0 or Y.size == 0:
                                     continue
                                 report = run_auto_tune_win(
@@ -756,14 +894,28 @@ def main() -> None:
                             continue
                         if by_f is None:
                             continue
-                        for fcode, (X, Y, *_) in by_f.items():
-                            if X.size == 0 or Y.size == 0:
+                        legacy_lr = _pop_legacy_pack(by_f)
+                        if args.unified:
+                            if legacy_lr is not None:
+                                all_X, all_Y, unified_feature_names = (
+                                    legacy_lr.X,
+                                    legacy_lr.Y,
+                                    legacy_lr.feature_names,
+                                )
+                            else:
+                                stacked = _stack_unified_pack(by_f)
+                                if stacked is None:
+                                    logger.warning("auto_tune.no_fielding_data unified empty")
+                                    continue
+                                all_X, all_Y, unified_feature_names = stacked
+                            if all_X.size == 0 or all_Y.size == 0:
+                                logger.warning("auto_tune.no_fielding_data unified empty")
                                 continue
                             report = run_auto_tune(
                                 model_kind,
-                                X,
-                                Y,
-                                fcode,
+                                all_X,
+                                all_Y,
+                                None,
                                 out_dir,
                                 algorithms_override,
                                 validation_method_override,
@@ -771,15 +923,44 @@ def main() -> None:
                                 fast_mode=fast_mode,
                                 rescreen=args.rescreen,
                                 algorithms_explicitly_passed=bool(algorithms_override),
+                                feature_names=unified_feature_names,
                             )
-                            _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
+                            _maybe_save_tuned_params(args.go_app_url, model_kind, None, report, args.api_key or None)
                             logger.info(
-                                "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                "auto_tune.done model=%s format=unified n=%s best_cv_score=%s",
                                 model_kind,
-                                fcode,
-                                X.shape[0],
+                                all_X.shape[0],
                                 report["best_cv_score"],
                             )
+                        else:
+                            for fcode, lr in by_f.items():
+                                X, Y = lr.X, lr.Y
+                                if X.size == 0 or Y.size == 0:
+                                    continue
+                                report = run_auto_tune(
+                                    model_kind,
+                                    X,
+                                    Y,
+                                    fcode,
+                                    out_dir,
+                                    algorithms_override,
+                                    validation_method_override,
+                                    use_pycaret=use_pycaret,
+                                    fast_mode=fast_mode,
+                                    rescreen=args.rescreen,
+                                    algorithms_explicitly_passed=bool(algorithms_override),
+                                    feature_names=lr.feature_names,
+                                )
+                                _maybe_save_tuned_params(
+                                    args.go_app_url, model_kind, fcode, report, args.api_key or None
+                                )
+                                logger.info(
+                                    "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
+                                    model_kind,
+                                    fcode,
+                                    X.shape[0],
+                                    report["best_cv_score"],
+                                )
                         continue
                     csv_path = args.csv or os.path.join(default_dir, f"{model_kind}_encoded_{fmt or 'LEGACY'}.csv")
                     if not os.path.isfile(csv_path) and not args.csv:
@@ -806,7 +987,7 @@ def main() -> None:
                         continue
                     if result is None:
                         continue
-                    X, Y = result
+                    X, Y, csv_feat_names = result.X, result.Y, result.feature_names
                     if X.size == 0 or Y.size == 0:
                         logger.warning("auto_tune.no_data_in_csv path=%s", csv_path)
                         continue
@@ -822,6 +1003,7 @@ def main() -> None:
                         fast_mode=fast_mode,
                         rescreen=args.rescreen,
                         algorithms_explicitly_passed=bool(algorithms_override),
+                        feature_names=csv_feat_names,
                     )
                     _maybe_save_tuned_params(args.go_app_url, model_kind, format_suffix, report, args.api_key or None)
                     logger.info(

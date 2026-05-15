@@ -307,6 +307,7 @@ def _run_search_two_phase_single_regression(
     task_index: int = 0,
     task_total: int = 1,
     prior_params: Optional[Dict[str, Any]] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Two-phase search for single-output regression (extras). Skips Phase 1 when single algorithm (prior)."""
     tuning_cfg = get_tuning_config()
@@ -337,6 +338,7 @@ def _run_search_two_phase_single_regression(
             algorithms,
             validation_method,
             n_jobs_override,
+            feature_names_for_report=feature_names_for_report,
         )
 
     results: List[Tuple[str, str, float, Dict[str, Any], Pipeline]] = []
@@ -450,7 +452,17 @@ def _run_search_two_phase_single_regression(
             report["metrics"] = _compute_metrics_regression(
                 best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
             )
-            _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
+            _add_final_report_details(
+                report,
+                best_pipe,
+                X,
+                y,
+                cv,
+                scoring,
+                "regression",
+                model_kind,
+                feature_names_for_report,
+            )
         return best_pipe, best_params, report
 
     n_phase2 = min(n_iter, PHASE2_TRIALS)
@@ -574,7 +586,9 @@ def _run_search_two_phase_single_regression(
         report["metrics"] = _compute_metrics_regression(
             best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
         )
-        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, y, cv, scoring, "regression", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 
@@ -589,6 +603,7 @@ def _run_search_single_regression(
     algorithms: Optional[List[str]] = None,
     validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for single-output regression. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -657,7 +672,9 @@ def _run_search_single_regression(
         report["metrics"] = _compute_metrics_regression(
             best_pipe, X, y, cv, target_names=_target_names_for_model(model_kind)
         )
-        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "regression", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, y, cv, scoring, "regression", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 
@@ -672,6 +689,7 @@ def _run_search_classification(
     algorithms: Optional[List[str]] = None,
     validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV for binary classification (win). Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -739,7 +757,9 @@ def _run_search_classification(
     }
     if best_pipe is not None:
         report["metrics"] = _compute_metrics_classification(best_pipe, X, y, cv)
-        _add_final_report_details(report, best_pipe, X, y, cv, scoring, "classification", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, y, cv, scoring, "classification", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 
@@ -813,6 +833,7 @@ def _run_search_two_phase(
     task_total: int = 1,
     prior_params: Optional[Dict[str, Any]] = None,
     algorithms_requested: Optional[List[str]] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Two-phase search: coarse algorithm screening, then Optuna fine-tuning on winner(s).
     When algorithms has a single element (from prior tuning), Phase 1 is skipped and we go
@@ -846,6 +867,7 @@ def _run_search_two_phase(
             algorithms,
             validation_method,
             n_jobs_override,
+            feature_names_for_report=feature_names_for_report,
         )
 
     # Skip Phase 1 when single algorithm (prior fine-tune): go straight to Optuna
@@ -978,7 +1000,9 @@ def _run_search_two_phase(
             report["metrics"] = _compute_metrics_regression(
                 best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
             )
-            _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
+            _add_final_report_details(
+                report, best_pipe, X, Y, cv, scoring, "regression", model_kind, feature_names_for_report
+            )
         return best_pipe, best_params, report
 
     # Phase 2: Optuna fine-tuning on winner(s)
@@ -1150,7 +1174,9 @@ def _run_search_two_phase(
         report["metrics"] = _compute_metrics_regression(
             best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
         )
-        _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, Y, cv, scoring, "regression", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 
@@ -1165,6 +1191,7 @@ def _run_search(
     algorithms: Optional[List[str]] = None,
     validation_method: str = "walk_forward",
     n_jobs_override: Optional[int] = None,
+    feature_names_for_report: Optional[List[str]] = None,
 ) -> Tuple[Pipeline, Dict[str, Any], Dict[str, Any]]:
     """Run RandomizedSearchCV over algorithms and params. Returns (best_pipeline, best_params, report)."""
     tuning_cfg = get_tuning_config()
@@ -1242,7 +1269,9 @@ def _run_search(
         report["metrics"] = _compute_metrics_regression(
             best_pipe, X, Y, cv, target_names=_target_names_for_model(model_kind)
         )
-        _add_final_report_details(report, best_pipe, X, Y, cv, scoring, "regression", model_kind)
+        _add_final_report_details(
+            report, best_pipe, X, Y, cv, scoring, "regression", model_kind, feature_names_for_report
+        )
     return best_pipe, best_params, report
 
 

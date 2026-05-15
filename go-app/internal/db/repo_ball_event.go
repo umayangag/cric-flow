@@ -53,7 +53,8 @@ func InsertBallEvents(ctx context.Context, rows []BallEventRow) error {
 		for i := range rows {
 			r := rows[i]
 			slog.Debug("insert ball event", slog.Int("match_id", int(r.MatchID)), slog.Any("row", r))
-			err := PoolAPI.Exec(ctx, `
+			err := PoolAPI.Exec(
+				ctx, `
                 INSERT INTO ball_event(
                     match_id, innings, "over", ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,
@@ -194,7 +195,8 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 	if len(rows) <= smallBatchThreshold {
 		for i := range rows {
 			r := rows[i]
-			if err := tx.Exec(ctx, `
+			if err := tx.Exec(
+				ctx, `
                 INSERT INTO ball_event(
                     match_id, innings, "over", ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,

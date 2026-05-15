@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
     explained_variance_score,
@@ -30,6 +31,7 @@ from sklearn.model_selection import (
 from sklearn.pipeline import Pipeline
 
 from ml.config import (
+    DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES,
     MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT,
     MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT,
     get_mlqa_config,
@@ -358,6 +360,43 @@ def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray
         return {}
 
 
+def _native_feature_importances_array(est: Any) -> Optional[np.ndarray]:
+    """Return 1-D native feature importances when available (trees, stacking), else None."""
+    if est is None:
+        return None
+    imps: Optional[np.ndarray] = None
+    if hasattr(est, "estimators_") and len(est.estimators_) > 0:
+        imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
+        if imp_list:
+            imps = np.mean(imp_list, axis=0)
+    elif hasattr(est, "feature_importances_"):
+        imps = est.feature_importances_
+    if imps is None:
+        return None
+    if imps.ndim > 1:
+        imps = np.mean(imps, axis=0)
+    return cast(np.ndarray, imps)
+
+
+def _permutation_importances_mean(
+    pipe: Pipeline,
+    X: np.ndarray,
+    y: np.ndarray,
+    scoring: str,
+    tuning: Dict[str, Any],
+) -> Optional[np.ndarray]:
+    """Run sklearn permutation_importance once; used by MLQA audit and final feature-importance report."""
+    try:
+        n_jobs = _effective_n_jobs(tuning)
+        n_repeats = int(tuning["permutation_importance_n_repeats"])
+        rs = int(tuning["random_state"])
+        perm = permutation_importance(pipe, X, y, scoring=scoring, n_repeats=n_repeats, random_state=rs, n_jobs=n_jobs)
+        return perm.importances_mean
+    except Exception as e:
+        logger.debug("_permutation_importances_mean failed error=%s", e)
+        return None
+
+
 def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
     """Return feature names for MLQA sensitivity analysis and feature importance when available."""
     if model_kind == "batting":
@@ -379,13 +418,55 @@ def _extract_feature_importance(
     pipe: Pipeline,
     feature_names: Optional[List[str]],
     n_features: int,
+    X: Optional[np.ndarray] = None,
+    y: Optional[np.ndarray] = None,
+    scoring: Optional[str] = None,
+    precomputed_perm_mean: Optional[np.ndarray] = None,
 ) -> Optional[Dict[str, float]]:
-    """Extract feature importance from the best pipeline (tree-based models only).
+    """Extract feature importance from the best pipeline.
 
-    Returns dict {feature_name: importance} or None if not available (e.g. MLP, linear).
+    For tree-based models, uses native ``feature_importances_``.  For non-tree
+    models (MLP, linear) falls back to **permutation importance** when *X*, *y*,
+    and *scoring* are provided.  Returns dict {feature_name: importance} or None.
     """
     est = pipe.named_steps.get("est") if pipe else None
-    return extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
+    result = extract_feature_importance_from_estimator(est, feature_names, max_features=n_features)
+    if result is not None:
+        return result
+    # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
+    tuning = get_tuning_config()
+    dec_places = int(tuning.get("permutation_importance_decimal_places", DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES))
+    if precomputed_perm_mean is not None and pipe is not None:
+        try:
+            imps = precomputed_perm_mean
+            names = (
+                feature_names
+                if feature_names and len(feature_names) == len(imps)
+                else [f"feature_{i}" for i in range(len(imps))]
+            )
+            sorted_idx = np.argsort(-imps)[:n_features]
+            return {names[i]: round(float(imps[i]), dec_places) for i in sorted_idx if imps[i] > 0}
+        except Exception as e:
+            logger.debug("_extract_feature_importance.precomputed_perm_failed error=%s", e)
+    if X is not None and y is not None and scoring is not None and pipe is not None:
+        try:
+            n_jobs = _effective_n_jobs(tuning)
+            n_repeats = int(tuning["permutation_importance_n_repeats"])
+            rs = int(tuning["random_state"])
+            perm = permutation_importance(
+                pipe, X, y, scoring=scoring, n_repeats=n_repeats, random_state=rs, n_jobs=n_jobs
+            )
+            imps = perm.importances_mean
+            names = (
+                feature_names
+                if feature_names and len(feature_names) == len(imps)
+                else [f"feature_{i}" for i in range(len(imps))]
+            )
+            sorted_idx = np.argsort(-imps)[:n_features]
+            return {names[i]: round(float(imps[i]), dec_places) for i in sorted_idx if imps[i] > 0}
+        except Exception as e:
+            logger.debug("_extract_feature_importance.permutation_fallback_failed error=%s", e)
+    return None
 
 
 def compute_mlqa_overfitting_stability(
@@ -509,6 +590,8 @@ def _compute_mlqa_audit(
     scoring: str,
     task_type: str,
     feature_names: Optional[List[str]] = None,
+    precomputed_tree_imps: Optional[np.ndarray] = None,
+    precomputed_perm_mean: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """Run MLQA audit: overfitting, stability, bias, sensitivity, complexity.
 
@@ -538,6 +621,7 @@ def _compute_mlqa_audit(
         dip_low = mlqa["bias_dip_low"]
         dip_high = mlqa["bias_dip_high"]
         top_weight_thresh = mlqa["sensitivity_top_weight_threshold"]
+        sensitivity_top_n = int(mlqa["sensitivity_top_n_features"])
 
         # 1. Overfitting: train vs val delta (relative to score magnitude)
         pipe_fit = clone(pipe)
@@ -582,10 +666,10 @@ def _compute_mlqa_audit(
                 findings.append(f"Fairness OK: disparate_impact_ratio = {dip:.4f} in [{dip_low}, {dip_high}].")
                 bias_report = "Model treats subgroups equitably within defined fairness bounds."
 
-        # 4. Sensitivity: top 3 features
+        # 4. Sensitivity: top-N features (ml.mlqa.sensitivity_top_n_features)
         est = pipe.named_steps.get("est")
-        imps = None
-        if est is not None:
+        imps: Optional[np.ndarray] = precomputed_tree_imps
+        if imps is None and est is not None:
             if hasattr(est, "estimators_") and len(est.estimators_) > 0:
                 imp_list = [e.feature_importances_ for e in est.estimators_ if hasattr(e, "feature_importances_")]
                 if imp_list:
@@ -597,7 +681,7 @@ def _compute_mlqa_audit(
                 imps = np.mean(imps, axis=0)
             total = float(np.sum(imps))
             if total > 0:
-                sorted_idx = np.argsort(-imps)[:3]
+                sorted_idx = np.argsort(-imps)[:sensitivity_top_n]
                 top_weight = float(imps[sorted_idx[0]] / total)
                 names = feature_names if feature_names and len(feature_names) == len(imps) else None
                 top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
@@ -611,7 +695,43 @@ def _compute_mlqa_audit(
                         f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}%."
                     )
         else:
-            findings.append("Sensitivity: feature importance not available (linear/non-tree model).")
+            # Fallback: permutation importance for non-tree models (MLP, linear, etc.)
+            try:
+                if precomputed_perm_mean is not None:
+                    imps = precomputed_perm_mean
+                else:
+                    tuning = get_tuning_config()
+                    n_jobs = _effective_n_jobs(tuning)
+                    n_repeats = int(tuning["permutation_importance_n_repeats"])
+                    rs = int(tuning["random_state"])
+                    perm = permutation_importance(
+                        pipe_fit, X, y, scoring=scoring, n_repeats=n_repeats, random_state=rs, n_jobs=n_jobs
+                    )
+                    imps = perm.importances_mean
+                if imps is not None and len(imps) > 0:
+                    total = float(np.sum(np.abs(imps)))
+                    if total > 0:
+                        sorted_idx = np.argsort(-np.abs(imps))[:sensitivity_top_n]
+                        top_imp = float(imps[sorted_idx[0]])
+                        top_weight = abs(top_imp) / total
+                        names = feature_names if feature_names and len(feature_names) == len(imps) else None
+                        top_name = names[sorted_idx[0]] if names else f"feature_{sorted_idx[0]}"
+                        if top_weight > top_weight_thresh:
+                            findings.append(
+                                f"Potential Data Leakage / Low Robustness: top feature '{top_name}' = {top_weight * 100:.1f}% (permutation)."
+                            )
+                            status_flags.append("sensitivity")
+                        else:
+                            findings.append(
+                                f"Sensitivity OK: top feature weight = {top_weight * 100:.1f}% ≤ {top_weight_thresh * 100:.0f}% (permutation)."
+                            )
+                    else:
+                        findings.append("Sensitivity: all permutation importances zero.")
+                else:
+                    findings.append("Sensitivity: permutation importance returned empty result.")
+            except Exception as perm_err:
+                logger.debug("auto_tune.mlqa_audit.permutation_importance_failed error=%s", perm_err)
+                findings.append("Sensitivity: feature importance not available (permutation fallback failed).")
 
         # 5. Complexity
         candidates = report.get("candidates") or []
@@ -682,6 +802,17 @@ def _compute_mlqa_audit(
         }
 
 
+def _feature_names_for_mlqa_report(
+    X: np.ndarray,
+    model_kind: str,
+    override: Optional[List[str]],
+) -> Optional[List[str]]:
+    """Prefer loader-provided names when they match X.shape[1]; else canonical list from model_kind."""
+    if override is not None and len(override) == X.shape[1]:
+        return list(override)
+    return _mlqa_feature_names(model_kind)
+
+
 def _add_final_report_details(
     report: Dict[str, Any],
     pipe: Pipeline,
@@ -691,14 +822,40 @@ def _add_final_report_details(
     scoring: str,
     task_type: str,
     model_kind: str,
+    feature_names: Optional[List[str]] = None,
 ) -> None:
-    """Computes and adds MLQA audit and feature importance to the report."""
+    """Computes and adds MLQA audit and feature importance to the report.
+
+    When feature_names matches X.shape[1] (e.g. post–feature-transform columns from the data loader),
+    MLQA and SHAP use those labels; otherwise falls back to canonical names for model_kind.
+    """
+    names_for_report = _feature_names_for_mlqa_report(X, model_kind, feature_names)
+    est = pipe.named_steps.get("est")
+    tree_imps = _native_feature_importances_array(est)
+    tuning = get_tuning_config()
+    perm_mean = None if tree_imps is not None else _permutation_importances_mean(pipe, X, y, scoring, tuning)
     report["mlqa_audit"] = _compute_mlqa_audit(
-        report, pipe, X, y, cv, scoring, task_type, _mlqa_feature_names(model_kind)
+        report,
+        pipe,
+        X,
+        y,
+        cv,
+        scoring,
+        task_type,
+        names_for_report,
+        precomputed_tree_imps=tree_imps,
+        precomputed_perm_mean=perm_mean,
     )
-    feature_names = _mlqa_feature_names(model_kind)
     n_features = X.shape[1]
-    fi = _extract_feature_importance(pipe, feature_names, n_features)
+    fi = _extract_feature_importance(
+        pipe,
+        names_for_report,
+        n_features,
+        X=X,
+        y=y,
+        scoring=scoring,
+        precomputed_perm_mean=perm_mean,
+    )
     if fi:
         report["feature_importance"] = fi
     else:
@@ -709,7 +866,7 @@ def _add_final_report_details(
             shap_fi = compute_shap_importance(
                 pipe,
                 X,
-                feature_names=feature_names,
+                feature_names=names_for_report,
                 task_type=task_type,
                 max_background=100,
                 max_eval=300,

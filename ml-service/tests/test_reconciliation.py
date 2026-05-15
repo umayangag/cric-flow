@@ -4,11 +4,11 @@ import numpy as np
 
 from app.models import BacktestPlayerPred
 from app.reconciliation import (
-    INNINGS_FEATURE_COLS,
     build_innings_feature_vector,
     predict_innings,
     rescale_player_predictions,
 )
+from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
 
 
 def test_build_innings_feature_vector_shape():
@@ -20,9 +20,9 @@ def test_build_innings_feature_vector_shape():
         bat_form_sum=0.5,
         bowl_form_sum=0.5,
     )
-    assert X.shape == (1, len(INNINGS_FEATURE_COLS))
-    inning_idx = INNINGS_FEATURE_COLS.index("inning_number")
-    bat_consistency_idx = INNINGS_FEATURE_COLS.index("bat_consistency_sum")
+    assert X.shape == (1, len(LEGACY_INNINGS_FEATURE_COLS))
+    inning_idx = LEGACY_INNINGS_FEATURE_COLS.index("inning_number")
+    bat_consistency_idx = LEGACY_INNINGS_FEATURE_COLS.index("bat_consistency_sum")
     assert X[0, inning_idx] == 1.0  # inning_number
     assert X[0, bat_consistency_idx] == 1.0  # bat_consistency_sum
 
@@ -106,6 +106,58 @@ def test_rescale_player_predictions():
     total_runs_team2 = sum(p.runs for p in out if p.player_id in team2)
     assert abs(total_runs_team1 - 120.0) < 0.01
     assert abs(total_runs_team2 - 60.0) < 0.01
+
+
+def test_build_innings_feature_vector_uses_sidecar_feature_names():
+    """When meta feature_names subset is provided, output columns match that order/shape."""
+    meta = {
+        "feature_names": ["season_id", "inning_number", "bat_form_sum", "format_is_T20"],
+        "derived_weights": {
+            "weather_composite_rain_weight": 0.5,
+            "weather_composite_humidity_weight": 0.3,
+            "weather_composite_cloud_weight": 0.2,
+        },
+    }
+    X = build_innings_feature_vector(
+        inning_number=2,
+        bat_consistency_sum=0.0,
+        bowl_consistency_sum=0.0,
+        bat_form_sum=7.5,
+        bowl_form_sum=0.0,
+        season_id=2024,
+        format_code="T20",
+        meta=meta,
+    )
+    assert X.shape == (1, 4)
+    assert X[0, 0] == 2024.0
+    assert X[0, 1] == 2.0
+    assert X[0, 2] == 7.5
+    assert X[0, 3] == 1.0
+
+
+def test_build_innings_feature_vector_uses_pinned_derived_weights():
+    """Weights in meta override the service config when computing weather_composite."""
+    meta = {
+        "feature_names": ["weather_composite"],
+        "derived_weights": {
+            "weather_composite_rain_weight": 1.0,
+            "weather_composite_humidity_weight": 0.0,
+            "weather_composite_cloud_weight": 0.0,
+        },
+    }
+    X = build_innings_feature_vector(
+        inning_number=1,
+        bat_consistency_sum=0.0,
+        bowl_consistency_sum=0.0,
+        bat_form_sum=0.0,
+        bowl_form_sum=0.0,
+        rain=1,
+        humidity=100,
+        cloud=100,
+        meta=meta,
+    )
+    assert X.shape == (1, 1)
+    assert X[0, 0] == 1.0  # only rain weight applies (=1.0), humidity/cloud weights 0
 
 
 def test_rescale_player_predictions_player_with_no_balls():

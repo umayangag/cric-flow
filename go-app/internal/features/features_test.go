@@ -142,7 +142,7 @@ func TestSortAndClip(t *testing.T) {
 	if len(out) != 2 {
 		t.Fatalf("expected len 2, got %d", len(out))
 	}
-	if !(out[0].Date.Before(out[1].Date)) {
+	if !out[0].Date.Before(out[1].Date) {
 		t.Fatalf("expected sorted ascending by date")
 	}
 	// Boundary: entries on cutoff time should be excluded

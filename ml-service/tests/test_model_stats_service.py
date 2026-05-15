@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 import pytest
 
 from app.model_stats_service import (
+    _recompute_mlqa_audit_from_report,
     build_model_stats,
     get_model_artifact_stats,
     parse_model_filename,
@@ -155,3 +156,79 @@ class TestBuildModelStats:
         result = build_model_stats(str(p))
         names = [m["model_name"] for m in result["models"]]
         assert names == sorted(names)
+
+
+class TestRecomputeMLQAAuditRelativeThresholds:
+    """_recompute_mlqa_audit_from_report uses relative thresholds (fraction of score magnitude)."""
+
+    def test_large_magnitude_score_passes_with_small_relative_std(self) -> None:
+        """CV fold std=0.08 on score=-4.80 is 1.7% relative, well under 8% threshold → PASS."""
+        report = {
+            "best_cv_score": -4.80,
+            "mlqa_audit": {
+                "audit_status": "FAIL",
+                "key_findings": ["old finding"],
+                "bias_report": "No protected groups defined; fairness audit skipped.",
+                "final_verdict": "Rollback & Re-tune",
+                "checks": {
+                    "overfitting": {"delta": 0.05, "flagged": True},
+                    "stability": {
+                        "cv_std": 0.0845,
+                        "flagged": True,
+                        "cv_fold_scores": [-4.70, -4.79, -4.63, -4.80, -4.58],
+                    },
+                },
+            },
+        }
+        result = _recompute_mlqa_audit_from_report(report)
+        assert result is not None
+        assert result["audit_status"] == "PASS"
+        assert result["final_verdict"] == "Proceed to Deployment"
+        # Checks should include relative metrics
+        assert "relative_delta" in result["checks"]["overfitting"]
+        assert "relative_cv_std" in result["checks"]["stability"]
+        assert "threshold" in result["checks"]["stability"]
+        # Relative std: 0.0845 / 4.80 ≈ 1.76% (under 8%)
+        rel_std = result["checks"]["stability"]["relative_cv_std"]
+        assert rel_std < 0.08
+
+    def test_high_relative_delta_fails(self) -> None:
+        """Delta=1.0 on score=-2.0 is 50% relative, way over 10% threshold → FAIL."""
+        report = {
+            "best_cv_score": -2.0,
+            "mlqa_audit": {
+                "audit_status": "PASS",
+                "key_findings": [],
+                "bias_report": "",
+                "final_verdict": "Proceed to Deployment",
+                "checks": {
+                    "overfitting": {"delta": 1.0, "flagged": False},
+                    "stability": {"cv_std": 0.01, "flagged": False},
+                },
+            },
+        }
+        result = _recompute_mlqa_audit_from_report(report)
+        assert result is not None
+        assert result["audit_status"] == "FAIL"
+        assert result["checks"]["overfitting"]["flagged"] is True
+        # Relative delta: 1.0 / 2.0 = 50%
+        assert result["checks"]["overfitting"]["relative_delta"] == pytest.approx(0.5, abs=0.01)
+
+    def test_missing_best_cv_score_falls_back_gracefully(self) -> None:
+        """When best_cv_score is missing, score_magnitude=0 → any non-zero metric is inf → FAIL."""
+        report = {
+            "mlqa_audit": {
+                "audit_status": "PASS",
+                "key_findings": [],
+                "bias_report": "",
+                "final_verdict": "Proceed to Deployment",
+                "checks": {
+                    "overfitting": {"delta": 0.01, "flagged": False},
+                    "stability": {"cv_std": 0.01, "flagged": False},
+                },
+            },
+        }
+        result = _recompute_mlqa_audit_from_report(report)
+        assert result is not None
+        # With no reference score, relative metrics are inf → both flagged
+        assert result["audit_status"] == "FAIL"

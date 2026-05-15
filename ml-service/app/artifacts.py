@@ -13,7 +13,7 @@ formats are currently loaded.
 """
 
 import os
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import joblib
 
@@ -33,6 +33,20 @@ INNINGS_MODELS: Dict[
 # Phase 3 share models: predict runs_share, wickets_share; multiply by innings totals for consistency
 BAT_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
+
+# Sidecar metadata per (kind, format). See ml.artifact_sidecar. Keyed by the same format code
+# convention (e.g. "T20", "_LEGACY_") so prediction code can look up alongside the model.
+INNINGS_META: Dict[str, Dict[str, Any]] = {}
+EXTRAS_META: Dict[str, Dict[str, Any]] = {}
+
+
+def _load_meta(models_dir: str, kind: str, format_code: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Best-effort sidecar load; returns ``None`` when the ml package is unavailable."""
+    try:
+        from ml.artifact_sidecar import read_artifact_meta
+    except ImportError:
+        return None
+    return read_artifact_meta(models_dir, kind, format_code)
 
 
 def _use_share_models() -> bool:
@@ -75,6 +89,9 @@ def _load_legacy(models_dir: str) -> None:
     try:
         extras_model = joblib.load(os.path.join(models_dir, "extras_model.joblib"))
         EXTRAS_MODELS["_LEGACY_"] = extras_model
+        meta = _load_meta(models_dir, "extras", None)
+        if meta is not None:
+            EXTRAS_META["_LEGACY_"] = meta
         logger.info("artifacts.load_legacy.extras", models_dir=models_dir)
     except Exception as e:
         logger.debug("artifacts.load_legacy.extras_skip", models_dir=models_dir, error=str(e))
@@ -88,6 +105,9 @@ def _load_legacy(models_dir: str) -> None:
         innings_scaler = joblib.load(os.path.join(models_dir, "innings_scaler.joblib"))
         innings_model = joblib.load(os.path.join(models_dir, "innings_model.joblib"))
         INNINGS_MODELS["_LEGACY_"] = (innings_scaler, innings_model)
+        meta = _load_meta(models_dir, "innings", None)
+        if meta is not None:
+            INNINGS_META["_LEGACY_"] = meta
         logger.info("artifacts.load_legacy.innings", models_dir=models_dir)
     except Exception as e:
         logger.debug("artifacts.load_legacy.innings_skip", models_dir=models_dir, error=str(e))
@@ -230,6 +250,9 @@ def _load_per_format(models_dir: str) -> None:
                 code = fname[len("extras_model_") : -len(".joblib")].upper()
                 model = joblib.load(os.path.join(models_dir, fname))
                 EXTRAS_MODELS[code] = model
+                meta = _load_meta(models_dir, "extras", code)
+                if meta is not None:
+                    EXTRAS_META[code] = meta
                 logger.info(
                     "artifacts.load_per_format.extras",
                     format=code,
@@ -254,6 +277,9 @@ def _load_per_format(models_dir: str) -> None:
                 if os.path.exists(mpath):
                     model = joblib.load(mpath)
                     INNINGS_MODELS[code] = (scaler, model)
+                    meta = _load_meta(models_dir, "innings", code)
+                    if meta is not None:
+                        INNINGS_META[code] = meta
                     logger.info(
                         "artifacts.load_per_format.innings",
                         format=code,
@@ -287,6 +313,8 @@ def reload(models_dir: str) -> dict:
     INNINGS_MODELS.clear()
     BAT_SHARE_MODELS.clear()
     BOWL_SHARE_MODELS.clear()
+    INNINGS_META.clear()
+    EXTRAS_META.clear()
     _load_legacy(models_dir)
     _load_per_format(models_dir)
     out = summary()

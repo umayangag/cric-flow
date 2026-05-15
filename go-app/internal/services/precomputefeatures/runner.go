@@ -57,7 +57,8 @@ func (Runner) RunReplay(
 ) error {
 	precomputeLimit := resolveConcurrencyLimit(concurrencyLimit)
 	pageSize := replayMatchPageSize()
-	slog.Info("precompute-features(replay)",
+	slog.Info(
+		"precompute-features(replay)",
 		slog.String("format", formatCode),
 		slog.Int("concurrency", precomputeLimit),
 		slog.Int("match_page_size", pageSize),
@@ -125,7 +126,8 @@ func (Runner) RunReplay(
 			newValue := atomic.AddInt64(&processed, int64(len(players)))
 			oldValue := newValue - int64(len(players))
 			if oldValue/1000 < newValue/1000 {
-				resources.LogMemoryAndGoroutines("precompute-features(replay): progress",
+				resources.LogMemoryAndGoroutines(
+					"precompute-features(replay): progress",
 					slog.Int64("player_snapshots", newValue),
 					slog.String("format", formatCode),
 					slog.Int64("match_id", m.MatchID),
@@ -171,7 +173,8 @@ func (Runner) RunReplayGlobalPool(ctx context.Context, jobs []FormatJob, windowN
 		totalLimit = 1
 	}
 	pageSize := replayMatchPageSize()
-	slog.Info("precompute-features(replay-global-pool)",
+	slog.Info(
+		"precompute-features(replay-global-pool)",
 		slog.Int("formats", len(jobs)),
 		slog.Int("concurrency", totalLimit),
 		slog.Int("match_page_size", pageSize),
@@ -293,7 +296,8 @@ func (Runner) RunPointInTime(
 		slog.String("as_of", asOf.Format("2006-01-02")),
 		slog.Int("concurrency", precomputeLimit),
 	)
-	resources.LogMemoryAndGoroutines("precompute-features(as-of): memory and goroutines at start",
+	resources.LogMemoryAndGoroutines(
+		"precompute-features(as-of): memory and goroutines at start",
 		slog.String("format", formatCode),
 		slog.Int("players", len(players)),
 	)
@@ -345,7 +349,8 @@ func (Runner) RunPointInTime(
 			}
 			p := atomic.AddInt64(&processed, 1)
 			if p%1000 == 0 {
-				resources.LogMemoryAndGoroutines("precompute-features(as-of): progress",
+				resources.LogMemoryAndGoroutines(
+					"precompute-features(as-of): progress",
 					slog.Int64("players", p),
 					slog.String("format", formatCode),
 				)
@@ -393,7 +398,8 @@ func (Runner) RunPointInTime(
 // logSeqCalcTrigger logs concurrency, memory, and goroutine count before triggering sequence calculations (shared by replay and as-of).
 func logSeqCalcTrigger(formatCode, mode string) {
 	seqcalcLimit := resources.GetLimit(resources.KindSeqCalc)
-	resources.LogMemoryAndGoroutines("precompute-features("+mode+"): triggering sequence calculations",
+	resources.LogMemoryAndGoroutines(
+		"precompute-features("+mode+"): triggering sequence calculations",
 		slog.String("format", formatCode),
 		slog.Int("seqcalc_concurrency", seqcalcLimit),
 	)

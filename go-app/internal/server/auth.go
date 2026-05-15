@@ -27,7 +27,8 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		clientKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
 		if subtle.ConstantTimeCompare([]byte(clientKey), []byte(expectedKey)) != 1 {
-			slog.Warn("Unauthorized access attempt",
+			slog.Warn(
+				"Unauthorized access attempt",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("remote", r.RemoteAddr),

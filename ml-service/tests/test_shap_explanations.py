@@ -67,7 +67,7 @@ def test_compute_shap_importance_tree_returns_dict():
 
 
 def test_add_final_report_details_with_mlp_uses_shap():
-    """_add_final_report_details populates feature_importance from SHAP when estimator is MLP."""
+    """_add_final_report_details populates feature_importance for MLP (permutation or SHAP)."""
     pytest.importorskip("shap")
     from sklearn.model_selection import KFold
 
@@ -85,4 +85,5 @@ def test_add_final_report_details_with_mlp_uses_shap():
     cv_metrics._add_final_report_details(report, pipe, X, y, cv, "neg_mean_absolute_error", "regression", "extras")
     assert "mlqa_audit" in report
     assert "feature_importance" in report
-    assert report.get("explainer") == "shap"
+    # Permutation importance is tried first; SHAP is the secondary fallback.
+    assert report.get("explainer") in (None, "shap")
