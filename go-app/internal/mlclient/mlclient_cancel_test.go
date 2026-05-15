@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
 	"github.com/stretchr/testify/require"
 )
 

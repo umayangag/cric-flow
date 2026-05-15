@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -10,62 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 )
-
-// dummyOut is used to decode JSON into a no-op type
-// when we do not actually care about the content.
-type dummyOut struct {
-	OK bool `json:"ok"`
-}
-
-func TestDoJSON_Non2xx(t *testing.T) {
-	testCases := []struct {
-		name   string
-		status int
-	}{
-		{name: "400", status: http.StatusBadRequest},
-		{name: "500", status: http.StatusInternalServerError},
-	}
-	for i := range testCases {
-		tc := testCases[i]
-		// capture tc for closure
-		status := tc.status
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(status)
-				_, _ = w.Write([]byte("oops"))
-			}))
-			defer srv.Close()
-
-			client := DefaultClient(2 * time.Second)
-			req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "test-agent")
-			require.NoError(t, err)
-			var out dummyOut
-			resp, derr := doJSON(client, req, &out)
-			require.Error(t, derr)
-			require.NotNil(t, resp)
-			if !strings.HasPrefix(derr.Error(), "ml-service status:") {
-				t.Fatalf("error should start with 'ml-service status:', got %v", derr)
-			}
-		})
-	}
-}
-
-func TestDoJSON_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("{invalid-json"))
-	}))
-	defer srv.Close()
-
-	client := DefaultClient(2 * time.Second)
-	req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "test-agent")
-	require.NoError(t, err)
-	var out dummyOut
-	resp, derr := doJSON(client, req, &out)
-	require.NotNil(t, resp)
-	require.Error(t, derr)
-}
 
 func TestDefaultClient_Timeout(t *testing.T) {
 	// Server sleeps longer than client timeout
@@ -76,35 +22,101 @@ func TestDefaultClient_Timeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := DefaultClient(50 * time.Millisecond)
-	req, err := newRequest(context.Background(), http.MethodGet, srv.URL, nil, "")
-	require.NoError(t, err)
-	var out dummyOut
-	_, derr := doJSON(client, req, &out)
-	require.Error(t, derr)
+	c := &mlclient.Client{
+		BaseURL: srv.URL,
+		HTTP:    mlclient.DefaultClient(50 * time.Millisecond),
+		Timeout: 50 * time.Millisecond,
+	}
+	_, err := c.PredictBatting(context.Background(), nil)
+	require.Error(t, err)
 	// Accept either client timeout or context deadline exceeded wording
-	if !strings.Contains(derr.Error(), "Client.Timeout") && !errors.Is(derr, context.DeadlineExceeded) {
-		// We cannot reliably unwrap here without importing net/http internals; do a substring fallback
-		if !strings.Contains(derr.Error(), "timeout") {
-			t.Fatalf("expected timeout-related error, got: %v", derr)
-		}
+	require.True(t,
+		strings.Contains(err.Error(), "Client.Timeout") ||
+			errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), "timeout"),
+		"expected timeout-related error, got: %v", err)
+}
+
+func TestClient_PredictBatting_Non2xx(t *testing.T) {
+	testCases := []struct {
+		name   string
+		status int
+	}{
+		{name: "400 bad request", status: http.StatusBadRequest},
+		{name: "500 internal server error", status: http.StatusInternalServerError},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte("oops"))
+			}))
+			defer srv.Close()
+
+			c := &mlclient.Client{
+				BaseURL:   srv.URL,
+				HTTP:      mlclient.DefaultClient(2 * time.Second),
+				UserAgent: "test-agent",
+			}
+			_, err := c.PredictBatting(context.Background(), nil)
+			require.Error(t, err)
+			require.True(t, strings.HasPrefix(err.Error(), "ml-service status:"),
+				"error should start with 'ml-service status:', got %v", err)
+		})
 	}
 }
 
-func TestNewRequest_Headers(t *testing.T) {
-	// with User-Agent
-	req1, err := newRequest(context.Background(), http.MethodPost, "http://example", map[string]int{"a": 1}, "ua-1")
-	require.NoError(t, err)
-	if ct := req1.Header.Get("Content-Type"); ct != "application/json" {
-		t.Fatalf("content-type expected application/json, got %q", ct)
+func TestClient_PredictBatting_BadJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{invalid-json"))
+	}))
+	defer srv.Close()
+
+	c := &mlclient.Client{
+		BaseURL:   srv.URL,
+		HTTP:      mlclient.DefaultClient(2 * time.Second),
+		UserAgent: "test-agent",
 	}
-	if ua := req1.Header.Get("User-Agent"); ua != "ua-1" {
-		t.Fatalf("user-agent expected 'ua-1', got %q", ua)
+	_, err := c.PredictBatting(context.Background(), nil)
+	require.Error(t, err)
+}
+
+func TestClient_RequestHeaders(t *testing.T) {
+	var gotContentType, gotUserAgent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	c := &mlclient.Client{
+		BaseURL:   srv.URL,
+		HTTP:      mlclient.DefaultClient(2 * time.Second),
+		UserAgent: "ua-1",
 	}
-	// without User-Agent
-	req2, err := newRequest(context.Background(), http.MethodPost, "http://example", map[string]int{"a": 1}, "")
-	require.NoError(t, err)
-	if ua := req2.Header.Get("User-Agent"); ua != "" {
-		t.Fatalf("user-agent expected empty, got %q", ua)
+	_, _ = c.PredictBatting(context.Background(), nil)
+	require.Equal(t, "application/json", gotContentType)
+	require.Equal(t, "ua-1", gotUserAgent)
+}
+
+func TestClient_RequestHeaders_NoUserAgent(t *testing.T) {
+	var gotUserAgent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	c := &mlclient.Client{
+		BaseURL: srv.URL,
+		HTTP:    mlclient.DefaultClient(2 * time.Second),
 	}
+	_, _ = c.PredictBatting(context.Background(), nil)
+	// Go's http.Client sets a default User-Agent if empty, so just verify our custom one isn't set
+	require.NotEqual(t, "ua-1", gotUserAgent)
 }

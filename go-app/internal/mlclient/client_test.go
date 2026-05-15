@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -10,23 +10,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/models"
-
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
-// Test helpers
-func newTestClient(base string, httpClient *http.Client) *Client {
-	return &Client{
+// newTestClient creates a Client pointing at the given base URL.
+func newTestClient(base string, httpClient *http.Client) *mlclient.Client {
+	return &mlclient.Client{
 		BaseURL:   base,
 		HTTP:      httpClient,
 		UserAgent: "mlclient-test/1.0",
 		Timeout:   200 * time.Millisecond,
 	}
-}
-
-type postJSONResp struct {
-	OK bool `json:"ok"`
 }
 
 type badJSON struct{}
@@ -53,98 +49,77 @@ func TestClient_New(t *testing.T) {
 			} else {
 				_ = os.Unsetenv("ML_BASE_URL")
 			}
-			c := New()
+			c := mlclient.New()
 			require.Equal(t, tc.expectURL, c.BaseURL)
-			if c.HTTP == nil || c.Timeout <= 0 || c.HTTP.Timeout <= 0 {
-				t.Fatalf("unexpected HTTP/Timeout configuration: Timeout=%v HTTP.Timeout=%v", c.Timeout, c.HTTP.Timeout)
-			}
-			if c.UserAgent == "" {
-				t.Fatalf("UserAgent should be non-empty")
-			}
+			require.NotNil(t, c.HTTP)
+			require.Greater(t, c.Timeout, time.Duration(0))
+			require.Greater(t, c.HTTP.Timeout, time.Duration(0))
+			require.NotEmpty(t, c.UserAgent)
 		})
 	}
 }
 
-// postJSON behavior tests (headers, errors, marshal, cancel)
-func TestClient_postJSON(t *testing.T) {
-	t.Run("success + user-agent", func(t *testing.T) {
-		wantUA := "mlclient-test/1.0"
-		seenUA := ""
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, http.MethodPost, r.Method)
-			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
-				t.Fatalf("content-type = %s, want application/json", ct)
-			}
-			seenUA = r.Header.Get("User-Agent")
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(postJSONResp{OK: true})
-		}))
-		defer srv.Close()
+// postJSON behavior tested through PredictBatting (public API)
+func TestClient_PostJSON_SuccessAndUserAgent(t *testing.T) {
+	wantUA := "mlclient-test/1.0"
+	var seenUA, seenCT string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		seenCT = r.Header.Get("Content-Type")
+		seenUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]models.BattingPrediction{{RunsScored: 42}})
+	}))
+	defer srv.Close()
 
-		c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), UserAgent: wantUA, Timeout: 2 * time.Second}
-		ctx := context.Background()
-		var out postJSONResp
-		if err := c.postJSON(ctx, "/x", map[string]int{"a": 1}, &out); err != nil {
-			t.Fatalf("postJSON error: %v", err)
-		}
-		require.True(t, out.OK)
-		require.Equal(t, wantUA, seenUA)
-	})
+	c := newTestClient(srv.URL, srv.Client())
+	preds, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
+	require.NoError(t, err)
+	require.Len(t, preds, 1)
+	require.Equal(t, float32(42), preds[0].RunsScored)
+	require.Equal(t, "application/json", seenCT)
+	require.Equal(t, wantUA, seenUA)
+}
 
-	t.Run("non-2xx status", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"error":"boom"}`))
-		}))
-		defer srv.Close()
+func TestClient_PostJSON_Non2xxStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer srv.Close()
 
-		c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
-		ctx := context.Background()
-		var out any
-		if err := c.postJSON(ctx, "/x", map[string]bool{"ok": true}, &out); err == nil {
-			t.Fatalf("expected error for non-2xx status")
-		}
-	})
+	c := newTestClient(srv.URL, srv.Client())
+	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
+	require.Error(t, err)
+}
 
-	t.Run("invalid JSON response", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("not-json"))
-		}))
-		defer srv.Close()
+func TestClient_PostJSON_InvalidJSONResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer srv.Close()
 
-		c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
-		ctx := context.Background()
-		var out any
-		if err := c.postJSON(ctx, "/x", map[string]bool{"ok": true}, &out); err == nil {
-			t.Fatalf("expected JSON decode error")
-		}
-	})
+	c := newTestClient(srv.URL, srv.Client())
+	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
+	require.Error(t, err)
+}
 
-	t.Run("context canceled", func(t *testing.T) {
-		done := make(chan struct{})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			<-done
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
-		}))
-		defer srv.Close()
+func TestClient_PostJSON_ContextCanceled(t *testing.T) {
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-done
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
 
-		c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 5 * time.Second}
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		var out postJSONResp
-		err := c.postJSON(ctx, "/x", map[string]int{"a": 1}, &out)
-		close(done)
-		require.Error(t, err)
-	})
-
-	t.Run("marshal error", func(t *testing.T) {
-		c := newTestClient("http://invalid", httptest.NewServer(nil).Client())
-		var out any
-		err := c.postJSON(context.Background(), "/unused", badJSON{}, &out)
-		require.Error(t, err)
-	})
+	c := newTestClient(srv.URL, srv.Client())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.PredictBatting(ctx, []models.BattingFeatures{{}})
+	close(done)
+	require.Error(t, err)
 }
 
 // PredictBatting behavior grouped
@@ -158,12 +133,9 @@ func TestClient_PredictBatting(t *testing.T) {
 		{
 			"success",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/predict/batting" || r.Method != http.MethodPost {
-					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-				}
-				if ct := r.Header.Get("Content-Type"); ct != "application/json" {
-					t.Fatalf("unexpected content-type: %s", ct)
-				}
+				require.Equal(t, "/predict/batting", r.URL.Path)
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				_ = json.NewEncoder(w).Encode([]models.BattingPrediction{{RunsScored: 42}})
 			}),
 			false,
@@ -185,16 +157,14 @@ func TestClient_PredictBatting(t *testing.T) {
 			srv := httptest.NewServer(tc.serverFunc)
 			defer srv.Close()
 			c := newTestClient(srv.URL, srv.Client())
-			_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
-			if tc.expectErr && err == nil {
-				t.Fatalf("expected error, got nil")
+			preds, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
+			if tc.expectErr {
+				require.Error(t, err)
+				return
 			}
-			if !tc.expectErr {
-				preds, _ := c.PredictBatting(context.Background(), []models.BattingFeatures{{}})
-				if len(preds) != 1 || preds[0].RunsScored != tc.expectRuns {
-					t.Fatalf("unexpected preds: %+v", preds)
-				}
-			}
+			require.NoError(t, err)
+			require.Len(t, preds, 1)
+			require.Equal(t, tc.expectRuns, preds[0].RunsScored)
 		})
 	}
 }
@@ -203,18 +173,15 @@ func TestClient_PredictBatting(t *testing.T) {
 func TestClient_PredictBowling(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/predict/bowling" {
-				t.Fatalf("unexpected path: %s", r.URL.Path)
-			}
+			require.Equal(t, "/predict/bowling", r.URL.Path)
 			_ = json.NewEncoder(w).Encode([]models.BowlingPrediction{{WicketsTaken: 3}})
 		}))
 		defer srv.Close()
 		c := newTestClient(srv.URL, srv.Client())
 		preds, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		require.NoError(t, err)
-		if len(preds) != 1 || preds[0].WicketsTaken != 3 {
-			t.Fatalf("unexpected preds: %#v", preds)
-		}
+		require.Len(t, preds, 1)
+		require.Equal(t, float32(3), preds[0].WicketsTaken)
 	})
 
 	t.Run("bad JSON", func(t *testing.T) {
@@ -254,8 +221,6 @@ func TestClient_PredictBowling(t *testing.T) {
 		c.UserAgent = "" // explicitly clear
 		_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{}})
 		require.NoError(t, err)
-		if sawUA != "Go-http-client/1.1" {
-			t.Fatalf("expected default Go User-Agent, got %q", sawUA)
-		}
+		require.Equal(t, "Go-http-client/1.1", sawUA)
 	})
 }

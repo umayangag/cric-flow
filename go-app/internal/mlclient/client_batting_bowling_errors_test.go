@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
+	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
 func TestPredictBatting_Non2xx_New(t *testing.T) {
@@ -17,7 +18,7 @@ func TestPredictBatting_Non2xx_New(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
+	c := &mlclient.Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{PlayerName: "A"}})
 	require.Error(t, err)
 }
@@ -29,7 +30,7 @@ func TestPredictBowling_InvalidJSON_New(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
+	c := &mlclient.Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{PlayerName: "B"}})
 	require.Error(t, err)
 }

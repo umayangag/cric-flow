@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -11,9 +11,7 @@ import (
 
 func TestPredictWin_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/predict-win" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
+		require.Equal(t, "/predict-win", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[{"PlayerName":"A","WinningProbability":0.9}]`))
 	}))
@@ -23,9 +21,9 @@ func TestPredictWin_Success(t *testing.T) {
 	ctx := context.Background()
 	preds, err := c.PredictWin(ctx, nil)
 	require.NoError(t, err)
-	if len(preds) != 1 || preds[0].PlayerName != "A" || preds[0].WinningProbability != 0.9 {
-		t.Fatalf("unexpected predictions: %#v", preds)
-	}
+	require.Len(t, preds, 1)
+	require.Equal(t, "A", preds[0].PlayerName)
+	require.Equal(t, 0.9, preds[0].WinningProbability)
 }
 
 func TestPredictWin_Non200(t *testing.T) {
