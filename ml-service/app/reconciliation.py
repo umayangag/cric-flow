@@ -16,7 +16,7 @@ import numpy as np
 # Keep ml.* imports at module scope (not inside helpers) so the dependency graph stays explicit.
 from ml.match_level_derived_features import compute_match_level_derived_features_scalars
 from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
-from ml.win_features import _format_one_hot_from_code
+from ml.win_features import format_one_hot_from_code
 
 from .models import BacktestPlayerPred
 
@@ -46,7 +46,7 @@ def _innings_feature_dict(
     This lets downstream code build the actual model input by selecting and
     ordering only the columns the trained model expects (via its sidecar).
     """
-    one_hot = _format_one_hot_from_code(format_code)
+    one_hot = format_one_hot_from_code(format_code)
     form_differential, consistency_differential, weather_composite = compute_match_level_derived_features_scalars(
         bat_form_sum,
         bowl_form_sum,

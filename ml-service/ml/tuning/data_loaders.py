@@ -52,7 +52,7 @@ from ml.tuning.types import (
     _train_innings,
     _train_win,
 )
-from ml.win_features import _FORMAT_CODES as _WIN_FORMAT_CODES
+from ml.win_features import get_format_codes
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +327,7 @@ def load_innings_from_api(
     )
     for col in _train_innings.INNINGS_FORMAT_ONE_HOT_COLS:
         if col == "format_is_OTHER":
-            df[col] = (~fmt_series.isin(_WIN_FORMAT_CODES)).astype(float)
+            df[col] = (~fmt_series.isin(get_format_codes())).astype(float)
         else:
             code = col.replace("format_is_", "")
             df[col] = (fmt_series == code).astype(float)

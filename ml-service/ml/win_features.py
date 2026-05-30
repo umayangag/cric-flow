@@ -46,6 +46,16 @@ _FORMAT_CODES: List[str] = _load_format_codes()
 _FORMAT_ONE_HOT_COLS: List[str] = [f"format_is_{code}" for code in _FORMAT_CODES] + ["format_is_OTHER"]
 
 
+def get_format_codes() -> List[str]:
+    """Return configured format codes for one-hot encoding (from ``ml.formats`` in config)."""
+    return list(_FORMAT_CODES)
+
+
+def get_format_one_hot_columns() -> List[str]:
+    """Return ``format_is_<CODE>`` column names plus ``format_is_OTHER``."""
+    return list(_FORMAT_ONE_HOT_COLS)
+
+
 # ---------------------------------------------------------------------------
 # Feature group / column definitions (must match Go-app win export headers)
 # ---------------------------------------------------------------------------
@@ -120,8 +130,8 @@ DERIVED_FEATURE_COLS = [
 ]
 
 
-def _format_one_hot_from_code(format_code: Optional[str]) -> Dict[str, float]:
-    """Build one-hot mapping for format code over _FORMAT_ONE_HOT_COLS."""
+def format_one_hot_from_code(format_code: Optional[str]) -> Dict[str, float]:
+    """Build one-hot mapping for a format code over :func:`get_format_one_hot_columns`."""
     out = {col: 0.0 for col in _FORMAT_ONE_HOT_COLS}
     if not format_code:
         out["format_is_OTHER"] = 1.0
@@ -240,7 +250,7 @@ def aggregate_team_features_from_player_maps(
         result[k] = float(match_context.get(k, 0.0))
 
     # One-hot encoded format columns
-    one_hot = _format_one_hot_from_code(format_code)
+    one_hot = format_one_hot_from_code(format_code)
     for k, v in one_hot.items():
         result[k] = float(v)
 
