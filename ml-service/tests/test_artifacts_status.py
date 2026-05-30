@@ -67,10 +67,11 @@ def test_artifacts_status_loaded_flags(tmp_path, monkeypatch):
     _touch(tmp_path / "bowling_model_TEST.joblib")
 
     m = reload_app_with_dir(str(tmp_path))
+    import app.artifacts as art
 
     # Monkeypatch registries to simulate loaded state
-    monkeypatch.setitem(m.BAT_MODELS, "TEST", object())
-    monkeypatch.setitem(m.BOWL_MODELS, "TEST", object())
+    monkeypatch.setitem(art.BAT_MODELS, "TEST", object())
+    monkeypatch.setitem(art.BOWL_MODELS, "TEST", object())
 
     from fastapi.testclient import TestClient
 

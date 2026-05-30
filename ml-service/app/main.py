@@ -31,7 +31,6 @@ from fastapi.responses import JSONResponse
 from . import settings as app_settings
 from . import training_orchestrator
 from .artifact_service import build_artifacts_status, build_health_response
-from .artifacts import BAT_MODELS, BOWL_MODELS  # noqa: F401  # re-exported for test compatibility
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
 from .backtest_cache import BacktestCache
@@ -40,7 +39,6 @@ from .backtest_service import historical_backtest as svc_historical_backtest
 from .backtest_service import predict_match_baseline as svc_predict_match_baseline
 from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
-from .features import batting_feature_vector, bowling_feature_vector  # noqa: F401  # re-exported for test compatibility
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .model_metadata import get_model_metadata
 from .model_stats_service import build_model_stats
@@ -72,7 +70,6 @@ from .prediction_service import (
     generate_match,
     predict_players_batch,
     predict_players_with_features,
-    round_datetime_to_granularity,
     run_batting_prediction,
     run_bowling_prediction,
     run_extras_prediction,
@@ -220,9 +217,6 @@ def reset_backtest_cache() -> None:
 def get_backtest_compute_counts() -> Tuple[int, int]:
     return _backtest_cache.get_compute_counts()
 
-
-# Re-export for backward compatibility with tests
-_round_datetime_to_granularity = round_datetime_to_granularity
 
 # ---------------------------------------------------------------------------
 # CORS
