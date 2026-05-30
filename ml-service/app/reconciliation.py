@@ -1,11 +1,15 @@
-"""Hybrid reconciliation: rescale player predictions to match innings model totals.
+"""Hybrid reconciliation: proportional rescale to innings model totals.
 
-When the innings model is loaded and match context (team assignment) is provided,
-raw batting/bowling predictions are rescaled so that:
-- sum(batsman runs) = innings_runs (from innings model)
-- sum(bowler wickets) = innings_wickets (from innings model)
+This is the **fast, continuous** layer. For integer scorecards and hard constraints,
+see ``ml.reconciliation_service`` (wired via ``ml.reconciliation_adapter``).
 
-This ensures consistency: runs conceded by bowlers = runs scored by batsmen.
+When the innings model is loaded and ``MatchContext`` is provided:
+
+- ``predict_innings()`` predicts innings runs/wickets from match context + player features.
+- ``rescale_player_predictions()`` scales per-player runs/wickets so team sums match those totals.
+
+Constraint-based reconciliation in ``prediction_service`` may run **after** this step.
+See ``ml-service/docs/reconciliation.md``.
 """
 
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple

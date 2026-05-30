@@ -23,7 +23,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P2-3 | todo | | Standardize structlog in `ml/` |
 | P3-1 | todo | | Decompose `ml/config.py` |
 | P3-2 | todo | | Consolidate training entrypoints |
-| P3-3 | todo | | Document reconciliation layers |
+| P3-3 | done | `ml-service/p3-3-reconciliation-docs` | Document reconciliation layers |
 | P3-4 | todo | | Coverage/smoke tests for omitted training paths |
 | P4-1 | done | `ml-service/p4-1-tighten-cors` | Tighten CORS defaults |
 | P4-2 | todo | | API versioning (`/v1/...`) — **skipped unless cross-repo approved** |

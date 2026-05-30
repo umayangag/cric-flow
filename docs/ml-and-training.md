@@ -208,6 +208,8 @@ For classifiers (e.g. win model), predicted probabilities can be **calibrated** 
 
 ## Match-level derived features and model sidecars
 
+**Reconciliation layers** (hybrid rescale vs constraint solver): see [ml-service/docs/reconciliation.md](../ml-service/docs/reconciliation.md).
+
 **Derived features** (`ml.match_level_derived_features`) are computed in one place and reused by `train_innings`, `train_extras`, and the inference path in `app.reconciliation`:
 
 - `form_differential = bat_form_sum - bowl_form_sum`
