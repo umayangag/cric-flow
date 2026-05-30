@@ -15,6 +15,16 @@ import os.path as osp
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
+# CORS defaults aligned with go-app/internal/server/cors.go (explicit allow lists, not "*").
+DEFAULT_CORS_ALLOW_METHODS = ("GET", "POST", "OPTIONS")
+DEFAULT_CORS_ALLOW_HEADERS = (
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "X-API-Key",
+    "X-Request-ID",
+)
+
 
 def _default_models_dir_from_config(svc_config: Optional[Any]) -> str:
     import logging
@@ -49,6 +59,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes"}
 
 
+def _env_csv(name: str, default: tuple[str, ...]) -> List[str]:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return list(default)
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
@@ -80,6 +97,8 @@ class MLServiceSettings:
     enable_train_on_the_fly: bool
     go_app_api_key: str
     frontend_origin_raw: str
+    cors_allow_methods: List[str]
+    cors_allow_headers: List[str]
 
     @property
     def frontend_allowed_origins(self) -> List[str]:
@@ -108,6 +127,8 @@ def load_ml_service_settings() -> MLServiceSettings:
     enable_train_on_the_fly = _env_bool("ENABLE_TRAIN_ON_THE_FLY", default=False)
     go_app_api_key = (os.environ.get("GO_APP_API_KEY") or "").strip()
     frontend_origin_raw = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+    cors_allow_methods = _env_csv("CORS_ALLOW_METHODS", DEFAULT_CORS_ALLOW_METHODS)
+    cors_allow_headers = _env_csv("CORS_ALLOW_HEADERS", DEFAULT_CORS_ALLOW_HEADERS)
 
     return MLServiceSettings(
         enable_hot_reload=enable_hot_reload,
@@ -122,4 +143,6 @@ def load_ml_service_settings() -> MLServiceSettings:
         enable_train_on_the_fly=enable_train_on_the_fly,
         go_app_api_key=go_app_api_key,
         frontend_origin_raw=frontend_origin_raw,
+        cors_allow_methods=cors_allow_methods,
+        cors_allow_headers=cors_allow_headers,
     )

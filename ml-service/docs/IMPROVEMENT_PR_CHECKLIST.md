@@ -25,7 +25,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P3-2 | todo | | Consolidate training entrypoints |
 | P3-3 | todo | | Document reconciliation layers |
 | P3-4 | todo | | Coverage/smoke tests for omitted training paths |
-| P4-1 | todo | | Tighten CORS defaults |
+| P4-1 | done | `ml-service/p4-1-tighten-cors` | Tighten CORS defaults |
 | P4-2 | todo | | API versioning (`/v1/...`) — **skipped unless cross-repo approved** |
 | P4-3 | todo | | Trusted artifact directory validation for joblib |
 
