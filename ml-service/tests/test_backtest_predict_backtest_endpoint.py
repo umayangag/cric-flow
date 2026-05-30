@@ -51,7 +51,7 @@ def test_backtest_predict_players_mode_with_format_and_features_schema():
         )
         return bat, bowl
 
-    with patch("app.prediction_service.train_on_the_fly_cached", side_effect=_fake_train):
+    with patch("app.prediction_service.players.train_on_the_fly_cached", side_effect=_fake_train):
         with patch.dict("os.environ", {"GO_APP_URL": "http://localhost:9999"}, clear=False):
             r = client.post("/ml/backtest/predict", json=body)
     if r.status_code != 200:
