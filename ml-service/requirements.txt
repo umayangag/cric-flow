@@ -12,7 +12,7 @@ accelerate==1.13.0
     #   autogluon-timeseries
 adagio==0.2.6
     # via fugue
-aiohappyeyeballs==2.6.1
+aiohappyeyeballs==2.6.2
     # via aiohttp
 aiohttp==3.13.5
     # via
@@ -93,12 +93,12 @@ blinker==1.9.0
     # via flask
 blis==1.3.3
     # via thinc
-boto3==1.43.8
+boto3==1.43.18
     # via
     #   autogluon-common
     #   autogluon-core
     #   autogluon-multimodal
-botocore==1.43.8
+botocore==1.43.18
     # via
     #   boto3
     #   s3transfer
@@ -111,7 +111,7 @@ catboost==1.2.10
     # via autogluon-tabular
 category-encoders==2.7.0
     # via pycaret
-certifi==2026.4.22
+certifi==2026.5.20
     # via
     #   httpcore
     #   httpx
@@ -122,7 +122,7 @@ charset-normalizer==3.4.7
     # via requests
 choreographer==1.3.0
     # via kaleido
-click==8.3.3
+click==8.4.1
     # via
     #   flask
     #   model-index
@@ -130,7 +130,6 @@ click==8.3.3
     #   opendatalab
     #   openmim
     #   ray
-    #   typer
     #   uvicorn
 cloudpathlib==0.24.0
     # via weasel
@@ -175,13 +174,13 @@ cymem==2.0.13
     #   preshed
     #   spacy
     #   thinc
-cython==3.2.4
+cython==3.2.5
     # via pmdarima
 dash==4.1.0
     # via plotly-resampler
 datasets==4.0.0
     # via evaluate
-decorator==5.2.1
+decorator==5.3.1
     # via ipython
 defusedxml==0.7.1
     # via autogluon-multimodal
@@ -202,9 +201,9 @@ executing==2.2.1
     # via stack-data
 fastai==2.8.7
     # via autogluon-tabular
-fastapi==0.136.1
+fastapi==0.136.3
     # via -r requirements.in
-fastcore==1.13.0
+fastcore==1.13.2
     # via
     #   apswutils
     #   fastai
@@ -264,13 +263,13 @@ fugue==0.9.7
     #   statsforecast
 future==1.0.0
     # via hyperopt
-gdown==6.0.0
+gdown==6.1.0
     # via nlpaug
 gluonts==0.16.2
     # via autogluon-timeseries
 google-api-core==2.30.3
     # via opencensus
-google-auth==2.52.0
+google-auth==2.53.0
     # via google-api-core
 googleapis-common-protos==1.75.0
     # via google-api-core
@@ -288,7 +287,7 @@ hf-xet==1.5.0
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
-httptools==0.7.1
+httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
     # via
@@ -307,7 +306,7 @@ huggingface-hub==0.36.2
     #   transformers
 hyperopt==0.2.7
     # via autogluon-core
-idna==3.15
+idna==3.17
     # via
     #   anyio
     #   httpx
@@ -321,7 +320,7 @@ importlib-metadata==9.0.0
     # via
     #   dash
     #   pycaret
-ipython==9.13.0
+ipython==9.14.0
     # via
     #   ipywidgets
     #   pycaret
@@ -380,7 +379,7 @@ lightgbm==4.6.0
     # via
     #   autogluon-tabular
     #   pycaret
-lightning==2.6.1
+lightning==2.6.5
     # via
     #   autogluon-multimodal
     #   autogluon-timeseries
@@ -446,7 +445,7 @@ murmurhash==1.0.15
     #   preshed
     #   spacy
     #   thinc
-narwhals==2.21.0
+narwhals==2.21.2
     # via plotly
 nbformat==5.10.4
     # via pycaret
@@ -642,7 +641,7 @@ pillow==11.3.0
     #   scikit-image
     #   tensorboard
     #   torchvision
-platformdirs==4.9.6
+platformdirs==4.10.0
     # via
     #   choreographer
     #   jupyter-core
@@ -678,7 +677,7 @@ propcache==0.5.2
     #   yarl
 proto-plus==1.28.0
     # via google-api-core
-protobuf==7.34.1
+protobuf==7.35.0
     # via
     #   google-api-core
     #   googleapis-common-protos
@@ -736,7 +735,7 @@ pygments==2.20.0
     #   ipython
     #   ipython-pygments-lexers
     #   rich
-pyod==3.5.1
+pyod==3.5.2
     # via pycaret
 pyparsing==3.3.2
     # via matplotlib
@@ -750,17 +749,17 @@ python-dateutil==2.9.0.post0
     #   matplotlib
     #   pandas
     #   python-fasthtml
-python-discovery==1.3.1
+python-discovery==1.4.0
     # via virtualenv
 python-dotenv==1.2.2
     # via
     #   -r requirements.in
     #   uvicorn
-python-fasthtml==0.14.1
+python-fasthtml==0.14.2
     # via fastprogress
-python-multipart==0.0.28
+python-multipart==0.0.29
     # via python-fasthtml
-pytorch-lightning==2.6.1
+pytorch-lightning==2.6.5
     # via
     #   autogluon-timeseries
     #   lightning
@@ -820,11 +819,11 @@ rich==15.0.0
     #   openmim
     #   plum-dispatch
     #   typer
-rpds-py==0.30.0
+rpds-py==2026.5.1
     # via
     #   jsonschema
     #   referencing
-s3transfer==0.17.0
+s3transfer==0.18.0
     # via boto3
 safetensors==0.7.0
     # via
@@ -914,7 +913,7 @@ smart-open==7.6.1
     # via
     #   ray
     #   weasel
-soupsieve==2.8.3
+soupsieve==2.8.4
     # via beautifulsoup4
 spacy==3.8.14
     # via
@@ -924,7 +923,7 @@ spacy-legacy==3.0.12
     # via spacy
 spacy-loggers==1.0.5
     # via spacy
-sqlalchemy==2.0.49
+sqlalchemy==2.0.50
     # via
     #   alembic
     #   optuna
@@ -935,7 +934,7 @@ srsly==2.5.3
     #   weasel
 stack-data==0.6.3
     # via ipython
-starlette==1.0.0
+starlette==1.2.0
     # via
     #   fastapi
     #   python-fasthtml
@@ -1046,9 +1045,9 @@ triad==1.0.2
     # via
     #   adagio
     #   fugue
-tsdownsample==0.1.4.1
+tsdownsample==0.1.5
     # via plotly-resampler
-typer==0.25.1
+typer==0.26.4
     # via
     #   spacy
     #   weasel
@@ -1091,20 +1090,20 @@ utilsforecast==0.2.11
     #   autogluon-timeseries
     #   mlforecast
     #   statsforecast
-uvicorn==0.47.0
+uvicorn==0.48.0
     # via
     #   -r requirements.in
     #   python-fasthtml
 uvloop==0.22.1
     # via uvicorn
-virtualenv==21.3.3
+virtualenv==21.4.1
     # via ray
 wasabi==1.1.3
     # via
     #   spacy
     #   thinc
     #   weasel
-watchfiles==1.1.1
+watchfiles==1.2.0
     # via uvicorn
 wcwidth==0.7.0
     # via prompt-toolkit
@@ -1121,7 +1120,7 @@ widgetsnbextension==4.0.15
     # via ipywidgets
 window-ops==0.0.15
     # via mlforecast
-wrapt==2.1.2
+wrapt==2.2.1
     # via smart-open
 wurlitzer==3.1.1
     # via pycaret
@@ -1132,11 +1131,11 @@ xxhash==3.7.0
     #   datasets
     #   evaluate
     #   pycaret
-yarl==1.23.0
+yarl==1.24.2
     # via aiohttp
 yellowbrick==1.5
     # via pycaret
-zipp==3.23.1
+zipp==4.1.0
     # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
