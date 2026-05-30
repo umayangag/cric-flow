@@ -1,7 +1,6 @@
 package selection
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,34 +21,26 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 	// Case: teamSize 3, need at least 1 bowler -> should be satisfied by initial top-3 after sorting
 	sel, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 1)
 	require.NoError(t, err)
-	if len(sel) != 3 {
-		t.Fatalf("expected 3 selected, got %d", len(sel))
-	}
+	require.Len(t, sel, 3)
 	bowlers := 0
 	for _, p := range sel {
 		if p.Deliveries > 0 || p.Econ > 0 {
 			bowlers++
 		}
 	}
-	if bowlers < 1 {
-		t.Fatalf("expected at least 1 bowler, got %d", bowlers)
-	}
+	require.GreaterOrEqual(t, bowlers, 1)
 
 	// Case: teamSize 3, require 2 bowlers -> should swap one batter with next bowler
 	sel2, err := selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 3, 2)
 	require.NoError(t, err)
-	if len(sel2) != 3 {
-		t.Fatalf("expected 3 selected, got %d", len(sel2))
-	}
+	require.Len(t, sel2, 3)
 	bowlers = 0
 	for _, p := range sel2 {
 		if p.Deliveries > 0 || p.Econ > 0 {
 			bowlers++
 		}
 	}
-	if bowlers < 2 {
-		t.Fatalf("expected at least 2 bowlers after swap, got %d", bowlers)
-	}
+	require.GreaterOrEqual(t, bowlers, 2)
 
 	// Case: pool too small
 	_, err = selectTopWithMinBowlers(append([]predictor.PlayerPrediction{}, preds...), 10, 1)
@@ -74,18 +65,14 @@ func TestSelectTopWithMinBowlers(t *testing.T) {
 
 func TestComputeAverageWinProbability(t *testing.T) {
 	// Empty slice -> 0
-	if got := computeAverageWinProbability(nil); got != 0 {
-		t.Fatalf("avg empty got %v want 0", got)
-	}
+	require.Equal(t, 0.0, computeAverageWinProbability(nil))
 	ps := []predictor.PlayerPrediction{
 		{WinningProbability: 0.5},
 		{WinningProbability: 0.7},
 		{WinningProbability: 0.9},
 	}
 	want := (0.5 + 0.7 + 0.9) / 3.0
-	if got := computeAverageWinProbability(ps); math.Abs(got-want) > 1e-9 {
-		t.Fatalf("avg got %v want ~%v", got, want)
-	}
+	require.InDelta(t, want, computeAverageWinProbability(ps), 1e-9)
 }
 
 func TestParseF64(t *testing.T) {
@@ -100,9 +87,9 @@ func TestParseF64(t *testing.T) {
 	}
 	for i := range testCases {
 		tc := testCases[i]
-		if got := parseF64(tc.in); got != tc.want {
-			t.Errorf("parseF64(%q) = %v, want %v", tc.in, got, tc.want)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			require.Equal(t, tc.want, parseF64(tc.in))
+		})
 	}
 }
 
@@ -117,9 +104,9 @@ func TestPrevSeasonName(t *testing.T) {
 	}
 	for i := range testCases {
 		tc := testCases[i]
-		if got := prevSeasonName(tc.in); got != tc.want {
-			t.Errorf("prevSeasonName(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			require.Equal(t, tc.want, prevSeasonName(tc.in))
+		})
 	}
 }
 
@@ -134,31 +121,25 @@ func TestParseSeasonInt(t *testing.T) {
 	}
 	for i := range testCases {
 		tc := testCases[i]
-		if got := parseSeasonInt(tc.in); got != tc.want {
-			t.Errorf("parseSeasonInt(%q) = %d, want %d", tc.in, got, tc.want)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			require.Equal(t, tc.want, parseSeasonInt(tc.in))
+		})
 	}
 }
 
 func TestNz64(t *testing.T) {
-	if got := nz64(struct {
+	require.Equal(t, int64(10), nz64(struct {
 		Int64 int64
 		Valid bool
-	}{10, true}); got != 10 {
-		t.Errorf("nz64(valid) = %d, want 10", got)
-	}
-	if got := nz64(struct {
+	}{10, true}))
+	require.Equal(t, int64(0), nz64(struct {
 		Int64 int64
 		Valid bool
-	}{10, false}); got != 0 {
-		t.Errorf("nz64(invalid) = %d, want 0", got)
-	}
+	}{10, false}))
 }
 
 func TestF32(t *testing.T) {
-	if got := f32(3.14); got != 3.14 {
-		t.Errorf("f32(3.14) = %v, want 3.14", got)
-	}
+	require.Equal(t, float32(3.14), f32(3.14))
 }
 
 func TestParsePlayersFromCSV(t *testing.T) {

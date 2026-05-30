@@ -14,12 +14,8 @@ func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {
 
 	calcs, err := reg.ResolveTargets("bat_transitions")
 	require.NoError(t, err)
-	if len(calcs) != 1 {
-		t.Fatalf("expected 1 calc, got %d", len(calcs))
-	}
-	if calcs[0].Name() != seqcalc.TargetBatTransitions {
-		t.Fatalf("expected bat_transitions, got %s", calcs[0].Name())
-	}
+	require.Len(t, calcs, 1)
+	require.Equal(t, seqcalc.TargetBatTransitions, calcs[0].Name())
 
 	_, err = reg.ResolveTargets("unknown_target_xyz")
 	require.Error(t, err)
@@ -63,19 +59,13 @@ func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
 		seqcalc.TargetEndPressure:    {},
 	}
 
-	if len(gotTargets) != len(expected) {
-		t.Fatalf("unexpected targets count: got=%d want=%d list=%v", len(gotTargets), len(expected), gotTargets)
-	}
+	require.Len(t, gotTargets, len(expected))
 	for _, gt := range gotTargets {
-		if _, ok := expected[gt]; !ok {
-			t.Fatalf("unexpected target in registry: %s", gt)
-		}
+		require.Contains(t, expected, gt, "unexpected target in registry: %s", gt)
 	}
 
 	// Resolve "all" should return one calculator per expected target
 	calcs, err := reg.ResolveTargets("all")
 	require.NoError(t, err)
-	if len(calcs) != len(expected) {
-		t.Fatalf("unexpected calculators count for all: got=%d want=%d", len(calcs), len(expected))
-	}
+	require.Len(t, calcs, len(expected))
 }

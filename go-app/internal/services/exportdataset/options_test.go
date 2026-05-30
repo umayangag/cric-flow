@@ -15,18 +15,14 @@ type optsAssertFn func(t *testing.T, got svc.Options, err error)
 func assertNoErrorFormats(want []string) optsAssertFn {
 	return func(t *testing.T, got svc.Options, err error) {
 		require.NoError(t, err)
-		if len(got.Formats) != len(want) {
-			t.Fatalf("want %d formats, got %d (%v)", len(want), len(got.Formats), got.Formats)
-		}
+		require.Equal(t, len(want), len(got.Formats))
 		// Compare as sets (order-insensitive) for robustness
 		gotCopy := append([]string(nil), got.Formats...)
 		wantCopy := append([]string(nil), want...)
 		sort.Strings(gotCopy)
 		sort.Strings(wantCopy)
 		for i := range wantCopy {
-			if wantCopy[i] != gotCopy[i] {
-				t.Fatalf("want formats sorted[%d]=%q, got %q (got=%v)", i, wantCopy[i], gotCopy[i], got.Formats)
-			}
+			require.Equal(t, gotCopy[i], wantCopy[i])
 		}
 	}
 }

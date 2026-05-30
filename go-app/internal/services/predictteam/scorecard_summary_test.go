@@ -38,12 +38,9 @@ func TestComputeScorecardSummary_Team1Wins(t *testing.T) {
 	summary := predictteam.ComputeScorecardSummary(team1, team2, 5, 5, "IND", "AUS")
  require.Equal(t, float64(155), summary.Innings1Total)
  require.Equal(t, float64(145), summary.Innings2Total)
-	if summary.PredictedWinner != "IND" {
-		t.Errorf("predicted_winner: want IND got %q", summary.PredictedWinner)
-	}
-	if summary.ExtrasInnings1 != 5 || summary.ExtrasInnings2 != 5 {
-		t.Errorf("extras: want 5,5 got %.0f,%.0f", summary.ExtrasInnings1, summary.ExtrasInnings2)
-	}
+	require.Equal(t, "IND", summary.PredictedWinner)
+	require.Equal(t, float64(5), summary.ExtrasInnings1)
+	require.Equal(t, float64(5), summary.ExtrasInnings2)
 }
 
 func TestComputeScorecardSummary_Team2Wins(t *testing.T) {
@@ -77,9 +74,7 @@ func TestComputeScorecardSummary_Team2Wins(t *testing.T) {
 	summary := predictteam.ComputeScorecardSummary(team1, team2, 0, 0, "ENG", "PAK")
  require.Equal(t, float64(90), summary.Innings1Total)
  require.Equal(t, float64(120), summary.Innings2Total)
-	if summary.PredictedWinner != "PAK" {
-		t.Errorf("predicted_winner: want PAK got %q", summary.PredictedWinner)
-	}
+	require.Equal(t, "PAK", summary.PredictedWinner)
 }
 
 func TestComputeScorecardSummary_Tie(t *testing.T) {
@@ -111,20 +106,14 @@ func TestComputeScorecardSummary_Tie(t *testing.T) {
 	}
 	// 165 each.
 	summary := predictteam.ComputeScorecardSummary(team1, team2, 0, 0, "A", "B")
-	if summary.Innings1Total != 165 || summary.Innings2Total != 165 {
-		t.Errorf("totals: want 165,165 got %.0f,%.0f", summary.Innings1Total, summary.Innings2Total)
-	}
-	if summary.PredictedWinner != "" {
-		t.Errorf("predicted_winner: want empty on tie got %q", summary.PredictedWinner)
-	}
+	require.Equal(t, float64(165), summary.Innings1Total)
+	require.Equal(t, float64(165), summary.Innings2Total)
+	require.Empty(t, summary.PredictedWinner)
 }
 
 func TestComputeScorecardSummary_EmptyTeams(t *testing.T) {
 	summary := predictteam.ComputeScorecardSummary(nil, nil, 0, 0, "X", "Y")
-	if summary.Innings1Total != 0 || summary.Innings2Total != 0 {
-		t.Errorf("empty teams: want 0,0 got %.0f,%.0f", summary.Innings1Total, summary.Innings2Total)
-	}
-	if summary.PredictedWinner != "" {
-		t.Errorf("predicted_winner: want empty got %q", summary.PredictedWinner)
-	}
+	require.Equal(t, float64(0), summary.Innings1Total)
+	require.Equal(t, float64(0), summary.Innings2Total)
+	require.Empty(t, summary.PredictedWinner)
 }

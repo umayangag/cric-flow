@@ -14,15 +14,11 @@ func TestParsePlayersCSV_Basic(t *testing.T) {
 
 	players, err := parsePlayersCSV(strings.NewReader(csv))
 	require.NoError(t, err)
-	if len(players) != 2 {
-		t.Fatalf("want 2 players, got %d", len(players))
-	}
-	if players[0].PlayerName != "Alice" || players[1].PlayerName != "Bob" {
-		t.Fatalf("unexpected names: %#v", players)
-	}
-	if players[0].RunsScored != 30 || players[1].WicketsTaken != 2 {
-		t.Fatalf("unexpected parsed values: %#v", players)
-	}
+	require.Len(t, players, 2)
+	require.Equal(t, "Alice", players[0].PlayerName)
+	require.Equal(t, "Bob", players[1].PlayerName)
+	require.Equal(t, float64(30), players[0].RunsScored)
+	require.Equal(t, float64(2), players[1].WicketsTaken)
 }
 
 func TestParsePlayersCSV_Empty(t *testing.T) {

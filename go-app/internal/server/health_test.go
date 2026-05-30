@@ -14,10 +14,6 @@ func TestHealthHandler_OK(t *testing.T) {
 	healthHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var body map[string]string
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Fatalf("expected status ok, got %v", body)
-	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+	require.Equal(t, "ok", body["status"])
 }

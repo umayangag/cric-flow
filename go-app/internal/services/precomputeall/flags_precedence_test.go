@@ -14,9 +14,7 @@ func TestMigrationsDefaultFromEnv(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	opts, err := svc.ParseArgs(fs, []string{"-format", "T20"})
 	require.NoError(t, err)
-	if opts.MigrationsDir != "/tmp/env-migs" {
-		t.Fatalf("migrations dir default from env not applied: got=%q want=/tmp/env-migs", opts.MigrationsDir)
-	}
+	require.Equal(t, "/tmp/env-migs", opts.MigrationsDir)
 }
 
 func TestMigrationsFlagOverridesEnv(t *testing.T) {
@@ -24,7 +22,5 @@ func TestMigrationsFlagOverridesEnv(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	opts, err := svc.ParseArgs(fs, []string{"-format", "ODI", "-migrations", "/opt/flag-migs"})
 	require.NoError(t, err)
-	if opts.MigrationsDir != "/opt/flag-migs" {
-		t.Fatalf("flag should override env: got=%q want=/opt/flag-migs", opts.MigrationsDir)
-	}
+	require.Equal(t, "/opt/flag-migs", opts.MigrationsDir)
 }

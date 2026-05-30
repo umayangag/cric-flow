@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
 )
 
@@ -11,37 +12,18 @@ type assertMetricsFn func(t *testing.T, got svc.Metrics)
 
 func assertApprox(want svc.Metrics, eps float64) assertMetricsFn {
 	return func(t *testing.T, got svc.Metrics) {
-		if !approx(got.MAE, want.MAE, eps) {
-			t.Fatalf("MAE want %.4f got %.4f", want.MAE, got.MAE)
-		}
-		if !approx(got.RMSE, want.RMSE, eps) {
-			t.Fatalf("RMSE want %.4f got %.4f", want.RMSE, got.RMSE)
-		}
-		if !approx(got.Brier, want.Brier, eps) {
-			t.Fatalf("Brier want %.4f got %.4f", want.Brier, got.Brier)
-		}
+		require.InDelta(t, want.MAE, got.MAE, eps, "MAE")
+		require.InDelta(t, want.RMSE, got.RMSE, eps, "RMSE")
+		require.InDelta(t, want.Brier, got.Brier, eps, "Brier")
 	}
 }
 
 func assertNaNs() assertMetricsFn {
 	return func(t *testing.T, got svc.Metrics) {
-		if !math.IsNaN(got.MAE) {
-			t.Fatalf("MAE want NaN got %.4f", got.MAE)
-		}
-		if !math.IsNaN(got.RMSE) {
-			t.Fatalf("RMSE want NaN got %.4f", got.RMSE)
-		}
-		if !math.IsNaN(got.Brier) {
-			t.Fatalf("Brier want NaN got %.4f", got.Brier)
-		}
+		require.True(t, math.IsNaN(got.MAE), "MAE want NaN got %v", got.MAE)
+		require.True(t, math.IsNaN(got.RMSE), "RMSE want NaN got %v", got.RMSE)
+		require.True(t, math.IsNaN(got.Brier), "Brier want NaN got %v", got.Brier)
 	}
-}
-
-func approx(a, b, eps float64) bool {
-	if math.IsNaN(a) && math.IsNaN(b) {
-		return true
-	}
-	return math.Abs(b-a) < eps
 }
 
 func TestComputeMetrics(t *testing.T) {

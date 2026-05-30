@@ -67,14 +67,8 @@ func TestBacktestAccuracyTrendHandler_EmptyResults(t *testing.T) {
 	app.backtestAccuracyTrendHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	require.Equal(t, 0, payload.Count)
-	if len(payload.Results) != 0 {
-		t.Fatalf("Results len = %d, want 0", len(payload.Results))
-	}
-	if n, ok := payload.Summary["n"]; !ok || n != 0 {
-		t.Fatalf("Summary.n = %v, want 0", payload.Summary["n"])
-	}
+	require.Empty(t, payload.Results)
+	require.Equal(t, float64(0), payload.Summary["n"])
 }

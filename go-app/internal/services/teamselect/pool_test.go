@@ -30,42 +30,28 @@ type assertDBFn func(t *testing.T, ps []ts.Player, err error)
 func assertNoErrorCountCSV(n int) assertCSVFn {
 	return func(t *testing.T, ps []ts.Player, err error) {
 		require.NoError(t, err)
-		if len(ps) != n {
-			t.Fatalf("want %d players got %d", n, len(ps))
-		}
+		require.Equal(t, n, len(ps))
 	}
 }
 
 func assertErrContainsCSV(sub string) assertCSVFn {
 	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || !strings.Contains(s, sub) {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 
 func assertNoErrorCountDB(n int) assertDBFn {
 	return func(t *testing.T, ps []ts.Player, err error) {
 		require.NoError(t, err)
-		if len(ps) != n {
-			t.Fatalf("want %d players got %d", n, len(ps))
-		}
+		require.Equal(t, n, len(ps))
 	}
 }
 
 func assertErrContainsDB(sub string) assertDBFn {
 	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || !strings.Contains(s, sub) {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 

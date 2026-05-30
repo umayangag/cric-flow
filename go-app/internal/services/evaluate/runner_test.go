@@ -64,9 +64,7 @@ func TestRunner_Run(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if !strings.Contains(buf.String(), tc.wantSub) {
-				t.Fatalf("output %q does not contain %q", buf.String(), tc.wantSub)
-			}
+			require.Contains(t, buf.String(), tc.wantSub)
 		})
 	}
 }

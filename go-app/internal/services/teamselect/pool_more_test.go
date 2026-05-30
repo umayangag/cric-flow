@@ -18,15 +18,13 @@ func TestLoadFromCSV_MoreErrors(t *testing.T) {
 	// missing name
 	badName := "name,is_bowler,is_keeper,bat_score,bowl_score\n ,1,0,0.2,0.3\n"
 	_, err = ts.LoadFromCSV(strings.NewReader(badName))
-	if err == nil || !contains2(err.Error(), "name") {
-		t.Fatalf("want invalid name err got %v", err)
-	}
+	require.Error(t, err)
+	require.True(t, contains2(err.Error(), "name"))
 	// bad bowl_score
 	badBowl := "name,is_bowler,is_keeper,bat_score,bowl_score\nA,0,0,0.2,abc\n"
 	_, err = ts.LoadFromCSV(strings.NewReader(badBowl))
-	if err == nil || !contains2(err.Error(), "bowl_score") {
-		t.Fatalf("want invalid bowl_score err got %v", err)
-	}
+	require.Error(t, err)
+	require.True(t, contains2(err.Error(), "bowl_score"))
 }
 
 func TestLoadFromDB_ErrPropagate(t *testing.T) {
@@ -46,20 +44,16 @@ func TestSelect_EdgeErrorsAndTies(t *testing.T) {
 	// Equal scores should sort by name ascending deterministically
 	team, err := ts.Select(pool, w, ts.Constraints{Size: 1})
 	require.NoError(t, err)
-	if len(team) != 1 || team[0].Name != "A" {
-		t.Fatalf("want A selected first, got %#v", team)
-	}
+	require.Len(t, team, 1)
+	require.Equal(t, "A", team[0].Name)
 	// invalid constraints
-	if _, err := ts.Select(pool, w, ts.Constraints{Size: 0}); err == nil {
-		t.Fatalf("want error for invalid size")
-	}
-	if _, err := ts.Select(pool, w, ts.Constraints{Size: 1, MinBowlers: -1}); err == nil {
-		t.Fatalf("want error for invalid min bowlers")
-	}
+	_, err = ts.Select(pool, w, ts.Constraints{Size: 0})
+	require.Error(t, err)
+	_, err = ts.Select(pool, w, ts.Constraints{Size: 1, MinBowlers: -1})
+	require.Error(t, err)
 	// require keeper but none available
-	if _, err := ts.Select(pool, w, ts.Constraints{Size: 1, RequireKeeper: true}); err == nil {
-		t.Fatalf("want error for missing keeper")
-	}
+	_, err = ts.Select(pool, w, ts.Constraints{Size: 1, RequireKeeper: true})
+	require.Error(t, err)
 }
 
 func contains2(s, sub string) bool { return indexOf2(s, sub) >= 0 }

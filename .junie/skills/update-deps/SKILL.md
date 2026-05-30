@@ -1,8 +1,10 @@
-When the user says "/update-deps" or asks to update dependencies, upgrade packages, bump deps, or refresh go-app/ml-service/frontend dependencies
+When the user says "/update-deps" or asks to update dependencies, upgrade packages, bump deps, or refresh go-app/ml-service/frontend dependencies (on the current branch, without opening PRs)
 
 # Update Dependencies
 
 Update dependencies across **go-app**, **ml-service**, and **frontend**. Run from the repository root.
+
+For **separate PRs per component off main**, use `/update-deps-prs` instead.
 
 ## Scope
 

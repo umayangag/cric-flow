@@ -25,13 +25,8 @@ func assertNoErrorApplyDir(wantDir string, wantApply bool, wantConc int) assertF
 func assertErrorContains(sub string) assertFn {
 	return func(t *testing.T, _ svc.Options, err error) {
 		t.Helper()
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q, got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 
@@ -94,9 +89,7 @@ func TestParseArgs_Basic(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, got.PlaceholdersWeather)
 				require.True(t, got.PlaceholdersFielding)
-				if got.WeatherEnqueue {
-					t.Fatalf("expected weather-enqueue false")
-				}
+ 			require.False(t, got.WeatherEnqueue)
 			},
 		},
 	}

@@ -97,27 +97,17 @@ func TestOpsStatusHandler_DBProbeMapping(t *testing.T) {
 			require.Equal(t, http.StatusOK, rr.Code)
 			// decode as generic map to inspect fields easily
 			var m map[string]any
-			if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
-				t.Fatalf("invalid json: %v", err)
-			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &m))
 			dbAny := m["db"].(map[string]any)
-			if got := dbAny["connected"].(bool); got != tc.wantConn {
-				t.Fatalf("connected mismatch: got %v want %v", got, tc.wantConn)
-			}
-			if migAny, ok := dbAny["migration"].(map[string]any); ok {
-				if status, _ := migAny["status"].(string); status != tc.wantStatus {
-					t.Fatalf("migration status mismatch: got %q want %q", status, tc.wantStatus)
-				}
-			} else {
-				t.Fatalf("missing migration field")
-			}
+			require.Equal(t, tc.wantConn, dbAny["connected"].(bool), "connected mismatch")
+			migAny, ok := dbAny["migration"].(map[string]any)
+			require.True(t, ok, "missing migration field")
+			require.Equal(t, tc.wantStatus, migAny["status"].(string), "migration status mismatch")
 			if tc.wantConn && tc.wantCounts != nil {
 				countsAny, ok := dbAny["counts"].(map[string]any)
 				require.True(t, ok)
 				for k, v := range tc.wantCounts {
-					if got, ok := countsAny[k].(float64); !ok || int64(got) != v {
-						t.Fatalf("count %s mismatch: got %v want %d", k, countsAny[k], v)
-					}
+					require.Equal(t, v, int64(countsAny[k].(float64)), "count %s mismatch", k)
 				}
 			}
 		})

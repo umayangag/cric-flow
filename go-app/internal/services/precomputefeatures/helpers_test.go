@@ -30,13 +30,9 @@ func TestParseAsOf(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.wantHas, has)
 			if tc.wantHas {
-				if got.Format("2006-01-02") != tc.wantYMD {
-					t.Fatalf("date mismatch: got %s want %s", got.Format("2006-01-02"), tc.wantYMD)
-				}
+				require.Equal(t, tc.wantYMD, got.Format("2006-01-02"))
 			} else {
-				if !got.IsZero() {
-					t.Fatalf("expected zero time when no date, got %v", got)
-				}
+ 			require.True(t, got.IsZero(), "expected zero time when no date, got %v", got)
 			}
 		})
 	}
@@ -81,9 +77,7 @@ func TestValidateLastN(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateLastN(tc.n)
-			if (err == nil) != tc.ok {
-				t.Fatalf("validateLastN(%d) ok=%v err=%v", tc.n, tc.ok, err)
-			}
+			require.Equal(t, tc.ok, (err == nil))
 		})
 	}
 }

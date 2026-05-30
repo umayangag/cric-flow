@@ -1,6 +1,10 @@
 package selection
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestEncodeSession(t *testing.T) {
 	t.Parallel()
@@ -18,10 +22,10 @@ func TestEncodeSession(t *testing.T) {
 	}
 	for i := range testCases {
 		tc := testCases[i]
-		got := encodeSession(tc.in)
-		if got != tc.want {
-			t.Errorf("encodeSession(%d) = %d, want %d", tc.in, got, tc.want)
-		}
+		t.Run("", func(t *testing.T) {
+			got := encodeSession(tc.in)
+			require.Equal(t, tc.want, got, "encodeSession(%d)", tc.in)
+		})
 	}
 }
 
@@ -41,9 +45,9 @@ func TestEncodeViscosity(t *testing.T) {
 	}
 	for i := range testCases {
 		tc := testCases[i]
-		got := encodeViscosity(tc.in)
-		if got != tc.want {
-			t.Errorf("encodeViscosity(%d) = %d, want %d", tc.in, got, tc.want)
-		}
+		t.Run("", func(t *testing.T) {
+			got := encodeViscosity(tc.in)
+			require.Equal(t, tc.want, got, "encodeViscosity(%d)", tc.in)
+		})
 	}
 }

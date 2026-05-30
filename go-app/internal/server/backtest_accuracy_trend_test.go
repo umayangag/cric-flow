@@ -125,37 +125,21 @@ func TestBacktestAccuracyTrend_HappyPath(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	require.Equal(t, 2, payload.Count)
-	// Check per-match metrics exist
-	if len(payload.Results) != 2 {
-		t.Fatalf("results len = %d, want 2", len(payload.Results))
-	}
+	require.Len(t, payload.Results, 2)
 	// player_runs_mae should be ~3.6667 for each
 	for i, it := range payload.Results {
-		mae := it.Metrics["player_runs_mae"]
-		if mae < 3.66 || mae > 3.67 {
-			t.Fatalf("[%d] player_runs_mae = %f, want ~3.6667", i, mae)
-		}
+		require.InDelta(t, 3.6667, it.Metrics["player_runs_mae"], 0.01, "[%d] player_runs_mae", i)
 	}
 	// team_runs_mae for m1: |155-160|=5, m2: |155-150|=5, avg=5
-	if payload.Summary["team_runs_mae_avg"] < 4.99 || payload.Summary["team_runs_mae_avg"] > 5.01 {
-		t.Fatalf("team_runs_mae_avg = %f, want 5", payload.Summary["team_runs_mae_avg"])
-	}
+	require.InDelta(t, 5.0, payload.Summary["team_runs_mae_avg"], 0.01)
 	// winner accuracy: m1 predicted IND vs actual IND => 1, m2 predicted IND vs actual AUS => 0, avg=0.5
-	if payload.Summary["team_winner_accuracy_avg"] < 0.49 || payload.Summary["team_winner_accuracy_avg"] > 0.51 {
-		t.Fatalf("team_winner_accuracy_avg = %f, want 0.5", payload.Summary["team_winner_accuracy_avg"])
-	}
+	require.InDelta(t, 0.5, payload.Summary["team_winner_accuracy_avg"], 0.01)
 	// progressive last should match summary averages approximately
 	last := payload.Progressive[len(payload.Progressive)-1]
-	if last["n"] != 2 {
-		t.Fatalf("progressive last n = %f, want 2", last["n"])
-	}
-	if last["team_winner_accuracy_avg"] < 0.49 || last["team_winner_accuracy_avg"] > 0.51 {
-		t.Fatalf("progressive team_winner_accuracy_avg = %f, want 0.5", last["team_winner_accuracy_avg"])
-	}
+	require.Equal(t, float64(2), last["n"])
+	require.InDelta(t, 0.5, last["team_winner_accuracy_avg"], 0.01)
 }
 
 // Verify that order=desc changes the progressive accumulation sequence (while per-match values remain valid)
@@ -221,25 +205,15 @@ func TestBacktestAccuracyTrend_OrderingDesc_Progressive(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	require.Equal(t, 2, payload.Count)
 	// Progressive first item reflects first result (desc: matchID 202)
-	if len(payload.Progressive) != 2 {
-		t.Fatalf("progressive len = %d, want 2", len(payload.Progressive))
-	}
-	if payload.Progressive[0]["n"] != 1 {
-		t.Fatalf("progressive[0].n = %f, want 1", payload.Progressive[0]["n"])
-	}
+	require.Len(t, payload.Progressive, 2)
+	require.Equal(t, float64(1), payload.Progressive[0]["n"])
 	// Winner accuracy average after first item must be either 1 or 0; last should be 0.5 as in happy path
 	last := payload.Progressive[1]
-	if last["n"] != 2 {
-		t.Fatalf("last n = %f, want 2", last["n"])
-	}
-	if last["team_winner_accuracy_avg"] < 0.49 || last["team_winner_accuracy_avg"] > 0.51 {
-		t.Fatalf("last team_winner_accuracy_avg = %f, want 0.5", last["team_winner_accuracy_avg"])
-	}
+	require.Equal(t, float64(2), last["n"])
+	require.InDelta(t, 0.5, last["team_winner_accuracy_avg"], 0.01)
 }
 
 // Verify that limit parameter reduces the candidate set used for metrics
@@ -323,15 +297,9 @@ func TestBacktestAccuracyTrend_Limit(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if payload.Count != 2 {
-		t.Fatalf("count = %d, want 2 (limit applied)", payload.Count)
-	}
-	if len(payload.Results) != 2 {
-		t.Fatalf("results len = %d, want 2 (limit applied)", len(payload.Results))
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
+	require.Equal(t, 2, payload.Count)
+	require.Len(t, payload.Results, 2)
 }
 
 // Verify that start_date/end_date filters are parsed and passed through to the seam
@@ -340,9 +308,8 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 		// Capture received start/end and return candidates accordingly
 		listPlayedMatchesByFilters = func(_ context.Context, _ string, _ string, _ string, start, end time.Time, order string, _ int) ([]backtestCandidate, error) {
 			// Expect start=2024-10-11 and end=2024-10-25
-			if start.IsZero() || end.IsZero() {
-				t.Fatalf("expected non-zero start/end dates, got start=%v end=%v", start, end)
-			}
+			require.False(t, start.IsZero(), "expected non-zero start date")
+			require.False(t, end.IsZero(), "expected non-zero end date")
 			// Build three dates; only middle one within range
 			d1 := time.Date(2024, 10, 10, 14, 0, 0, 0, time.UTC)
 			d2 := time.Date(2024, 10, 20, 14, 0, 0, 0, time.UTC)
@@ -404,15 +371,10 @@ func TestBacktestAccuracyTrend_DateRangeFiltering(t *testing.T) {
 	app.backtestAccuracyTrendHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if payload.Count != 1 {
-		t.Fatalf("count = %d, want 1 (only middle date in range)", payload.Count)
-	}
-	if len(payload.Results) != 1 || payload.Results[0].MatchID != 402 {
-		t.Fatalf("unexpected results: %+v", payload.Results)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
+	require.Equal(t, 1, payload.Count)
+	require.Len(t, payload.Results, 1)
+	require.Equal(t, int64(402), payload.Results[0].MatchID)
 }
 
 // Verify that team1/team2 filters are passed; seam returns only when both match
@@ -453,12 +415,10 @@ func TestBacktestAccuracyTrend_TeamFiltering(t *testing.T) {
 	app.backtestAccuracyTrendHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if payload.Count != 1 || payload.Results[0].Team1 != "IND" || payload.Results[0].Team2 != "AUS" {
-		t.Fatalf("unexpected results: %+v", payload.Results)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
+	require.Equal(t, 1, payload.Count)
+	require.Equal(t, "IND", payload.Results[0].Team1)
+	require.Equal(t, "AUS", payload.Results[0].Team2)
 }
 
 // --- Cache mode tests ---
@@ -506,7 +466,7 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 
 		// Make ML match aggregates seam fail if called (should not be when cache=read)
 		mlBacktestPredictMatchAggregatesFunc = func(_ context.Context, _ time.Time, _ [2]string) (matchAggregates, string, error) {
-			t.Fatalf("ML match aggregates was called despite cache=read")
+			require.Fail(t, "ML match aggregates was called despite cache=read")
 			return matchAggregates{}, "", nil
 		}
 
@@ -526,14 +486,10 @@ func TestBacktestAccuracyTrend_CacheRead_UsesCache(t *testing.T) {
 	app.backtestAccuracyTrendHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	require.Equal(t, 1, payload.Count)
 	// team_runs_mae should be |155-150| = 5 from cached predictions
-	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 4.99 || v > 5.01 {
-		t.Fatalf("team_runs_mae = %f, want 5 (from cache)", v)
-	}
+	require.InDelta(t, 5.0, payload.Results[0].Metrics["team_runs_mae"], 0.01)
 }
 
 // cache=off should ignore cache even if present and use ML predictions
@@ -592,14 +548,10 @@ func TestBacktestAccuracyTrend_CacheOff_IgnoresCache(t *testing.T) {
 	app.backtestAccuracyTrendHandler(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	var payload accuracyTrendResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	require.Equal(t, 1, payload.Count)
 	// Expect ML value 152 vs actual 150 => MAE 2 (not using cached 140)
-	if v := payload.Results[0].Metrics["team_runs_mae"]; v < 1.99 || v > 2.01 {
-		t.Fatalf("team_runs_mae = %f, want 2 (from ML, ignoring cache)", v)
-	}
+	require.InDelta(t, 2.0, payload.Results[0].Metrics["team_runs_mae"], 0.01)
 }
 
 // cache=readwrite should compute on miss and upsert cache
@@ -644,12 +596,11 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		// Capture upsert invocation
 		upsertMatchPredictionAggregatesFunc = func(_ context.Context, row db.MatchPredictionAggregates) error {
 			called = true
-			if row.MatchID != 603 || row.Team1Code != "IND" || row.Team2Code != "AUS" {
-				t.Fatalf("unexpected upsert row: %+v", row)
-			}
-			if !row.PredictedTotalRuns.Valid || row.PredictedTotalRuns.Float64 != 149 {
-				t.Fatalf("expected upsert predicted_total_runs=149, got %+v", row.PredictedTotalRuns)
-			}
+			require.Equal(t, int64(603), row.MatchID)
+			require.Equal(t, "IND", row.Team1Code)
+			require.Equal(t, "AUS", row.Team2Code)
+			require.True(t, row.PredictedTotalRuns.Valid)
+			require.Equal(t, float64(149), row.PredictedTotalRuns.Float64)
 			return nil
 		}
 

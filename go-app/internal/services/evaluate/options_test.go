@@ -47,9 +47,8 @@ func TestParseArgs_NilFlagSet(t *testing.T) {
 	t.Parallel()
 	got, err := svc.ParseArgs(nil, []string{})
 	require.NoError(t, err)
-	if got.Season != "demo" || got.Format != "T20" {
-		t.Fatalf("unexpected defaults: %+v", got)
-	}
+	require.Equal(t, "demo", got.Season)
+	require.Equal(t, "T20", got.Format)
 }
 
 func TestParseArgs_UnknownFlag(t *testing.T) {

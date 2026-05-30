@@ -18,13 +18,9 @@ type assertStrsFn func(t *testing.T, got []string)
 
 func assertEqualSlice(want []string) assertStrsFn {
 	return func(t *testing.T, got []string) {
-		if len(got) != len(want) {
-			t.Fatalf("want len=%d got len=%d (%v)", len(want), len(got), got)
-		}
+		require.Equal(t, len(want), len(got))
 		for i := range want {
-			if want[i] != got[i] {
-				t.Fatalf("at %d: want %q got %q (full got=%v)", i, want[i], got[i], got)
-			}
+			require.Equal(t, got[i], want[i])
 		}
 	}
 }

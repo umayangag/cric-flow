@@ -2,7 +2,6 @@ package predictor_test
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -28,9 +27,7 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("team mismatch\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
@@ -50,9 +47,7 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 0)
 	require.NoError(t, err)
-	if len(got) != 0 {
-		t.Fatalf("expected empty team for size 0, got %d", len(got))
-	}
+	require.Empty(t, got)
 }
 
 func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
@@ -62,9 +57,7 @@ func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 11)
 	require.NoError(t, err)
-	if len(got) != 0 {
-		t.Fatalf("expected empty team for empty input, got %d", len(got))
-	}
+	require.Empty(t, got)
 }
 
 func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
@@ -84,9 +77,7 @@ func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
 		{PlayerName: "B", WinningProbability: 0.6},
 		{PlayerName: "C", WinningProbability: 0.6},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected team\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 type assertErr struct{}
@@ -110,7 +101,5 @@ func TestBuildTeam_TeamSizeLessThanPlayersSelectsTopN(t *testing.T) {
 		{PlayerName: "D", WinningProbability: 0.8},
 		{PlayerName: "A", WinningProbability: 0.7},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected team\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }

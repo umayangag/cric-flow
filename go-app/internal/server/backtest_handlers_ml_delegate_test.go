@@ -131,46 +131,40 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?"+tc.query.Encode(), nil)
 			rr := httptest.NewRecorder()
 			app.backtestMatchHandler(rr, req)
-			if rr.Code != tc.wantStatus {
-				t.Fatalf("status=%d want=%d body=%s", rr.Code, tc.wantStatus, rr.Body.String())
-			}
+			require.Equal(t, tc.wantStatus, rr.Code, "body=%s", rr.Body.String())
 			var body map[string]any
 			_ = json.Unmarshal(rr.Body.Bytes(), &body)
 			if tc.wantErrorCode != "" {
 				// Expect error payload shape
-				if body["code"] != tc.wantErrorCode {
-					t.Fatalf("error code=%v want=%s body=%v", body["code"], tc.wantErrorCode, body)
-				}
+				require.Equal(t, tc.wantErrorCode, body["code"])
 				return
 			}
 			// Success path assertions
 			// Filters.delegated and model_version present
 			filters, ok := body["filters"].(map[string]any)
-			if !ok || filters["delegated"] != true || filters["model_version"] == nil {
-				t.Fatalf("missing delegated/model_version in filters: %+v", body)
-			}
+			require.True(t, ok, "filters missing")
+			require.Equal(t, true, filters["delegated"])
+			require.NotNil(t, filters["model_version"])
 			// Metrics include player_runs_mae and winner_accuracy
 			metrics, ok := body["metrics"].(map[string]any)
 			require.True(t, ok)
 			if tc.wantPlayerMAE != nil {
-				if got, _ := metrics["player_runs_mae"].(float64); !floatApproxEqual(got, *tc.wantPlayerMAE) {
-					t.Fatalf("player_runs_mae=%v want=%v", got, *tc.wantPlayerMAE)
-				}
+				got, _ := metrics["player_runs_mae"].(float64)
+				require.InDelta(t, *tc.wantPlayerMAE, got, 1e-9)
 			}
 			if tc.wantWinnerAcc != nil {
-				if got, _ := metrics["winner_accuracy"].(float64); !floatApproxEqual(got, *tc.wantWinnerAcc) {
-					t.Fatalf("winner_accuracy=%v want=%v", got, *tc.wantWinnerAcc)
-				}
+				got, _ := metrics["winner_accuracy"].(float64)
+				require.InDelta(t, *tc.wantWinnerAcc, got, 1e-9)
 			}
 			// Players array present
-			if _, ok := body["players"].([]any); !ok {
-				t.Fatalf("players not found or wrong type: %+v", body)
-			}
+			_, ok = body["players"].([]any)
+			require.True(t, ok, "players not found or wrong type")
 			// Match aggregates present
 			ma, ok := body["match_aggregates"].(map[string]any)
-			if !ok || ma["predicted"] == nil || ma["actual"] == nil || ma["errors"] == nil {
-				t.Fatalf("match_aggregates missing fields: %+v", body)
-			}
+			require.True(t, ok, "match_aggregates missing")
+			require.NotNil(t, ma["predicted"])
+			require.NotNil(t, ma["actual"])
+			require.NotNil(t, ma["errors"])
 		})
 	}
 }

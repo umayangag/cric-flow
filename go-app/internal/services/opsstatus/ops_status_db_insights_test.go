@@ -110,18 +110,13 @@ func TestBuildDBFreshnessSection_Table(t *testing.T) {
 			for k, want := range tc.wantSt {
 				m, ok := fm[k].(map[string]any)
 				require.True(t, ok)
-				if st, _ := m["status"].(string); st != want {
-					t.Fatalf("status[%s]=%q want %q", k, st, want)
-				}
+ 			st := m["status"].(string)
+ 				require.Equal(t, want, st)
 			}
 			// overall
-			if ov, ok := got["overall"].(map[string]any); ok {
-				if st, _ := ov["status"].(string); st != tc.wantOv {
-					t.Fatalf("overall status=%q want %q", st, tc.wantOv)
-				}
-			} else {
-				t.Fatalf("overall missing")
-			}
+				ov, ok := got["overall"].(map[string]any)
+				require.True(t, ok, "overall missing")
+				require.Equal(t, tc.wantOv, ov["status"].(string))
 		})
 	}
 }
@@ -141,17 +136,13 @@ func TestBuildDBCompletenessSection_Table(t *testing.T) {
 	want := map[string]string{"TEST": "ok", "ODI": "ok", "T20I": "missing", "T20": "ok"}
 	for k, w := range want {
 		m := fm[k].(map[string]any)
-		if st := m["status"].(string); st != w {
-			t.Fatalf("status[%s]=%q want %q", k, st, w)
-		}
+ 	st := m["status"].(string)
+ 	require.Equal(t, w, st)
 	}
 	ov := got["overall"].(map[string]any)
-	if st := ov["status"].(string); st != "missing" { // worst is missing
-		t.Fatalf("overall=%q want missing", st)
-	}
-	if n, _ := ov["matches_last_30d"].(int64); n != 8 { // 2+1+0+5
-		t.Fatalf("overall matches_last_30d=%v want 8", n)
-	}
+	require.Equal(t, "missing", ov["status"].(string))
+	n, _ := ov["matches_last_30d"].(int64)
+	require.Equal(t, int64(8), n)
 }
 
 func TestBuildDBCompletenessSection_ErrorUnknown(t *testing.T) {
@@ -162,7 +153,6 @@ func TestBuildDBCompletenessSection_ErrorUnknown(t *testing.T) {
 	got := BuildDBCompletenessSection(context.Background(), p, now)
 	fm := got["formats"].(map[string]any)
 	m := fm["ODI"].(map[string]any)
-	if st := m["status"].(string); st != "unknown" {
-		t.Fatalf("status[ODI]=%q want unknown", st)
-	}
+	st2 := m["status"].(string)
+	require.Equal(t, "unknown", st2)
 }

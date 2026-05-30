@@ -29,9 +29,7 @@ func assertErrorContains(sub string) assertFn {
 		if err != nil {
 			s = err.Error()
 		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.NotEqual(t, nil || indexOf(s, sub) < 0, err)
 	}
 }
 

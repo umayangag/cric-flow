@@ -25,9 +25,7 @@ func TestIsPermissionDenied(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := isPermissionDenied(tc.err)
-			if got != tc.want {
-				t.Errorf("isPermissionDenied(%v) = %v, want %v", tc.err, got, tc.want)
-			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -55,9 +53,7 @@ func TestSafeFormatForFilename(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := safeFormatForFilename(tc.s)
-			if got != tc.want {
-				t.Errorf("safeFormatForFilename(%q) = %v, want %v", tc.s, got, tc.want)
-			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

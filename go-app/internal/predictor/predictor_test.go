@@ -82,9 +82,7 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 				require.Equal(t, tc.expect.TotalWickets, team.TotalWickets)
 				require.Equal(t, tc.expect.Extras, team.Extras)
 				require.Equal(t, tc.expect.MatchNumber, team.MatchNumber)
-				if len(team.Players) != 0 {
-					t.Fatalf("Players length mismatch: got %d want %d", len(team.Players), 0)
-				}
+ 				require.Empty(t, team.Players)
 				return
 			}
 
@@ -105,9 +103,7 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 			require.Equal(t, tc.expect.TotalWickets, team.TotalWickets)
 			require.Equal(t, tc.expect.Extras, team.Extras)
 			require.Equal(t, tc.expect.MatchNumber, team.MatchNumber)
-			if len(team.Players) != len(tc.players) {
-				t.Fatalf("Players length mismatch: got %d want %d", len(team.Players), len(tc.players))
-			}
+			require.Len(t, team.Players, len(tc.players))
 		})
 	}
 }
