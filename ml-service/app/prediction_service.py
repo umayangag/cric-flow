@@ -19,6 +19,19 @@ if TYPE_CHECKING:
 import numpy as np
 from fastapi import HTTPException
 
+from ml.config import get_prediction_defaults, get_win_coherence_config
+from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
+from ml.train_extras import EXTRAS_FEATURE_COLS, LEGACY_EXTRAS_FEATURE_COLS
+from ml.win_coherence_metrics import win_probability_coherence_from_margin
+from ml.win_features import (
+    WIN_ENHANCED_FEATURE_COLS,
+    aggregate_team_features_from_player_maps,
+    build_feature_vector,
+    compute_derived_features,
+    format_one_hot_from_code,
+)
+from ml.win_features_from_reconciled import build_win_features_standardized
+
 from .artifacts import (
     BAT_MODELS,
     BAT_SHARE_MODELS,
@@ -55,37 +68,8 @@ from .models import (
     WinPrediction,
 )
 from .prediction_settings import GenerateMatchSettings, round_datetime_to_granularity
-from .reconciliation import predict_innings, rescale_player_predictions
+from .reconciliation import predict_innings
 from .train_on_the_fly import train_on_the_fly_cached
-
-try:
-    from ml.config import get_prediction_defaults, get_win_coherence_config
-    from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
-except ImportError:
-    get_prediction_defaults = None  # type: ignore[assignment]
-    get_win_coherence_config = None  # type: ignore[assignment]
-    apply_constraint_reconciliation_from_backtest_preds = None  # type: ignore[assignment]
-
-try:
-    from ml.train_extras import EXTRAS_FEATURE_COLS, LEGACY_EXTRAS_FEATURE_COLS
-except ImportError:
-    EXTRAS_FEATURE_COLS = []
-    LEGACY_EXTRAS_FEATURE_COLS = ()  # type: ignore[misc, assignment]
-
-try:
-    from ml.win_features import (
-        WIN_ENHANCED_FEATURE_COLS,
-        aggregate_team_features_from_player_maps,
-        build_feature_vector,
-        compute_derived_features,
-        format_one_hot_from_code,
-    )
-except ImportError:
-    WIN_ENHANCED_FEATURE_COLS = []
-    aggregate_team_features_from_player_maps = None  # type: ignore[assignment]
-    build_feature_vector = None  # type: ignore[assignment]
-    compute_derived_features = None  # type: ignore[assignment]
-    format_one_hot_from_code = None  # type: ignore[assignment,misc]
 
 logger = get_struct_logger()
 
@@ -424,7 +408,7 @@ def _assemble_player_predictions(
     team2_ids = {int(pid) for pid in (match_context.team2_player_ids or [])} if match_context else set()
 
     out: List[BacktestPlayerPred] = []
-    default_econ = get_prediction_defaults()["economy"] if get_prediction_defaults else 6.0
+    default_econ = get_prediction_defaults()["economy"]
     for i, pid in enumerate(player_ids):
         row_bat = np.atleast_1d(Y_bat[i]).ravel()
         row_bowl = np.atleast_1d(Y_bowl[i]).ravel()
@@ -498,55 +482,36 @@ def _assemble_player_predictions(
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
             team2_ids = {int(pid) for pid in match_context.team2_player_ids}
-            if apply_constraint_reconciliation_from_backtest_preds is not None:
-                out, adj = apply_constraint_reconciliation_from_backtest_preds(
-                    out,
-                    team1_ids,
-                    team2_ids,
-                    inn1_runs,
-                    inn1_wkts,
-                    inn2_runs,
-                    inn2_wkts,
-                    match_id=0,
-                    format_code=fmt_upper,
-                    default_economy=default_econ,
-                )
-                logger.info(
-                    "backtest_predict.reconciliation.applied",
-                    format=fmt_upper,
-                    innings1_runs=inn1_runs,
-                    innings2_runs=inn2_runs,
-                    innings1_wickets=inn1_wkts,
-                    innings2_wickets=inn2_wkts,
-                    mean_abs_delta_runs=adj.get("mean_abs_delta_runs"),
-                    mean_abs_delta_wickets=adj.get("mean_abs_delta_wickets"),
-                    mean_abs_pct_delta_runs=adj.get("mean_abs_pct_delta_runs"),
-                    mean_abs_pct_delta_wickets=adj.get("mean_abs_pct_delta_wickets"),
-                    total_before_runs=adj.get("total_before_runs"),
-                    total_before_wickets=adj.get("total_before_wickets"),
-                )
-                if adj.get("violations"):
-                    logger.warning(
-                        "backtest_predict.reconciliation.violations",
-                        violations=adj["violations"],
-                    )
-            else:
-                out = rescale_player_predictions(
-                    out,
-                    team1_ids,
-                    team2_ids,
-                    inn1_runs,
-                    inn1_wkts,
-                    inn2_runs,
-                    inn2_wkts,
-                    default_economy=default_econ,
-                )
-                logger.info(
-                    "backtest_predict.reconciliation.applied",
-                    innings1_runs=inn1_runs,
-                    innings2_runs=inn2_runs,
-                    innings1_wickets=inn1_wkts,
-                    innings2_wickets=inn2_wkts,
+            out, adj = apply_constraint_reconciliation_from_backtest_preds(
+                out,
+                team1_ids,
+                team2_ids,
+                inn1_runs,
+                inn1_wkts,
+                inn2_runs,
+                inn2_wkts,
+                match_id=0,
+                format_code=fmt_upper,
+                default_economy=default_econ,
+            )
+            logger.info(
+                "backtest_predict.reconciliation.applied",
+                format=fmt_upper,
+                innings1_runs=inn1_runs,
+                innings2_runs=inn2_runs,
+                innings1_wickets=inn1_wkts,
+                innings2_wickets=inn2_wkts,
+                mean_abs_delta_runs=adj.get("mean_abs_delta_runs"),
+                mean_abs_delta_wickets=adj.get("mean_abs_delta_wickets"),
+                mean_abs_pct_delta_runs=adj.get("mean_abs_pct_delta_runs"),
+                mean_abs_pct_delta_wickets=adj.get("mean_abs_pct_delta_wickets"),
+                total_before_runs=adj.get("total_before_runs"),
+                total_before_wickets=adj.get("total_before_wickets"),
+            )
+            if adj.get("violations"):
+                logger.warning(
+                    "backtest_predict.reconciliation.violations",
+                    violations=adj["violations"],
                 )
 
     return out
@@ -808,7 +773,7 @@ def generate_match(
         InningsSummary(inning_number=2, runs=team2_runs, wickets=float(inn2_wickets)),
     ]
     p_team1 = 0.5
-    if aggregate_team_features_from_player_maps is not None and features_map:
+    if features_map:
         t1_feats = {pid: features_map.get(pid, {}) for pid in team1_ids if pid in features_map}
         t2_feats = {pid: features_map.get(pid, {}) for pid in team2_ids if pid in features_map}
         from .models import WinFeaturesEnhanced
@@ -842,47 +807,38 @@ def generate_match(
             logger.warning("generate_match.enhanced_win_failed, falling back to legacy")
             p_team1 = 0.5
     if p_team1 == 0.5:
-        try:
-            from ml.win_features_from_reconciled import build_win_features_standardized
-        except ImportError:
-            build_win_features_standardized = None
-        if build_win_features_standardized is not None:
-            t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_std_w10", "bowling_std_w10")
-            t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_mean_w5", "bowling_mean_w5")
-            t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_std_w10", "bowling_std_w10")
-            t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_mean_w5", "bowling_mean_w5")
-            wf = build_win_features_standardized(
-                format_code=fmt,
-                format_id=int(match_context.format_id),
-                venue_id=int(match_context.venue_id),
-                season_id=int(match_context.season_id),
-                team1_opposition_id=int(match_context.team1_opposition_id),
-                team2_opposition_id=int(match_context.team2_opposition_id),
-                toss_winner_opposition_id=0,
-                team1_bat_consistency_sum=t1_bat_cons,
-                team1_bowl_consistency_sum=t1_bowl_cons,
-                team2_bat_consistency_sum=t2_bat_cons,
-                team2_bowl_consistency_sum=t2_bowl_cons,
-                team1_bat_form_sum=t1_bat_form,
-                team1_bowl_form_sum=t1_bowl_form,
-                team2_bat_form_sum=t2_bat_form,
-                team2_bowl_form_sum=t2_bowl_form,
-            )
-            win_preds = run_win_prediction([wf])
-            if win_preds:
-                p_team1 = win_preds[0].team1_win_probability
+        t1_bat_cons, t1_bowl_cons = _sum_team_feature(features_map, team1_ids, "batting_std_w10", "bowling_std_w10")
+        t1_bat_form, t1_bowl_form = _sum_team_feature(features_map, team1_ids, "batting_mean_w5", "bowling_mean_w5")
+        t2_bat_cons, t2_bowl_cons = _sum_team_feature(features_map, team2_ids, "batting_std_w10", "bowling_std_w10")
+        t2_bat_form, t2_bowl_form = _sum_team_feature(features_map, team2_ids, "batting_mean_w5", "bowling_mean_w5")
+        wf = build_win_features_standardized(
+            format_code=fmt,
+            format_id=int(match_context.format_id),
+            venue_id=int(match_context.venue_id),
+            season_id=int(match_context.season_id),
+            team1_opposition_id=int(match_context.team1_opposition_id),
+            team2_opposition_id=int(match_context.team2_opposition_id),
+            toss_winner_opposition_id=0,
+            team1_bat_consistency_sum=t1_bat_cons,
+            team1_bowl_consistency_sum=t1_bowl_cons,
+            team2_bat_consistency_sum=t2_bat_cons,
+            team2_bowl_consistency_sum=t2_bowl_cons,
+            team1_bat_form_sum=t1_bat_form,
+            team1_bowl_form_sum=t1_bowl_form,
+            team2_bat_form_sum=t2_bat_form,
+            team2_bowl_form_sum=t2_bowl_form,
+        )
+        win_preds = run_win_prediction([wf])
+        if win_preds:
+            p_team1 = win_preds[0].team1_win_probability
     margin = team1_runs - team2_runs
     try:
-        from ml.win_coherence_metrics import win_probability_coherence_from_margin
-
         scale = 25.0
-        if get_win_coherence_config is not None:
-            try:
-                wc_cfg = get_win_coherence_config()
-                scale = float(wc_cfg.get("scale", scale))
-            except Exception:
-                # Fall back to hardcoded default if config is missing or invalid.
-                scale = 25.0
+        try:
+            wc_cfg = get_win_coherence_config()
+            scale = float(wc_cfg.get("scale", scale))
+        except Exception:
+            scale = 25.0
 
         coh = win_probability_coherence_from_margin(p_team1, margin, scale=scale)
         logger.info(
@@ -1075,37 +1031,20 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
     if not cols:
         return np.zeros(0)
     d = f.model_dump()
-    if format_one_hot_from_code is not None:
-        d.update(format_one_hot_from_code(fmt))
-    else:
-        for col in cols:
-            if col.startswith("format_is_") and col not in d:
-                d[col] = 0.0
+    d.update(format_one_hot_from_code(fmt))
     return np.array([float(d.get(c, 0)) for c in cols], dtype=float)
 
 
 def win_feature_vector(f: WinFeatures) -> np.ndarray:
     """Build feature vector for the enhanced win model from a WinFeatures instance.
 
-    When the enhanced feature module is available, pads the scalar WinFeatures
-    fields into the full WIN_ENHANCED_FEATURE_COLS vector (distribution stats
-    default to 0, derived features computed from what's available).
-    Falls back to simple scalar vector if enhanced module is not loaded.
+    Pads scalar WinFeatures fields into WIN_ENHANCED_FEATURE_COLS (distribution stats
+    default to 0; derived features computed from available scalars).
     """
-    if not WIN_ENHANCED_FEATURE_COLS:
-        return np.zeros(0)
     d = f.model_dump()
-    # Inject categorical format one-hot columns when available.
     fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
-    if format_one_hot_from_code is not None:
-        d.update(format_one_hot_from_code(fmt))
-    else:
-        for col in WIN_ENHANCED_FEATURE_COLS:
-            if col.startswith("format_is_") and col not in d:
-                d[col] = 0.0
-    if compute_derived_features is not None:
-        derived = compute_derived_features(d)
-        d.update(derived)
+    d.update(format_one_hot_from_code(fmt))
+    d.update(compute_derived_features(d))
     return np.array([float(d.get(c, 0)) for c in WIN_ENHANCED_FEATURE_COLS], dtype=float)
 
 
@@ -1207,16 +1146,6 @@ def run_win_prediction_enhanced(
     all per-player features, and the ML service computes distribution statistics
     and derived features before feeding to the model.
     """
-    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
-        raise HTTPException(
-            status_code=500,
-            detail=error_payload(
-                code="ENHANCED_WIN_NOT_AVAILABLE",
-                message="ml.win_features module not loaded",
-                hint="Ensure ml-service has the win_features module installed.",
-            ),
-        )
-
     fmt_upper = (fmt or "").strip().upper()
     model = _resolve_win_model(fmt_upper)
 
@@ -1267,16 +1196,6 @@ def run_team_optimization(
 ) -> "OptimizationResult":
     """Resolve the win model by format and delegate to the team optimizer."""
     from ml.team_optimizer import optimize_team_by_win_probability
-
-    if aggregate_team_features_from_player_maps is None or build_feature_vector is None:
-        raise HTTPException(
-            status_code=500,
-            detail=error_payload(
-                code="ENHANCED_WIN_NOT_AVAILABLE",
-                message="ml.win_features module not loaded",
-                hint="Ensure ml-service has the win_features module installed.",
-            ),
-        )
 
     fmt_upper = (fmt or "").strip().upper()
     model = _resolve_win_model(fmt_upper)
