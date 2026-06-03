@@ -1,4 +1,4 @@
-package scanx
+package scanx_test
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 type fakeScanner struct {
@@ -54,7 +55,7 @@ func TestAnyToString_Primitives(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := AnyToString(tc.input)
+			got := scanx.AnyToString(tc.input)
 			assert.Equal(t, tc.expected, got)
 		})
 	}
@@ -78,7 +79,7 @@ func TestTrimFloat(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := TrimFloat(tc.input)
+			got := scanx.TrimFloat(tc.input)
 			assert.Equal(t, tc.expected, got)
 		})
 	}
@@ -88,7 +89,7 @@ func TestScanToStrings(t *testing.T) {
 	t.Parallel()
 
 	fs := &fakeScanner{vals: []any{int64(1), float64(2.0), []byte("ok"), true, nil}}
-	got, err := ScanToStrings(fs, 5)
+	got, err := scanx.ScanToStrings(fs, 5)
 	require.NoError(t, err)
 
 	expected := []string{"1", "2", "ok", "1", ""}

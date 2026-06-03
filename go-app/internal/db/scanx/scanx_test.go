@@ -1,4 +1,4 @@
-package scanx
+package scanx_test
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 type fakeRows struct {
@@ -45,7 +46,7 @@ func (f *fakeRows) Close() { f.closed = true }
 func TestCountReturningOnes_Nil(t *testing.T) {
 	t.Parallel()
 
-	n, err := CountReturningOnes(nil)
+	n, err := scanx.CountReturningOnes(nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 }
@@ -54,7 +55,7 @@ func TestCountReturningOnes_Normal(t *testing.T) {
 	t.Parallel()
 
 	fr := &fakeRows{vals: []int{1, 1, 1}}
-	n, err := CountReturningOnes(fr)
+	n, err := scanx.CountReturningOnes(fr)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), n)
 	assert.True(t, fr.closed, "rows should be closed")
@@ -64,7 +65,7 @@ func TestCountReturningOnes_ScanError(t *testing.T) {
 	t.Parallel()
 
 	fr := &fakeRows{vals: []int{1, 1}, errAt: 2}
-	_, err := CountReturningOnes(fr)
+	_, err := scanx.CountReturningOnes(fr)
 	require.Error(t, err)
 	assert.True(t, fr.closed, "rows should be closed even on error")
 }

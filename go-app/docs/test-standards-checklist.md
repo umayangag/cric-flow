@@ -10,9 +10,9 @@ Reference: [Testing Guidelines](./testing-guidelines.md)
 
 | Violation | Remaining | Status |
 |-----------|-----------|--------|
-| V1: Internal test package (should be `package foo_test`) | 93 files | TODO |
+| V1: Internal test package (should be `package foo_test`) | ~75 files legitimately need internal access (unexported symbols) | ✅ All convertible files done |
 | V2: Slice not named `testCases` | 0 | ✅ Done |
-| V3: Raw `t.Fatal`/`t.Error` (should use testify) | 59 files | Partial |
+| V3: Raw `t.Fatal`/`t.Error` (should use testify) | 0 | ✅ Done |
 | V4: `for _, tc := range` in parallel subtests | 0 | ✅ Done |
 | V5: SUT instantiated outside `t.Run` | needs manual review | TODO |
 | V6: Exported privates for testing | needs manual review | TODO |

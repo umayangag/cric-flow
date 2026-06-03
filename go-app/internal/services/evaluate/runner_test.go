@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"

@@ -28,9 +28,7 @@ func TestDryRun(t *testing.T) {
 	var buf bytes.Buffer
 	err := seqcalc.DryRun(&buf, calcs, seqcalc.Params{FormatCode: "T20"})
 	require.NoError(t, err)
-	if buf.Len() == 0 {
-		t.Fatal("DryRun should write output")
-	}
+	require.Positive(t, buf.Len(), "DryRun should write output")
 
 	// Error: nil writer
 	err = seqcalc.DryRun(nil, calcs, seqcalc.Params{})

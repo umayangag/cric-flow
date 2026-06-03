@@ -616,8 +616,6 @@ func TestBacktestAccuracyTrend_CacheReadWrite_UpsertsOnMiss(t *testing.T) {
 		nil,
 	)
 	app.backtestAccuracyTrendHandler(rr, req)
-	if !called {
-		t.Error("expected upsertMatchPredictionAggregatesFunc to be called, but it was not")
-	}
+	require.True(t, called, "expected upsertMatchPredictionAggregatesFunc to be called")
 	require.Equal(t, http.StatusOK, rr.Code)
 }

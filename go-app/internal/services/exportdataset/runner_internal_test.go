@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io/fs"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsPermissionDenied(t *testing.T) {
