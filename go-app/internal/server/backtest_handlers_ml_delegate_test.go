@@ -171,10 +171,3 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 
 func floatPtr(v float64) *float64 { return &v }
 
-func floatApproxEqual(a, b float64) bool {
-	const eps = 1e-9
-	if a > b {
-		return a-b < eps
-	}
-	return b-a < eps
-}

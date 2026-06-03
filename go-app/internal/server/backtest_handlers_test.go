@@ -1,7 +1,6 @@
 package server
 
 import (
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,10 +9,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 )
 
-func almostEqual(a, b float64) bool {
-	const eps = 1e-9
-	return math.Abs(a-b) <= eps
-}
 
 func TestChooseBacktestMode(t *testing.T) {
 	testCases := []struct {

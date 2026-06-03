@@ -3,7 +3,6 @@ package mlclient_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,10 +23,6 @@ func newTestClient(base string, httpClient *http.Client) *mlclient.Client {
 		Timeout:   200 * time.Millisecond,
 	}
 }
-
-type badJSON struct{}
-
-func (badJSON) MarshalJSON() ([]byte, error) { return nil, errors.New("marshal boom") }
 
 // New() configuration tests (env default/override)
 func TestClient_New(t *testing.T) {

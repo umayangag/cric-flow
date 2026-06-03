@@ -30,21 +30,6 @@ func assertErrorContains(sub string) assertFn {
 	}
 }
 
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
-}
 
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
