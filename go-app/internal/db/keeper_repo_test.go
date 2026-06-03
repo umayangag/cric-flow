@@ -22,7 +22,7 @@ func TestCountPlayersByLowerName(t *testing.T) {
 	db.SetDB(mockDB{pool: mock})
 
 	// Happy and error paths table
-	tests := []struct {
+	testCases := []struct {
 		name      string
 		arg       string
 		setup     func()
@@ -61,8 +61,8 @@ func TestCountPlayersByLowerName(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			tc.setup()
@@ -86,7 +86,7 @@ func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 	type arrangeFn func(t *testing.T) (pgxmock.PgxPoolIface, int, string)
 	type assertFn func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -128,8 +128,8 @@ func TestSetIsWicketKeeperByLowerName(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			mock, flag, name := tc.arrange(t)
@@ -147,7 +147,7 @@ func TestZeroKeepersExcept(t *testing.T) {
 	type arrangeFn func(t *testing.T) (pgxmock.PgxPoolIface, []string)
 	type assertFn func(t *testing.T, n int64, err error, mock pgxmock.PgxPoolIface)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -204,8 +204,8 @@ func TestZeroKeepersExcept(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			mock, keepers := tc.arrange(t)

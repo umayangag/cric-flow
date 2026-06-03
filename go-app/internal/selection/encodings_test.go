@@ -1,10 +1,14 @@
 package selection
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestEncodeSession(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		in   int
 		want int
 	}{
@@ -16,17 +20,18 @@ func TestEncodeSession(t *testing.T) {
 		{4, 3},
 		{10, 3},
 	}
-	for _, tt := range tests {
-		got := encodeSession(tt.in)
-		if got != tt.want {
-			t.Errorf("encodeSession(%d) = %d, want %d", tt.in, got, tt.want)
-		}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run("", func(t *testing.T) {
+			got := encodeSession(tc.in)
+			require.Equal(t, tc.want, got, "encodeSession(%d)", tc.in)
+		})
 	}
 }
 
 func TestEncodeViscosity(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		in   int
 		want int
 	}{
@@ -38,10 +43,11 @@ func TestEncodeViscosity(t *testing.T) {
 		{5, 1},
 		{100, 1},
 	}
-	for _, tt := range tests {
-		got := encodeViscosity(tt.in)
-		if got != tt.want {
-			t.Errorf("encodeViscosity(%d) = %d, want %d", tt.in, got, tt.want)
-		}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run("", func(t *testing.T) {
+			got := encodeViscosity(tc.in)
+			require.Equal(t, tc.want, got, "encodeViscosity(%d)", tc.in)
+		})
 	}
 }

@@ -2,23 +2,20 @@ package opsstatus
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 )
 
 // helper to extract map[string]any safely
 func getMap(m map[string]any, key string, t *testing.T) map[string]any {
+	t.Helper()
 	v, ok := m[key]
-	if !ok {
-		t.Fatalf("missing key %s", key)
-	}
+	require.True(t, ok, "key %q not found in map", key)
 	mv, ok := v.(map[string]any)
-	if !ok {
-		t.Fatalf("key %s is not a map: %T", key, v)
-	}
+	require.True(t, ok, "key %q is not map[string]any", key)
 	return mv
 }
 
@@ -35,17 +32,12 @@ func TestBuildPrecomputeSection_NoFinishedRun_AllMissing(t *testing.T) {
 	sec := BuildPrecomputeSection(context.Background(), now)
 
 	// Assert
-	if sec["last_run"] != "" || sec["as_of"] != "" {
-		b, _ := json.Marshal(sec)
-		t.Fatalf("expected empty last_run/as_of, got %s", string(b))
-	}
+	require.Empty(t, sec["last_run"], "expected empty last_run")
+	require.Empty(t, sec["as_of"], "expected empty as_of")
 	formats := getMap(sec, "formats", t)
-	wantMissing := []string{"TEST", "ODI", "T20I", "T20"}
-	for _, f := range wantMissing {
+	for _, f := range []string{"TEST", "ODI", "T20I", "T20"} {
 		st := getMap(formats, f, t)["status"].(string)
-		if st != "missing" {
-			t.Fatalf("format %s expected missing, got %s", f, st)
-		}
+		require.Equal(t, "missing", st, "format %s should be missing", f)
 	}
 }
 
@@ -59,22 +51,13 @@ func TestBuildPrecomputeSection_Today_OkForRanFormats(t *testing.T) {
 	now := time.Date(2026, 1, 21, 18, 0, 0, 0, time.UTC)
 
 	sec := BuildPrecomputeSection(context.Background(), now)
-	if sec["last_run"] == "" || sec["as_of"] == "" {
-		t.Fatalf("expected last_run/as_of to be set")
-	}
+
+	require.NotEmpty(t, sec["last_run"], "expected non-empty last_run")
 	formats := getMap(sec, "formats", t)
-	if st := getMap(formats, "ODI", t)["status"].(string); st != "ok" {
-		t.Fatalf("ODI expected ok, got %s", st)
-	}
-	if st := getMap(formats, "T20", t)["status"].(string); st != "ok" {
-		t.Fatalf("T20 expected ok, got %s", st)
-	}
-	if st := getMap(formats, "TEST", t)["status"].(string); st != "missing" {
-		t.Fatalf("TEST expected missing, got %s", st)
-	}
-	if st := getMap(formats, "T20I", t)["status"].(string); st != "missing" {
-		t.Fatalf("T20I expected missing, got %s", st)
-	}
+	require.Equal(t, "ok", getMap(formats, "ODI", t)["status"].(string))
+	require.Equal(t, "ok", getMap(formats, "T20", t)["status"].(string))
+	require.Equal(t, "missing", getMap(formats, "TEST", t)["status"].(string))
+	require.Equal(t, "missing", getMap(formats, "T20I", t)["status"].(string))
 }
 
 func TestBuildPrecomputeSection_Yesterday_StaleForRanFormats(t *testing.T) {
@@ -87,17 +70,20 @@ func TestBuildPrecomputeSection_Yesterday_StaleForRanFormats(t *testing.T) {
 	now := time.Date(2026, 1, 21, 0, 10, 0, 0, time.UTC)
 
 	sec := BuildPrecomputeSection(context.Background(), now)
+
 	formats := getMap(sec, "formats", t)
-	if st := getMap(formats, "TEST", t)["status"].(string); st != "stale" {
-		t.Fatalf("TEST expected stale, got %s", st)
-	}
-	if st := getMap(formats, "T20I", t)["status"].(string); st != "stale" {
-		t.Fatalf("T20I expected stale, got %s", st)
-	}
-	if st := getMap(formats, "ODI", t)["status"].(string); st != "missing" {
-		t.Fatalf("ODI expected missing, got %s", st)
-	}
-	if st := getMap(formats, "T20", t)["status"].(string); st != "missing" {
-		t.Fatalf("T20 expected missing, got %s", st)
-	}
+	require.Equal(t, "stale", getMap(formats, "TEST", t)["status"].(string))
+	require.Equal(t, "stale", getMap(formats, "T20I", t)["status"].(string))
+	require.Equal(t, "missing", getMap(formats, "ODI", t)["status"].(string))
+	require.Equal(t, "missing", getMap(formats, "T20", t)["status"].(string))
+}
+
+// TestBuildPrecomputeSection_JSONSerializable ensures the section can be marshalled to JSON.
+func TestBuildPrecomputeSection_JSONSerializable(t *testing.T) {
+	orig := GetPrecomputeStatus
+	t.Cleanup(func() { GetPrecomputeStatus = orig })
+	GetPrecomputeStatus = func() precompute.Status { return precompute.Status{} }
+
+	sec := BuildPrecomputeSection(context.Background(), time.Now())
+	require.NotNil(t, sec)
 }

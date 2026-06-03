@@ -12,7 +12,7 @@ import (
 func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		in   string
 		out  string
@@ -24,7 +24,8 @@ func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
 		{"float non-int", `2012.5`, "2012.5"},
 		{"null", `null`, ""},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			var s cricsheet.Season
@@ -40,7 +41,7 @@ func TestSeason_UnmarshalJSON_VariousTypes(t *testing.T) {
 func TestCollection_UnmarshalJSON_Forms(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		in   string
 		out  []string
@@ -52,7 +53,8 @@ func TestCollection_UnmarshalJSON_Forms(t *testing.T) {
 		{"mixed array", `[{"name":"A"},"B",{"name":""},123]`, []string{"A", "B"}},
 		{"null", `null`, nil},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			var c cricsheet.Collection
 			err := c.UnmarshalJSON([]byte(tc.in))
@@ -77,7 +79,7 @@ func TestCollection_UnmarshalJSON_GarbageFallback(t *testing.T) {
 func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		in       string
 		wantDate string
@@ -113,7 +115,8 @@ func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 			"1970-01-01",
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			var info cricsheet.Info
 			err := json.Unmarshal([]byte(tc.in), &info)

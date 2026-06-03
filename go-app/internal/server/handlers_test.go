@@ -23,7 +23,7 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func TestFormatAccuracyPct(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		v    any
 		want string
@@ -33,16 +33,17 @@ func TestFormatAccuracyPct(t *testing.T) {
 		{"string", "95", "95%"},
 		{"default", int32(77), "77%"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatAccuracyPct(tt.v)
-			require.Equal(t, tt.want, got)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatAccuracyPct(tc.v)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
 
 func TestAlgorithmDisplayName(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		key  string
 		want string
 	}{
@@ -53,10 +54,11 @@ func TestAlgorithmDisplayName(t *testing.T) {
 		{"unknown", "unknown"},
 		{"", ""},
 	}
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			got := algorithmDisplayName(tt.key)
-			require.Equal(t, tt.want, got)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.key, func(t *testing.T) {
+			got := algorithmDisplayName(tc.key)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

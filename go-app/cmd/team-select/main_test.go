@@ -16,7 +16,7 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 	type arrangeFn func() (fs *flag.FlagSet, args []string)
 	type assertFn func(t *testing.T, got cli.Options, err error)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -62,7 +62,8 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			fs, args := tc.arrange()
@@ -77,7 +78,7 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 func TestParseArgs_Errors(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		args []string
 	}{
@@ -87,7 +88,8 @@ func TestParseArgs_Errors(t *testing.T) {
 		{name: "invalid format", args: []string{"-match=1", "-format=X", "-season=2019"}},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 			_, err := cli.ParseArgs(fs, tc.args)

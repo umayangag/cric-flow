@@ -37,7 +37,7 @@ func TestRegistry_ResolveTargets(t *testing.T) {
 	calcs := NewNoopCalculators()
 	r := NewRegistry(calcs...)
 
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		spec    string
 		wantLen int
@@ -49,15 +49,16 @@ func TestRegistry_ResolveTargets(t *testing.T) {
 		{"single target", "bat_transitions", 1, false},
 		{"unknown target", "unknown_xyz", 0, true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := r.ResolveTargets(tt.spec)
-			if tt.wantErr {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := r.ResolveTargets(tc.spec)
+			if tc.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			require.Len(t, got, tt.wantLen)
+			require.Len(t, got, tc.wantLen)
 		})
 	}
 }

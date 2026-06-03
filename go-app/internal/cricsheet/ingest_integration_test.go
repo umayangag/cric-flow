@@ -52,9 +52,7 @@ const sampleJSON = `{
 func writeTempJSON(t *testing.T, dir string, name string, data string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
-		t.Fatalf("write temp json: %v", err)
-	}
+	require.NoError(t, os.WriteFile(p, []byte(data), 0o600))
 	return p
 }
 

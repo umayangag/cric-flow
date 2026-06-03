@@ -52,7 +52,7 @@ func TestToFeatureInnings(t *testing.T) {
 func TestResolveConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	testCases := []struct {
 		name      string
 		requested int
 		wantMin   int // when requested <= 0 we only assert >= 1
@@ -65,15 +65,15 @@ func TestResolveConcurrencyLimit(t *testing.T) {
 		{"negative uses resource limit and at least 1", -1, 1, 0},
 		{"large positive", 1000, 1000, 1000},
 	}
-	for _, tt := range tests {
-		tt := tt // capture range variable
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := resolveConcurrencyLimit(tt.requested)
-			if tt.wantExact != 0 {
-				require.Equal(t, tt.wantExact, got)
+			got := resolveConcurrencyLimit(tc.requested)
+			if tc.wantExact != 0 {
+				require.Equal(t, tc.wantExact, got)
 			} else {
-				require.GreaterOrEqual(t, got, tt.wantMin)
+				require.GreaterOrEqual(t, got, tc.wantMin)
 			}
 		})
 	}
@@ -90,7 +90,7 @@ func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
 	r := NewRunner()
 	ctx := context.Background()
 
-	tests := []struct {
+	testCases := []struct {
 		name string
 		jobs []FormatJob
 	}{
@@ -98,11 +98,11 @@ func TestRunReplayGlobalPool_EmptyJobs_ReturnsNil(t *testing.T) {
 		{"empty jobs", []FormatJob{}},
 	}
 
-	for _, tt := range tests {
-		tt := tt // capture range variable
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := r.RunReplayGlobalPool(ctx, tt.jobs, 0, 10)
+			err := r.RunReplayGlobalPool(ctx, tc.jobs, 0, 10)
 			require.NoError(t, err)
 		})
 	}

@@ -5,12 +5,14 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/evaluate"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseArgs(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		args    []string
 		wantErr string
@@ -26,22 +28,17 @@ func TestParseArgs(t *testing.T) {
 		{name: "missing format", args: []string{"-season", "2019", "-format", ""}, wantErr: "format must not be empty"},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 			got, err := svc.ParseArgs(fs, tc.args)
 			if tc.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected error containing %q; got nil", tc.wantErr)
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected err: %v", err)
-			}
-			if got != tc.want {
-				t.Fatalf("want %+v got %+v", tc.want, got)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -49,18 +46,13 @@ func TestParseArgs(t *testing.T) {
 func TestParseArgs_NilFlagSet(t *testing.T) {
 	t.Parallel()
 	got, err := svc.ParseArgs(nil, []string{})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if got.Season != "demo" || got.Format != "T20" {
-		t.Fatalf("unexpected defaults: %+v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "demo", got.Season)
+	require.Equal(t, "T20", got.Format)
 }
 
 func TestParseArgs_UnknownFlag(t *testing.T) {
 	t.Parallel()
 	_, err := svc.ParseArgs(nil, []string{"-unknown"})
-	if err == nil {
-		t.Fatalf("expected parse error for unknown flag")
-	}
+	require.Error(t, err)
 }

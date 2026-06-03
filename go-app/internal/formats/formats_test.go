@@ -3,106 +3,158 @@ package formats_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 func TestCanonicalCodes(t *testing.T) {
+	t.Parallel()
+
+	// Act
 	codes := formats.CanonicalCodes()
-	require.Equal(t, []string{formats.CodeTest, formats.CodeODI, formats.CodeT20, formats.CodeT20I}, codes)
+
+	// Assert
+	assert.Equal(t, []string{formats.CodeTest, formats.CodeODI, formats.CodeT20, formats.CodeT20I}, codes)
 }
 
 func TestNormalizeCode(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
 	}{
-		{"t20", "T20"},
-		{" odi ", "ODI"},
-		{"test", "TEST"},
-		{"T20I", "T20I"},
-		{"", ""},
+		{name: "lowercase t20", input: "t20", expected: "T20"},
+		{name: "padded odi", input: " odi ", expected: "ODI"},
+		{name: "lowercase test", input: "test", expected: "TEST"},
+		{name: "already uppercase T20I", input: "T20I", expected: "T20I"},
+		{name: "empty string", input: "", expected: ""},
 	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			got := formats.NormalizeCode(tt.in)
-			require.Equal(t, tt.want, got)
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := formats.NormalizeCode(tc.input)
+
+			// Assert
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
 func TestCanonicalizeCode(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
 	}{
-		{"MDM", formats.CodeTest},
-		{"mdm", formats.CodeTest},
-		{"ODM", formats.CodeODI},
-		{"IT20", formats.CodeT20I},
-		{"it20", formats.CodeT20I},
-		{"T20", formats.CodeT20},
-		{"ODI", formats.CodeODI},
+		{name: "MDM maps to TEST", input: "MDM", expected: formats.CodeTest},
+		{name: "lowercase mdm maps to TEST", input: "mdm", expected: formats.CodeTest},
+		{name: "ODM maps to ODI", input: "ODM", expected: formats.CodeODI},
+		{name: "IT20 maps to T20I", input: "IT20", expected: formats.CodeT20I},
+		{name: "lowercase it20 maps to T20I", input: "it20", expected: formats.CodeT20I},
+		{name: "T20 stays T20", input: "T20", expected: formats.CodeT20},
+		{name: "ODI stays ODI", input: "ODI", expected: formats.CodeODI},
 	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			got := formats.CanonicalizeCode(tt.in)
-			require.Equal(t, tt.want, got)
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := formats.CanonicalizeCode(tc.input)
+
+			// Assert
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
 func TestIDForCode(t *testing.T) {
-	tests := []struct {
-		code    string
-		wantID  int
-		wantErr bool
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		code       string
+		expectedID int
+		wantErr    bool
 	}{
-		{"TEST", formats.IDTest, false},
-		{"ODI", formats.IDODI, false},
-		{"T20", formats.IDT20, false},
-		{"T20I", formats.IDT20I, false},
-		{"t20", formats.IDT20, false},
-		{"UNKNOWN", 0, true},
+		{name: "TEST format", code: "TEST", expectedID: formats.IDTest},
+		{name: "ODI format", code: "ODI", expectedID: formats.IDODI},
+		{name: "T20 format", code: "T20", expectedID: formats.IDT20},
+		{name: "T20I format", code: "T20I", expectedID: formats.IDT20I},
+		{name: "lowercase t20", code: "t20", expectedID: formats.IDT20},
+		{name: "unknown format returns error", code: "UNKNOWN", wantErr: true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.code, func(t *testing.T) {
-			id, err := formats.IDForCode(tt.code)
-			if tt.wantErr {
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			id, err := formats.IDForCode(tc.code)
+
+			// Assert
+			if tc.wantErr {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "unknown format")
+				assert.Contains(t, err.Error(), "unknown format")
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.wantID, id)
+			assert.Equal(t, tc.expectedID, id)
 		})
 	}
 }
 
 func TestMapFormatIDs(t *testing.T) {
-	tests := []struct {
-		code string
-		want []int
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		code     string
+		expected []int
 	}{
-		{"", []int{formats.IDT20, formats.IDT20I}},
-		{"T20", []int{formats.IDT20, formats.IDT20I}},
-		{"T20I", []int{formats.IDT20, formats.IDT20I}},
-		{"ODI", []int{formats.IDODI}},
-		{"TEST", []int{formats.IDTest}},
-		{"UNKNOWN", []int{formats.IDT20, formats.IDT20I}},
+		{name: "empty defaults to T20 bucket", code: "", expected: []int{formats.IDT20, formats.IDT20I}},
+		{name: "T20 returns T20 bucket", code: "T20", expected: []int{formats.IDT20, formats.IDT20I}},
+		{name: "T20I returns T20 bucket", code: "T20I", expected: []int{formats.IDT20, formats.IDT20I}},
+		{name: "ODI returns ODI only", code: "ODI", expected: []int{formats.IDODI}},
+		{name: "TEST returns Test only", code: "TEST", expected: []int{formats.IDTest}},
+		{name: "unknown defaults to T20 bucket", code: "UNKNOWN", expected: []int{formats.IDT20, formats.IDT20I}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.code, func(t *testing.T) {
-			got := formats.MapFormatIDs(tt.code)
-			require.Equal(t, tt.want, got)
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := formats.MapFormatIDs(tc.code)
+
+			// Assert
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
 func TestGetHierarchy(t *testing.T) {
+	t.Parallel()
+
+	// Act
 	hierarchy := formats.GetHierarchy()
 
-	tests := []struct {
+	// Assert
+	require.Len(t, hierarchy, 3, "Hierarchy should have 3 root nodes")
+
+	testCases := []struct {
 		name          string
 		index         int
 		expectedCode  string
@@ -110,7 +162,7 @@ func TestGetHierarchy(t *testing.T) {
 		expectedChild *formats.FormatHierarchyNode
 	}{
 		{
-			name:         "MDM Node",
+			name:         "MDM node",
 			index:        0,
 			expectedCode: "MDM",
 			expectedName: "Multi-Day Match",
@@ -120,7 +172,7 @@ func TestGetHierarchy(t *testing.T) {
 			},
 		},
 		{
-			name:         "ODM Node",
+			name:         "ODM node",
 			index:        1,
 			expectedCode: "ODM",
 			expectedName: "One Day Match",
@@ -130,25 +182,27 @@ func TestGetHierarchy(t *testing.T) {
 			},
 		},
 		{
-			name:         "T20 Bucket Node",
+			name:         "T20 bucket node",
 			index:        2,
 			expectedCode: formats.CodeT20,
 			expectedName: "T20 (Bucket)",
 		},
 	}
 
-	require.Equal(t, 3, len(hierarchy), "Hierarchy should have 3 root nodes")
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			node := hierarchy[tt.index]
-			require.Equal(t, tt.expectedCode, node.Code)
-			require.Equal(t, tt.expectedName, node.Name)
+			// Assert
+			node := hierarchy[tc.index]
+			assert.Equal(t, tc.expectedCode, node.Code)
+			assert.Equal(t, tc.expectedName, node.Name)
 
-			if tt.expectedChild != nil {
+			if tc.expectedChild != nil {
 				require.NotEmpty(t, node.Children)
-				require.Equal(t, tt.expectedChild.Code, node.Children[0].Code)
-				require.Equal(t, tt.expectedChild.Name, node.Children[0].Name)
+				assert.Equal(t, tc.expectedChild.Code, node.Children[0].Code)
+				assert.Equal(t, tc.expectedChild.Name, node.Children[0].Name)
 			}
 		})
 	}

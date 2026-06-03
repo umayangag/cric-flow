@@ -56,7 +56,7 @@ func TestSelect_Table(t *testing.T) {
 		mk("E", 0.4, 0.9, true, false),
 		mk("K", 0.3, 0.3, false, true), // keeper
 	}
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		pool   []ts.Player
 		c      ts.Constraints
@@ -97,7 +97,8 @@ func TestSelect_Table(t *testing.T) {
 			assert: assertErrContains("insufficient pool"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			team, err := ts.Select(tc.pool, w, tc.c)
 			// delegate checks to the assert function

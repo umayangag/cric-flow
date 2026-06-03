@@ -20,7 +20,7 @@ func TestAggregateTransitions_Table(t *testing.T) {
 	asOf := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	fmtID := 3
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -186,7 +186,8 @@ func TestAggregateTransitions_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			seq := tc.arrange()

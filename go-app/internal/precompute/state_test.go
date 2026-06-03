@@ -22,7 +22,7 @@ func resetState(t *testing.T) {
 }
 
 func TestSetStart(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		season  string
 		formats []string
@@ -44,17 +44,18 @@ func TestSetStart(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			before := time.Now().UTC()
 
-			setStart(tt.season, tt.formats)
+			setStart(tc.season, tc.formats)
 
 			st := GetStatus()
 			assert.True(t, st.Running)
-			assert.Equal(t, tt.season, st.Season)
-			assert.Equal(t, tt.formats, st.Formats)
+			assert.Equal(t, tc.season, st.Season)
+			assert.Equal(t, tc.formats, st.Formats)
 			assert.Equal(t, "starting", st.Phase)
 			assert.Empty(t, st.LastError)
 			require.False(t, st.StartedAt.IsZero())
@@ -75,7 +76,7 @@ func TestSetStart_DoesNotShareSlice(t *testing.T) {
 }
 
 func TestSetPhase(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name  string
 		phase string
 	}{
@@ -84,21 +85,22 @@ func TestSetPhase(t *testing.T) {
 		{name: "done_phase", phase: "done"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			setStart("2024", []string{"T20I"})
 
-			setPhase(tt.phase)
+			setPhase(tc.phase)
 
 			st := GetStatus()
-			assert.Equal(t, tt.phase, st.Phase)
+			assert.Equal(t, tc.phase, st.Phase)
 		})
 	}
 }
 
 func TestSetCurrentFormat(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name string
 		code string
 	}{
@@ -107,16 +109,17 @@ func TestSetCurrentFormat(t *testing.T) {
 		{name: "test", code: "TEST"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
-			setStart("2024", []string{tt.code})
+			setStart("2024", []string{tc.code})
 			before := time.Now().UTC()
 
-			setCurrentFormat(tt.code)
+			setCurrentFormat(tc.code)
 
 			st := GetStatus()
-			assert.Equal(t, tt.code, st.CurrentFormat)
+			assert.Equal(t, tc.code, st.CurrentFormat)
 			require.False(t, st.FormatStartedAt.IsZero())
 			assert.True(t, !st.FormatStartedAt.Before(before))
 		})
@@ -140,7 +143,7 @@ func TestSetDone(t *testing.T) {
 }
 
 func TestSetLastError(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		errMsg string
 	}{
@@ -148,15 +151,16 @@ func TestSetLastError(t *testing.T) {
 		{name: "empty_clears", errMsg: ""},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			setStart("2024", []string{"T20I"})
 
-			setLastError(tt.errMsg)
+			setLastError(tc.errMsg)
 
 			st := GetStatus()
-			assert.Equal(t, tt.errMsg, st.LastError)
+			assert.Equal(t, tc.errMsg, st.LastError)
 		})
 	}
 }

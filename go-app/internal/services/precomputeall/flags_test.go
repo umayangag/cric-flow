@@ -4,45 +4,52 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/precomputeall"
 )
 
 func TestParseArgs_HappyPaths(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+
+	testCases := []struct {
 		name string
 		args []string
 	}{
-		{"replay_default", []string{"-format", "T20", "-replay"}},
-		{"asof_with_seq", []string{"-format", "ODI", "-as-of", "2020-12-31", "-seq-targets", "all"}},
-		{"aliases_ok", []string{"-format", "IT20", "-replay", "-ewm-alpha", "0.5", "-lastN", "12"}},
+		{"replay default", []string{"-format", "T20", "-replay"}},
+		{"asof with seq", []string{"-format", "ODI", "-as-of", "2020-12-31", "-seq-targets", "all"}},
+		{"aliases ok", []string{"-format", "IT20", "-replay", "-ewm-alpha", "0.5", "-lastN", "12"}},
 	}
-	for _, tc := range cases {
+
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
-			if _, err := svc.ParseArgs(fs, tc.args); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			_, err := svc.ParseArgs(fs, tc.args)
+			require.NoError(t, err)
 		})
 	}
 }
 
 func TestParseArgs_Validation(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+
+	testCases := []struct {
 		name string
 		args []string
 	}{
-		{"empty_format", []string{"-format", "", "-replay"}},
-		{"bad_alpha", []string{"-format", "T20", "-ewm-alpha", "0"}},
-		{"neg_lastN", []string{"-format", "T20", "-lastN", "-1"}},
+		{"empty format", []string{"-format", "", "-replay"}},
+		{"bad alpha", []string{"-format", "T20", "-ewm-alpha", "0"}},
+		{"neg lastN", []string{"-format", "T20", "-lastN", "-1"}},
 	}
-	for _, tc := range cases {
+
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
-			if _, err := svc.ParseArgs(fs, tc.args); err == nil {
-				t.Fatalf("expected error, got nil for %s", tc.name)
-			}
+			_, err := svc.ParseArgs(fs, tc.args)
+			require.Error(t, err)
 		})
 	}
 }

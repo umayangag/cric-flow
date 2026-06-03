@@ -2,12 +2,13 @@ package predictor_test
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor"
 	"github.com/umayangag/cric-flow/go-app/internal/predictor/internal/mocks"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
@@ -21,16 +22,12 @@ func TestBuildTeam_UsesPredictorAndSelectsTopDeterministically(t *testing.T) {
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 
 	got, err := predictor.BuildTeam(ctx, m, players, 2)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want := []predictor.PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("team mismatch\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
@@ -38,9 +35,7 @@ func TestBuildTeam_ErrorFromPredictor(t *testing.T) {
 	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, mock.Anything).Return(nil, assertErr{})
 	_, err := predictor.BuildTeam(ctx, m, nil, 11)
-	if err == nil {
-		t.Fatalf("expected error from Predictor")
-	}
+	require.Error(t, err)
 }
 
 func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
@@ -51,12 +46,8 @@ func TestBuildTeam_ZeroTeamSizeReturnsEmpty(t *testing.T) {
 	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty team for size 0, got %d", len(got))
-	}
+	require.NoError(t, err)
+	require.Empty(t, got)
 }
 
 func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
@@ -65,12 +56,8 @@ func TestBuildTeam_EmptyPlayersReturnsEmpty(t *testing.T) {
 	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 11)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty team for empty input, got %d", len(got))
-	}
+	require.NoError(t, err)
+	require.Empty(t, got)
 }
 
 func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
@@ -83,18 +70,14 @@ func TestBuildTeam_TeamSizeGreaterThanPlayersReturnsAllSorted(t *testing.T) {
 	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 10)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want := []predictor.PlayerPrediction{
 		{PlayerName: "A", WinningProbability: 0.9},
 		// For ties (0.6) names ascending: B then C
 		{PlayerName: "B", WinningProbability: 0.6},
 		{PlayerName: "C", WinningProbability: 0.6},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected team\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 type assertErr struct{}
@@ -112,15 +95,11 @@ func TestBuildTeam_TeamSizeLessThanPlayersSelectsTopN(t *testing.T) {
 	m := mocks.NewMockPredictor(t)
 	m.On("PredictWin", mock.Anything, players).Return(players, nil)
 	got, err := predictor.BuildTeam(ctx, m, players, 3)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want := []predictor.PlayerPrediction{
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "D", WinningProbability: 0.8},
 		{PlayerName: "A", WinningProbability: 0.7},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected team\n got: %#v\nwant: %#v", got, want)
-	}
+	require.Equal(t, want, got)
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
@@ -40,24 +41,19 @@ func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload backtestSelectResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if payload.Filters["format"] != "T20" || payload.Filters["team1"] != "IND" || payload.Filters["team2"] != "AUS" {
-		t.Fatalf("unexpected filters: %+v", payload.Filters)
-	}
-	if len(payload.Candidates) != 1 {
-		t.Fatalf("candidates len = %d, want 1", len(payload.Candidates))
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
+	require.Equal(t, "T20", payload.Filters["format"])
+	require.Equal(t, "IND", payload.Filters["team1"])
+	require.Equal(t, "AUS", payload.Filters["team2"])
+	require.Len(t, payload.Candidates, 1)
 	got := payload.Candidates[0]
-	if got.MatchID != 111 || got.Team1 != "IND" || got.Team2 != "AUS" || got.WinnerTeamCode != "IND" {
-		t.Fatalf("unexpected candidate: %+v", got)
-	}
+	require.Equal(t, int64(111), got.MatchID)
+	require.Equal(t, "IND", got.Team1)
+	require.Equal(t, "AUS", got.Team2)
+	require.Equal(t, "IND", got.WinnerTeamCode)
 }
 
 func TestBacktestMatchHandler_SelectMode_MissingParams(t *testing.T) {
@@ -65,9 +61,7 @@ func TestBacktestMatchHandler_SelectMode_MissingParams(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND", nil)
 	app.backtestMatchHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
@@ -84,9 +78,7 @@ func TestBacktestMatchHandler_SelectMode_DBError(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rr.Code)
-	}
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
 }
 
 // no extra helpers

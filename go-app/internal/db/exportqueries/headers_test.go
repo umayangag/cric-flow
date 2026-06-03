@@ -1,15 +1,16 @@
-package exportqueries
+package exportqueries_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	eq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 func TestBowlingSeqHeaders(t *testing.T) {
 	t.Parallel()
-	got := BowlingSeqHeaders()
+	got := eq.BowlingSeqHeaders()
 	require.Len(t, got, 10)
 	require.Equal(t, "bowl_prev_bowler_id", got[0])
 	require.Equal(t, "bowl_over_ball6_wkt_rate", got[9])
@@ -17,18 +18,16 @@ func TestBowlingSeqHeaders(t *testing.T) {
 
 func TestBattingSeqHeaders(t *testing.T) {
 	t.Parallel()
-	got := BattingSeqHeaders()
+	got := eq.BattingSeqHeaders()
 	require.Len(t, got, 10)
 	require.Equal(t, "bat_prev_batter_id", got[0])
 	require.Equal(t, "bat_after_k_dots_boundary_p_k2", got[9])
 }
 
-// TestAppendSeqIfEnabled verifies OFF and ON scenarios as separate table cases
-// to keep Arrange-Act-Assert strictly separated per subtest.
 func TestAppendSeqIfEnabled(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name       string
 		seqEnabled bool
 		base       []string
@@ -38,38 +37,38 @@ func TestAppendSeqIfEnabled(t *testing.T) {
 			name:       "bowling headers with seq disabled",
 			seqEnabled: false,
 			base:       []string{"c1", "c2"},
-			seqFn:      BowlingSeqHeaders,
+			seqFn:      eq.BowlingSeqHeaders,
 		},
 		{
 			name:       "bowling headers with seq enabled",
 			seqEnabled: true,
 			base:       []string{"c1", "c2"},
-			seqFn:      BowlingSeqHeaders,
+			seqFn:      eq.BowlingSeqHeaders,
 		},
-		{name: "batting headers with seq disabled", seqEnabled: false, base: []string{"h1"}, seqFn: BattingSeqHeaders},
-		{name: "batting headers with seq enabled", seqEnabled: true, base: []string{"h1"}, seqFn: BattingSeqHeaders},
+		{name: "batting headers with seq disabled", seqEnabled: false, base: []string{"h1"}, seqFn: eq.BattingSeqHeaders},
+		{name: "batting headers with seq enabled", seqEnabled: true, base: []string{"h1"}, seqFn: eq.BattingSeqHeaders},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Arrange
 			ctx := context.Background()
 			if tc.seqEnabled {
-				ctx = WithSeqEnabled(ctx, true)
+				ctx = eq.WithSeqEnabled(ctx, true)
 			}
 			seq := tc.seqFn()
 
 			// Act
-			got := AppendSeqIfEnabled(ctx, tc.base, seq)
+			got := eq.AppendSeqIfEnabled(ctx, tc.base, seq)
 
 			// Assert
 			if !tc.seqEnabled {
-				// OFF: unchanged
 				require.Equal(t, tc.base, got)
 				return
 			}
-			// ON: base prefix preserved and seq appended
 			require.Equal(t, len(tc.base)+len(seq), len(got))
 			require.Equal(t, tc.base, got[:len(tc.base)])
 			require.Equal(t, seq, got[len(tc.base):])

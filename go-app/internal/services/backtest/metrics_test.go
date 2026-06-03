@@ -21,8 +21,8 @@ func TestComputeR2(t *testing.T) {
 		// R² = 1 - SSE/SST = 1 - 2/2 = 0
 		{"partial", 2.0, []float64{1, 2, 3}, 0.0},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			assert.InDelta(t, tc.want, backtest.ComputeR2(tc.sse, tc.actuals), 1e-9)
@@ -42,8 +42,8 @@ func TestWinnerAccuracy(t *testing.T) {
 		{"", "AUS", 0},
 		{"AUS", "", 0},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.pred+"_"+tc.actual, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, backtest.WinnerAccuracy(tc.pred, tc.actual))
@@ -61,8 +61,8 @@ func TestChooseBacktestMode(t *testing.T) {
 		{"evaluate", "", "evaluate"},
 		{"select", "123", "select"},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.mode+"_"+tc.matchID, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, backtest.ChooseBacktestMode(tc.mode, tc.matchID))

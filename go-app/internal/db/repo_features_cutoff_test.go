@@ -1,69 +1,40 @@
-package db
+package db_test
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// DefaultFeatureProvider no longer returns average-based features; it returns an error so callers
-// use precomputed path. These tests assert that behavior.
-
 func TestDefaultFeatureProvider_EmptyPlayerIDs_ReturnsEmptyMap(t *testing.T) {
-	p := &DefaultFeatureProvider{}
+	p := &db.DefaultFeatureProvider{}
 	cutoff := time.Date(2024, 10, 30, 0, 0, 0, 0, time.UTC)
+
 	got, err := p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, nil)
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty map, got %d entries", len(got))
-	}
+	require.NoError(t, err)
+	require.Empty(t, got)
+
 	got, err = p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, []int64{})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty map, got %d entries", len(got))
-	}
+	require.NoError(t, err)
+	require.Empty(t, got)
 }
 
 func TestDefaultFeatureProvider_NonEmptyPlayerIDs_ReturnsErrorNoAverages(t *testing.T) {
-	p := &DefaultFeatureProvider{}
+	p := &db.DefaultFeatureProvider{}
 	cutoff := time.Date(2024, 10, 30, 0, 0, 0, 0, time.UTC)
-	got, err := p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, []int64{1})
-	if err == nil {
-		t.Fatalf("expected error (precomputed only, no averages), got nil and %d features", len(got))
-	}
-	if !contains(err.Error(), "precomputed") {
-		t.Fatalf("error should mention precomputed: %v", err)
-	}
+
+	_, err := p.GetPlayerFeaturesAtCutoff(context.Background(), cutoff, []int64{1})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "precomputed")
 }
 
 func TestDefaultFeatureProvider_ZeroCutoff_ReturnsError(t *testing.T) {
-	p := &DefaultFeatureProvider{}
+	p := &db.DefaultFeatureProvider{}
+
 	got, err := p.GetPlayerFeaturesAtCutoff(context.Background(), time.Time{}, []int64{1})
-	if err == nil {
-		t.Fatalf("expected error for zero cutoff, got nil")
-	}
-	if got != nil {
-		t.Fatalf("expected nil map on error, got %v", got)
-	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && indexOf(s, sub) >= 0
-}
-
-func indexOf(s, sub string) int {
-	L, l := len(s), len(sub)
-	if l == 0 {
-		return 0
-	}
-	for i := 0; i <= L-l; i++ {
-		if s[i:i+l] == sub {
-			return i
-		}
-	}
-	return -1
+	require.Error(t, err)
+	require.Nil(t, got)
 }

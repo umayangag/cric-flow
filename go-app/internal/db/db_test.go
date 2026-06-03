@@ -14,7 +14,7 @@ func TestBuildDSN_Table(t *testing.T) {
 	type args struct {
 		user, pass, host, port, dbname, sslmode string
 	}
-	cases := []struct {
+	testCases := []struct {
 		name string
 		in   args
 		want string
@@ -25,7 +25,8 @@ func TestBuildDSN_Table(t *testing.T) {
 			want: "postgres://u:p@h:5432/d?sslmode=disable",
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			a := tc.in
@@ -41,7 +42,7 @@ func TestBuildDSN_Table(t *testing.T) {
 func TestGetenv_Table(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name       string
 		key        string
 		setEnv     bool
@@ -61,7 +62,8 @@ func TestGetenv_Table(t *testing.T) {
 		{name: "empty -> default", key: "BAZ_QUX", setEnv: true, envValue: "", defaultVal: "zzz", want: "zzz"},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			if tc.setEnv {

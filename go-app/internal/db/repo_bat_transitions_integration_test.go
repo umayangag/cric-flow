@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestUpsertBattingTransitions_Integration(t *testing.T) {
@@ -12,20 +14,14 @@ func TestUpsertBattingTransitions_Integration(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect error: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations using an absolute path derived from this test package
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Clean table
-	if err := Exec(ctx, "TRUNCATE batting_transition_features"); err != nil {
-		t.Fatalf("truncate failed: %v", err)
-	}
+	require.NoError(t, Exec(ctx, "TRUNCATE batting_transition_features"))
 
 	// Prepare an initial batch (> smallBatchThreshold to exercise COPY path)
 	base := []BatTransitionRow{
@@ -157,18 +153,12 @@ func TestUpsertBattingTransitions_Integration(t *testing.T) {
 		},
 	}
 
-	if err := UpsertBattingTransitions(ctx, base); err != nil {
-		t.Fatalf("first upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBattingTransitions(ctx, base))
 
 	// Verify count
 	var cnt int
-	if err := QueryRow(ctx, `SELECT count(*) FROM batting_transition_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count scan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("unexpected row count: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM batting_transition_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Upsert a conflicting row with new values to test ON CONFLICT DO UPDATE
 	upd := BatTransitionRow{
@@ -185,31 +175,23 @@ func TestUpsertBattingTransitions_Integration(t *testing.T) {
 		Fours:        4,
 		Sixes:        2,
 	}
-	if err := UpsertBattingTransitions(ctx, []BatTransitionRow{upd}); err != nil {
-		t.Fatalf("second upsert failed: %v", err)
-	}
+	require.NoError(t, UpsertBattingTransitions(ctx, []BatTransitionRow{upd}))
 
 	// Verify row count unchanged
-	if err := QueryRow(ctx, `SELECT count(*) FROM batting_transition_features`).Scan(&cnt); err != nil {
-		t.Fatalf("count rescan failed: %v", err)
-	}
-	if cnt != len(base) {
-		t.Fatalf("row count changed after update: got %d want %d", cnt, len(base))
-	}
+	require.NoError(t, QueryRow(ctx, `SELECT count(*) FROM batting_transition_features`).Scan(&cnt))
+	require.Equal(t, len(base), cnt)
 
 	// Verify the updated values
 	var balls, runs, dismissals, fours, sixes int
-	if err := QueryRow(ctx, `
+	require.NoError(t, QueryRow(ctx, `
         SELECT balls, runs, dismissals, fours, sixes
         FROM batting_transition_features
         WHERE as_of_date = $1 AND format_id = $2 AND scope = $3 AND scope_id = $4
           AND prev_batter_id = $5 AND batter_id = $6 AND phase = $7
-    `, upd.AsOfDate, upd.FormatID, "overall", 0, upd.PrevBatterID, upd.BatterID, upd.Phase).Scan(&balls, &runs, &dismissals, &fours, &sixes); err != nil {
-		t.Fatalf("select updated row failed: %v", err)
-	}
-	if balls != upd.Balls || runs != upd.Runs || dismissals != upd.Dismissals || fours != upd.Fours ||
-		sixes != upd.Sixes {
-		t.Fatalf("updated values mismatch: got (b=%d r=%d d=%d f=%d s=%d) want (b=%d r=%d d=%d f=%d s=%d)",
-			balls, runs, dismissals, fours, sixes, upd.Balls, upd.Runs, upd.Dismissals, upd.Fours, upd.Sixes)
-	}
+    `, upd.AsOfDate, upd.FormatID, "overall", 0, upd.PrevBatterID, upd.BatterID, upd.Phase).Scan(&balls, &runs, &dismissals, &fours, &sixes))
+	require.Equal(t, upd.Balls, balls)
+	require.Equal(t, upd.Runs, runs)
+	require.Equal(t, upd.Dismissals, dismissals)
+	require.Equal(t, upd.Fours, fours)
+	require.Equal(t, upd.Sixes, sixes)
 }

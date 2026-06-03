@@ -4,12 +4,14 @@ import (
 	"errors"
 	"io/fs"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsPermissionDenied(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name string
 		err  error
 		want bool
@@ -21,19 +23,18 @@ func TestIsPermissionDenied(t *testing.T) {
 		{"other error", errors.New("something else"), false},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := isPermissionDenied(tc.err)
-			if got != tc.want {
-				t.Errorf("isPermissionDenied(%v) = %v, want %v", tc.err, got, tc.want)
-			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
 
 func TestSafeFormatForFilename(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	testCases := []struct {
 		name string
 		s    string
 		want bool
@@ -50,12 +51,11 @@ func TestSafeFormatForFilename(t *testing.T) {
 		{"too long", "A23456789012345678901234567890123", false},
 		{"length 32 ok", "A2345678901234567890123456789012", true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := safeFormatForFilename(tt.s)
-			if got != tt.want {
-				t.Errorf("safeFormatForFilename(%q) = %v, want %v", tt.s, got, tt.want)
-			}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := safeFormatForFilename(tc.s)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

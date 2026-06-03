@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // These integration tests guard against regressions that occurred during cricsheet import:
@@ -19,40 +21,28 @@ func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// First batch (inning 1)
 	batch1 := []FieldingEvent{
 		{MatchID: 888881, Innings: 1, Over: 0, Ball: 1, Kind: "caught", AssistRole: ""},
 	}
-	if err := InsertFieldingEventsBatchTx(ctx, tx, batch1); err != nil {
-		t.Fatalf("first InsertFieldingEventsBatchTx: %v", err)
-	}
+	require.NoError(t, InsertFieldingEventsBatchTx(ctx, tx, batch1))
 
 	// Second batch (inning 2) in same tx — would fail with "relation \"fielding_event_tmp\" already exists" without DROP TABLE IF EXISTS
 	batch2 := []FieldingEvent{
 		{MatchID: 888881, Innings: 2, Over: 0, Ball: 1, Kind: "run_out", AssistRole: ""},
 	}
-	if err := InsertFieldingEventsBatchTx(ctx, tx, batch2); err != nil {
-		t.Fatalf("second InsertFieldingEventsBatchTx: %v", err)
-	}
+	require.NoError(t, InsertFieldingEventsBatchTx(ctx, tx, batch2))
 
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(ctx))
 }
 
 func TestMultiBatchBattingInSameTx(t *testing.T) {
@@ -62,14 +52,10 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Ensure we have at least one player (batting_data has FK to player)
 	_ = PoolAPI.Exec(
@@ -77,34 +63,24 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 		"INSERT INTO player(player_name) VALUES ('TestBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
 	)
 	var playerID int64
-	if err := PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID); err != nil {
-		t.Fatalf("select test player: %v", err)
-	}
+	require.NoError(t, PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID))
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	runs1, runs2 := 10, 20
 	batch1 := []Batting{
 		{MatchID: 888882, InningNumber: 1, PlayerID: playerID, Runs: &runs1},
 	}
-	if err := UpsertBattingBatchTx(ctx, tx, batch1); err != nil {
-		t.Fatalf("first UpsertBattingBatchTx: %v", err)
-	}
+	require.NoError(t, UpsertBattingBatchTx(ctx, tx, batch1))
 
 	batch2 := []Batting{
 		{MatchID: 888882, InningNumber: 2, PlayerID: playerID, Runs: &runs2},
 	}
-	if err := UpsertBattingBatchTx(ctx, tx, batch2); err != nil {
-		t.Fatalf("second UpsertBattingBatchTx: %v", err)
-	}
+	require.NoError(t, UpsertBattingBatchTx(ctx, tx, batch2))
 
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(ctx))
 }
 
 func TestMultiBatchBowlingInSameTx(t *testing.T) {
@@ -114,48 +90,34 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	_ = PoolAPI.Exec(
 		ctx,
 		"INSERT INTO player(player_name) VALUES ('TestBowlBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
 	)
 	var playerID int64
-	if err := PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID); err != nil {
-		t.Fatalf("select test player: %v", err)
-	}
+	require.NoError(t, PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID))
 
 	tx, err := PoolAPI.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	wickets1, wickets2 := 1, 2
 	batch1 := []Bowling{
 		{MatchID: 888883, InningNumber: 1, PlayerID: playerID, Wickets: &wickets1},
 	}
-	if err := UpsertBowlingBatchTx(ctx, tx, batch1); err != nil {
-		t.Fatalf("first UpsertBowlingBatchTx: %v", err)
-	}
+	require.NoError(t, UpsertBowlingBatchTx(ctx, tx, batch1))
 
 	batch2 := []Bowling{
 		{MatchID: 888883, InningNumber: 2, PlayerID: playerID, Wickets: &wickets2},
 	}
-	if err := UpsertBowlingBatchTx(ctx, tx, batch2); err != nil {
-		t.Fatalf("second UpsertBowlingBatchTx: %v", err)
-	}
+	require.NoError(t, UpsertBowlingBatchTx(ctx, tx, batch2))
 
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(ctx))
 }
 
 func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
@@ -165,14 +127,10 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Run in a single transaction: insert player, insert fielding_events, then RecomputeFieldingAggregatesTx.
 	// Without consuming and closing the aggregation query rows before calling UpsertFieldingTx, we get "conn busy".
@@ -198,7 +156,5 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 		// RecomputeFieldingAggregatesTx does a Query then UpsertFieldingTx per row; rows must be fully read and closed first to avoid "conn busy"
 		return RecomputeFieldingAggregatesTx(ctx, tx, 888884)
 	})
-	if err != nil {
-		t.Fatalf("RunInTx (recompute fielding aggregates): %v", err)
-	}
+	require.NoError(t, err)
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/cricsheetimporter"
+
+	"github.com/stretchr/testify/require"
 )
 
 type assertFn func(t *testing.T, got svc.Options, err error)
@@ -13,55 +15,27 @@ type assertFn func(t *testing.T, got svc.Options, err error)
 func assertNoErrorApplyDir(wantDir string, wantApply bool, wantConc int) assertFn {
 	return func(t *testing.T, got svc.Options, err error) {
 		t.Helper()
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if got.InDir != wantDir {
-			t.Fatalf("want InDir=%q got %q", wantDir, got.InDir)
-		}
-		if got.Apply != wantApply {
-			t.Fatalf("want Apply=%v got %v", wantApply, got.Apply)
-		}
-		if got.Concurrency != wantConc {
-			t.Fatalf("want Concurrency=%d got %d", wantConc, got.Concurrency)
-		}
+		require.NoError(t, err)
+		require.Equal(t, wantDir, got.InDir)
+		require.Equal(t, wantApply, got.Apply)
+		require.Equal(t, wantConc, got.Concurrency)
 	}
 }
 
 func assertErrorContains(sub string) assertFn {
 	return func(t *testing.T, _ svc.Options, err error) {
 		t.Helper()
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || indexOf(s, sub) < 0 {
-			t.Fatalf("want err containing %q, got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		ok := true
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
-}
 
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		setup  func()
 		args   []string
@@ -97,23 +71,16 @@ func TestParseArgs_Basic(t *testing.T) {
 			args:  []string{"-placeholders-weather", "-placeholders-fielding", "-weather-enqueue=false"},
 			assert: func(t *testing.T, got svc.Options, err error) {
 				t.Helper()
-				if err != nil {
-					t.Fatalf("unexpected err: %v", err)
-				}
-				if !got.PlaceholdersWeather {
-					t.Fatalf("expected placeholders-weather true")
-				}
-				if !got.PlaceholdersFielding {
-					t.Fatalf("expected placeholders-fielding true")
-				}
-				if got.WeatherEnqueue {
-					t.Fatalf("expected weather-enqueue false")
-				}
+				require.NoError(t, err)
+				require.True(t, got.PlaceholdersWeather)
+				require.True(t, got.PlaceholdersFielding)
+ 			require.False(t, got.WeatherEnqueue)
 			},
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			os.Unsetenv("GO_APP_CRICSHEET_DIR")
 			os.Unsetenv("CRICSHEET_CONCURRENCY")

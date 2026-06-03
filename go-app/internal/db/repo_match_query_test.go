@@ -20,7 +20,7 @@ func TestGetMatchDateByID_Table(t *testing.T) {
 	type arrangeFn func(t *testing.T) (mock pgxmock.PgxPoolIface, matchID int64)
 	type assertFn func(t *testing.T, got *time.Time, err error, mock pgxmock.PgxPoolIface)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -85,7 +85,8 @@ func TestGetMatchDateByID_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			tc := tc
 			// Arrange

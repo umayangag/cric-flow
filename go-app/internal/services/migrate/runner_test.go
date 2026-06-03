@@ -7,6 +7,8 @@ import (
 	"time"
 
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/migrate"
+
+	"github.com/stretchr/testify/require"
 )
 
 type assertErrFn func(t *testing.T, err error)
@@ -14,25 +16,21 @@ type assertErrFn func(t *testing.T, err error)
 func assertNoErr() assertErrFn {
 	return func(t *testing.T, err error) {
 		t.Helper()
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
+		require.NoError(t, err)
 	}
 }
 
 func assertErr() assertErrFn {
 	return func(t *testing.T, err error) {
 		t.Helper()
-		if err == nil {
-			t.Fatalf("expected error, got nil")
-		}
+		require.Error(t, err)
 	}
 }
 
 func TestRunner_Run(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		migrate func(ctx context.Context, dir string) error
 		timeout time.Duration
@@ -52,7 +50,8 @@ func TestRunner_Run(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			r := svc.Runner{Migrate: tc.migrate, Timeout: tc.timeout}
 			err := r.Run(context.Background(), "migrations")

@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 	"github.com/umayangag/cric-flow/go-app/internal/models"
 )
 
@@ -16,11 +18,9 @@ func TestPredictBatting_Non2xx_New(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
+	c := &mlclient.Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBatting(context.Background(), []models.BattingFeatures{{PlayerName: "A"}})
-	if err == nil {
-		t.Fatalf("expected error for non-2xx response")
-	}
+	require.Error(t, err)
 }
 
 func TestPredictBowling_InvalidJSON_New(t *testing.T) {
@@ -30,9 +30,7 @@ func TestPredictBowling_InvalidJSON_New(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
+	c := &mlclient.Client{BaseURL: srv.URL, HTTP: srv.Client(), Timeout: 2 * time.Second}
 	_, err := c.PredictBowling(context.Background(), []models.BowlingFeatures{{PlayerName: "B"}})
-	if err == nil {
-		t.Fatalf("expected json decode error")
-	}
+	require.Error(t, err)
 }
