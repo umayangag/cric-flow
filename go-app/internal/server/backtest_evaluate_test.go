@@ -30,7 +30,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 	// Stub seams
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	getBacktestMatchDateFunc = func(_ context.Context, matchID int64) (time.Time, error) {
-  require.Equal(t, int64(111), matchID)
+		require.Equal(t, int64(111), matchID)
 		return cutoff, nil
 	}
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {

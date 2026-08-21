@@ -21,7 +21,12 @@ func TestMAE(t *testing.T) {
 		{name: "empty returns NaN", yTrue: nil, yPred: nil, wantNaN: true},
 		{name: "length mismatch returns NaN", yTrue: []float64{1, 2}, yPred: []float64{1}, wantNaN: true},
 		{name: "zero error", yTrue: []float64{1, 2, 3}, yPred: []float64{1, 2, 3}, expected: 0},
-		{name: "typical values", yTrue: []float64{1, 2, 3}, yPred: []float64{1.5, 1.0, 2.0}, expected: (0.5 + 1.0 + 1.0) / 3.0},
+		{
+			name:     "typical values",
+			yTrue:    []float64{1, 2, 3},
+			yPred:    []float64{1.5, 1.0, 2.0},
+			expected: (0.5 + 1.0 + 1.0) / 3.0,
+		},
 	}
 
 	for i := range testCases {

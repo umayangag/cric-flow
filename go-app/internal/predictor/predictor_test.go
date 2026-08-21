@@ -3,8 +3,8 @@ package predictor
 import (
 	"testing"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
 // TestCalculateOverallPerformanceWithConfig verifies team aggregates are computed
@@ -82,7 +82,7 @@ func TestCalculateOverallPerformanceWithConfig(t *testing.T) {
 				require.Equal(t, tc.expect.TotalWickets, team.TotalWickets)
 				require.Equal(t, tc.expect.Extras, team.Extras)
 				require.Equal(t, tc.expect.MatchNumber, team.MatchNumber)
- 				require.Empty(t, team.Players)
+				require.Empty(t, team.Players)
 				return
 			}
 

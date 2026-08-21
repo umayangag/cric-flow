@@ -32,7 +32,7 @@ func TestParseAsOf(t *testing.T) {
 			if tc.wantHas {
 				require.Equal(t, tc.wantYMD, got.Format("2006-01-02"))
 			} else {
- 			require.True(t, got.IsZero(), "expected zero time when no date, got %v", got)
+				require.True(t, got.IsZero(), "expected zero time when no date, got %v", got)
 			}
 		})
 	}

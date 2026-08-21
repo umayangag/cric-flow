@@ -110,13 +110,13 @@ func TestBuildDBFreshnessSection_Table(t *testing.T) {
 			for k, want := range tc.wantSt {
 				m, ok := fm[k].(map[string]any)
 				require.True(t, ok)
- 			st := m["status"].(string)
- 				require.Equal(t, want, st)
+				st := m["status"].(string)
+				require.Equal(t, want, st)
 			}
 			// overall
-				ov, ok := got["overall"].(map[string]any)
-				require.True(t, ok, "overall missing")
-				require.Equal(t, tc.wantOv, ov["status"].(string))
+			ov, ok := got["overall"].(map[string]any)
+			require.True(t, ok, "overall missing")
+			require.Equal(t, tc.wantOv, ov["status"].(string))
 		})
 	}
 }
@@ -136,8 +136,8 @@ func TestBuildDBCompletenessSection_Table(t *testing.T) {
 	want := map[string]string{"TEST": "ok", "ODI": "ok", "T20I": "missing", "T20": "ok"}
 	for k, w := range want {
 		m := fm[k].(map[string]any)
- 	st := m["status"].(string)
- 	require.Equal(t, w, st)
+		st := m["status"].(string)
+		require.Equal(t, w, st)
 	}
 	ov := got["overall"].(map[string]any)
 	require.Equal(t, "missing", ov["status"].(string))

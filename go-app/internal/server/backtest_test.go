@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func TestBacktestMatchHandler_SelectMode_Success(t *testing.T) {

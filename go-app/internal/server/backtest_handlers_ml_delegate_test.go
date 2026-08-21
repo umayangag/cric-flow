@@ -170,4 +170,3 @@ func TestBacktestEvaluate_Handler_MLDelegation(t *testing.T) {
 }
 
 func floatPtr(v float64) *float64 { return &v }
-

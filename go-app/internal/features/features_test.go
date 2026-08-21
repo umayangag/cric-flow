@@ -39,8 +39,20 @@ func TestEWM(t *testing.T) {
 		expectedW float64
 	}{
 		{name: "empty", inn: nil, alpha: 0.5, expectedV: 0, expectedW: 0},
-		{name: "alpha zero uses default", inn: mkInnings(base, 10, 20), alpha: 0.0, expectedV: 15.882352941176471, expectedW: 0.51},
-		{name: "typical three values", inn: mkInnings(base, 10, 20, 30), alpha: 0.5, expectedV: 24.285714285714285, expectedW: 0.875},
+		{
+			name:      "alpha zero uses default",
+			inn:       mkInnings(base, 10, 20),
+			alpha:     0.0,
+			expectedV: 15.882352941176471,
+			expectedW: 0.51,
+		},
+		{
+			name:      "typical three values",
+			inn:       mkInnings(base, 10, 20, 30),
+			alpha:     0.5,
+			expectedV: 24.285714285714285,
+			expectedW: 0.875,
+		},
 	}
 
 	for i := range testCases {
