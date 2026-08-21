@@ -23,7 +23,8 @@ func TestParseGOMEMLIMIT(t *testing.T) {
 		{"invalid", 0},
 		{"0", 0},
 	}
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.in, func(t *testing.T) {
 			got := parseGOMEMLIMIT(tc.in)
 			require.Equal(t, tc.want, got, "parseGOMEMLIMIT(%q)", tc.in)
@@ -97,8 +98,9 @@ func TestConcurrencyLimit_KindImport(t *testing.T) {
 // TestGetLimit_ReturnsPositive ensures GetLimit returns at least 1 for each kind (covers GetLimit and config callback path).
 func TestGetLimit_ReturnsPositive(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding} {
-		kind := kind // capture range variable
+	kinds := []Kind{KindPrecompute, KindImport, KindExport, KindSeqCalc, KindFielding}
+	for i := range kinds {
+		kind := kinds[i]
 		t.Run(string(kind), func(t *testing.T) {
 			t.Parallel()
 			got := GetLimit(kind)
@@ -135,8 +137,8 @@ func TestMemoryBasedLimit(t *testing.T) {
 	defer func() { _ = os.Setenv("USE_RESOURCE_OBSERVATIONS", oldObs) }()
 	_ = os.Setenv("USE_RESOURCE_OBSERVATIONS", "false")
 
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			detectMemoryLimitBytes = func() int64 { return tc.memLimit }
 			got := memoryBasedLimit(tc.kind)

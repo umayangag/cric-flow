@@ -7,6 +7,8 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	ts "github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
+
+	"github.com/stretchr/testify/require"
 )
 
 type fakeRepo struct {
@@ -27,47 +29,29 @@ type assertDBFn func(t *testing.T, ps []ts.Player, err error)
 
 func assertNoErrorCountCSV(n int) assertCSVFn {
 	return func(t *testing.T, ps []ts.Player, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(ps) != n {
-			t.Fatalf("want %d players got %d", n, len(ps))
-		}
+		require.NoError(t, err)
+		require.Equal(t, n, len(ps))
 	}
 }
 
 func assertErrContainsCSV(sub string) assertCSVFn {
 	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || !strings.Contains(s, sub) {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 
 func assertNoErrorCountDB(n int) assertDBFn {
 	return func(t *testing.T, ps []ts.Player, err error) {
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
-		if len(ps) != n {
-			t.Fatalf("want %d players got %d", n, len(ps))
-		}
+		require.NoError(t, err)
+		require.Equal(t, n, len(ps))
 	}
 }
 
 func assertErrContainsDB(sub string) assertDBFn {
 	return func(t *testing.T, _ []ts.Player, err error) {
-		s := ""
-		if err != nil {
-			s = err.Error()
-		}
-		if err == nil || !strings.Contains(s, sub) {
-			t.Fatalf("want err containing %q got %v", sub, err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), sub)
 	}
 }
 
@@ -76,7 +60,7 @@ func TestLoadFromCSV_Table(t *testing.T) {
 	good := "name,is_bowler,is_keeper,bat_score,bowl_score\nA,1,0,0.7,0.2\nB,0,1,0.5,0.1\n"
 	badHeader := "x,y\n1,2\n"
 	badRow := "name,is_bowler,is_keeper,bat_score,bowl_score\nA,yes,no,abc,0\n"
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		csv    string
 		assert assertCSVFn
@@ -86,7 +70,8 @@ func TestLoadFromCSV_Table(t *testing.T) {
 		{"bad value", badRow, assertErrContainsCSV("bat_score")},
 		{"empty", "", assertErrContainsCSV("empty csv")},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			ps, err := ts.LoadFromCSV(strings.NewReader(tc.csv))
 			tc.assert(t, ps, err)

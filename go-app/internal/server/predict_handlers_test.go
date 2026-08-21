@@ -11,7 +11,7 @@ import (
 func TestParseMatchDate(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		input   string
 		want    time.Time
@@ -54,16 +54,17 @@ func TestParseMatchDate(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseMatchDate(tt.input)
-			if tt.wantErr {
+			got, err := parseMatchDate(tc.input)
+			if tc.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.True(t, tt.want.Equal(got), "expected %v, got %v", tt.want, got)
+			assert.True(t, tc.want.Equal(got), "expected %v, got %v", tc.want, got)
 		})
 	}
 }

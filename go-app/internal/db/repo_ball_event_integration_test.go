@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // guardIntegration returns true if RUN_DB_TESTS=1
@@ -30,20 +32,14 @@ func TestInsertBallEvents_Integration(t *testing.T) {
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
-	if err != nil {
-		t.Fatalf("Connect error: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 
 	// Run migrations using an absolute path derived from this test file
-	if err := RunMigrations(ctx, migrationsDir()); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
 	// Clean table
-	if err := Exec(ctx, "TRUNCATE ball_event"); err != nil {
-		t.Fatalf("truncate failed: %v", err)
-	}
+	require.NoError(t, Exec(ctx, "TRUNCATE ball_event"))
 
 	// Prepare rows
 	rows := []BallEventRow{
@@ -158,29 +154,17 @@ func TestInsertBallEvents_Integration(t *testing.T) {
 	}
 
 	// First insert
-	if err := InsertBallEvents(ctx, rows); err != nil {
-		t.Fatalf("first insert failed: %v", err)
-	}
+	require.NoError(t, InsertBallEvents(ctx, rows))
 
 	// Count rows
 	var cnt int
-	if err := QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt); err != nil {
-		t.Fatalf("count failed: %v", err)
-	}
-	if cnt != len(rows) {
-		t.Fatalf("unexpected count after first insert: got %d want %d", cnt, len(rows))
-	}
+	require.NoError(t, QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt))
+	require.Equal(t, len(rows), cnt)
 
 	// Re-insert same rows (idempotent)
-	if err := InsertBallEvents(ctx, rows); err != nil {
-		t.Fatalf("second insert (duplicates) failed: %v", err)
-	}
-	if err := QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt); err != nil {
-		t.Fatalf("count failed: %v", err)
-	}
-	if cnt != len(rows) {
-		t.Fatalf("unexpected count after duplicate insert: got %d want %d", cnt, len(rows))
-	}
+	require.NoError(t, InsertBallEvents(ctx, rows))
+	require.NoError(t, QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt))
+	require.Equal(t, len(rows), cnt)
 
 	// Insert mix of duplicates + one new
 	more := append([]BallEventRow{}, rows...)
@@ -199,13 +183,7 @@ func TestInsertBallEvents_Integration(t *testing.T) {
 			RunsTotal:  1,
 		},
 	)
-	if err := InsertBallEvents(ctx, more); err != nil {
-		t.Fatalf("mixed insert failed: %v", err)
-	}
-	if err := QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt); err != nil {
-		t.Fatalf("count failed: %v", err)
-	}
-	if cnt != len(rows)+1 {
-		t.Fatalf("unexpected count after mixed insert: got %d want %d", cnt, len(rows)+1)
-	}
+	require.NoError(t, InsertBallEvents(ctx, more))
+	require.NoError(t, QueryRow(ctx, "SELECT count(*) FROM ball_event").Scan(&cnt))
+	require.Equal(t, len(rows)+1, cnt)
 }

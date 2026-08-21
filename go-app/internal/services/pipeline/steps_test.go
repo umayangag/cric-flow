@@ -10,7 +10,7 @@ import (
 func TestStepToCommand(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	testCases := []struct {
 		name string
 		step string
 		want string
@@ -31,10 +31,11 @@ func TestStepToCommand(t *testing.T) {
 		{name: "empty_returns_empty", step: "", want: ""},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, StepToCommand(tt.step))
+			assert.Equal(t, tc.want, StepToCommand(tc.step))
 		})
 	}
 }
@@ -42,7 +43,7 @@ func TestStepToCommand(t *testing.T) {
 func TestTrainingStepToModel(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	testCases := []struct {
 		name   string
 		stepID string
 		want   string
@@ -57,16 +58,17 @@ func TestTrainingStepToModel(t *testing.T) {
 		{name: "empty_returns_empty", stepID: "", want: ""},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, TrainingStepToModel(tt.stepID))
+			assert.Equal(t, tc.want, TrainingStepToModel(tc.stepID))
 		})
 	}
 }
 
 func TestMLServiceBaseURL(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name    string
 		envVal  string
 		wantHas string // substring the result must contain
@@ -88,11 +90,12 @@ func TestMLServiceBaseURL(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("ML_SERVICE_URL", tt.envVal)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ML_SERVICE_URL", tc.envVal)
 			got := MLServiceBaseURL()
-			assert.Contains(t, got, tt.wantHas)
+			assert.Contains(t, got, tc.wantHas)
 			// Must never end with trailing slash.
 			assert.NotRegexp(t, `/$`, got)
 		})

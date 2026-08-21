@@ -14,7 +14,7 @@ func TestGenerateSuggestions(t *testing.T) {
 	twoHoursAgo := now.Add(-2 * time.Hour)
 	threeHoursAgo := now.Add(-3 * time.Hour)
 
-	tests := []struct {
+	testCases := []struct {
 		name           string
 		migrations     []tracking.Migration
 		seqPopulated   bool
@@ -156,14 +156,15 @@ func TestGenerateSuggestions(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			suggestions := GenerateSuggestions(tt.migrations, tt.seqPopulated)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			suggestions := GenerateSuggestions(tc.migrations, tc.seqPopulated)
 			titles := make([]string, 0, len(suggestions))
 			for _, s := range suggestions {
 				titles = append(titles, s.Title)
 			}
-			assert.ElementsMatch(t, tt.expectedTitles, titles)
+			assert.ElementsMatch(t, tc.expectedTitles, titles)
 		})
 	}
 }

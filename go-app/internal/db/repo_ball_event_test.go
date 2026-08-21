@@ -82,7 +82,7 @@ func TestInsertBallEvents_Scenarios(t *testing.T) {
 	type arrangeFn func(t *testing.T) (ctx context.Context, mock pgxmock.PgxPoolIface, rows []db.BallEventRow)
 	type assertFn func(t *testing.T, mock pgxmock.PgxPoolIface, err error)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -161,7 +161,8 @@ func TestInsertBallEvents_Scenarios(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			tc := tc
 			// Arrange

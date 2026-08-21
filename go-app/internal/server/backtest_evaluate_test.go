@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test evaluate mode happy path with minimal targets (runs) and MAE computation
@@ -28,9 +30,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 	// Stub seams
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	getBacktestMatchDateFunc = func(_ context.Context, matchID int64) (time.Time, error) {
-		if matchID != 111 {
-			t.Fatalf("unexpected matchID: %d", matchID)
-		}
+  require.Equal(t, int64(111), matchID)
 		return cutoff, nil
 	}
 	getBacktestSquadPlayerIDsFunc = func(_ context.Context, _ int64, _ time.Time, _ string) ([]int64, error) {
@@ -60,31 +60,17 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if payload.Match.MatchID != 111 {
-		t.Fatalf("match_id = %d, want 111", payload.Match.MatchID)
-	}
-	if payload.Filters["format"] != "T20" {
-		t.Fatalf("filters.format = %v, want T20", payload.Filters["format"])
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
+	require.Equal(t, int64(111), payload.Match.MatchID)
+	require.Equal(t, "T20", payload.Filters["format"])
 	// Expected MAE: |25-30| + |15-10| + |1-0| = 5 + 5 + 1 = 11; /3 = 3.6666...
 	mae, ok := payload.Metrics["player_runs_mae"]
-	if !ok {
-		t.Fatalf("metrics missing player_runs_mae")
-	}
-	if mae < 3.66 || mae > 3.67 {
-		t.Fatalf("player_runs_mae = %f, want ~3.6667", mae)
-	}
-	if len(payload.Players) == 0 {
-		t.Fatalf("players empty, expected rows")
-	}
+	require.True(t, ok)
+	require.InDelta(t, 3.6667, mae, 0.01)
+	require.NotEmpty(t, payload.Players)
 }
 
 func TestBacktestMatchHandler_EvaluateMode_MissingMatchID(t *testing.T) {
@@ -93,9 +79,7 @@ func TestBacktestMatchHandler_EvaluateMode_MissingMatchID(t *testing.T) {
 	// mode will be evaluate because we set it, but match_id missing
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate", nil)
 	app.backtestMatchHandler(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rr.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
 // Ensure handler passes strict cutoff (match date) through to ML seam
@@ -145,12 +129,8 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=222", nil)
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	if !receivedCutoff.Equal(cutoff) {
-		t.Fatalf("ml cutoff = %v, want %v", receivedCutoff, cutoff)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.True(t, receivedCutoff.Equal(cutoff), "ml cutoff = %v, want %v", receivedCutoff, cutoff)
 }
 
 // Validate bowling metrics (wickets, economy) are included when available and MAE is computed.
@@ -200,37 +180,23 @@ func TestBacktestMatchHandler_EvaluateMode_BowlingMetrics(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 
 	// Check summary metrics
 	wktsMAE, ok := payload.Metrics["player_wickets_mae"]
-	if !ok {
-		t.Fatalf("missing player_wickets_mae")
-	}
+	require.True(t, ok)
 	// Abs errors: |1-2|=1, |0-0|=0 -> (1+0)/2 = 0.5
-	if wktsMAE < 0.49 || wktsMAE > 0.51 {
-		t.Fatalf("player_wickets_mae = %f, want ~0.5", wktsMAE)
-	}
+	require.InDelta(t, 0.5, wktsMAE, 0.01)
 
 	econMAE, ok := payload.Metrics["player_economy_mae"]
-	if !ok {
-		t.Fatalf("missing player_economy_mae")
-	}
+	require.True(t, ok)
 	// Abs errors: |8.0-7.5|=0.5, |5.5-6.0|=0.5 -> (0.5+0.5)/2 = 0.5
-	if econMAE < 0.49 || econMAE > 0.51 {
-		t.Fatalf("player_economy_mae = %f, want ~0.5", econMAE)
-	}
+	require.InDelta(t, 0.5, econMAE, 0.01)
 
-	if len(payload.Players) != 2 {
-		t.Fatalf("players len = %d, want 2", len(payload.Players))
-	}
+	require.Len(t, payload.Players, 2)
 }
 
 // Validate fielding metrics (catches, run_outs) are included when available and MAE is computed.
@@ -278,24 +244,16 @@ func TestBacktestMatchHandler_EvaluateMode_FieldingMetrics(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 
 	// Summary metrics
 	// catches abs errors: |1-2|=1, |0-0|=0 -> 0.5
-	if got := payload.Metrics["player_catches_mae"]; got < 0.49 || got > 0.51 {
-		t.Fatalf("player_catches_mae = %v, want ~0.5", got)
-	}
+	require.InDelta(t, 0.5, payload.Metrics["player_catches_mae"], 0.01)
 	// run_outs abs errors: |2-1|=1, |1-0|=1 -> 1.0
-	if got := payload.Metrics["player_run_outs_mae"]; got < 0.99 || got > 1.01 {
-		t.Fatalf("player_run_outs_mae = %v, want ~1.0", got)
-	}
+	require.InDelta(t, 1.0, payload.Metrics["player_run_outs_mae"], 0.01)
 }
 
 // Match-level aggregates: verify response fields and summary metrics
@@ -349,32 +307,19 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	// Check match_aggregates presence (predicted = sum of player preds, no baseline)
-	if payload.MatchAggregates.Predicted == nil || payload.MatchAggregates.Actual == nil ||
-		payload.MatchAggregates.Errors == nil {
-		t.Fatalf("match_aggregates missing sections")
-	}
+	require.NotNil(t, payload.MatchAggregates.Predicted)
+	require.NotNil(t, payload.MatchAggregates.Actual)
+	require.NotNil(t, payload.MatchAggregates.Errors)
 	// Predicted runs = 18+35 = 53, wickets = 0, extras = 0. Actual: 150, 7, 10.
-	if got := payload.Metrics["match_runs_mae"]; got < 96.9 || got > 97.1 {
-		t.Fatalf("match_runs_mae = %v, want ~97 (|53-150|)", got)
-	}
-	if got := payload.Metrics["match_wickets_mae"]; got < 6.9 || got > 7.1 {
-		t.Fatalf("match_wickets_mae = %v, want ~7", got)
-	}
-	if got := payload.Metrics["match_extras_mae"]; got < 9.9 || got > 10.1 {
-		t.Fatalf("match_extras_mae = %v, want ~10", got)
-	}
+	require.InDelta(t, 97.0, payload.Metrics["match_runs_mae"], 0.1)
+	require.InDelta(t, 7.0, payload.Metrics["match_wickets_mae"], 0.1)
+	require.InDelta(t, 10.0, payload.Metrics["match_extras_mae"], 0.1)
 	// winner_accuracy: pred winner from team run sums; without DB GetMatchPlayerTeams returns empty, so pred winner "" -> 0
-	if got := payload.Metrics["winner_accuracy"]; got != 0 {
-		t.Fatalf("winner_accuracy = %v, want 0 (no team assignment in test)", got)
-	}
+	require.Equal(t, float64(0), payload.Metrics["winner_accuracy"])
 }
 
 // Ensure match aggregates are derived from player predictions (no ML match-aggregates baseline).
@@ -415,20 +360,12 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_FromPlayerPreds(t *te
 	req := httptest.NewRequest(http.MethodGet, "/api/backtest/match?format=T20&team1=IND&team2=AUS&match_id=777", nil)
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	// Predicted runs = 9 (single player), wickets = 0, extras = 0
-	if pred, ok := payload.MatchAggregates.Predicted["runs"].(float64); !ok || pred < 8.9 || pred > 9.1 {
-		t.Fatalf("predicted runs = %v, want 9", payload.MatchAggregates.Predicted["runs"])
-	}
-	if pred, ok := payload.MatchAggregates.Predicted["wickets"].(float64); !ok || pred != 0 {
-		t.Fatalf("predicted wickets = %v, want 0", payload.MatchAggregates.Predicted["wickets"])
-	}
+	require.InDelta(t, 9.0, payload.MatchAggregates.Predicted["runs"].(float64), 0.1)
+	require.Equal(t, float64(0), payload.MatchAggregates.Predicted["wickets"].(float64))
 }
 
 // Verify added metrics: RMSE and R² for player runs are computed and reasonable.
@@ -476,29 +413,17 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
 	var payload backtestEvaluateResponse
-	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&payload))
 	rmse, ok := payload.Metrics["player_runs_rmse"]
-	if !ok {
-		t.Fatalf("missing player_runs_rmse")
-	}
+	require.True(t, ok)
 	// Expected diffs: -5, +5, +1 ⇒ MSE = (25+25+1)/3 = 17 ⇒ RMSE ≈ 4.1231
-	if rmse < 4.12 || rmse > 4.13 {
-		t.Fatalf("player_runs_rmse = %f, want ~4.123", rmse)
-	}
+	require.InDelta(t, 4.123, rmse, 0.01)
 	r2, ok := payload.Metrics["player_runs_r2"]
-	if !ok {
-		t.Fatalf("missing player_runs_r2")
-	}
+	require.True(t, ok)
 	// With actuals {30,10,0} and preds {25,15,1}, R² ≈ 0.8905
-	if r2 < 0.88 || r2 > 0.91 {
-		t.Fatalf("player_runs_r2 = %f, want ~0.89", r2)
-	}
+	require.InDelta(t, 0.89, r2, 0.02)
 }
 
 // Ensure the cutoff-aware features seam is invoked with the correct cutoff and player IDs.
@@ -545,16 +470,8 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
 
 	app.backtestMatchHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	if !called {
-		t.Fatalf("expected getBacktestFeaturesAtCutoffFunc to be called")
-	}
-	if !gotCutoff.Equal(cutoff) {
-		t.Fatalf("features cutoff = %v, want %v", gotCutoff, cutoff)
-	}
-	if len(gotIDs) != len(squadIDs) {
-		t.Fatalf("features playerIDs len = %d, want %d", len(gotIDs), len(squadIDs))
-	}
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.True(t, called)
+	require.True(t, gotCutoff.Equal(cutoff), "features cutoff mismatch")
+	require.Len(t, gotIDs, len(squadIDs))
 }

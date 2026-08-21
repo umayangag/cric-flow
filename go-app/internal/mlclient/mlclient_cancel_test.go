@@ -1,4 +1,4 @@
-package mlclient
+package mlclient_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPredictWin_ContextCancel(t *testing.T) {
@@ -22,7 +24,5 @@ func TestPredictWin_ContextCancel(t *testing.T) {
 	defer cancel()
 
 	_, err := c.PredictWin(ctx, nil)
-	if err == nil {
-		t.Fatalf("expected context cancel/timeout error, got nil")
-	}
+	require.Error(t, err)
 }

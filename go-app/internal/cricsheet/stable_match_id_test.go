@@ -14,7 +14,7 @@ func TestStableMatchID_Table(t *testing.T) {
 	type arrangeFn func() (a, b string, team1, team2 string)
 	type assertFn func(t *testing.T, base string, same string, diffOrder string, diffDate string)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -36,7 +36,8 @@ func TestStableMatchID_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			base, same, team1, team2 := tc.arrange()
 			_ = team1
@@ -49,7 +50,7 @@ func TestStableMatchID_Table(t *testing.T) {
 func TestStableMatchID_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		dateISO string
 		teamA   string
@@ -61,7 +62,8 @@ func TestStableMatchID_EdgeCases(t *testing.T) {
 		{"order_matters", "2025-01-01", "India", "Australia"},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			id := cricsheet.StableMatchID(tc.dateISO, tc.teamA, tc.teamB)
 			if tc.dateISO != "" && tc.teamA != "" && tc.teamB != "" {

@@ -9,7 +9,7 @@ import (
 func TestRescaleTeamPredictionsToWinProbability(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	testCases := []struct {
 		name      string
 		team1     []SelectedPlayer
 		team2     []SelectedPlayer
@@ -87,18 +87,19 @@ func TestRescaleTeamPredictionsToWinProbability(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			// Arrange: deep copy slices so parallel tests don't interfere.
-			t1 := make([]SelectedPlayer, len(tt.team1))
-			copy(t1, tt.team1)
-			t2 := make([]SelectedPlayer, len(tt.team2))
-			copy(t2, tt.team2)
+			t1 := make([]SelectedPlayer, len(tc.team1))
+			copy(t1, tc.team1)
+			t2 := make([]SelectedPlayer, len(tc.team2))
+			copy(t2, tc.team2)
 
 			// Act
-			rescaleTeamPredictionsToWinProbability(t1, t2, tt.extras1, tt.extras2, tt.winProb)
+			rescaleTeamPredictionsToWinProbability(t1, t2, tc.extras1, tc.extras2, tc.winProb)
 
 			// Assert
 			var sumRuns1, sumRuns2 float64
@@ -108,8 +109,8 @@ func TestRescaleTeamPredictionsToWinProbability(t *testing.T) {
 			for _, p := range t2 {
 				sumRuns2 += p.Runs
 			}
-			assert.InDelta(t, tt.wantRuns1, sumRuns1, 0.01, "team1 runs mismatch")
-			assert.InDelta(t, tt.wantRuns2, sumRuns2, 0.01, "team2 runs mismatch")
+			assert.InDelta(t, tc.wantRuns1, sumRuns1, 0.01, "team1 runs mismatch")
+			assert.InDelta(t, tc.wantRuns2, sumRuns2, 0.01, "team2 runs mismatch")
 		})
 	}
 }

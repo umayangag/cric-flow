@@ -5,26 +5,20 @@ import (
 	"testing"
 
 	"github.com/umayangag/cric-flow/go-app/internal/seqcalc"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_ResolveTargets_SingleAndUnknown(t *testing.T) {
 	reg := seqcalc.NewDefaultRegistry()
 
 	calcs, err := reg.ResolveTargets("bat_transitions")
-	if err != nil {
-		t.Fatalf("ResolveTargets(bat_transitions) error: %v", err)
-	}
-	if len(calcs) != 1 {
-		t.Fatalf("expected 1 calc, got %d", len(calcs))
-	}
-	if calcs[0].Name() != seqcalc.TargetBatTransitions {
-		t.Fatalf("expected bat_transitions, got %s", calcs[0].Name())
-	}
+	require.NoError(t, err)
+	require.Len(t, calcs, 1)
+	require.Equal(t, seqcalc.TargetBatTransitions, calcs[0].Name())
 
 	_, err = reg.ResolveTargets("unknown_target_xyz")
-	if err == nil {
-		t.Fatal("expected error for unknown target")
-	}
+	require.Error(t, err)
 }
 
 func TestDryRun(t *testing.T) {
@@ -33,24 +27,16 @@ func TestDryRun(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := seqcalc.DryRun(&buf, calcs, seqcalc.Params{FormatCode: "T20"})
-	if err != nil {
-		t.Fatalf("DryRun error: %v", err)
-	}
-	if buf.Len() == 0 {
-		t.Fatal("DryRun should write output")
-	}
+	require.NoError(t, err)
+	require.Positive(t, buf.Len(), "DryRun should write output")
 
 	// Error: nil writer
 	err = seqcalc.DryRun(nil, calcs, seqcalc.Params{})
-	if err == nil {
-		t.Fatal("expected error for nil writer")
-	}
+	require.Error(t, err)
 
 	// Error: no calculators
 	err = seqcalc.DryRun(&buf, nil, seqcalc.Params{})
-	if err == nil {
-		t.Fatal("expected error for empty calcs")
-	}
+	require.Error(t, err)
 }
 
 func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
@@ -71,21 +57,13 @@ func TestNewDefaultRegistry_AllTargetsAndResolveAll(t *testing.T) {
 		seqcalc.TargetEndPressure:    {},
 	}
 
-	if len(gotTargets) != len(expected) {
-		t.Fatalf("unexpected targets count: got=%d want=%d list=%v", len(gotTargets), len(expected), gotTargets)
-	}
+	require.Len(t, gotTargets, len(expected))
 	for _, gt := range gotTargets {
-		if _, ok := expected[gt]; !ok {
-			t.Fatalf("unexpected target in registry: %s", gt)
-		}
+		require.Contains(t, expected, gt, "unexpected target in registry: %s", gt)
 	}
 
 	// Resolve "all" should return one calculator per expected target
 	calcs, err := reg.ResolveTargets("all")
-	if err != nil {
-		t.Fatalf("ResolveTargets(all) error: %v", err)
-	}
-	if len(calcs) != len(expected) {
-		t.Fatalf("unexpected calculators count for all: got=%d want=%d", len(calcs), len(expected))
-	}
+	require.NoError(t, err)
+	require.Len(t, calcs, len(expected))
 }

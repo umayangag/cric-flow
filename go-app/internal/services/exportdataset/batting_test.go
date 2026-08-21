@@ -36,7 +36,7 @@ func assertErrContains(sub string) assertFn {
 func TestBattingService_Exports(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		want   string
@@ -73,7 +73,8 @@ func TestBattingService_Exports(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			service := svc.NewBattingService(m)
@@ -87,7 +88,7 @@ func TestBattingService_Exports(t *testing.T) {
 
 func TestBattingService_Errors(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		assert assertFn
@@ -117,7 +118,8 @@ func TestBattingService_Errors(t *testing.T) {
 			assertErrContains("boom"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			s := svc.NewBattingService(m)
@@ -133,7 +135,7 @@ func TestBattingService_WriterError(t *testing.T) {
 	t.Parallel()
 	m := dbmocks.NewMockDatasetRepo(t)
 	s := svc.NewBattingService(m)
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BattingService, w io.Writer) error
 		assert assertFn
@@ -147,7 +149,8 @@ func TestBattingService_WriterError(t *testing.T) {
 			assertErrContains("sink write error"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.act(context.Background(), s, errWriter{})
 			// pass nil buffer to assert since it does not use it in error path

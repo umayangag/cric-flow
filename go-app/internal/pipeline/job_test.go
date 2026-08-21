@@ -54,7 +54,7 @@ func setupPipelineDB(t *testing.T, mockDB *mocks.MockDB) {
 func TestRunJob(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global).
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		setup   func(*mocks.MockDB)
 		fn      JobFunc
@@ -114,7 +114,8 @@ func TestRunJob(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			mockDB := &mocks.MockDB{}
 			tc.setup(mockDB)

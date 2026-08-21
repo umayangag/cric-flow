@@ -1,8 +1,12 @@
-package scanx
+package scanx_test
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db/scanx"
 )
 
 type fakeRows struct {
@@ -40,36 +44,28 @@ func (f *fakeRows) Scan(dest ...any) error {
 func (f *fakeRows) Close() { f.closed = true }
 
 func TestCountReturningOnes_Nil(t *testing.T) {
-	n, err := CountReturningOnes(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 0 {
-		t.Fatalf("want 0, got %d", n)
-	}
+	t.Parallel()
+
+	n, err := scanx.CountReturningOnes(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
 }
 
 func TestCountReturningOnes_Normal(t *testing.T) {
+	t.Parallel()
+
 	fr := &fakeRows{vals: []int{1, 1, 1}}
-	n, err := CountReturningOnes(fr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 3 {
-		t.Fatalf("want 3, got %d", n)
-	}
-	if !fr.closed {
-		t.Fatalf("rows should be closed")
-	}
+	n, err := scanx.CountReturningOnes(fr)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+	assert.True(t, fr.closed, "rows should be closed")
 }
 
 func TestCountReturningOnes_ScanError(t *testing.T) {
+	t.Parallel()
+
 	fr := &fakeRows{vals: []int{1, 1}, errAt: 2}
-	_, err := CountReturningOnes(fr)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !fr.closed {
-		t.Fatalf("rows should be closed even on error")
-	}
+	_, err := scanx.CountReturningOnes(fr)
+	require.Error(t, err)
+	assert.True(t, fr.closed, "rows should be closed even on error")
 }

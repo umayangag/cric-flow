@@ -69,7 +69,7 @@ func TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization(t *testin
 	ctx := context.Background()
 	cache := GetGlobalCache()
 
-	tests := []struct {
+	testCases := []struct {
 		name           string
 		format         string
 		wantNumFormats int // T20/T20I bucket returns 2 IDs; others return 1
@@ -85,19 +85,19 @@ func TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization(t *testin
 		{"odI mixed case", "odI", 1},
 		{"whitespace only trimmed odi", "  odi  ", 1},
 	}
-	for _, tt := range tests {
-		tt := tt // capture range variable
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ids, err := cache.GetFormatIDsForTrainingBucket(ctx, tt.format)
+			ids, err := cache.GetFormatIDsForTrainingBucket(ctx, tc.format)
 			require.NoError(t, err)
 			require.Len(
 				t,
 				ids,
-				tt.wantNumFormats,
+				tc.wantNumFormats,
 				"format %q should yield %d format ID(s)",
-				tt.format,
-				tt.wantNumFormats,
+				tc.format,
+				tc.wantNumFormats,
 			)
 		})
 	}

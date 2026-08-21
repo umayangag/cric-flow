@@ -7,7 +7,7 @@ import (
 )
 
 func TestWorseStatus(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		a, b string
 		want string
 	}{
@@ -23,10 +23,11 @@ func TestWorseStatus(t *testing.T) {
 		{"unknown", "missing", "unknown"},
 		{"unknown", "unknown", "unknown"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.a+"_"+tt.b, func(t *testing.T) {
-			got := worseStatus(tt.a, tt.b)
-			require.Equal(t, tt.want, got)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.a+"_"+tc.b, func(t *testing.T) {
+			got := worseStatus(tc.a, tc.b)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

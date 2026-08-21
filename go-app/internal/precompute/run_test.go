@@ -80,7 +80,7 @@ func setupMockDB(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name        string
 		formats     []string
 		opts        *RunOpts
@@ -139,28 +139,29 @@ func TestRun(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			setupMockDB(t)
 
-			runner := &stubRunner{err: tt.runnerErr}
-			setupRunSeams(t, runner, tt.formatIDs, tt.formatIDErr)
+			runner := &stubRunner{err: tc.runnerErr}
+			setupRunSeams(t, runner, tc.formatIDs, tc.formatIDErr)
 
-			err := Run(context.Background(), "2024", tt.formats, tt.opts)
+			err := Run(context.Background(), "2024", tc.formats, tc.opts)
 
-			if tt.wantErr {
+			if tc.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErrMsg)
+				assert.Contains(t, err.Error(), tc.wantErrMsg)
 			} else {
 				require.NoError(t, err)
 			}
 
-			assert.Len(t, runner.calls, tt.wantCalls)
+			assert.Len(t, runner.calls, tc.wantCalls)
 
 			st := GetStatus()
-			if tt.wantStatus != "" {
-				assert.Equal(t, tt.wantStatus, st.Phase)
+			if tc.wantStatus != "" {
+				assert.Equal(t, tc.wantStatus, st.Phase)
 			}
 		})
 	}

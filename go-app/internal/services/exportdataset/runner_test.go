@@ -18,7 +18,7 @@ type runAssertFn func(t *testing.T, err error)
 func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange func(t *testing.T) (*svc.Runner, svc.Options)
 		assert  runAssertFn
@@ -168,7 +168,8 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			r, opts := tc.arrange(t)
 			err := r.Run(context.Background(), opts)

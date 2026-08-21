@@ -44,7 +44,7 @@ func TestDetectFormat_Table(t *testing.T) {
 		want      string
 	}
 
-	cases := []testCase{
+	testCases := []testCase{
 		// Basic mappings
 		{name: "TEST basic", matchType: "Test", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
 		{name: "ODI basic", matchType: "ODI", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
@@ -104,7 +104,8 @@ func TestDetectFormat_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange -> Act
 			got := cricsheet.DetectFormat(tc.matchType, tc.teams, tc.cfg)

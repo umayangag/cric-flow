@@ -36,7 +36,7 @@ func assertErrContainsB(sub string) assertFnB {
 func TestBowlingService_Exports(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		want   string
@@ -72,7 +72,8 @@ func TestBowlingService_Exports(t *testing.T) {
 			assertNoErrorCSVB("ih1,ih2\n5,6\n"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			s := svc.NewBowlingService(m)
@@ -85,7 +86,7 @@ func TestBowlingService_Exports(t *testing.T) {
 
 func TestBowlingService_Errors(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error
 		assert assertFnB
@@ -115,7 +116,8 @@ func TestBowlingService_Errors(t *testing.T) {
 			assertErrContainsB("fail"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := dbmocks.NewMockDatasetRepo(t)
 			s := svc.NewBowlingService(m)
@@ -130,7 +132,7 @@ func TestBowlingService_WriterError(t *testing.T) {
 	t.Parallel()
 	m := dbmocks.NewMockDatasetRepo(t)
 	s := svc.NewBowlingService(m)
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		act    func(ctx context.Context, s *svc.BowlingService, w io.Writer) error
 		assert assertFnB
@@ -144,7 +146,8 @@ func TestBowlingService_WriterError(t *testing.T) {
 			assertErrContainsB("sink write error"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.act(context.Background(), s, errWriterB{})
 			tc.assert(t, nil, err)

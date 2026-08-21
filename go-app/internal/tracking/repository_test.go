@@ -60,7 +60,7 @@ func setupDB(t *testing.T, mock *mocks.MockDB) {
 func TestHasInProgressForCommand(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global) and would race.
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		setup   func(*mocks.MockDB)
 		command string
@@ -109,7 +109,8 @@ func TestHasInProgressForCommand(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := &mocks.MockDB{}
 			if tc.setup != nil {
@@ -130,7 +131,7 @@ func TestHasInProgressForCommand(t *testing.T) {
 func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global).
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		setup   func(*mocks.MockDB)
 		command string
@@ -186,7 +187,8 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := &mocks.MockDB{}
 			if tc.setup != nil {
@@ -209,7 +211,7 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 
 	now := time.Now().UTC()
 
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		setup    func(*mocks.MockDB)
 		command  string
@@ -267,7 +269,8 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := &mocks.MockDB{}
 			if tc.setup != nil {
@@ -293,7 +296,7 @@ func TestHasInProgressForAnyCommand(t *testing.T) {
 
 	commands := []string{"import", "export"}
 
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		setup    func(*mocks.MockDB)
 		commands []string
@@ -338,7 +341,8 @@ func TestHasInProgressForAnyCommand(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			m := &mocks.MockDB{}
 			if tc.setup != nil {

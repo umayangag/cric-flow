@@ -34,7 +34,7 @@ func assertErrorContains(sub string) optsAssertFn {
 
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		setup  func()
 		args   []string
@@ -135,7 +135,8 @@ func TestParseArgs_Basic(t *testing.T) {
 			assert: assertErrorContains("pool csv"),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			os.Unsetenv("TEAM_SELECT_FROM_DB")
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)

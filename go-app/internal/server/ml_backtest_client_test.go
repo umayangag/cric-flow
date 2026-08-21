@@ -5,33 +5,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test PredictPlayers sends cutoff and player_ids and maps response correctly.
 func TestBacktestMLClient_PredictPlayers(t *testing.T) {
 	// Fake ML server
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ml/backtest/predict" || r.Method != http.MethodPost {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
+		require.Equal(t, "/ml/backtest/predict", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
 		var payload struct {
 			Cutoff    string  `json:"cutoff_date"`
 			PlayerIDs []int64 `json:"player_ids"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 		// Validate cutoff and ids propagated
-		if payload.Cutoff == "" {
-			t.Fatalf("missing cutoff_date")
-		}
-		expIDs := []int64{1, 2, 3}
-		if !reflect.DeepEqual(payload.PlayerIDs, expIDs) {
-			t.Fatalf("player_ids = %#v, want %#v", payload.PlayerIDs, expIDs)
-		}
+		require.NotEmpty(t, payload.Cutoff)
+		require.Equal(t, []int64{1, 2, 3}, payload.PlayerIDs)
 		// Respond with deterministic predictions
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"players": []map[string]any{
@@ -48,36 +41,28 @@ func TestBacktestMLClient_PredictPlayers(t *testing.T) {
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, false, nil)
-	if err != nil {
-		t.Fatalf("PredictPlayers error: %v", err)
-	}
-	if len(res) != 3 {
-		t.Fatalf("len(res) = %d, want 3", len(res))
-	}
-	if got := res[1]; got.Runs != 10 || got.Wickets != 1 || got.Economy != 6.5 || got.Catches != 2 || got.RunOuts != 1 {
-		t.Fatalf("player 1 preds = %+v, want runs=10,wickets=1,economy=6.5,catches=2,run_outs=1", got)
-	}
+	require.NoError(t, err)
+	require.Len(t, res, 3)
+	got := res[1]
+	require.Equal(t, float64(10), got.Runs)
+	require.Equal(t, float64(1), got.Wickets)
+	require.Equal(t, 6.5, got.Economy)
+	require.Equal(t, float64(2), got.Catches)
+	require.Equal(t, float64(1), got.RunOuts)
 }
 
 // Test PredictMatchAggregates sends cutoff and teams and maps response correctly.
 func TestBacktestMLClient_PredictMatchAggregates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ml/backtest/predict" || r.Method != http.MethodPost {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
+		require.Equal(t, "/ml/backtest/predict", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
 		var payload struct {
 			Cutoff string    `json:"cutoff_date"`
 			Teams  [2]string `json:"teams"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload.Cutoff == "" {
-			t.Fatalf("missing cutoff_date")
-		}
-		if payload.Teams != [2]string{"IND", "AUS"} {
-			t.Fatalf("teams = %#v, want [IND AUS]", payload.Teams)
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.NotEmpty(t, payload.Cutoff)
+		require.Equal(t, [2]string{"IND", "AUS"}, payload.Teams)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"match": map[string]any{
 				"runs":             160.0,
@@ -93,20 +78,18 @@ func TestBacktestMLClient_PredictMatchAggregates(t *testing.T) {
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
 	agg, _, err := c.predictMatchAggregates(t.Context(), cutoff, [2]string{"IND", "AUS"})
-	if err != nil {
-		t.Fatalf("PredictMatchAggregates error: %v", err)
-	}
-	if agg.Runs != 160 || agg.Wickets != 6 || agg.Extras != 12 || agg.WinnerTeamCode != "IND" {
-		t.Fatalf("agg = %+v, want runs=160,wickets=6,extras=12,winner=IND", agg)
-	}
+	require.NoError(t, err)
+	require.Equal(t, float64(160), agg.Runs)
+	require.Equal(t, float64(6), agg.Wickets)
+	require.Equal(t, float64(12), agg.Extras)
+	require.Equal(t, "IND", agg.WinnerTeamCode)
 }
 
 // Test HistoricalMatchBacktest with match_id selector and with filters selector, plus validation error.
 func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ml/backtest/match" || r.Method != http.MethodPost {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
+		require.Equal(t, "/ml/backtest/match", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
 		// Echo a fixed response body matching the ml-service schema
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"players": []map[string]any{
@@ -143,65 +126,37 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	// Case 1: by match_id
 	mid := int64(789)
 	res, err := c.historicalMatchBacktest(t.Context(), cutoff, &mid, nil)
-	if err != nil {
-		t.Fatalf("historicalMatchBacktest by id error: %v", err)
-	}
-	if res.ModelVersion != "v-test" {
-		t.Fatalf("ModelVersion = %q, want v-test", res.ModelVersion)
-	}
-	if len(res.Players) != 1 {
-		t.Fatalf("len(players)=%d, want 1", len(res.Players))
-	}
-	if res.Match.Predicted.WinnerTeamCode != "IND" || res.Metrics.MAERuns != 2 {
-		t.Fatalf("unexpected payload: match=%+v metrics=%+v", res.Match, res.Metrics)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "v-test", res.ModelVersion)
+	require.Len(t, res.Players, 1)
+	require.Equal(t, "IND", res.Match.Predicted.WinnerTeamCode)
+	require.Equal(t, float64(2), res.Metrics.MAERuns)
 
 	// Case 2: by filters
 	filters := &HistoricalMatchFilters{Format: "T20", Team1: "IND", Team2: "AUS", MatchDate: cutoff}
 	res2, err := c.historicalMatchBacktest(t.Context(), cutoff, nil, filters)
-	if err != nil {
-		t.Fatalf("historicalMatchBacktest by filters error: %v", err)
-	}
-	if res2.Match.Actual.Wickets != 7 {
-		t.Fatalf("expected actual wickets=7, got %+v", res2.Match.Actual)
-	}
+	require.NoError(t, err)
+ require.Equal(t, float64(7), res2.Match.Actual.Wickets)
 
 	// Case 3: validation error when neither provided
 	_, err = c.historicalMatchBacktest(t.Context(), cutoff, nil, nil)
-	if err == nil {
-		t.Fatalf("expected error when neither matchID nor filters provided")
-	}
+	require.Error(t, err)
 }
 
 // Test GenerateMatch sends cutoff, format, player_ids, features, and match_context and maps response.
 func TestBacktestMLClient_GenerateMatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/ml/generate-match" || r.Method != http.MethodPost {
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
+		require.Equal(t, "/api/ml/generate-match", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
 		var payload mlGenerateMatchRequest
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if payload.CutoffDate == "" {
-			t.Fatalf("missing cutoff_date")
-		}
-		expIDs := []int64{10, 20}
-		if !reflect.DeepEqual(payload.PlayerIDs, expIDs) {
-			t.Fatalf("player_ids = %#v, want %#v", payload.PlayerIDs, expIDs)
-		}
-		if payload.Format != "T20" {
-			t.Fatalf("format = %q, want T20", payload.Format)
-		}
-		if payload.Features == nil || len(payload.Features) != 2 {
-			t.Fatalf("expected features for 2 players, got %#v", payload.Features)
-		}
-		if _, ok := payload.Features["10"]; !ok {
-			t.Fatalf("expected features key \"10\"")
-		}
-		if payload.MatchContext == nil || len(payload.MatchContext.Team1PlayerIDs) != 1 {
-			t.Fatalf("expected non-nil match_context with team1_player_ids")
-		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.NotEmpty(t, payload.CutoffDate)
+		require.Equal(t, []int64{10, 20}, payload.PlayerIDs)
+		require.Equal(t, "T20", payload.Format)
+		require.Len(t, payload.Features, 2)
+		require.Contains(t, payload.Features, "10")
+		require.NotNil(t, payload.MatchContext)
+		require.Len(t, payload.MatchContext.Team1PlayerIDs, 1)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"players": []map[string]any{
 				{"player_id": 10, "runs": 42.0, "wickets": 1.0},
@@ -235,16 +190,10 @@ func TestBacktestMLClient_GenerateMatch(t *testing.T) {
 		Temp:              25,
 	}
 	res, err := c.GenerateMatch(t.Context(), cutoff, "T20", []int64{10, 20}, features, true, ctx)
-	if err != nil {
-		t.Fatalf("GenerateMatch error: %v", err)
-	}
-	if res.ModelVersion != "v-test-generate" {
-		t.Fatalf("ModelVersion = %q, want v-test-generate", res.ModelVersion)
-	}
-	if len(res.Players) != 2 || len(res.Innings) != 2 {
-		t.Fatalf("unexpected sizes: players=%d innings=%d", len(res.Players), len(res.Innings))
-	}
-	if res.WinProbabilityTeam1 <= 0 || res.WinProbabilityTeam1 >= 1 {
-		t.Fatalf("WinProbabilityTeam1 = %v, want in (0,1)", res.WinProbabilityTeam1)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "v-test-generate", res.ModelVersion)
+	require.Len(t, res.Players, 2)
+	require.Len(t, res.Innings, 2)
+	require.Greater(t, res.WinProbabilityTeam1, float64(0))
+	require.Less(t, res.WinProbabilityTeam1, float64(1))
 }

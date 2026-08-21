@@ -69,9 +69,7 @@ func (nopRow) Scan(_ ...any) error { return nil }
 func writeJSON(t *testing.T, dir, name, data string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
-		t.Fatalf("write json: %v", err)
-	}
+	require.NoError(t, os.WriteFile(p, []byte(data), 0o600))
 	return p
 }
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	logger "github.com/umayangag/cric-flow/go-app/internal/logger"
+	"github.com/umayangag/cric-flow/go-app/internal/logger"
 )
 
 // captureStdout captures stdout while fn runs and returns it as a string.

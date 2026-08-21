@@ -143,14 +143,15 @@ func TestAggregateSpells_FormatMapping(t *testing.T) {
 	asOf := time.Date(2024, 9, 12, 0, 0, 0, 0, time.UTC)
 	bow := int64(707)
 	phase := "middle"
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		fmtID int
 	}{
 		{"ODI", 2},
 		{"TEST", 1},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			seq := []evRowSpell{
 				// One over only so it's the first-over part of a spell

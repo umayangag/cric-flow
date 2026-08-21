@@ -1,6 +1,6 @@
 ---
 name: update-deps
-description: Updates dependencies for go-app (Go modules), ml-service (Python pip-tools), and frontend (npm). Use when the user asks to update dependencies, upgrade packages, bump deps, run update-deps, or refresh go-app/ml-service/frontend dependencies.
+description: Updates dependencies for go-app (Go modules), ml-service (Python pip-tools), and frontend (npm) on the current branch (no PRs). Use when the user asks to update dependencies, upgrade packages, bump deps, or run /update-deps. For separate PRs per component off main, use update-deps-prs (/update-deps-prs).
 ---
 
 # Update Dependencies

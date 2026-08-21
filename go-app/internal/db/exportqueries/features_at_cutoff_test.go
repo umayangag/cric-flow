@@ -1,4 +1,4 @@
-package exportqueries
+package exportqueries_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
 func TestComputeFeaturesAtCutoffForMatch_DBUninitialized(t *testing.T) {
@@ -16,7 +17,7 @@ func TestComputeFeaturesAtCutoffForMatch_DBUninitialized(t *testing.T) {
 
 	ctx := context.Background()
 	cutoff := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-	got, err := ComputeFeaturesAtCutoffForMatch(ctx, 100, cutoff, []int64{1, 2})
+	got, err := exportqueries.ComputeFeaturesAtCutoffForMatch(ctx, 100, cutoff, []int64{1, 2})
 	require.Error(t, err)
 	require.Nil(t, got)
 	require.Contains(t, err.Error(), "db pool not initialized")
@@ -25,12 +26,12 @@ func TestComputeFeaturesAtCutoffForMatch_DBUninitialized(t *testing.T) {
 func TestComputeFeaturesAtCutoffNoMatch_EmptyPlayerIDs(t *testing.T) {
 	ctx := context.Background()
 	cutoff := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
-	got, err := ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "T20", nil)
+	got, err := exportqueries.ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "T20", nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Empty(t, got)
 
-	got, err = ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "ODI", []int64{})
+	got, err = exportqueries.ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, "ODI", []int64{})
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Empty(t, got)

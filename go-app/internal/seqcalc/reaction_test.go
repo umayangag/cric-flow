@@ -141,12 +141,10 @@ func TestAggregateReaction_BatterAndBowlerStreams(t *testing.T) {
 	}
 
 	// Expectations for batter stream
-	if got, ok := bat["dot"]; ok { // b2 under prev=dot
-		require.Equal(t, 1, got.balls, "bat prev=dot balls")
-		require.Equal(t, 1, got.runs, "bat prev=dot runs")
-	} else {
-		t.Fatalf("missing bat prev=dot aggregate")
-	}
+	got, ok := bat["dot"]
+	require.True(t, ok, "missing bat prev=dot aggregate")
+	require.Equal(t, 1, got.balls, "bat prev=dot balls")
+	require.Equal(t, 1, got.runs, "bat prev=dot runs")
 	if got := bat["1"]; true { // after single, next was wide (illegal) with 1 run
 		require.Equal(t, 1, got.balls, "bat prev=1 balls")
 		require.Equal(t, 0, got.bnd, "bat prev=1 boundaries")

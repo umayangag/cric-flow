@@ -19,7 +19,7 @@ func assertFloatNear(want float64) assertFn {
 func TestScorePlayer_Table(t *testing.T) {
 	t.Parallel()
 	w := ts.DefaultWeights()
-	cases := []struct {
+	testCases := []struct {
 		name   string
 		p      ts.Player
 		w      ts.ScoreWeights
@@ -56,7 +56,8 @@ func TestScorePlayer_Table(t *testing.T) {
 			assert: assertFloatNear(0.2*0.5 + 0.8*0.9),
 		},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := ts.ScorePlayer(tc.p, tc.w)
 			// no ifs here; delegate to assert function
@@ -86,8 +87,8 @@ func TestNormalizeBatScore(t *testing.T) {
 		{"over cap", 120, 100, 1.0},
 		{"zero runs", 0, 100, 0},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := ts.NormalizeBatScore(tc.runs, tc.batDivisor)
 			require.InDelta(t, tc.want, got, 1e-9)
@@ -109,8 +110,8 @@ func TestNormalizeBowlScore(t *testing.T) {
 		{"wickets capped", 8, 7, 6, 10, 1.0, 0.3},
 		{"economy at base", 3, 10, 6, 10, 0.5, 0},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := ts.NormalizeBowlScore(tc.wickets, tc.economy, tc.wicketDivisor, tc.econBase)
 			wickPart := math.Min(1, tc.wickets/tc.wicketDivisor)
@@ -132,8 +133,8 @@ func TestNormalizeFieldScore(t *testing.T) {
 		{"under cap", 2, 1, 10},
 		{"over cap", 5, 3, 4},
 	}
-	for _, tc := range testCases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			got := ts.NormalizeFieldScore(tc.catches, tc.runOuts, tc.fieldDivisor)
 			raw := (tc.catches + tc.runOuts*1.5) / tc.fieldDivisor

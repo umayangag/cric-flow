@@ -15,7 +15,7 @@ func TestRun_DryRun_Table(t *testing.T) {
 	type arrangeFn func() (args []string)
 	type assertFn func(t *testing.T, out string, err error)
 
-	cases := []struct {
+	testCases := []struct {
 		name    string
 		arrange arrangeFn
 		assert  assertFn
@@ -43,7 +43,8 @@ func TestRun_DryRun_Table(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			var buf bytes.Buffer

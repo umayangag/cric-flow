@@ -59,7 +59,7 @@ func evWK(
 
 func TestCanonicalMode(t *testing.T) {
 	t.Parallel()
-	tcs := []struct {
+	testCases := []struct {
 		in   string
 		want string
 	}{
@@ -71,7 +71,8 @@ func TestCanonicalMode(t *testing.T) {
 		{"Stumped", "stumped"},
 		{"  Caught  ", "caught"},
 	}
-	for _, tc := range tcs {
+	for i := range testCases {
+		tc := testCases[i]
 		got := canonicalMode(sql.NullString{String: tc.in, Valid: true})
 		require.Equalf(t, tc.want, got, "canonicalMode(%q)", tc.in)
 	}
@@ -141,14 +142,15 @@ func TestAggregateWicketModes_FormatMapping(t *testing.T) {
 	t.Parallel()
 	asOf := time.Date(2024, 9, 11, 0, 0, 0, 0, time.UTC)
 	bowler := int64(4242)
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		fmtID int
 	}{
 		{"ODI", 2},
 		{"TEST", 1},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			rows := []evRowWK{
 				// two legal balls, one wicket in given format

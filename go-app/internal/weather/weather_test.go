@@ -4,82 +4,91 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
 func TestNormalizeVenue(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		in   string
-		want string
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
 	}{
-		{"empty", "", ""},
-		{"trim spaces", "  Lord's  ", "lord's"},
-		{"lowercase", "Melbourne Cricket Ground", "melbourne cricket ground"},
-		{"collapse whitespace", "  Lords   Stadium  ", "lords stadium"},
-		{"single word", "SCG", "scg"},
+		{name: "empty string", input: "", expected: ""},
+		{name: "trim spaces", input: "  Lord's  ", expected: "lord's"},
+		{name: "lowercase conversion", input: "Melbourne Cricket Ground", expected: "melbourne cricket ground"},
+		{name: "collapse whitespace", input: "  Lords   Stadium  ", expected: "lords stadium"},
+		{name: "single word", input: "SCG", expected: "scg"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeVenue(tt.in)
-			if got != tt.want {
-				t.Errorf("NormalizeVenue(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := NormalizeVenue(tc.input)
+
+			// Assert
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
 func TestEnqueueJob_EmptyVenueReturnsNil(t *testing.T) {
 	t.Parallel()
-	// When both venue and city are empty, EnqueueJob returns nil immediately
-	// without touching the DB. This path is testable without a database.
-	ctx := context.Background()
-	err := EnqueueJob(ctx, 1, "", "", 2)
-	if err != nil {
-		t.Errorf("EnqueueJob with empty venue/city should return nil, got %v", err)
-	}
+
+	// Act
+	err := EnqueueJob(context.Background(), 1, "", "", 2)
+
+	// Assert
+	assert.NoError(t, err)
 }
 
 func TestEnqueueJob_DBErrorPropagated(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 
-	// Ensure db.EnqueueWeatherJob sees a nil pool and returns an error, which
-	// EnqueueJob should propagate after logging.
 	oldPool := db.Pool
 	defer func() { db.Pool = oldPool }()
 	db.Pool = nil
 
-	err := EnqueueJob(ctx, 42, "Melbourne", "MCG", 2)
-	if err == nil {
-		t.Fatalf("EnqueueJob should propagate error when db pool is nil")
-	}
+	// Act
+	err := EnqueueJob(context.Background(), 42, "Melbourne", "MCG", 2)
+
+	// Assert
+	require.Error(t, err)
 }
 
 func TestBuildSessions(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+
+	testCases := []struct {
 		name         string
 		inningsCount int
 		wantLabels   []string
 	}{
-		{"zero defaults to 2", 0, []string{"inning1", "inning2"}},
-		{"negative defaults to 2", -1, []string{"inning1", "inning2"}},
-		{"one inning", 1, []string{"inning1"}},
-		{"two innings", 2, []string{"inning1", "inning2"}},
-		{"four innings", 4, []string{"inning1", "inning2", "inning3", "inning4"}},
+		{name: "zero defaults to 2", inningsCount: 0, wantLabels: []string{"inning1", "inning2"}},
+		{name: "negative defaults to 2", inningsCount: -1, wantLabels: []string{"inning1", "inning2"}},
+		{name: "one inning", inningsCount: 1, wantLabels: []string{"inning1"}},
+		{name: "two innings", inningsCount: 2, wantLabels: []string{"inning1", "inning2"}},
+		{name: "four innings", inningsCount: 4, wantLabels: []string{"inning1", "inning2", "inning3", "inning4"}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildSessions(tt.inningsCount)
-			if len(got) != len(tt.wantLabels) {
-				t.Fatalf("buildSessions(%d) len = %d, want %d", tt.inningsCount, len(got), len(tt.wantLabels))
-			}
-			for i, want := range tt.wantLabels {
-				if got[i].Label != want {
-					t.Errorf("buildSessions(%d)[%d].Label = %q, want %q", tt.inningsCount, i, got[i].Label, want)
-				}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := buildSessions(tc.inningsCount)
+
+			// Assert
+			require.Len(t, got, len(tc.wantLabels))
+			for j, want := range tc.wantLabels {
+				assert.Equal(t, want, got[j].Label, "session[%d].Label", j)
 			}
 		})
 	}
@@ -87,24 +96,30 @@ func TestBuildSessions(t *testing.T) {
 
 func TestFirstNonEmpty(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		in   []string
-		want string
+
+	testCases := []struct {
+		name     string
+		input    []string
+		expected string
 	}{
-		{"empty slice", []string{}, ""},
-		{"single empty", []string{""}, ""},
-		{"first non-empty", []string{"a", "b", "c"}, "a"},
-		{"skip leading empty", []string{"", "", "c"}, "c"},
-		{"all empty", []string{"", "  ", ""}, ""},
-		{"whitespace-only ignored", []string{"  ", "\t", "x"}, "x"},
+		{name: "empty slice", input: []string{}, expected: ""},
+		{name: "single empty", input: []string{""}, expected: ""},
+		{name: "first non empty", input: []string{"a", "b", "c"}, expected: "a"},
+		{name: "skip leading empty", input: []string{"", "", "c"}, expected: "c"},
+		{name: "all empty", input: []string{"", "  ", ""}, expected: ""},
+		{name: "whitespace only ignored", input: []string{"  ", "\t", "x"}, expected: "x"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := firstNonEmpty(tt.in...)
-			if got != tt.want {
-				t.Errorf("firstNonEmpty(%v) = %q, want %q", tt.in, got, tt.want)
-			}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := firstNonEmpty(tc.input...)
+
+			// Assert
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }

@@ -13,7 +13,7 @@ func TestCorsMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	tests := []struct {
+	testCases := []struct {
 		name          string
 		method        string
 		envOrigin     string
@@ -55,18 +55,19 @@ func TestCorsMiddleware(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("FRONTEND_ORIGIN", tt.envOrigin)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FRONTEND_ORIGIN", tc.envOrigin)
 
 			handler := corsMiddleware(inner)
-			req := httptest.NewRequest(tt.method, "/api/test", nil)
+			req := httptest.NewRequest(tc.method, "/api/test", nil)
 			rec := httptest.NewRecorder()
 
 			handler.ServeHTTP(rec, req)
 
-			assert.Equal(t, tt.wantStatus, rec.Code)
-			assert.Equal(t, tt.wantOrigin, rec.Header().Get("Access-Control-Allow-Origin"))
+			assert.Equal(t, tc.wantStatus, rec.Code)
+			assert.Equal(t, tc.wantOrigin, rec.Header().Get("Access-Control-Allow-Origin"))
 			assert.Equal(t, "Origin", rec.Header().Get("Vary"))
 			assert.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
 			assert.NotEmpty(t, rec.Header().Get("Access-Control-Allow-Methods"))

@@ -164,14 +164,15 @@ func TestAggregateOverPos_FormatMapping(t *testing.T) {
 	t.Parallel()
 	asOf := time.Date(2024, 9, 13, 0, 0, 0, 0, time.UTC)
 	bow := int64(9090)
-	cases := []struct {
+	testCases := []struct {
 		name  string
 		fmtID int
 	}{
 		{"ODI", 2},
 		{"TEST", 1},
 	}
-	for _, tc := range cases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			rows := []evRowOverPos{
 				// one legal ball at position 1 for simplicity

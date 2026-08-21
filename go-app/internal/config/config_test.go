@@ -12,7 +12,7 @@ import (
 
 // Not parallel: tests touch package-level cache and process env via other tests.
 func TestValidateTeamSettings(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		name string
 		cfg  *Config
 		err  string
@@ -85,8 +85,8 @@ func TestValidateTeamSettings(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		tc := tc
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			// Act
 			err := ValidateTeamSettings(tc.cfg)
@@ -401,14 +401,10 @@ func TestEffectiveScoreWeightsForFormat_WithMetaModel(t *testing.T) {
 	tmp := t.TempDir()
 	metaPath := filepath.Join(tmp, "meta.json")
 	metaContent := `{"bat":0.4,"bowl":0.35,"field":0.2,"keeper_bonus":0.05}`
-	if err := os.WriteFile(metaPath, []byte(metaContent), 0o600); err != nil {
-		t.Fatalf("write meta: %v", err)
-	}
+	require.NoError(t, os.WriteFile(metaPath, []byte(metaContent), 0o600))
 	cfgPath := filepath.Join(tmp, "config.json")
 	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
-	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	require.NoError(t, os.WriteFile(cfgPath, []byte(cfgContent), 0o600))
 	t.Setenv("GO_APP_CONFIG", cfgPath)
 	cfg := Load()
 
@@ -424,14 +420,10 @@ func TestEffectiveScoreWeightsForFormat_WithMetaModelPerFormat(t *testing.T) {
 	tmp := t.TempDir()
 	metaPath := filepath.Join(tmp, "meta_per_fmt.json")
 	metaContent := `{"bat":0.5,"bowl":0.3,"field":0.15,"keeper_bonus":0.05,"per_format":{"ODI":{"bat":0.45,"bowl":0.35,"field":0.15,"keeper_bonus":0.05}}}`
-	if err := os.WriteFile(metaPath, []byte(metaContent), 0o600); err != nil {
-		t.Fatalf("write meta: %v", err)
-	}
+	require.NoError(t, os.WriteFile(metaPath, []byte(metaContent), 0o600))
 	cfgPath := filepath.Join(tmp, "config.json")
 	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
-	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	require.NoError(t, os.WriteFile(cfgPath, []byte(cfgContent), 0o600))
 	t.Setenv("GO_APP_CONFIG", cfgPath)
 	cfg := Load()
 
@@ -472,7 +464,7 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		},
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		name string
 		cfg  *Config
 		fn   func(*Config) int
@@ -715,10 +707,11 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		{"PipelineReplayMatchPageSize nil", nil, PipelineReplayMatchPageSize, DefaultPipelineReplayMatchPageSize},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.fn(tt.cfg)
-			require.Equal(t, tt.want, got)
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.fn(tc.cfg)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

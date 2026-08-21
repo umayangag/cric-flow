@@ -1,15 +1,14 @@
 package predictor
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 	// zero team size returns empty
-	if got := selectTop([]PlayerPrediction{{PlayerName: "A", WinningProbability: 0.9}}, 0); len(got) != 0 {
-		t.Fatalf("expected 0, got %d", len(got))
-	}
+	require.Empty(t, selectTop([]PlayerPrediction{{PlayerName: "A", WinningProbability: 0.9}}, 0))
 
 	// fewer than team size returns all in sorted order
 	in1 := []PlayerPrediction{
@@ -21,9 +20,7 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.9},
 		{PlayerName: "B", WinningProbability: 0.8},
 	}
-	if !reflect.DeepEqual(got1, want1) {
-		t.Fatalf("unexpected result: got=%#v want=%#v", got1, want1)
-	}
+	require.Equal(t, want1, got1)
 
 	// deterministic tie-breaker by name
 	in2 := []PlayerPrediction{
@@ -31,9 +28,8 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 		{PlayerName: "Ann", WinningProbability: 0.7},
 	}
 	got2 := selectTop(in2, 2)
-	if got2[0].PlayerName != "Ann" || got2[1].PlayerName != "Zed" {
-		t.Fatalf("unexpected tie order: %#v", got2)
-	}
+	require.Equal(t, "Ann", got2[0].PlayerName)
+	require.Equal(t, "Zed", got2[1].PlayerName)
 
 	// select top N by probability desc
 	in3 := []PlayerPrediction{
@@ -46,9 +42,7 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 		{PlayerName: "B", WinningProbability: 0.9},
 		{PlayerName: "C", WinningProbability: 0.5},
 	}
-	if !reflect.DeepEqual(got3, want3) {
-		t.Fatalf("unexpected top2: got=%#v want=%#v", got3, want3)
-	}
+	require.Equal(t, want3, got3)
 
 	// does not mutate input slice
 	in4 := []PlayerPrediction{
@@ -56,7 +50,6 @@ func TestSelectTop_BasicAndEdgeCases(t *testing.T) {
 		{PlayerName: "A", WinningProbability: 0.8},
 	}
 	_ = selectTop(in4, 1)
-	if in4[0].PlayerName != "B" || in4[1].PlayerName != "A" {
-		t.Fatalf("input mutated: %#v", in4)
-	}
+	require.Equal(t, "B", in4[0].PlayerName)
+	require.Equal(t, "A", in4[1].PlayerName)
 }

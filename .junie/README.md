@@ -12,6 +12,7 @@ This directory contains **skills** — reusable automation workflows triggered b
 | `/run-check-all-incremental` | Run all checks (lint, format, tests) per component in order (frontend → go-app → ml-service). On failure, re-run only the failed step until it passes, then continue. |
 | `/run-github-workflows-local` | Verify that all GitHub CI workflows pass locally before pushing, by mapping each workflow to equivalent local commands. |
 | `/update-deps` | Update dependencies across all three components: go-app (Go modules), ml-service (pip-tools), and frontend (npm). |
+| `/update-deps-prs` | Same dependency bumps as `/update-deps`, but opens **one PR per component** off `main` (go-app, ml-service, frontend). |
 
 ### How to Use
 
@@ -44,7 +45,8 @@ See each skill's `SKILL.md` for detailed prerequisites.
     ├── publish-feature/SKILL.md
     ├── run-check-all-incremental/SKILL.md
     ├── run-github-workflows-local/SKILL.md
-    └── update-deps/SKILL.md
+    ├── update-deps/SKILL.md
+    └── update-deps-prs/SKILL.md
 ```
 
 ### Adding a New Skill
