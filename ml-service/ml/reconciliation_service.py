@@ -1,13 +1,13 @@
-"""High-level reconciliation service API.
+"""Constraint-based reconciliation: integer scorecards from model preferences.
 
-This module wraps:
-- ProblemBuilder (variable + constraint construction),
-- solve_reconciliation_problem (continuous QP),
-- and a small integer rounding layer,
+Wraps ``reconciliation_core.ProblemBuilder``, ``reconciliation_solver``, and rounding
+to produce per-player lines that satisfy team run/wicket constraints per innings.
 
-to produce **integer per-player scorecards** that obey core cricket
-constraints (team runs and wickets per innings) while staying close to the
-original model outputs.
+Called from ``ml.reconciliation_adapter`` (backtest / generate-match). The hybrid
+rescaling step in ``app.reconciliation`` may run earlier; this layer is the
+**authoritative** integer reconciliation.
+
+See ``ml-service/docs/reconciliation.md``.
 """
 
 from __future__ import annotations

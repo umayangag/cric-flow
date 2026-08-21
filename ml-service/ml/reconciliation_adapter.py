@@ -1,8 +1,7 @@
 """Adapter between backtest player predictions and reconciliation service.
 
-This module lives in the `ml` package and is imported from `app.prediction_service`
-behind an ImportError guard, so production can continue even when the ml stack
-is not available.
+Bridges ``app.prediction_service`` (``BacktestPlayerPred``) to
+``ml.reconciliation_service`` (``MatchReconciliationInputs``).
 
 Responsibilities:
 - Build `MatchReconciliationInputs` from `BacktestPlayerPred` plus innings totals.

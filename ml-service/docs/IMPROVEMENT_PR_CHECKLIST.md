@@ -11,7 +11,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P2-4 | done | `ml-service/p2-4-win-features-public-api` | Stop importing private `ml` symbols; add public helpers |
 | P1-4 | done | `ml-service/p1-4-prediction-service-imports` | Remove stale `ImportError` fallbacks in `prediction_service` |
 | P0-2 | done | `ml-service/p0-2-split-models` | Split `app/models.py` by domain |
-| P0-3 | todo | | Split `prediction_service.py` into focused modules |
+| P0-3 | done | `ml-service/p0-3-split-prediction-service` | Split `prediction_service.py` into focused modules |
 | P0-4 | todo | | Split `main.py` into FastAPI routers |
 | P0-1 | todo | | Introduce shared `contracts` package (break `ml` ↔ `app` cycle) |
 | P0-5 | todo | | Fold `ml_service/` into `ml/` (datasets, baselines) |
@@ -23,7 +23,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P2-3 | todo | | Standardize structlog in `ml/` |
 | P3-1 | todo | | Decompose `ml/config.py` |
 | P3-2 | todo | | Consolidate training entrypoints |
-| P3-3 | todo | | Document reconciliation layers |
+| P3-3 | done | `ml-service/p3-3-reconciliation-docs` | Document reconciliation layers |
 | P3-4 | todo | | Coverage/smoke tests for omitted training paths |
 | P4-1 | done | `ml-service/p4-1-tighten-cors` | Tighten CORS defaults |
 | P4-2 | todo | | API versioning (`/v1/...`) — **skipped unless cross-repo approved** |
