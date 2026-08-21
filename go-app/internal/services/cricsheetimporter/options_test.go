@@ -30,7 +30,6 @@ func assertErrorContains(sub string) assertFn {
 	}
 }
 
-
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
@@ -74,7 +73,7 @@ func TestParseArgs_Basic(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, got.PlaceholdersWeather)
 				require.True(t, got.PlaceholdersFielding)
- 			require.False(t, got.WeatherEnqueue)
+				require.False(t, got.WeatherEnqueue)
 			},
 		},
 	}

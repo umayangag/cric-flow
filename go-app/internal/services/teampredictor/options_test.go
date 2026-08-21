@@ -31,7 +31,6 @@ func assertErrorContains(sub string) assertFn {
 	}
 }
 
-
 func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {

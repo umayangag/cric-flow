@@ -136,7 +136,7 @@ func TestBacktestMLClient_HistoricalMatchBacktest(t *testing.T) {
 	filters := &HistoricalMatchFilters{Format: "T20", Team1: "IND", Team2: "AUS", MatchDate: cutoff}
 	res2, err := c.historicalMatchBacktest(t.Context(), cutoff, nil, filters)
 	require.NoError(t, err)
- require.Equal(t, float64(7), res2.Match.Actual.Wickets)
+	require.Equal(t, float64(7), res2.Match.Actual.Wickets)
 
 	// Case 3: validation error when neither provided
 	_, err = c.historicalMatchBacktest(t.Context(), cutoff, nil, nil)

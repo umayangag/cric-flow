@@ -3,8 +3,8 @@ package predictteam_test
 import (
 	"testing"
 
-	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 func TestComputeScorecardSummary_Team1Wins(t *testing.T) {
@@ -36,8 +36,8 @@ func TestComputeScorecardSummary_Team1Wins(t *testing.T) {
 	}
 	// team1 batting total = 150, team2 = 140. With extras 5 each: 155 vs 145.
 	summary := predictteam.ComputeScorecardSummary(team1, team2, 5, 5, "IND", "AUS")
- require.Equal(t, float64(155), summary.Innings1Total)
- require.Equal(t, float64(145), summary.Innings2Total)
+	require.Equal(t, float64(155), summary.Innings1Total)
+	require.Equal(t, float64(145), summary.Innings2Total)
 	require.Equal(t, "IND", summary.PredictedWinner)
 	require.Equal(t, float64(5), summary.ExtrasInnings1)
 	require.Equal(t, float64(5), summary.ExtrasInnings2)
@@ -72,8 +72,8 @@ func TestComputeScorecardSummary_Team2Wins(t *testing.T) {
 	}
 	// team1 total = 90, team2 total = 120. Winner = team2.
 	summary := predictteam.ComputeScorecardSummary(team1, team2, 0, 0, "ENG", "PAK")
- require.Equal(t, float64(90), summary.Innings1Total)
- require.Equal(t, float64(120), summary.Innings2Total)
+	require.Equal(t, float64(90), summary.Innings1Total)
+	require.Equal(t, float64(120), summary.Innings2Total)
 	require.Equal(t, "PAK", summary.PredictedWinner)
 }
 

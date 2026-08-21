@@ -84,10 +84,10 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 				require.True(t, mlOK)
 				fm := sec["formats"].(map[string]any)
 				// Check values came from HTTP detail payload
-						odi := fm["ODI"].(map[string]any)["batting"].(map[string]any)
-						require.True(t, odi["exists"].(bool), "ODI batting should exist from detail endpoint")
-						testBowl := fm["TEST"].(map[string]any)["bowling"].(map[string]any)
-						require.True(t, testBowl["exists"].(bool), "TEST bowling should exist from detail endpoint")
+				odi := fm["ODI"].(map[string]any)["batting"].(map[string]any)
+				require.True(t, odi["exists"].(bool), "ODI batting should exist from detail endpoint")
+				testBowl := fm["TEST"].(map[string]any)["bowling"].(map[string]any)
+				require.True(t, testBowl["exists"].(bool), "TEST bowling should exist from detail endpoint")
 			},
 		},
 		{
@@ -108,11 +108,15 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 				require.False(t, mlOK)
 				fm := sec["formats"].(map[string]any)
 				odi := fm["ODI"].(map[string]any)
-						require.True(t, odi["batting"].(map[string]any)["exists"].(bool), "ODI batting via FS fallback")
-						require.True(t, odi["bowling"].(map[string]any)["exists"].(bool), "ODI bowling via FS fallback")
-						testFmt := fm["TEST"].(map[string]any)
-						require.False(t, testFmt["batting"].(map[string]any)["exists"].(bool), "TEST batting should not exist in FS fallback")
-						require.True(t, testFmt["bowling"].(map[string]any)["exists"].(bool), "TEST bowling via FS fallback")
+				require.True(t, odi["batting"].(map[string]any)["exists"].(bool), "ODI batting via FS fallback")
+				require.True(t, odi["bowling"].(map[string]any)["exists"].(bool), "ODI bowling via FS fallback")
+				testFmt := fm["TEST"].(map[string]any)
+				require.False(
+					t,
+					testFmt["batting"].(map[string]any)["exists"].(bool),
+					"TEST batting should not exist in FS fallback",
+				)
+				require.True(t, testFmt["bowling"].(map[string]any)["exists"].(bool), "TEST bowling via FS fallback")
 			},
 		},
 		{
@@ -128,11 +132,11 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 			},
 			assert: func(t *testing.T, sec map[string]any, _ bool) {
 				fm := sec["formats"].(map[string]any)
-						for _, f := range []string{"TEST", "ODI", "T20I", "T20"} {
-							ent := fm[f].(map[string]any)
-							require.False(t, ent["batting"].(map[string]any)["exists"].(bool), "batting exists for %s", f)
-							require.False(t, ent["bowling"].(map[string]any)["exists"].(bool), "bowling exists for %s", f)
-						}
+				for _, f := range []string{"TEST", "ODI", "T20I", "T20"} {
+					ent := fm[f].(map[string]any)
+					require.False(t, ent["batting"].(map[string]any)["exists"].(bool), "batting exists for %s", f)
+					require.False(t, ent["bowling"].(map[string]any)["exists"].(bool), "bowling exists for %s", f)
+				}
 			},
 		},
 	}

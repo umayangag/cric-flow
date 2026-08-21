@@ -9,7 +9,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/backtest"
 )
 
-
 func TestChooseBacktestMode(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -146,7 +145,7 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 			r := makeReq(tc.rawURL)
 			p, err := parseBacktestAccuracyTrendParams(r)
 			if tc.wantErr != nil {
- 			require.Error(t, err)
+				require.Error(t, err)
 				require.Equal(t, tc.wantErr.Error(), err.Error())
 				return
 			}

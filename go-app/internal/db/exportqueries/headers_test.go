@@ -45,7 +45,12 @@ func TestAppendSeqIfEnabled(t *testing.T) {
 			base:       []string{"c1", "c2"},
 			seqFn:      eq.BowlingSeqHeaders,
 		},
-		{name: "batting headers with seq disabled", seqEnabled: false, base: []string{"h1"}, seqFn: eq.BattingSeqHeaders},
+		{
+			name:       "batting headers with seq disabled",
+			seqEnabled: false,
+			base:       []string{"h1"},
+			seqFn:      eq.BattingSeqHeaders,
+		},
 		{name: "batting headers with seq enabled", seqEnabled: true, base: []string{"h1"}, seqFn: eq.BattingSeqHeaders},
 	}
 

@@ -63,7 +63,10 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 		"INSERT INTO player(player_name) VALUES ('TestBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
 	)
 	var playerID int64
-	require.NoError(t, PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID))
+	require.NoError(
+		t,
+		PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID),
+	)
 
 	tx, err := PoolAPI.Begin(ctx)
 	require.NoError(t, err)
@@ -100,7 +103,10 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 		"INSERT INTO player(player_name) VALUES ('TestBowlBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
 	)
 	var playerID int64
-	require.NoError(t, PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID))
+	require.NoError(
+		t,
+		PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID),
+	)
 
 	tx, err := PoolAPI.Begin(ctx)
 	require.NoError(t, err)
