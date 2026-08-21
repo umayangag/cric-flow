@@ -62,6 +62,30 @@ def test_default_models_dir_from_config_success():
     assert out == "/custom"
 
 
+def test_cors_defaults_when_env_unset(monkeypatch):
+    """CORS allow lists use explicit defaults instead of wildcard."""
+    from app.settings import DEFAULT_CORS_ALLOW_HEADERS, DEFAULT_CORS_ALLOW_METHODS, load_ml_service_settings
+
+    monkeypatch.delenv("CORS_ALLOW_METHODS", raising=False)
+    monkeypatch.delenv("CORS_ALLOW_HEADERS", raising=False)
+    settings = load_ml_service_settings()
+    assert settings.cors_allow_methods == list(DEFAULT_CORS_ALLOW_METHODS)
+    assert settings.cors_allow_headers == list(DEFAULT_CORS_ALLOW_HEADERS)
+    assert "*" not in settings.cors_allow_methods
+    assert "*" not in settings.cors_allow_headers
+
+
+def test_cors_env_csv_override(monkeypatch):
+    """CORS_ALLOW_METHODS and CORS_ALLOW_HEADERS accept comma-separated overrides."""
+    from app.settings import load_ml_service_settings
+
+    monkeypatch.setenv("CORS_ALLOW_METHODS", "GET, POST")
+    monkeypatch.setenv("CORS_ALLOW_HEADERS", "Content-Type, X-API-Key")
+    settings = load_ml_service_settings()
+    assert settings.cors_allow_methods == ["GET", "POST"]
+    assert settings.cors_allow_headers == ["Content-Type", "X-API-Key"]
+
+
 def test_env_int_invalid_returns_default(monkeypatch):
     """_env_int returns default when env value is not an integer."""
     from app.settings import _env_int, load_ml_service_settings
