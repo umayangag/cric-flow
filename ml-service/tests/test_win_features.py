@@ -15,6 +15,9 @@ from ml.win_features import (
     aggregate_team_features_from_player_maps,
     build_feature_vector,
     compute_derived_features,
+    format_one_hot_from_code,
+    get_format_codes,
+    get_format_one_hot_columns,
 )
 
 
@@ -122,6 +125,24 @@ class TestBuildFeatureVector:
         vec = build_feature_vector(feature_dict)
         for i, col in enumerate(WIN_ENHANCED_FEATURE_COLS):
             assert vec[i] == float(i), f"wrong value at index {i} ({col})"
+
+
+class TestFormatOneHotPublicApi:
+    def test_get_format_one_hot_columns_matches_codes_plus_other(self) -> None:
+        codes = get_format_codes()
+        cols = get_format_one_hot_columns()
+        assert cols == [f"format_is_{code}" for code in codes] + ["format_is_OTHER"]
+
+    def test_format_one_hot_from_code_known_format(self) -> None:
+        codes = get_format_codes()
+        one_hot = format_one_hot_from_code(codes[0])
+        assert one_hot[f"format_is_{codes[0]}"] == 1.0
+        assert sum(one_hot.values()) == 1.0
+
+    def test_format_one_hot_from_code_unknown_uses_other(self) -> None:
+        one_hot = format_one_hot_from_code("NOT_A_REAL_FORMAT_XYZ")
+        assert one_hot["format_is_OTHER"] == 1.0
+        assert sum(one_hot.values()) == 1.0
 
 
 class TestFeatureColumnDefinitions:

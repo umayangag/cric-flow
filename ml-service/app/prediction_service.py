@@ -78,12 +78,14 @@ try:
         aggregate_team_features_from_player_maps,
         build_feature_vector,
         compute_derived_features,
+        format_one_hot_from_code,
     )
 except ImportError:
     WIN_ENHANCED_FEATURE_COLS = []
     aggregate_team_features_from_player_maps = None  # type: ignore[assignment]
     build_feature_vector = None  # type: ignore[assignment]
     compute_derived_features = None  # type: ignore[assignment]
+    format_one_hot_from_code = None  # type: ignore[assignment,misc]
 
 logger = get_struct_logger()
 
@@ -1073,13 +1075,9 @@ def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
     if not cols:
         return np.zeros(0)
     d = f.model_dump()
-    try:
-        from ml.win_features import _format_one_hot_from_code  # type: ignore[attr-defined]
-
-        one_hot = _format_one_hot_from_code(fmt)
-        d.update(one_hot)
-    except Exception:
-        # Fall back to zeros for one-hot columns if helper is unavailable.
+    if format_one_hot_from_code is not None:
+        d.update(format_one_hot_from_code(fmt))
+    else:
         for col in cols:
             if col.startswith("format_is_") and col not in d:
                 d[col] = 0.0
@@ -1099,13 +1097,9 @@ def win_feature_vector(f: WinFeatures) -> np.ndarray:
     d = f.model_dump()
     # Inject categorical format one-hot columns when available.
     fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
-    try:
-        from ml.win_features import _format_one_hot_from_code  # type: ignore[attr-defined]
-
-        one_hot = _format_one_hot_from_code(fmt)
-        d.update(one_hot)
-    except Exception:
-        # If helper is unavailable for any reason, fall back to zeros for the one-hot columns.
+    if format_one_hot_from_code is not None:
+        d.update(format_one_hot_from_code(fmt))
+    else:
         for col in WIN_ENHANCED_FEATURE_COLS:
             if col.startswith("format_is_") and col not in d:
                 d[col] = 0.0

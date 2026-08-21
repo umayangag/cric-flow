@@ -132,13 +132,13 @@ def rows_to_xy_by_format(
     # unified and per-format models treat format as a categorical feature.
     if "format_code" in df.columns:
         fmt_series = df["format_code"].astype(str).str.strip().str.upper()
-        from ml.win_features import _FORMAT_CODES as _WIN_FORMAT_CODES  # type: ignore[attr-defined]
+        from ml.win_features import get_format_codes
 
-        for code in _WIN_FORMAT_CODES:
+        win_format_codes = get_format_codes()
+        for code in win_format_codes:
             col_name = f"format_is_{code}"
             df[col_name] = (fmt_series == code).astype(float)
-        # Catch-all for any unexpected formats
-        df["format_is_OTHER"] = (~fmt_series.isin(list(_WIN_FORMAT_CODES))).astype(float)
+        df["format_is_OTHER"] = (~fmt_series.isin(win_format_codes)).astype(float)
 
     if any(c not in df.columns for c in DERIVED_FEATURE_COLS):
         df = _add_derived_features(df)

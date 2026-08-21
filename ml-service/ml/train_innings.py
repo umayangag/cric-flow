@@ -49,7 +49,7 @@ from ml.match_level_derived_features import (
 )
 from ml.pipeline_common import compute_time_decay_weights
 from ml.utils import make_base_estimator
-from ml.win_features import _FORMAT_CODES as WIN_FORMAT_CODES  # reuse configured formats for one-hot
+from ml.win_features import get_format_codes, get_format_one_hot_columns
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,8 @@ logger = logging.getLogger(__name__)
 MIN_SAMPLES_FOR_FORMAT = 10
 
 # Format as categorical one-hot (same convention as win/extras)
-INNINGS_FORMAT_ONE_HOT_COLS = [f"format_is_{code}" for code in WIN_FORMAT_CODES] + ["format_is_OTHER"]
+WIN_FORMAT_CODES = get_format_codes()
+INNINGS_FORMAT_ONE_HOT_COLS = get_format_one_hot_columns()
 
 # Derived feature columns: shared with extras / reconciliation (see match_level_derived_features).
 INNINGS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
