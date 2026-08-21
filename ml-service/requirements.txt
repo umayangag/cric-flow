@@ -4,17 +4,19 @@
 #
 #    pip-compile --output-file=requirements.txt --strip-extras requirements.in
 #
-absl-py==2.4.0
+absl-py==2.5.0
     # via tensorboard
-accelerate==1.13.0
+accelerate==1.14.0
     # via
     #   autogluon-multimodal
     #   autogluon-timeseries
+    #   chronos-forecasting
+    #   peft
 adagio==0.2.6
     # via fugue
-aiohappyeyeballs==2.6.2
+aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.13.5
+aiohttp==3.14.3
     # via
     #   aiohttp-cors
     #   fsspec
@@ -22,70 +24,70 @@ aiohttp==3.13.5
 aiohttp-cors==0.8.1
     # via ray
 aiosignal==1.4.0
-    # via
-    #   aiohttp
-    #   ray
-alembic==1.18.4
+    # via aiohttp
+alembic==1.19.1
     # via optuna
-annotated-doc==0.0.4
+annotated-doc==0.0.5
     # via
     #   fastapi
     #   typer
-annotated-types==0.7.0
+annotated-types==0.8.0
     # via pydantic
 antlr4-python3-runtime==4.9.3
     # via omegaconf
-anyio==4.13.0
+anyio==4.14.2
     # via
     #   httpx
+    #   httpx2
     #   starlette
     #   watchfiles
-apsw==3.53.1.0
+apsw==3.53.4.0
     # via apswutils
 apswutils==0.1.2
     # via fastlite
-asttokens==3.0.1
+asttokens==3.0.2
     # via stack-data
 attrs==26.1.0
     # via
     #   aiohttp
     #   jsonschema
     #   referencing
-autogluon==1.4.0
+autogluon==1.6.1
     # via -r requirements.in
-autogluon-common==1.4.0
+autogluon-common==1.6.1
     # via
     #   autogluon-core
     #   autogluon-features
     #   autogluon-multimodal
     #   autogluon-timeseries
-autogluon-core==1.4.0
+autogluon-core==1.6.1
     # via
     #   autogluon
     #   autogluon-core
     #   autogluon-multimodal
     #   autogluon-tabular
     #   autogluon-timeseries
-autogluon-features==1.4.0
+autogluon-features==1.6.1
     # via
     #   autogluon
+    #   autogluon-core
     #   autogluon-multimodal
     #   autogluon-tabular
     #   autogluon-timeseries
-autogluon-multimodal==1.4.0
+autogluon-multimodal==1.6.1
     # via autogluon
-autogluon-tabular==1.4.0
+autogluon-tabular==1.6.1
     # via
     #   autogluon
     #   autogluon-tabular
     #   autogluon-timeseries
-autogluon-timeseries==1.4.0
+autogluon-timeseries==1.6.1
     # via
     #   autogluon
     #   autogluon-timeseries
 beartype==0.22.9
     # via plum-dispatch
-beautifulsoup4==4.14.3
+beautifulsoup4==4.15.0
     # via
     #   gdown
     #   python-fasthtml
@@ -93,12 +95,12 @@ blinker==1.9.0
     # via flask
 blis==1.3.3
     # via thinc
-boto3==1.43.18
+boto3==1.43.77
     # via
     #   autogluon-common
     #   autogluon-core
     #   autogluon-multimodal
-botocore==1.43.18
+botocore==1.43.77
     # via
     #   boto3
     #   s3transfer
@@ -111,25 +113,29 @@ catboost==1.2.10
     # via autogluon-tabular
 category-encoders==2.7.0
     # via pycaret
-certifi==2026.5.20
+certifi==2026.7.22
     # via
     #   httpcore
     #   httpx
     #   requests
-cffi==2.0.0
+cffi==2.1.1
     # via cryptography
-charset-normalizer==3.4.7
+charset-normalizer==3.5.1
     # via requests
 choreographer==1.3.0
     # via kaleido
-click==8.4.1
+chronos-forecasting==2.3.1
+    # via autogluon-timeseries
+click==8.4.2
     # via
     #   flask
+    #   huggingface-hub
     #   model-index
     #   nltk
     #   opendatalab
     #   openmim
     #   ray
+    #   spacy
     #   uvicorn
 cloudpathlib==0.24.0
     # via weasel
@@ -147,10 +153,12 @@ colorama==0.4.6
     #   openmim
 colorful==0.5.8
     # via ray
-colorlog==6.10.1
+colorlog==6.12.0
     # via optuna
 comm==0.2.3
-    # via ipywidgets
+    # via
+    #   dash
+    #   ipywidgets
 confection==1.3.3
     # via
     #   spacy
@@ -163,7 +171,7 @@ coreforecast==0.0.16
     #   autogluon-timeseries
     #   mlforecast
     #   statsforecast
-cryptography==48.0.0
+cryptography==50.0.0
     # via google-auth
 cycler==0.12.1
     # via
@@ -174,25 +182,30 @@ cymem==2.0.13
     #   preshed
     #   spacy
     #   thinc
-cython==3.2.5
+cython==3.2.9
     # via pmdarima
-dash==4.1.0
+dash==4.4.1
     # via plotly-resampler
-datasets==4.0.0
+datasets==5.0.1
     # via evaluate
-decorator==5.3.1
-    # via ipython
 defusedxml==0.7.1
-    # via autogluon-multimodal
+    # via
+    #   autogluon-multimodal
+    #   nltk
 deprecation==2.1.0
     # via pycaret
-dill==0.3.8
+dill==0.4.1
     # via
     #   datasets
     #   evaluate
     #   multiprocess
-distlib==0.4.0
+distlib==0.4.3
     # via virtualenv
+einops==0.8.2
+    # via
+    #   autogluon-tabular
+    #   autogluon-timeseries
+    #   chronos-forecasting
 einx==0.4.3
     # via autogluon-tabular
 evaluate==0.4.6
@@ -201,11 +214,12 @@ executing==2.2.1
     # via stack-data
 fastai==2.8.7
     # via autogluon-tabular
-fastapi==0.136.3
+fastapi==0.141.1
     # via -r requirements.in
-fastcore==1.13.2
+fastcore==1.14.5
     # via
     #   apswutils
+    #   autogluon-tabular
     #   fastai
     #   fastdownload
     #   fastlite
@@ -214,7 +228,7 @@ fastcore==1.13.2
     #   python-fasthtml
 fastdownload==0.0.7
     # via fastai
-fastjsonschema==2.21.2
+fastjsonschema==2.22.2
     # via nbformat
 fastlite==0.2.4
     # via python-fasthtml
@@ -224,7 +238,7 @@ fastprogress==1.1.6
     #   fastdownload
 fasttransform==0.0.2
     # via fastai
-filelock==3.29.0
+filelock==3.32.3
     # via
     #   datasets
     #   gdown
@@ -232,7 +246,6 @@ filelock==3.29.0
     #   python-discovery
     #   ray
     #   torch
-    #   transformers
     #   virtualenv
 flask==3.1.3
     # via dash
@@ -244,7 +257,6 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-    #   ray
 fsspec==2025.3.0
     # via
     #   autogluon-multimodal
@@ -265,73 +277,84 @@ future==1.0.0
     # via hyperopt
 gdown==6.1.0
     # via nlpaug
-gluonts==0.16.2
+gluonts==0.17.0
     # via autogluon-timeseries
-google-api-core==2.30.3
+google-api-core==2.34.0
     # via opencensus
-google-auth==2.53.0
+google-auth==2.56.3
     # via google-api-core
-googleapis-common-protos==1.75.0
+googleapis-common-protos==1.75.1
     # via google-api-core
 graphviz==0.21
     # via catboost
-grpcio==1.80.0
+grpcio==1.83.0
     # via
     #   ray
     #   tensorboard
 h11==0.16.0
     # via
     #   httpcore
+    #   httpcore2
     #   uvicorn
-hf-xet==1.5.0
+hf-xet==1.6.0
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
+httpcore2==2.12.0
+    # via httpx2
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
     # via
     #   -r requirements.in
-    #   python-fasthtml
+    #   datasets
+    #   huggingface-hub
     #   weasel
-huggingface-hub==0.36.2
+httpx2==2.12.0
+    # via python-fasthtml
+huggingface-hub==1.28.0
     # via
     #   accelerate
     #   autogluon-tabular
+    #   autogluon-timeseries
     #   datasets
     #   evaluate
     #   huggingface-hub
+    #   peft
     #   timm
     #   tokenizers
     #   transformers
 hyperopt==0.2.7
     # via autogluon-core
-idna==3.17
+idna==3.19
     # via
     #   anyio
     #   httpx
+    #   httpx2
     #   requests
     #   yarl
-imageio==2.37.3
+imageio==2.37.4
     # via scikit-image
-imbalanced-learn==0.14.1
+imbalanced-learn==0.14.2
     # via pycaret
 importlib-metadata==9.0.0
     # via
     #   dash
     #   pycaret
-ipython==9.14.0
+ipython==9.16.1
     # via
     #   ipywidgets
     #   pycaret
 ipython-pygments-lexers==1.1.1
     # via ipython
-ipywidgets==8.1.8
+ipywidgets==8.1.9
     # via pycaret
 itsdangerous==2.2.0
     # via
     #   flask
     #   python-fasthtml
+janus==2.0.0
+    # via dash
 jedi==0.20.0
     # via ipython
 jinja2==3.1.6
@@ -367,7 +390,7 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 jupyter-core==5.9.1
     # via nbformat
-jupyterlab-widgets==3.0.16
+jupyterlab-widgets==3.0.17
     # via ipywidgets
 kaleido==1.3.0
     # via pycaret
@@ -375,7 +398,7 @@ kiwisolver==1.5.0
     # via matplotlib
 lazy-loader==0.5
     # via scikit-image
-lightgbm==4.6.0
+lightgbm==4.7.0
     # via
     #   autogluon-tabular
     #   pycaret
@@ -388,7 +411,7 @@ lightning-utilities==0.15.3
     #   lightning
     #   pytorch-lightning
     #   torchmetrics
-llvmlite==0.47.0
+llvmlite==0.49.0
     # via numba
 logistro==2.0.1
     # via
@@ -396,9 +419,9 @@ logistro==2.0.1
     #   kaleido
 loguru==0.7.3
     # via autogluon-tabular
-mako==1.3.12
+mako==1.4.1
     # via alembic
-markdown==3.10.2
+markdown==3.10.3
     # via
     #   model-index
     #   tensorboard
@@ -430,13 +453,13 @@ model-index==0.1.11
     # via openmim
 mpmath==1.3.0
     # via sympy
-msgpack==1.1.2
+msgpack==1.2.1
     # via ray
 multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
-multiprocess==0.70.16
+multiprocess==0.70.19
     # via
     #   datasets
     #   evaluate
@@ -445,9 +468,11 @@ murmurhash==1.0.15
     #   preshed
     #   spacy
     #   thinc
-narwhals==2.21.2
-    # via plotly
-nbformat==5.10.4
+narwhals==2.25.0
+    # via
+    #   lightgbm
+    #   plotly
+nbformat==5.11.1
     # via pycaret
 nest-asyncio==1.6.0
     # via dash
@@ -461,9 +486,9 @@ networkx==3.6.1
     #   torch
 nlpaug==1.1.11
     # via autogluon-multimodal
-nltk==3.9.4
+nltk==3.10.3
     # via autogluon-multimodal
-numba==0.65.1
+numba==0.67.0
     # via
     #   mlforecast
     #   pycaret
@@ -484,6 +509,7 @@ numpy==1.26.4
     #   blis
     #   catboost
     #   category-encoders
+    #   chronos-forecasting
     #   contourpy
     #   coreforecast
     #   datasets
@@ -500,6 +526,7 @@ numpy==1.26.4
     #   optuna
     #   pandas
     #   patsy
+    #   peft
     #   plotly-resampler
     #   pmdarima
     #   pycaret
@@ -527,13 +554,13 @@ numpy==1.26.4
     #   tsdownsample
     #   utilsforecast
     #   window-ops
-    #   xgboost
+    #   xgboost-cpu
     #   yellowbrick
 nvidia-ml-py3==7.352.0
     # via autogluon-multimodal
 oauthlib==3.3.1
     # via python-fasthtml
-omegaconf==2.3.0
+omegaconf==2.3.1
     # via
     #   autogluon-multimodal
     #   autogluon-tabular
@@ -545,22 +572,38 @@ opendatalab==0.0.10
     # via openmim
 openmim==0.3.9
     # via autogluon-multimodal
+opentelemetry-api==1.44.0
+    # via
+    #   opentelemetry-exporter-prometheus
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-prometheus==0.65b0
+    # via ray
+opentelemetry-proto==1.44.0
+    # via ray
+opentelemetry-sdk==1.44.0
+    # via
+    #   opentelemetry-exporter-prometheus
+    #   ray
+opentelemetry-semantic-conventions==0.65b0
+    # via opentelemetry-sdk
 openxlab==0.0.11
     # via opendatalab
-optuna==4.8.0
+optuna==4.9.0
     # via
     #   -r requirements.in
     #   mlforecast
 ordered-set==4.1.0
     # via model-index
-orjson==3.11.9
+orjson==3.12.0
     # via
     #   autogluon-timeseries
     #   kaleido
     #   plotly-resampler
-packaging==26.2
+packaging==26.3
     # via
     #   accelerate
+    #   autogluon-common
     #   datasets
     #   deprecation
     #   evaluate
@@ -573,12 +616,12 @@ packaging==26.2
     #   matplotlib
     #   mlforecast
     #   optuna
+    #   peft
     #   plotly
     #   pmdarima
     #   pytesseract
     #   pytorch-lightning
     #   ray
-    #   safetensors
     #   scikit-image
     #   shap
     #   sktime
@@ -602,6 +645,7 @@ pandas==2.1.4
     #   autogluon-timeseries
     #   catboost
     #   category-encoders
+    #   chronos-forecasting
     #   datasets
     #   evaluate
     #   fastai
@@ -626,11 +670,15 @@ patsy==1.0.2
     # via
     #   category-encoders
     #   statsmodels
+pbr==7.0.3
+    # via stevedore
 pdf2image==1.17.0
     # via autogluon-multimodal
+peft==0.19.1
+    # via autogluon-timeseries
 pexpect==4.9.0
     # via ipython
-pillow==11.3.0
+pillow==12.3.0
     # via
     #   autogluon-multimodal
     #   fastai
@@ -641,13 +689,12 @@ pillow==11.3.0
     #   scikit-image
     #   tensorboard
     #   torchvision
-platformdirs==4.10.0
+platformdirs==4.11.3
     # via
     #   choreographer
     #   jupyter-core
-    #   python-discovery
     #   virtualenv
-plotly==6.7.0
+plotly==6.9.0
     # via
     #   catboost
     #   dash
@@ -667,30 +714,34 @@ preshed==3.0.13
     # via
     #   spacy
     #   thinc
-prometheus-client==0.25.0
-    # via ray
-prompt-toolkit==3.0.52
+prometheus-client==0.26.0
+    # via
+    #   opentelemetry-exporter-prometheus
+    #   ray
+prompt-toolkit==3.0.53
     # via ipython
 propcache==0.5.2
     # via
     #   aiohttp
     #   yarl
-proto-plus==1.28.0
+proto-plus==1.28.3
     # via google-api-core
-protobuf==7.35.0
+protobuf==7.36.0
     # via
     #   google-api-core
     #   googleapis-common-protos
+    #   opentelemetry-proto
     #   proto-plus
     #   ray
     #   tensorboard
     #   tensorboardx
     #   transformers
-psutil==7.0.0
+psutil==7.2.2
     # via
     #   accelerate
     #   autogluon-common
     #   ipython
+    #   peft
     #   pycaret
 psycopg2-binary==2.9.12
     # via -r requirements.in
@@ -702,14 +753,14 @@ py-spy==0.4.2
     # via ray
 py4j==0.10.9.9
     # via hyperopt
-pyarrow==20.0.0
+pyarrow==24.0.0
     # via
     #   autogluon-common
     #   autogluon-core
     #   datasets
     #   ray
     #   triad
-pyasn1==0.6.3
+pyasn1==0.6.4
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
@@ -722,6 +773,7 @@ pycryptodome==3.23.0
 pydantic==2.13.4
     # via
     #   -r requirements.in
+    #   dash
     #   fastapi
     #   gluonts
     #   ray
@@ -730,12 +782,12 @@ pydantic==2.13.4
     #   weasel
 pydantic-core==2.46.4
     # via pydantic
-pygments==2.20.0
+pygments==2.21.0
     # via
     #   ipython
     #   ipython-pygments-lexers
     #   rich
-pyod==3.5.2
+pyod==3.6.5
     # via pycaret
 pyparsing==3.3.2
     # via matplotlib
@@ -749,27 +801,26 @@ python-dateutil==2.9.0.post0
     #   matplotlib
     #   pandas
     #   python-fasthtml
-python-discovery==1.4.0
+python-discovery==1.5.2
     # via virtualenv
-python-dotenv==1.2.2
+python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   uvicorn
-python-fasthtml==0.14.2
+python-fasthtml==0.14.5
     # via fastprogress
-python-multipart==0.0.29
+python-multipart==0.0.32
     # via python-fasthtml
 pytorch-lightning==2.6.5
-    # via
-    #   autogluon-timeseries
-    #   lightning
+    # via lightning
 pytorch-metric-learning==2.8.1
     # via autogluon-multimodal
-pytz==2026.2
+pytz==2026.3.post1
     # via pandas
 pyyaml==6.0.3
     # via
     #   accelerate
+    #   autogluon-common
     #   datasets
     #   fastai
     #   huggingface-hub
@@ -777,18 +828,19 @@ pyyaml==6.0.3
     #   model-index
     #   omegaconf
     #   optuna
+    #   peft
     #   pytorch-lightning
     #   ray
     #   timm
     #   transformers
     #   uvicorn
-ray==2.44.1
+ray==2.56.1
     # via autogluon-core
 referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
-regex==2026.5.9
+regex==2026.7.19
     # via
     #   nltk
     #   transformers
@@ -803,14 +855,12 @@ requests==2.34.2
     #   fastai
     #   gdown
     #   google-api-core
-    #   huggingface-hub
     #   nlpaug
     #   opendatalab
     #   openmim
     #   pycaret
     #   ray
     #   spacy
-    #   transformers
 retrying==1.4.2
     # via dash
 rich==15.0.0
@@ -819,27 +869,30 @@ rich==15.0.0
     #   openmim
     #   plum-dispatch
     #   typer
-rpds-py==2026.5.1
+rpds-py==2026.6.3
     # via
     #   jsonschema
     #   referencing
-s3transfer==0.18.0
+s3transfer==0.19.2
     # via boto3
-safetensors==0.7.0
+safetensors==0.8.0
     # via
     #   accelerate
+    #   autogluon-timeseries
     #   huggingface-hub
+    #   peft
     #   timm
     #   transformers
 schemdraw==0.15
     # via pycaret
-scikit-base==0.13.2
+scikit-base==1.0.2
     # via sktime
 scikit-image==0.25.2
     # via autogluon-multimodal
 scikit-learn==1.5.2
     # via
     #   -r requirements.in
+    #   autogluon-common
     #   autogluon-core
     #   autogluon-features
     #   autogluon-multimodal
@@ -884,9 +937,9 @@ scipy==1.11.4
     #   statsforecast
     #   statsmodels
     #   tbats
-    #   xgboost
+    #   xgboost-cpu
     #   yellowbrick
-sentencepiece==0.2.1
+sentencepiece==0.2.2
     # via transformers
 seqeval==1.2.2
     # via autogluon-multimodal
@@ -903,19 +956,19 @@ six==1.17.0
     #   opencensus
     #   python-dateutil
     #   triad
-sklearn-compat==0.1.5
+sklearn-compat==0.1.6
     # via imbalanced-learn
-sktime==0.40.1
+sktime==1.1.0
     # via pycaret
 slicer==0.0.8
     # via shap
-smart-open==7.6.1
+smart-open==8.0.1
     # via
     #   ray
     #   weasel
-soupsieve==2.8.4
+soupsieve==2.9.2
     # via beautifulsoup4
-spacy==3.8.14
+spacy==3.8.15
     # via
     #   autogluon-tabular
     #   fastai
@@ -923,7 +976,7 @@ spacy-legacy==3.0.12
     # via spacy
 spacy-loggers==1.0.5
     # via spacy
-sqlalchemy==2.0.50
+sqlalchemy==2.0.52
     # via
     #   alembic
     #   optuna
@@ -934,11 +987,11 @@ srsly==2.5.3
     #   weasel
 stack-data==0.6.3
     # via ipython
-starlette==1.2.0
+starlette==1.6.0
     # via
     #   fastapi
     #   python-fasthtml
-statsforecast==2.0.1
+statsforecast==2.0.3
     # via autogluon-timeseries
 statsmodels==0.14.6
     # via
@@ -946,7 +999,9 @@ statsmodels==0.14.6
     #   pmdarima
     #   pycaret
     #   statsforecast
-structlog==25.5.0
+stevedore==5.4.1
+    # via autogluon-core
+structlog==26.1.0
     # via -r requirements.in
 sympy==1.14.0
     # via
@@ -956,7 +1011,7 @@ tabulate==0.10.0
     # via openmim
 tbats==1.1.3
     # via pycaret
-tensorboard==2.20.0
+tensorboard==2.21.0
     # via
     #   autogluon-multimodal
     #   autogluon-timeseries
@@ -977,19 +1032,21 @@ tifffile==2026.3.3
     # via scikit-image
 timm==1.0.3
     # via autogluon-multimodal
-tokenizers==0.21.4
+tokenizers==0.22.2
     # via transformers
 toolz==0.12.1
     # via gluonts
-torch==2.7.1
+torch==2.10.0
     # via
     #   accelerate
     #   autogluon-multimodal
     #   autogluon-tabular
     #   autogluon-timeseries
+    #   chronos-forecasting
     #   fastai
     #   huggingface-hub
     #   lightning
+    #   peft
     #   pytorch-lightning
     #   pytorch-metric-learning
     #   safetensors
@@ -1001,12 +1058,12 @@ torchmetrics==1.7.4
     #   autogluon-multimodal
     #   lightning
     #   pytorch-lightning
-torchvision==0.22.1
+torchvision==0.25.0
     # via
     #   autogluon-multimodal
     #   fastai
     #   timm
-tqdm==4.67.3
+tqdm==4.70.0
     # via
     #   autogluon-common
     #   autogluon-core
@@ -1022,6 +1079,7 @@ tqdm==4.67.3
     #   nltk
     #   opendatalab
     #   optuna
+    #   peft
     #   pycaret
     #   pytorch-lightning
     #   pytorch-metric-learning
@@ -1029,41 +1087,54 @@ tqdm==4.67.3
     #   spacy
     #   statsforecast
     #   transformers
-traitlets==5.15.0
+traitlets==5.16.1
     # via
     #   ipython
     #   ipywidgets
     #   jupyter-core
     #   matplotlib-inline
     #   nbformat
-transformers==4.49.0
+transformers==5.14.1
     # via
     #   autogluon-multimodal
     #   autogluon-tabular
     #   autogluon-timeseries
+    #   chronos-forecasting
+    #   peft
 triad==1.0.2
     # via
     #   adagio
     #   fugue
-tsdownsample==0.1.5
+truststore==0.10.4
+    # via
+    #   httpcore2
+    #   httpx2
+tsdownsample==0.1.5.1
     # via plotly-resampler
-typer==0.26.4
+typer==0.27.1
     # via
     #   spacy
+    #   transformers
     #   weasel
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
+    #   aiohttp
     #   aiosignal
     #   alembic
     #   anyio
+    #   autogluon-core
     #   beautifulsoup4
     #   dash
     #   fastapi
     #   gluonts
     #   grpcio
+    #   httpx2
     #   huggingface-hub
     #   lightning
     #   lightning-utilities
+    #   opentelemetry-api
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   plum-dispatch
     #   pydantic
     #   pydantic-core
@@ -1074,11 +1145,11 @@ typing-extensions==4.15.0
     #   starlette
     #   torch
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via
     #   fastapi
     #   pydantic
-tzdata==2026.2
+tzdata==2026.3
     # via pandas
 urllib3==2.7.0
     # via
@@ -1090,13 +1161,13 @@ utilsforecast==0.2.11
     #   autogluon-timeseries
     #   mlforecast
     #   statsforecast
-uvicorn==0.48.0
+uvicorn==0.52.4
     # via
     #   -r requirements.in
     #   python-fasthtml
 uvloop==0.22.1
     # via uvicorn
-virtualenv==21.4.1
+virtualenv==21.7.4
     # via ray
 wasabi==1.1.3
     # via
@@ -1105,33 +1176,33 @@ wasabi==1.1.3
     #   weasel
 watchfiles==1.2.0
     # via uvicorn
-wcwidth==0.7.0
+wcwidth==0.8.2
     # via prompt-toolkit
 weasel==1.0.0
     # via spacy
-websockets==16.0
+websockets==17.0.1
     # via uvicorn
 werkzeug==3.1.8
     # via
     #   dash
     #   flask
     #   tensorboard
-widgetsnbextension==4.0.15
+widgetsnbextension==4.0.16
     # via ipywidgets
 window-ops==0.0.15
     # via mlforecast
-wrapt==2.2.1
+wrapt==2.3.0
     # via smart-open
 wurlitzer==3.1.1
     # via pycaret
-xgboost==3.0.5
+xgboost-cpu==3.3.0
     # via autogluon-tabular
-xxhash==3.7.0
+xxhash==4.0.1
     # via
     #   datasets
     #   evaluate
     #   pycaret
-yarl==1.24.2
+yarl==1.24.5
     # via aiohttp
 yellowbrick==1.5
     # via pycaret
