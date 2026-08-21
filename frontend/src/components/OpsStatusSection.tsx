@@ -126,10 +126,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
                 <strong>
                   {(() => {
                     const v = asObj(data?.db).last_match_import_at as unknown as
-                      | string
-                      | number
-                      | Date
-                      | undefined;
+                      string | number | Date | undefined;
                     if (!v) return 'unknown';
                     try {
                       const d = new Date(v);
