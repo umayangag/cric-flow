@@ -1,7 +1,6 @@
 """Feature contract constants shared with go-app."""
 
 
-
 # -------------------- Feature input models --------------------
 
 # Raw windowed stat names (v2 contract); used for validation and backtest build.
