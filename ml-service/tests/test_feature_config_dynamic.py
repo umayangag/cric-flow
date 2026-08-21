@@ -27,10 +27,11 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     cfg_path, cfg = write_temp_config(tmp_path)
     monkeypatch.setenv("FEATURE_CONFIG_PATH", str(cfg_path))
 
+    from app.features import batting_feature_vector, bowling_feature_vector
+    from app.models import BattingFeatures, BowlingFeatures
+
     m_config = importlib.import_module("app.feature_config")
     importlib.reload(m_config)
-    m = importlib.import_module("app.main")
-    importlib.reload(m)
 
     # Sentinel values: first config slot = 2.2, second = 1.1, then 3, 4, 5, ...
     # Constrained int fields must stay within model bounds (e.g. viscosity le=1, inning le=2).
@@ -74,8 +75,8 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     bat_kwargs = kwargs_for_order(cfg["batting"], bat_int, bat_clamp)
     bat_kwargs["player_name"] = "P"
     bat_kwargs["format"] = "ODI"
-    bf = m.BattingFeatures(**bat_kwargs)
-    vec = m.batting_feature_vector(bf)
+    bf = BattingFeatures(**bat_kwargs)
+    vec = batting_feature_vector(bf)
     expected_bat = [float(bat_kwargs[n]) for n in cfg["batting"]]
     assert vec == expected_bat, (vec, expected_bat)
 
@@ -100,7 +101,7 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     bowl_kwargs = kwargs_for_order(cfg["bowling"], bowl_int, bowl_clamp)
     bowl_kwargs["player_name"] = "P"
     bowl_kwargs["format"] = "ODI"
-    bwf = m.BowlingFeatures(**bowl_kwargs)
-    vec2 = m.bowling_feature_vector(bwf)
+    bwf = BowlingFeatures(**bowl_kwargs)
+    vec2 = bowling_feature_vector(bwf)
     expected_bowl = [float(bowl_kwargs[n]) for n in cfg["bowling"]]
     assert vec2 == expected_bowl, (vec2, expected_bowl)

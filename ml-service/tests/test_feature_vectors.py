@@ -2,14 +2,15 @@ import importlib
 import os
 
 from app.feature_config import get_feature_names
+from app.features import batting_feature_vector, bowling_feature_vector
+from app.models import BattingFeatures, BowlingFeatures
 
 
 def test_batting_feature_vector_length(tmp_path):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
-    m = importlib.import_module("app.main")
-    importlib.reload(m)
+    importlib.import_module("app.feature_config")
 
-    f = m.BattingFeatures(
+    f = BattingFeatures(
         batting_consistency=0.1,
         batting_form=0.2,
         batting_temp=25,
@@ -28,18 +29,16 @@ def test_batting_feature_vector_length(tmp_path):
         player_name="P",
         format="ODI",
     )
-    vec = m.batting_feature_vector(f)
+    vec = batting_feature_vector(f)
     assert isinstance(vec, list)
-    # batting length is defined by shared feature config
     assert len(vec) == len(get_feature_names("batting"))
 
 
 def test_bowling_feature_vector_length(tmp_path):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
-    m = importlib.import_module("app.main")
-    importlib.reload(m)
+    importlib.import_module("app.feature_config")
 
-    f = m.BowlingFeatures(
+    f = BowlingFeatures(
         bowling_consistency=0.1,
         bowling_form=0.2,
         bowling_temp=25,
@@ -58,7 +57,6 @@ def test_bowling_feature_vector_length(tmp_path):
         player_name="P",
         format="ODI",
     )
-    vec = m.bowling_feature_vector(f)
+    vec = bowling_feature_vector(f)
     assert isinstance(vec, list)
-    # bowling length is defined by shared feature config
     assert len(vec) == len(get_feature_names("bowling"))

@@ -7,7 +7,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | ID | Status | PR branch (when done) | Title |
 |----|--------|----------------------|-------|
 | P4-4 | done | `ml-service/p4-4-readme-endpoints` | Update README with current endpoints and layout |
-| P2-5 | todo | | Remove test re-exports from `main.py` |
+| P2-5 | done | `ml-service/p2-5-remove-main-test-reexports` | Remove test re-exports from `main.py` |
 | P2-4 | todo | | Stop importing private `ml` symbols; add public helpers |
 | P1-4 | todo | | Remove stale `ImportError` fallbacks in `prediction_service` |
 | P0-2 | todo | | Split `app/models.py` by domain |
