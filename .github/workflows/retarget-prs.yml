@@ -1,0 +1,43 @@
+name: Retarget PRs to main
+
+on:
+  delete:
+
+jobs:
+  retarget:
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retarget open PRs to main
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deletedBranch = context.payload.ref;
+            const defaultBranch = 'main';
+
+            core.info(`Branch deleted: ${deletedBranch}`);
+
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: deletedBranch,
+            });
+
+            core.info(`Found ${pulls.length} open PR(s) targeting ${deletedBranch}`);
+
+            for (const pr of pulls) {
+              core.info(`Retargeting PR #${pr.number} ("${pr.title}") from ${deletedBranch} → ${defaultBranch}`);
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                base: defaultBranch,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `🔄 Base branch \`${deletedBranch}\` was deleted. This PR has been automatically retargeted to \`${defaultBranch}\`.`,
+              });
+            }
