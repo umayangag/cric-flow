@@ -97,17 +97,17 @@ def _mock_artifacts():
     fld_scaler = _make_mock_scaler()
 
     with (
-        patch.dict("app.prediction_service.BAT_MODELS", {"T20": (bat_scaler, bat_model)}),
-        patch.dict("app.prediction_service.BOWL_MODELS", {"T20": (bowl_scaler, bowl_model)}),
-        patch.dict("app.prediction_service.FIELD_MODELS", {"T20": (fld_scaler, fld_model)}),
-        patch.dict("app.prediction_service.BAT_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.BOWL_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.INNINGS_MODELS", {}),
-        patch("app.prediction_service.use_share_models_config", return_value=False),
-        patch("app.prediction_service.get_prediction_defaults", return_value={"economy": 6.0}),
-        patch("app.prediction_service._build_batting_feature_matrix", side_effect=_fake_bat_feature_matrix),
-        patch("app.prediction_service._build_bowling_feature_matrix", side_effect=_fake_bowl_feature_matrix),
-        patch("app.prediction_service._build_fielding_feature_matrix", side_effect=_fake_fld_feature_matrix),
+        patch.dict("app.prediction_service.players.BAT_MODELS", {"T20": (bat_scaler, bat_model)}),
+        patch.dict("app.prediction_service.players.BOWL_MODELS", {"T20": (bowl_scaler, bowl_model)}),
+        patch.dict("app.prediction_service.players.FIELD_MODELS", {"T20": (fld_scaler, fld_model)}),
+        patch.dict("app.prediction_service.players.BAT_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.BOWL_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.INNINGS_MODELS", {}),
+        patch("app.prediction_service.players.use_share_models_config", return_value=False),
+        patch("app.prediction_service.players.get_prediction_defaults", return_value={"economy": 6.0}),
+        patch("app.prediction_service.players._build_batting_feature_matrix", side_effect=_fake_bat_feature_matrix),
+        patch("app.prediction_service.players._build_bowling_feature_matrix", side_effect=_fake_bowl_feature_matrix),
+        patch("app.prediction_service.players._build_fielding_feature_matrix", side_effect=_fake_fld_feature_matrix),
     ):
         yield {
             "bat_model": bat_model,
@@ -254,7 +254,7 @@ def test_assemble_player_predictions_basic() -> None:
     Y_bat = np.array([[10.0, 20.0, 2.0, 1.0, 0.0], [5.0, 10.0, 1.0, 0.0, 0.0]])
     Y_bowl = np.array([[8.0, 24.0, 1.0], [12.0, 30.0, 2.0]])
 
-    with patch("app.prediction_service.get_prediction_defaults", return_value={"economy": 6.0}):
+    with patch("app.prediction_service.players.get_prediction_defaults", return_value={"economy": 6.0}):
         preds = _assemble_player_predictions(
             Y_bat,
             Y_bowl,
@@ -283,7 +283,7 @@ def test_assemble_player_predictions_with_fielding() -> None:
     Y_bowl = np.array([[8.0, 24.0, 1.0]])
     Y_fld = np.array([[1.5, 0.3]])
 
-    with patch("app.prediction_service.get_prediction_defaults", return_value={"economy": 6.0}):
+    with patch("app.prediction_service.players.get_prediction_defaults", return_value={"economy": 6.0}):
         preds = _assemble_player_predictions(
             Y_bat,
             Y_bowl,
@@ -306,7 +306,7 @@ def test_assemble_player_predictions_clamps_negative_values() -> None:
     Y_bat = np.array([[-5.0, -1.0, -2.0, -3.0, 0.0]])
     Y_bowl = np.array([[-8.0, -24.0, -1.0]])
 
-    with patch("app.prediction_service.get_prediction_defaults", return_value={"economy": 6.0}):
+    with patch("app.prediction_service.players.get_prediction_defaults", return_value={"economy": 6.0}):
         preds = _assemble_player_predictions(
             Y_bat,
             Y_bowl,
@@ -326,12 +326,12 @@ def test_assemble_player_predictions_clamps_negative_values() -> None:
 def test_resolve_prediction_model_pairs_raises_when_no_artifacts_and_no_train() -> None:
     """_resolve_prediction_model_pairs raises ValueError when no artifacts and train-on-the-fly disabled."""
     with (
-        patch.dict("app.prediction_service.BAT_MODELS", {}),
-        patch.dict("app.prediction_service.BOWL_MODELS", {}),
-        patch.dict("app.prediction_service.BAT_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.BOWL_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.INNINGS_MODELS", {}),
-        patch("app.prediction_service.use_share_models_config", return_value=False),
+        patch.dict("app.prediction_service.players.BAT_MODELS", {}),
+        patch.dict("app.prediction_service.players.BOWL_MODELS", {}),
+        patch.dict("app.prediction_service.players.BAT_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.BOWL_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.INNINGS_MODELS", {}),
+        patch("app.prediction_service.players.use_share_models_config", return_value=False),
     ):
         with pytest.raises(ValueError, match="Train-on-the-fly is disabled"):
             _resolve_prediction_model_pairs(
@@ -351,12 +351,12 @@ def test_resolve_prediction_model_pairs_raises_when_no_artifacts_and_no_train() 
 def test_resolve_prediction_model_pairs_raises_when_no_go_app_url() -> None:
     """_resolve_prediction_model_pairs raises ValueError when go_app_url missing for train-on-the-fly."""
     with (
-        patch.dict("app.prediction_service.BAT_MODELS", {}),
-        patch.dict("app.prediction_service.BOWL_MODELS", {}),
-        patch.dict("app.prediction_service.BAT_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.BOWL_SHARE_MODELS", {}),
-        patch.dict("app.prediction_service.INNINGS_MODELS", {}),
-        patch("app.prediction_service.use_share_models_config", return_value=False),
+        patch.dict("app.prediction_service.players.BAT_MODELS", {}),
+        patch.dict("app.prediction_service.players.BOWL_MODELS", {}),
+        patch.dict("app.prediction_service.players.BAT_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.BOWL_SHARE_MODELS", {}),
+        patch.dict("app.prediction_service.players.INNINGS_MODELS", {}),
+        patch("app.prediction_service.players.use_share_models_config", return_value=False),
     ):
         with pytest.raises(ValueError, match="GO_APP_URL is required"):
             _resolve_prediction_model_pairs(
@@ -379,10 +379,10 @@ def test_resolve_prediction_model_pairs_returns_loaded_models() -> None:
     bowl_pair = (_make_mock_scaler(), _make_mock_model(3))
 
     with (
-        patch.dict("app.prediction_service.BAT_MODELS", {"T20": bat_pair}),
-        patch.dict("app.prediction_service.BOWL_MODELS", {"T20": bowl_pair}),
-        patch.dict("app.prediction_service.INNINGS_MODELS", {}),
-        patch("app.prediction_service.use_share_models_config", return_value=False),
+        patch.dict("app.prediction_service.players.BAT_MODELS", {"T20": bat_pair}),
+        patch.dict("app.prediction_service.players.BOWL_MODELS", {"T20": bowl_pair}),
+        patch.dict("app.prediction_service.players.INNINGS_MODELS", {}),
+        patch("app.prediction_service.players.use_share_models_config", return_value=False),
     ):
         resolved = _resolve_prediction_model_pairs(
             "T20",
@@ -409,10 +409,10 @@ def test_resolve_prediction_model_pairs_normalizes_format() -> None:
     bowl_pair = (_make_mock_scaler(), _make_mock_model(3))
 
     with (
-        patch.dict("app.prediction_service.BAT_MODELS", {"ODI": bat_pair}),
-        patch.dict("app.prediction_service.BOWL_MODELS", {"ODI": bowl_pair}),
-        patch.dict("app.prediction_service.INNINGS_MODELS", {}),
-        patch("app.prediction_service.use_share_models_config", return_value=False),
+        patch.dict("app.prediction_service.players.BAT_MODELS", {"ODI": bat_pair}),
+        patch.dict("app.prediction_service.players.BOWL_MODELS", {"ODI": bowl_pair}),
+        patch.dict("app.prediction_service.players.INNINGS_MODELS", {}),
+        patch("app.prediction_service.players.use_share_models_config", return_value=False),
     ):
         resolved = _resolve_prediction_model_pairs(
             " odi ",
