@@ -40,7 +40,6 @@ type mlBacktestMatchContext struct {
 	Team1PlayerIDs    []int64 `json:"team1_player_ids"`
 	Team2PlayerIDs    []int64 `json:"team2_player_ids"`
 	VenueID           float64 `json:"venue_id,omitempty"`
-	SeasonID          float64 `json:"season_id,omitempty"`
 	FormatID          float64 `json:"format_id,omitempty"`
 	Team1OppositionID float64 `json:"team1_opposition_id,omitempty"`
 	Team2OppositionID float64 `json:"team2_opposition_id,omitempty"`
@@ -152,7 +151,6 @@ type mlWinFeatures struct {
 type mlWinFeaturesEnhanced struct {
 	FormatID               int                           `json:"format_id"`
 	VenueID                int                           `json:"venue_id"`
-	MatchDateUnix          float64                       `json:"match_date_unix"`
 	Team1OppositionID      int                           `json:"team1_opposition_id"`
 	Team2OppositionID      int                           `json:"team2_opposition_id"`
 	TossWinnerOppositionID int                           `json:"toss_winner_opposition_id"`
@@ -343,7 +341,6 @@ type MatchContextForReconciliation struct {
 	Team1PlayerIDs                                         []int64
 	Team2PlayerIDs                                         []int64
 	VenueID                                                int64
-	SeasonID                                               int64
 	FormatID                                               int64
 	Team1OppositionID                                      int64 // team2's ID when team1 bats (innings 1)
 	Team2OppositionID                                      int64 // team1's ID when team2 bats (innings 2)
@@ -379,11 +376,10 @@ func (c *BacktestMLClient) predictPlayers(
 		}
 	}
 	if matchCtx != nil {
-		body.MatchContext = &mlBacktestMatchContext{
+ 	body.MatchContext = &mlBacktestMatchContext{
 			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 			VenueID:           float64(matchCtx.VenueID),
-			SeasonID:          float64(matchCtx.SeasonID),
 			FormatID:          float64(matchCtx.FormatID),
 			Team1OppositionID: float64(matchCtx.Team1OppositionID),
 			Team2OppositionID: float64(matchCtx.Team2OppositionID),
@@ -584,11 +580,10 @@ func (c *BacktestMLClient) GenerateMatch(
 		}
 	}
 	if matchCtx != nil {
-		reqBody.MatchContext = &mlBacktestMatchContext{
+ 	reqBody.MatchContext = &mlBacktestMatchContext{
 			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 			VenueID:           float64(matchCtx.VenueID),
-			SeasonID:          float64(matchCtx.SeasonID),
 			FormatID:          float64(matchCtx.FormatID),
 			Team1OppositionID: float64(matchCtx.Team1OppositionID),
 			Team2OppositionID: float64(matchCtx.Team2OppositionID),

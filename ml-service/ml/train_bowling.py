@@ -78,8 +78,10 @@ FEATURE_COLS = (
         "toss",
         "bowling_venue",
         "bowling_opposition",
-        "season_id",
-        "match_date_unix",
+        "match_month_sin",
+        "match_month_cos",
+        "match_day_of_week_sin",
+        "match_day_of_week_cos",
     ]
     + BOWL_SEQ_COLS
 )
@@ -110,8 +112,6 @@ def _bowling_col_map() -> Dict[str, str]:
         "toss": "toss",
         "bowling_venue": "bowling_venue",
         "bowling_opposition": "bowling_opposition",
-        "season_id": "season_id",
-        "match_date_unix": "match_date_unix",
     }
     m.update({c: c for c in BOWL_RAW_STAT_COLS})
     m.update(

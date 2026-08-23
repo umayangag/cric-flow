@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-
 class BattingPrediction(BaseModel):
     runs_scored: float
     balls_faced: float
@@ -13,21 +12,17 @@ class BattingPrediction(BaseModel):
     batting_position: float
     strike_rate: float
 
-
 class BowlingPrediction(BaseModel):
     runs_conceded: float
     deliveries: float
     wickets_taken: float
     econ: float
 
-
 class ExtrasFeatures(BaseModel):
     """Match-level features for extras model. Same families as batting/bowling/fielding."""
 
     format_id: int = Field(default=0, ge=0, description="Format dimension id")
     venue_id: int = Field(default=0, ge=0)
-    season_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     temp: int = Field(default=0)
     wind: int = Field(default=0, ge=0)
     rain: int = Field(default=0, ge=0)
@@ -49,17 +44,14 @@ class ExtrasFeatures(BaseModel):
             return v
         return v.strip().upper()
 
-
 class ExtrasPrediction(BaseModel):
     total_extras: float = Field(..., description="Predicted total extras for the match")
-
 
 class WinFeatures(BaseModel):
     """Match-level features for win model. Same families as batting/bowling/fielding."""
 
     format_id: int = Field(default=0, ge=0)
     venue_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
     toss_winner_opposition_id: int = Field(default=0, ge=0)
@@ -86,7 +78,6 @@ class WinFeatures(BaseModel):
             return v
         return v.strip().upper()
 
-
 class WinFeaturesEnhanced(BaseModel):
     """Enhanced win prediction request: match context + per-player feature maps.
 
@@ -96,7 +87,6 @@ class WinFeaturesEnhanced(BaseModel):
 
     format_id: int = Field(default=0, ge=0)
     venue_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
     toss_winner_opposition_id: int = Field(default=0, ge=0)
@@ -126,7 +116,6 @@ class WinFeaturesEnhanced(BaseModel):
         return {
             "format_id": float(self.format_id),
             "venue_id": float(self.venue_id),
-            "match_date_unix": float(self.match_date_unix),
             "team1_opposition_id": float(self.team1_opposition_id),
             "team2_opposition_id": float(self.team2_opposition_id),
             "toss_winner_opposition_id": float(self.toss_winner_opposition_id),
@@ -139,13 +128,10 @@ class WinFeaturesEnhanced(BaseModel):
             "viscosity": float(self.viscosity),
         }
 
-
 class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
 
-
 # -------------------- Team selection optimisation models --------------------
-
 
 class TeamOptimizationPoolPlayer(BaseModel):
     player_id: int
@@ -157,19 +143,16 @@ class TeamOptimizationPoolPlayer(BaseModel):
     field_score: float = 0.0
     features: Dict[str, float]
 
-
 class TeamOptimizationWeights(BaseModel):
     bat: float = 0.45
     bowl: float = 0.40
     field: float = 0.10
     keeper_bonus: float = 0.02
 
-
 class TeamOptimizationConstraints(BaseModel):
     size: int = Field(default=11, ge=1)
     min_bowlers: int = Field(default=5, ge=0)
     require_keeper: bool = True
-
 
 class TeamOptimizationRequest(BaseModel):
     """Request for server-side team selection optimisation.
@@ -199,11 +182,9 @@ class TeamOptimizationRequest(BaseModel):
             return v
         return v.strip().upper()
 
-
 class TeamOptimizationSelectedPlayer(BaseModel):
     player_id: int
     name: str
-
 
 class TeamOptimizationResponse(BaseModel):
     selected: List[TeamOptimizationSelectedPlayer]

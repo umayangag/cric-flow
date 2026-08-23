@@ -41,7 +41,6 @@ MATCH_CONTEXT_COLS = [
     "format_id",
     "format_code",
     "venue_id",
-    "season_id",
     "target_runs",
     "balls_per_innings",
     "innings",

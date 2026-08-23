@@ -25,26 +25,23 @@ from sklearn.preprocessing import StandardScaler
 
 from app.feature_config import get_feature_names
 from app.logging import get_struct_logger
-from ml.config import get_training_data_fetch_timeout_sec, get_training_params
+from ml.config import get_pipeline_common_config, get_training_data_fetch_timeout_sec, get_training_params
 from ml.data_quality import impute_features
+from ml.pipeline_common import compute_time_decay_weights
 from ml.utils import make_base_estimator
 
 logger = get_struct_logger()
-
 
 # Canonical feature order from configs/feature_vectors.json (single source of truth).
 def _batting_feature_cols() -> List[str]:
     return get_feature_names("batting")
 
-
 def _bowling_feature_cols() -> List[str]:
     return get_feature_names("bowling")
-
 
 # Public constants for tests and callers that need the same feature order.
 BATTING_FEATURE_COLS: List[str] = _batting_feature_cols()
 BOWLING_FEATURE_COLS: List[str] = _bowling_feature_cols()
-
 
 # Legacy column names from Go export; when API returns these we map to contract names in preprocess.
 BATTING_LEGACY_ALIAS = {
@@ -58,7 +55,6 @@ BATTING_LEGACY_ALIAS = {
     "batting_inning": "inning",
     "venue": "batting_venue",
     "opposition": "batting_opposition",
-    "season": "season_id",
 }
 BOWLING_LEGACY_ALIAS = {
     "bowling_temp": "temp",
@@ -69,7 +65,6 @@ BOWLING_LEGACY_ALIAS = {
     "bowling_pressure": "pressure",
     "bowling_viscosity": "viscosity",
     "batting_inning": "inning",
-    "season": "season_id",
 }
 
 BATTING_TARGET_COLS = [
@@ -86,11 +81,9 @@ BOWLING_TARGET_COLS = [
     "wickets",
 ]
 
-
 def _get_training_params(model: str) -> dict:
     """Training parameters from config (ml.training.<model>) only; used for train-on-the-fly and cache save."""
     return get_training_params(model)
-
 
 def _rows_to_xy(
     headers: List[str],
@@ -99,9 +92,9 @@ def _rows_to_xy(
     target_cols: List[str],
     n_y_final: int,
     preprocess: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
-    extra_y_column: Optional[Callable[[pd.DataFrame], np.ndarray]] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Shared data processing: build X, Y from go-app training rows.
+    extra_y_column: Optional[Callable[[pd.DataFrame], np.ndarray]] = None
+) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    """Shared data processing: build X, Y, weights from go-app training rows.
 
     Used by both batting and bowling to avoid duplicating feature cleaning,
     dropna, and numeric coercion. Aligns with offline train_batting/train_bowling
@@ -111,9 +104,12 @@ def _rows_to_xy(
     in raw units; feature order must match configs/feature_vectors.json for the
     model kind. Input scaling (StandardScaler) is applied in _train_*_in_memory.
     See docs/ml-and-training.md.
+
+    Returns (X, Y, weights) where weights is an optional time-decay array
+    computed from the match_date column (None when match_date is absent).
     """
     if not headers or not rows:
-        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final)), None
     df = pd.DataFrame(rows, columns=headers)
     all_cols = feature_cols + target_cols
     for c in all_cols:
@@ -137,7 +133,12 @@ def _rows_to_xy(
     if target_subset:
         df = df.dropna(subset=target_subset)
     if df.empty:
-        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final))
+        return np.zeros((0, len(feature_cols))), np.zeros((0, n_y_final)), None
+    # Compute time-decay sample weights from match_date (aligned with offline training pipelines).
+    weights: Optional[np.ndarray] = None
+    if "match_date" in df.columns:
+        halflife = get_pipeline_common_config().get("time_decay_halflife_years", 2.0)
+        weights = compute_time_decay_weights(df["match_date"], halflife_years=halflife)
     for c in feature_cols:
         if c in df.columns:
             df = df.assign(**{c: pd.to_numeric(df[c], errors="coerce")})
@@ -156,11 +157,10 @@ def _rows_to_xy(
     if extra_y_column is not None:
         extra = extra_y_column(df)
         Y = np.concatenate([Y, extra], axis=1)
-    return X, Y
+    return X, Y, weights
 
-
-def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Build X, Y from batting headers + rows. Feature order from configs/feature_vectors.json."""
+def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    """Build X, Y, weights from batting headers + rows. Feature order from configs/feature_vectors.json."""
 
     def _batting_preprocess(df: pd.DataFrame) -> pd.DataFrame:
         feature_cols = _batting_feature_cols()
@@ -183,12 +183,11 @@ def _batting_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
         _batting_feature_cols(),
         BATTING_TARGET_COLS,
         n_y_final=5,
-        preprocess=_batting_preprocess,
+        preprocess=_batting_preprocess
     )
 
-
-def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
-    """Build X, Y from bowling headers + rows. Feature order from configs/feature_vectors.json."""
+def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    """Build X, Y, weights from bowling headers + rows. Feature order from configs/feature_vectors.json."""
 
     def _bowling_preprocess(df: pd.DataFrame) -> pd.DataFrame:
         feature_cols = _bowling_feature_cols()
@@ -213,36 +212,33 @@ def _bowling_rows_to_xy(headers: List[str], rows: List[List[str]]) -> Tuple[np.n
         _bowling_feature_cols(),
         BOWLING_TARGET_COLS,
         n_y_final=3,
-        preprocess=_bowling_preprocess,
+        preprocess=_bowling_preprocess
     )
 
-
-def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
+def _train_batting_in_memory(X: np.ndarray, Y: np.ndarray, sample_weight: Optional[np.ndarray] = None) -> Tuple[StandardScaler, Any]:
     """Train batting model: normalize X with StandardScaler (fit on this data only), Y in raw units."""
     params = _get_training_params("batting")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model = MultiOutputRegressor(make_base_estimator(params))
-    model.fit(Xs, Y)
+    model.fit(Xs, Y, sample_weight=sample_weight)
     return scaler, model
 
-
-def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray) -> Tuple[StandardScaler, Any]:
+def _train_bowling_in_memory(X: np.ndarray, Y: np.ndarray, sample_weight: Optional[np.ndarray] = None) -> Tuple[StandardScaler, Any]:
     """Train bowling model: normalize X with StandardScaler (fit on this data only), Y in raw units."""
     params = _get_training_params("bowling")
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model = MultiOutputRegressor(make_base_estimator(params))
-    model.fit(Xs, Y)
+    model.fit(Xs, Y, sample_weight=sample_weight)
     return scaler, model
-
 
 def fetch_training_data(
     go_app_url: str,
     format_code: str,
     cutoff_iso: str,
     api_key: Optional[str] = None,
-    sections: Optional[str] = None,
+    sections: Optional[str] = None
 ) -> Dict[str, Any]:
     """Fetch training data from go-app. Returns dict with batting/bowling headers and rows.
 
@@ -271,7 +267,7 @@ def fetch_training_data(
         format_code=format_code,
         cutoff_iso=cutoff_iso,
         has_api_key=api_key is not None,
-        timeout_sec=timeout_sec,
+        timeout_sec=timeout_sec
     )
     req = urllib.request.Request(url)
     if api_key:
@@ -284,7 +280,7 @@ def fetch_training_data(
                 "train_on_the_fly.fetch.connected",
                 url=url,
                 elapsed_sec=round(t_connected - t0, 2),
-                status=resp.status,
+                status=resp.status
             )
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
@@ -295,7 +291,7 @@ def fetch_training_data(
             url=url,
             status_code=e.code,
             body_preview=(body[:500] + "..." if len(body) > 500 else body),
-            error=err_msg,
+            error=err_msg
         )
         raise ValueError(err_msg) from e
     except OSError as e:
@@ -317,16 +313,15 @@ def fetch_training_data(
         "train_on_the_fly.fetch.success",
         url=url,
         batting_rows=len((data.get("batting") or {}).get("rows") or []),
-        bowling_rows=len((data.get("bowling") or {}).get("rows") or []),
+        bowling_rows=len((data.get("bowling") or {}).get("rows") or [])
     )
     return data
-
 
 def train_on_the_fly(
     go_app_url: str,
     format_code: str,
     cutoff_iso: str,
-    api_key: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> Tuple[
     Tuple[StandardScaler, Any],
     Tuple[StandardScaler, Any],
@@ -343,8 +338,8 @@ def train_on_the_fly(
     bowl_headers = bowl.get("headers") or []
     bowl_rows = bowl.get("rows") or []
 
-    X_bat, Y_bat = _batting_rows_to_xy(bat_headers, bat_rows)
-    X_bowl, Y_bowl = _bowling_rows_to_xy(bowl_headers, bowl_rows)
+    X_bat, Y_bat, w_bat = _batting_rows_to_xy(bat_headers, bat_rows)
+    X_bowl, Y_bowl, w_bowl = _bowling_rows_to_xy(bowl_headers, bowl_rows)
 
     n_bat = X_bat.shape[0] if X_bat.size else 0
     n_bowl = X_bowl.shape[0] if X_bowl.size else 0
@@ -353,33 +348,33 @@ def train_on_the_fly(
         format_code=format_code,
         cutoff_iso=cutoff_iso,
         batting_samples=n_bat,
-        bowling_samples=n_bowl,
+        bowling_samples=n_bowl
     )
 
     if X_bat.size == 0 or Y_bat.size == 0:
         msg = "Insufficient batting training data for format=%s cutoff=%s (no rows after filtering)" % (
             format_code,
-            cutoff_iso,
+            cutoff_iso
         )
         logger.warning(
             "train_on_the_fly.insufficient_batting",
             format_code=format_code,
             cutoff_iso=cutoff_iso,
             batting_headers_len=len(bat_headers),
-            batting_rows_len=len(bat_rows),
+            batting_rows_len=len(bat_rows)
         )
         raise ValueError(msg)
     if X_bowl.size == 0 or Y_bowl.size == 0:
         msg = "Insufficient bowling training data for format=%s cutoff=%s (no rows after filtering)" % (
             format_code,
-            cutoff_iso,
+            cutoff_iso
         )
         logger.warning(
             "train_on_the_fly.insufficient_bowling",
             format_code=format_code,
             cutoff_iso=cutoff_iso,
             bowling_headers_len=len(bowl_headers),
-            bowling_rows_len=len(bowl_rows),
+            bowling_rows_len=len(bowl_rows)
         )
         raise ValueError(msg)
 
@@ -391,29 +386,27 @@ def train_on_the_fly(
         format_code=format_code,
         cutoff_iso=cutoff_iso,
         batting_samples=n_bat,
-        bowling_samples=n_bowl,
+        bowling_samples=n_bowl
     )
-    scaler_bat, model_bat = _train_batting_in_memory(X_bat, Y_bat)
-    scaler_bowl, model_bowl = _train_bowling_in_memory(X_bowl, Y_bowl)
+    scaler_bat, model_bat = _train_batting_in_memory(X_bat, Y_bat, sample_weight=w_bat)
+    scaler_bowl, model_bowl = _train_bowling_in_memory(X_bowl, Y_bowl, sample_weight=w_bowl)
     logger.info(
         "train_on_the_fly.training.done",
         format_code=format_code,
-        cutoff_iso=cutoff_iso,
+        cutoff_iso=cutoff_iso
     )
     return (scaler_bat, model_bat), (scaler_bowl, model_bowl)
-
 
 # In-memory LRU cache for train-on-the-fly models (keyed by format + cutoff).
 # Max size from ML_TRAIN_CACHE_MAX_ENTRIES (default 32) to avoid unbounded growth and OOM.
 _train_cache_lock = threading.Lock()
 _train_cache_max_entries = max(
     1,
-    int(os.environ.get("ML_TRAIN_CACHE_MAX_ENTRIES", "32")),
+    int(os.environ.get("ML_TRAIN_CACHE_MAX_ENTRIES", "32"))
 )
 _train_cache: OrderedDict[Tuple[str, str], Tuple[Tuple[StandardScaler, Any], Tuple[StandardScaler, Any]]] = (
     OrderedDict()
 )
-
 
 def _cache_dir() -> Optional[str]:
     d = (os.environ.get("ML_TRAIN_CACHE_DIR") or "").strip()
@@ -421,12 +414,10 @@ def _cache_dir() -> Optional[str]:
         return os.path.expanduser(d)
     return None
 
-
 def _cache_key(format_code: str, cutoff_iso: str) -> str:
     """Filesystem-safe cache key for (format, cutoff)."""
     raw = f"{format_code}_{cutoff_iso}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
-
 
 def _load_from_cache(
     cache_dir: str, key: str
@@ -449,12 +440,11 @@ def _load_from_cache(
         logger.warning("train_on_the_fly.cache_load_failed", key=key, error=str(e))
         return None
 
-
 def _save_to_cache(
     cache_dir: str,
     key: str,
     bat_pair: Tuple[StandardScaler, Any],
-    bowl_pair: Tuple[StandardScaler, Any],
+    bowl_pair: Tuple[StandardScaler, Any]
 ) -> None:
     subdir = os.path.join(cache_dir, key)
     try:
@@ -471,12 +461,11 @@ def _save_to_cache(
     except Exception as e:
         logger.warning("train_on_the_fly.cache_save_failed", key=key, error=str(e))
 
-
 def train_on_the_fly_cached(
     go_app_url: str,
     format_code: str,
     cutoff_iso: str,
-    api_key: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> Tuple[
     Tuple[StandardScaler, Any],
     Tuple[StandardScaler, Any],

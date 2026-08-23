@@ -33,8 +33,6 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  mi.inning_number AS inning,
 	  0 AS bowling_session,
 	  CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END AS toss,
-	  s.id AS season_id,
-	  EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 	  p.player_name,
 	  mf.code AS format_code,
 	  COALESCE(fd.catches,0) AS catches,
@@ -47,7 +45,6 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 		JOIN match m ON m.match_id = bw.match_id
 		LEFT JOIN match_format mf ON mf.id = m.format_id
 		LEFT JOIN player p ON p.id = bw.player_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN (
 		  SELECT * FROM weather_data WHERE session='bowling'
 		) w ON w.match_id = bw.match_id
@@ -67,7 +64,7 @@ func BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	baseHeaders := []string{
 		"overs", "balls", "maidens", "runs", "wickets", "dots", "fours", "sixes", "econ", "wides", "no_balls",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "season_id", "match_date_unix", "player_name", "format_code",
+		"inning", "bowling_session", "toss", "player_name", "format_code",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
 	finalHeaders := AppendSeqIfEnabled(ctx, baseHeaders, BowlingSeqHeaders())
@@ -101,15 +98,12 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
 		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
-		s.id AS season_id,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name
 		FROM bowling_data b
 		LEFT JOIN player p ON b.player_id = p.id
 		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT ` + bowlingRawStatsLateralSelect + `
 		  FROM feature_raw_stats_snapshots
@@ -141,7 +135,7 @@ func BowlingLegacyRows(ctx context.Context) ([][]string, error) {
 		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
 		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "match_date_unix", "player_name",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
@@ -185,8 +179,6 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
 		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
-		COALESCE(s.id, 0) AS season,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -195,7 +187,6 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT ` + bowlingRawStatsLateralSelect + `
 		  FROM feature_raw_stats_snapshots
@@ -237,8 +228,6 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		"toss",
 		"bowling_venue",
 		"bowling_opposition",
-		"season",
-		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",
@@ -281,8 +270,6 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(tvv.bowling_mean_w5, 0) AS bowling_venue,
 		COALESCE(tvo.bowling_mean_w5, 0) AS bowling_opposition,
-		s.id AS season_id,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -291,7 +278,6 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'bowling') w ON b.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 		LEFT JOIN match m ON m.match_id = b.match_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT ` + bowlingRawStatsLateralSelect + `
 		  FROM feature_raw_stats_snapshots
@@ -334,8 +320,6 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		"toss",
 		"bowling_venue",
 		"bowling_opposition",
-		"season_id",
-		"match_date_unix",
 		"player_name",
 		"catches",
 		"run_outs",
@@ -401,7 +385,6 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		COALESCE(mi.inning_number, 1),
 		0 AS bowling_session,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
@@ -414,7 +397,6 @@ func bowlingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 	LEFT JOIN match m ON m.match_id = b.match_id
 	LEFT JOIN match_format mf ON mf.id = m.format_id
-	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.inning_number = b.inning_number AND fd.player_id = b.player_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, b.match_id, b.player_id`
@@ -452,7 +434,6 @@ type bowlingTrainingRowRaw struct {
 	inning         string
 	sess           string
 	toss           string
-	seasonID       string
 	playerName     string
 	formatCode     string
 	catches        string
@@ -476,7 +457,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.balls, &r.wickets, &r.inningsRuns, &r.inningsWickets,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 			&r.formatCode,
 		)
@@ -554,7 +535,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
 		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 		"match_date",
 	}
@@ -593,7 +574,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			r.seasonID, r.playerName,
+			cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.formatCode,
 			r.matchDate.Format("2006-01-02"),
@@ -639,7 +620,6 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		COALESCE(mi.inning_number, 1),
 		0 AS bowling_session,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements,
@@ -652,7 +632,6 @@ func bowlingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN match_inning mi ON mi.match_id = b.match_id AND mi.inning_number = b.inning_number
 	LEFT JOIN match m ON m.match_id = b.match_id
 	LEFT JOIN match_format mf ON mf.id = m.format_id
-	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = b.match_id AND fd.inning_number = b.inning_number AND fd.player_id = b.player_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
@@ -666,7 +645,7 @@ func bowlingHoldoutHeaders() []string {
 	rawStatsHeaders := features.RawStatsFeatureNamesBowling()
 	envContextHeaders := []string{
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season_id", "player_name",
+		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
 		"match_date",
 	}
@@ -695,7 +674,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.balls, &r.wickets, &r.inningsRuns, &r.inningsWickets,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 			&r.formatCode,
 		); err != nil {
@@ -794,7 +773,7 @@ func bowlingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			r.seasonID, r.playerName,
+			cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.formatCode,
 			r.matchDate.Format("2006-01-02"),

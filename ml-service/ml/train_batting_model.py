@@ -39,7 +39,6 @@ def run_training():
             "inning",
             "batting_session",
             "toss",
-            "season_id",
         ]
         # Per-format as-of features for batting (no manual weights)
         asof_cols = [c for c in input_data.columns if c.startswith("bat_") and c.endswith("_asof")]

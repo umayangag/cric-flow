@@ -40,7 +40,6 @@ def run_training():
             "inning",
             "bowling_session",
             "toss",
-            "season_id",
         ]
         asof_cols = [c for c in input_data.columns if c.startswith("bowl_") and c.endswith("_asof")]
         fmt_cols = []

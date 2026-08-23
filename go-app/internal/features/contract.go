@@ -29,7 +29,7 @@ var (
 // defaultContract matches configs/feature_vectors.json so the app works without the file.
 // Version "2" uses raw windowed stat features only; form/consistency formula features were removed.
 var defaultContract = contract{
-	Version: "2",
+	Version: "3",
 	Batting: []string{
 		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
 		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
@@ -37,7 +37,8 @@ var defaultContract = contract{
 		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
 		"batting_days_since_last", "batting_innings_in_last_90d",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
-		"batting_inning", "batting_session", "toss", "venue", "opposition", "season", "match_date_unix",
+		"batting_inning", "batting_session", "toss", "venue", "opposition",
+		"match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos",
 		"bat_prev_sr", "bat_prev_out_rate", "bat_window_sr_12_pp", "bat_window_boundary_rate_12_pp",
 		"bat_entry_sr_1_6", "bat_set_sr_13_30", "bat_react_after_dot_sr", "bat_after_k_dots_boundary_p_k2",
 	},
@@ -48,14 +49,15 @@ var defaultContract = contract{
 		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
 		"bowling_days_since_last", "bowling_innings_in_last_90d",
 		"bowling_temp", "bowling_wind", "bowling_rain", "bowling_humidity", "bowling_cloud", "bowling_pressure", "bowling_viscosity",
-		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "season", "match_date_unix",
+		"batting_inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition",
+		"match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos",
 		"bowl_prev_wkt_rate", "bowl_window_econ_24_death", "bowl_window_wkt_rate_24_death", "bowl_extras_wide_rate_pp",
 		"bowl_react_after_boundary_wkt_rate_next", "bowl_spell_first_over_wkt_rate", "bowl_over_ball1_wkt_rate", "bowl_over_ball6_wkt_rate",
 	},
 	Fielding: []string{
 		"fielding_consistency", "fielding_form", "fielding_temp", "fielding_wind", "fielding_rain", "fielding_humidity",
 		"fielding_cloud", "fielding_pressure", "fielding_viscosity", "inning", "toss", "fielding_venue", "fielding_opposition",
-		"season_id", "match_date_unix",
+		"match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos",
 	},
 }
 

@@ -24,7 +24,6 @@ from ml.win_features import format_one_hot_from_code
 
 from .models import BacktestPlayerPred
 
-
 def _innings_feature_dict(
     inning_number: int,
     bat_consistency_sum: float,
@@ -32,9 +31,7 @@ def _innings_feature_dict(
     bat_form_sum: float,
     bowl_form_sum: float,
     venue_id: float,
-    season_id: float,
     opposition_id: float,
-    match_date_unix: float,
     temp: int,
     wind: int,
     rain: int,
@@ -43,7 +40,7 @@ def _innings_feature_dict(
     pressure: int,
     viscosity: int,
     format_code: Optional[str],
-    derived_weights: Optional[Mapping[str, float]],
+    derived_weights: Optional[Mapping[str, float]]
 ) -> Dict[str, float]:
     """Compute every potential innings feature as a name -> scalar mapping.
 
@@ -59,14 +56,12 @@ def _innings_feature_dict(
         rain,
         humidity,
         cloud,
-        weights=derived_weights,
+        weights=derived_weights
     )
     values: Dict[str, float] = {
-        "season_id": float(season_id),
         "venue_id": float(venue_id),
         "inning_number": float(inning_number),
         "opposition_id": float(opposition_id),
-        "match_date_unix": float(match_date_unix),
         "temp": float(temp),
         "wind": float(wind),
         "rain": float(rain),
@@ -86,7 +81,6 @@ def _innings_feature_dict(
         values[col] = float(val)
     return values
 
-
 def _resolve_innings_feature_order(meta: Optional[Mapping[str, Any]]) -> List[str]:
     """Pick the feature column order: sidecar when available, else legacy pre-sidecar order."""
     if meta is not None:
@@ -95,7 +89,6 @@ def _resolve_innings_feature_order(meta: Optional[Mapping[str, Any]]) -> List[st
             return [str(n) for n in names]
     return list(LEGACY_INNINGS_FEATURE_COLS)
 
-
 def build_innings_feature_vector(
     inning_number: int,
     bat_consistency_sum: float,
@@ -103,9 +96,7 @@ def build_innings_feature_vector(
     bat_form_sum: float,
     bowl_form_sum: float,
     venue_id: float = 0,
-    season_id: float = 0,
     opposition_id: float = 0,
-    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -114,7 +105,7 @@ def build_innings_feature_vector(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
-    meta: Optional[Mapping[str, Any]] = None,
+    meta: Optional[Mapping[str, Any]] = None
 ) -> np.ndarray:
     """Build the innings-model feature vector.
 
@@ -135,9 +126,7 @@ def build_innings_feature_vector(
         bat_form_sum=bat_form_sum,
         bowl_form_sum=bowl_form_sum,
         venue_id=venue_id,
-        season_id=season_id,
         opposition_id=opposition_id,
-        match_date_unix=match_date_unix,
         temp=temp,
         wind=wind,
         rain=rain,
@@ -146,12 +135,11 @@ def build_innings_feature_vector(
         pressure=pressure,
         viscosity=viscosity,
         format_code=format_code,
-        derived_weights=derived_weights,
+        derived_weights=derived_weights
     )
     order = _resolve_innings_feature_order(meta)
     values = [feature_dict.get(col, 0.0) for col in order]
     return np.array(values, dtype=float).reshape(1, -1)
-
 
 def predict_innings(
     scaler,
@@ -162,9 +150,7 @@ def predict_innings(
     bat_form_sum: float,
     bowl_form_sum: float,
     venue_id: float = 0,
-    season_id: float = 0,
     opposition_id: float = 0,
-    match_date_unix: float = 0,
     temp: int = 0,
     wind: int = 0,
     rain: int = 0,
@@ -173,7 +159,7 @@ def predict_innings(
     pressure: int = 0,
     viscosity: int = 0,
     format_code: Optional[str] = None,
-    meta: Optional[Mapping[str, Any]] = None,
+    meta: Optional[Mapping[str, Any]] = None
 ) -> Tuple[float, float]:
     """Predict innings_runs and innings_wickets for one innings.
 
@@ -187,9 +173,7 @@ def predict_innings(
         bat_form_sum=bat_form_sum,
         bowl_form_sum=bowl_form_sum,
         venue_id=venue_id,
-        season_id=season_id,
         opposition_id=opposition_id,
-        match_date_unix=match_date_unix,
         temp=temp,
         wind=wind,
         rain=rain,
@@ -198,7 +182,7 @@ def predict_innings(
         pressure=pressure,
         viscosity=viscosity,
         format_code=format_code,
-        meta=meta,
+        meta=meta
     )
     if scaler is not None:
         X = scaler.transform(X)
@@ -208,7 +192,6 @@ def predict_innings(
     wickets = float(max(0.0, min(10.0, row[1]))) if len(row) > 1 else 0.0  # cap at 10
     return runs, wickets
 
-
 def rescale_player_predictions(
     preds: List[BacktestPlayerPred],
     team1_ids: Set[int],
@@ -217,7 +200,7 @@ def rescale_player_predictions(
     innings1_wickets: float,
     innings2_runs: float,
     innings2_wickets: float,
-    default_economy: float = 6.0,
+    default_economy: float = 6.0
 ) -> List[BacktestPlayerPred]:
     """Rescale player predictions so totals match innings model outputs.
 
@@ -288,7 +271,7 @@ def rescale_player_predictions(
                 wickets=max(0.0, wickets),
                 economy=economy,
                 catches=p.catches,
-                run_outs=p.run_outs,
+                run_outs=p.run_outs
             )
         )
     return out

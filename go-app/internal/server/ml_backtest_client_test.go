@@ -183,7 +183,6 @@ func TestBacktestMLClient_GenerateMatch(t *testing.T) {
 		Team1PlayerIDs:    []int64{10},
 		Team2PlayerIDs:    []int64{20},
 		VenueID:           1,
-		SeasonID:          2024,
 		FormatID:          3,
 		Team1OppositionID: 100,
 		Team2OppositionID: 200,

@@ -4,7 +4,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-
 class BattingFeatures(BaseModel):
     # Raw windowed stats (v2; from feature_raw_stats_snapshots)
     batting_mean_w3: float = Field(default=0.0, ge=0)
@@ -37,8 +36,10 @@ class BattingFeatures(BaseModel):
     toss: int = Field(..., ge=0, le=1)
     venue: float
     opposition: float
-    season: int = Field(..., ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
+    match_month_sin: float = Field(default=0.0)
+    match_month_cos: float = Field(default=0.0)
+    match_day_of_week_sin: float = Field(default=0.0)
+    match_day_of_week_cos: float = Field(default=0.0)
     player_name: str
     format: Optional[str] = None
     # Optional sequential features (0 when absent; used when go-app exports with -enable-seq)
@@ -58,7 +59,6 @@ class BattingFeatures(BaseModel):
         v2 = v.strip().upper()
         # Allow empty/unknown formats by returning normalized value
         return v2
-
 
 class BowlingFeatures(BaseModel):
     # Raw windowed stats (v2; from feature_raw_stats_snapshots)
@@ -92,8 +92,10 @@ class BowlingFeatures(BaseModel):
     toss: int = Field(..., ge=0, le=1)
     bowling_venue: float
     bowling_opposition: float
-    season: int = Field(..., ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
+    match_month_sin: float = Field(default=0.0)
+    match_month_cos: float = Field(default=0.0)
+    match_day_of_week_sin: float = Field(default=0.0)
+    match_day_of_week_cos: float = Field(default=0.0)
     player_name: str
     format: Optional[str] = None
     # Optional sequential features (0 when absent; used when go-app exports with -enable-seq)

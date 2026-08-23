@@ -111,7 +111,7 @@ def test_rescale_player_predictions():
 def test_build_innings_feature_vector_uses_sidecar_feature_names():
     """When meta feature_names subset is provided, output columns match that order/shape."""
     meta = {
-        "feature_names": ["season_id", "inning_number", "bat_form_sum", "format_is_T20"],
+        "feature_names": ["inning_number", "bat_form_sum", "format_is_T20"],
         "derived_weights": {
             "weather_composite_rain_weight": 0.5,
             "weather_composite_humidity_weight": 0.3,
@@ -124,15 +124,13 @@ def test_build_innings_feature_vector_uses_sidecar_feature_names():
         bowl_consistency_sum=0.0,
         bat_form_sum=7.5,
         bowl_form_sum=0.0,
-        season_id=2024,
         format_code="T20",
         meta=meta,
     )
-    assert X.shape == (1, 4)
-    assert X[0, 0] == 2024.0
-    assert X[0, 1] == 2.0
-    assert X[0, 2] == 7.5
-    assert X[0, 3] == 1.0
+    assert X.shape == (1, 3)
+    assert X[0, 0] == 2.0  # inning_number
+    assert X[0, 1] == 7.5  # bat_form_sum
+    assert X[0, 2] == 1.0  # format_is_T20
 
 
 def test_build_innings_feature_vector_uses_pinned_derived_weights():

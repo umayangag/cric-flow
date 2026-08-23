@@ -18,7 +18,6 @@ from .players import predict_players_with_features
 
 logger = get_struct_logger()
 
-
 def generate_match(
     cutoff: datetime,
     player_ids: List[int],
@@ -27,7 +26,7 @@ def generate_match(
     match_context: MatchContext,
     settings: GenerateMatchSettings,
     use_latest_model: bool = False,
-    model_version: str = "",
+    model_version: str = ""
 ) -> Dict[str, Any]:
     """Produce reconciled scorecards and win probability for a single match (§5.1.1).
 
@@ -46,7 +45,7 @@ def generate_match(
         settings.go_app_api_key,
         settings.train_latest_cache_granularity,
         use_latest_model,
-        match_context=match_context,
+        match_context=match_context
     )
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
@@ -67,7 +66,6 @@ def generate_match(
         match_ctx_for_win = WinFeaturesEnhanced(
             format_id=match_context.format_id,
             venue_id=match_context.venue_id,
-            match_date_unix=0.0,
             team1_opposition_id=match_context.team1_opposition_id,
             team2_opposition_id=match_context.team2_opposition_id,
             toss_winner_opposition_id=0,
@@ -79,14 +77,14 @@ def generate_match(
             pressure=match_context.pressure,
             viscosity=match_context.viscosity,
             team1_player_features={},
-            team2_player_features={},
+            team2_player_features={}
         ).to_match_context_dict()
         try:
             result = run_win_prediction_enhanced(
                 fmt=(fmt or "").strip().upper(),
                 match_context=match_ctx_for_win,
                 team1_player_features={str(k): v for k, v in t1_feats.items()},
-                team2_player_features={str(k): v for k, v in t2_feats.items()},
+                team2_player_features={str(k): v for k, v in t2_feats.items()}
             )
             p_team1 = result.team1_win_probability
         except Exception:
@@ -101,7 +99,6 @@ def generate_match(
             format_code=fmt,
             format_id=int(match_context.format_id),
             venue_id=int(match_context.venue_id),
-            season_id=int(match_context.season_id),
             team1_opposition_id=int(match_context.team1_opposition_id),
             team2_opposition_id=int(match_context.team2_opposition_id),
             toss_winner_opposition_id=0,
@@ -112,7 +109,7 @@ def generate_match(
             team1_bat_form_sum=t1_bat_form,
             team1_bowl_form_sum=t1_bowl_form,
             team2_bat_form_sum=t2_bat_form,
-            team2_bowl_form_sum=t2_bowl_form,
+            team2_bowl_form_sum=t2_bowl_form
         )
         win_preds = run_win_prediction([wf])
         if win_preds:
@@ -133,7 +130,7 @@ def generate_match(
             p_model_team1=coh.get("p_model_team1"),
             p_implied_team1=coh.get("p_implied_team1"),
             abs_diff=coh.get("abs_diff"),
-            margin=margin,
+            margin=margin
         )
     except Exception:
         pass

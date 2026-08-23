@@ -58,8 +58,10 @@ FIELDING_FEATURE_COLS = [
     "toss",
     "fielding_venue",
     "fielding_opposition",
-    "season_id",
-    "match_date_unix",
+    "match_month_sin",
+    "match_month_cos",
+    "match_day_of_week_sin",
+    "match_day_of_week_cos",
 ]
 FIELDING_TARGET_COLS = ["catches", "run_outs", "stumpings"]
 

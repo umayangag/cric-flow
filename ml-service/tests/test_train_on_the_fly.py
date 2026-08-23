@@ -108,21 +108,23 @@ def _one_bowling_row():
 
 # --- _batting_rows_to_xy ---
 def test_batting_rows_to_xy_empty():
-    X, Y = _batting_rows_to_xy([], [])
+    X, Y, w = _batting_rows_to_xy([], [])
     assert X.shape == (0, len(BATTING_FEATURE_COLS))
     assert Y.shape == (0, 5)  # runs, balls, fours, sixes, batting_position (no strike_rate)
+    assert w is None
 
 
 def test_batting_rows_to_xy_empty_headers_no_rows():
-    X, Y = _batting_rows_to_xy(_batting_headers(), [])
+    X, Y, w = _batting_rows_to_xy(_batting_headers(), [])
     assert X.shape == (0, len(BATTING_FEATURE_COLS))
     assert Y.shape == (0, 5)
+    assert w is None
 
 
 def test_batting_rows_to_xy_one_valid_row():
     headers = _batting_headers()
     rows = [_one_batting_row()]
-    X, Y = _batting_rows_to_xy(headers, rows)
+    X, Y, _w = _batting_rows_to_xy(headers, rows)
     assert X.shape == (1, len(BATTING_FEATURE_COLS))
     assert Y.shape == (1, 5)  # strike_rate is NOT a target (derived post-prediction)
     assert Y[0, 0] == 10.0  # runs
@@ -135,13 +137,13 @@ def test_batting_rows_to_xy_toss_string_normalized():
     idx_toss = headers.index("toss")
     row[idx_toss] = "bat"
     rows = [row]
-    X, Y = _batting_rows_to_xy(headers, rows)
+    X, Y, _w = _batting_rows_to_xy(headers, rows)
     assert X.shape[0] == 1
     col_toss = BATTING_FEATURE_COLS.index("toss")
     assert X[0, col_toss] == 1.0  # toss should be 1 for "bat"
     row2 = _one_batting_row()
     row2[idx_toss] = "field"
-    X2, _ = _batting_rows_to_xy(headers, [row2])
+    X2, _, _w2 = _batting_rows_to_xy(headers, [row2])
     assert X2[0, col_toss] == 0.0
 
 
@@ -150,23 +152,37 @@ def test_batting_rows_to_xy_multiple_rows():
     rows = [_one_batting_row(), _one_batting_row()]
     rows[1][0] = "25"  # different runs
     rows[1][1] = "20"  # different balls
-    X, Y = _batting_rows_to_xy(headers, rows)
+    X, Y, _w = _batting_rows_to_xy(headers, rows)
     assert X.shape == (2, len(BATTING_FEATURE_COLS))
     assert Y.shape == (2, 5)
     assert Y[1, 0] == 25.0
 
 
+def test_batting_rows_to_xy_returns_time_decay_weights():
+    """When match_date is in headers, time-decay weights are returned."""
+    headers = _batting_headers() + ["match_date"]
+    row1 = _one_batting_row() + ["2024-01-01"]
+    row2 = _one_batting_row() + ["2023-01-01"]
+    X, Y, w = _batting_rows_to_xy(headers, [row1, row2])
+    assert X.shape[0] == 2
+    assert w is not None
+    assert len(w) == 2
+    # More recent row should have higher weight
+    assert w[0] > w[1]
+
+
 # --- _bowling_rows_to_xy ---
 def test_bowling_rows_to_xy_empty():
-    X, Y = _bowling_rows_to_xy([], [])
+    X, Y, w = _bowling_rows_to_xy([], [])
     assert X.shape == (0, len(BOWLING_FEATURE_COLS))
     assert Y.shape == (0, 3)  # runs, balls, wickets (economy derived post-prediction)
+    assert w is None
 
 
 def test_bowling_rows_to_xy_one_valid_row():
     headers = _bowling_headers()
     rows = [_one_bowling_row()]
-    X, Y = _bowling_rows_to_xy(headers, rows)
+    X, Y, _w = _bowling_rows_to_xy(headers, rows)
     assert X.shape == (1, len(BOWLING_FEATURE_COLS))
     assert Y.shape == (1, 3)  # economy is NOT a target (derived post-prediction)
     assert Y[0, 0] == 24.0
@@ -180,7 +196,7 @@ def test_bowling_rows_to_xy_toss_and_session_normalized():
     row[idx_toss] = "bat"
     idx_sess = headers.index("bowling_session")
     row[idx_sess] = ""  # null/empty
-    X, Y = _bowling_rows_to_xy(headers, [row])
+    X, Y, _w = _bowling_rows_to_xy(headers, [row])
     assert X.shape[0] == 1
     col_toss = BOWLING_FEATURE_COLS.index("toss")
     col_sess = BOWLING_FEATURE_COLS.index("bowling_session")

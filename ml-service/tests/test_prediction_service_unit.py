@@ -53,7 +53,7 @@ def test_predict_match_innings_returns_none_when_no_model():
         "4": {"batting_std_w10": 0.5, "bowling_std_w10": 0.5, "batting_mean_w5": 20.0, "bowling_mean_w5": 1.5},
     }
     with patch("app.prediction_service.innings.INNINGS_MODELS", {}):
-        result = predict_match_innings(ctx, features_map, "ODI", 1700000000.0)
+        result = predict_match_innings(ctx, features_map, "ODI")
     assert result is None
 
 
@@ -74,7 +74,7 @@ def test_predict_match_innings_returns_tuple_when_model_present():
     with patch("app.prediction_service.innings.INNINGS_MODELS", {"ODI": innings_pair}):
         with patch("app.prediction_service.innings.predict_innings") as mock_predict:
             mock_predict.return_value = (55.0, 3.0)
-            result = predict_match_innings(ctx, features_map, "ODI", 1700000000.0)
+            result = predict_match_innings(ctx, features_map, "ODI")
     assert result is not None
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = result
     assert inn1_runs == 55.0
@@ -97,5 +97,5 @@ def test_predict_match_innings_uses_legacy_when_format_missing():
     fake_model.predict.return_value = np.array([[40.0, 2.0]])
     with patch("app.prediction_service.innings.INNINGS_MODELS", {"_LEGACY_": (fake_scaler, fake_model)}):
         with patch("app.prediction_service.innings.predict_innings", return_value=(40.0, 2.0)):
-            result = predict_match_innings(ctx, features_map, "T20", 1700000000.0)
+            result = predict_match_innings(ctx, features_map, "T20")
     assert result == (40.0, 2.0, 40.0, 2.0)

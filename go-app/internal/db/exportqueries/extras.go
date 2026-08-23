@@ -29,8 +29,7 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 	// Match-level row with weather and aggregated batting/bowling features. Uses CTEs to avoid
 	// correlated subqueries: pre-aggregate per match via CTEs, then join once.
 	q := `WITH matches_filtered AS (
-		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id, COALESCE(m.season_id, 0) AS season_id,
-			m.match_date, COALESCE(mf.code, '') AS format_code,
+		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id,			m.match_date, COALESCE(mf.code, '') AS format_code,
 			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
 			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
 			CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
@@ -40,7 +39,7 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 		LEFT JOIN match_format mf ON m.format_id = mf.id
 LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
-		GROUP BY m.match_id, m.format_id, m.venue_id, m.season_id, m.match_date, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
+		GROUP BY m.match_id, m.format_id, m.venue_id, m.match_date, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
 	),
 	bat_players AS (
 		SELECT bd.match_id, bd.player_id, m.format_id, m.match_date
@@ -84,7 +83,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	bowl_cons_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_consistency GROUP BY match_id),
 	bat_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bat_form GROUP BY match_id),
 	bowl_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id)
-	SELECT m.match_id, m.venue_id, m.season_id, m.total_extras, m.format_code,
+	SELECT m.match_id, m.venue_id, m.total_extras, m.format_code,
 		m.match_date,
 		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
@@ -113,35 +112,32 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	}
 	defer rows.Close()
 	headers := []string{
-		"match_id", "venue_id", "season_id", "total_extras", "format_code",
-		"match_date", "match_date_unix",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"match_id", "venue_id", "total_extras", "format_code",
+		"match_date",		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {
-		var matchID, venueID, seasonID int64
+		var matchID, venueID int64
 		var totalExtras int
 		var formatCode string
 		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
-		if err := rows.Scan(&matchID, &venueID, &seasonID, &totalExtras, &formatCode,
+		if err := rows.Scan(&matchID, &venueID, &totalExtras, &formatCode,
 			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
 			return nil, err
 		}
-		out = append(out, []string{
-			strconv.FormatInt(matchID, 10),
-			strconv.FormatInt(venueID, 10),
-			strconv.FormatInt(seasonID, 10),
-			strconv.Itoa(totalExtras),
-			formatCode,
-			matchDate.Format("2006-01-02"),
-			strconv.FormatInt(matchDate.Unix(), 10),
-			strconv.Itoa(
+			out = append(out, []string{
+				strconv.FormatInt(matchID, 10),
+				strconv.FormatInt(venueID, 10),
+				strconv.Itoa(totalExtras),
+				formatCode,
+				matchDate.Format("2006-01-02"),
+				strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 			strconv.FormatFloat(

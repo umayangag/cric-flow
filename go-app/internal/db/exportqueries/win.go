@@ -258,7 +258,6 @@ func winEnhancedHeaders() []string {
 		"team1_wins",
 		"format_code",
 		"match_date",
-		"match_date_unix",
 		"temp",
 		"wind",
 		"rain",
