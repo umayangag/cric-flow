@@ -18,6 +18,15 @@ Reference for the cricket prediction system: architecture, configuration, APIs, 
 
 ---
 
+## Active work
+
+| Doc | Purpose |
+|-----|--------|
+| [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md) | Repo-wide cleanup tracked as one PR at a time: dead code, CLI paths superseded by the API, legacy compatibility layers |
+| [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md) | ML service architecture improvements (P0–P4) |
+
+---
+
 ## Cross-references
 
 - **Feature vectors:** `configs/feature_vectors.json` (shared by go-app and ml-service). Described in [config-and-data.md](config-and-data.md) and [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
