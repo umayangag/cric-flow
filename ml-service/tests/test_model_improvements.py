@@ -16,30 +16,32 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 # ---------------------------------------------------------------------------
-# P0: Monotonic temporal features (season_id, match_date_unix) presence
+# P0: Cyclical temporal features presence (replaced season_id/match_date_unix)
 # ---------------------------------------------------------------------------
 
 
-class TestMonotonicTemporalFeatures:
-    """Monotonic temporal feature presence in canonical feature column lists."""
+class TestCyclicalTemporalFeatures:
+    """Cyclical temporal feature presence in canonical feature column lists."""
 
-    def test_batting_feature_cols_contain_season_id_and_match_date_unix(self):
+    CYCLICAL = ["match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"]
+
+    def test_batting_feature_cols_contain_cyclical_time(self):
         from ml.tuning.types import BATTING_FEATURE_COLS
 
-        assert "season_id" in BATTING_FEATURE_COLS
-        assert "match_date_unix" in BATTING_FEATURE_COLS
+        for c in self.CYCLICAL:
+            assert c in BATTING_FEATURE_COLS
 
-    def test_bowling_feature_cols_contain_season_id_and_match_date_unix(self):
+    def test_bowling_feature_cols_contain_cyclical_time(self):
         from ml.tuning.types import BOWLING_FEATURE_COLS
 
-        assert "season_id" in BOWLING_FEATURE_COLS
-        assert "match_date_unix" in BOWLING_FEATURE_COLS
+        for c in self.CYCLICAL:
+            assert c in BOWLING_FEATURE_COLS
 
-    def test_fielding_feature_cols_contain_season_id_and_match_date_unix(self):
+    def test_fielding_feature_cols_contain_cyclical_time(self):
         from ml.train_fielding import FIELDING_FEATURE_COLS
 
-        assert "season_id" in FIELDING_FEATURE_COLS
-        assert "match_date_unix" in FIELDING_FEATURE_COLS
+        for c in self.CYCLICAL:
+            assert c in FIELDING_FEATURE_COLS
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +244,8 @@ class TestPermutationImportanceFallback:
 class TestReconciliationFeatureVector:
     """Tests for reconciliation.build_innings_feature_vector content and ordering."""
 
-    def test_build_innings_feature_vector_includes_monotonic_temporal(self):
-        """build_innings_feature_vector places season_id and match_date_unix values in the vector."""
+    def test_build_innings_feature_vector_basic(self):
+        """build_innings_feature_vector produces correct shape."""
         from app.reconciliation import build_innings_feature_vector
         from ml.train_innings import INNINGS_FEATURE_COLS
 
@@ -254,15 +256,9 @@ class TestReconciliationFeatureVector:
             bowl_consistency_sum=1.0,
             bat_form_sum=0.5,
             bowl_form_sum=0.5,
-            season_id=2024,
-            match_date_unix=1710460800.0,
             meta=meta,
         )
         assert X.shape == (1, len(INNINGS_FEATURE_COLS))
-        season_idx = INNINGS_FEATURE_COLS.index("season_id")
-        md_idx = INNINGS_FEATURE_COLS.index("match_date_unix")
-        assert X[0, season_idx] == pytest.approx(2024.0)
-        assert X[0, md_idx] == pytest.approx(1710460800.0)
 
     def test_build_innings_feature_vector_includes_derived(self):
         """build_innings_feature_vector includes derived features."""
@@ -285,14 +281,14 @@ class TestReconciliationFeatureVector:
         assert X[0, cd_idx] == pytest.approx(5.0)
         assert X[0, wc_idx] == pytest.approx(0.0)
 
-    def test_build_innings_feature_vector_accepts_season_id(self):
-        """build_innings_feature_vector exposes a season_id parameter."""
+    def test_build_innings_feature_vector_no_season_id_param(self):
+        """build_innings_feature_vector no longer exposes season_id (replaced by cyclical time)."""
         import inspect
 
         from app.reconciliation import build_innings_feature_vector
 
         sig = inspect.signature(build_innings_feature_vector)
-        assert "season_id" in sig.parameters
+        assert "season_id" not in sig.parameters
 
 
 # ---------------------------------------------------------------------------

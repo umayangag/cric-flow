@@ -16,7 +16,7 @@ func TestRawStatsFeatureNames_FallbackWhenContractTooShort(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "short_contract.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{
-		"version": "2",
+  "version": "3",
 		"batting": ["batting_mean_w3", "batting_innings_in_last_90d"],
 		"bowling": ["bowling_mean_w3", "bowling_innings_in_last_90d"],
 		"fielding": []
@@ -53,7 +53,7 @@ func TestDefaultContract_NonEmptyAndNoDuplicates(t *testing.T) {
 	require.NotEmpty(t, c.Batting, "batting features required")
 	require.NotEmpty(t, c.Bowling, "bowling features required")
 	require.NotEmpty(t, c.Fielding, "fielding features required")
-	require.Equal(t, "2", c.Version, "default contract version")
+	require.Equal(t, "3", c.Version, "default contract version")
 
 	for _, name := range []string{"Batting", "Bowling", "Fielding"} {
 		var list []string
@@ -101,14 +101,14 @@ func TestLoadContract_WithVersionInJSON(t *testing.T) {
 	c, err := loadContract(abs)
 	require.NoError(t, err)
 	require.NotNil(t, c)
-	require.Equal(t, "2", c.Version)
+	require.Equal(t, "3", c.Version)
 	require.Equal(t, len(defaultContract.Batting), len(c.Batting))
 	require.Equal(t, len(defaultContract.Bowling), len(c.Bowling))
 	require.Equal(t, len(defaultContract.Fielding), len(c.Fielding))
 }
 
 func TestContractVersion_ReturnsVersionFromContract(t *testing.T) {
-	// Default or cached contract should have version "2" (v2 adds raw windowed stat features)
+	// Default or cached contract should have version "3" (v3 replaces season/match_date_unix with cyclical time features)
 	v := ContractVersion()
 	require.NotEmpty(t, v)
 }

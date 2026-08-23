@@ -40,7 +40,6 @@ CSV_COLUMN_MAP: Dict[str, Dict[str, str]] = {
     "batting": {
         "venue": "batting_venue",
         "opposition": "batting_opposition",
-        "season": "season_id",
         "batting_temp": "temp",
         "batting_wind": "wind",
         "batting_rain": "rain",

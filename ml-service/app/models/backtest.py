@@ -12,7 +12,6 @@ class MatchContext(BaseModel):
     team1_player_ids: List[int] = Field(..., description="Player IDs for team 1 (bats in innings 1)")
     team2_player_ids: List[int] = Field(..., description="Player IDs for team 2 (bats in innings 2)")
     venue_id: float = Field(default=0, description="Venue ID for innings model")
-    season_id: float = Field(default=0, description="Season ID for innings model")
     format_id: float = Field(default=0, description="Format ID for innings model")
     team1_opposition_id: float = Field(default=0, description="Opposition ID when team1 bats (team2)")
     team2_opposition_id: float = Field(default=0, description="Opposition ID when team2 bats (team1)")
@@ -34,19 +33,16 @@ class BacktestPredictRequest(BaseModel):
     format: Optional[str] = Field(default=None, description="Format code for model selection")
     # Optional: per-player feature map for full pipeline (player_id as str -> feature name -> value)
     features: Optional[Dict[str, Dict[str, float]]] = Field(
-        default=None,
-        description="Per-player features from go-app; when present with format, use loaded models",
+        default=None, description="Per-player features from go-app; when present with format, use loaded models"
     )
     # When True: use latest model (artifacts or train-on-the-fly with "now" cutoff).
     # When False (default): strict temporal - train-on-the-fly uses cutoff for training data.
     # Default False preserves reproducibility for backtests; True is for QA/eval with current models.
     use_latest_model: bool = Field(
-        default=False,
-        description="Use latest model; when False, train strictly before cutoff_date",
+        default=False, description="Use latest model; when False, train strictly before cutoff_date"
     )
     match_context: Optional[MatchContext] = Field(
-        default=None,
-        description="Match context (team assignment, venue, etc.) for hybrid reconciliation",
+        default=None, description="Match context (team assignment, venue, etc.) for hybrid reconciliation"
     )
 
     @field_validator("teams")
@@ -90,8 +86,7 @@ class GenerateMatchRequest(BaseModel):
     player_ids: List[int] = Field(..., description="Player IDs for both teams")
     format: str = Field(..., description="Format code (e.g. T20, ODI)")
     features: Dict[str, Dict[str, float]] = Field(
-        default_factory=dict,
-        description="Per-player features (player_id as str -> feature name -> value)",
+        default_factory=dict, description="Per-player features (player_id as str -> feature name -> value)"
     )
     match_context: MatchContext = Field(..., description="Team assignment, venue, season, opposition, weather")
     use_latest_model: bool = Field(default=False, description="Use latest model when True")
@@ -143,8 +138,7 @@ class BatchPredictItem(BaseModel):
     player_ids: List[int] = Field(..., min_length=1, max_length=100, description="Player IDs to predict for")
     format: str = Field(..., description="Format code (e.g. T20, ODI)")
     features: Dict[str, Dict[str, float]] = Field(
-        default_factory=dict,
-        description="Per-player features (player_id as str -> feature name -> value)",
+        default_factory=dict, description="Per-player features (player_id as str -> feature name -> value)"
     )
     use_latest_model: bool = Field(default=False, description="Use latest model when True")
     match_context: Optional[MatchContext] = Field(default=None, description="Match context for reconciliation")
@@ -198,8 +192,7 @@ class HistoricalMatchBacktestRequest(BaseModel):
     cutoff_date: datetime = Field(..., description="RFC3339 cutoff; train strictly before this date")
     match_id: Optional[int] = Field(default=None, description="Canonical match id")
     filters: Optional[HistoricalMatchFilter] = Field(
-        default=None,
-        description="Alternative to match_id: {format, team1, team2, match_date}",
+        default=None, description="Alternative to match_id: {format, team1, team2, match_date}"
     )
 
     @field_validator("match_id")

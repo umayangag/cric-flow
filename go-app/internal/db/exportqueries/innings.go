@@ -39,8 +39,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		SELECT mi.match_id, mi.inning_number,
 			COALESCE(bd.runs, 0)::int AS innings_runs,
 			COALESCE(bw.wickets, 0)::int AS innings_wickets,
-			m.format_id, COALESCE(m.venue_id, 0) AS venue_id, COALESCE(m.season_id, 0) AS season_id,
-			mi.bowling_team_opposition_id AS opposition_id,
+			m.format_id, COALESCE(m.venue_id, 0) AS venue_id,			mi.bowling_team_opposition_id AS opposition_id,
 			COALESCE(mf.code, '') AS format_code,
 			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
 			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
@@ -102,7 +101,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	bowl_cons_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'consistency' GROUP BY match_id, inning_number),
 	bat_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bat_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number),
 	bowl_form_agg AS (SELECT match_id, inning_number, COALESCE(SUM(v), 0) AS s FROM bowl_features_raw WHERE kind = 'form' GROUP BY match_id, inning_number)
-	SELECT i.match_id, i.inning_number, i.innings_runs, i.innings_wickets, i.venue_id, i.season_id, i.opposition_id, i.format_code,
+	SELECT i.match_id, i.inning_number, i.innings_runs, i.innings_wickets, i.venue_id, i.opposition_id, i.format_code,
 		i.match_date,
 		i.temp, i.wind, i.rain, i.humidity, i.cloud, i.pressure, i.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
@@ -121,20 +120,19 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	}
 	defer rows.Close()
 	headers := []string{
-		"match_id", "inning_number", "innings_runs", "innings_wickets", "venue_id", "season_id", "opposition_id", "format_code",
-		"match_date", "match_date_unix",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"match_id", "inning_number", "innings_runs", "innings_wickets", "venue_id", "opposition_id", "format_code",
+		"match_date", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
 	out := make([][]string, 0, 512)
 	out = append(out, headers)
 	for rows.Next() {
-		var matchID, inningNum, inningsRuns, inningsWickets, venueID, seasonID, oppositionID int64
+		var matchID, inningNum, inningsRuns, inningsWickets, venueID, oppositionID int64
 		var formatCode string
 		var matchDate time.Time
 		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
-		if err := rows.Scan(&matchID, &inningNum, &inningsRuns, &inningsWickets, &venueID, &seasonID, &oppositionID, &formatCode,
+		if err := rows.Scan(&matchID, &inningNum, &inningsRuns, &inningsWickets, &venueID, &oppositionID, &formatCode,
 			&matchDate,
 			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
@@ -146,11 +144,9 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			strconv.FormatInt(inningsRuns, 10),
 			strconv.FormatInt(inningsWickets, 10),
 			strconv.FormatInt(venueID, 10),
-			strconv.FormatInt(seasonID, 10),
 			strconv.FormatInt(oppositionID, 10),
 			formatCode,
 			matchDate.Format("2006-01-02"),
-			strconv.FormatInt(matchDate.Unix(), 10),
 			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),

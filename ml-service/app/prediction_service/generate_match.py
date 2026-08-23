@@ -67,7 +67,6 @@ def generate_match(
         match_ctx_for_win = WinFeaturesEnhanced(
             format_id=match_context.format_id,
             venue_id=match_context.venue_id,
-            match_date_unix=0.0,
             team1_opposition_id=match_context.team1_opposition_id,
             team2_opposition_id=match_context.team2_opposition_id,
             toss_winner_opposition_id=0,
@@ -101,7 +100,6 @@ def generate_match(
             format_code=fmt,
             format_id=int(match_context.format_id),
             venue_id=int(match_context.venue_id),
-            season_id=int(match_context.season_id),
             team1_opposition_id=int(match_context.team1_opposition_id),
             team2_opposition_id=int(match_context.team2_opposition_id),
             toss_winner_opposition_id=0,

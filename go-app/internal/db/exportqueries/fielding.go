@@ -37,7 +37,6 @@ func fieldingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 		fd.inning_number AS inning,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0),
 		COALESCE(mf.code, '')
@@ -47,7 +46,6 @@ func fieldingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN match_inning mi ON mi.match_id = fd.match_id AND mi.inning_number = fd.inning_number
 	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'batting' ELSE 'bowling' END
-	LEFT JOIN season s ON s.id = m.season_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, fd.match_id, fd.inning_number, fd.player_id`
 	args = []any{cutoff}
@@ -78,7 +76,6 @@ type fieldingTrainingRowRaw struct {
 	viscosity    string
 	inning       string
 	toss         string
-	seasonID     string
 	playerName   string
 	catches      string
 	runOuts      string
@@ -99,7 +96,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 		err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings,
 			&r.formatCode,
 		)
@@ -130,7 +127,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
+		"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
 		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
@@ -152,7 +149,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 			r.catches, r.runOuts, r.stumpings,
 			floatToExport(snap.consistency), floatToExport(snap.form),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
-			r.inning, r.toss, venueStr, oppStr, r.seasonID, strconv.FormatInt(r.matchDate.Unix(), 10), r.playerName,
+			r.inning, r.toss, venueStr, oppStr, cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
 			r.matchDate.Format("2006-01-02"),
 		}
@@ -173,7 +170,6 @@ func fieldingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 		fd.inning_number AS inning,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0), COALESCE(fd.run_outs,0), COALESCE(fd.stumpings,0),
 		COALESCE(mf.code, '')
@@ -183,7 +179,6 @@ func fieldingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN match_inning mi ON mi.match_id = fd.match_id AND mi.inning_number = fd.inning_number
 	LEFT JOIN weather_data w ON w.match_id = fd.match_id AND w.session = CASE WHEN fd.inning_number = 1 THEN 'batting' ELSE 'bowling' END
-	LEFT JOIN season s ON s.id = m.season_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
 }
@@ -195,7 +190,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			"catches", "run_outs", "stumpings",
 			"fielding_consistency", "fielding_form",
 			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-			"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
+			"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
 			"match_date",
 		}
 		return [][]string{headers}, nil
@@ -212,7 +207,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 		if err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings,
 			&r.formatCode,
 		); err != nil {
@@ -242,7 +237,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 		"catches", "run_outs", "stumpings",
 		"fielding_consistency", "fielding_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "season_id", "match_date_unix", "player_name", "format_code",
+		"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
 		"match_date",
 	}
 	out := make([][]string, 0, len(rawRows)+1)
@@ -263,7 +258,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 			r.catches, r.runOuts, r.stumpings,
 			floatToExport(snap.consistency), floatToExport(snap.form),
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
-			r.inning, r.toss, venueStr, oppStr, r.seasonID, strconv.FormatInt(r.matchDate.Unix(), 10), r.playerName,
+			r.inning, r.toss, venueStr, oppStr, cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			strings.TrimSpace(strings.ToUpper(r.formatCode)),
 			r.matchDate.Format("2006-01-02"),
 		}

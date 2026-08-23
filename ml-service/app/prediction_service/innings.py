@@ -10,10 +10,7 @@ from ..reconciliation import predict_innings
 
 
 def sum_team_feature(
-    features_map: Dict[str, Dict[str, float]],
-    ids: set,
-    key_bat: str,
-    key_bowl: str,
+    features_map: Dict[str, Dict[str, float]], ids: set, key_bat: str, key_bowl: str
 ) -> Tuple[float, float]:
     """Sum batting and bowling feature values for a set of player IDs. Used by predict_match_innings and generate_match."""
     bat_sum, bowl_sum = 0.0, 0.0
@@ -25,10 +22,7 @@ def sum_team_feature(
 
 
 def predict_match_innings(
-    match_context: MatchContext,
-    features_map: Dict[str, Dict[str, float]],
-    fmt_upper: str,
-    match_date_unix: float,
+    match_context: MatchContext, features_map: Dict[str, Dict[str, float]], fmt_upper: str
 ) -> Optional[Tuple[float, float, float, float]]:
     """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
     innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
@@ -61,9 +55,7 @@ def predict_match_innings(
         bat_form_sum=t1_bat_form,
         bowl_form_sum=t2_bowl_form,
         venue_id=match_context.venue_id,
-        season_id=match_context.season_id,
         opposition_id=match_context.team1_opposition_id,
-        match_date_unix=match_date_unix,
         temp=match_context.temp,
         wind=match_context.wind,
         rain=match_context.rain,
@@ -83,9 +75,7 @@ def predict_match_innings(
         bat_form_sum=t2_bat_form,
         bowl_form_sum=t1_bowl_form,
         venue_id=match_context.venue_id,
-        season_id=match_context.season_id,
         opposition_id=match_context.team2_opposition_id,
-        match_date_unix=match_date_unix,
         temp=match_context.temp,
         wind=match_context.wind,
         rain=match_context.rain,

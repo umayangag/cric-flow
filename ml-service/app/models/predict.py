@@ -26,8 +26,6 @@ class ExtrasFeatures(BaseModel):
 
     format_id: int = Field(default=0, ge=0, description="Format dimension id")
     venue_id: int = Field(default=0, ge=0)
-    season_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     temp: int = Field(default=0)
     wind: int = Field(default=0, ge=0)
     rain: int = Field(default=0, ge=0)
@@ -59,7 +57,6 @@ class WinFeatures(BaseModel):
 
     format_id: int = Field(default=0, ge=0)
     venue_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
     toss_winner_opposition_id: int = Field(default=0, ge=0)
@@ -96,7 +93,6 @@ class WinFeaturesEnhanced(BaseModel):
 
     format_id: int = Field(default=0, ge=0)
     venue_id: int = Field(default=0, ge=0)
-    match_date_unix: float = Field(default=0.0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
     toss_winner_opposition_id: int = Field(default=0, ge=0)
@@ -126,7 +122,6 @@ class WinFeaturesEnhanced(BaseModel):
         return {
             "format_id": float(self.format_id),
             "venue_id": float(self.venue_id),
-            "match_date_unix": float(self.match_date_unix),
             "team1_opposition_id": float(self.team1_opposition_id),
             "team2_opposition_id": float(self.team2_opposition_id),
             "toss_winner_opposition_id": float(self.toss_winner_opposition_id),

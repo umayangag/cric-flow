@@ -103,18 +103,10 @@ _BOWL_SEQ_KEYS = (
 
 
 def build_batting_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float],
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> BattingFeatures:
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
-    season = _int(d, "season", cutoff.year if cutoff else 0)
-    # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = (
-        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
-    )
     base = {}
     for k in BATTING_RAW_STAT_KEYS:
         base[k] = max(0.0, _float(d, k, 0.0))
@@ -131,8 +123,6 @@ def build_batting_features_from_map(
         toss=min(1, max(0, _get_required_int(d, "toss"))),
         venue=_get_required_float(d, "venue"),
         opposition=_get_required_float(d, "opposition"),
-        season=season,
-        match_date_unix=match_date_unix,
         player_name="",
         format=fmt,
     )
@@ -158,26 +148,16 @@ class FieldingFeatures:
     fielding_toss: int
     fielding_venue: float
     fielding_opposition: float
-    fielding_season: int
-    match_date_unix: float
 
 
 def build_fielding_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float],
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> FieldingFeatures:
     """Build FieldingFeatures from go-app feature map. Uses config defaults for missing keys."""
     d = {k: v for k, v in feature_map.items()}
     defs = _feature_defaults()
     c = defs.get("common", {})
     f = defs.get("fielding", {})
-    season = _int(d, "season", cutoff.year if cutoff else 0)
-    # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = (
-        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
-    )
     return FieldingFeatures(
         fielding_consistency=max(0.0, _float(d, "fielding_consistency", f.get("consistency", 0.5))),
         fielding_form=max(0.0, _float(d, "fielding_form", f.get("form", 0.0))),
@@ -194,24 +174,14 @@ def build_fielding_features_from_map(
         fielding_toss=min(1, max(0, _int(d, "toss", c.get("toss", 0)))),
         fielding_venue=_float(d, "fielding_venue", _float(d, "venue", f.get("venue", 0.5))),
         fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", f.get("opposition", 0.5))),
-        fielding_season=season,
-        match_date_unix=match_date_unix,
     )
 
 
 def build_bowling_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float],
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> BowlingFeatures:
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
-    season = _int(d, "season", cutoff.year if cutoff else 0)
-    # Use provided match_date_unix when available; fall back to cutoff timestamp.
-    match_date_unix = (
-        _float(d, "match_date_unix", float(cutoff.timestamp())) if cutoff else _float(d, "match_date_unix", 0.0)
-    )
     base = {}
     for k in BOWLING_RAW_STAT_KEYS:
         base[k] = max(0.0, _float(d, k, 0.0))
@@ -228,8 +198,6 @@ def build_bowling_features_from_map(
         toss=min(1, max(0, _get_required_int(d, "toss"))),
         bowling_venue=_get_required_float(d, "bowling_venue"),
         bowling_opposition=_get_required_float(d, "bowling_opposition"),
-        season=season,
-        match_date_unix=match_date_unix,
         player_name="",
         format=fmt,
     )
@@ -280,12 +248,7 @@ def predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[Ba
         run_outs = float(rng.integers(0, 3))
         out.append(
             BacktestPlayerPred(
-                player_id=int(pid),
-                runs=runs,
-                wickets=wickets,
-                economy=economy,
-                catches=catches,
-                run_outs=run_outs,
+                player_id=int(pid), runs=runs, wickets=wickets, economy=economy, catches=catches, run_outs=run_outs
             )
         )
     return out
@@ -382,9 +345,7 @@ def _predict_players_for_ids(cutoff: datetime, player_ids: List[int]) -> Dict[in
 
 
 def _compute_player_comparisons(
-    player_ids: List[int],
-    predicted: Dict[int, PlayerPoint],
-    actual: Dict[int, PlayerPoint],
+    player_ids: List[int], predicted: Dict[int, PlayerPoint], actual: Dict[int, PlayerPoint]
 ) -> Tuple[List[PlayerComparison], float, float, Optional[float]]:
     comps: List[PlayerComparison] = []
     errors_runs: List[float] = []
@@ -401,13 +362,7 @@ def _compute_player_comparisons(
             ew = abs((pred.wickets or 0.0) - (act.wickets or 0.0))
             errors_wkts.append(ew)
         comps.append(
-            PlayerComparison(
-                player_id=pid,
-                predicted=pred,
-                actual=act,
-                abs_error_runs=er,
-                abs_error_wickets=ew,
-            )
+            PlayerComparison(player_id=pid, predicted=pred, actual=act, abs_error_runs=er, abs_error_wickets=ew)
         )
     mae_runs = float(sum(errors_runs) / max(1, len(errors_runs)))
     rmse_runs = float((sum(sq_errors_runs) / max(1, len(sq_errors_runs))) ** 0.5)

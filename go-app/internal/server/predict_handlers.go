@@ -30,7 +30,6 @@ func (mlPredictorAdapter) PredictPlayers(
 			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 			VenueID:           matchCtx.VenueID,
-			SeasonID:          matchCtx.SeasonID,
 			FormatID:          matchCtx.FormatID,
 			Team1OppositionID: matchCtx.Team1OppositionID,
 			Team2OppositionID: matchCtx.Team2OppositionID,
@@ -85,7 +84,6 @@ type predictTeamRequest struct {
 	Team2              string `json:"team2"`
 	Venue              string `json:"venue"`
 	MatchDate          string `json:"match_date"`
-	SeasonID           *int64 `json:"season_id"`
 	UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
 	Simulate           *bool  `json:"simulate,omitempty"`
 	SimulationTopK     int    `json:"simulation_top_k,omitempty"`
@@ -122,11 +120,6 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	body.Team2 = strings.TrimSpace(q.Get("team2"))
 	body.Venue = strings.TrimSpace(q.Get("venue"))
 	body.MatchDate = strings.TrimSpace(q.Get("match_date"))
-	if s := q.Get("season_id"); s != "" {
-		if id, err := strconv.ParseInt(s, 10, 64); err == nil {
-			body.SeasonID = &id
-		}
-	}
 	if s := q.Get("min_bowlers"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			body.MinBowlers = n
@@ -182,7 +175,6 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam
 		Team2:                  body.Team2,
 		Venue:                  body.Venue,
 		MatchDate:              matchDate,
-		SeasonID:               body.SeasonID,
 		ExtraTeam1:             body.ExtraTeam1,
 		ExtraTeam2:             body.ExtraTeam2,
 		MinBowlers:             body.MinBowlers,
@@ -262,7 +254,6 @@ func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchF
 				Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 				Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 				VenueID:           matchCtx.VenueID,
-				SeasonID:          matchCtx.SeasonID,
 				FormatID:          matchCtx.FormatID,
 				Team1OppositionID: matchCtx.Team1OppositionID,
 				Team2OppositionID: matchCtx.Team2OppositionID,

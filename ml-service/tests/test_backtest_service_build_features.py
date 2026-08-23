@@ -87,12 +87,10 @@ def test_build_fielding_features_from_map():
     m = {
         "fielding_consistency": 0.6,
         "fielding_form": 0.2,
-        "season": 2024,
     }
     f = build_fielding_features_from_map(1, cutoff, "T20", m)
     assert f.fielding_consistency == 0.6
     assert f.fielding_form == 0.2
-    assert f.fielding_season == 2024
 
 
 def test_feature_defaults_raises_propagates():

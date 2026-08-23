@@ -24,7 +24,10 @@ class DummyWinModel:
 EXTRAS_ROW = {
     "format_id": 0,
     "venue_id": 0,
-    "season_id": 0,
+    "match_month_sin": 0,
+    "match_month_cos": 0,
+    "match_day_of_week_sin": 0,
+    "match_day_of_week_cos": 0,
     "temp": 0,
     "wind": 0,
     "rain": 0,

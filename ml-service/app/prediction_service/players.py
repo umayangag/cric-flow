@@ -12,14 +12,7 @@ from fastapi import HTTPException
 from ml.config import get_prediction_defaults
 from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
 
-from ..artifacts import (
-    BAT_MODELS,
-    BAT_SHARE_MODELS,
-    BOWL_MODELS,
-    BOWL_SHARE_MODELS,
-    FIELD_MODELS,
-    INNINGS_MODELS,
-)
+from ..artifacts import BAT_MODELS, BAT_SHARE_MODELS, BOWL_MODELS, BOWL_SHARE_MODELS, FIELD_MODELS, INNINGS_MODELS
 from ..artifacts import _use_share_models as use_share_models_config
 from ..backtest_service import (
     build_batting_features_from_map,
@@ -131,19 +124,12 @@ def _resolve_prediction_model_pairs(
 
 
 def _build_batting_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]],
-    models_dir: str,
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]], models_dir: str
 ) -> np.ndarray:
     """Build unscaled batting feature matrix for a list of players."""
     bat_features = [
         build_batting_features_from_map(
-            pid,
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+            pid, cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
@@ -172,19 +158,12 @@ def _build_batting_feature_matrix(
 
 
 def _build_bowling_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]],
-    models_dir: str,
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]], models_dir: str
 ) -> np.ndarray:
     """Build unscaled bowling feature matrix for a list of players."""
     bowl_features = [
         build_bowling_features_from_map(
-            pid,
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+            pid, cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
@@ -215,18 +194,12 @@ def _build_bowling_feature_matrix(
 
 
 def _build_fielding_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]],
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]]
 ) -> np.ndarray:
     """Build unscaled fielding feature matrix for a list of players."""
     field_features_list = [
         build_fielding_features_from_map(
-            int(pid),
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {},
+            int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
@@ -251,8 +224,7 @@ def _assemble_player_predictions(
     """
     inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = 0.0, 0.0, 0.0, 0.0
     if use_share and match_context is not None:
-        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
-        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
+        predicted = predict_match_innings(match_context, features_map, fmt_upper)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
 
@@ -328,8 +300,7 @@ def _assemble_player_predictions(
         out = out_new
 
     if match_context is not None and not use_share:
-        match_date_unix = float(cutoff.timestamp()) if cutoff else 0.0
-        predicted = predict_match_innings(match_context, features_map, fmt_upper, match_date_unix)
+        predicted = predict_match_innings(match_context, features_map, fmt_upper)
         if predicted is not None:
             inn1_runs, inn1_wkts, inn2_runs, inn2_wkts = predicted
             team1_ids = {int(pid) for pid in match_context.team1_player_ids}
@@ -361,10 +332,7 @@ def _assemble_player_predictions(
                 total_before_wickets=adj.get("total_before_wickets"),
             )
             if adj.get("violations"):
-                logger.warning(
-                    "backtest_predict.reconciliation.violations",
-                    violations=adj["violations"],
-                )
+                logger.warning("backtest_predict.reconciliation.violations", violations=adj["violations"])
 
     return out
 
@@ -473,20 +441,12 @@ def predict_players_batch(
         resolved_list.append(resolved)
         X_bat_list.append(
             _build_batting_feature_matrix(
-                item.player_ids,
-                item.cutoff_date,
-                resolved.fmt_upper,
-                item.features or {},
-                models_dir,
+                item.player_ids, item.cutoff_date, resolved.fmt_upper, item.features or {}, models_dir
             )
         )
         X_bowl_list.append(
             _build_bowling_feature_matrix(
-                item.player_ids,
-                item.cutoff_date,
-                resolved.fmt_upper,
-                item.features or {},
-                models_dir,
+                item.player_ids, item.cutoff_date, resolved.fmt_upper, item.features or {}, models_dir
             )
         )
 
@@ -497,11 +457,7 @@ def predict_players_batch(
     Y_fld_per_item: List[Optional[np.ndarray]] = [None] * n_items
 
     def _batched_scale_and_predict(
-        model_key_fn,
-        X_list: List[np.ndarray],
-        scaler_fn,
-        model_fn,
-        Y_per_item: List[Optional[np.ndarray]],
+        model_key_fn, X_list: List[np.ndarray], scaler_fn, model_fn, Y_per_item: List[Optional[np.ndarray]]
     ) -> None:
         """Group items by model identity, concatenate, scale, predict, partition."""
         groups: Dict[int, List[int]] = {}
@@ -544,10 +500,7 @@ def predict_players_batch(
         if field_pair is not None:
             fld_pairs[idx] = field_pair
             X_fld_list[idx] = _build_fielding_feature_matrix(
-                items[idx].player_ids,
-                items[idx].cutoff_date,
-                fmt_upper,
-                items[idx].features or {},
+                items[idx].player_ids, items[idx].cutoff_date, fmt_upper, items[idx].features or {}
             )
 
     fld_groups: Dict[int, List[int]] = {}

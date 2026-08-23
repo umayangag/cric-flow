@@ -93,7 +93,6 @@ _GROUP_TO_PLAYER_KEY: List[Tuple[str, str, int]] = [
 MATCH_CONTEXT_BASE_COLS = [
     "format_id",  # kept for compatibility but excluded from model features
     "venue_id",
-    "match_date_unix",
     "team1_opposition_id",
     "team2_opposition_id",
     "toss_winner_opposition_id",

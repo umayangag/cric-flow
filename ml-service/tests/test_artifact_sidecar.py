@@ -18,7 +18,7 @@ def test_meta_filename_per_format() -> None:
 
 def test_write_then_read_roundtrip(tmp_path: Path) -> None:
     """write_artifact_meta should produce a file that read_artifact_meta returns as dict."""
-    feature_names = ["season_id", "venue_id", "form_differential", "format_is_T20"]
+    feature_names = ["venue_id", "form_differential", "format_is_T20"]
     weights = {
         "weather_composite_rain_weight": 0.5,
         "weather_composite_humidity_weight": 0.3,

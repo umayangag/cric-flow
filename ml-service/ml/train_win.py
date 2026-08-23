@@ -119,7 +119,10 @@ def rows_to_xy_by_format(
         return {}
     df = pd.DataFrame(rows, columns=headers)
     # Only convert truly numeric columns; leave format_code and match_date as-is for grouping and time weights.
-    _numeric_set = (set(WIN_ENHANCED_FEATURE_COLS) | {WIN_TARGET_COL, "match_date_unix"}) - {
+    _numeric_set = (
+        set(WIN_ENHANCED_FEATURE_COLS)
+        | {WIN_TARGET_COL, "match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"}
+    ) - {
         "format_code",
         "match_date",
     }

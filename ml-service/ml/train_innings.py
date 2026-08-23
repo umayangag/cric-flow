@@ -63,15 +63,17 @@ INNINGS_FORMAT_ONE_HOT_COLS = get_format_one_hot_columns()
 # Derived feature columns: shared with extras / reconciliation (see match_level_derived_features).
 INNINGS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
-# Feature columns for innings model: season, venue, inning_number, opposition, match_date_unix,
+# Feature columns for innings model: season, venue, inning_number, opposition,
 # weather, team sums, derived features, then format one-hot.
 INNINGS_FEATURE_COLS = (
     [
-        "season_id",
         "venue_id",
         "inning_number",
         "opposition_id",
-        "match_date_unix",
+        "match_month_sin",
+        "match_month_cos",
+        "match_day_of_week_sin",
+        "match_day_of_week_cos",
         "temp",
         "wind",
         "rain",
@@ -92,8 +94,6 @@ INNINGS_FEATURE_COLS = (
 # Reconciliation and callers without sidecar metadata must use this so older joblib models still align.
 LEGACY_INNINGS_FEATURE_COLS = [
     "venue_id",
-    "season_id",
-    "match_date_unix",
     "inning_number",
     "opposition_id",
     "temp",

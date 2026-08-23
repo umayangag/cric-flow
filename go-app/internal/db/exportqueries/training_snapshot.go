@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -599,7 +600,6 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 	format string,
 	venueID *int64,
 	oppositionID int64,
-	seasonID *int64,
 	playerIDs []int64,
 	weather *WeatherOverride,
 	oppositionPlayerIDs []int64,
@@ -630,11 +630,6 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 		precomp = make(map[int64]map[string]float64)
 	}
 
-	season := 0.0
-	if seasonID != nil && *seasonID != 0 {
-		season = float64(*seasonID)
-	}
-
 	oppBatStr, oppBowlStr := 0.0, 0.0
 	if len(oppositionPlayerIDs) > 0 {
 		oppBatStr, oppBowlStr, _ = computeOppositionStrength(ctx, cutoff, formatID, oppositionPlayerIDs)
@@ -663,14 +658,16 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"bowling_opposition": get("bowling_opposition"),
 			"venue":              get("venue"),
 			"opposition":         get("opposition"),
-			"season":             season,
 			"batting_temp":       wt, "batting_wind": ww, "batting_rain": wr, "batting_humidity": wh, "batting_cloud": wc, "batting_pressure": wp, "batting_viscosity": 0,
 			"bowling_temp": wt, "bowling_wind": ww, "bowling_rain": wr, "bowling_humidity": wh, "bowling_cloud": wc, "bowling_pressure": wp, "bowling_viscosity": 0,
 			"batting_inning": 0, "batting_session": 0, "toss": 0,
 			"bowling_session":             0,
 			"opposition_batting_strength": oppBatStr,
 			"opposition_bowling_strength": oppBowlStr,
-			"match_date_unix":             float64(cutoff.Unix()),
+			"match_month_sin":             math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_month_cos":             math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_day_of_week_sin":       math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
+			"match_day_of_week_cos":       math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
 		}
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = get(k)
@@ -749,11 +746,14 @@ func ComputeFeaturesAtCutoffNoMatch(
 		}
 		feats := map[string]float64{
 			"batting_venue": 0, "batting_opposition": 0, "bowling_venue": 0, "bowling_opposition": 0,
-			"venue": 0, "opposition": 0, "season": 0,
+			"venue": 0, "opposition": 0,
 			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
-			"match_date_unix": float64(cutoff.Unix()),
+			"match_month_sin":       math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_month_cos":       math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_day_of_week_sin": math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
+			"match_day_of_week_cos": math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
 		}
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = pc[k]
@@ -859,10 +859,6 @@ func ComputeFeaturesAtCutoffForMatch(
 		if v, ok := pc["bowling_opposition"]; ok {
 			bowlOpp = v
 		}
-		season := 0.0
-		if mctx.SeasonID != nil && *mctx.SeasonID != 0 {
-			season = float64(*mctx.SeasonID)
-		}
 		feats := map[string]float64{
 			"batting_venue":      batVenue,
 			"batting_opposition": batOpp,
@@ -870,11 +866,13 @@ func ComputeFeaturesAtCutoffForMatch(
 			"bowling_opposition": bowlOpp,
 			"venue":              venue,
 			"opposition":         opposition,
-			"season":             season,
 			"batting_temp":       0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
 			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 1, "batting_session": 1, "toss": 0, "bowling_session": 1,
-			"match_date_unix": float64(cutoff.Unix()),
+			"match_month_sin":       math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_month_cos":       math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_day_of_week_sin": math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
+			"match_day_of_week_cos": math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
 		}
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = pc[k]

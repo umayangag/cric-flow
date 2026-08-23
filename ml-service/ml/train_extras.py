@@ -61,9 +61,11 @@ EXTRAS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
 EXTRAS_FEATURE_COLS = (
     [
-        "season_id",
         "venue_id",
-        "match_date_unix",
+        "match_month_sin",
+        "match_month_cos",
+        "match_day_of_week_sin",
+        "match_day_of_week_cos",
         "temp",
         "wind",
         "rain",
@@ -83,8 +85,6 @@ EXTRAS_FEATURE_COLS = (
 # Order for legacy extras artifacts without sidecar metadata (matches pre-derived training).
 LEGACY_EXTRAS_FEATURE_COLS = [
     "venue_id",
-    "season_id",
-    "match_date_unix",
     "temp",
     "wind",
     "rain",

@@ -33,7 +33,10 @@ CATEGORICAL_SENTINEL_FEATURES = frozenset(
         "batting_opposition",
         "bowling_venue",
         "bowling_opposition",
-        "season_id",
+        "match_month_sin",
+        "match_month_cos",
+        "match_day_of_week_sin",
+        "match_day_of_week_cos",
         "venue",
         "opposition",
     }

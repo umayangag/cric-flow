@@ -100,7 +100,8 @@ def test_load_ball_by_ball_from_db_mocked(mock_get_conn):
             "format_id": [1, 1],
             "format_code": ["ODI", "ODI"],
             "venue_id": [1, 1],
-            "season_id": [1, 1],
+            "match_month_sin": [0.5, 0.5],
+            "match_month_cos": [0.866, 0.866],
             "target_runs": [250, 250],
             "balls_per_innings": [300, 300],
         }

@@ -27,8 +27,6 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	  mi.inning_number AS inning,
 	  0 AS batting_session,
 	  CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) = 'bat' THEN 1 ELSE 0 END AS toss,
-	  s.id AS season_id,
-	  EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 	  p.player_name,
 	  mf.code AS format_code,
 	  COALESCE(fd.catches,0) AS catches,
@@ -41,7 +39,6 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	JOIN match m ON m.match_id = bd.match_id
 	LEFT JOIN match_format mf ON mf.id = m.format_id
 	LEFT JOIN player p ON p.id = bd.player_id
-	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN (
 	  SELECT * FROM weather_data WHERE session='batting'
 	) w ON w.match_id = bd.match_id
@@ -64,7 +61,7 @@ func BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	baseHeaders := []string{
 		"runs", "balls", "fours", "sixes", "batting_position",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "season_id", "match_date_unix", "player_name", "format_code",
+		"inning", "batting_session", "toss", "player_name", "format_code",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
 	finalHeaders := AppendSeqIfEnabled(ctx, baseHeaders, BattingSeqHeaders())
@@ -111,8 +108,6 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 		END AS toss,
 		tvv.batting_venue,
 		tvo.batting_opposition,
-		s.id AS season_id,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name
 		FROM batting_data bd
 		LEFT JOIN player p ON bd.player_id = p.id
@@ -123,7 +118,6 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 		LEFT JOIN match m ON m.match_id = bd.match_id
 		LEFT JOIN venue v ON v.id = m.venue_id
 		LEFT JOIN opposition o ON o.id = mi.bowling_team_opposition_id
-		LEFT JOIN season s ON s.id = m.season_id
 		-- Latest overall batting form (mean_w5) and consistency (std_w10) as-of match date
 		LEFT JOIN LATERAL (
 		  SELECT batting_mean_w5 AS batting_form, batting_std_w10 AS batting_consistency
@@ -155,7 +149,7 @@ func BattingLegacyRows(ctx context.Context) ([][]string, error) {
 	headers := []string{
 		"runs", "balls", "fours", "sixes", "batting_position", "batting_consistency", "batting_form",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity", "inning", "batting_session", "toss",
-		"batting_venue", "batting_opposition", "season_id", "match_date_unix", "player_name",
+		"batting_venue", "batting_opposition", "player_name",
 	}
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
@@ -206,8 +200,6 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(tvv.batting_mean_w5, 0) AS venue,
 		COALESCE(tvo.batting_mean_w5, 0) AS opposition,
-		COALESCE(s.id, 0) AS season,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -216,7 +208,6 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON bd.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 		LEFT JOIN match m ON m.match_id = bd.match_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT ` + battingRawStatsLateralSelect + `
 		  FROM feature_raw_stats_snapshots
@@ -247,7 +238,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
 		"batting_days_since_last", "batting_innings_in_last_90d",
 		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
-		"batting_inning", "batting_session", "toss", "venue", "opposition", "season", "match_date_unix", "player_name",
+		"batting_inning", "batting_session", "toss", "venue", "opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
 	out := make([][]string, 0, 1024)
@@ -286,8 +277,6 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
 		COALESCE(tvv.batting_mean_w5, 0) AS batting_venue,
 		COALESCE(tvo.batting_mean_w5, 0) AS batting_opposition,
-		s.id AS season_id,
-		EXTRACT(EPOCH FROM m.match_date)::bigint AS match_date_unix,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -296,7 +285,6 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON bd.match_id = w.match_id
 		LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 		LEFT JOIN match m ON m.match_id = bd.match_id
-		LEFT JOIN season s ON s.id = m.season_id
 		LEFT JOIN LATERAL (
 		  SELECT ` + battingRawStatsLateralSelect + `
 		  FROM feature_raw_stats_snapshots
@@ -328,7 +316,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
 		"batting_days_since_last", "batting_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "match_date_unix", "player_name",
+		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 	}
 	out := make([][]string, 0, 1024)
@@ -382,7 +370,6 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 		COALESCE(mi.inning_number, 1),
 		0 AS batting_session,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -392,7 +379,6 @@ func battingTrainingRowsRawQuery(formatIDs []int64, cutoff time.Time) (q string,
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON bd.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
-	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_date < $1
 	ORDER BY m.match_date ASC, bd.match_id, bd.player_id`
@@ -432,7 +418,6 @@ type battingTrainingRowRaw struct {
 	inning       string
 	sess         string
 	toss         string
-	seasonID     string
 	playerName   string
 	catches      string
 	runOuts      string
@@ -455,7 +440,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.inningsRuns, &r.balls, &r.fours, &r.sixes, &r.pos,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 		)
 		if err != nil {
@@ -535,7 +520,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
 		"batting_days_since_last", "batting_innings_in_last_90d",
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
+		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"match_date",
 	}
@@ -574,7 +559,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			r.seasonID, r.playerName,
+			cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.matchDate.Format("2006-01-02"),
 		)
@@ -618,7 +603,6 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 		COALESCE(mi.inning_number, 1),
 		0 AS batting_session,
 		CASE WHEN m.toss_decision IS NULL THEN 0 WHEN lower(m.toss_decision) LIKE '%bat%' THEN 1 ELSE 0 END AS toss,
-		COALESCE(s.id, 0) AS season_id,
 		p.player_name,
 		COALESCE(fd.catches,0) AS catches, COALESCE(fd.run_outs,0) AS run_outs, COALESCE(fd.stumpings,0) AS stumpings, COALESCE(fd.runouts_direct_hits,0) AS runouts_direct_hits,
 		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0) + COALESCE(fd.stumpings,0)) AS fielding_involvements
@@ -628,7 +612,6 @@ func battingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 	LEFT JOIN (SELECT * FROM weather_data WHERE session = 'batting') w ON bd.match_id = w.match_id
 	LEFT JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 	LEFT JOIN match m ON m.match_id = bd.match_id
-	LEFT JOIN season s ON s.id = m.season_id
 	LEFT JOIN fielding_data fd ON fd.match_id = bd.match_id AND fd.inning_number = bd.inning_number AND fd.player_id = bd.player_id
 	WHERE m.match_id = ANY($1::bigint[])`
 	return q, []any{matchIDs}
@@ -642,7 +625,7 @@ func battingHoldoutHeaders() []string {
 	rawStatsHeaders := features.RawStatsFeatureNamesBatting()
 	envContextHeaders := []string{
 		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "season_id", "player_name",
+		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "player_name",
 		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
 		"match_date",
 	}
@@ -671,7 +654,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.inningsRuns, &r.balls, &r.fours, &r.sixes, &r.pos,
 			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
-			&r.inning, &r.sess, &r.toss, &r.seasonID, &r.playerName,
+			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 		); err != nil {
 			return nil, err
@@ -770,7 +753,7 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 			r.temp, r.wind, r.rain, r.humidity, r.cloud, r.pressure, r.viscosity,
 			r.inning, r.sess, r.toss,
 			floatToExport(snap.venue), floatToExport(snap.opposition),
-			r.seasonID, r.playerName,
+			cyclicalMonthSin(r.matchDate), cyclicalMonthCos(r.matchDate), cyclicalDowSin(r.matchDate), cyclicalDowCos(r.matchDate), r.playerName,
 			r.catches, r.runOuts, r.stumpings, r.runoutsDH, r.fieldingInv,
 			r.matchDate.Format("2006-01-02"),
 		)
