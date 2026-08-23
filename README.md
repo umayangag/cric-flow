@@ -124,7 +124,7 @@ A new backtesting flow lets you evaluate predictions on already‑played matches
 See **docs/apis-backtest-and-ops.md** for usage details, example requests, and environment variables.
 
 ## Accuracy Trend and Ops Status
-- **Accuracy Trend:** `GET /api/backtest/accuracy-trend` — query params: `format`, `team1`, `team2`, `start_date`, `end_date`, `limit`, `cache` (off|read|readwrite). Frontend: `/dashboard/accuracy-trend`. Full contract: **docs/apis-backtest-and-ops.md**.
+- **Accuracy Trend:** `GET /api/backtest/accuracy-trend` — query params: `format`, `team1`, `team2`, `start_date`, `end_date`, `limit`, `cache` (off|read|readwrite). Frontend: Workbench tab (`WorkbenchAccuracyTrendSection`). Full contract: **docs/apis-backtest-and-ops.md**.
 - **Ops Status:** `GET /ops/status` — services, DB, precompute freshness, exports, artifacts, suggestions. `make dev-up && curl -s http://localhost:8080/ops/status | jq`. See **docs/apis-backtest-and-ops.md**.
 
 ## Frontend

@@ -12,8 +12,8 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 
 | ID | Status | PR branch (when done) | Title |
 |----|--------|----------------------|-------|
-| C0-1 | todo | | Remove committed junk files and tighten `.gitignore` |
-| C0-2 | todo | | Delete the orphan frontend tree; one test location |
+| C0-1 | done | `cleanup/c0-1-junk-files` | Remove committed junk files and tighten `.gitignore` |
+| C0-2 | done | `cleanup/c0-2-orphan-frontend-tree` | Delete the orphan frontend tree; one test location |
 | C1-1 | todo | | Fix: migration runner executes `.down.sql` as forward migrations |
 | C1-2 | todo | | Fix: `make precompute` uses a non-existent API key |
 | C1-3 | todo | | Remove `cmd/evaluate` scaffold |
