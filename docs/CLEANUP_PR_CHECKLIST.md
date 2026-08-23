@@ -14,7 +14,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 |----|--------|----------------------|-------|
 | C0-1 | done | `cleanup/c0-1-junk-files` | Remove committed junk files and tighten `.gitignore` |
 | C0-2 | done | `cleanup/c0-2-orphan-frontend-tree` | Delete the orphan frontend tree; one test location |
-| C1-1 | todo | | Fix: migration runner executes `.down.sql` as forward migrations |
+| C1-1 | done | `cleanup/c1-1-migration-down-files` | Fix: migration runner executes `.down.sql` as forward migrations |
 | C1-2 | todo | | Fix: `make precompute` uses a non-existent API key |
 | C1-3 | todo | | Remove `cmd/evaluate` scaffold |
 | C1-4 | todo | | Remove the unused generalized-pipeline experiment |
@@ -27,8 +27,8 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C2-2 | blocked | | Remove the weather subsystem and its feature slots |
 | C3-1 | todo | | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | todo | | Remove the `_LEGACY_` artifact tier |
-| C4-1 | blocked | | **Decision gate:** squash migrations to a baseline |
-| C4-2 | blocked | | Collapse migrations into `0001_baseline.sql` |
+| C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
+| C4-2 | todo | | Collapse migrations into `0001_baseline.sql` |
 | C5-1 | todo | | Single source of truth for canonical format codes |
 | C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
@@ -68,7 +68,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 
 ## Decision gates
 
-Two items need a product decision before their PRs can be written. Everything else proceeds independently.
+Items needing a product decision before their PRs can be written. Everything else proceeds independently. **C4-1 is decided (Option A);** C2-1 is still open.
 
 ### C2-1 — Weather: build it or delete it
 
@@ -86,7 +86,9 @@ The importer writes placeholder rows (`ingest.go:630` inserts `match_id` + `sess
 - **Option A — Squash.** Generate `0001_baseline.sql` from `pg_dump --schema-only` against a freshly-migrated database; delete the rest; document that existing dev databases must be recreated (`make dev-purge`).
 - **Option B — Keep the chain.** Then C1-1 (the `.down.sql` bug) is the only migration work, and the duplicate `0029` stays as a known wart.
 
-**Answer needed:** A or B. C4-2 below is written for Option A.
+**Decided: Option A.** C4-2 is unblocked.
+
+Consequence for C1-1: the renumbering and `*.up.sql` → `*.sql` renames originally scoped there became wasted work, since C4-2 collapses all 46 files regardless. C1-1 was reduced to the runner fix and its regression test — worth keeping as a standing guardrail, because after the squash the runner still globs `*.sql` and a future `.down.sql` would reintroduce the same ordering bug. Deleting the five existing down files moved into C4-2.
 
 ---
 
@@ -163,31 +165,26 @@ C1-1 and C1-2 are bug fixes; do them first. C1-4 through C1-9 are deletions and 
 
 It survives today only because all five down files are idempotent `DROP … IF EXISTS` statements. The first down file that is not — or the first pair whose sort order differs — corrupts a fresh bootstrap.
 
-**Scope**
+**Scope** (reduced after C4-1 chose Option A — see that section)
 
-- [ ] In `RunMigrationsFS`, skip files matching `*.down.sql`
-- [ ] Delete the five down files (project guideline: no backward compatibility):
-      `0028_data_migrations_tracking.down.sql`, `0029_ml_tuned_params.down.sql`,
-      `0088_add_match_prediction_aggregates.down.sql`, `0091_ml_tuned_params_metrics.down.sql`,
-      `0092_ml_tuned_params_data_migration_id.down.sql`
-- [ ] Rename `*.up.sql` → `*.sql` so one convention remains
-- [ ] Resolve the duplicate version `0029`: renumber `0029_ml_tuned_params.up.sql` to the next free number
-- [ ] Add a table test to `migrations_fs_test.go` asserting `.down.sql` files are never applied
-- [ ] Note the renumbering in `docs/config-and-data.md`
+- [x] In `RunMigrationsFS`, skip files matching `*.down.sql`, via an `isDownMigration` helper; log the skipped count
+- [x] Add a table test to `migrations_fs_test.go` asserting rollback scripts are neither recorded as applied nor `Exec`'d at all — covering a paired down file, an orphan down file, and an uppercase `.DOWN.SQL`
+- [x] Verify the test fails with the fix disabled
+- ~~Delete the five down files~~ — moved to C4-2, which deletes all 46 migration files
+- ~~Rename `*.up.sql` → `*.sql`~~ — moot after the squash
+- ~~Renumber the duplicate `0029`~~ — moot after the squash
 
 **Verify**
 
 ```bash
-make dev-purge && make dev-up            # bootstrap a database from empty
-docker compose exec postgres psql -U postgres -d cricket_data \
-  -c "select version from schema_migrations order by version;"
-cd go-app && go test ./internal/db/...
+cd go-app && go test ./internal/db/ -run TestRunMigrationsFS -v
+go build ./... && go vet ./...
 make go-app-check
 ```
 
-**Acceptance:** a fresh bootstrap applies each migration exactly once, in numeric order, with no down file in `schema_migrations`; existing databases are unaffected because renamed files are recorded under their old names — call this out in the PR body, or fold this PR into C4-2 if the squash is approved.
+**Acceptance:** rollback SQL never reaches the database; the new test fails when the guard is disabled and passes with it. No migration file is renamed, so no existing database re-applies anything.
 
-**Risk:** medium — touches bootstrap. Renaming `*.up.sql` changes the recorded version string, so an existing dev database will re-apply those files. All of them are `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`, so re-application is a no-op; verify that on a database that already has them before merging.
+**Risk:** low as scoped. The runner now applies strictly fewer files, and the five affected files are all idempotent `DROP … IF EXISTS` that were never meant to run forward.
 
 ---
 
@@ -552,7 +549,7 @@ Blocked on **C4-1**. Written below for Option A (squash).
       `pg_dump --schema-only --no-owner --no-privileges -U postgres cricket_data > go-app/migrations/0001_baseline.sql`
 - [ ] Hand-review the dump: strip `SET` noise and ownership lines, keep extensions, tables, indexes, constraints, functions, triggers
 - [ ] Preserve the seed rows the chain inserts — the `match_format` seed from `0004_format_dimension.sql` in particular, since `internal/formats` hardcodes IDs 1–4 against it
-- [ ] Delete all other files in `go-app/migrations/`
+- [ ] Delete all other files in `go-app/migrations/`, including the five `*.down.sql` rollback scripts left in place by C1-1
 - [ ] Update `tests/fixtures/backtest/seed.sql` — most of its defensive `CREATE TABLE IF NOT EXISTS` and column-conformance blocks exist to paper over the old chain and can go
 - [ ] Update `docs/config-and-data.md` and `README.md`: existing dev databases must be recreated with `make dev-purge`
 - [ ] Note in the PR body that `schema_migrations` rows from the old chain are abandoned; document the one-line reset for anyone with an existing database
