@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+
 class BattingFeatures(BaseModel):
     # Raw windowed stats (v2; from feature_raw_stats_snapshots)
     batting_mean_w3: float = Field(default=0.0, ge=0)
@@ -59,6 +60,7 @@ class BattingFeatures(BaseModel):
         v2 = v.strip().upper()
         # Allow empty/unknown formats by returning normalized value
         return v2
+
 
 class BowlingFeatures(BaseModel):
     # Raw windowed stats (v2; from feature_raw_stats_snapshots)

@@ -664,10 +664,10 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"bowling_session":             0,
 			"opposition_batting_strength": oppBatStr,
 			"opposition_bowling_strength": oppBowlStr,
-			"match_month_sin":         math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
-			"match_month_cos":         math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
-			"match_day_of_week_sin":   math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
-			"match_day_of_week_cos":   math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
+			"match_month_sin":             math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_month_cos":             math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
+			"match_day_of_week_sin":       math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
+			"match_day_of_week_cos":       math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
 		}
 		for _, k := range features.RawStatsFeatureNames() {
 			feats[k] = get(k)

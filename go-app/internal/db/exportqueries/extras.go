@@ -113,7 +113,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	defer rows.Close()
 	headers := []string{
 		"match_id", "venue_id", "total_extras", "format_code",
-		"match_date",		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"match_date", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
 	out := make([][]string, 0, 256)
@@ -131,13 +131,13 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
 			return nil, err
 		}
-			out = append(out, []string{
-				strconv.FormatInt(matchID, 10),
-				strconv.FormatInt(venueID, 10),
-				strconv.Itoa(totalExtras),
-				formatCode,
-				matchDate.Format("2006-01-02"),
-				strconv.Itoa(
+		out = append(out, []string{
+			strconv.FormatInt(matchID, 10),
+			strconv.FormatInt(venueID, 10),
+			strconv.Itoa(totalExtras),
+			formatCode,
+			matchDate.Format("2006-01-02"),
+			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 			strconv.FormatFloat(

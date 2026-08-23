@@ -1256,11 +1256,11 @@ func selectTeamsByWinProbabilityPerCall(
 				team1OppID, team2OppID = opp1IDVal, opp2IDVal
 				t1Feats, t2Feats = opponentFeats, candidateFeats
 			}
-				feats := buildEnhancedWinFeatures(
-					formatID,
-					venueIDVal,
-					team1OppID,
-					team2OppID,
+			feats := buildEnhancedWinFeatures(
+				formatID,
+				venueIDVal,
+				team1OppID,
+				team2OppID,
 				temp,
 				wind,
 				rain,

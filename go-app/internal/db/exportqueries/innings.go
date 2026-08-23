@@ -121,7 +121,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	defer rows.Close()
 	headers := []string{
 		"match_id", "inning_number", "innings_runs", "innings_wickets", "venue_id", "opposition_id", "format_code",
-		"match_date",		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
+		"match_date", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
 		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
 	}
 	out := make([][]string, 0, 512)
@@ -138,16 +138,16 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
 			return nil, err
 		}
-			out = append(out, []string{
-				strconv.FormatInt(matchID, 10),
-				strconv.FormatInt(inningNum, 10),
-				strconv.FormatInt(inningsRuns, 10),
-				strconv.FormatInt(inningsWickets, 10),
-				strconv.FormatInt(venueID, 10),
-				strconv.FormatInt(oppositionID, 10),
-				formatCode,
-				matchDate.Format("2006-01-02"),
-				strconv.Itoa(
+		out = append(out, []string{
+			strconv.FormatInt(matchID, 10),
+			strconv.FormatInt(inningNum, 10),
+			strconv.FormatInt(inningsRuns, 10),
+			strconv.FormatInt(inningsWickets, 10),
+			strconv.FormatInt(venueID, 10),
+			strconv.FormatInt(oppositionID, 10),
+			formatCode,
+			matchDate.Format("2006-01-02"),
+			strconv.Itoa(
 				temp,
 			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 			strconv.FormatFloat(batConsSum, 'f', -1, 64),

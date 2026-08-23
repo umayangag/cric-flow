@@ -376,7 +376,7 @@ func (c *BacktestMLClient) predictPlayers(
 		}
 	}
 	if matchCtx != nil {
- 	body.MatchContext = &mlBacktestMatchContext{
+		body.MatchContext = &mlBacktestMatchContext{
 			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 			VenueID:           float64(matchCtx.VenueID),
@@ -580,7 +580,7 @@ func (c *BacktestMLClient) GenerateMatch(
 		}
 	}
 	if matchCtx != nil {
- 	reqBody.MatchContext = &mlBacktestMatchContext{
+		reqBody.MatchContext = &mlBacktestMatchContext{
 			Team1PlayerIDs:    matchCtx.Team1PlayerIDs,
 			Team2PlayerIDs:    matchCtx.Team2PlayerIDs,
 			VenueID:           float64(matchCtx.VenueID),

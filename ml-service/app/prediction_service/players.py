@@ -12,19 +12,12 @@ from fastapi import HTTPException
 from ml.config import get_prediction_defaults
 from ml.reconciliation_adapter import apply_constraint_reconciliation_from_backtest_preds
 
-from ..artifacts import (
-    BAT_MODELS,
-    BAT_SHARE_MODELS,
-    BOWL_MODELS,
-    BOWL_SHARE_MODELS,
-    FIELD_MODELS,
-    INNINGS_MODELS
-)
+from ..artifacts import BAT_MODELS, BAT_SHARE_MODELS, BOWL_MODELS, BOWL_SHARE_MODELS, FIELD_MODELS, INNINGS_MODELS
 from ..artifacts import _use_share_models as use_share_models_config
 from ..backtest_service import (
     build_batting_features_from_map,
     build_bowling_features_from_map,
-    build_fielding_features_from_map
+    build_fielding_features_from_map,
 )
 from ..feature_config import get_feature_names
 from ..features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
@@ -35,6 +28,7 @@ from ..train_on_the_fly import train_on_the_fly_cached
 from .innings import predict_match_innings
 
 logger = get_struct_logger()
+
 
 @dataclass
 class _ResolvedModels:
@@ -47,6 +41,7 @@ class _ResolvedModels:
     use_share: bool
     fmt_upper: str
 
+
 def _resolve_prediction_model_pairs(
     fmt: str,
     models_dir: str,
@@ -58,7 +53,7 @@ def _resolve_prediction_model_pairs(
     use_latest_model: bool,
     player_count: int,
     *,
-    has_match_context: bool
+    has_match_context: bool,
 ) -> _ResolvedModels:
     """Resolve batting/bowling model pairs for a format, with train-on-the-fly fallback."""
     fmt_upper = (fmt or "").strip().upper()
@@ -78,7 +73,7 @@ def _resolve_prediction_model_pairs(
             logger.error(
                 "backtest_predict.train_on_the_fly.disabled",
                 format=fmt_upper,
-                hint="Train-on-the-fly is disabled. Pre-train and load artifacts for this format, or set ENABLE_TRAIN_ON_THE_FLY=1."
+                hint="Train-on-the-fly is disabled. Pre-train and load artifacts for this format, or set ENABLE_TRAIN_ON_THE_FLY=1.",
             )
             raise ValueError(
                 "No artifacts loaded for format=%s. Train-on-the-fly is disabled (resource consuming). "
@@ -89,7 +84,7 @@ def _resolve_prediction_model_pairs(
             logger.error(
                 "backtest_predict.train_on_the_fly.missing_go_app_url",
                 format=fmt_upper,
-                hint="Set GO_APP_URL to the go-app base URL for train-on-the-fly."
+                hint="Set GO_APP_URL to the go-app base URL for train-on-the-fly.",
             )
             raise ValueError(
                 "GO_APP_URL is required for train-on-the-fly when no artifacts are loaded for format=%s" % fmt_upper
@@ -104,7 +99,7 @@ def _resolve_prediction_model_pairs(
                 "backtest_predict.train_on_the_fly.use_latest",
                 format=fmt_upper,
                 training_cutoff_iso=cutoff_iso,
-                cache_granularity=train_latest_cache_granularity
+                cache_granularity=train_latest_cache_granularity,
             )
         logger.warning(
             "backtest_predict.train_on_the_fly.triggered",
@@ -112,7 +107,7 @@ def _resolve_prediction_model_pairs(
             fmt=fmt_upper,
             cutoff_iso=cutoff_iso,
             go_app_url=go_app_url,
-            player_count=player_count
+            player_count=player_count,
         )
         bat_pair, bowl_pair = train_on_the_fly_cached(go_app_url, fmt_upper, cutoff_iso, go_app_api_key)
 
@@ -124,23 +119,17 @@ def _resolve_prediction_model_pairs(
         scaler_bowl=scaler_bowl,
         model_bowl=model_bowl,
         use_share=use_share,
-        fmt_upper=fmt_upper
+        fmt_upper=fmt_upper,
     )
 
+
 def _build_batting_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]],
-    models_dir: str
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]], models_dir: str
 ) -> np.ndarray:
     """Build unscaled batting feature matrix for a list of players."""
     bat_features = [
         build_batting_features_from_map(
-            pid,
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            pid, cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
@@ -164,23 +153,17 @@ def _build_batting_feature_matrix(
         logger.exception("predict.feature_transform.failed", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail="Feature transformation failed; prediction pipeline cannot proceed with incorrect feature data."
+            detail="Feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
         ) from e
 
+
 def _build_bowling_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]],
-    models_dir: str
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]], models_dir: str
 ) -> np.ndarray:
     """Build unscaled bowling feature matrix for a list of players."""
     bowl_features = [
         build_bowling_features_from_map(
-            pid,
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            pid, cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
@@ -206,26 +189,22 @@ def _build_bowling_feature_matrix(
         logger.exception("predict.bowling_feature_transform.failed", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail="Bowling feature transformation failed; prediction pipeline cannot proceed with incorrect feature data."
+            detail="Bowling feature transformation failed; prediction pipeline cannot proceed with incorrect feature data.",
         ) from e
 
+
 def _build_fielding_feature_matrix(
-    player_ids: List[int],
-    cutoff: datetime,
-    fmt_upper: str,
-    features_map: Dict[str, Dict[str, float]]
+    player_ids: List[int], cutoff: datetime, fmt_upper: str, features_map: Dict[str, Dict[str, float]]
 ) -> np.ndarray:
     """Build unscaled fielding feature matrix for a list of players."""
     field_features_list = [
         build_fielding_features_from_map(
-            int(pid),
-            cutoff,
-            fmt_upper,
-            features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
+            int(pid), cutoff, fmt_upper, features_map.get(str(pid)) or features_map.get(str(int(pid))) or {}
         )
         for pid in player_ids
     ]
     return np.array([fielding_feature_vector(f) for f in field_features_list], dtype=float)
+
 
 def _assemble_player_predictions(
     Y_bat: np.ndarray,
@@ -237,7 +216,7 @@ def _assemble_player_predictions(
     fmt_upper: str,
     features_map: Dict[str, Dict[str, float]],
     *,
-    Y_fld: Optional[np.ndarray] = None
+    Y_fld: Optional[np.ndarray] = None,
 ) -> List[BacktestPlayerPred]:
     """Convert raw model outputs into BacktestPlayerPred list.
 
@@ -294,7 +273,7 @@ def _assemble_player_predictions(
                 wickets=wickets,
                 economy=economy,
                 catches=catches,
-                run_outs=run_outs
+                run_outs=run_outs,
             )
         )
 
@@ -315,7 +294,7 @@ def _assemble_player_predictions(
                     wickets=pred.wickets,
                     economy=pred.economy,
                     catches=catches,
-                    run_outs=run_outs
+                    run_outs=run_outs,
                 )
             )
         out = out_new
@@ -336,7 +315,7 @@ def _assemble_player_predictions(
                 inn2_wkts,
                 match_id=0,
                 format_code=fmt_upper,
-                default_economy=default_econ
+                default_economy=default_econ,
             )
             logger.info(
                 "backtest_predict.reconciliation.applied",
@@ -350,19 +329,18 @@ def _assemble_player_predictions(
                 mean_abs_pct_delta_runs=adj.get("mean_abs_pct_delta_runs"),
                 mean_abs_pct_delta_wickets=adj.get("mean_abs_pct_delta_wickets"),
                 total_before_runs=adj.get("total_before_runs"),
-                total_before_wickets=adj.get("total_before_wickets")
+                total_before_wickets=adj.get("total_before_wickets"),
             )
             if adj.get("violations"):
-                logger.warning(
-                    "backtest_predict.reconciliation.violations",
-                    violations=adj["violations"]
-                )
+                logger.warning("backtest_predict.reconciliation.violations", violations=adj["violations"])
 
     return out
+
 
 # ---------------------------------------------------------------------------
 # Public prediction functions
 # ---------------------------------------------------------------------------
+
 
 def predict_players_with_features(
     cutoff: datetime,
@@ -375,7 +353,7 @@ def predict_players_with_features(
     go_app_api_key: Optional[str],
     train_latest_cache_granularity: str,
     use_latest_model: bool = False,
-    match_context: Optional[MatchContext] = None
+    match_context: Optional[MatchContext] = None,
 ) -> List[BacktestPlayerPred]:
     """Run full pipeline: build feature objects from map, run batting/bowling models, return predictions.
 
@@ -391,7 +369,7 @@ def predict_players_with_features(
         cutoff,
         use_latest_model,
         len(player_ids),
-        has_match_context=match_context is not None
+        has_match_context=match_context is not None,
     )
 
     X_bat = _build_batting_feature_matrix(player_ids, cutoff, resolved.fmt_upper, features_map, models_dir)
@@ -422,8 +400,9 @@ def predict_players_with_features(
         cutoff,
         resolved.fmt_upper,
         features_map,
-        Y_fld=Y_fld
+        Y_fld=Y_fld,
     )
+
 
 def predict_players_batch(
     items: List[BatchPredictItem],
@@ -431,7 +410,7 @@ def predict_players_batch(
     enable_train_on_the_fly: bool,
     go_app_url: str,
     go_app_api_key: Optional[str],
-    train_latest_cache_granularity: str
+    train_latest_cache_granularity: str,
 ) -> "List[List[BacktestPlayerPred]]":
     """Run predictions for all items, aggregating feature matrices for efficient batched model.predict() calls.
 
@@ -457,25 +436,17 @@ def predict_players_batch(
             item.cutoff_date,
             item.use_latest_model,
             len(item.player_ids),
-            has_match_context=item.match_context is not None
+            has_match_context=item.match_context is not None,
         )
         resolved_list.append(resolved)
         X_bat_list.append(
             _build_batting_feature_matrix(
-                item.player_ids,
-                item.cutoff_date,
-                resolved.fmt_upper,
-                item.features or {},
-                models_dir
+                item.player_ids, item.cutoff_date, resolved.fmt_upper, item.features or {}, models_dir
             )
         )
         X_bowl_list.append(
             _build_bowling_feature_matrix(
-                item.player_ids,
-                item.cutoff_date,
-                resolved.fmt_upper,
-                item.features or {},
-                models_dir
+                item.player_ids, item.cutoff_date, resolved.fmt_upper, item.features or {}, models_dir
             )
         )
 
@@ -486,11 +457,7 @@ def predict_players_batch(
     Y_fld_per_item: List[Optional[np.ndarray]] = [None] * n_items
 
     def _batched_scale_and_predict(
-        model_key_fn,
-        X_list: List[np.ndarray],
-        scaler_fn,
-        model_fn,
-        Y_per_item: List[Optional[np.ndarray]]
+        model_key_fn, X_list: List[np.ndarray], scaler_fn, model_fn, Y_per_item: List[Optional[np.ndarray]]
     ) -> None:
         """Group items by model identity, concatenate, scale, predict, partition."""
         groups: Dict[int, List[int]] = {}
@@ -514,14 +481,14 @@ def predict_players_batch(
         X_bat_list,
         lambda idx: resolved_list[idx].scaler_bat,
         lambda idx: resolved_list[idx].model_bat,
-        Y_bat_per_item
+        Y_bat_per_item,
     )
     _batched_scale_and_predict(
         lambda idx: id(resolved_list[idx].model_bowl),
         X_bowl_list,
         lambda idx: resolved_list[idx].scaler_bowl,
         lambda idx: resolved_list[idx].model_bowl,
-        Y_bowl_per_item
+        Y_bowl_per_item,
     )
 
     # Fielding: build features per item, then batch predict across items sharing the same model.
@@ -533,10 +500,7 @@ def predict_players_batch(
         if field_pair is not None:
             fld_pairs[idx] = field_pair
             X_fld_list[idx] = _build_fielding_feature_matrix(
-                items[idx].player_ids,
-                items[idx].cutoff_date,
-                fmt_upper,
-                items[idx].features or {}
+                items[idx].player_ids, items[idx].cutoff_date, fmt_upper, items[idx].features or {}
             )
 
     fld_groups: Dict[int, List[int]] = {}
@@ -568,7 +532,7 @@ def predict_players_batch(
             items[idx].cutoff_date,
             resolved_list[idx].fmt_upper,
             items[idx].features or {},
-            Y_fld=Y_fld_per_item[idx]
+            Y_fld=Y_fld_per_item[idx],
         )
         results.append(preds)
     return results

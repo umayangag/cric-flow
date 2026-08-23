@@ -24,10 +24,11 @@ from .models import (
     HistoricalMatchBacktestResponse,
     MatchComparison,
     PlayerComparison,
-    PlayerPoint
+    PlayerPoint,
 )
 
 logger = get_struct_logger()
+
 
 def _float(d: Dict[str, float], key: str, default: float) -> float:
     v = d.get(key)
@@ -37,6 +38,7 @@ def _float(d: Dict[str, float], key: str, default: float) -> float:
         return float(v)
     except (TypeError, ValueError):
         return default
+
 
 def _get_required_float(d: Dict[str, float], key: str) -> float:
     """Return float for a required feature; raise ValueError if missing or invalid."""
@@ -50,9 +52,11 @@ def _get_required_float(d: Dict[str, float], key: str) -> float:
         logger.debug("backtest_service.feature_non_numeric", key=key, value=v)
         raise ValueError(f"Feature '{key}' has a non-numeric value: {v}")
 
+
 def _get_required_int(d: Dict[str, float], key: str) -> int:
     """Return int for a required feature; raise ValueError if missing or invalid."""
     return int(round(_get_required_float(d, key)))
+
 
 def _int(d: Dict[str, float], key: str, default: int) -> int:
     v = d.get(key)
@@ -62,6 +66,7 @@ def _int(d: Dict[str, float], key: str, default: int) -> int:
         return int(round(float(v)))
     except (TypeError, ValueError):
         return default
+
 
 def _feature_defaults() -> Dict:
     """Feature defaults for missing keys (from config ml.feature_defaults)."""
@@ -73,6 +78,7 @@ def _feature_defaults() -> Dict:
             raise
     raise RuntimeError("ml.config.get_feature_defaults not available")
 
+
 # Sequential feature keys (optional; 0 when absent)
 _BAT_SEQ_KEYS = (
     "bat_prev_sr",
@@ -82,7 +88,7 @@ _BAT_SEQ_KEYS = (
     "bat_entry_sr_1_6",
     "bat_set_sr_13_30",
     "bat_react_after_dot_sr",
-    "bat_after_k_dots_boundary_p_k2"
+    "bat_after_k_dots_boundary_p_k2",
 )
 _BOWL_SEQ_KEYS = (
     "bowl_prev_wkt_rate",
@@ -92,14 +98,12 @@ _BOWL_SEQ_KEYS = (
     "bowl_react_after_boundary_wkt_rate_next",
     "bowl_spell_first_over_wkt_rate",
     "bowl_over_ball1_wkt_rate",
-    "bowl_over_ball6_wkt_rate"
+    "bowl_over_ball6_wkt_rate",
 )
 
+
 def build_batting_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float]
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> BattingFeatures:
     """Build BattingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
@@ -120,11 +124,12 @@ def build_batting_features_from_map(
         venue=_get_required_float(d, "venue"),
         opposition=_get_required_float(d, "opposition"),
         player_name="",
-        format=fmt
+        format=fmt,
     )
     for k in _BAT_SEQ_KEYS:
         base[k] = max(0.0, _float(d, k, 0.0))
     return BattingFeatures(**base)
+
 
 @dataclass
 class FieldingFeatures:
@@ -144,11 +149,9 @@ class FieldingFeatures:
     fielding_venue: float
     fielding_opposition: float
 
+
 def build_fielding_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float]
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> FieldingFeatures:
     """Build FieldingFeatures from go-app feature map. Uses config defaults for missing keys."""
     d = {k: v for k, v in feature_map.items()}
@@ -173,11 +176,9 @@ def build_fielding_features_from_map(
         fielding_opposition=_float(d, "fielding_opposition", _float(d, "opposition", f.get("opposition", 0.5))),
     )
 
+
 def build_bowling_features_from_map(
-    player_id: int,
-    cutoff: datetime,
-    fmt: Optional[str],
-    feature_map: Dict[str, float]
+    player_id: int, cutoff: datetime, fmt: Optional[str], feature_map: Dict[str, float]
 ) -> BowlingFeatures:
     """Build BowlingFeatures from go-app feature map; required features raise if missing."""
     d = {k: v for k, v in feature_map.items()}
@@ -198,11 +199,12 @@ def build_bowling_features_from_map(
         bowling_venue=_get_required_float(d, "bowling_venue"),
         bowling_opposition=_get_required_float(d, "bowling_opposition"),
         player_name="",
-        format=fmt
+        format=fmt,
     )
     for k in _BOWL_SEQ_KEYS:
         base[k] = max(0.0, _float(d, k, 0.0))
     return BowlingFeatures(**base)
+
 
 def resolve_model_version(app_version_fallback: str) -> str:
     """Return a model version string for responses.
@@ -216,6 +218,7 @@ def resolve_model_version(app_version_fallback: str) -> str:
         return mv
     return app_version_fallback or "unknown"
 
+
 def _deterministic_rng_seed(*parts: str) -> int:
     """Build a stable 32-bit seed from text parts.
 
@@ -227,6 +230,7 @@ def _deterministic_rng_seed(*parts: str) -> int:
             acc = (acc * 1000003) ^ ord(ch)
         acc &= 0xFFFFFFFF
     return acc or 42
+
 
 def predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[BacktestPlayerPred]:
     """Deterministic simple baseline for player stats used in backtests.
@@ -244,15 +248,11 @@ def predict_players_baseline(cutoff: datetime, player_ids: List[int]) -> List[Ba
         run_outs = float(rng.integers(0, 3))
         out.append(
             BacktestPlayerPred(
-                player_id=int(pid),
-                runs=runs,
-                wickets=wickets,
-                economy=economy,
-                catches=catches,
-                run_outs=run_outs
+                player_id=int(pid), runs=runs, wickets=wickets, economy=economy, catches=catches, run_outs=run_outs
             )
         )
     return out
+
 
 def predict_match_baseline(cutoff: datetime, teams: List[str]) -> BacktestMatchAgg:
     """Deterministic simple baseline aggregate for a match used in backtests."""
@@ -269,7 +269,9 @@ def predict_match_baseline(cutoff: datetime, teams: List[str]) -> BacktestMatchA
     winner = a if (w_seed_a ^ seed) >= (w_seed_b ^ seed) else b
     return BacktestMatchAgg(runs=runs, wickets=wickets, extras=extras, winner_team_code=winner)
 
+
 # -------------------- Historical backtest service (repository-abstracted) --------------------
+
 
 class HistoricalDataRepo(Protocol):
     """Repository interface to access historical, already-played match data.
@@ -292,6 +294,7 @@ class HistoricalDataRepo(Protocol):
     def get_match_teams(self, match_id: int) -> Tuple[str, str]:
         """Return (team1_code, team2_code) for the match to enable aggregate prediction baseline."""
 
+
 @dataclass
 class HistoricalBacktestInputs:
     cutoff: datetime
@@ -300,6 +303,7 @@ class HistoricalBacktestInputs:
     actual_players: Dict[int, PlayerPoint]
     actual_match: BacktestMatchAgg
     teams: Tuple[str, str]
+
 
 def _prepare_inputs(req: HistoricalMatchBacktestRequest, repo: HistoricalDataRepo) -> HistoricalBacktestInputs:
     cutoff = req.cutoff_date
@@ -324,8 +328,9 @@ def _prepare_inputs(req: HistoricalMatchBacktestRequest, repo: HistoricalDataRep
         playing_ids=list(playing),
         actual_players=actual_players,
         actual_match=actual_match,
-        teams=teams
+        teams=teams,
     )
+
 
 def _predict_players_for_ids(cutoff: datetime, player_ids: List[int]) -> Dict[int, PlayerPoint]:
     """Predict player points for given IDs using baseline for now.
@@ -338,10 +343,9 @@ def _predict_players_for_ids(cutoff: datetime, player_ids: List[int]) -> Dict[in
         out[p.player_id] = PlayerPoint(runs=p.runs, wickets=p.wickets, economy=p.economy)
     return out
 
+
 def _compute_player_comparisons(
-    player_ids: List[int],
-    predicted: Dict[int, PlayerPoint],
-    actual: Dict[int, PlayerPoint]
+    player_ids: List[int], predicted: Dict[int, PlayerPoint], actual: Dict[int, PlayerPoint]
 ) -> Tuple[List[PlayerComparison], float, float, Optional[float]]:
     comps: List[PlayerComparison] = []
     errors_runs: List[float] = []
@@ -358,13 +362,7 @@ def _compute_player_comparisons(
             ew = abs((pred.wickets or 0.0) - (act.wickets or 0.0))
             errors_wkts.append(ew)
         comps.append(
-            PlayerComparison(
-                player_id=pid,
-                predicted=pred,
-                actual=act,
-                abs_error_runs=er,
-                abs_error_wickets=ew
-            )
+            PlayerComparison(player_id=pid, predicted=pred, actual=act, abs_error_runs=er, abs_error_wickets=ew)
         )
     mae_runs = float(sum(errors_runs) / max(1, len(errors_runs)))
     rmse_runs = float((sum(sq_errors_runs) / max(1, len(sq_errors_runs))) ** 0.5)
@@ -372,6 +370,7 @@ def _compute_player_comparisons(
     if errors_wkts:
         mae_wkts = float(sum(errors_wkts) / len(errors_wkts))
     return comps, mae_runs, rmse_runs, mae_wkts
+
 
 def historical_backtest(
     req: HistoricalMatchBacktestRequest, repo: HistoricalDataRepo, model_version: str
@@ -398,10 +397,12 @@ def historical_backtest(
         metrics=BacktestMetrics(
             mae_runs=mae_runs, rmse_runs=rmse_runs, mae_wickets=mae_wkts, winner_correct=winner_correct
         ),
-        model_version=model_version or "unknown"
+        model_version=model_version or "unknown",
     )
 
+
 # -------------------- Deterministic in-memory repo (temporary scaffolding) --------------------
+
 
 class DeterministicInMemoryRepo:
     """A temporary repo implementation generating deterministic data for development and tests.

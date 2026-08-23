@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+
 class BattingPrediction(BaseModel):
     runs_scored: float
     balls_faced: float
@@ -12,11 +13,13 @@ class BattingPrediction(BaseModel):
     batting_position: float
     strike_rate: float
 
+
 class BowlingPrediction(BaseModel):
     runs_conceded: float
     deliveries: float
     wickets_taken: float
     econ: float
+
 
 class ExtrasFeatures(BaseModel):
     """Match-level features for extras model. Same families as batting/bowling/fielding."""
@@ -44,8 +47,10 @@ class ExtrasFeatures(BaseModel):
             return v
         return v.strip().upper()
 
+
 class ExtrasPrediction(BaseModel):
     total_extras: float = Field(..., description="Predicted total extras for the match")
+
 
 class WinFeatures(BaseModel):
     """Match-level features for win model. Same families as batting/bowling/fielding."""
@@ -77,6 +82,7 @@ class WinFeatures(BaseModel):
         if v is None or v == "":
             return v
         return v.strip().upper()
+
 
 class WinFeaturesEnhanced(BaseModel):
     """Enhanced win prediction request: match context + per-player feature maps.
@@ -128,10 +134,13 @@ class WinFeaturesEnhanced(BaseModel):
             "viscosity": float(self.viscosity),
         }
 
+
 class WinPrediction(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1, description="Probability that team1 (batting first) wins")
 
+
 # -------------------- Team selection optimisation models --------------------
+
 
 class TeamOptimizationPoolPlayer(BaseModel):
     player_id: int
@@ -143,16 +152,19 @@ class TeamOptimizationPoolPlayer(BaseModel):
     field_score: float = 0.0
     features: Dict[str, float]
 
+
 class TeamOptimizationWeights(BaseModel):
     bat: float = 0.45
     bowl: float = 0.40
     field: float = 0.10
     keeper_bonus: float = 0.02
 
+
 class TeamOptimizationConstraints(BaseModel):
     size: int = Field(default=11, ge=1)
     min_bowlers: int = Field(default=5, ge=0)
     require_keeper: bool = True
+
 
 class TeamOptimizationRequest(BaseModel):
     """Request for server-side team selection optimisation.
@@ -182,9 +194,11 @@ class TeamOptimizationRequest(BaseModel):
             return v
         return v.strip().upper()
 
+
 class TeamOptimizationSelectedPlayer(BaseModel):
     player_id: int
     name: str
+
 
 class TeamOptimizationResponse(BaseModel):
     selected: List[TeamOptimizationSelectedPlayer]

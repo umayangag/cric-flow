@@ -272,8 +272,8 @@ func init() {
 		}
 		return mlClient.PredictMatchWinEnhanced(ctx, mlWinFeaturesEnhanced{
 			FormatID:               w.FormatID,
-				VenueID:                w.VenueID,
-				Team1OppositionID:      w.Team1OppositionID,
+			VenueID:                w.VenueID,
+			Team1OppositionID:      w.Team1OppositionID,
 			Team2OppositionID:      w.Team2OppositionID,
 			TossWinnerOppositionID: w.TossWinnerOppositionID,
 			Temp:                   w.Temp,
