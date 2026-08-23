@@ -179,7 +179,7 @@ make -C go-app coverage-html
 
 Notes:
 - **Coverage-check must run after coverage:** `coverage-check` reads `go-app/coverage.out`. Always run `make -C go-app coverage` first (or use `make go-app-check` / `make ci-go` from repo root, which run coverage then coverage-check in order).
-- Scope: Coverage excludes `cmd/*`, `*/mocks`, `internal/models`, `internal/safeurl`. Override with `COVERAGE_PACKAGES=./...` for full scope.
+- Scope: Coverage excludes `cmd/*`, `*/mocks`, `internal/models`. Override with `COVERAGE_PACKAGES=./...` for full scope.
 - Gate: The Makefile’s `COV_MIN` default is 60; CI uses 60 (see workflow).
 - Convenience: Run a CI-like local check in one go:
   ```
