@@ -78,6 +78,36 @@ Config file: `ml-service/config.json`
 
 ---
 
+## Database migrations
+
+**Location:** `go-app/migrations/`. Applied by `go run ./cmd/migrate -dir ./migrations`, by `make migrate`, and automatically at API and importer startup.
+
+**How the runner works:** `db.RunMigrationsFS` reads every `*.sql` in the directory, sorts by filename, and applies each version not already recorded in `schema_migrations`. Files ending `.down.sql` are skipped — they are rollback scripts, run by hand if ever, and were previously applied forward because `"down"` sorts before `"up"`.
+
+**Baseline:** `0001_baseline.sql` is a consolidated schema that replaced migrations `0001`–`0095`. Those were squashed because the data is reproducible from the Cricsheet source files — migration `0090` already truncated every fact table on that basis, so the chain carried no state worth replaying.
+
+It was generated with:
+
+```bash
+pg_dump --schema-only --no-owner --no-privileges --no-comments \
+        --exclude-table=schema_migrations
+```
+
+against a database bootstrapped through the full chain, then hand-edited to drop psql meta-commands and session `SET` noise, and to restore the `match_format` seed rows that `--schema-only` omits. Those ids are a contract: `go-app/internal/formats` hardcodes `TEST=1, ODI=2, T20=3, T20I=4`.
+
+**Adding a change:** write a new numbered migration (`0002_...sql`). Do not edit the baseline.
+
+**Existing databases:** a database created by the old chain has all 41 old versions in `schema_migrations` and will never match a fresh one. Recreate it:
+
+```bash
+make dev-destroy   # drops containers AND named volumes, including pgdata
+make dev-up
+```
+
+Note `make dev-purge` does **not** drop the database — it stops the stack and removes `output/`. `dev-destroy` is the one that deletes volumes.
+
+---
+
 ## Cricsheet import
 
 **Why “imported” count can be less than files on disk**
