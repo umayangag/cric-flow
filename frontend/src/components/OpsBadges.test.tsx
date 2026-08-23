@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
-import OpsBadges from '../../src/components/OpsBadges';
+import OpsBadges from './OpsBadges';
 
 describe('OpsBadges', () => {
   it('renders badges with states and last updated', () => {

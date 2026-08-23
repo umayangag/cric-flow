@@ -1,11 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import React from 'react';
-import OpsSuggestions from '../../src/components/OpsSuggestions';
-import { api } from '../../src/api';
+import OpsSuggestions from './OpsSuggestions';
+import { api } from '../api';
 
 // Mock the API client
-vi.mock('../../src/api', () => ({
+vi.mock('../api', () => ({
   api: {
     opsSuggestions: vi.fn(),
   },

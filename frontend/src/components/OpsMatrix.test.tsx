@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
-import OpsMatrix from '../../src/components/OpsMatrix';
+import OpsMatrix from './OpsMatrix';
 
 const CANONICAL_FORMATS = ['TEST', 'ODI', 'T20I', 'T20'];
 
