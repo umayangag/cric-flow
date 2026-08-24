@@ -33,6 +33,7 @@ local-review.md
 # Coverage reports
 **/coverage.out
 **/coverage.html
+**/coverage-func.txt
 **/coverage/
 
 # Binaries

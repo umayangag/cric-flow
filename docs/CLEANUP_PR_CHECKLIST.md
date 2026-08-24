@@ -19,7 +19,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-3 | todo | | Remove `cmd/evaluate` scaffold |
 | C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
 | C1-5 | todo | | Remove the unwired match-harmony modules |
-| C1-6 | todo | | Remove pre-restructure ML leftovers |
+| C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
 | C1-8 | todo | | Remove the unused cricsheet importer port/adapter layer |
 | C1-9 | todo | | Remove remaining orphaned Go functions |
@@ -305,15 +305,25 @@ make ml-service-check
 
 **Scope**
 
-- [ ] Delete `ml-service/ml/queries.py` + `tests/test_queries.py`
-- [ ] Delete `ml-service/ml/encoders.py` + `tests/test_encoders.py`
-- [ ] Delete `ml-service/ml/player_combinator.py` + `tests/test_player_combinator.py` (the live combinator is `go-app/internal/services/predictteam`)
-- [ ] Delete `ml-service/ml/batting_regressor.py`, `bowling_regressor.py` + `tests/test_batting_and_bowling_regressors.py`
-- [ ] Delete `ml-service/ml/calibrate.py` + `tests/test_calibrate.py`
-- [ ] Delete `ml-service/ml/tuning/__main__.py` (no `python -m ml.tuning` invocation exists anywhere)
-- [ ] Delete the dead Go twins: `encodeSession` and `encodeViscosity` in `go-app/internal/selection/encodings.go`
-- [ ] **Keep** `ml/validate_exports.py` — it is live via `make -C ml-service validate-exports` and `validate-exports-infer`
-- [ ] Remove `ARCHITECTURE_MAP.md`'s "Player combinator" section if it describes the Python module rather than the Go one
+- [x] Delete `ml-service/ml/queries.py` + `tests/test_queries.py`
+- [x] Delete `ml-service/ml/encoders.py` + `tests/test_encoders.py`
+- [x] Delete `ml-service/ml/player_combinator.py` + `tests/test_player_combinator.py` (the live combinator is `go-app/internal/services/predictteam`)
+- [x] Delete `ml-service/ml/batting_regressor.py`, `bowling_regressor.py` + `tests/test_batting_and_bowling_regressors.py`
+- [x] Delete `ml-service/ml/calibrate.py` + `tests/test_calibrate.py`
+- [x] Delete `ml-service/ml/tuning/__main__.py` (confirmed: no `python -m ml.tuning` invocation anywhere)
+- [x] Delete the dead Go functions `encodeSession` / `encodeViscosity` (`go-app/internal/selection/encodings.go`) + test file
+- [x] **Kept** `ml/validate_exports.py` — live via `make -C ml-service validate-exports` and `validate-exports-infer`
+- [x] `ARCHITECTURE_MAP.md`'s "Player combinator" section describes the **Go** implementation, so it stays; C7-1 regenerates that file anyway
+
+**Corrections found during execution**
+
+- The plan called the Go `encodeSession`/`encodeViscosity` "duplicates" of `ml/encoders.py`. They are not the same functions: Python maps strings (`"Excellent"` → 3, `"day"` → 0), Go clamps and binarises ints. Both were dead, but for independent reasons.
+- `ml/queries.py` is dead beyond doubt: `match_details` now appears **0 times** in `0001_baseline.sql`, so it queried a table that no longer exists in any form — in MySQL backtick syntax, against Postgres.
+- **`go-app/coverage-func.txt` was tracked** — a 468-line generated coverage report committed in March. Removed and gitignored; `make coverage-func` regenerates it.
+- `docs/ml-and-training.md` advertised `ml.calibrate` with a function list. Rewritten to say calibration is not implemented and to point at `ml/train_win.py` as the right place for it, rather than leaving the doc promising a deleted module.
+- Noted for C6-2: `ml/auto_tune.py` opens with *"Backward-compatible shim — all logic lives in ml.tuning package"* — another re-export shim in the same family as the `app/` ones.
+
+**Coverage:** ml-service 79% (gate 78%), go-app 60.2% (gate 60). 705 → 672 passing, the difference being the deleted modules' own tests.
 
 **Verify**
 
