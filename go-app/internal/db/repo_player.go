@@ -98,23 +98,6 @@ func GetPlayerConsistency(
 	return pc, nil
 }
 
-// GetByName returns a player by exact name match.
-func GetByName(ctx context.Context, name string) (*Player, error) {
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	row := Pool.QueryRow(
-		ctx,
-		`SELECT id, player_name, is_wicket_keeper, is_retired FROM player WHERE player_name = $1`,
-		name,
-	)
-	p := &Player{}
-	if err := row.Scan(&p.ID, &p.Name, &p.IsWicketKeeper, &p.IsRetired); err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
 // GetOrCreateByName fetches a player id or creates a new row.
 func GetOrCreateByName(ctx context.Context, name string) (int64, error) {
 	if Pool == nil {

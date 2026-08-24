@@ -19,22 +19,3 @@ func GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error) {
 	err := Pool.QueryRow(ctx, `SELECT id FROM match_format WHERE code = $1`, code).Scan(&id)
 	return id, err
 }
-
-// EnsureMatchWithFormat inserts a match row with required format_id, match_date and original_match_type if it doesn't exist.
-func EnsureMatchWithFormat(
-	ctx context.Context,
-	matchID int64,
-	formatID int64,
-	matchDate string,
-	originalMatchType string,
-) error {
-	if Pool == nil {
-		return errors.New("db pool not initialized")
-	}
-	_, err := Pool.Exec(ctx, `
-		INSERT INTO match (match_id, format_id, match_date, original_match_type, balls_per_over)
-		VALUES ($1, $2, $3, $4, 6)
-		ON CONFLICT (match_id) DO NOTHING
-	`, matchID, formatID, matchDate, originalMatchType)
-	return err
-}

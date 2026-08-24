@@ -91,66 +91,6 @@ func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string)
 	return out, rows.Err()
 }
 
-// GetPlayerFormFmt returns batting and bowling form for player/format from feature_raw_stats_snapshots (mean_w5).
-// Uses the latest snapshot (scope=overall); seasonID is ignored.
-func GetPlayerFormFmt(ctx context.Context, playerID, _ int64, formatID int64) (bat float64, bowl float64, err error) {
-	if Pool == nil {
-		return 0, 0, errors.New("db pool not initialized")
-	}
-	var b, w sql.NullFloat64
-	err = Pool.QueryRow(ctx, `
-		SELECT batting_mean_w5, bowling_mean_w5
-		FROM feature_raw_stats_snapshots
-		WHERE player_id = $1 AND format_id = $2 AND scope = 'overall' AND scope_id IS NULL
-		ORDER BY as_of_date DESC
-		LIMIT 1
-	`, playerID, formatID).Scan(&b, &w)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, 0, nil
-		}
-		return 0, 0, err
-	}
-	if b.Valid {
-		bat = b.Float64
-	}
-	if w.Valid {
-		bowl = w.Float64
-	}
-	return bat, bowl, nil
-}
-
-// GetPlayerVenueEffectFmt returns batting and bowling venue effect from feature_raw_stats_snapshots (scope=venue, mean_w5).
-func GetPlayerVenueEffectFmt(
-	ctx context.Context,
-	playerID, venueID, formatID int64,
-) (bat float64, bowl float64, err error) {
-	if Pool == nil {
-		return 0, 0, errors.New("db pool not initialized")
-	}
-	var b, w sql.NullFloat64
-	err = Pool.QueryRow(ctx, `
-		SELECT batting_mean_w5, bowling_mean_w5
-		FROM feature_raw_stats_snapshots
-		WHERE player_id = $1 AND format_id = $2 AND scope = 'venue' AND scope_id = $3
-		ORDER BY as_of_date DESC
-		LIMIT 1
-	`, playerID, formatID, venueID).Scan(&b, &w)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, 0, nil
-		}
-		return 0, 0, err
-	}
-	if b.Valid {
-		bat = b.Float64
-	}
-	if w.Valid {
-		bowl = w.Float64
-	}
-	return bat, bowl, nil
-}
-
 // ListPlayerPoolByTeam returns players who have played for the given team (opposition name) in the format,
 // with at least one batting or bowling record before the cutoff date. Uses feature snapshots for form/consistency
 // when available. Optionally include extra player IDs (e.g. IPL auction players with no prior team history).
@@ -254,35 +194,4 @@ func ListPlayerPoolByTeam(
 	}
 
 	return out, nil
-}
-
-// GetPlayerOppositionEffectFmt returns batting and bowling opposition effect from feature_raw_stats_snapshots (scope=opposition, mean_w5).
-func GetPlayerOppositionEffectFmt(
-	ctx context.Context,
-	playerID, oppositionID, formatID int64,
-) (bat float64, bowl float64, err error) {
-	if Pool == nil {
-		return 0, 0, errors.New("db pool not initialized")
-	}
-	var b, w sql.NullFloat64
-	err = Pool.QueryRow(ctx, `
-		SELECT batting_mean_w5, bowling_mean_w5
-		FROM feature_raw_stats_snapshots
-		WHERE player_id = $1 AND format_id = $2 AND scope = 'opposition' AND scope_id = $3
-		ORDER BY as_of_date DESC
-		LIMIT 1
-	`, playerID, formatID, oppositionID).Scan(&b, &w)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, 0, nil
-		}
-		return 0, 0, err
-	}
-	if b.Valid {
-		bat = b.Float64
-	}
-	if w.Valid {
-		bowl = w.Float64
-	}
-	return bat, bowl, nil
 }

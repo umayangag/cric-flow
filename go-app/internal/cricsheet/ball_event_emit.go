@@ -2,7 +2,6 @@ package cricsheet
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -122,20 +121,4 @@ func BuildBallEventRows(ctx context.Context, m *Match, formatID int, matchID int
 		allRows = append(allRows, inningRows...)
 	}
 	return allRows, nil
-}
-
-// EmitBallEvents emits ball_event rows using the default inserter.
-func EmitBallEvents(ctx context.Context, m *Match, formatID int, matchID int64) error {
-	rows, err := BuildBallEventRows(ctx, m, formatID, matchID)
-	if err != nil {
-		return err
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-	if err := insertBallEventsFn(ctx, rows); err != nil {
-		slog.Error("failed to insert ball_event rows", slog.Any("err", err))
-		return fmt.Errorf("failed to insert ball events: %w", err)
-	}
-	return nil
 }
