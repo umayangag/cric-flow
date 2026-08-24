@@ -624,10 +624,10 @@ def get_feature_defaults() -> Dict[str, Any]:
 
 
 def get_pipeline_common_config() -> Dict[str, Any]:
-    """Load shared pipeline settings from ml.generalized_pipeline. Used by all train_* scripts."""
+    """Load shared pipeline settings from ml.pipeline_common. Used by all train_* scripts."""
     cfg = _load()
     ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    gp = (ml.get("generalized_pipeline") if isinstance(ml, dict) else None) or {}
+    gp = (ml.get("pipeline_common") if isinstance(ml, dict) else None) or {}
     min_rows = gp.get("min_rows_for_training", DEFAULT_MIN_ROWS_FOR_TRAINING)
     try:
         min_rows = int(min_rows)

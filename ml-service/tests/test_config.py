@@ -430,7 +430,7 @@ def test_get_prediction_defaults(monkeypatch):
 
 
 def test_get_pipeline_common_config():
-    """get_pipeline_common_config returns generalized_pipeline defaults."""
+    """get_pipeline_common_config returns pipeline_common defaults."""
     config_mod._cached = None
     cfg = get_pipeline_common_config()
     assert "use_robust_scaler" in cfg

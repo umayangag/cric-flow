@@ -17,7 +17,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-1 | done | `cleanup/c1-1-migration-down-files` | Fix: migration runner executes `.down.sql` as forward migrations |
 | C1-2 | todo | | Fix: `make precompute` uses a non-existent API key |
 | C1-3 | todo | | Remove `cmd/evaluate` scaffold |
-| C1-4 | todo | | Remove the unused generalized-pipeline experiment |
+| C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
 | C1-5 | todo | | Remove the unwired match-harmony modules |
 | C1-6 | todo | | Remove pre-restructure ML leftovers |
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
@@ -246,12 +246,15 @@ make go-app-check
 
 **Scope**
 
-- [ ] Delete `ml-service/ml/generalized_pipeline.py` (641 lines)
-- [ ] Delete `ml-service/ml/train_generalized.py` (106 lines)
-- [ ] Delete `ml-service/ml/ball_by_ball_loader.py`
-- [ ] Delete `ml-service/tests/test_generalized_pipeline.py`, `test_train_generalized.py`, `test_ball_by_ball_loader.py`
-- [ ] **Keep** `ml/config.py:get_pipeline_common_config()` — despite reading a config block literally named `generalized_pipeline`, it is used by every `train_*` script via `ml/pipeline_common.py`
-- [ ] Rename that config block from `generalized_pipeline` to `pipeline_common` in `config.default.json`, `config.json`, and `ml/config.py:630`, and update the docstring at `tests/test_config.py:433`
+- [x] Delete `ml-service/ml/generalized_pipeline.py` (641 lines)
+- [x] Delete `ml-service/ml/train_generalized.py` (106 lines)
+- [x] Delete `ml-service/ml/ball_by_ball_loader.py`
+- [x] Delete `ml-service/tests/test_generalized_pipeline.py`, `test_train_generalized.py`, `test_ball_by_ball_loader.py`
+- [x] **Kept** `ml/config.py:get_pipeline_common_config()` — 14 call sites across `train_fielding`, `train_extras`, `train_win`, `train_innings`, `training_pipeline`, and `app/train_on_the_fly`
+- [x] Renamed the config key it reads from `generalized_pipeline` to `pipeline_common`. **The key was absent from both `config.json` and `config.default.json`** — every caller was already getting the in-code defaults, so the rename is behaviour-preserving
+- [x] Snapshot note added to `docs/audit-coding-principles-remediation.md`, whose 2025-03-11 largest-files table listed the deleted module (and two others since split by P0-2/P0-3)
+
+**Coverage:** 80% → 79%, gate 78%. The deleted modules were covered at 84–98%, above the project average, so removing them lowers the ratio. No test was lost for surviving code: 728 → 705 passing, the difference being the deleted modules' own tests.
 
 **Verify**
 
