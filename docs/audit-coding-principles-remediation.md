@@ -58,6 +58,8 @@
 
 **Recommendation:** Split by domain or responsibility (e.g. backtest handlers by subdomain, `useEvaluateDb` into smaller hooks, `prediction_service` into feature/orchestration modules, `main.py` into routers + thin app).
 
+> **Snapshot note (2026-08).** This table records the codebase as of 2025-03-11 and is not maintained. Several entries have since been resolved: `app/prediction_service.py` was split into a package (P0-3), `app/models.py` likewise (P0-2), and `ml/generalized_pipeline.py` was deleted as unreachable (C1-4). Current follow-up work is tracked in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md) and [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md).
+
 ### 3.4 Separation of concerns
 
 - **Finding:** Go-app keeps HTTP in `internal/server`, DB in `internal/db`, business logic in `internal/services/*`. ML-service keeps routes in `app`, core ML in `ml/`. Frontend has `api` and `hooks` for data.
