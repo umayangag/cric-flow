@@ -31,7 +31,6 @@ packages:
       Row: {}
       Rows: {}
       DatasetRepo: {}
-      MatchRepo: {}
   github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset:
     config:
       dir: internal/commands/exportdataset/mocks
@@ -47,6 +46,4 @@ packages:
       dir: internal/cricsheet/mocks
       pkgname: mocks
     interfaces:
-      Loader: {}
-      Parser: {}
       CricsheetDB: {}
