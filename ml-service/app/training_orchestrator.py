@@ -13,6 +13,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
+from ml.config import get_format_codes
+
 # Logger type: any object with info, warning, error, debug
 Logger = Any
 
@@ -233,7 +235,7 @@ def get_auto_tune_progress() -> Dict[str, Any]:
 
 
 VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")
-VALID_AUTO_TUNE_FORMATS = ("TEST", "ODI", "T20", "T20I")
+VALID_AUTO_TUNE_FORMATS = tuple(get_format_codes())
 
 
 def run_auto_tune(

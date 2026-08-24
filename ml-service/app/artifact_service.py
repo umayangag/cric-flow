@@ -10,6 +10,8 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from ml.config import get_format_codes
+
 from .artifacts import (
     BAT_MODELS,
     BOWL_MODELS,
@@ -21,7 +23,7 @@ from .logging import get_struct_logger
 
 logger = get_struct_logger()
 
-SUPPORTED_FORMATS = ["TEST", "ODI", "T20I", "T20"]
+SUPPORTED_FORMATS = get_format_codes()
 ARTIFACT_KINDS = ["batting", "bowling", "fielding", "extras", "win"]
 
 

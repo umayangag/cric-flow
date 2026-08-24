@@ -13,12 +13,10 @@ import (
 func normalizeFormat(s string) (string, error) {
 	// Accept aliases (MDM, ODM, IT20) and return the canonical code.
 	f := formats.CanonicalizeCode(s)
-	switch f {
-	case "TEST", "ODI", "T20I", "T20":
-		return f, nil
-	default:
+	if !formats.IsCanonical(f) {
 		return "", errors.New("invalid format")
 	}
+	return f, nil
 }
 
 // parsePositiveInt64ForMatch parses a required positive int64 for match id.

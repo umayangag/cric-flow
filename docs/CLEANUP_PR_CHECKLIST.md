@@ -30,7 +30,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
 | C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
-| C5-1 | todo | | Single source of truth for canonical format codes |
+| C5-1 | done | `cleanup/c5-1-canonical-formats` | Single source of truth for canonical format codes |
 | C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
 | C6-1 | todo | | Frontend: one API client |
@@ -706,7 +706,24 @@ grep -rn '"TEST".*"ODI"' go-app/internal ml-service/{app,ml} | grep -v canonical
 cd go-app && go test ./... && cd .. && make check-all
 ```
 
-**Acceptance:** one Go list and one Python list; the grep above returns nothing outside the definitions.
+**Acceptance:** met. One Go list (`formats.CanonicalCodes()`) and one Python list (`ml.config.CANONICAL_FORMAT_CODES`, via `get_format_codes()`), and all six consumers agree:
+
+```
+Go   print_canonical : ["TEST","ODI","T20","T20I"]
+py   config          : ['TEST', 'ODI', 'T20', 'T20I']
+py   artifact_service: ['TEST', 'ODI', 'T20', 'T20I']
+py   auto_tune       : ['TEST', 'ODI', 'T20', 'T20I']
+py   win_features    : ['TEST', 'ODI', 'T20', 'T20I']
+check-frontend-backend-sync.mjs: OK
+```
+
+**Added `formats.IsCanonical()`.** Three of the Go sites tested membership with a `switch` or a `map`, not iteration, so a list alone could not replace them. Covered by table tests including a guard that `CanonicalCodes()` and `IsCanonical()` cannot drift apart, and one confirming aliases are rejected until `CanonicalizeCode` is applied.
+
+**Order changed in ops status.** `opsstatus` used `TEST, ODI, T20I, T20`; everything now uses `TEST, ODI, T20, T20I`. This affects iteration order in `/ops/status` sections — cosmetic, but visible in the UI.
+
+**Python duplication was worse than the plan counted.** Beyond the two plain constants, four modules (`training_pipeline`, `win_features`, `validate_exports`, `tuning/cli`) each carried a near-identical helper reading `ml.formats` from config with its own copy of the fallback. `win_features._load_format_codes()` is gone entirely, replaced by the shared getter; its public `get_format_codes()` wrapper is unchanged for callers.
+
+**The literal-list guard moves to C7-2.** A grep-based test for stray lists is brittle; it belongs with the other CI guardrails rather than as a unit test here.
 
 **Risk:** low. Watch for order-dependent behaviour in `exports.go` and the `opsstatus` matrix.
 

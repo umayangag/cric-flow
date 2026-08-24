@@ -4,7 +4,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ml.resources import suggested_n_jobs
 
@@ -641,6 +641,24 @@ def get_pipeline_common_config() -> Dict[str, Any]:
         "delta_threshold": float(gp.get("delta_threshold", 0.08)),
         "min_rows_for_training": min_rows,
     }
+
+
+# Canonical cricket format codes. Mirrors go-app/internal/formats.CanonicalCodes();
+# the two are kept in step by scripts/check-frontend-backend-sync.mjs via cmd/print_canonical.
+# Order is significant: it fixes one-hot column order in win_features.
+CANONICAL_FORMAT_CODES: List[str] = ["TEST", "ODI", "T20", "T20I"]
+
+
+def get_format_codes() -> List[str]:
+    """Return the configured format codes, falling back to CANONICAL_FORMAT_CODES.
+
+    Single source for every caller that previously kept its own copy of the list.
+    """
+    cfg = _load()
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    fmts = (ml.get("formats") if isinstance(ml, dict) else None) or []
+    out = [str(x).strip().upper() for x in fmts if isinstance(x, (str, int)) and str(x).strip()]
+    return out or list(CANONICAL_FORMAT_CODES)
 
 
 def get_prediction_defaults() -> Dict[str, Any]:

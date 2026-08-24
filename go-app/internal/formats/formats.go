@@ -29,6 +29,18 @@ const (
 	IDT20I = 4
 )
 
+// IsCanonical reports whether code is one of the canonical format codes.
+// Input is normalized first, so " t20i " and "T20I" both match. Aliases are not
+// accepted here; call CanonicalizeCode first when the input may be an alias.
+func IsCanonical(code string) bool {
+	switch NormalizeCode(code) {
+	case CodeTest, CodeODI, CodeT20, CodeT20I:
+		return true
+	default:
+		return false
+	}
+}
+
 // NormalizeCode trims and upper-cases the input code.
 func NormalizeCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))

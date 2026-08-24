@@ -6,6 +6,8 @@ import (
 	"context"
 	"time"
 
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
+
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
@@ -43,7 +45,8 @@ type InsightsProbe interface {
 }
 
 // CricketFormatCodes are the shared format codes used across ops status helpers.
-var CricketFormatCodes = []string{"TEST", "ODI", "T20I", "T20"}
+// Sourced from internal/formats so there is one canonical list.
+var CricketFormatCodes = formatsPkg.CanonicalCodes()
 
 // worseStatus computes the worse (higher severity) status between a and b.
 // Severity order: ok < stale < missing < unknown

@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
 // Options captures CLI options for export-dataset.
@@ -72,7 +74,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 
 func computeFormats(allFormats bool, formatsCSV, single string) ([]string, error) {
 	if allFormats {
-		return []string{"TEST", "ODI", "T20", "T20I"}, nil
+		return formatsPkg.CanonicalCodes(), nil
 	}
 	if formatsCSV != "" {
 		items := splitAndNorm(formatsCSV)
