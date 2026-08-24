@@ -171,7 +171,9 @@ Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.c
 
 ## Probability calibration (classifiers)
 
-For classifiers (e.g. win model), predicted probabilities can be **calibrated** (Platt scaling or isotonic regression) so they reflect true frequencies. Evaluation: reliability diagram, Brier score, ECE. Module: `ml.calibrate` — `calibrate_classifier()`, `reliability_diagram_data()`, `evaluate_calibration()`. Use when you need calibrated probabilities for the win (or other) classifier.
+For classifiers (e.g. the win model), predicted probabilities can be **calibrated** (Platt scaling or isotonic regression) so they reflect true frequencies, and evaluated with a reliability diagram, Brier score, or ECE.
+
+**Not currently implemented.** A `ml.calibrate` module existed but was never wired into training or serving — no caller, no pipeline step, no endpoint — and was removed in C1-4/C1-6 cleanup. The win model's output is used uncalibrated. If calibration is wanted, add it to the win training path in `ml/train_win.py` so it ships with the artifact, rather than as a standalone module.
 
 ---
 
