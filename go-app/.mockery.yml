@@ -15,13 +15,6 @@ packages:
       pkgname: mocks
     interfaces:
       MLClient: {}
-  github.com/umayangag/cric-flow/go-app/internal/commands/teampredictor:
-    config:
-      dir: internal/commands/teampredictor/internal/mocks
-      pkgname: mocks
-    interfaces:
-      Predictor: { }
-      MLClient: {}
   github.com/umayangag/cric-flow/go-app/internal/db:
     config:
       dir: internal/db/mocks
@@ -31,9 +24,9 @@ packages:
       Row: {}
       Rows: {}
       DatasetRepo: {}
-  github.com/umayangag/cric-flow/go-app/internal/commands/exportdataset:
+  github.com/umayangag/cric-flow/go-app/internal/services/exportdataset:
     config:
-      dir: internal/commands/exportdataset/mocks
+      dir: internal/services/exportdataset/mocks
       pkgname: mocks
     interfaces:
       BattingExporter: {}

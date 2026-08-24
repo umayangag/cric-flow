@@ -10,8 +10,6 @@ import "context"
 type DatasetRepo interface {
 	// BattingUnifiedRows returns rows for the unified batting export.
 	BattingUnifiedRows(ctx context.Context) ([][]string, error)
-	// BattingLegacyRows returns rows for the legacy batting export (no format filter).
-	BattingLegacyRows(ctx context.Context) ([][]string, error)
 	// BattingInferenceRows returns rows for batting inference export filtered by format.
 	BattingInferenceRows(ctx context.Context, format string) ([][]string, error)
 	// BattingFormatRows returns rows for per-format training batting export.
@@ -19,8 +17,6 @@ type DatasetRepo interface {
 
 	// BowlingUnifiedRows returns rows for the unified bowling export.
 	BowlingUnifiedRows(ctx context.Context) ([][]string, error)
-	// BowlingLegacyRows returns rows for the legacy bowling export (no format filter).
-	BowlingLegacyRows(ctx context.Context) ([][]string, error)
 	// BowlingInferenceRows returns rows for bowling inference export filtered by format.
 	BowlingInferenceRows(ctx context.Context, format string) ([][]string, error)
 	// BowlingFormatRows returns rows for per-format training bowling export.

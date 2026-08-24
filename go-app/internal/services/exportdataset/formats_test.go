@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
 
@@ -68,19 +69,21 @@ func TestResolveFormats_ConfigFallbacks(t *testing.T) {
 			want: []string{"ODI"},
 		},
 		{
+			// split_by_format no longer changes the outcome: exports are always
+			// per-format since the combined unsuffixed CSVs were removed in C3-1
 			name: "split by format",
 			cfg:  mkCfg(true, ""),
-			want: []string{"TEST", "ODI", "T20", "T20I"},
+			want: formatsPkg.CanonicalCodes(),
 		},
 		{
-			name: "legacy combined",
+			name: "no required format falls back to every canonical format",
 			cfg:  mkCfg(false, ""),
-			want: []string{""},
+			want: formatsPkg.CanonicalCodes(),
 		},
 		{
-			name: "nil cfg legacy combined",
+			name: "nil cfg falls back to every canonical format",
 			cfg:  nil,
-			want: []string{""},
+			want: formatsPkg.CanonicalCodes(),
 		},
 	}
 

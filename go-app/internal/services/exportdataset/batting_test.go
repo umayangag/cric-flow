@@ -52,15 +52,6 @@ func TestBattingService_Exports(t *testing.T) {
 			assert: assertNoErrorCSV("h1,h2\na,b\n"),
 		},
 		{
-			name: "legacy writes rows",
-			act: func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
-				m.EXPECT().BattingLegacyRows(mock.Anything).Return([][]string{{"lh1", "lh2"}, {"x", "y"}}, nil)
-				return s.ExportLegacy(ctx, w)
-			},
-			want:   "lh1,lh2\nx,y\n",
-			assert: assertNoErrorCSV("lh1,lh2\nx,y\n"),
-		},
-		{
 			name: "inference writes rows",
 			act: func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
 				m.EXPECT().
@@ -98,14 +89,6 @@ func TestBattingService_Errors(t *testing.T) {
 			func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
 				m.EXPECT().BattingUnifiedRows(mock.Anything).Return(nil, errors.New("boom"))
 				return s.ExportUnified(ctx, w)
-			},
-			assertErrContains("boom"),
-		},
-		{
-			"legacy error",
-			func(ctx context.Context, s *svc.BattingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
-				m.EXPECT().BattingLegacyRows(mock.Anything).Return(nil, errors.New("boom"))
-				return s.ExportLegacy(ctx, w)
 			},
 			assertErrContains("boom"),
 		},

@@ -11,7 +11,6 @@ import (
 // BowlingExporter defines bowling export operations.
 type BowlingExporter interface {
 	ExportUnified(ctx context.Context, w io.Writer) error
-	ExportLegacy(ctx context.Context, w io.Writer) error
 	ExportInference(ctx context.Context, format string, w io.Writer) error
 	ExportFormat(ctx context.Context, format string, w io.Writer) error
 }
@@ -28,17 +27,6 @@ func (s *BowlingService) ExportUnified(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("nil service or repo")
 	}
 	rows, err := s.Repo.BowlingUnifiedRows(ctx)
-	if err != nil {
-		return err
-	}
-	return writeCSV(w, rows)
-}
-
-func (s *BowlingService) ExportLegacy(ctx context.Context, w io.Writer) error {
-	if s == nil || s.Repo == nil {
-		return fmt.Errorf("nil service or repo")
-	}
-	rows, err := s.Repo.BowlingLegacyRows(ctx)
 	if err != nil {
 		return err
 	}

@@ -26,7 +26,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
 | C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
-| C3-1 | todo | | Delete `train_batting_model` / `train_bowling_model` |
+| C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | todo | | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
 | C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
@@ -544,11 +544,26 @@ The second writes the unsuffixed `batting_model.joblib` / `batting_scaler.joblib
 
 **Scope**
 
-- [ ] Delete `ml-service/ml/train_batting_model.py`, `train_bowling_model.py`
-- [ ] Remove the `unified_batting_csv_available()` / `unified_bowling_csv_available()` branches from `app/training_orchestrator.py:150-198`
-- [ ] Simplify `Makefile:162` and `:165` to the per-format call only; remove the second invocation from `Makefile:416`
-- [ ] Remove the `batting_encoded.csv` / `bowling_encoded.csv` legacy fallbacks from the exporter (`ExportLegacy` in `internal/services/exportdataset/{batting,bowling}.go` and `BattingLegacyRows` / `BowlingLegacyRows` in `internal/db/exportqueries/`)
-- [ ] Delete stale unsuffixed artifacts from `output/ml-service/` and document that in the PR body
+- [x] Delete `ml-service/ml/train_batting_model.py`, `train_bowling_model.py`
+- [x] Remove the `unified_*_csv_available()` branches from `app/training_orchestrator.py`
+- [x] Simplify the Makefile training targets (three call sites, not two — `Makefile:398` also invoked the legacy trainers)
+- [x] Remove `ExportLegacy` + `BattingLegacyRows` / `BowlingLegacyRows` from the exporter and repo
+- [x] `ResolveFormats` no longer falls back to `[""]`; it returns `formatsPkg.CanonicalCodes()`, so exports are always per-format
+
+**Found during execution — a third legacy producer the plan missed**
+
+`ml/training_pipeline.py:_run_legacy_csv` trained from the unsuffixed `<model>_encoded.csv` and saved with `format=None`, which is exactly what the `_LEGACY_` registry loads. So the modern trainer had its own path to unsuffixed artifacts. With the exporter no longer writing those CSVs, the path was unreachable except via an explicit `--csv`; removed, and "no formats resolved" is now a clear error rather than a silent fallback.
+
+**`*_encoded_all.csv` stays.** It looked like part of the same legacy family, but `train_fielding`, `train_innings`, `train_win`, `train_extras` and `ml/tuning/cli.py` all read it — those models are not format-split. Only the *unsuffixed* `<model>_encoded.csv` was legacy.
+
+**Two pre-existing bugs fixed in passing**
+
+- **`make mock` was broken.** `.mockery.yml` carried two entries pointing at `internal/commands/...`, a directory tree that no longer exists after a rename to `internal/services/...`. Mockery aborted on the first one, so mocks could not be regenerated at all. One entry was a duplicate of a correct one and was deleted; the other had its path corrected to `internal/services/exportdataset`.
+- Unified exports now also emit per-format CSVs in the no-config case, because `ResolveFormats` returns real formats instead of `[""]`. `runner_test.go` was asserting the old behaviour.
+
+**Left alone, noted for C5-3:** `cfg.Export.SplitByFormat` no longer changes any outcome — both branches now resolve to the canonical formats. It is referenced in two handlers and the config schema, so removing it belongs with the wider config reconciliation.
+
+**Coverage:** go-app 60.1% (gate 60); ml-service 670 passing.
 
 **Verify**
 

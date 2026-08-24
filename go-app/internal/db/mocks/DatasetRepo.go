@@ -173,68 +173,6 @@ func (_c *MockDatasetRepo_BattingInferenceRows_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
-// BattingLegacyRows provides a mock function for the type MockDatasetRepo
-func (_mock *MockDatasetRepo) BattingLegacyRows(ctx context.Context) ([][]string, error) {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for BattingLegacyRows")
-	}
-
-	var r0 [][]string
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) ([][]string, error)); ok {
-		return returnFunc(ctx)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) [][]string); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([][]string)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = returnFunc(ctx)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockDatasetRepo_BattingLegacyRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BattingLegacyRows'
-type MockDatasetRepo_BattingLegacyRows_Call struct {
-	*mock.Call
-}
-
-// BattingLegacyRows is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockDatasetRepo_Expecter) BattingLegacyRows(ctx interface{}) *MockDatasetRepo_BattingLegacyRows_Call {
-	return &MockDatasetRepo_BattingLegacyRows_Call{Call: _e.mock.On("BattingLegacyRows", ctx)}
-}
-
-func (_c *MockDatasetRepo_BattingLegacyRows_Call) Run(run func(ctx context.Context)) *MockDatasetRepo_BattingLegacyRows_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *MockDatasetRepo_BattingLegacyRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_BattingLegacyRows_Call {
-	_c.Call.Return(stringss, err)
-	return _c
-}
-
-func (_c *MockDatasetRepo_BattingLegacyRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_BattingLegacyRows_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // BattingUnifiedRows provides a mock function for the type MockDatasetRepo
 func (_mock *MockDatasetRepo) BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	ret := _mock.Called(ctx)
@@ -429,68 +367,6 @@ func (_c *MockDatasetRepo_BowlingInferenceRows_Call) Return(stringss [][]string,
 }
 
 func (_c *MockDatasetRepo_BowlingInferenceRows_Call) RunAndReturn(run func(ctx context.Context, format string) ([][]string, error)) *MockDatasetRepo_BowlingInferenceRows_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// BowlingLegacyRows provides a mock function for the type MockDatasetRepo
-func (_mock *MockDatasetRepo) BowlingLegacyRows(ctx context.Context) ([][]string, error) {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for BowlingLegacyRows")
-	}
-
-	var r0 [][]string
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) ([][]string, error)); ok {
-		return returnFunc(ctx)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) [][]string); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([][]string)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = returnFunc(ctx)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockDatasetRepo_BowlingLegacyRows_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BowlingLegacyRows'
-type MockDatasetRepo_BowlingLegacyRows_Call struct {
-	*mock.Call
-}
-
-// BowlingLegacyRows is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockDatasetRepo_Expecter) BowlingLegacyRows(ctx interface{}) *MockDatasetRepo_BowlingLegacyRows_Call {
-	return &MockDatasetRepo_BowlingLegacyRows_Call{Call: _e.mock.On("BowlingLegacyRows", ctx)}
-}
-
-func (_c *MockDatasetRepo_BowlingLegacyRows_Call) Run(run func(ctx context.Context)) *MockDatasetRepo_BowlingLegacyRows_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *MockDatasetRepo_BowlingLegacyRows_Call) Return(stringss [][]string, err error) *MockDatasetRepo_BowlingLegacyRows_Call {
-	_c.Call.Return(stringss, err)
-	return _c
-}
-
-func (_c *MockDatasetRepo_BowlingLegacyRows_Call) RunAndReturn(run func(ctx context.Context) ([][]string, error)) *MockDatasetRepo_BowlingLegacyRows_Call {
 	_c.Call.Return(run)
 	return _c
 }

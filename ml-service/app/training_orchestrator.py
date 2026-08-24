@@ -104,32 +104,8 @@ def export_csvs_available(prefix: str) -> bool:
     return False
 
 
-def unified_batting_csv_available() -> bool:
-    """True if batting_encoded_all.csv or batting_encoded.csv exists in export dir."""
-    from ml.config import default_go_app_export_dir
-
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    return os.path.isfile(os.path.join(out_dir, "batting_encoded_all.csv")) or os.path.isfile(
-        os.path.join(out_dir, "batting_encoded.csv")
-    )
-
-
-def unified_bowling_csv_available() -> bool:
-    """True if bowling_encoded_all.csv or bowling_encoded.csv exists in export dir."""
-    from ml.config import default_go_app_export_dir
-
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip() or default_go_app_export_dir()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    return os.path.isfile(os.path.join(out_dir, "bowling_encoded_all.csv")) or os.path.isfile(
-        os.path.join(out_dir, "bowling_encoded.csv")
-    )
-
-
 def run_batting_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run per-format batting training, then unified if CSV available. Raises ValueError on failure."""
+    """Run per-format batting training. Raises ValueError on failure."""
     csv_available = export_csvs_available("batting_encoded_")
     use_api = bool(cutoff) and not csv_available
     if use_api:
@@ -147,23 +123,12 @@ def run_batting_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
                 from_csv=bool(cutoff and csv_available),
             )
     run_training_subprocess("ml.train_batting", extra, {"ML_N_JOBS": "-1"}, logger=logger)
-    if unified_batting_csv_available():
-        try:
-            from ml.train_batting_model import run_training as run_unified_batting
-
-            run_unified_batting()
-            if logger:
-                logger.info("admin.train.success", step="batting", unified=True)
-        except Exception as e:
-            if logger:
-                logger.warning("admin.train.unified_batting_failed", error=str(e))
-    else:
-        if logger:
-            logger.info("admin.train.success", step="batting", unified=False)
+    if logger:
+        logger.info("admin.train.success", step="batting")
 
 
 def run_bowling_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run per-format bowling training, then unified if CSV available. Raises ValueError on failure."""
+    """Run per-format bowling training. Raises ValueError on failure."""
     csv_available = export_csvs_available("bowling_encoded_")
     use_api = bool(cutoff) and not csv_available
     if use_api:
@@ -181,19 +146,8 @@ def run_bowling_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
                 from_csv=bool(cutoff and csv_available),
             )
     run_training_subprocess("ml.train_bowling", extra, {"ML_N_JOBS": "-1"}, logger=logger)
-    if unified_bowling_csv_available():
-        try:
-            from ml.train_bowling_model import run_training as run_unified_bowling
-
-            run_unified_bowling()
-            if logger:
-                logger.info("admin.train.success", step="bowling", unified=True)
-        except Exception as e:
-            if logger:
-                logger.warning("admin.train.unified_bowling_failed", error=str(e))
-    else:
-        if logger:
-            logger.info("admin.train.success", step="bowling", unified=False)
+    if logger:
+        logger.info("admin.train.success", step="bowling")
 
 
 def run_fielding_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:

@@ -455,10 +455,17 @@ class TrainingPipeline:
         if not targets and not args.csv:
             targets = pipeline._auto_detect_formats(default_csv_dir)
 
-        # Legacy single CSV fallback
         if not targets:
-            pipeline._run_legacy_csv(args, default_csv_dir)
-            return
+            # Training is always per-format. The unsuffixed <model>_encoded.csv this used to
+            # fall back on is no longer produced by the exporter (C3-1), and the artifacts it
+            # wrote had no format suffix, which is what the removed _LEGACY_ registry loaded.
+            logger.error(
+                "train_%s.no_formats csv_dir=%s hint=%s",
+                spec.name,
+                default_csv_dir,
+                "pass --format/--formats/--all-formats, or run export-dataset first",
+            )
+            raise SystemExit(1)
 
         # Per-format training loop
         pipeline._run_csv_format_loop(args, targets, default_csv_dir)
@@ -590,42 +597,6 @@ class TrainingPipeline:
         if targets and saved_count == 0:
             logger.error("train_%s.no_models_saved from_api=True cutoff=%s", self.spec.name, cutoff)
             raise SystemExit(1)
-
-    def _run_legacy_csv(self, args: argparse.Namespace, csv_dir: str) -> None:
-        training_params = get_training_params(self.spec.name, None)
-        csv_path = args.csv or os.path.join(csv_dir, f"{self.spec.artifact_prefix}_encoded.csv")
-        try:
-            X, Y, feature_names_used, medians, weights = self.load_dataset(csv_path, share_targets=args.share_targets)
-        except FileNotFoundError as e:
-            logger.error("train_%s.legacy_csv_not_found path=%s error=%s", self.spec.name, csv_path, e)
-            raise SystemExit(1) from e
-        if X.size == 0 or Y.size == 0:
-            logger.error("train_%s.no_data path=%s", self.spec.name, csv_path)
-            return
-        transform_config = get_transform_config(self.spec.name)
-        meta = {
-            "csv_path": csv_path,
-            "rows": int(X.shape[0]),
-            "n_features": int(X.shape[1]),
-            "n_targets": int(Y.shape[1]),
-            "format": None,
-            "model": "RandomForestRegressor",
-            "hyperparams": training_params,
-            "feature_names": feature_names_used,
-            "imputation_medians": medians,
-        }
-        self.train_and_save(
-            X,
-            Y,
-            args.out,
-            training_params,
-            None,
-            meta,
-            transform_config,
-            sample_weight=weights,
-            share_model=args.share_targets,
-        )
-        logger.info("train_%s.saved_legacy out_dir=%s", self.spec.name, args.out)
 
     def _run_csv_format_loop(self, args: argparse.Namespace, targets: List[str], csv_dir: str) -> None:
         logger.info(
