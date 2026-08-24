@@ -114,10 +114,9 @@ Each PR targets one package group. Keep PRs small and reviewable.
 - [ ] `internal/services/opsstatus/ops_status_pipeline_test.go`
 - [ ] `internal/services/opsstatus/ops_status_precompute_test.go`
 
-### PR 9 — V1+V3: `internal/services/evaluate` + `internal/services/exportdataset`
-- [ ] `internal/services/evaluate/options_test.go`
-- [ ] `internal/services/evaluate/runner_test.go`
-- [ ] `internal/services/evaluate/service_test.go`
+### PR 9 — V1+V3: `internal/services/exportdataset`
+<!-- internal/services/evaluate was removed in C1-3: it wrapped internal/eval for a
+     cmd/evaluate scaffold that returned hardcoded arrays. -->
 - [ ] `internal/services/exportdataset/formats_test.go`
 - [ ] `internal/services/exportdataset/guards_test.go`
 - [ ] `internal/services/exportdataset/options_test.go`

@@ -73,12 +73,6 @@ cricsheet-import:
 	if [ "$(FAIL_FAST)" = "0" ]; then FAIL_FAST_FLAG="--fail-fast=false"; fi; \
 	go run ./cmd/cricsheet-importer -in="$$DIR" $$PLACEHOLDERS_FLAG $$FAIL_FAST_FLAG
 
-# Evaluate (scaffold)
-# Example: make evaluate SEASON=2019 FORMAT=T20
-evaluate:
-	go run ./cmd/evaluate -season=$(SEASON) -format=$(FORMAT)
-
-
 # Format Go code (gofumpt + golines). Extracted to script for readability.
 fmt:
 	@bash ./scripts/go_fmt.sh

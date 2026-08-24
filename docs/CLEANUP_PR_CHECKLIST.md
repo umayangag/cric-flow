@@ -16,7 +16,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C0-2 | done | `cleanup/c0-2-orphan-frontend-tree` | Delete the orphan frontend tree; one test location |
 | C1-1 | done | `cleanup/c1-1-migration-down-files` | Fix: migration runner executes `.down.sql` as forward migrations |
 | C1-2 | done | `cleanup/c1-2-precompute-api-key` | Fix: `make precompute` uses a non-existent API key |
-| C1-3 | todo | | Remove `cmd/evaluate` scaffold |
+| C1-3 | done | `cleanup/c1-3-remove-evaluate-scaffold` | Remove `cmd/evaluate` scaffold |
 | C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
 | C1-5 | todo | | Remove the unwired match-harmony modules |
 | C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
@@ -265,7 +265,15 @@ make go-app-check
 
 **Acceptance:** builds and tests pass; no reference to `cmd/evaluate` remains (`grep -rn 'cmd/evaluate' .` returns nothing).
 
-**Risk:** low. Check whether any metric helper in `internal/services/evaluate/service.go` is worth keeping — if a real metrics function lives there, move it to `internal/eval/` rather than deleting it.
+**Risk:** low.
+
+**On the metric helpers the plan asked about:** they were already in the right place. `services/evaluate/service.go` was a thin wrapper whose `ComputeMetrics` just delegated to `internal/eval.MAE/RMSE/BrierScore`. Nothing needed moving; the wrapper went and `internal/eval` stayed.
+
+**`internal/eval` is now caller-less — deliberately kept.** It is a 100%-covered, dependency-free implementation of MAE, RMSE and Brier score. Meanwhile the live backtest path reimplements absolute error inline as `math.Abs(pred - act)` in roughly eight places (`backtest_services.go`, `backtest_handlers.go`, `backtest_handlers_helpers.go`, `services/backtest/metrics.go`). Deleting a correct implementation while the codebase open-codes the same idea elsewhere would be the wrong trade, and it would also drop coverage to ~59.8%, under the gate.
+
+**Follow-up worth doing:** route the backtest metrics through `internal/eval` rather than inline `math.Abs`. That turns a caller-less package into the single metrics implementation, and is real consolidation rather than deletion.
+
+**Coverage:** 60.1% → 60.0% (gate 60). `services/evaluate` was ~95% covered.
 
 ---
 
