@@ -67,13 +67,11 @@ func TestParseArgs_Basic(t *testing.T) {
 		{
 			name:  "legacy behavior flags parsed",
 			setup: func() { os.Setenv("GO_APP_CRICSHEET_DIR", tmp); os.Setenv("CRICSHEET_CONCURRENCY", "2") },
-			args:  []string{"-placeholders-weather", "-placeholders-fielding", "-weather-enqueue=false"},
+			args:  []string{"-placeholders-fielding"},
 			assert: func(t *testing.T, got svc.Options, err error) {
 				t.Helper()
 				require.NoError(t, err)
-				require.True(t, got.PlaceholdersWeather)
 				require.True(t, got.PlaceholdersFielding)
-				require.False(t, got.WeatherEnqueue)
 			},
 		},
 	}

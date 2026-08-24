@@ -24,7 +24,7 @@ API contracts (Go and ML), backtest/evaluate on played matches, and the ops stat
 - **GET /readiness** — 200 `{ "status": "ready" }`; 503 when DB unavailable
 - **POST /precompute** — 202 `{ "status": "started" }`; optional body `{ "season", "formats" }`
 - **GET /precompute/status** — 200 with running, started_at, finished_at, season, formats, phase (starting|form|venue|opposition|consistency|done), last_error
-- **POST /import/cricsheet** — Body: `{ "dir", "placeholders_weather", "placeholders_fielding" }`; 202 started
+- **POST /import/cricsheet** — Body: `{ "dir", "placeholders_fielding" }`; 202 started
 - **GET /players/{id}?season=...&format=...** — Player details (id, player_name, is_wicket_keeper, batting_consistency, bowling_consistency, etc.)
 
 Backtest and ops endpoints are described in the sections below. Keep contracts in sync with `ml-service/app/main.py` Pydantic models and Go `internal/contracts`.

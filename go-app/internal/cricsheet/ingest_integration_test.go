@@ -233,7 +233,7 @@ func (t *offlineSpyTx) Commit(_ context.Context) error   { return nil }
 func (t *offlineSpyTx) Rollback(_ context.Context) error { return nil }
 
 func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
-	// Not parallel: uses package-level singletons (db.PoolAPI, SetRunInTxFn, SetWeatherClient).
+	// Not parallel: uses package-level singletons (db.PoolAPI, SetRunInTxFn).
 	ctx := context.Background()
 	// Provide a no-op pool so cache lookups that use PoolAPI succeed.
 	prevPool := db.PoolAPI
@@ -246,26 +246,13 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 		return inner(ctx, spy)
 	})
 	t.Cleanup(func() { cricsheet.SetRunInTxFn(nil) })
-
-	mweather := &tmocks.MockWeatherClient{}
-	weatherCalls := 0
-	lastInnings := 0
-	mweather.On("EnqueueJob", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).
-		Run(func(args mock.Arguments) {
-			weatherCalls++
-			lastInnings = args.Get(4).(int)
-		})
-
-	cricsheet.SetWeatherClient(mweather)
 	t.Cleanup(func() {
-		cricsheet.SetWeatherClient(&tmocks.MockWeatherClient{})
 	})
 
 	d := t.TempDir()
 	file := writeTempJSON(t, d, "a.json", sampleJSON)
 
-	opts := &cricsheet.Options{PlaceholdersWeather: true, PlaceholdersFielding: true, WeatherEnqueue: true}
+	opts := &cricsheet.Options{PlaceholdersFielding: true}
 	err := cricsheet.ImportMatchFile(ctx, file, opts)
 	require.NoError(t, err)
 
@@ -280,19 +267,16 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 	require.True(t, spy.sawFieldingCopy, "expected fielding CopyFrom")
 	// Weather placeholders executed and enqueue called
 	require.NotEmpty(t, spy.execs)
-	require.NotZero(t, weatherCalls)
-	require.Equal(t, 2, lastInnings)
 }
 
 func TestImportDir_SortsAndCountsJSON(t *testing.T) {
-	// Not parallel: uses package-level singletons (db.PoolAPI, SetCricsheetDB, SetWeatherClient).
+	// Not parallel: uses package-level singletons (db.PoolAPI, SetCricsheetDB).
 	ctx := context.Background()
 	// Provide a no-op pool so repository functions that require PoolAPI succeed in tests.
 	prevPool := db.PoolAPI
 	db.SetPoolAPI(nopPool{})
 	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 	mdb := &tmocks.MockCricsheetDB{}
-	mweather := &tmocks.MockWeatherClient{}
 	anyCtx := mock.MatchedBy(func(c context.Context) bool { return c != nil })
 	// DB expectations minimal for directory import (typed matchers)
 	mdb.On("GetMatchFormatIDByCode", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
@@ -308,13 +292,9 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mdb.On("UpsertFieldingBatch", anyCtx, mock.MatchedBy(func(_ []db.Fielding) bool { return true })).Return(nil)
 	mdb.On("Exec", anyCtx, mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ any) bool { return true })).
 		Return(nil)
-	mweather.On("EnqueueJob", anyCtx, mock.MatchedBy(func(_ int64) bool { return true }), mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ string) bool { return true }), mock.MatchedBy(func(_ int) bool { return true })).
-		Return(nil)
 	cricsheet.SetCricsheetDB(mdb)
-	cricsheet.SetWeatherClient(mweather)
 	defer func() {
 		cricsheet.SetCricsheetDB(&tmocks.MockCricsheetDB{})
-		cricsheet.SetWeatherClient(&tmocks.MockWeatherClient{})
 	}()
 
 	d := t.TempDir()

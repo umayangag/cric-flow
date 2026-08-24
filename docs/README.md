@@ -15,6 +15,7 @@ Reference for the cricket prediction system: architecture, configuration, APIs, 
 | [apis-backtest-and-ops.md](apis-backtest-and-ops.md) | API contracts, backtest/evaluate, ops status |
 | [ml-and-training.md](ml-and-training.md) | ML models, training pipeline, auto-tune, walk-forward, meta-model |
 | [quality-and-debugging.md](quality-and-debugging.md) | Go test standards, check-all/CI, container OOM diagnosis |
+| [weather-not-implemented.md](weather-not-implemented.md) | Why weather is absent from the models, and what building it would take |
 
 ---
 

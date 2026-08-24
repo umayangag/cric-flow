@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
-	weatherSvc "github.com/umayangag/cric-flow/go-app/internal/weather"
 )
 
 // CricsheetDB abstracts DB operations used by ingest for testability.
@@ -26,29 +25,17 @@ type CricsheetDB interface {
 	Exec(ctx context.Context, sql string, args ...any) error
 }
 
-// WeatherClient abstracts weather job enqueueing for testability.
-type WeatherClient interface {
-	EnqueueJob(ctx context.Context, matchID int64, city, venue string, innings int) error
-}
-
 // Default adapters
 var (
-	cricDB             CricsheetDB   = realDB{}
-	weatherClient      WeatherClient = realWeather{}
-	insertBallEventsFn               = db.InsertBallEvents
+	cricDB             CricsheetDB = realDB{}
+	insertBallEventsFn             = db.InsertBallEvents
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.
 func SetCricsheetDB(d CricsheetDB) { cricDB = d }
 
-// SetWeatherClient allows tests to inject a fake weather client.
-func SetWeatherClient(w WeatherClient) { weatherClient = w }
-
 // GetCricsheetDB returns the current DB implementation (for tests).
 func GetCricsheetDB() CricsheetDB { return cricDB }
-
-// GetWeatherClient returns the current weather client (for tests).
-func GetWeatherClient() WeatherClient { return weatherClient }
 
 // RunInTxFn, when set, replaces db.RunInTx for transaction execution. Used by tests to inject
 // failing or spy transactions without mocking the full pool.
@@ -60,8 +47,6 @@ func SetRunInTxFn(fn func(ctx context.Context, inner func(ctx context.Context, t
 }
 
 type realDB struct{}
-
-type realWeather struct{}
 
 func (realDB) GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error) {
 	return db.GetMatchFormatIDByCode(ctx, code)
@@ -118,8 +103,4 @@ func (realDB) UpsertFieldingBatch(ctx context.Context, rows []db.Fielding) error
 func (realDB) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := db.Pool.Exec(ctx, sql, args...)
 	return err
-}
-
-func (realWeather) EnqueueJob(ctx context.Context, matchID int64, city, venue string, innings int) error {
-	return weatherSvc.EnqueueJob(ctx, matchID, city, venue, innings)
 }
