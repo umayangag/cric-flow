@@ -21,7 +21,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-5 | todo | | Remove the unwired match-harmony modules |
 | C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
-| C1-8 | todo | | Remove the unused cricsheet importer port/adapter layer |
+| C1-8 | done | `cleanup/c1-8-importer-port-layer` | Remove the unused cricsheet importer port/adapter layer |
 | C1-9 | todo | | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
@@ -394,13 +394,27 @@ curl -s localhost:8000/health | jq
 
 **Scope**
 
-- [ ] Delete `go-app/internal/services/cricsheetimporter/runner.go` + `runner_test.go`
-- [ ] Delete `IngestService` and `IngestDir` from `go-app/internal/services/cricsheetimporter/ingest.go` + `ingest_test.go`
-- [ ] **Keep** `options.go` / `options_test.go` — `ParseArgs` is used by `cmd/cricsheet-importer`
-- [ ] Delete `go-app/internal/db/match_repo.go` (`MatchRepo`) if nothing else references it after the above
-- [ ] Regenerate mocks (`make mock`) and confirm `internal/db/mocks/MatchRepo.go` disappears
-- [ ] **Keep** `internal/cricsheet/interfaces.go` and `internal/cricsheet/mocks` — still used by `internal/cricsheet/ingest_*_test.go`
-- [ ] Delete `go-app/internal/jobs/` (`Source` interface + `OneShotSource`, used only by `oneshot_test.go`)
+- [x] Delete `go-app/internal/services/cricsheetimporter/runner.go` + `runner_test.go`
+- [x] Delete `ingest.go` (`IngestService`) + `ingest_test.go` — the whole file was the dead service, not just the method
+- [x] **Kept** `options.go` / `options_test.go` — `ParseArgs` is used by `cmd/cricsheet-importer`. These are now the package's only files.
+- [x] Delete `go-app/internal/db/match_repo.go` + `internal/db/mocks/MatchRepo.go`
+- [x] Delete `internal/cricsheet/interfaces.go` (`Loader`, `Parser`) + their mocks — **correction to the plan**, see below
+- [x] **Kept** `internal/cricsheet/deps.go`'s `CricsheetDB` + `mocks/CricsheetDB.go` — that is what `internal/cricsheet/ingest_*_test.go` actually uses
+- [x] Delete `go-app/internal/jobs/`
+- [x] Drop `Loader`, `Parser`, `MatchRepo` from `.mockery.yml`
+
+**Correction to the plan:** it said to keep `internal/cricsheet/interfaces.go` "still used by `internal/cricsheet/ingest_*_test.go`". Wrong — those tests use `MockCricsheetDB`, which comes from the `CricsheetDB` interface in `deps.go`, not from `Loader`/`Parser`. `MockLoader` and `MockParser` were referenced only by the two deleted `cricsheetimporter` test files, so the ports went with the layer.
+
+**Also removed:** `internal/models/match.go`, `weatherdata.go`, and `forecast.go`. `models.Match` existed only for the deleted `Parser`/`MatchRepo` signatures; `WeatherData` and `Forecast` had zero references and were leftovers from the weather work. All three are in `internal/models`, which `COVERAGE_EXCLUDE` omits, so they do not affect the ratio.
+
+**Acceptance met.** Both import paths agree on a 25-file subset against a database built from `0001_baseline.sql`:
+
+| path | matches |
+|---|---|
+| `go run ./cmd/cricsheet-importer -in=…` | 25 |
+| `POST /import/cricsheet` | 25 (plus 569 `batting_data`, 20,691 `ball_event`) |
+
+**Coverage:** 61.5% → 61.0% (gate 60).
 
 **Verify**
 
