@@ -1,108 +1,39 @@
--- Tiny deterministic fixtures for backtest E2E smoke
--- This script is intentionally defensive: it creates minimal tables only if they
--- do not already exist (for dev environments that don't have them yet), and
--- inserts a single played T20 match IND vs AUS with a handful of player rows
--- and batting/bowling actuals. It is safe to run multiple times.
--- Uses match + match_inning schema (post-0090).
+-- Tiny deterministic fixtures for backtest E2E smoke.
+--
+-- Inserts a single played T20 match (IND vs AUS) with a handful of player rows and
+-- batting/bowling actuals. Safe to run multiple times: every insert is guarded by
+-- ON CONFLICT or NOT EXISTS.
+--
+-- Assumes the schema from go-app/migrations/0001_baseline.sql. It does not create or
+-- alter tables: an earlier version carried defensive CREATE TABLE IF NOT EXISTS and
+-- ALTER TABLE ... ADD COLUMN blocks to cope with the pre-0090 migration chain, and
+-- two of them silently added season.name and venue.name -- columns no migration
+-- creates -- so the smoke test ran against a schema that did not match production.
 
 BEGIN;
 
--- Minimal tables that some environments may be missing (no-ops if they exist)
-CREATE TABLE IF NOT EXISTS opposition (
-    id BIGSERIAL PRIMARY KEY,
-    opposition_name VARCHAR(100) NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS match_format (
-    id   BIGSERIAL PRIMARY KEY,
-    code VARCHAR(16) NOT NULL UNIQUE,
-    name VARCHAR(100)
-);
-
--- Ensure legacy schemas get the name column; then backfill and conform
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='match_format' AND column_name='name'
-  ) THEN
-    ALTER TABLE match_format ADD COLUMN name VARCHAR(100);
-  END IF;
-END$$;
-
-UPDATE match_format SET name = code WHERE name IS NULL;
-
--- Ensure season has a canonical column name used by the app (name)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='season' AND column_name='name'
-  ) THEN
-    ALTER TABLE season ADD COLUMN name VARCHAR(100);
-  END IF;
-END$$;
-
--- Ensure venue has a canonical column name used by the app
-DO $$
-BEGIN
-  IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='venue' AND column_name='venue_name'
-  ) THEN
-    ALTER TABLE venue ADD COLUMN venue_name VARCHAR(200);
-  END IF;
-  IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='venue' AND column_name='name'
-  ) THEN
-    ALTER TABLE venue ADD COLUMN name VARCHAR(200);
-  END IF;
-END$$;
-
--- Seed lookup rows
+-- Lookup rows. match_format already carries TEST/ODI/T20/T20I from the baseline seed;
+-- this is a no-op there and only matters if the row was removed by hand.
 INSERT INTO match_format(code, name)
 VALUES ('T20', 'T20 (All)')
-ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
+ON CONFLICT (code) DO NOTHING;
 
-DO $$
-BEGIN
-  IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='season' AND column_name='season_name'
-  ) THEN
-    INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
-  ELSE
-    INSERT INTO season(name) VALUES ('2024') ON CONFLICT (name) DO NOTHING;
-  END IF;
-END$$;
+INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
 
 INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
 
-DO $$
-BEGIN
-  IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_name='season' AND column_name='season_name'
-  ) THEN
-    UPDATE season SET name = COALESCE(name, season_name);
-  END IF;
-END$$;
-
--- Insert opposition teams
 INSERT INTO opposition(opposition_name) VALUES ('IND') ON CONFLICT (opposition_name) DO NOTHING;
 INSERT INTO opposition(opposition_name) VALUES ('AUS') ON CONFLICT (opposition_name) DO NOTHING;
 
--- Resolve IDs and insert match + match_inning (schema post-0090)
--- match table must exist (created by migration 0090)
+-- Match header
 WITH s AS (
-  SELECT id AS season_id FROM season WHERE COALESCE(name, season_name)='2024' ORDER BY id LIMIT 1
+  SELECT id AS season_id FROM season WHERE season_name = '2024' ORDER BY id LIMIT 1
 ), v AS (
-  SELECT id AS venue_id FROM venue WHERE COALESCE(name, venue_name)='Wankhede Stadium' ORDER BY id LIMIT 1
+  SELECT id AS venue_id FROM venue WHERE venue_name = 'Wankhede Stadium' ORDER BY id LIMIT 1
 ), f AS (
-  SELECT id AS format_id FROM match_format WHERE code='T20' ORDER BY id LIMIT 1
+  SELECT id AS format_id FROM match_format WHERE code = 'T20' ORDER BY id LIMIT 1
 ), ind AS (
-  SELECT id AS ind_id FROM opposition WHERE opposition_name='IND' ORDER BY id LIMIT 1
+  SELECT id AS ind_id FROM opposition WHERE opposition_name = 'IND' ORDER BY id LIMIT 1
 )
 INSERT INTO match (
   match_id, format_id, match_date, original_match_type, venue_id, season_id,

@@ -28,7 +28,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C3-1 | todo | | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | todo | | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
-| C4-2 | todo | | Collapse migrations into `0001_baseline.sql` |
+| C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
 | C5-1 | todo | | Single source of truth for canonical format codes |
 | C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
@@ -72,7 +72,9 @@ Items needing a product decision before their PRs can be written. Everything els
 
 ### C2-1 — Weather: build it or delete it
 
-The importer writes placeholder rows (`ingest.go:630` inserts `match_id` + `session` with every measurement column NULL). Every path that would populate real values is unreachable, and there is no weather provider client anywhere in the repo. Seven features — `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity` — are therefore constant across all training rows for **six** models (~42 feature slots).
+The importer writes placeholder rows (`ingest.go:630` inserts `match_id` + `session` with every measurement column NULL). Every path that would populate real values is unreachable, and there is no weather provider client anywhere in the repo.
+
+**Correction from the C4-2 import run:** the enqueue side is *not* dead — a 21,253-file import left **21,043 rows in `weather_job`**. `db.EnqueueWeatherJob` is reachable via `cricsheet.ImportDir`; it is the drain side (`DequeueNextWeatherJob`, `MarkWeatherJobDone`, `MarkWeatherJobFailed`, `UpsertWeather`) that has no caller. So the queue fills on every import and is never consumed, which strengthens the case for a decision either way. Seven features — `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity` — are therefore constant across all training rows for **six** models (~42 feature slots).
 
 - **Option A — Build it.** Add a provider client (Open-Meteo has a free historical archive keyed by lat/lon + date, which fits the existing `venue` geocode columns), wire `EnqueueMissingWeatherJobs` into the import step, and run the queue as a pipeline step. Reuses the existing `weather_job` table and `internal/weather/service.go`.
 - **Option B — Delete it.** Drop the queue, the repos, the `weather_data` measurement columns, and the seven inputs from `configs/feature_vectors.json`. Requires re-export and full retrain.
@@ -83,7 +85,7 @@ The importer writes placeholder rows (`ingest.go:630` inserts `match_id` + `sess
 
 `0090_full_schema_restructure.sql` already truncates every fact table on the grounds that "data is reproducible". If that holds, the 46-file chain has no remaining value.
 
-- **Option A — Squash.** Generate `0001_baseline.sql` from `pg_dump --schema-only` against a freshly-migrated database; delete the rest; document that existing dev databases must be recreated (`make dev-purge`).
+- **Option A — Squash.** Generate `0001_baseline.sql` from `pg_dump --schema-only` against a freshly-migrated database; delete the rest; document that existing dev databases must be recreated (`make dev-destroy`, which drops volumes — `dev-purge` only removes `output/`).
 - **Option B — Keep the chain.** Then C1-1 (the `.down.sql` bug) is the only migration work, and the duplicate `0029` stays as a known wart.
 
 **Decided: Option A.** C4-2 is unblocked.
@@ -545,14 +547,16 @@ Blocked on **C4-1**. Written below for Option A (squash).
 
 **Scope**
 
-- [ ] From a clean database run through the current chain, generate the baseline:
-      `pg_dump --schema-only --no-owner --no-privileges -U postgres cricket_data > go-app/migrations/0001_baseline.sql`
-- [ ] Hand-review the dump: strip `SET` noise and ownership lines, keep extensions, tables, indexes, constraints, functions, triggers
-- [ ] Preserve the seed rows the chain inserts — the `match_format` seed from `0004_format_dimension.sql` in particular, since `internal/formats` hardcodes IDs 1–4 against it
-- [ ] Delete all other files in `go-app/migrations/`, including the five `*.down.sql` rollback scripts left in place by C1-1
-- [ ] Update `tests/fixtures/backtest/seed.sql` — most of its defensive `CREATE TABLE IF NOT EXISTS` and column-conformance blocks exist to paper over the old chain and can go
-- [ ] Update `docs/config-and-data.md` and `README.md`: existing dev databases must be recreated with `make dev-purge`
-- [ ] Note in the PR body that `schema_migrations` rows from the old chain are abandoned; document the one-line reset for anyone with an existing database
+- [x] Bootstrapped an empty database through the full chain, then generated the baseline with
+      `pg_dump --schema-only --no-owner --no-privileges --no-comments --exclude-table=schema_migrations`
+- [x] Hand-edited: dropped `\restrict` psql meta-commands (pgx cannot execute them) and session `SET` noise,
+      including `set_config('search_path','')` which would leak onto the pooled connection; wrapped in `BEGIN`/`COMMIT`
+- [x] Excluded `schema_migrations` — the runner creates it itself before applying anything
+- [x] Restored the `match_format` seed with **explicit ids**, since `internal/formats` hardcodes `TEST=1, ODI=2, T20=3, T20I=4`,
+      then `setval` past them so later inserts do not collide
+- [x] Deleted the other 45 migration files, including the five `*.down.sql` left by C1-1
+- [x] Rewrote `tests/fixtures/backtest/seed.sql` against the real schema (see the correction below)
+- [x] Documented the migration model in `docs/config-and-data.md`
 
 **Verify**
 
@@ -565,9 +569,16 @@ python tests/golden/run_parity.py
 make check-all
 ```
 
-**Acceptance:** a database created from `0001_baseline.sql` alone is byte-identical in schema to one created by the full chain — verify with `pg_dump --schema-only` on both and `diff`. This diff is the acceptance test; attach it to the PR.
+**Acceptance:** met. The schema diff between a full-chain database and a baseline-built one is **two lines**, both the same CHECK constraint re-rendered by Postgres:
 
-**Risk:** medium — bounded by the schema diff above. Do not merge without it.
+```
+< CHECK (((role)::text = ANY ((ARRAY['bat'::character varying, 'bowl'::character varying])::text[])))
+> CHECK (((role)::text = ANY (ARRAY[('bat'::character varying)::text, ('bowl'::character varying)::text])))
+```
+
+Array-level cast vs element-level cast. Proven equivalent on identical truth tables (`bat`/`bowl` → true, `x`/`BAT` → false, `NULL` → null for both), and the new form is a stable fixed point — re-applying the baseline to a third database round-trips to itself with a zero-line diff. Object counts match exactly: 29 tables, 47 indexes, 14 sequences, 18 FKs, 4 checks, 2 functions, 1 trigger.
+
+**Risk:** medium, discharged by the diff above plus a 21,253-file Cricsheet import (10.7M ball events) and a green `e2e-backtest-smoke` from an empty volume.
 
 ---
 
