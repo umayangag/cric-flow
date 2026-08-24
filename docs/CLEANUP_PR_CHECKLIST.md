@@ -38,6 +38,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
 | C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
 | C7-2 | todo | | CI guardrails so dead code stops accumulating |
+| C7-3 | done | `test/c7-3-seqcalc-coverage` | Raise coverage on live under-tested code to absorb deletions |
 
 ---
 
@@ -828,6 +829,47 @@ make check-all
 **Acceptance:** both checks run in CI and fail on an intentionally-orphaned function added in a scratch commit.
 
 **Risk:** none, provided it lands after the deletions.
+
+---
+
+### C7-3 — Raise coverage on live under-tested code
+
+**Why:** Deleting well-tested dead code lowers the coverage ratio even though no surviving code loses a test. Rather than ratcheting `COV_MIN_GO` down each time, buy headroom by covering **live** code that is genuinely under-tested.
+
+The distinction matters: uncovered code that is also *unreachable* should be deleted, not tested — and deleting uncovered dead code *raises* the ratio. Only reachable code is a legitimate test target.
+
+**What the numbers said**
+
+At 60.0% with a 60% gate, ~59 covered statements buys one point. Of 2,377 uncovered statements, the biggest reachable blocks were:
+
+| package | uncovered | cov |
+|---|---|---|
+| `internal/seqcalc` | 581 | 45.1% |
+| `internal/services/predictteam` | 417 | 24.3% |
+| `internal/services/opsstatus` | 280 | 52.3% |
+| `internal/services/precomputefeatures` | 243 | 15.9% |
+
+All 17 remaining truly-dead functions sit in `internal/db` / `internal/db/exportqueries`, which `COVERAGE_EXCLUDE` already omits — so C1-9 barely moves the ratio.
+
+**Scope**
+
+- [x] Table tests for the pure aggregation logic in `internal/seqcalc/player_rolling.go`: `makeBatAgg`, `makeBowlAgg`, `updateBatState`, `updateBowlState`, `buildRowsForInnings` — all previously at 0%
+- [x] Chosen on merit, not for the metric: these compute the sequence features in the ML contract, and carry real edge cases (dots key on `RunsTotal` not `RunsBatter`; a dismissal counts only when `PlayerOutID` is the striker; boundaries conceded count only off the bat; zero balls must not divide)
+
+**Result:** go-app 60.2% → **61.6%**; `internal/seqcalc` 45.7% → **53.8%**.
+
+**Projected effect of the remaining deletions** (measured, not estimated):
+
+| | stmts | covered | delta |
+|---|---|---|---|
+| C1-8 `cricsheetimporter/runner.go` + `internal/jobs` | 39 | 36 | −0.21pt |
+| C1-9 `teamselect/pool.go` | 61 | 60 | −0.39pt |
+| C1-9 `predictor` orphans | 49 | 46 | −0.28pt |
+| C1-9 `EmitBallEvents` (0% covered) | 76 | 0 | **+0.17pt** |
+
+Net roughly −0.7pt, leaving ~60.9%. **`COV_MIN_GO` does not need to move.**
+
+**Next targets if more headroom is wanted:** `internal/services/predictteam` (417 uncovered, 24.3%) is the largest gap and covers core team-prediction logic — the 1,306-line `predict_team.go`. Higher value than seqcalc, but needs mocks rather than pure-function tests.
 
 ---
 
