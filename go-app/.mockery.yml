@@ -50,4 +50,3 @@ packages:
       Loader: {}
       Parser: {}
       CricsheetDB: {}
-      WeatherClient: {}

@@ -376,7 +376,6 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	dir := body.Dir
 	opts := &cricsheet.Options{
-		PlaceholdersWeather:  body.PlaceholdersWeather,
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {

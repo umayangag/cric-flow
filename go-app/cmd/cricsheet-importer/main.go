@@ -44,9 +44,7 @@ func run() (exitCode int) {
 	}
 
 	opts := &cricsheet.Options{
-		PlaceholdersWeather:  copts.PlaceholdersWeather,
 		PlaceholdersFielding: copts.PlaceholdersFielding,
-		WeatherEnqueue:       copts.WeatherEnqueue,
 		FailFast:             copts.FailFast,
 	}
 	startMeta := map[string]any{"dir": copts.InDir}

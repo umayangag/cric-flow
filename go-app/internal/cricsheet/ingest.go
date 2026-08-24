@@ -20,9 +20,7 @@ import (
 
 // Options controls optional behaviors for Cricsheet import.
 type Options struct {
-	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
-	WeatherEnqueue       bool
 	FailFast             bool
 }
 
@@ -626,17 +624,6 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				slog.Any("err", err))
 			return fmt.Errorf("upsert match: %w", err)
 		}
-		if opts != nil && opts.PlaceholdersWeather {
-			if e := tx.Exec(ctx, `INSERT INTO weather_data(match_id, session) VALUES ($1, 'inning1'), ($1, 'inning2') ON CONFLICT (match_id, session) DO NOTHING`, mid); e != nil {
-				slog.Error("insert weather placeholders failed",
-					slog.String("file", matchCtx.file),
-					slog.Int64("match_id", mid),
-					slog.String("match_date", matchCtx.date),
-					slog.String("teams", matchCtx.teams),
-					slog.Any("err", e))
-				return fmt.Errorf("insert weather placeholders: %w", e)
-			}
-		}
 		for i := range allMatchInnings {
 			inn := allMatchInnings[i]
 			if err := db.InsertFieldingEventsBatchTx(ctx, tx, allFieldingEvents[i]); err != nil {
@@ -733,19 +720,6 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			slog.Any("err", err),
 		)
 		return err
-	}
-	// Enqueue async weather job (non-blocking)
-	if opts != nil && opts.WeatherEnqueue {
-		if err := weatherClient.EnqueueJob(ctx, mid, info.City, info.Venue, len(m.Innings)); err != nil {
-			slog.Error("failed to enqueue weather job",
-				slog.String("file", path),
-				slog.Int64("match_id", mid),
-				slog.String("match_date", dateISO),
-				slog.String("venue", info.Venue),
-				slog.String("city", info.City),
-				slog.Any("err", err))
-			return err
-		}
 	}
 	return nil
 }

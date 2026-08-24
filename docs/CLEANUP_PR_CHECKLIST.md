@@ -23,8 +23,9 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
 | C1-8 | todo | | Remove the unused cricsheet importer port/adapter layer |
 | C1-9 | todo | | Remove remaining orphaned Go functions |
-| C2-1 | blocked | | **Decision gate:** weather — build it or delete it |
-| C2-2 | blocked | | Remove the weather subsystem and its feature slots |
+| C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
+| C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
+| C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
 | C3-1 | todo | | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | todo | | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
@@ -80,7 +81,24 @@ The importer writes placeholder rows (`ingest.go:630` inserts `match_id` + `sess
 - **Option A — Build it.** Add a provider client (Open-Meteo has a free historical archive keyed by lat/lon + date, which fits the existing `venue` geocode columns), wire `EnqueueMissingWeatherJobs` into the import step, and run the queue as a pipeline step. Reuses the existing `weather_job` table and `internal/weather/service.go`.
 - **Option B — Delete it.** Drop the queue, the repos, the `weather_data` measurement columns, and the seven inputs from `configs/feature_vectors.json`. Requires re-export and full retrain.
 
-**Answer needed:** A or B. C2-2 below is written for Option B.
+**Decided: neither A nor B as written — a third shape.** Weather is wanted later, but the data does not exist yet, and getting it is a real project rather than a quick win: **0 of 877 venues have coordinates** after a full import, so a geocoding pass is needed before any weather fetch.
+
+The features go now, the schema stays. The deciding argument: models trained on constant-zero weather **cannot** use real weather later — a full retrain is mandatory whenever the data arrives. So keeping the slots to "avoid churn later" buys nothing (re-adding seven names to a JSON file is a 7-line diff), while costing today:
+
+| model | weather inputs | share of vector |
+|---|---|---|
+| extras | 7 / 15 | 47% |
+| fielding | 7 / 17 | 41% |
+| innings | 7 / 17 | 41% |
+| win | 7 / 21 | 33% |
+| batting | 7 / 42 | 17% |
+| bowling | 7 / 42 | 17% |
+
+Exports emit `COALESCE(w.temp, 0)`, so every one is a literal `0.0` in every training row.
+
+Kept for the future: the `weather_data` and `weather_job` tables (already in `0001_baseline.sql`) and the `venue` geocode columns. The build plan is written up in [weather-not-implemented.md](weather-not-implemented.md).
+
+**Split into two PRs** because the second needs a full retrain: **C2-2a** removes the dead plumbing with no contract change; **C2-2b** removes the seven features, which requires a re-export and retraining all six models.
 
 ### C4-1 — Migrations: squash to a baseline
 

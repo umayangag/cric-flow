@@ -18,9 +18,7 @@ type Options struct {
 	InDir                string
 	Apply                bool
 	Concurrency          int
-	PlaceholdersWeather  bool
 	PlaceholdersFielding bool
-	WeatherEnqueue       bool
 	FailFast             bool
 	Timeout              time.Duration
 }
@@ -43,18 +41,14 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.BoolVar(&apply, "apply", false, "apply changes (upsert to DB); if false, dry-run")
 	fs.IntVar(&concurrency, "concurrency", defConc, "number of concurrent workers")
 	// Legacy behavior flags retained for parity with existing CLI
-	var placeholdersWeather bool
 	var placeholdersFielding bool
-	var weatherEnqueue bool
 	var failFast bool
-	fs.BoolVar(&placeholdersWeather, "placeholders-weather", false, "insert placeholder weather rows per match")
 	fs.BoolVar(
 		&placeholdersFielding,
 		"placeholders-fielding",
 		false,
 		"insert zeroed fielding rows for all players seen",
 	)
-	fs.BoolVar(&weatherEnqueue, "weather-enqueue", true, "enqueue async weather jobs per match (non-blocking)")
 	fs.BoolVar(&failFast, "fail-fast", true, "abort on first file or DB error (default: true)")
 
 	var timeout time.Duration
@@ -75,9 +69,7 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		InDir:                inDir,
 		Apply:                apply,
 		Concurrency:          concurrency,
-		PlaceholdersWeather:  placeholdersWeather,
 		PlaceholdersFielding: placeholdersFielding,
-		WeatherEnqueue:       weatherEnqueue,
 		FailFast:             failFast,
 		Timeout:              timeout,
 	}, nil

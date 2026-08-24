@@ -39,6 +39,5 @@ type precomputeRequest struct {
 
 type cricSheetRequest struct {
 	Dir                  string `json:"dir"`
-	PlaceholdersWeather  bool   `json:"placeholders_weather"`
 	PlaceholdersFielding bool   `json:"placeholders_fielding"`
 }

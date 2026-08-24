@@ -93,15 +93,11 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 
 	// Setup mocks (use struct directly so we can reset expectations per subtest)
 	mdb := &tmocks.MockCricsheetDB{}
-	mweather := &tmocks.MockWeatherClient{}
 
 	prevDB := cricsheet.GetCricsheetDB()
-	prevWeather := cricsheet.GetWeatherClient()
 	cricsheet.SetCricsheetDB(mdb)
-	cricsheet.SetWeatherClient(mweather)
 	t.Cleanup(func() {
 		cricsheet.SetCricsheetDB(prevDB)
-		cricsheet.SetWeatherClient(prevWeather)
 	})
 
 	// Prepare temp dir with two files

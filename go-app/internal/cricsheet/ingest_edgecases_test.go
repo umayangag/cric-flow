@@ -74,17 +74,14 @@ func writeJSON(t *testing.T, dir, name, data string) string {
 }
 
 func TestImportMatchFile_UnknownMatchType_Error(t *testing.T) {
-	// Not parallel: uses package-level singletons via SetCricsheetDB/SetWeatherClient.
+	// Not parallel: uses package-level singletons via SetCricsheetDB.
 	ctx := context.Background()
 	dbMock := new(mocks.MockCricsheetDB)
-	weatherMock := new(mocks.MockWeatherClient)
 
 	// Arrange: inject mocks into package-level dependencies
 	cricsheet.SetCricsheetDB(dbMock)
-	cricsheet.SetWeatherClient(weatherMock)
 	defer func() {
 		cricsheet.SetCricsheetDB(new(mocks.MockCricsheetDB))
-		cricsheet.SetWeatherClient(new(mocks.MockWeatherClient))
 	}()
 
 	bad := `{
@@ -116,12 +113,9 @@ func TestImportMatchFile_InningTeamMismatch_Error(t *testing.T) {
 	// and we would call GetOrCreateOpposition(""), corrupting the opposition table.
 	ctx := context.Background()
 	dbMock := new(mocks.MockCricsheetDB)
-	weatherMock := new(mocks.MockWeatherClient)
 	cricsheet.SetCricsheetDB(dbMock)
-	cricsheet.SetWeatherClient(weatherMock)
 	defer func() {
 		cricsheet.SetCricsheetDB(new(mocks.MockCricsheetDB))
-		cricsheet.SetWeatherClient(new(mocks.MockWeatherClient))
 	}()
 
 	// info.teams are Alpha, Beta but first inning has team "Gamma"
@@ -159,12 +153,9 @@ func TestImportMatchFile_InningEmptyTeamName_Error(t *testing.T) {
 	// Inning with empty team name would make otherTeam return teamA; we validate batTeam non-empty first.
 	ctx := context.Background()
 	dbMock := new(mocks.MockCricsheetDB)
-	weatherMock := new(mocks.MockWeatherClient)
 	cricsheet.SetCricsheetDB(dbMock)
-	cricsheet.SetWeatherClient(weatherMock)
 	defer func() {
 		cricsheet.SetCricsheetDB(new(mocks.MockCricsheetDB))
-		cricsheet.SetWeatherClient(new(mocks.MockWeatherClient))
 	}()
 
 	bad := `{
