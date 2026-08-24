@@ -259,27 +259,9 @@ def main():
     elif args.format:
         targets = [args.format.strip().upper()]
 
-    # If no targets specified, still perform legacy/combined validation as a courtesy
+    # Exports are always per-format; the unsuffixed combined CSVs were removed in C3-1.
     if not targets:
-        legacy_bat = os.path.join(exports_dir, "batting_encoded.csv")
-        legacy_bow = os.path.join(exports_dir, "bowling_encoded.csv")
-        failed = False
-        if os.path.exists(legacy_bat):
-            df = load_csv(legacy_bat)
-            ok, probs = validate_presence_and_nulls(df, BATTING_REQUIRED_FEATURES, args.null_threshold)
-            if not ok:
-                failed = True
-                print(f"[LEGACY] batting_encoded.csv invalid: {probs}")
-        if os.path.exists(legacy_bow):
-            df = load_csv(legacy_bow)
-            ok, probs = validate_presence_and_nulls(df, BOWLING_REQUIRED_FEATURES, args.null_threshold)
-            if not ok:
-                failed = True
-                print(f"[LEGACY] bowling_encoded.csv invalid: {probs}")
-        if failed:
-            raise SystemExit(2)
-        print("legacy exports validated (if present)")
-        return
+        targets = _config_formats()
 
     # Optional golden header validator (strict header checks + order), then do presence/null checks
     if args.use_golden:

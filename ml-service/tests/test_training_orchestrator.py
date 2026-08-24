@@ -56,21 +56,6 @@ def test_export_csvs_available_empty_dir_returns_false(tmp_path, monkeypatch) ->
     assert training_orchestrator.export_csvs_available("batting_encoded_") is False
 
 
-def test_unified_batting_csv_available_empty_dir_returns_false(tmp_path, monkeypatch) -> None:
-    """When export dir exists but has no batting CSV files, returns False."""
-    monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
-    assert training_orchestrator.unified_batting_csv_available() is False
-
-
-def test_unified_csv_available_helpers_use_env_dir(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("GO_APP_OUTPUT_DIR", str(tmp_path))
-    (tmp_path / "batting_encoded_all.csv").write_text("x\n", encoding="utf-8")
-    (tmp_path / "bowling_encoded.csv").write_text("y\n", encoding="utf-8")
-
-    assert training_orchestrator.unified_batting_csv_available() is True
-    assert training_orchestrator.unified_bowling_csv_available() is True
-
-
 def test_run_training_subprocess_success_uses_env_and_timeout(monkeypatch) -> None:
     calls: Dict[str, Any] = {}
 
@@ -165,9 +150,6 @@ def _capture_run_training(monkeypatch, fn_name: str, cutoff: str, csv_available:
         assert prefix in ("batting_encoded_", "bowling_encoded_")
         return csv_available
 
-    def fake_unified_csv() -> bool:
-        return False
-
     def fake_run_training_subprocess(
         module: str,
         extra_args: Optional[List[str]] = None,
@@ -179,13 +161,7 @@ def _capture_run_training(monkeypatch, fn_name: str, cutoff: str, csv_available:
         calls["extra_env"] = extra_env or {}
         calls["logger"] = logger
 
-    # Patch helpers
-    if fn_name == "run_batting_training":
-        monkeypatch.setattr(training_orchestrator, "export_csvs_available", fake_export)
-        monkeypatch.setattr(training_orchestrator, "unified_batting_csv_available", fake_unified_csv)
-    else:
-        monkeypatch.setattr(training_orchestrator, "export_csvs_available", fake_export)
-        monkeypatch.setattr(training_orchestrator, "unified_bowling_csv_available", fake_unified_csv)
+    monkeypatch.setattr(training_orchestrator, "export_csvs_available", fake_export)
 
     monkeypatch.setattr(training_orchestrator, "run_training_subprocess", fake_run_training_subprocess)
 

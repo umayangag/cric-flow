@@ -26,7 +26,7 @@ func TestServices_Guards(t *testing.T) {
 			name: "batting nil repo",
 			act: func() error {
 				s := svc.NewBattingService(nil)
-				return s.ExportLegacy(context.Background(), &bytes.Buffer{})
+				return s.ExportUnified(context.Background(), &bytes.Buffer{})
 			},
 			wantErr: "nil service or repo",
 		},
@@ -39,7 +39,7 @@ func TestServices_Guards(t *testing.T) {
 			name: "bowling nil repo",
 			act: func() error {
 				s := svc.NewBowlingService(nil)
-				return s.ExportLegacy(context.Background(), &bytes.Buffer{})
+				return s.ExportUnified(context.Background(), &bytes.Buffer{})
 			},
 			wantErr: "nil service or repo",
 		},

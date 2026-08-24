@@ -12,10 +12,6 @@ func (r *Repo) BattingUnifiedRows(ctx context.Context) ([][]string, error) {
 	return BattingUnifiedRows(ctx)
 }
 
-func (r *Repo) BattingLegacyRows(ctx context.Context) ([][]string, error) {
-	return BattingLegacyRows(ctx)
-}
-
 func (r *Repo) BattingInferenceRows(ctx context.Context, format string) ([][]string, error) {
 	return BattingInferenceRows(ctx, format)
 }
@@ -26,10 +22,6 @@ func (r *Repo) BattingFormatRows(ctx context.Context, format string) ([][]string
 
 func (r *Repo) BowlingUnifiedRows(ctx context.Context) ([][]string, error) {
 	return BowlingUnifiedRows(ctx)
-}
-
-func (r *Repo) BowlingLegacyRows(ctx context.Context) ([][]string, error) {
-	return BowlingLegacyRows(ctx)
 }
 
 func (r *Repo) BowlingInferenceRows(ctx context.Context, format string) ([][]string, error) {

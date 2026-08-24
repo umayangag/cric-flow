@@ -157,12 +157,12 @@ team-predictor:
 ml-install:
 	$(MAKE) -C ml-service install
 
-# Per-format then unified (legacy) artifacts; run export-dataset first so batting_encoded_*.csv and batting_encoded_all.csv exist.
+# Per-format artifacts; run export-dataset first so batting_encoded_*.csv exists.
 train-batting:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --all-formats && $(ML_VENV_BIN)/python -m ml.train_batting_model
+	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --all-formats
 
 train-bowling:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling --all-formats && $(ML_VENV_BIN)/python -m ml.train_bowling_model
+	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling --all-formats
 
 # Train fielding: same as batting/bowling — if CUTOFF set use API; else use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
 GO_APP_URL ?= http://localhost:8080
@@ -395,7 +395,7 @@ e2e:
 	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
 	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
 	$(MAKE) ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting_model --format $(FORMAT) && .venv/bin/python -m ml.train_bowling_model --format $(FORMAT)
+	cd ml-service && .venv/bin/python -m ml.train_batting --format $(FORMAT) && .venv/bin/python -m ml.train_bowling --format $(FORMAT)
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 
 e2e-multi:
@@ -413,7 +413,7 @@ e2e-multi:
 	$(MAKE) ml-install
 	@for f in $$(echo "$(FORMATS)" | tr ',' ' '); do \
 		echo "  Training for format $$f..."; \
-		cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting_model --format $$f && $(ML_VENV_BIN)/python -m ml.train_bowling_model --format $$f; \
+		cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --format $$f && $(ML_VENV_BIN)/python -m ml.train_bowling --format $$f; \
 	done
 	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
 

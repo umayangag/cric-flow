@@ -201,30 +201,9 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 			return nil
 		}
 
-		slog.Info("pipeline: export-dataset exporting legacy/per-format CSVs", slog.Any("formats", formats))
+		slog.Info("pipeline: export-dataset exporting per-format CSVs", slog.Any("formats", formats))
 		for _, f := range formats {
 			f := f // capture
-			if f == "" {
-				if opts.InferenceOnly {
-					// Legacy note: inference-only requires explicit formats; skip combined.
-					continue
-				}
-				g.Go(func() error {
-					return r.writeUsing(
-						opts.OutDir,
-						"batting_encoded.csv",
-						func(w io.Writer) error { return r.Bat.ExportLegacy(parentCtx, w) },
-					)
-				})
-				g.Go(func() error {
-					return r.writeUsing(
-						opts.OutDir,
-						"bowling_encoded.csv",
-						func(w io.Writer) error { return r.Bow.ExportLegacy(parentCtx, w) },
-					)
-				})
-				continue
-			}
 			if !safeFormatForFilename(f) {
 				continue
 			}

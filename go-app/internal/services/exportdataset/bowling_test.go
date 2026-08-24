@@ -52,15 +52,6 @@ func TestBowlingService_Exports(t *testing.T) {
 			assertNoErrorCSVB("h1,h2\n1,2\n"),
 		},
 		{
-			"legacy writes rows",
-			func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
-				m.EXPECT().BowlingLegacyRows(mock.Anything).Return([][]string{{"lh1", "lh2"}, {"3", "4"}}, nil)
-				return s.ExportLegacy(ctx, w)
-			},
-			"lh1,lh2\n3,4\n",
-			assertNoErrorCSVB("lh1,lh2\n3,4\n"),
-		},
-		{
 			"inference writes rows",
 			func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
 				m.EXPECT().
@@ -96,14 +87,6 @@ func TestBowlingService_Errors(t *testing.T) {
 			func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
 				m.EXPECT().BowlingUnifiedRows(mock.Anything).Return(nil, errors.New("fail"))
 				return s.ExportUnified(ctx, w)
-			},
-			assertErrContainsB("fail"),
-		},
-		{
-			"legacy error",
-			func(ctx context.Context, s *svc.BowlingService, w *bytes.Buffer, m *dbmocks.MockDatasetRepo) error {
-				m.EXPECT().BowlingLegacyRows(mock.Anything).Return(nil, errors.New("fail"))
-				return s.ExportLegacy(ctx, w)
 			},
 			assertErrContainsB("fail"),
 		},
