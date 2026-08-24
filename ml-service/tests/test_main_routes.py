@@ -28,7 +28,7 @@ def test_health_returns_ok_and_structure(tmp_path):
 
 
 def test_artifacts_status_returns_structure(tmp_path):
-    """GET /artifacts/status returns timestamp, root, formats, legacy."""
+    """GET /artifacts/status returns timestamp, root, formats."""
     _, client = _app_client(tmp_path)
     resp = client.get("/artifacts/status")
     assert resp.status_code == 200
@@ -36,7 +36,7 @@ def test_artifacts_status_returns_structure(tmp_path):
     assert "timestamp" in data
     assert "root" in data
     assert "formats" in data
-    assert "legacy" in data
+    assert "legacy" not in data
     assert "ODI" in data["formats"]
     assert "batting" in data["formats"]["ODI"]
 

@@ -30,8 +30,5 @@ def test_health_endpoint_basic(monkeypatch, tmp_path):
     assert "loaded_fielding_formats" in data
     assert "loaded_extras_formats" in data
     assert "loaded_win_formats" in data
-    assert "legacy_batting_available" in data
-    assert "legacy_bowling_available" in data
-    assert "legacy_fielding_available" in data
-    assert "legacy_extras_available" in data
-    assert "legacy_win_available" in data
+    for kind in ("batting", "bowling", "fielding", "extras", "win"):
+        assert f"legacy_{kind}_available" not in data

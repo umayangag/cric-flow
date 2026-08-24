@@ -59,11 +59,6 @@ export type HealthResponse = {
   loaded_fielding_formats?: string[];
   loaded_extras_formats?: string[];
   loaded_win_formats?: string[];
-  legacy_batting_available: boolean;
-  legacy_bowling_available: boolean;
-  legacy_fielding_available?: boolean;
-  legacy_extras_available?: boolean;
-  legacy_win_available?: boolean;
   models_dir: string;
   artifacts: {
     batting: { file: string; size_bytes?: number; modified?: number }[];

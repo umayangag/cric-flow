@@ -72,9 +72,9 @@ Config file: `ml-service/config.json`
 
 **Environment:** `ML_SERVICE_CONFIG`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `GO_APP_OUTPUT_DIR`, `ENABLE_HOT_RELOAD`, `ML_N_JOBS`, `ML_N_JOBS_MAX`, `ML_MEMORY_LIMIT_MB`.
 
-**Artifacts naming:** `batting_scaler_<FORMAT>.joblib`, `batting_model_<FORMAT>.joblib` (same for bowling, fielding, etc.); legacy unsuffixed names when format is omitted.
+**Artifacts naming:** `batting_scaler_<FORMAT>.joblib`, `batting_model_<FORMAT>.joblib` (same for bowling, fielding, etc.). Artifacts are always per-format; the unsuffixed names were removed in C3-2.
 
-**Serving:** When `format` is present in feature rows, all rows must share that format and a model for it must be loaded; otherwise legacy artifacts are used or an error is returned.
+**Serving:** `format` is required on feature rows, all rows must share it, and a model for it must be loaded. A request without `format` returns 400 `MISSING_FORMAT`; a format with no loaded model returns 404 `MODEL_NOT_LOADED`.
 
 ---
 
@@ -138,7 +138,7 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 
 **Sources:** Exporter: `go-app/cmd/export-dataset/main.go`. ML: `ml-service/ml/dataset_definitions.py`, `configs/feature_vectors.json`.
 
-**Outputs:** Legacy: `batting_encoded.csv`, `bowling_encoded.csv`. Per-format: `batting_encoded_<FORMAT>.csv`, `bowling_encoded_<FORMAT>.csv` (FORMAT ∈ TEST, ODI, T20, T20I).
+**Outputs:** Per-format: `batting_encoded_<FORMAT>.csv`, `bowling_encoded_<FORMAT>.csv` (FORMAT ∈ TEST, ODI, T20, T20I), plus the cross-format `*_encoded_all.csv` that fielding, extras, win and innings training read.
 
 **Batting:** ML expects (in order) consistency, form, temp, wind, rain, humidity, cloud, pressure, viscosity, inning, session, toss, venue, opposition, season, player_name. Exporter provides these via feature tables and weather/context; `viscosity_encoded` (0/1), `session_encoded` (1..3), venue/opposition aggregates. Use COALESCE for non-null numerics.
 

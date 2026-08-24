@@ -23,7 +23,7 @@ def error_payload(
     if hint:
         payload["hint"] = hint
     if available is not None:
-        payload["available_formats"] = sorted([x for x in available if x != "_LEGACY_"])
+        payload["available_formats"] = sorted(available)
     # Prefer ContextVar, but fall back to structlog context if needed
     rid = request_id_var.get()
     if not rid:

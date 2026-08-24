@@ -134,16 +134,6 @@ const HealthTab: React.FC = () => {
     return isNaN(d.getTime()) ? '—' : d.toLocaleString();
   }, [mlData, allArtifacts]);
 
-  const legacyValue = useMemo(() => {
-    if (!mlData) return '—';
-    const legacy = MODEL_TYPES.map(
-      (t) => mlData?.[`legacy_${t}_available` as keyof HealthResponse] && t,
-    )
-      .filter(Boolean)
-      .join(', ');
-    return legacy || 'None';
-  }, [mlData]);
-
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -213,7 +203,6 @@ const HealthTab: React.FC = () => {
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
                 { label: 'Models dir', value: mlData?.models_dir || '—' },
                 ...loadedFormatsItems,
-                { label: 'Legacy (unified)', value: legacyValue },
                 { label: 'Artifacts', value: artifactsCountValue },
                 { label: 'Total size', value: totalSizeValue },
                 { label: 'Latest modified', value: latestModifiedValue },

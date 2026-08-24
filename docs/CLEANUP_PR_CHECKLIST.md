@@ -27,7 +27,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
 | C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
 | C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
-| C3-2 | todo | | Remove the `_LEGACY_` artifact tier |
+| C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
 | C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
 | C5-1 | todo | | Single source of truth for canonical format codes |
@@ -593,7 +593,15 @@ make check-all
 - [ ] Remove `LEGACY_EXTRAS_FEATURE_COLS` from `ml/train_extras.py` and its use in `endpoints.py:47`
 - [ ] Update `go-app/internal/mlclient` to always send `format`
 - [ ] Update `frontend/src/components/HealthTab.tsx` and `src/types.ts` where the `legacy_*` fields are consumed
-- [ ] Update `ml-service/README.md` endpoint docs
+- [x] Update `ml-service/README.md`, `docs/config-and-data.md` and `docs/ml-and-training.md`
+
+**Behaviour change:** `/predict/batting`, `/predict/bowling`, `/predict/extras` and `/predict/win` now return **400 `MISSING_FORMAT`** when `format` is absent, instead of silently serving an unsuffixed model. A format with no loaded model still returns 404 `MODEL_NOT_LOADED`. Both go-app (`models.BattingFeatures.Format`) and the ML request models already carry `format` per row, so no client change was needed — the failure mode simply became explicit.
+
+**A name collision worth knowing about.** `_LEGACY_` had *two* unrelated meanings. The artifact-registry key is gone. The other survives: `ml/train_extras.py`, `ml/train_fielding.py` and `ml/tuning/*` use `_LEGACY_` as a dict key for **pooled cross-format training rows**, popped and handled specially by the loaders. That is data pooling, not an artifact tier, and touching it would risk extras/fielding training. Left alone, documented in `docs/ml-and-training.md`, and worth renaming later.
+
+**Frontend:** the Health tab's "Legacy (unified)" row and the five `legacy_*_available` fields in `types.ts` are gone.
+
+**Coverage:** go-app 60.1% (gate 60); ml-service 655 passing (down from 670 — the 15 removed were tests of the deleted fallback).
 
 **Verify**
 

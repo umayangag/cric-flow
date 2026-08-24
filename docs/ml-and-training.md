@@ -23,7 +23,7 @@ Input dimensions, estimators, and aggregation (e.g. sum runs, win prob) are in [
 
 **Training commands (from repo root or ml-service):** `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=<RFC3339>`, `make train-extras`, `make train-win`, or `make train-all` to run all train steps in sequence. Each step uses params from config and, when `GO_APP_URL` is set, from the go-app tuned-params DB. Fielding/extras/win need `GO_APP_URL` (and optionally `CUTOFF` or CSV path).
 
-**Artifacts:** Per-format: `batting_scaler_<FMT>.joblib`, `batting_model_<FMT>.joblib` (same for bowling, fielding, extras, win). Legacy: unsuffixed names.
+**Artifacts:** Always per-format: `batting_scaler_<FMT>.joblib`, `batting_model_<FMT>.joblib` (same for bowling, fielding, extras, win).
 
 **Combined prediction flow:** (1) Player predictions from batting/bowling/fielding models; (2) match aggregates = sum of player preds + extras model if loaded (else historical average); (3) winner from win model or from team totals; (4) team selection = greedy selection with batting/bowling/fielding scores and constraints. When fielding artifacts are not loaded, go-app falls back to **enrichFieldingFromHistory** (EWM of historical fielding).
 
@@ -49,13 +49,13 @@ At prediction time, to use the trained extras or win model, callers must supply 
 
 ## Pipeline: per-format and unified training
 
-You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or from the **command line**. Each train step produces **both** per-format and unified (legacy) models.
+You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or from the **command line**. Each train step produces per-format models.
 
-**Pipeline steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form/consistency/sequence per format. (3) Export — with `split_by_format: true`, writes unified (`batting_encoded_all.csv`, etc.) and per-format CSVs. (4) Train Batting — per-format then unified (legacy artifacts). (5) Train Bowling — same. (6) Train Fielding — API data, per-format + unified. (7) Train Extras, (8) Train Win — same pattern. (9) Optional: Auto-tune (from UI or API).
+**Pipeline steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form/consistency/sequence per format. (3) Export — writes the cross-format `*_encoded_all.csv` and per-format CSVs. (4) Train Batting — per-format. (5) Train Bowling — same. (6) Train Fielding — API data. (7) Train Extras, (8) Train Win — same pattern. (9) Optional: Auto-tune (from UI or API).
 
 **Prerequisites:** Stack running (`make dev-up`). `export.split_by_format: true` in go-app config. For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
 
-**CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format and legacy artifacts. ML loads them and uses per-format when request has format; falls back to legacy when format missing or no per-format model (e.g. fielding).
+**CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format artifacts. ML resolves the model by the request's `format`, which is required — there is no fallback tier.
 
 ---
 
@@ -260,7 +260,7 @@ Historical rows remain at `inning_number = 1` until operators run a full re-impo
 All tuning data loaders in `ml.tuning.data_loaders` return a typed envelope:
 
 - Single-pack loaders (batting, bowling): `LoaderResult(X, Y, feature_names, sample_weight=None)`.
-- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). Extras additionally emits a special `_LEGACY_` key holding the aggregated unified-model pool.
+- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). Extras and fielding additionally emit a `_LEGACY_` key holding the **pooled cross-format rows**. Note this key is unrelated to the removed `_LEGACY_` artifact registry — it is a data-loader pooling key, and is a name collision worth renaming.
 
 Call sites in `ml.tuning.cli` consume `result.X / result.Y / result.feature_names / result.sample_weight` directly; the previous `unpack_xy_with_feature_names` / `_extras_feature_names_if_consistent` helpers have been removed. To add a new loader, return a `LoaderResult` (or `Dict[str, LoaderResult]`) from the outset — it keeps optional fields explicit and prevents shape drift between training and tuning.
 

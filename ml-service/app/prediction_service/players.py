@@ -60,11 +60,11 @@ def _resolve_prediction_model_pairs(
     use_share = (
         use_share_models_config()
         and has_match_context
-        and ((INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")) is not None
+        and (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) is not None
     )
     if use_share:
-        bat_pair = (BAT_SHARE_MODELS.get(fmt_upper) if fmt_upper else None) or BAT_SHARE_MODELS.get("_LEGACY_")
-        bowl_pair = (BOWL_SHARE_MODELS.get(fmt_upper) if fmt_upper else None) or BOWL_SHARE_MODELS.get("_LEGACY_")
+        bat_pair = BAT_SHARE_MODELS.get(fmt_upper) if fmt_upper else None
+        bowl_pair = BOWL_SHARE_MODELS.get(fmt_upper) if fmt_upper else None
     else:
         bat_pair = BAT_MODELS.get(fmt_upper) if fmt_upper else None
         bowl_pair = BOWL_MODELS.get(fmt_upper) if fmt_upper else None
@@ -383,7 +383,7 @@ def predict_players_with_features(
     Y_bowl = resolved.model_bowl.predict(X_bowl)
 
     Y_fld = None
-    field_pair = (FIELD_MODELS.get(resolved.fmt_upper) if resolved.fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
+    field_pair = FIELD_MODELS.get(resolved.fmt_upper) if resolved.fmt_upper else None
     if field_pair is not None:
         scaler_fld, model_fld = field_pair
         X_fld = _build_fielding_feature_matrix(player_ids, cutoff, resolved.fmt_upper, features_map)
@@ -496,7 +496,7 @@ def predict_players_batch(
     fld_pairs: List[Optional[Tuple[Any, Any]]] = [None] * n_items
     for idx in range(n_items):
         fmt_upper = resolved_list[idx].fmt_upper
-        field_pair = (FIELD_MODELS.get(fmt_upper) if fmt_upper else None) or FIELD_MODELS.get("_LEGACY_")
+        field_pair = FIELD_MODELS.get(fmt_upper) if fmt_upper else None
         if field_pair is not None:
             fld_pairs[idx] = field_pair
             X_fld_list[idx] = _build_fielding_feature_matrix(

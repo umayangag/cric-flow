@@ -38,7 +38,7 @@ logger = get_struct_logger()
 
 
 def _resolve_extras_feature_order(fmt_key: str) -> List[str]:
-    """Column order: sidecar feature_names when loaded, else legacy layout for old artifacts."""
+    """Column order: sidecar feature_names when loaded, else the declared column layout."""
     meta = EXTRAS_META.get(fmt_key)
     if meta is not None:
         names = meta.get("feature_names")
@@ -54,9 +54,10 @@ def resolve_model_pair(
     fmt: str,
     domain: str,
 ) -> Tuple[Any, Any]:
-    """Resolve (scaler, model) pair from registry by format, with legacy fallback.
+    """Resolve (scaler, model) pair from the registry by format.
 
-    Raises HTTPException if no model is available.
+    ``format`` is required: artifacts are per-format and there is no fallback tier.
+    Raises HTTPException if it is missing or no model is loaded for it.
     """
     fmt_upper = (fmt or "").strip().upper()
     if fmt_upper:
@@ -73,18 +74,16 @@ def resolve_model_pair(
                 ),
             )
         return pair
-    pair = registry.get("_LEGACY_")
-    if not pair:
-        logger.info(f"predict.{domain}.rejected", reason="missing_format_no_legacy")
-        raise HTTPException(
-            status_code=400,
-            detail=error_payload(
-                code="MISSING_FORMAT",
-                message=f"Missing 'format' and no legacy {domain} model loaded",
-                hint="Set 'format' in the request or train legacy artifacts.",
-            ),
-        )
-    return pair
+    logger.info(f"predict.{domain}.rejected", reason="missing_format")
+    raise HTTPException(
+        status_code=400,
+        detail=error_payload(
+            code="MISSING_FORMAT",
+            message="Missing 'format'",
+            hint=f"Set 'format' on the request; {domain} models are per-format.",
+            available=list(registry.keys()),
+        ),
+    )
 
 
 def validate_predict_batch(features: list, domain: str, max_batch_size: int) -> None:
@@ -127,9 +126,7 @@ def run_batting_prediction(features: List[BattingFeatures]) -> List[BattingPredi
     """Execute batting prediction pipeline and return typed results."""
     fmt = (features[0].format or "").strip().upper()
     scaler, model = resolve_model_pair(BAT_MODELS, fmt, "batting")
-    logger.info(
-        "predict.batting.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BAT_MODELS else "")
-    )
+    logger.info("predict.batting.start", batch=len(features), format=fmt)
     X = np.array([batting_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
@@ -170,9 +167,7 @@ def run_bowling_prediction(features: List[BowlingFeatures]) -> List[BowlingPredi
     """Execute bowling prediction pipeline and return typed results."""
     fmt = (features[0].format or "").strip().upper()
     scaler, model = resolve_model_pair(BOWL_MODELS, fmt, "bowling")
-    logger.info(
-        "predict.bowling.start", batch=len(features), format=fmt or ("LEGACY" if "_LEGACY_" in BOWL_MODELS else "")
-    )
+    logger.info("predict.bowling.start", batch=len(features), format=fmt)
     X = np.array([bowling_feature_vector(f) for f in features], dtype=float)
     if scaler is not None:
         X = scaler.transform(X)
@@ -209,9 +204,9 @@ def run_bowling_prediction(features: List[BowlingFeatures]) -> List[BowlingPredi
 
 
 def extras_feature_vector(f: ExtrasFeatures) -> np.ndarray:
-    """Build feature vector in sidecar or legacy column order (exclude 'format' key)."""
+    """Build feature vector in sidecar or declared column order (exclude 'format' key)."""
     fmt = (f.format or "").strip().upper() if isinstance(f.format, str) else ""
-    fmt_key = fmt if fmt else "_LEGACY_"
+    fmt_key = fmt
     cols = _resolve_extras_feature_order(fmt_key)
     if not cols:
         return np.zeros(0)
@@ -236,16 +231,16 @@ def win_feature_vector(f: WinFeatures) -> np.ndarray:
 def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPrediction]:
     """Execute extras prediction pipeline and return typed results."""
     fmt = (features[0].format or "").strip().upper()
-    model = EXTRAS_MODELS.get(fmt) if fmt else EXTRAS_MODELS.get("_LEGACY_")
+    model = EXTRAS_MODELS.get(fmt) if fmt else None
     if not model:
-        available = [k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]
-        logger.warning("predict.extras.model_not_loaded", format=fmt or "LEGACY", available=available)
+        available = list(EXTRAS_MODELS.keys())
+        logger.warning("predict.extras.model_not_loaded", format=fmt or "", available=available)
         raise HTTPException(
             status_code=404,
             detail=error_payload(
                 code="MODEL_NOT_LOADED",
                 message="Extras model not loaded",
-                hint="Train extras artifacts (e.g. make train-extras) and ensure format matches or use legacy.",
+                hint="Train extras artifacts (e.g. make train-extras) for this format.",
                 available=available,
             ),
         )
@@ -271,17 +266,17 @@ def run_extras_prediction(features: List[ExtrasFeatures]) -> List[ExtrasPredicti
 
 
 def _resolve_win_model(fmt: str):
-    """Resolve win model by format with legacy fallback. Raises HTTPException if missing."""
-    model = WIN_MODELS.get(fmt) if fmt else WIN_MODELS.get("_LEGACY_")
+    """Resolve the win model by format. Raises HTTPException if missing."""
+    model = WIN_MODELS.get(fmt) if fmt else None
     if not model:
-        available = [k for k in WIN_MODELS.keys() if k != "_LEGACY_"]
-        logger.warning("predict.win.model_not_loaded", format=fmt or "LEGACY", available=available)
+        available = list(WIN_MODELS.keys())
+        logger.warning("predict.win.model_not_loaded", format=fmt or "", available=available)
         raise HTTPException(
             status_code=404,
             detail=error_payload(
                 code="MODEL_NOT_LOADED",
                 message="Win model not loaded",
-                hint="Train win artifacts (e.g. make train-win) and ensure format matches or use legacy.",
+                hint="Train win artifacts (e.g. make train-win) for this format.",
                 available=available,
             ),
         )

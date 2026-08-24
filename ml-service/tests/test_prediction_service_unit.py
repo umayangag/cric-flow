@@ -82,20 +82,3 @@ def test_predict_match_innings_returns_tuple_when_model_present():
     assert inn2_runs == 55.0
     assert inn2_wkts == 3.0
     assert mock_predict.call_count == 2
-
-
-def test_predict_match_innings_uses_legacy_when_format_missing():
-    """predict_match_innings falls back to _LEGACY_ when format key not in INNINGS_MODELS."""
-    ctx = MatchContext(team1_player_ids=[1], team2_player_ids=[2])
-    features_map = {
-        "1": {"batting_std_w10": 0.0, "bowling_std_w10": 0.0, "batting_mean_w5": 0.0, "bowling_mean_w5": 0.0},
-        "2": {"batting_std_w10": 0.0, "bowling_std_w10": 0.0, "batting_mean_w5": 0.0, "bowling_mean_w5": 0.0},
-    }
-    fake_scaler = MagicMock()
-    fake_scaler.transform.return_value = np.array([[0.0]])
-    fake_model = MagicMock()
-    fake_model.predict.return_value = np.array([[40.0, 2.0]])
-    with patch("app.prediction_service.innings.INNINGS_MODELS", {"_LEGACY_": (fake_scaler, fake_model)}):
-        with patch("app.prediction_service.innings.predict_innings", return_value=(40.0, 2.0)):
-            result = predict_match_innings(ctx, features_map, "T20")
-    assert result == (40.0, 2.0, 40.0, 2.0)
