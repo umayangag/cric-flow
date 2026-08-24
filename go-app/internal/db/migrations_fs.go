@@ -32,17 +32,31 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		return err
 	}
 	var files []string
+	skippedDown := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(strings.ToLower(name), ".sql") {
-			files = append(files, name)
+		if !strings.HasSuffix(strings.ToLower(name), ".sql") {
+			continue
 		}
+		// Rollback scripts are never applied forward. Without this they would be treated
+		// as ordinary migrations and, because "down" sorts before "up", would run before
+		// the migration they undo.
+		if isDownMigration(name) {
+			skippedDown++
+			continue
+		}
+		files = append(files, name)
 	}
 	sort.Strings(files)
-	slog.Info("migrations: scanned directory", slog.String("dir", dir), slog.Int("files_total", len(files)))
+	slog.Info(
+		"migrations: scanned directory",
+		slog.String("dir", dir),
+		slog.Int("files_total", len(files)),
+		slog.Int("down_files_skipped", skippedDown),
+	)
 
 	// get applied versions
 	applied := map[string]bool{}
@@ -88,4 +102,10 @@ func RunMigrationsFS(ctx context.Context, fsys fs.FS, dir string) error {
 		slog.Int("seen", len(files)),
 	)
 	return nil
+}
+
+// isDownMigration reports whether a migration filename is a rollback script.
+// Rollback scripts are named "<version>.down.sql" and are only ever run by hand.
+func isDownMigration(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".down.sql")
 }

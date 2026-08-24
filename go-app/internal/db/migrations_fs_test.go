@@ -134,6 +134,83 @@ func TestRunMigrationsFS_SkipsAlreadyApplied(t *testing.T) {
 	require.True(t, (*applied)["002_add.sql"])  // newly applied
 }
 
+// Rollback scripts must never be applied forward. Because "down" sorts before "up",
+// a *.down.sql picked up as an ordinary migration would run before the migration it
+// undoes and drop objects a fresh bootstrap has just created.
+func TestRunMigrationsFS_NeverAppliesDownMigrations(t *testing.T) {
+	cases := []struct {
+		name         string
+		files        map[string]string
+		wantApplied  []string
+		wantSkipped  []string
+		wantNotInSQL string
+	}{
+		{
+			name: "down file paired with an up file",
+			files: map[string]string{
+				"m/001_init.sql":     "CREATE TABLE a(id int);",
+				"m/002_col.up.sql":   "ALTER TABLE a ADD COLUMN b int;",
+				"m/002_col.down.sql": "DROP TABLE IF EXISTS down_marker_paired;",
+			},
+			wantApplied:  []string{"001_init.sql", "002_col.up.sql"},
+			wantSkipped:  []string{"002_col.down.sql"},
+			wantNotInSQL: "down_marker_paired",
+		},
+		{
+			name: "down file with no matching up file",
+			files: map[string]string{
+				"m/001_init.sql":        "CREATE TABLE a(id int);",
+				"m/003_orphan.down.sql": "DROP TABLE IF EXISTS down_marker_orphan;",
+			},
+			wantApplied:  []string{"001_init.sql"},
+			wantSkipped:  []string{"003_orphan.down.sql"},
+			wantNotInSQL: "down_marker_orphan",
+		},
+		{
+			name: "uppercase extension is still recognised as a rollback script",
+			files: map[string]string{
+				"m/001_init.sql":       "CREATE TABLE a(id int);",
+				"m/004_shout.DOWN.SQL": "DROP TABLE IF EXISTS down_marker_shout;",
+			},
+			wantApplied:  []string{"001_init.sql"},
+			wantSkipped:  []string{"004_shout.DOWN.SQL"},
+			wantNotInSQL: "down_marker_shout",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			fsys := fstest.MapFS{}
+			for name, body := range tc.files {
+				fsys[name] = &fstest.MapFile{Data: []byte(body)}
+			}
+
+			dbm, _, applied := setupMigrationsDBMock(t, nil, "")
+			require.NoError(t, dbpkg.RunMigrationsFS(ctx, fsys, "m"))
+
+			for _, v := range tc.wantApplied {
+				require.Truef(t, (*applied)[v], "expected %s to be applied", v)
+			}
+			for _, v := range tc.wantSkipped {
+				require.Falsef(t, (*applied)[v], "rollback script %s must not be recorded as applied", v)
+			}
+
+			// The strongest assertion: the rollback body never reached the database at all,
+			// so ordering cannot matter.
+			for _, call := range dbm.Calls {
+				if call.Method != "Exec" || len(call.Arguments) < 2 {
+					continue
+				}
+				sql, ok := call.Arguments.Get(1).(string)
+				require.True(t, ok)
+				require.NotContainsf(t, sql, tc.wantNotInSQL,
+					"rollback SQL was executed: %s", sql)
+			}
+		})
+	}
+}
+
 func TestRunMigrationsFS_StopsOnExecError(t *testing.T) {
 	ctx := context.Background()
 	fsys := fstest.MapFS{
