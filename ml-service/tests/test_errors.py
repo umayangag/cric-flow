@@ -18,12 +18,6 @@ def test_error_payload_with_hint():
     assert p["hint"] == "Try again"
 
 
-def test_error_payload_available_formats_sorted_and_no_legacy():
-    """available_formats is sorted and excludes _LEGACY_."""
-    p = error_payload("ERR", "msg", available=["T20", "_LEGACY_", "ODI"])
-    assert p["available_formats"] == ["ODI", "T20"]
-
-
 def test_error_payload_request_id_from_context_var():
     """When request_id_var has value, it appears in payload."""
     from app.logging import request_id_var
@@ -84,7 +78,7 @@ def test_error_payload_table_driven():
         {"code": "INVALID_FORMAT", "message": "Bad format", "hint": "Use T20 or ODI", "available": None},
         {"code": "ERR", "message": "msg", "hint": None, "available": []},
         {"code": "ERR", "message": "msg", "hint": None, "available": ["T20", "ODI"]},
-        {"code": "ERR", "message": "msg", "hint": None, "available": ["_LEGACY_"]},
+        {"code": "ERR", "message": "msg", "hint": None, "available": ["T20I", "TEST", "ODI"]},
     ]
     for c in cases:
         p = error_payload(c["code"], c["message"], hint=c["hint"], available=c["available"])
@@ -95,7 +89,7 @@ def test_error_payload_table_driven():
         else:
             assert "hint" not in p or p.get("hint") is None
         if c["available"] is not None:
-            expected = sorted(x for x in c["available"] if x != "_LEGACY_")
+            expected = sorted(c["available"])
             assert p.get("available_formats") == expected
         else:
             assert "available_formats" not in p

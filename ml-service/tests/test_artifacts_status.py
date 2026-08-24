@@ -26,10 +26,7 @@ def test_artifacts_status_empty_dir(tmp_path):
     for fmt in ["TEST", "ODI", "T20I", "T20"]:
         assert data["formats"][fmt]["batting"]["exists"] is False
         assert data["formats"][fmt]["bowling"]["exists"] is False
-    assert "legacy" in data
-    for kind in ["batting", "bowling", "fielding", "extras", "win"]:
-        assert data["legacy"][kind]["exists"] is False
-        assert "loaded" in data["legacy"][kind]
+    assert "legacy" not in data
 
 
 def _touch(path: str):
@@ -83,22 +80,6 @@ def test_artifacts_status_loaded_flags(tmp_path, monkeypatch):
     assert data["formats"]["TEST"]["bowling"]["loaded"] is True
 
 
-def test_artifacts_reload_legacy(tmp_path):
-    """Reload with legacy (unsuffixed) scaler/model files exercises _load_legacy success path."""
-    import app.artifacts as art
-
-    joblib.dump({}, tmp_path / "batting_scaler.joblib")
-    joblib.dump({}, tmp_path / "batting_model.joblib")
-    joblib.dump({}, tmp_path / "bowling_scaler.joblib")
-    joblib.dump({}, tmp_path / "bowling_model.joblib")
-
-    out = art.reload(str(tmp_path))
-    assert out["legacy_batting"] is True
-    assert out["legacy_bowling"] is True
-    assert "_LEGACY_" in art.BAT_MODELS
-    assert "_LEGACY_" in art.BOWL_MODELS
-
-
 def test_artifacts_reload_per_format(tmp_path):
     """Reload with per-format scaler/model files exercises _load_per_format success path."""
     import app.artifacts as art
@@ -113,23 +94,3 @@ def test_artifacts_reload_per_format(tmp_path):
     assert "T20" in out["loaded_bowling_formats"]
     assert art.BAT_MODELS.get("T20") is not None
     assert art.BOWL_MODELS.get("T20") is not None
-
-
-def test_artifacts_status_legacy_discovery(tmp_path):
-    """Legacy (unified) artifacts are reported in /artifacts/status when files exist."""
-    _touch(tmp_path / "batting_scaler.joblib")
-    _touch(tmp_path / "batting_model.joblib")
-    _touch(tmp_path / "extras_model.joblib")
-
-    m = reload_app_with_dir(str(tmp_path))
-    from fastapi.testclient import TestClient
-
-    client = TestClient(m.app)
-    r = client.get("/artifacts/status")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["legacy"]["batting"]["exists"] is True
-    assert data["legacy"]["bowling"]["exists"] is False
-    assert data["legacy"]["extras"]["exists"] is True
-    assert data["legacy"]["fielding"]["exists"] is False
-    assert data["legacy"]["win"]["exists"] is False

@@ -1,11 +1,9 @@
 """Model artifact registry and loader utilities.
 
 This module keeps in-memory registries mapping a format code (e.g., "T20") to
-the tuple (scaler, model). It supports two styles of artifacts:
-- Legacy artifacts without a format suffix, stored under the special key
-  "_LEGACY_".
-- Per-format artifacts with filenames like `batting_scaler_T20.joblib` and
-  `batting_model_T20.joblib` discovered under a configured models directory.
+the tuple (scaler, model). Artifacts are always per-format, with filenames like
+`batting_scaler_T20.joblib` and `batting_model_T20.joblib`, discovered under a
+configured models directory.
 
 Use `reload(models_dir)` to (re)scan a directory and populate the registries.
 The lightweight `summary()` function returns a snapshot indicating which
@@ -21,7 +19,7 @@ from app.logging import get_struct_logger
 
 logger = get_struct_logger()
 
-# Registries: map format code -> (scaler, model). Legacy unsuffixed artifacts are stored under key "_LEGACY_".
+# Registries: map format code -> (scaler, model).
 BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 FIELD_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
@@ -35,7 +33,7 @@ BAT_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 BOWL_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
 
 # Sidecar metadata per (kind, format). See ml.artifact_sidecar. Keyed by the same format code
-# convention (e.g. "T20", "_LEGACY_") so prediction code can look up alongside the model.
+# convention (e.g. "T20") so prediction code can look up alongside the model.
 INNINGS_META: Dict[str, Dict[str, Any]] = {}
 EXTRAS_META: Dict[str, Dict[str, Any]] = {}
 
@@ -57,74 +55,6 @@ def _use_share_models() -> bool:
         return bool((get_config().get("ml") or {}).get("use_share_models"))
     except Exception:
         return False
-
-
-def _load_legacy(models_dir: str) -> None:
-    """Load legacy (unsuffixed) joblib artifacts into _LEGACY_ registries.
-
-    Security: joblib uses pickle. Restrict filesystem permissions on models_dir
-    and only load artifacts from trusted sources to avoid insecure deserialization.
-    """
-    try:
-        bat_scaler = joblib.load(os.path.join(models_dir, "batting_scaler.joblib"))
-        bat_model = joblib.load(os.path.join(models_dir, "batting_model.joblib"))
-        BAT_MODELS["_LEGACY_"] = (bat_scaler, bat_model)
-        logger.info("artifacts.load_legacy.batting", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.batting_skip", models_dir=models_dir, error=str(e))
-    try:
-        bowl_scaler = joblib.load(os.path.join(models_dir, "bowling_scaler.joblib"))
-        bowl_model = joblib.load(os.path.join(models_dir, "bowling_model.joblib"))
-        BOWL_MODELS["_LEGACY_"] = (bowl_scaler, bowl_model)
-        logger.info("artifacts.load_legacy.bowling", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.bowling_skip", models_dir=models_dir, error=str(e))
-    try:
-        field_scaler = joblib.load(os.path.join(models_dir, "fielding_scaler.joblib"))
-        field_model = joblib.load(os.path.join(models_dir, "fielding_model.joblib"))
-        FIELD_MODELS["_LEGACY_"] = (field_scaler, field_model)
-        logger.info("artifacts.load_legacy.fielding", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.fielding_skip", models_dir=models_dir, error=str(e))
-    try:
-        extras_model = joblib.load(os.path.join(models_dir, "extras_model.joblib"))
-        EXTRAS_MODELS["_LEGACY_"] = extras_model
-        meta = _load_meta(models_dir, "extras", None)
-        if meta is not None:
-            EXTRAS_META["_LEGACY_"] = meta
-        logger.info("artifacts.load_legacy.extras", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.extras_skip", models_dir=models_dir, error=str(e))
-    try:
-        win_model = joblib.load(os.path.join(models_dir, "win_model.joblib"))
-        WIN_MODELS["_LEGACY_"] = win_model
-        logger.info("artifacts.load_legacy.win", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.win_skip", models_dir=models_dir, error=str(e))
-    try:
-        innings_scaler = joblib.load(os.path.join(models_dir, "innings_scaler.joblib"))
-        innings_model = joblib.load(os.path.join(models_dir, "innings_model.joblib"))
-        INNINGS_MODELS["_LEGACY_"] = (innings_scaler, innings_model)
-        meta = _load_meta(models_dir, "innings", None)
-        if meta is not None:
-            INNINGS_META["_LEGACY_"] = meta
-        logger.info("artifacts.load_legacy.innings", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.innings_skip", models_dir=models_dir, error=str(e))
-    try:
-        bat_scaler = joblib.load(os.path.join(models_dir, "batting_share_scaler.joblib"))
-        bat_model = joblib.load(os.path.join(models_dir, "batting_share_model.joblib"))
-        BAT_SHARE_MODELS["_LEGACY_"] = (bat_scaler, bat_model)
-        logger.info("artifacts.load_legacy.batting_share", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.batting_share_skip", models_dir=models_dir, error=str(e))
-    try:
-        bowl_scaler = joblib.load(os.path.join(models_dir, "bowling_share_scaler.joblib"))
-        bowl_model = joblib.load(os.path.join(models_dir, "bowling_share_model.joblib"))
-        BOWL_SHARE_MODELS["_LEGACY_"] = (bowl_scaler, bowl_model)
-        logger.info("artifacts.load_legacy.bowling_share", models_dir=models_dir)
-    except Exception as e:
-        logger.debug("artifacts.load_legacy.bowling_share_skip", models_dir=models_dir, error=str(e))
 
 
 def _load_per_format(models_dir: str) -> None:
@@ -315,7 +245,6 @@ def reload(models_dir: str) -> dict:
     BOWL_SHARE_MODELS.clear()
     INNINGS_META.clear()
     EXTRAS_META.clear()
-    _load_legacy(models_dir)
     _load_per_format(models_dir)
     out = summary()
     logger.info(
@@ -330,18 +259,12 @@ def reload(models_dir: str) -> dict:
 
 def summary() -> dict:
     return {
-        "loaded_batting_formats": sorted([k for k in BAT_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_bowling_formats": sorted([k for k in BOWL_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_fielding_formats": sorted([k for k in FIELD_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_extras_formats": sorted([k for k in EXTRAS_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_win_formats": sorted([k for k in WIN_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_innings_formats": sorted([k for k in INNINGS_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_batting_share_formats": sorted([k for k in BAT_SHARE_MODELS.keys() if k != "_LEGACY_"]),
-        "loaded_bowling_share_formats": sorted([k for k in BOWL_SHARE_MODELS.keys() if k != "_LEGACY_"]),
-        "legacy_batting": "_LEGACY_" in BAT_MODELS,
-        "legacy_bowling": "_LEGACY_" in BOWL_MODELS,
-        "legacy_fielding": "_LEGACY_" in FIELD_MODELS,
-        "legacy_extras": "_LEGACY_" in EXTRAS_MODELS,
-        "legacy_win": "_LEGACY_" in WIN_MODELS,
-        "legacy_innings": "_LEGACY_" in INNINGS_MODELS,
+        "loaded_batting_formats": sorted(BAT_MODELS.keys()),
+        "loaded_bowling_formats": sorted(BOWL_MODELS.keys()),
+        "loaded_fielding_formats": sorted(FIELD_MODELS.keys()),
+        "loaded_extras_formats": sorted(EXTRAS_MODELS.keys()),
+        "loaded_win_formats": sorted(WIN_MODELS.keys()),
+        "loaded_innings_formats": sorted(INNINGS_MODELS.keys()),
+        "loaded_batting_share_formats": sorted(BAT_SHARE_MODELS.keys()),
+        "loaded_bowling_share_formats": sorted(BOWL_SHARE_MODELS.keys()),
     }

@@ -18,7 +18,6 @@ Key modules:
 - `app/prediction_service.py` — backtest and batch prediction pipelines
 - `app/artifacts.py` — in-memory joblib registries and reload
 - `ml/train_batting.py`, `ml/train_bowling.py` — primary training CLIs (`python -m ml.train_batting`, etc.)
-- `ml/train_*_model.py` — legacy CSV-oriented entrypoints (see **docs/ml-and-training.md**)
 
 **Prerequisites:** Python 3.10+ locally; CI and Docker use Python 3.12.
 
@@ -155,7 +154,7 @@ Artifact directory precedence at startup:
 3. `config.outputs.artifacts_dir`
 4. Fallback: `../../output/ml-service`
 
-Expected joblib files (legacy unsuffixed or per-format, e.g. `batting_model_T20.joblib`):
+Expected joblib files, always per-format (e.g. `batting_model_T20.joblib`):
 
 - Batting / bowling: `*_scaler`, `*_model`, optional `*_output_scaler`
 - Fielding, extras, win, innings: format-specific names per **docs/ml-and-training.md**

@@ -34,8 +34,8 @@ def test_admin_reload_enabled_returns_summary(tmp_path):
     assert data["status"] == "reloaded"
     assert "loaded_batting_formats" in data
     assert "loaded_bowling_formats" in data
-    assert "legacy_batting" in data
-    assert "legacy_bowling" in data
+    assert "legacy_batting" not in data
+    assert "legacy_bowling" not in data
 
 
 def test_admin_reload_with_api_key_wrong_returns_401(tmp_path):

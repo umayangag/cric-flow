@@ -25,7 +25,7 @@ def predict_match_innings(
     match_context: MatchContext, features_map: Dict[str, Dict[str, float]], fmt_upper: str
 ) -> Optional[Tuple[float, float, float, float]]:
     """Predict innings runs and wickets for both innings. Returns (inn1_runs, inn1_wkts, inn2_runs, inn2_wkts) or None if no model."""
-    innings_pair = (INNINGS_MODELS.get(fmt_upper) if fmt_upper else None) or INNINGS_MODELS.get("_LEGACY_")
+    innings_pair = INNINGS_MODELS.get(fmt_upper) if fmt_upper else None
     if innings_pair is None:
         return None
     scaler_inn, model_inn = innings_pair
@@ -37,7 +37,7 @@ def predict_match_innings(
     if fmt_upper and INNINGS_MODELS.get(fmt_upper) is not None:
         meta_inn = INNINGS_META.get(fmt_upper)
     if meta_inn is None:
-        meta_inn = INNINGS_META.get("_LEGACY_")
+        meta_inn = None
     team1_ids = {int(pid) for pid in match_context.team1_player_ids}
     team2_ids = {int(pid) for pid in match_context.team2_player_ids}
 
