@@ -16,30 +16,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
-// StepToCommand returns the CLI command string for a given pipeline step ID.
-func StepToCommand(step string) string {
-	switch step {
-	case "train_batting":
-		return "make train-batting CUTOFF=2025-01-01T00:00:00Z"
-	case "train_bowling":
-		return "make train-bowling CUTOFF=2025-01-01T00:00:00Z"
-	case "train_fielding":
-		return "make train-fielding CUTOFF=2025-01-01T00:00:00Z"
-	case "train_extras":
-		return "make train-extras CUTOFF=2025-01-01T00:00:00Z"
-	case "train_win":
-		return "make train-win CUTOFF=2025-01-01T00:00:00Z"
-	case "train_innings":
-		return "make train-innings CUTOFF=2025-01-01T00:00:00Z"
-	case "train_combination_meta":
-		return "make train-combination-meta CSV=<export_dir>/backtest_contributions.csv OUT=<export_dir>/combination_meta.json"
-	case "auto_tune":
-		return "make ml-auto-tune MODEL=all ALL_FORMATS=1"
-	default:
-		return ""
-	}
-}
-
 // TrainingStepToModel maps a pipeline train step ID to the ML model name for tuned-params lookup.
 func TrainingStepToModel(stepID string) string {
 	switch stepID {

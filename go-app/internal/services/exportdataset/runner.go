@@ -28,9 +28,6 @@ type Runner struct {
 	Win    WinExporter
 }
 
-// NewRunner constructs a Runner with only filesystem dependency (backward compatible during migration).
-func NewRunner() *Runner { return &Runner{} }
-
 // perFormatExporter represents a model type that supports per-format (non-legacy) export.
 type perFormatExporter struct {
 	name     string

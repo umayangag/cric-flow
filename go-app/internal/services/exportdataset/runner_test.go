@@ -36,7 +36,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 		{
 			name: "errors_on_empty_outdir",
 			arrange: func(_ *testing.T) (*svc.Runner, svc.Options) {
-				return svc.NewRunner(), svc.Options{OutDir: ""}
+				return &svc.Runner{}, svc.Options{OutDir: ""}
 			},
 			assert: func(t *testing.T, err error) {
 				require.Error(t, err)
@@ -46,7 +46,7 @@ func TestRunner_Run_MkdirAndValidation(t *testing.T) {
 		{
 			name: "writable_dir_no_services_succeeds",
 			arrange: func(t *testing.T) (*svc.Runner, svc.Options) {
-				return svc.NewRunner(), svc.Options{OutDir: t.TempDir()}
+				return &svc.Runner{}, svc.Options{OutDir: t.TempDir()}
 			},
 			assert: func(t *testing.T, err error) {
 				require.NoError(t, err)

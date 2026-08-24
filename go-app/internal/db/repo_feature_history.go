@@ -54,11 +54,6 @@ func ListPlayersWithHistoryBefore(ctx context.Context, formatID int64, cutoff ti
 	return ids, rows.Err()
 }
 
-// ListMatchesByFormatDate returns matches filtered by format and date range inclusive, ordered by date asc, id asc.
-func ListMatchesByFormatDate(ctx context.Context, formatID int64, from, to *time.Time) ([]MatchLite, error) {
-	return ListMatchesByFormatDatePage(ctx, formatID, from, to, 0, nil)
-}
-
 // ListMatchesByFormatDatePage returns a page of matches (keyset pagination) for replay.
 // Use afterCursor=nil for the first page; then pass the last match of the previous page.
 // pageSize 0 means no limit (returns all, same as ListMatchesByFormatDate before chunking).
@@ -221,33 +216,6 @@ func ListBowlingBefore(
 	}
 	q += ` ORDER BY m.match_date ASC, w.id ASC`
 	rows, err := Pool.Query(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var res []InnVal
-	for rows.Next() {
-		var iv InnVal
-		if err := rows.Scan(&iv.MatchDate, &iv.Value); err != nil {
-			return nil, err
-		}
-		res = append(res, iv)
-	}
-	return res, rows.Err()
-}
-
-// ListFieldingBefore returns fielding involvements (catches + run_outs*1.5 + stumpings) per match
-// for a player strictly before cutoff, in the given format.
-func ListFieldingBefore(ctx context.Context, playerID int64, cutoff time.Time, formatID int64) ([]InnVal, error) {
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-	rows, err := Pool.Query(ctx, `SELECT m.match_date,
-		(COALESCE(fd.catches,0) + COALESCE(fd.run_outs,0)*1.5 + COALESCE(fd.stumpings,0))::float8
-		FROM fielding_data fd
-		JOIN match m ON m.match_id = fd.match_id
-		WHERE fd.player_id = $1 AND m.match_date < $2 AND m.format_id = $3
-		ORDER BY m.match_date ASC`, playerID, cutoff, formatID)
 	if err != nil {
 		return nil, err
 	}

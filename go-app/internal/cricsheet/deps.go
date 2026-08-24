@@ -27,8 +27,7 @@ type CricsheetDB interface {
 
 // Default adapters
 var (
-	cricDB             CricsheetDB = realDB{}
-	insertBallEventsFn             = db.InsertBallEvents
+	cricDB CricsheetDB = realDB{}
 )
 
 // SetCricsheetDB allows tests to inject a fake DB implementation.

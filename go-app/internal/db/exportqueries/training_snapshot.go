@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
@@ -100,74 +99,6 @@ func rawStatsToExportStrings(r features.RawStats) []string {
 	return strs
 }
 
-// computeBattingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
-//
-//nolint:unused // kept for consistency with precompute-features and possible future use
-func computeBattingSnapshotAtCutoff(
-	ctx context.Context,
-	playerID int64,
-	asOf time.Time,
-	formatID int64,
-	venueID, oppositionID *int64,
-	alpha float64,
-	lastN, windowN int,
-) (battingSnapshotAtCutoff, error) {
-	out := battingSnapshotAtCutoff{}
-	alphaShort, alphaLong, momentumN := config.DefaultFeatureEWMAlphaShort, config.DefaultFeatureEWMAlphaLong, config.DefaultFeatureMomentumLastN
-	if alpha <= 0 || lastN < 0 {
-		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
-		if alpha <= 0 {
-			alpha = fa
-		}
-		if lastN < 0 {
-			lastN = fn
-		}
-		alphaShort, alphaLong, momentumN = fs, fl, mn
-		_ = fw // windowN already passed
-	}
-
-	hist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, nil, nil)
-	if err != nil {
-		return out, err
-	}
-	inn := toInnings(hist)
-	inn = features.SortAndClip(inn, asOf)
-	if windowN > 0 && len(inn) > windowN {
-		inn = inn[len(inn)-windowN:]
-	}
-	out.form, _ = features.EWM(inn, alpha)
-	out.formShort, _ = features.EWM(inn, alphaShort)
-	out.formLong, _ = features.EWM(inn, alphaLong)
-	out.momentum, _ = features.Momentum(inn, momentumN)
-	out.consistency, _ = features.Consistency(inn, lastN)
-
-	if venueID != nil && *venueID != 0 {
-		venHist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, nil, venueID)
-		if err != nil {
-			return out, err
-		}
-		venInn := toInnings(venHist)
-		venInn = features.SortAndClip(venInn, asOf)
-		if windowN > 0 && len(venInn) > windowN {
-			venInn = venInn[len(venInn)-windowN:]
-		}
-		out.venue, _ = features.EWM(venInn, alpha)
-	}
-	if oppositionID != nil && *oppositionID != 0 {
-		oppHist, err := db.ListBattingBefore(ctx, playerID, asOf, formatID, oppositionID, nil)
-		if err != nil {
-			return out, err
-		}
-		oppInn := toInnings(oppHist)
-		oppInn = features.SortAndClip(oppInn, asOf)
-		if windowN > 0 && len(oppInn) > windowN {
-			oppInn = oppInn[len(oppInn)-windowN:]
-		}
-		out.opposition, _ = features.EWM(oppInn, alpha)
-	}
-	return out, nil
-}
-
 // computeBattingSnapshotFromHistories computes form, form_short, form_long, momentum, consistency, venue, opposition
 // from pre-fetched histories (avoids N+1 when batching).
 func computeBattingSnapshotFromHistories(
@@ -216,74 +147,6 @@ func computeBattingSnapshotFromHistories(
 	}
 	out.raw = features.WindowedStats(inn, asOf)
 	return out
-}
-
-// computeBowlingSnapshotAtCutoff uses the same EWM and Consistency logic as precompute-features.
-//
-//nolint:unused // kept for consistency with precompute-features and possible future use
-func computeBowlingSnapshotAtCutoff(
-	ctx context.Context,
-	playerID int64,
-	asOf time.Time,
-	formatID int64,
-	venueID, oppositionID *int64,
-	alpha float64,
-	lastN, windowN int,
-) (bowlingSnapshotAtCutoff, error) {
-	out := bowlingSnapshotAtCutoff{}
-	alphaShort, alphaLong, momentumN := config.DefaultFeatureEWMAlphaShort, config.DefaultFeatureEWMAlphaLong, config.DefaultFeatureMomentumLastN
-	if alpha <= 0 || lastN < 0 {
-		fa, fn, fw, fs, fl, mn := GetFeatureExtractionParams()
-		if alpha <= 0 {
-			alpha = fa
-		}
-		if lastN < 0 {
-			lastN = fn
-		}
-		alphaShort, alphaLong, momentumN = fs, fl, mn
-		_ = fw
-	}
-
-	hist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, nil)
-	if err != nil {
-		return out, err
-	}
-	inn := toInnings(hist)
-	inn = features.SortAndClip(inn, asOf)
-	if windowN > 0 && len(inn) > windowN {
-		inn = inn[len(inn)-windowN:]
-	}
-	out.form, _ = features.EWM(inn, alpha)
-	out.formShort, _ = features.EWM(inn, alphaShort)
-	out.formLong, _ = features.EWM(inn, alphaLong)
-	out.momentum, _ = features.Momentum(inn, momentumN)
-	out.consistency, _ = features.Consistency(inn, lastN)
-
-	if venueID != nil && *venueID != 0 {
-		venHist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, nil, venueID)
-		if err != nil {
-			return out, err
-		}
-		venInn := toInnings(venHist)
-		venInn = features.SortAndClip(venInn, asOf)
-		if windowN > 0 && len(venInn) > windowN {
-			venInn = venInn[len(venInn)-windowN:]
-		}
-		out.venue, _ = features.EWM(venInn, alpha)
-	}
-	if oppositionID != nil && *oppositionID != 0 {
-		oppHist, err := db.ListBowlingBefore(ctx, playerID, asOf, formatID, oppositionID, nil)
-		if err != nil {
-			return out, err
-		}
-		oppInn := toInnings(oppHist)
-		oppInn = features.SortAndClip(oppInn, asOf)
-		if windowN > 0 && len(oppInn) > windowN {
-			oppInn = oppInn[len(oppInn)-windowN:]
-		}
-		out.opposition, _ = features.EWM(oppInn, alpha)
-	}
-	return out, nil
 }
 
 // computeFieldingSnapshotFromHistories computes form and consistency from fielding history (no venue/opposition scope).

@@ -22,7 +22,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
 | C1-8 | done | `cleanup/c1-8-importer-port-layer` | Remove the unused cricsheet importer port/adapter layer |
-| C1-9 | todo | | Remove remaining orphaned Go functions |
+| C1-9 | done | `cleanup/c1-9-orphaned-go-funcs` | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
 | C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
@@ -446,7 +446,20 @@ make go-app-check
 - [ ] `go-app/internal/db/` — delete the unreachable repo methods: `BatchSetIsWicketKeeper`, `ListMatchesByFormatDate`, `ListFieldingBefore`, `UpsertFieldingTx`, `InsertFieldingEvent`, `RecomputeFieldingAggregates`, `InsertFieldingEventsBatch`, `EnsureMatchByID`, `ExistsMatchID`, `EnsureMatchWithFormat`, `GetByName`, `GetPlayerFormFmt`, `GetPlayerVenueEffectFmt`, `GetPlayerOppositionEffectFmt`
 - [ ] `go-app/internal/cricsheet/ball_event_emit.go` — delete `EmitBallEvents`
 - [ ] Regenerate mocks (`make mock`) after interface changes
-- [ ] Leave the weather repos alone — they belong to C2-2
+- [x] Leave the weather repos alone — they belonged to C2-2, already done
+
+**Result: `deadcode -test ./...` now reports zero findings for go-app.**
+
+**Cascades the plan did not anticipate** — each surfaced only after the primary deletion:
+
+- `internal/predictor/{predict,selector,csvparse}.go` were left as bare `package` + import blocks once their single function went, so the files were deleted outright along with their tests. `predictor.PlayerPrediction` has 25 external references and stays.
+- `insertBallEventsFn` in `cricsheet/deps.go` lost its only caller with `EmitBallEvents` and began failing the `unused` linter.
+- Four test files referenced deleted functions and were trimmed: `pipeline/steps_test.go` (`TestStepToCommand`), `teamselect/select_more_test.go` (`TestLoadFromCSV_…`), plus `predictor_test.go` deleted whole.
+- `exportdataset/runner_test.go` used `svc.NewRunner()`. Since that was only `&Runner{}`, the tests now construct the struct directly — the coverage is kept without keeping a dead constructor.
+
+**Noted, not done:** `db.InsertBallEvents` is production-dead — the live path uses `InsertBallEventsTx` — but it is exercised by its own unit and integration tests, so `deadcode -test` does not flag it. Out of this PR's scope; worth folding into C7-2's guardrail discussion.
+
+**Coverage:** 61.0% → 60.1% (gate 60), close to the −0.7pt projected in C7-3.
 
 **Verify**
 
