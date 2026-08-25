@@ -8,9 +8,10 @@ C1-4 and C1-6). This walks the import graph from the entrypoints that actually
 run in production and reports whatever it cannot reach.
 
 Method: parse every module under the source roots with `ast`, resolve absolute
-and relative imports to module names, then breadth-first search from ENTRYPOINTS.
-Tests are deliberately *not* roots -- a module reachable only from its own test
-is exactly what we are looking for.
+and relative imports to module names, then breadth-first search from ENTRYPOINTS
+(modules run via `python -m`, plus modules run as scripts). Tests are deliberately
+*not* roots -- a module reachable only from its own test is exactly what we are
+looking for.
 
 Usage:
     python scripts/py-reachability.py            # list unreachable modules
@@ -29,9 +30,10 @@ from collections import defaultdict
 from typing import Dict, List, Set
 
 # Source roots scanned for modules. Tests are parsed for imports but never used as roots.
-SOURCE_ROOTS = ("app", "ml", "ml_service")
+SOURCE_ROOTS = ("app", "ml")
 
-# Modules that actually run in production or CI.
+# Entrypoints imported by nothing but executed directly. Both kinds are graph roots:
+# a root's own imports are reachable, which an allowlist entry would not achieve.
 #
 #   app.main            the ASGI app uvicorn serves
 #   ml.train_*          invoked as `python -m ml.<mod>` by app/training_orchestrator.py
@@ -40,9 +42,9 @@ SOURCE_ROOTS = ("app", "ml", "ml_service")
 #   ml.walk_forward     invoked by `make -C ml-service walk-forward`
 #   ml.train_combination_meta  invoked by `make train-combination-meta`
 #
-# Keep this in step with the `-m ml.` call sites; `make check-reachability` will
-# start reporting modules as dead if an entrypoint is dropped here by mistake.
-ENTRYPOINTS = (
+# Keep this in step with the `-m ml.` call sites; the check fails loudly if an
+# entrypoint listed here no longer exists on disk.
+MODULE_ENTRYPOINTS = (
     "app.main",
     "ml.train_batting",
     "ml.train_bowling",
@@ -55,24 +57,19 @@ ENTRYPOINTS = (
     "ml.walk_forward",
 )
 
-# Modules that are legitimately unreachable through imports, with the reason.
-# Anything NOT listed here that the graph cannot reach fails --check.
-ALLOWED_UNREACHABLE: Dict[str, str] = {
-    # Run as a script, not imported: `(cd ml && ../$(PY) validate_exports.py ...)`
-    # from ml-service/Makefile targets validate-exports and validate-exports-infer.
-    "ml.validate_exports": "script entrypoint: make -C ml-service validate-exports",
-    #
-    # Known backlog, tracked in docs/CLEANUP_PR_CHECKLIST.md. These are genuinely
-    # unreachable and slated for deletion; they are listed so this check can start
-    # catching *new* dead code now rather than waiting for the backlog to clear.
-    # Delete each entry as its item lands -- the check fails if a listed module
-    # becomes reachable again, so stale entries cannot rot here silently.
-    "ml_service.baselines": "pending C1-7",
-    "ml_service.baselines.batting": "pending C1-7",
-    "ml_service.baselines.bowling": "pending C1-7",
-    "ml_service.datasets": "pending C1-7",
-    "ml_service.datasets.seq_reader": "pending C1-7",
+# Run as scripts rather than imported, so no module imports them -- but they and
+# everything they pull in are live. Value is the command that runs them.
+SCRIPT_ENTRYPOINTS: Dict[str, str] = {
+    "ml.validate_exports": "make -C ml-service validate-exports",
+    "ml.baselines": "make train-batting-baseline / train-bowling-baseline",
 }
+
+ENTRYPOINTS = MODULE_ENTRYPOINTS + tuple(SCRIPT_ENTRYPOINTS)
+
+# Modules that are unreachable on purpose and are neither kind of entrypoint.
+# Prefer SCRIPT_ENTRYPOINTS when something is actually executed -- this is a last
+# resort, and empty is the healthy state.
+ALLOWED_UNREACHABLE: Dict[str, str] = {}
 
 
 def discover_modules(base: str) -> Dict[str, str]:

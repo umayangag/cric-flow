@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ml_service.baselines import (
+from ml.baselines import (
     train_batting_from_csv,
     train_bowling_from_csv,
 )

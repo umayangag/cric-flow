@@ -80,7 +80,10 @@ Pinned via `DEADCODE_VERSION` in `go-app/Makefile`.
 
 ### Python — `scripts/py-reachability.py`
 
-Parses every module under `app/`, `ml/`, and `ml_service/` with `ast`, resolves absolute and relative imports, and walks the graph from `ENTRYPOINTS` — `app.main` plus the modules invoked as `python -m ml.<mod>` by `app/training_orchestrator.py` and the Makefiles. Tests are **not** roots.
+Parses every module under `app/` and `ml/` with `ast`, resolves absolute and relative imports, and walks the graph from two kinds of root. Tests are **not** roots.
+
+- **`MODULE_ENTRYPOINTS`** — `app.main` plus the modules invoked as `python -m ml.<mod>` by `app/training_orchestrator.py` and the Makefiles.
+- **`SCRIPT_ENTRYPOINTS`** — modules executed directly rather than imported, e.g. `ml.validate_exports` (`make -C ml-service validate-exports`) and `ml.baselines` (`make train-batting-baseline`). These must be *roots*, not allowlist entries: allowlisting silences the module itself but leaves everything it uniquely imports looking dead.
 
 It fails on three things:
 
@@ -92,7 +95,7 @@ Run it without `--check` to see the full picture, or with `--json` for tooling.
 
 **Adding an entrypoint.** If you add a `python -m ml.something` call site, add it to `ENTRYPOINTS`. Otherwise everything it uniquely imports starts failing the check.
 
-**The allowlist.** Only for modules that genuinely run without being imported — currently `ml.validate_exports`, invoked as a script by `make -C ml-service validate-exports`. Entries tagged `pending C1-x` are known dead code awaiting its checklist item; they exist so the check can catch *new* dead code without waiting for the backlog, and should be deleted along with the modules.
+**The allowlist is empty, and that is the healthy state.** `ALLOWED_UNREACHABLE` is a last resort for something unreachable on purpose that is not executed at all. If a module *is* run, add it to `SCRIPT_ENTRYPOINTS` instead so its imports stay reachable too.
 
 ### Version pinning
 

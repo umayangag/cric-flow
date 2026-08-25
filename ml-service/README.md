@@ -7,8 +7,7 @@ Standalone FastAPI microservice for cricket ML predictions, backtests, match gen
 | Path | Role |
 |------|------|
 | `app/` | HTTP layer: FastAPI (`main.py`), Pydantic models, artifact loading, prediction orchestration, backtest cache |
-| `ml/` | Training scripts, tuning, reconciliation solvers, encoders, config helpers |
-| `ml_service/` | Small helpers (baselines, dataset readers) used in tests and offline tooling; not copied into the production Docker image |
+| `ml/` | Training scripts, tuning, reconciliation solvers, config helpers, plus `ml/baselines` and `ml/datasets` (small helpers for offline tooling and fixtures) |
 | `tests/` | Unit, integration, and gated e2e tests |
 | `docs/` | Service docs including [IMPROVEMENT_PR_CHECKLIST.md](docs/IMPROVEMENT_PR_CHECKLIST.md) |
 

@@ -14,7 +14,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P0-3 | done | `ml-service/p0-3-split-prediction-service` | Split `prediction_service.py` into focused modules |
 | P0-4 | todo | | Split `main.py` into FastAPI routers |
 | P0-1 | todo | | Introduce shared `contracts` package (break `ml` ↔ `app` cycle) |
-| P0-5 | todo | | Fold `ml_service/` into `ml/` (datasets, baselines) |
+| P0-5 | done | `cleanup/c1-7-fold-ml-service` | Fold `ml_service/` into `ml/` (datasets, baselines) |
 | P1-1 | todo | | Artifact store with safe reload under concurrency |
 | P1-2 | todo | | Run CPU-heavy routes via thread pool / `to_thread` |
 | P1-3 | todo | | Replace `urllib` with `httpx` in `train_on_the_fly` |
@@ -62,6 +62,9 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 - **Why:** Three top-level names; `ml_service` not copied in Docker.
 - **Scope:** `ml/datasets`, `ml/baselines`; update tests and imports.
 - **Risk:** Low–medium
+- **Done** as C1-7 in [../../docs/CLEANUP_PR_CHECKLIST.md](../../docs/CLEANUP_PR_CHECKLIST.md). Moved rather than deleted:
+  `make train-batting-baseline` / `train-bowling-baseline` import them, and the root README documents them.
+  Since `Dockerfile` already does `COPY ml-service/ml ./ml`, the move alone fixes the "not in the image" half.
 
 ---
 
