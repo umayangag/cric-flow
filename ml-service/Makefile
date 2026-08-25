@@ -13,7 +13,7 @@ REQUIREMENTS_FILE?=requirements.txt
 
 .PHONY: all venv install compile-requirements compile-requirements-ci compile-requirements-ci-docker run train-batting train-bowling train-fielding train-extras train-win train-models
 .PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
-.PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check test test-integration test-e2e
+.PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
@@ -167,6 +167,12 @@ fmt: venv _install_ruff
 lint: venv _install_ruff
 	$(VENV)/bin/ruff check --fix .
 
+# Import-graph reachability: fails on modules no live entrypoint can reach.
+# ruff and pytest both stay quiet about these, because a module's own tests keep
+# it "used" -- see docs/CLEANUP_PR_CHECKLIST.md C1-4/C1-6. Needs no venv.
+check-reachability:
+	@cd .. && python3 scripts/py-reachability.py --check
+
 # Lint check only (CI-safe)
 lint-check: venv _install_ruff
 	$(VENV)/bin/ruff check .
@@ -220,7 +226,7 @@ coverage-check: _install_test_tools
 		--cov-fail-under=$(COV_MIN)
 
 # Full CI pipeline for ml-service
-ci: fmt-check lint-check coverage coverage-check
+ci: fmt-check lint-check check-reachability coverage coverage-check
 
 
 # Build from repo root so configs/feature_vectors.json is available (app/feature_config.py).
@@ -262,11 +268,12 @@ help:
 	@echo "  test               Run pytest"
 	@echo "  coverage           Run pytest with coverage (xml + term)"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
-	@echo "  ci                 Run fmt-check, lint-check, and coverage gates"
+	@echo "  ci                 Run fmt-check, lint-check, check-reachability, and coverage gates"
 	@echo
 	@echo "[Quality]"
 	@echo "  fmt / fmt-check    Format and check (ruff format + ruff check)"
 	@echo "  lint / lint-check  Lint (ruff check) and check-only"
+	@echo "  check-reachability Fail on ml modules unreachable from any entrypoint"
 	@echo
 	@echo "[Docker]"
 	@echo "  docker-build       Build Docker image ($(APP_NAME):latest)"

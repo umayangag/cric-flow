@@ -38,7 +38,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C6-3 | todo | | Split the serving image from the training image |
 | C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
 | C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
-| C7-2 | todo | | CI guardrails so dead code stops accumulating |
+| C7-2 | done | `ci/c7-2-guardrails` | CI guardrails so dead code stops accumulating |
 | C7-3 | done | `test/c7-3-seqcalc-coverage` | Raise coverage on live under-tested code to absorb deletions |
 
 ---
@@ -916,10 +916,30 @@ make check-all
 
 **Scope**
 
-- [ ] `.github/workflows/go-app-ci.yml`: add `go run golang.org/x/tools/cmd/deadcode -test ./...`, failing on any output. Land it only after C1-9 and C2-2, or seed an allowlist for the known-remaining set
-- [ ] `.github/workflows/ml-service-ci.yml`: add the AST reachability check used for this audit — seeded from `app.main` plus the `python -m ml.*` entrypoints in `training_orchestrator.py` and the Makefiles — failing on any newly unreachable module. Commit the script as `scripts/py-reachability.py`
-- [ ] `go-app/Makefile:110`: pin `golangci-lint` the way `mockery` is pinned at v3.6.0, rather than `@latest`
-- [ ] Document both checks in `docs/quality-and-debugging.md`
+- [x] `make -C go-app deadcode` wraps `deadcode -test ./...` and fails on any output; wired into `go-app-ci.yml`. Go's baseline is **0**, so it landed clean with no allowlist
+- [x] `scripts/py-reachability.py` + `make -C ml-service check-reachability`, wired into `ml-service-ci.yml` **and** into `make -C ml-service ci`
+- [x] Pin `golangci-lint`. CI already pinned **v2.11.1**; only the local install used `@latest`, so a developer's lint could disagree with CI. Now `GOLANGCI_VERSION ?= v2.11.1` in `go-app/Makefile`, with both sites cross-referenced. (A pre-existing duplicate `GOLANGCI_VERSION ?= latest` was removed.)
+- [x] Document both in `docs/quality-and-debugging.md`
+- [x] Add the root `Makefile` as a trigger path for both workflows — it matched no workflow's globs, which is why the broken `make precompute` (C1-2) went unnoticed
+
+**The guardrail found real dead code on its first run.** `ml/dataset_definitions.py` was imported only by `ml/train_batting_model.py`, which C3-1 deleted — a cascade I missed. Removed here, along with its test.
+
+**The Python check fails on three things, each verified by deliberately breaking it:**
+
+| condition | verified |
+|---|---|
+| a new unreachable module | added a scratch module → `exit=1` |
+| a stale `ALLOWED_UNREACHABLE` entry (now reachable, or gone) | listed `ml.config` → `exit=1` |
+| an `ENTRYPOINTS` module that no longer exists | added `ml.renamed_away` → `exit=1` |
+| baseline | `exit=0` |
+
+The second and third matter as much as the first: a stale allowlist entry would silently mask a module coming back to life, and a stale entrypoint would make live modules look dead and invite deleting them.
+
+**Allowlist seeded with the known backlog.** Eleven modules are tagged `pending C1-5` / `pending C1-7` so the check catches *new* dead code now rather than waiting for those items. They are self-cleaning: the check fails if a listed module becomes reachable, so entries cannot rot.
+
+**Known blind spot, documented not hidden.** `deadcode -test` treats test files as roots, so production-dead code that has tests still passes — deliberate, since flagging test seams like `db.SetDB` would be wrong. `db.InsertBallEvents` is a live example (the real path is `InsertBallEventsTx`). Recorded in `docs/quality-and-debugging.md`.
+
+**Still open, noted in the doc:** `configs/` is not a trigger path, so a change to `configs/feature_vectors.json` — the shared feature contract — runs no checks.
 
 **Verify**
 
