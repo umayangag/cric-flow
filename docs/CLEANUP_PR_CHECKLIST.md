@@ -18,7 +18,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-2 | done | `cleanup/c1-2-precompute-api-key` | Fix: `make precompute` uses a non-existent API key |
 | C1-3 | done | `cleanup/c1-3-remove-evaluate-scaffold` | Remove `cmd/evaluate` scaffold |
 | C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
-| C1-5 | todo | | Remove the unwired match-harmony modules |
+| C1-5 | done | `cleanup/c1-5-match-harmony` | Remove the unwired match-harmony modules |
 | C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
 | C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
 | C1-8 | done | `cleanup/c1-8-importer-port-layer` | Remove the unused cricsheet importer port/adapter layer |
@@ -316,8 +316,22 @@ make ml-service-check
 - [ ] Delete `ml-service/ml/compute_harmony_realism_metrics.py`, `compute_win_coherence_metrics.py`, `analyze_reconciliation_adjustments.py`
 - [ ] Delete the matching tests: `test_match_aggregates.py`, `test_harmony_metrics.py`, `test_compute_harmony_realism_metrics.py`, `test_compute_win_coherence_metrics.py`, `test_analyze_reconciliation_adjustments.py`
 - [ ] **Keep** `ml/win_coherence_metrics.py` — it is imported by `app/`
-- [ ] Update `model-harmony-implementation-plan.md` and `model-harmony-plan.md`: move the deleted items from `[x] done` back to `[ ]` with a note that the code was removed as unwired, or delete both plan files if the direction is abandoned
-- [ ] Update `ARCHITECTURE_MAP.md` if it references any deleted module
+- [x] `model-harmony-implementation-plan.md` gets a correction banner rather than per-item edits: eight `[x] done` items cite the deleted modules, and the honest framing is that `[x]` there means **designed and prototyped**, not in use. `model-harmony-plan.md` needed no change — it references none of them.
+- [x] `ARCHITECTURE_MAP.md` references none of the deleted modules
+
+**This was the "second look" the plan asked for, and it changed the shape of the PR.** Three docs described the deleted code as live capability:
+
+- **`docs/match-schema.md`** — 401 lines defining "the canonical internal representation ... that all models and reconciliation logic must satisfy". Deleting it would have thrown away real domain knowledge (how extras affect bowling figures, the deterministic accounting rules). It was also *already* dangling: it cited `ml.ball_by_ball_loader`, deleted back in C1-4. **Kept, reframed as a specification**, with a status banner pointing at the live `ml/reconciliation_*` modules.
+- **`docs/rollout-reconciliation.md`** — listed two deleted CLIs as operational steps.
+- **`docs/stage3-joint-modelling.md`** — pointed at `ml.harmony_metrics` for realism bands.
+
+Leaving those would have repeated exactly the failure the audit opened with: docs promising tools that no longer exist.
+
+**`ml/win_coherence_metrics.py` stays** — `app/prediction_service/generate_match.py` imports it. Only the `compute_*` CLI wrapper around it went.
+
+**Removed the six `pending C1-5` entries** from `scripts/py-reachability.py`'s allowlist; the check still passes.
+
+**Coverage/tests:** 648 → 628 passing (the 20 were the deleted modules' own tests). ~997 lines of module code removed.
 
 **Verify**
 

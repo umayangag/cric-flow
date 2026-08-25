@@ -67,12 +67,6 @@ ALLOWED_UNREACHABLE: Dict[str, str] = {
     # catching *new* dead code now rather than waiting for the backlog to clear.
     # Delete each entry as its item lands -- the check fails if a listed module
     # becomes reachable again, so stale entries cannot rot here silently.
-    "ml.analyze_reconciliation_adjustments": "pending C1-5",
-    "ml.compute_harmony_realism_metrics": "pending C1-5",
-    "ml.compute_win_coherence_metrics": "pending C1-5",
-    "ml.harmony_metrics": "pending C1-5",
-    "ml.match_aggregates": "pending C1-5",
-    "ml.match_schema": "pending C1-5",
     "ml_service.baselines": "pending C1-7",
     "ml_service.baselines.batting": "pending C1-7",
     "ml_service.baselines.bowling": "pending C1-7",

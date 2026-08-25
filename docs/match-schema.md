@@ -2,7 +2,15 @@
 
 This document defines the **canonical internal representation** of a cricket match and the **deterministic accounting rules** that all models and reconciliation logic must satisfy.
 
-It is aligned with the Python types in `ml-service/ml/match_schema.py`:
+> **Status: specification, not a description of live code.** `ml/match_schema.py` and
+> `ml/match_aggregates.py` implemented these types but were never wired into training,
+> serving or reconciliation, and were removed in C1-5. The accounting rules below are
+> still the contract any reconciliation must satisfy — the live implementation is
+> `ml/reconciliation_core.py`, `ml/reconciliation_solver.py` and
+> `ml/reconciliation_service.py`. Treat this document as the specification to implement
+> against, not as documentation of an existing module.
+
+The canonical objects are:
 
 - `BallEvent` — single delivery (legal or not)
 - `InningsState` — one batting innings (aggregates a list of `BallEvent`s)
@@ -16,7 +24,7 @@ Downstream models (batting, bowling, fielding, extras, win, and innings) are fre
 
 ### 1.1 `BallEvent`
 
-Logical fields (matching `BALL_COLS` from `ml.ball_by_ball_loader`):
+Logical fields (these mirrored `BALL_COLS` from `ml.ball_by_ball_loader`, removed in C1-4):
 
 - **Identifiers**
   - `match_id: int`
@@ -398,5 +406,6 @@ High‑level consistency requirements:
 - Any changes to:
   - How bowling figures treat extras, or
   - How balls/no‑balls/wides are encoded
-  must be reflected both here and in `ml-service/ml/match_schema.py`.
+  must be reflected here, and in whatever implements these rules
+    (currently the `ml/reconciliation_*` modules).
 

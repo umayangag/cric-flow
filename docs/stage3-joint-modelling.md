@@ -28,7 +28,7 @@ This document is a design placeholder. Implementation is optional and follows St
 
 - **Offline comparison**
   - Predictive accuracy (e.g. MAE/RMSE on held-out matches).
-  - Realism metrics (reconciled vs historical bands; see `ml.harmony_metrics`).
+  - Realism metrics (reconciled vs historical bands). `ml.harmony_metrics` implemented these bands but was never wired in and was removed in C1-5; the rules live in [match-schema.md](match-schema.md).
   - “Reconciliation effort”: in the current pipeline, how much adjustment is applied; in the joint model, this is zero by design. Compare also win coherence.
 - **Decision:** Adopt joint modelling only if it matches or improves on decoupled + reconciliation on these axes without excessive complexity or training cost.
 

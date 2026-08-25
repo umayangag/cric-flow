@@ -8,8 +8,7 @@ Before changing any user-facing behaviour:
 
 1. **Historical matches with known outcomes**
    - Run the full reconciliation pipeline (e.g. via `POST /api/ml/generate-match` or backtest flows) on a set of historical matches.
-   - Compare reconciled innings totals and win probability to actuals; compute harmony/realism metrics (e.g. `ml.compute_harmony_realism_metrics`, `ml.compute_win_coherence_metrics`).
-   - Use `ml.analyze_reconciliation_adjustments` on logs to inspect adjustment magnitude by format and time window.
+   - Compare reconciled innings totals and win probability to actuals. Harmony/realism metric CLIs (`ml.compute_harmony_realism_metrics`, `ml.compute_win_coherence_metrics`) were removed in C1-5 as unwired; `ml/win_coherence_metrics.py` remains as a library and is used by `app/prediction_service/generate_match.py`.
 
 2. **Synthetic / corner-case matches**
    - Run reconciliation on synthetic matches that stress corner cases: very low scores, collapses, very high totals, narrow margins.
