@@ -105,6 +105,11 @@ api:
 ml-serve:
 	cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+# API auth/host for targets that talk to an already-running stack.
+# Must match the API_KEY the stack was started with (docker-compose defaults to dev-local-key).
+API_KEY ?= dev-local-key
+API_URL ?= http://localhost:8080
+
 # Variables for convenience (override like: make team-predictor MATCH=123 BAT=6 BOWL=5)
 SEASON ?= 2019
 FORMAT ?= T20
@@ -114,9 +119,10 @@ MATCH ?= 0
 BAT ?= 6
 BOWL ?= 5
 
-# Run preprocessing computations (happy path)
+# Run preprocessing computations against a running stack (make dev-up first).
+# Uses API_KEY/API_URL; override when the stack was started with a different key.
 precompute:
-	curl -X POST -H "X-API-Key: test-api-key" http://localhost:8080/precompute
+	curl -fsS -X POST -H "X-API-Key: $(API_KEY)" $(API_URL)/precompute
 
 # Precompute time-indexed (as-of) features for ALL formats with one command
 # ASOF is optional (defaults to today's date in UTC). You can override:

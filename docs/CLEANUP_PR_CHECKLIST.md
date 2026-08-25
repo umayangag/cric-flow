@@ -15,7 +15,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C0-1 | done | `cleanup/c0-1-junk-files` | Remove committed junk files and tighten `.gitignore` |
 | C0-2 | done | `cleanup/c0-2-orphan-frontend-tree` | Delete the orphan frontend tree; one test location |
 | C1-1 | done | `cleanup/c1-1-migration-down-files` | Fix: migration runner executes `.down.sql` as forward migrations |
-| C1-2 | todo | | Fix: `make precompute` uses a non-existent API key |
+| C1-2 | done | `cleanup/c1-2-precompute-api-key` | Fix: `make precompute` uses a non-existent API key |
 | C1-3 | todo | | Remove `cmd/evaluate` scaffold |
 | C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
 | C1-5 | todo | | Remove the unwired match-harmony modules |
@@ -215,7 +215,17 @@ make go-app-check
 
 **Scope**
 
-- [ ] Change the header at `Makefile:119` to use a variable defaulting to the real key: `API_KEY ?= dev-local-key`
+- [x] Change the header at `Makefile:119` to use a variable defaulting to the real key: `API_KEY ?= dev-local-key`, plus `API_URL ?= http://localhost:8080`
+- [x] Add `-fsS` to the curl. **This is the more important half:** the old command had no `--fail`, so a 401 returned **curl exit code 0** and the target reported success while doing nothing
+
+**Worse than the plan described.** Verified against a running stack:
+
+```
+old:  curl -X POST -H "X-API-Key: test-api-key" ...   -> HTTP 401 Unauthorized, exit 0
+new:  curl -fsS -X POST -H "X-API-Key: dev-local-key" -> HTTP 202 started,      exit 0
+```
+
+Because the failure was silent, `make up-all` (step 4/7) and `make full-pipeline` both continued past a precompute that never ran, then exported and trained on features that were never computed. `-fsS` means a future key mismatch fails loudly instead.
 - [ ] **Leave the `e2e-backtest-smoke` block alone.** Lines 298-362 also use `test-api-key`, but that block starts its own stack with `API_KEY=test-api-key` at line 301, so it is internally consistent. `precompute` is the only target that talks to a stack it did not start
 - [ ] Sweep the rest of the Makefile for other hardcoded hosts or ports
 - [ ] Document `API_KEY` in the Makefile `help` text
