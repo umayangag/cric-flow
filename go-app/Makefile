@@ -13,7 +13,7 @@ export POSTGRES_SSLMODE?=disable
 # Resource-aware pipelines: limit process memory so concurrency is capped (see docs/config-and-data.md). Override with GOMEMLIMIT=... if needed.
 export GOMEMLIMIT?=2GiB
 
-.PHONY: all build clean run-api team-select team-predictor evaluate docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
+.PHONY: deadcode all build clean run-api team-select team-predictor docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
 
 all: build
 
@@ -101,8 +101,8 @@ init:
 	@echo "- Installing gofumpt and golines to GOPATH/bin"
 	go install mvdan.cc/gofumpt@latest
 	go install github.com/segmentio/golines@latest
-	@echo "- Installing golangci-lint"
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@echo "- Installing golangci-lint $(GOLANGCI_VERSION)"
+	go install $(GOLANGCI_MODULE)@$(GOLANGCI_VERSION)
 	@echo "Done. Ensure \"$(shell go env GOPATH)/bin\" is on your PATH. Try: 'make fmt-check' and 'make test'"
 
 docker-build:
@@ -128,12 +128,29 @@ export-dataset:
 # Lint Go code using golangci-lint (matches CI config)
 # Self-bootstrap a pinned major version (v2) if missing or outdated and invoke via absolute path if needed
 GOLANGCI_BIN := $(shell command -v golangci-lint 2>/dev/null || echo $$(go env GOPATH)/bin/golangci-lint)
-# Use v2 line by default to match .golangci.yml (which requires v2 config schema)
-GOLANGCI_VERSION ?= latest
+# Use v2 line by default to match .golangci.yml (which requires v2 config schema).
+# Pinned to the version .github/workflows/go-app-ci.yml installs, so local lint
+# matches CI -- bump both together.
+GOLANGCI_VERSION ?= v2.11.1
 GOLANGCI_MODULE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 lint:
 	$(GOLANGCI_BIN) run -c ../.golangci.yml
+
+# Whole-program reachability. golangci-lint's `unused` only reports unexported
+# identifiers within a package, so it never sees an exported repo method that
+# nothing calls -- which is most of what docs/CLEANUP_PR_CHECKLIST.md removed.
+# Any output here is a failure.
+DEADCODE_MODULE ?= golang.org/x/tools/cmd/deadcode
+DEADCODE_VERSION ?= v0.38.0
+deadcode:
+	@out=$$(go run $(DEADCODE_MODULE)@$(DEADCODE_VERSION) -test ./... 2>/dev/null); \
+	if [ -n "$$out" ]; then \
+	  echo "Unreachable code (delete it, or wire it in):"; \
+	  echo "$$out"; \
+	  exit 1; \
+	fi; \
+	echo "deadcode: no unreachable functions."
 
 
 # Coverage targets
@@ -196,6 +213,7 @@ help:
 	@echo "  init               Setup Go dev env (modules + tools)"
 	@echo "  fmt / fmt-check    Format code / check formatting (gofumpt, golines)"
 	@echo "  lint               Run golangci-lint"
+	@echo "  deadcode           Fail on functions unreachable from main or tests"
 	@echo "  vet                Run go vet"
 	@echo "  test               Run unit tests (no DB)"
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"

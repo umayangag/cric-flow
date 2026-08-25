@@ -13,6 +13,7 @@ on:
       - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'
+      - 'Makefile'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -20,6 +21,7 @@ on:
       - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'
+      - 'Makefile'
 
 jobs:
   ci:
@@ -60,9 +62,15 @@ jobs:
       - name: Lint (golangci-lint)
         uses: golangci/golangci-lint-action@v8
         with:
+          # Keep in step with GOLANGCI_VERSION in go-app/Makefile.
           version: v2.11.1
           working-directory: go-app
           args: -c ../.golangci.yml
+
+      # golangci-lint's `unused` only sees unexported identifiers within a package,
+      # so exported-but-uncalled code slips past it. This is whole-program.
+      - name: Dead code (unreachable functions)
+        run: make -C go-app deadcode
 
       - name: Apply migrations
         env:

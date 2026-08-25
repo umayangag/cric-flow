@@ -10,7 +10,9 @@ on:
     branches: [ main ]
     paths:
       - 'ml-service/**'
+      - 'scripts/py-reachability.py'
       - '.github/workflows/ml-service-ci.yml'
+      - 'Makefile'
       - 'ml-service/requirements.txt'
       - 'ml-service/requirements-ci.in'
       - 'ml-service/requirements-ci.txt'
@@ -18,7 +20,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ml-service/**'
+      - 'scripts/py-reachability.py'
       - '.github/workflows/ml-service-ci.yml'
+      - 'Makefile'
       - 'ml-service/requirements.txt'
       - 'ml-service/requirements-ci.in'
       - 'ml-service/requirements-ci.txt'
@@ -50,6 +54,11 @@ jobs:
 
       - name: Format and lint check (ruff)
         run: make -C ml-service fmt-check
+
+      # ruff and pytest both stay quiet about a module nothing imports, because
+      # its own tests keep it "used". This walks the import graph instead.
+      - name: Reachability (unused modules)
+        run: make -C ml-service check-reachability
 
       - name: Run tests with coverage (xml + term)
         env:

@@ -136,7 +136,7 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 
 **Goal:** go-app dataset exports match ML service expected inputs (column order and types).
 
-**Sources:** Exporter: `go-app/cmd/export-dataset/main.go`. ML: `ml-service/ml/dataset_definitions.py`, `configs/feature_vectors.json`.
+**Sources:** Exporter: `go-app/cmd/export-dataset/main.go`. ML: `configs/feature_vectors.json` (the shared contract; `ml/dataset_definitions.py` was removed in C7-2 once the legacy trainers that used it were gone).
 
 **Outputs:** Per-format: `batting_encoded_<FORMAT>.csv`, `bowling_encoded_<FORMAT>.csv` (FORMAT ∈ TEST, ODI, T20, T20I), plus the cross-format `*_encoded_all.csv` that fielding, extras, win and innings training read.
 
