@@ -7,6 +7,8 @@ from typing import List, Tuple
 
 import pandas as pd
 
+from ml.config import CANONICAL_FORMAT_CODES
+
 # Export CSV validator for go-app/cmd/export-dataset outputs.
 # Now supports:
 # - Per-format presence checks (TEST/ODI/T20/T20I)
@@ -146,8 +148,8 @@ def _config_formats() -> List[str]:
                 return fmts
     except Exception:
         pass
-    # Default to all four if config unset
-    return ["TEST", "ODI", "T20", "T20I"]
+    # Default to the canonical list if config unset
+    return list(CANONICAL_FORMAT_CODES)
 
 
 def load_csv(path: str) -> pd.DataFrame:

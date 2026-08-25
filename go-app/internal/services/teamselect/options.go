@@ -31,11 +31,12 @@ func (o *Options) Validate() error {
 	if strings.TrimSpace(o.Season) == "" {
 		return errors.New("season is required")
 	}
-	switch o.Format {
-	case "TEST", "ODI", "T20", "T20I":
-		// ok
-	default:
-		return errors.New("invalid format: must be one of TEST, ODI, T20, T20I (aliases: MDM, ODM, IT20)")
+	if !formats.IsCanonical(o.Format) {
+		return errors.New(
+			"invalid format: must be one of " +
+				strings.Join(formats.CanonicalCodes(), ", ") +
+				" (aliases: MDM, ODM, IT20)",
+		)
 	}
 	if o.TeamSize <= 0 {
 		return errors.New("team size must be a positive number")

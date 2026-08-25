@@ -12,7 +12,7 @@ import (
 // BuildExportsSection inspects a filesystem root for exported CSVs and returns
 // a map suitable to be embedded under the `exports` key of /ops/status.
 func BuildExportsSection(root string) map[string]any {
-	formats := []string{"TEST", "ODI", "T20I", "T20"}
+	formats := CricketFormatCodes
 	out := map[string]any{
 		"root":    root,
 		"formats": map[string]any{},

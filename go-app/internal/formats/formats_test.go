@@ -207,3 +207,51 @@ func TestGetHierarchy(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCanonical(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		code string
+		want bool
+	}{
+		{name: "TEST", code: "TEST", want: true},
+		{name: "ODI", code: "ODI", want: true},
+		{name: "T20", code: "T20", want: true},
+		{name: "T20I", code: "T20I", want: true},
+		{name: "lowercase is normalized", code: "t20i", want: true},
+		{name: "surrounding whitespace is trimmed", code: "  ODI  ", want: true},
+		{name: "empty", code: "", want: false},
+		{name: "unknown code", code: "HUNDRED", want: false},
+		// aliases are deliberately not accepted: callers canonicalize first
+		{name: "alias MDM is not canonical", code: "MDM", want: false},
+		{name: "alias ODM is not canonical", code: "ODM", want: false},
+		{name: "alias IT20 is not canonical", code: "IT20", want: false},
+		{name: "the all sentinel is not a format", code: "all", want: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, formats.IsCanonical(tc.code))
+		})
+	}
+}
+
+func TestIsCanonicalAcceptsEveryCanonicalCode(t *testing.T) {
+	t.Parallel()
+	// guards against CanonicalCodes and IsCanonical drifting apart
+	for _, c := range formats.CanonicalCodes() {
+		require.Truef(t, formats.IsCanonical(c), "CanonicalCodes() returned %q but IsCanonical rejects it", c)
+	}
+}
+
+func TestCanonicalizeThenIsCanonicalAcceptsAliases(t *testing.T) {
+	t.Parallel()
+	for _, alias := range []string{"MDM", "ODM", "IT20"} {
+		require.Truef(t, formats.IsCanonical(formats.CanonicalizeCode(alias)),
+			"alias %q should be canonical after CanonicalizeCode", alias)
+	}
+}

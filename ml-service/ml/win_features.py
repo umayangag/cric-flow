@@ -15,34 +15,15 @@ Two entry points:
 
 from __future__ import annotations
 
-import json
 import math
-import os
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
+from ml.config import get_format_codes as _config_format_codes
 
-def _load_format_codes() -> List[str]:
-    """Read ml.formats from config.json (or ML_SERVICE_CONFIG) for one-hot encoding.
-
-    Falls back to a sensible default list when config is missing or invalid.
-    """
-    cfg_path = os.environ.get("ML_SERVICE_CONFIG") or os.path.join(os.getcwd(), "config.json")
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        fmts = data.get("ml", {}).get("formats") or []
-        out = [str(x).strip().upper() for x in fmts if isinstance(x, (str, int)) and str(x).strip()]
-        if out:
-            return out
-    except Exception:
-        pass
-    # Fallback ordering is stable to keep column order deterministic
-    return ["TEST", "ODI", "T20", "T20I"]
-
-
-_FORMAT_CODES: List[str] = _load_format_codes()
+# Order is significant here: it fixes the one-hot column order below.
+_FORMAT_CODES: List[str] = _config_format_codes()
 _FORMAT_ONE_HOT_COLS: List[str] = [f"format_is_{code}" for code in _FORMAT_CODES] + ["format_is_OTHER"]
 
 
