@@ -240,17 +240,19 @@ func TestTrainingExportsAgreeWithEachOther(t *testing.T) {
 func TestHeaderCountsAreStable(t *testing.T) {
 	t.Parallel()
 
+	// Counts dropped by 7 across every export in C2-2b, when the weather features were
+	// removed from configs/feature_vectors.json and the export queries together.
 	want := map[string]int{
-		"batting_inference": 36,
-		"batting_format":    41,
-		"batting_training":  43,
-		"bowling_inference": 36,
-		"bowling_format":    40,
-		"bowling_training":  43,
-		"extras_training":   16,
-		"innings_training":  19,
-		"fielding_training": 19,
-		"fielding_holdout":  19,
+		"batting_inference": 29,
+		"batting_format":    34,
+		"batting_training":  36,
+		"bowling_inference": 29,
+		"bowling_format":    33,
+		"bowling_training":  36,
+		"extras_training":   9,
+		"innings_training":  12,
+		"fielding_training": 12,
+		"fielding_holdout":  12,
 	}
 	got := map[string]int{
 		"batting_inference": len(eq.BattingInferenceHeaders()),

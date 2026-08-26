@@ -66,13 +66,6 @@ BAT_SEQ_COLS = [
 FEATURE_COLS = (
     BAT_RAW_STAT_COLS
     + [
-        "temp",
-        "wind",
-        "rain",
-        "humidity",
-        "cloud",
-        "pressure",
-        "viscosity",
         "inning",
         "batting_session",
         "toss",

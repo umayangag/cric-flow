@@ -47,13 +47,6 @@ logger = logging.getLogger(__name__)
 FIELDING_FEATURE_COLS = [
     "fielding_consistency",
     "fielding_form",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
     "inning",
     "toss",
     "fielding_venue",

@@ -30,16 +30,12 @@ func extrasTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []i
 	// correlated subqueries: pre-aggregate per match via CTEs, then join once.
 	q := `WITH matches_filtered AS (
 		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id,			m.match_date, COALESCE(mf.code, '') AS format_code,
-			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
-			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
-			CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 			SUM(mi.extras)::int AS total_extras
 		FROM match m
 		JOIN match_inning mi ON mi.match_id = m.match_id
 		LEFT JOIN match_format mf ON m.format_id = mf.id
-LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
-		GROUP BY m.match_id, m.format_id, m.venue_id, m.match_date, mf.code, w.temp, w.wind, w.rain, w.humidity, w.cloud, w.pressure, w.viscosity
+		GROUP BY m.match_id, m.format_id, m.venue_id, m.match_date, mf.code
 	),
 	bat_players AS (
 		SELECT bd.match_id, bd.player_id, m.format_id, m.match_date
@@ -85,7 +81,6 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	bowl_form_agg AS (SELECT match_id, COALESCE(SUM(v), 0) AS s FROM bowl_form GROUP BY match_id)
 	SELECT m.match_id, m.venue_id, m.total_extras, m.format_code,
 		m.match_date,
-		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		COALESCE(bc.s, 0) AS bat_consistency_sum,
 		COALESCE(bwc.s, 0) AS bowl_consistency_sum,
 		COALESCE(bf.s, 0) AS bat_form_sum,
@@ -119,11 +114,9 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		var totalExtras int
 		var formatCode string
 		var matchDate time.Time
-		var temp, wind, rain, humidity, cloud, pressure, viscosity int
 		var batConsSum, bowlConsSum, batFormSum, bowlFormSum float64
 		if err := rows.Scan(&matchID, &venueID, &totalExtras, &formatCode,
 			&matchDate,
-			&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 			&batConsSum, &bowlConsSum, &batFormSum, &bowlFormSum); err != nil {
 			return nil, err
 		}
@@ -133,9 +126,6 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 			strconv.Itoa(totalExtras),
 			formatCode,
 			matchDate.Format("2006-01-02"),
-			strconv.Itoa(
-				temp,
-			), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity), strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 			strconv.FormatFloat(
 				batConsSum,
 				'f',

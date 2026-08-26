@@ -107,14 +107,10 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 			COALESCE(m.toss_winner_opposition_id, 0) AS toss_winner_opposition_id,
 			CASE WHEN m.outcome_winner_opposition_id IS NULL THEN 0 WHEN m.outcome_winner_opposition_id = mi.batting_team_opposition_id THEN 1 ELSE 0 END AS team1_wins,
 			COALESCE(mf.code, '') AS format_code,
-			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
-			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
-			CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 			m.match_date
 		FROM match m
 		JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
 		LEFT JOIN match_format mf ON m.format_id = mf.id
-LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		WHERE m.match_date < $1
 	),
 	-- Per-player feature values (one row per player per match)
@@ -175,7 +171,6 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 	/* main */
 	SELECT m.match_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
-		m.temp, m.wind, m.rain, m.humidity, m.cloud, m.pressure, m.viscosity,
 		` + buildWinFeatureSelectColumns() + `
 	FROM matches_filtered m
 	` + buildWinFeatureJoins() + `
@@ -258,13 +253,6 @@ func winEnhancedHeaders() []string {
 		"team1_wins",
 		"format_code",
 		"match_date",
-		"temp",
-		"wind",
-		"rain",
-		"humidity",
-		"cloud",
-		"pressure",
-		"viscosity",
 	)
 	for _, group := range winFeatureGroupNames {
 		for _, suffix := range winDistStatSuffixes {
@@ -288,7 +276,6 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 		dest,
 		&matchID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
 		&matchDate,
-		&temp, &wind, &rain, &humidity, &cloud, &pressure, &viscosity,
 	)
 	for i := range groups {
 		g := &groups[i] //nolint:gosec // fixed-size array indexed by range

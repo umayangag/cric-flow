@@ -77,13 +77,6 @@ MATCH_CONTEXT_BASE_COLS = [
     "team1_opposition_id",
     "team2_opposition_id",
     "toss_winner_opposition_id",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
 ]
 
 # Full context column list including one-hot encoded format indicators. This is
