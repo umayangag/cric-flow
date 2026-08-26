@@ -7,6 +7,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 const HealthTab = lazy(() => import('./components/HealthTab'));
 const EvaluateDbTab = lazy(() => import('./components/EvaluateDbTab'));
 const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
+const DataTab = lazy(() => import('./components/DataTab'));
 const MLModelStatsTab = lazy(() => import('./components/MLModelStatsTab'));
 const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
 const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
@@ -42,6 +43,7 @@ const AppContent: React.FC = () => {
   // Determine active tab from path
   const currentTab = (() => {
     if (location.pathname.startsWith('/ops')) return 'ops';
+    if (location.pathname.startsWith('/data')) return 'data';
     if (location.pathname.startsWith('/ml-model-stats')) return 'mlModelStats';
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
     if (location.pathname.startsWith('/upcoming')) return 'upcoming';
@@ -52,6 +54,7 @@ const AppContent: React.FC = () => {
   const handleChange = (_: React.SyntheticEvent, newValue: string) => {
     if (newValue === 'health') navigate('/health');
     else if (newValue === 'ops') navigate('/ops');
+    else if (newValue === 'data') navigate('/data');
     else if (newValue === 'mlModelStats') navigate('/ml-model-stats');
     else if (newValue === 'evaluateDb') navigate('/evaluate');
     else if (newValue === 'upcoming') navigate('/upcoming');
@@ -169,6 +172,7 @@ const AppContent: React.FC = () => {
           >
             <Tab value="health" label="Health" />
             <Tab value="ops" label="Ops Status" />
+            <Tab value="data" label="Data" />
             <Tab value="mlModelStats" label="ML model stats" />
             <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluate (DB)" />
@@ -202,6 +206,14 @@ const AppContent: React.FC = () => {
                   element={
                     <ProtectedRoute>
                       <OpsStatusTab />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/data"
+                  element={
+                    <ProtectedRoute>
+                      <DataTab />
                     </ProtectedRoute>
                   }
                 />

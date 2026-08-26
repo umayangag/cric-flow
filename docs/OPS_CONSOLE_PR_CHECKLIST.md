@@ -99,7 +99,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | A-1 | done | `ops/pr4-data-fetch` | `POST /ops/data/fetch` — download a Cricsheet archive |
 | A-2 | done | `ops/pr5-data-extract` | `POST /ops/data/extract` — unzip into the data directory |
 | A-3 | done | `ops/pr6-dataset-registry` | Dataset registry: what is on disk and where it came from |
-| A-4 | todo | | Frontend: Data tab — feeds, fetch, extract, registry |
+| A-4 | done | `ops/pr7-data-tab` | Frontend: Data tab — feeds, fetch, extract, registry |
 | O-1 | todo | | Generalise `auto_tune_progress` into a shared progress channel |
 | O-2 | todo | | Instrument the six trainers to emit milestones and metrics |
 | O-3 | todo | | Serve generalised progress; fold into the existing SSE stream |
@@ -358,10 +358,46 @@ archive, live marking and ordering. They were run locally against a disposable
 
 ### A-4 · Frontend: Data tab
 
-- [ ] Feed picker plus optional URL, with the allowlist rule stated in the UI
-- [ ] Live fetch progress (bytes, rate, ETA) and extract progress (entries)
-- [ ] Registry table with the live dataset marked
-- [ ] "Fetch → Extract → Import" offered as a sequence once R-1 exists
+- [x] Feed picker plus optional URL, with the allowlist rule stated in the UI
+- [x] Live fetch progress (bytes, rate, ETA) and extract progress (entries)
+- [x] Registry table with the live dataset marked
+- [ ] "Fetch → Extract → Import" offered as a sequence once R-1 exists — **still open,
+      and deliberately.** R-1 does not exist, and chaining these in the browser would
+      be a second executor that loses the run on a page reload. The tab says where
+      Import is instead of pretending to sequence it
+
+**Its own tab, not a section of Ops Status.** Acquisition is what you do *before* the
+pipeline, not a stage of it — the same distinction `Step.Surface` encodes on the
+backend, which is why the pipeline graph does not list fetch and extract.
+
+**Feed and URL are a choice, not two boxes.** The backend refuses both at once as an
+ambiguity rather than resolving it, so the UI offers a toggle. Two fields that can
+silently disagree would make a 400 the operator's problem to decode.
+
+**Refusals carry what would be accepted.** `postDataJob` returns status alongside body
+rather than throwing on non-2xx, because the useful half of a 400 is the body:
+`allowed_hosts` is what turns "rejected" into "here is what is allowed", and the
+staged-archive list is what turns "nothing staged" into a next step.
+
+**Live progress reuses the one SSE stream** and `PipelineProgressPanel`. `fetch` and
+`extract` render inside `PipelineStepProgressCard` alongside precompute and auto-tune,
+so there is one renderer, not a second progress mechanism to keep in sync.
+
+**Unknown is not zero, in three places.** A step that has started but not published a
+sample says "Starting…" rather than "0 B" (which reads as a stall); a download with no
+`Content-Length` gets an indeterminate bar rather than an invented percentage; and a
+never-extracted dataset shows an em dash for match files, not `0`.
+
+**The busy state is asked of `/ops/status`,** not inferred from "we just clicked". A
+step may have been started from another browser tab or left over from a previous
+session, and a button that looks available but 409s is worse than one that says why it
+is disabled.
+
+**A live dataset the registry has never seen is called out.** Because `live` is derived
+from the directory's manifest rather than stored, `live_sha256` can match no row — a
+directory populated before the registry existed, or by hand. Rendering that as a table
+with nothing highlighted would read as "nothing is live", which is a different and
+wrong answer.
 
 ---
 
