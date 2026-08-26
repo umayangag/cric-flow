@@ -19,7 +19,7 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `precompute.formats[FORMAT].status` (`ok` / `stale` / `missing` / `unknown`).
     - `exports.formats[FORMAT].files[]` (per-export file presence).
     - `artifacts.formats[FORMAT].batting|bowling.exists/loaded`.
-    - `pipeline.steps[step_id].running|runnable` (derived from `data_migrations`).
+    - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
     - Optional: `fielding`, `weather`, `hierarchy`, `suggestions`.
   - **Consumers**:
     - Frontend `OpsStatusTab` (auto-refreshing).

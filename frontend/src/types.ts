@@ -345,11 +345,12 @@ export type PipelineRunResponse = {
   hint?: string;
 };
 
-/** Payload of SSE "progress" event from GET /ops/pipeline/stream */
-export type PipelineProgressPayload = {
-  running: boolean;
+/** Live progress for one running pipeline step. */
+export type PipelineStepProgress = {
   step_id?: string;
   step_label?: string;
+  /** Resource the step contends for: 'compute' (db and artifacts) or 'data' (acquisition). */
+  lane?: string;
   /** Human-readable description of what is happening */
   detail?: string;
   /** Current parameters (e.g. model, format, cutoff) for display */
@@ -380,6 +381,18 @@ export type PipelineProgressPayload = {
     algorithms_requested?: string[];
     activity?: string;
   };
+};
+
+/**
+ * Payload of the SSE "progress" event from GET /ops/pipeline/stream.
+ *
+ * `steps` carries every in-flight step, most recently started first. It is a list
+ * because more than one step can run at once: acquisition has its own lane, and the
+ * run-plan executor will drive several. Never assume `steps[0]` is the only one.
+ */
+export type PipelineProgressPayload = {
+  running: boolean;
+  steps: PipelineStepProgress[];
 };
 
 export type Migration = {

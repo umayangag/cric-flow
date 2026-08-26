@@ -97,8 +97,8 @@ func (a *App) handlerForStep(step pipelinesvc.Step) http.HandlerFunc {
 
 // runExportHandler starts export-dataset in the background with tracking.
 func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+	if busy, _ := pipeline.LaneBusy(r.Context(), "export-dataset"); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
 		return
 	}
 

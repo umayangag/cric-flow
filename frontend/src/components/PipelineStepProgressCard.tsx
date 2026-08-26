@@ -1,0 +1,190 @@
+import React from 'react';
+import { Box } from '@mui/material';
+import LinearProgress from '@mui/material/LinearProgress';
+import Typography from '@mui/material/Typography';
+import type { PipelineStepProgress } from '../types';
+
+/** Seconds as a compact "1h 5m" / "2m 10s" / "45s". */
+export function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function formatActivity(activity: string): string {
+  const labels: Record<string, string> = {
+    loading_data: 'Loading data',
+    screening: 'Screening algorithms',
+    cross_validating: 'Cross-validating',
+    screening_done: 'Screening complete',
+    running_trial: 'Running Optuna trial',
+    initializing: 'Initializing',
+  };
+  return labels[activity] ?? activity.replace(/_/g, ' ');
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  fine_tuning: 'Fine-tuning',
+  loading: 'Loading',
+  pycaret: 'PyCaret ranking',
+  autogluon: 'AutoGluon',
+};
+
+/** Parameters the step was started with, as "model: all · cutoff: 2025-01-01". */
+const StepParams: React.FC<{ params: Record<string, unknown> }> = ({ params }) => (
+  <Typography variant="caption" color="text.secondary" component="div">
+    {Object.entries(params)
+      .map(([key, value]) => {
+        const label = key.replace(/_/g, ' ');
+        const val =
+          typeof value === 'object' && value !== null && !Array.isArray(value)
+            ? JSON.stringify(value)
+            : String(value);
+        return `${label}: ${val}`;
+      })
+      .join(' · ')}
+  </Typography>
+);
+
+/** Live auto-tune state: which algorithm, which trial, best score so far. */
+const AutoTuneDetails: React.FC<{ autoTune: NonNullable<PipelineStepProgress['auto_tune']> }> = ({
+  autoTune,
+}) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
+    <Typography variant="caption" fontWeight={600} color="primary.main">
+      Phase: {(autoTune.phase && PHASE_LABELS[autoTune.phase]) ?? 'Algorithm screening'}
+      {autoTune.activity && <> · Activity: {formatActivity(autoTune.activity)}</>}
+    </Typography>
+    {autoTune.algorithms_requested && autoTune.algorithms_requested.length > 0 && (
+      <Typography variant="caption" color="text.secondary">
+        Selected: <strong>{autoTune.algorithms_requested.join(', ')}</strong>
+      </Typography>
+    )}
+    {autoTune.algorithms_screened && autoTune.algorithms_screened.length > 0 && (
+      <Typography variant="caption" color="text.secondary">
+        Considering: {autoTune.algorithms_screened.join(', ')}
+        {autoTune.format_suffix && ` · Format: ${autoTune.format_suffix}`}
+      </Typography>
+    )}
+    {autoTune.algorithm && !autoTune.algorithms_screened?.length && (
+      <Typography variant="caption" color="text.secondary">
+        Current algorithm: <strong>{autoTune.algorithm}</strong>
+        {autoTune.format_suffix && ` · Format: ${autoTune.format_suffix}`}
+      </Typography>
+    )}
+    {autoTune.hyperparams && Object.keys(autoTune.hyperparams).length > 0 && (
+      <Typography variant="caption" color="text.secondary" component="div">
+        Hyperparams:{' '}
+        {Object.entries(autoTune.hyperparams)
+          .map(([k, v]) => `${k}=${String(v)}`)
+          .join(', ')}
+      </Typography>
+    )}
+    {(autoTune.trial != null || autoTune.trials_total != null) && (
+      <Typography variant="caption" color="text.secondary">
+        Trial {autoTune.trial ?? '?'} / {autoTune.trials_total ?? '?'}
+      </Typography>
+    )}
+    {autoTune.best_score != null && (
+      <Typography variant="caption" color="text.secondary">
+        Best score so far: {autoTune.best_score.toFixed(4)}
+      </Typography>
+    )}
+    {autoTune.message && (
+      <Typography variant="caption" color="text.secondary">
+        {autoTune.message}
+      </Typography>
+    )}
+  </Box>
+);
+
+/** Per-format precompute progress with a determinate bar. */
+const PrecomputeDetails: React.FC<{
+  precompute: NonNullable<PipelineStepProgress['precompute']>;
+}> = ({ precompute }) => {
+  const total = precompute.formats_total ?? 0;
+  const index = precompute.current_index ?? -1;
+  const completed = index >= 0 ? index + 1 : 0;
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" display="block">
+        Phase: {precompute.phase || '—'} · Current format: {precompute.current_format || '—'}
+      </Typography>
+      {total > 0 && (
+        <Box sx={{ mt: 0.5 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+            <Typography variant="caption" color="text.secondary">
+              Formats: {precompute.formats?.join(', ') || '—'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {completed} / {total}
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={(completed / total) * 100}
+            sx={{ height: 6, borderRadius: 1 }}
+          />
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+/**
+ * One running step. The panel renders one of these per in-flight step, so nothing
+ * here assumes it is the only thing running.
+ */
+const PipelineStepProgressCard: React.FC<{ step: PipelineStepProgress }> = ({ step }) => (
+  <Box
+    sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 1,
+      p: 1.5,
+      borderRadius: 1,
+      border: '1px solid',
+      borderColor: 'divider',
+      bgcolor: 'background.paper',
+    }}
+  >
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 2 }}>
+      <Typography variant="body2" fontWeight={600}>
+        {step.step_label || step.step_id || 'Running'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Elapsed: {formatElapsed(step.elapsed_sec ?? 0)}
+      </Typography>
+      {step.estimated_remaining_sec != null && step.estimated_remaining_sec > 0 && (
+        <Typography variant="body2" color="text.secondary">
+          Est. remaining: ~{formatElapsed(step.estimated_remaining_sec)}
+        </Typography>
+      )}
+    </Box>
+
+    {step.detail && (
+      <Typography variant="body2" color="text.secondary">
+        {step.detail}
+      </Typography>
+    )}
+    {step.params && Object.keys(step.params).length > 0 && <StepParams params={step.params} />}
+
+    {step.step_id === 'auto_tune' &&
+      (step.auto_tune?.phase ? (
+        <AutoTuneDetails autoTune={step.auto_tune} />
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+          Algorithms are screened first; best algorithm is then fine-tuned. Progress updates as
+          tuning runs.
+        </Typography>
+      ))}
+
+    {step.precompute && <PrecomputeDetails precompute={step.precompute} />}
+  </Box>
+);
+
+export default PipelineStepProgressCard;

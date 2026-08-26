@@ -2,6 +2,26 @@ package pipeline
 
 import "sort"
 
+// Lane names the resource a step contends for. Two steps in the same lane never run
+// at once; steps in different lanes may overlap.
+//
+// The lanes are a deliberate decision, not an accident of how the code grew (ops plan
+// F-2): acquisition must not block training. Downloading a Cricsheet archive touches
+// only the staging directory and can take ten minutes over a slow link; stalling a
+// training run behind it would be a worse system, not a safer one.
+type Lane string
+
+const (
+	// LaneCompute is the database-and-artifacts lane: import, precompute, export and
+	// every training step. They read and write the same tables and model files, so
+	// exactly one may run at a time.
+	LaneCompute Lane = "compute"
+
+	// LaneData is the dataset-acquisition lane: fetching and extracting archives into
+	// staging. It runs concurrently with LaneCompute by design.
+	LaneData Lane = "data"
+)
+
 // Step is the single authoritative definition of one pipeline step.
 //
 // Before this type existed the same eleven steps were spelled out in six places —
@@ -40,6 +60,18 @@ type Step struct {
 	// Prerequisite describes a precondition that step ordering cannot express, in
 	// terms the operator can act on. Empty when ordering says everything.
 	Prerequisite string
+
+	// Lane is the resource this step contends for. The zero value means LaneCompute,
+	// so a step only names a lane when it is not the ordinary pipeline one.
+	Lane Lane
+}
+
+// EffectiveLane returns the step's lane, defaulting to LaneCompute.
+func (s Step) EffectiveLane() Lane {
+	if s.Lane == "" {
+		return LaneCompute
+	}
+	return s.Lane
 }
 
 // IsTraining reports whether the step trains a model whose hyper-parameters are
@@ -114,6 +146,28 @@ func (r *Registry) Commands() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// CommandsInLane returns the data_migrations commands of every step in the lane.
+// This is the set a step must find idle before it may start.
+func (r *Registry) CommandsInLane(lane Lane) []string {
+	out := make([]string, 0, len(r.steps))
+	for _, s := range r.steps {
+		if s.EffectiveLane() == lane {
+			out = append(out, s.Command)
+		}
+	}
+	return out
+}
+
+// LaneForCommand returns the lane a data_migrations command belongs to. Commands the
+// registry does not know are treated as LaneCompute — the conservative answer, since
+// an unrecognised job is more likely to touch the database than not.
+func (r *Registry) LaneForCommand(command string) Lane {
+	if s, ok := r.byCommand[command]; ok {
+		return s.EffectiveLane()
+	}
+	return LaneCompute
 }
 
 // LabelForCommand returns the human-readable label for a data_migrations command,

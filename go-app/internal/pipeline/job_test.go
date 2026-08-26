@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/mocks"
+	steps "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
 // row types for DB mock (implement db.Row)
@@ -136,14 +137,14 @@ func TestRunJob(t *testing.T) {
 	}
 }
 
-func TestHasPipelineBusy(t *testing.T) {
+func TestLaneBusy(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global).
 
 	mockDB := &mocks.MockDB{}
 	setupPipelineDB(t, mockDB)
 	mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 		Return(scanBoolRow(true))
-	busy, err := HasPipelineBusy(context.Background())
+	busy, err := LaneBusy(context.Background(), "export-dataset")
 	require.NoError(t, err)
 	assert.True(t, busy)
 
@@ -151,9 +152,28 @@ func TestHasPipelineBusy(t *testing.T) {
 	setupPipelineDB(t, mockDB2)
 	mockDB2.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 		Return(scanBoolRow(false))
-	busy, err = HasPipelineBusy(context.Background())
+	busy, err = LaneBusy(context.Background(), "export-dataset")
 	require.NoError(t, err)
 	assert.False(t, busy)
+}
+
+// TestLaneBusyCoversEveryComputeStep is the regression guard for the drift that let
+// train-combination-meta run alongside a training step: the lock consulted a
+// hand-maintained command list that step had never been added to.
+func TestLaneBusyCoversEveryComputeStep(t *testing.T) {
+	t.Parallel()
+
+	registry := steps.Steps()
+	compute := registry.CommandsInLane(steps.LaneCompute)
+	for _, step := range registry.All() {
+		if step.EffectiveLane() != steps.LaneCompute {
+			continue
+		}
+		assert.Contains(t, compute, step.Command,
+			"%s is a compute step but does not hold the compute lane", step.ID)
+	}
+	assert.Contains(t, compute, "train-combination-meta")
+	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "train-combination-meta")
 }
 
 func TestRunJob_WithTimeout(t *testing.T) {
